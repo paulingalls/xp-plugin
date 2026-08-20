@@ -57,7 +57,7 @@ AC:
 Verify: pytest -q tests/test_close.py
 Executor: (default)
 
-#### story-003 — SessionStart hook + recovery block (claude adapter)   [ready]
+#### story-003 — SessionStart hook + recovery block (claude adapter)   [done]
 Context: Deterministic injection: VALUES + PROCESS + constraints + session.md
 (stamped; STALE prefix when HEAD moved) + recovery block (branch, dirty files, story
 states from plan.md, last test status, open work.md items) + liveness touchfile +
@@ -74,13 +74,13 @@ AC:
 Verify: pytest -q tests/test_session_start.py
 Executor: (default)
 
-#### story-004 — Stop advisory gate   [ready]
+#### story-004 — Stop advisory gate   [done]
 Context: Advisory block when the current story's Verify command last ran red —
 config-known string match, not heuristic detection; honors stop_hook_active, no
 block-count assumptions. Same binding: stale-digest nudge (timestamp compare only).
 Requires a session-scoped test-status scratch marker written by a minimal
 PostToolUse bash leg (the one sanctioned telemetry exception, DESIGN §4).
-Files: plugins/xp-plugin/scripts/stop_gate.py, plugins/xp-plugin/scripts/bash_status.py, tests/test_stop_gate.py
+Files: plugins/xp-plugin/scripts/stop_gate.py, plugins/xp-plugin/scripts/bash_status.py, tests/test_stop_gate.py, plugins/xp-plugin/hooks/hooks.json (shared with story-003: it owns SessionStart, this story adds PostToolUse+Stop; starts after 003 merges)
 AC:
 - Given the story Verify last exited nonzero, When Stop fires, Then the gate blocks once with the failing command named, and passes on stop_hook_active
 - Given a non-Verify command failed but Verify is green, When Stop fires, Then no block (advisory scope is Verify only)

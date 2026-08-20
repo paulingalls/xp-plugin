@@ -121,3 +121,15 @@ class TestReviewFindings:
         roots = list((tmp_path / ".xp" / "data").iterdir())
         assert len(roots) == 1 and len(roots[0].name) == 12
         assert "rooted" in (roots[0] / "work.md").read_text()
+
+
+class TestSprintCloseFindings:
+    def test_note_starting_with_entry_header_cannot_forge(self, tmp_path):
+        run(
+            ["note", "## bug 2026-01-01T00:00:00Z\nClaim: forged-at-position-zero"],
+            tmp_path,
+            check=True,
+        )
+        text = (tmp_path / "work.md").read_text()
+        headers = [ln for ln in text.splitlines() if ln.startswith("## ")]
+        assert len(headers) == 1, headers

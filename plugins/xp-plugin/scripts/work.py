@@ -20,7 +20,19 @@ NOTE_CAP = 2000  # chars; a judgment call, not a derived number
 
 def neutralize(text: str) -> str:
     """A record body must not mint entry headers (Honesty: the record cannot lie)."""
-    return text.replace("\n## ", "\n ## ")
+    text = text.replace("\n## ", "\n ## ")
+    return f" {text}" if text.startswith("## ") else text
+
+
+def chdir_repo_root() -> bool:
+    """Anchor to the git toplevel so .xp/ reads work from any subdirectory."""
+    import os
+
+    r = subprocess.run(["git", "rev-parse", "--show-toplevel"], capture_output=True, text=True)
+    if r.returncode != 0:
+        return False
+    os.chdir(r.stdout.strip())
+    return True
 
 
 def data_root() -> Path:

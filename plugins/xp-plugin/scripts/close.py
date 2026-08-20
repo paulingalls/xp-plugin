@@ -17,7 +17,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
-from work import data_root
+from work import chdir_repo_root, data_root
 
 
 def fail(msg: str) -> "int":
@@ -38,6 +38,8 @@ def story_card(plan: str, story_id: str) -> tuple[str, str]:
     rest = range(start + 1, len(lines))
     end = next((i for i in rest if lines[i].startswith("#### ")), len(lines))
     card = "".join(lines[start:end])
+    if "[" not in lines[start]:
+        raise KeyError(f"{story_id} header has no [status] bracket in .xp/plan.md")
     status = lines[start].rsplit("[", 1)[1].rstrip().rstrip("]")
     return card, status
 
@@ -152,6 +154,8 @@ def work_entries_since(branch_point_epoch: int) -> str:
 def cmd_start(story_id: str) -> int:
     if git("status", "--porcelain").stdout.strip():
         return fail("refused: working tree is dirty — commit or stash first")
+    if not Path(".xp/plan.md").exists():
+        return fail("refused: no .xp/plan.md here — is this an xp-managed repo?")
     plan = Path(".xp/plan.md").read_text()
     try:
         card, status = story_card(plan, story_id)
@@ -173,7 +177,7 @@ def cmd_start(story_id: str) -> int:
         ("Story card", card),
         ("Cumulative diff", diff),
         ("work.md entries filed during the story", work_entries_since(base_epoch) or "none"),
-        ("VALUES", _read_first("VALUES.md", "plugins/xp-plugin/VALUES.md")),
+        ("VALUES", _read_first(str(Path(__file__).parent.parent / "VALUES.md"))),
         ("Constraints", _read_first(".xp/constraints.md")),
         ("System context", _read_first(".xp/system.md")),
     ]
@@ -266,6 +270,12 @@ def cmd_reviewed(story_id: str, verdict: str, merge_mode: str, dry_run: bool) ->
         return fail(f"refused: story test tier red: {tier}")
 
     if merge_mode == "pr":
+        import shutil
+
+        if not shutil.which("gh"):
+            return fail(
+                "refused: pr mode needs the gh CLI on PATH — install it or use --merge-mode local"
+            )
         for c in pr_cmds[:-1]:
             r = subprocess.run(c, capture_output=True, text=True)
             if r.returncode != 0:
@@ -295,7 +305,10 @@ def cmd_reviewed(story_id: str, verdict: str, merge_mode: str, dry_run: bool) ->
                 file=sys.stderr,
             )
     marker.unlink()
-    print(f"{story_id} closed. Update the session digest (you are its sole writer).")
+    print(
+        f"{story_id} closed. Update the session digest (you are its sole writer);"
+        " first line must be: # Session digest — written <ISO-ts> at <short-sha>"
+    )
     return 0
 
 
@@ -318,6 +331,8 @@ def main() -> int:
     s.add_argument("--merge-mode", choices=["pr", "local"], default="pr")
     s.add_argument("--dry-run", action="store_true")
     a = p.parse_args()
+    if not chdir_repo_root():
+        return fail("refused: not inside a git repository")
     if a.action == "start":
         return cmd_start(a.story_id)
     return cmd_reviewed(a.story_id, a.verdict or "", a.merge_mode, a.dry_run)

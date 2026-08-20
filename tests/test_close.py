@@ -79,7 +79,7 @@ class TestStart:
         r = close(repo, env, "start")
         assert r.returncode == 0, r.stderr
         for sentinel in (
-            "VALUES-SENTINEL",
+            "Communication",  # VALUES now come from the plugin root, not the repo
             "CONSTRAINT-SENTINEL",
             "SYSTEM-SENTINEL",
             "A = 2",
@@ -495,3 +495,67 @@ class TestSprintIntegration:
             text=True,
         )
         assert r.returncode == 2 and "local" in r.stderr and "moved" not in r.stderr
+
+
+class TestSprintCloseFindings:
+    """sprint-001 broad review: consumer-facing correctness before release."""
+
+    def test_start_works_from_repo_subdirectory(self, tmp_path):
+        repo, env, _g = make_repo(tmp_path)
+        sub = repo / "src"
+        r = subprocess.run(
+            [sys.executable, str(CLOSE), "story", "story-042", "start", "--merge-mode", "local"],
+            cwd=sub,
+            env=env,
+            capture_output=True,
+            text=True,
+        )
+        assert r.returncode == 0 and "demo story" in r.stdout
+
+    def test_bundle_values_come_from_plugin_root(self, tmp_path):
+        repo, env, _g = make_repo(tmp_path)
+        (repo / "VALUES.md").unlink()  # consumer repos have no VALUES.md of their own
+        subprocess.run(["git", "add", "-A"], cwd=repo, env=env, capture_output=True)
+        subprocess.run(["git", "commit", "-qm", "x"], cwd=repo, env=env, capture_output=True)
+        r = close(repo, env, "start")
+        assert r.returncode == 0
+        assert "Communication" in r.stdout and "(missing" not in r.stdout
+
+    def test_missing_gh_refused_before_any_push(self, tmp_path):
+        repo, env, _g = make_repo(tmp_path)
+        close(repo, env, "start")
+        r = subprocess.run(
+            [
+                sys.executable,
+                str(CLOSE),
+                "story",
+                "story-042",
+                "reviewed",
+                "--verdict",
+                "VERDICT: clean",
+                "--merge-mode",
+                "pr",
+            ],
+            cwd=repo,
+            env={**env, "PATH": "/usr/bin:/bin"},  # no gh on PATH
+            capture_output=True,
+            text=True,
+        )
+        assert r.returncode == 2 and "gh" in r.stderr and "Traceback" not in r.stderr
+
+    def test_missing_plan_md_refused_cleanly(self, tmp_path):
+        repo, env, g = make_repo(tmp_path)
+        (repo / ".xp" / "plan.md").unlink()
+        g("add", "-A")
+        g("commit", "-qm", "no plan")
+        r = close(repo, env, "start")
+        assert r.returncode == 2 and "plan.md" in r.stderr and "Traceback" not in r.stderr
+
+    def test_bracketless_story_header_refused_cleanly(self, tmp_path):
+        repo, env, g = make_repo(tmp_path)
+        plan = repo / ".xp" / "plan.md"
+        plan.write_text(plan.read_text().replace("   [in-progress]", ""))
+        g("add", "-A")
+        g("commit", "-qm", "malformed header")
+        r = close(repo, env, "start")
+        assert r.returncode == 2 and "Traceback" not in r.stderr
