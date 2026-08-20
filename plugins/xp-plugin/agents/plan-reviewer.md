@@ -17,7 +17,9 @@ Report findings; do not edit anything.
 
 1. **Artifact coherence** (the historically highest-value catch): do the plan, the
    story card, the declared files, and the Verify commands all describe the same
-   work? A Verify command naming a file the plan deletes, a story whose files list
+   work? Do the story's ACs have a test that EXECUTES them at the system's surface,
+   named in Verify? Does every surface system.md declares have an acceptance
+   harness (a story touching a harness-less surface gets flagged)? A Verify command naming a file the plan deletes, a story whose files list
    omits what the plan edits, two stories claiming the same file without naming the
    shared contract — these ship broken gates if you miss them.
 2. **TDD ordering**: tests before implementation, and the red must be *diagnostic* —

@@ -14,6 +14,10 @@ the plugin *scaffolds* equivalent hooks into consuming projects.
 - `docs/` — audit, design
 - shipped prose (VALUES.md, PROCESS.md) lives in plugins/xp-plugin/; .claude/ symlinks to it for dogfooding
 
+**Surfaces & acceptance**: CLI (the scripts). Acceptance harness = the pytest suites
+driving them as subprocesses (tests/test_*.py) — exit codes, stdout, filesystem effects.
+Story ACs must be executed by a test named in the story's Verify.
+
 **Conventions**:
 - Test tiers: `fast` (pre-commit) / `story` (pre-push, story close) / `full`
   (sprint close). Declared in .xp/config.yml.

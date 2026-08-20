@@ -8,7 +8,9 @@ One page. The values (VALUES.md) cover what this page doesn't.
    (fresh context — it owes your plan nothing). Address its findings before writing
    implementation code. It checks TDD ordering, artifact coherence, constraint
    conflicts, and sprint size.
-2. **Story**: red → green → refactor, small commits. Git hooks are the wall: lint,
+2. **Story**: red → green → refactor, small commits. Done = ACs verified against
+   the running system at its surface (the story loop), not "tests green" (the
+   commit loop) — two loops, two clocks. Git hooks are the wall: lint,
    secrets, fast tests at commit; full tests at push. Never fake a red — a config/docs
    commit says so in its body instead.
 3. **Story close**: run the `/story-close` checklist — it spawns the **story-reviewer**
@@ -24,7 +26,9 @@ One page. The values (VALUES.md) cover what this page doesn't.
    Re-review is owed for deviations, new uncovered behavior, or conflict
    resolutions. Hard cap two rounds; still contested after that → the human
    decides, not a third round.
-4. **Sprint close**: full tier + archived falsifiers batch-run + broad review +
+4. **Sprint close** (release: sprint — the default): stories integrated on the
+   sprint branch throughout; this is where the batch PRs to main — the release
+   moment. Full tier + archived falsifiers batch-run + broad review +
    security review + retro (one-page narrative + a proposed diff to constraints/config
    — a learning that changes nothing executable isn't recorded). Debt triage with the
    human: schedule under budget or drop to archive.

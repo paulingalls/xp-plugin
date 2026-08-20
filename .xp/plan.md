@@ -40,6 +40,22 @@ AC:
 Verify: pytest -q tests/test_close.py
 Executor: (default)
 
+#### story-005 — sprint-integration branching in close.py   [ready]
+Context: release: sprint (config.yml) — stories integrate on a sprint branch;
+sprint close PRs main (the release moment, where the heavy gates already live).
+close.py resolves its target: release==sprint AND a sprint branch exists (marker
+or config naming it) -> merge/PR the story into the sprint branch; else default
+branch (today's behavior; story-005 itself closes that way — bootstrap). Trunk
+guards target whichever branch integration points at. Schedule BEFORE 003/004:
+they land on the sprint branch this story enables.
+Files: plugins/xp-plugin/scripts/close.py, tests/test_close.py
+AC:
+- Given release: sprint and sprint branch sprint-001 exists, When a story closes in local mode, Then it merges into sprint-001 (not main) with the verdict, and the trunk guards compare against sprint-001
+- Given release: sprint but no sprint branch, When a story closes, Then it targets the default branch (bootstrap/fallback)
+- Given release: story, When a story closes, Then behavior is unchanged
+Verify: pytest -q tests/test_close.py
+Executor: (default)
+
 #### story-003 — SessionStart hook + recovery block (claude adapter)   [ready]
 Context: Deterministic injection: VALUES + PROCESS + constraints + session.md
 (stamped; STALE prefix when HEAD moved) + recovery block (branch, dirty files, story
