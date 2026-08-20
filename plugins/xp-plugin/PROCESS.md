@@ -27,8 +27,9 @@ One page. The values (VALUES.md) cover what this page doesn't.
    resolutions. Hard cap two rounds; still contested after that → the human
    decides, not a third round.
 4. **Sprint close** (release: sprint — the default): stories integrated on the
-   sprint branch throughout; this is where the batch PRs to main — the release
-   moment. Full tier + archived falsifiers batch-run + broad review +
+   sprint branch throughout; the batch PRs to main when it is RELEASABLE —
+   usually now (keep sprints small), else carried to the plan boundary; prefer
+   flags that dark-launch unready behavior over holding the branch. Full tier + archived falsifiers batch-run + broad review +
    security review + retro (one-page narrative + a proposed diff to constraints/config
    — a learning that changes nothing executable isn't recorded). Debt triage with the
    human: schedule under budget or drop to archive.
