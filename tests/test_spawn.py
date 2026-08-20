@@ -5,6 +5,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 sys.path.insert(0, str(Path(__file__).parent.parent / "plugins" / "xp-plugin" / "scripts"))
 
 SPAWN = Path(__file__).parent.parent / "plugins" / "xp-plugin" / "scripts" / "spawn.py"
@@ -445,6 +447,28 @@ class TestInPlace:
         r = spawn(repo, env, "story-042", "--in-place")
         assert r.returncode == 2 and "dirty" in r.stderr.lower()
         assert in_tree(repo, env, "branch", "--show-current") == "elsewhere"
+
+
+class TestAgentWallClock:
+    """story-012b bounds the reviewer, but run_agent is SHARED with the teammate
+    launch — and cmd_spawn's call site has no except, so a bound there kills a
+    running story with a traceback and abandons its worktree."""
+
+    def test_the_reviewer_is_bounded(self, monkeypatch, tmp_path):
+        import spawn
+
+        monkeypatch.setenv("XP_AGENT_TIMEOUT", "1")
+        with pytest.raises(subprocess.TimeoutExpired):
+            spawn.run_agent(
+                ["/bin/sh", "-c", "sleep 5"], tmp_path, "", role="reviewer", capture=True
+            )
+
+    def test_the_teammate_launch_is_not(self, monkeypatch, tmp_path):
+        import spawn
+
+        monkeypatch.setenv("XP_AGENT_TIMEOUT", "1")
+        proc = spawn.run_agent(["/bin/sh", "-c", "sleep 3"], tmp_path, "", capture=True)
+        assert proc.returncode == 0, "a teammate story legitimately outruns any wall clock"
 
 
 def test_spawn_reaches_the_integration_target_only_through_close():

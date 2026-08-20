@@ -198,12 +198,14 @@ def run_agent(
     and capture=True (the verdict has to be read, not streamed past).
     """
     env = os.environ | {"XP_ROLE": role}
-    # A wall clock, because after story-012a's split `review` is both the only
-    # long-running command AND the only one that writes: a hung reviewer would
-    # otherwise own the lead's tree, with edit rights, forever. Read from the
-    # environment because every test drives these as subprocesses and cannot patch.
-    timeout = float(os.environ.get("XP_AGENT_TIMEOUT", 3600))
+    # REVIEWER ONLY. It is the one launch that is both long-running AND writing:
+    # a hung reviewer owns the lead's tree, with edit rights, forever. A teammate
+    # legitimately outruns any wall clock, and cmd_spawn's call site has no except
+    # — bounding it would kill a whole story and abandon its worktree. Read from
+    # the environment because every test drives these as subprocesses.
+    timeout = None
     if role == "reviewer":
+        timeout = float(os.environ.get("XP_AGENT_TIMEOUT", 3600))
         # Its fixes must be distinguishable from the lead's IN GIT, in every clone,
         # forever — close.py gates on this, so it is load-bearing, not a label.
         # EMAIL too: with name alone, every email-keyed tool still reports the lead.
