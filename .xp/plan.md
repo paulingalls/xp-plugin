@@ -57,7 +57,7 @@ AC:
 Verify: pytest -q tests/test_close.py
 Executor: (default)
 
-#### story-003 — SessionStart hook + recovery block (claude adapter)   [ready]
+#### story-003 — SessionStart hook + recovery block (claude adapter)   [done]
 Context: Deterministic injection: VALUES + PROCESS + constraints + session.md
 (stamped; STALE prefix when HEAD moved) + recovery block (branch, dirty files, story
 states from plan.md, last test status, open work.md items) + liveness touchfile +

@@ -295,7 +295,10 @@ def cmd_reviewed(story_id: str, verdict: str, merge_mode: str, dry_run: bool) ->
                 file=sys.stderr,
             )
     marker.unlink()
-    print(f"{story_id} closed. Update the session digest (you are its sole writer).")
+    print(
+        f"{story_id} closed. Update the session digest (you are its sole writer);"
+        " first line must be: # Session digest — written <ISO-ts> at <short-sha>"
+    )
     return 0
 
 
