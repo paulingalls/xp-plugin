@@ -38,7 +38,7 @@ Report findings; the lead decides fix-or-ask. Do not edit code.
 
 ## Output
 
-Ranked findings: claim, concrete failure scenario, cheapest fix. End with a verdict
+Ranked findings: claim, **the value it defends** (one of the five), concrete failure scenario, cheapest fix. End with a verdict
 line the close pipeline records verbatim: `VERDICT: clean` or
 `VERDICT: N findings (M gating)` — a gating finding is one you would not merge over.
 Then the three findings you tried hardest to refute and could not (or "none survived

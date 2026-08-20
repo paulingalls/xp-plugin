@@ -38,7 +38,9 @@ Report findings; do not edit anything.
 
 ## Output
 
-Ranked findings, most severe first: one-sentence claim, the concrete failure it
-leads to, and the cheapest fix. Then either **"proceed"** or **"revise first"** with
+Ranked findings, most severe first: one-sentence claim, **the value it defends**
+(one of the five), the concrete failure it leads to, and the cheapest fix. You have
+standing to recommend **dropping scope entirely** — saying no is a Courage finding,
+not an overstep. Then either **"proceed"** or **"revise first"** with
 the one or two findings that gate. If something only the human can decide, say so
 explicitly — the lead will ask them. No praise, no restating the plan.

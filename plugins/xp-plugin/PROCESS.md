@@ -27,7 +27,8 @@ One page. The values (VALUES.md) cover what this page doesn't.
 - **debt** — claim + falsifier (currently green) + files. Considered only at sprint
   planning: scheduled or dropped to archive. Never scheduled mid-sprint unless it
   blocks the current story's acceptance (which makes it a bug).
-- **note** — free text: decisions (choice + because), discoveries. Promoted to
+- **note** — free text: decisions (choice + because, naming the value tradeoff —
+  which value won, which lost), discoveries. Promoted to
   constraints.md at sprint close, or archived.
 
 Telemetry (test/lint failures) is never recorded — the gate re-measures next run.
