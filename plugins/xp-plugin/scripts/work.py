@@ -18,12 +18,19 @@ from pathlib import Path
 NOTE_CAP = 2000  # chars; a judgment call, not a derived number
 
 
+def neutralize(text: str) -> str:
+    """A record body must not mint entry headers (Honesty: the record cannot lie)."""
+    return text.replace("\n## ", "\n ## ")
+
+
 def data_root() -> Path:
     if env := os.environ.get("XP_DATA"):
         return Path(env)
-    common = subprocess.run(
-        ["git", "rev-parse", "--git-common-dir"], capture_output=True, text=True, check=True
-    ).stdout.strip()
+    proc = subprocess.run(["git", "rev-parse", "--git-common-dir"], capture_output=True, text=True)
+    if proc.returncode != 0:
+        print("not inside a git repository and XP_DATA is unset", file=sys.stderr)
+        raise SystemExit(2)
+    common = proc.stdout.strip()
     project_id = hashlib.sha256(os.path.realpath(common).encode()).hexdigest()[:12]
     return Path.home() / ".xp" / "data" / project_id
 
@@ -43,7 +50,7 @@ def entry(kind: str, args: argparse.Namespace) -> str:
     ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     return (
         f"## {kind} {ts}\n"
-        f"Claim: {args.claim}\n"
+        f"Claim: {neutralize(args.claim)}\n"
         f"Falsifier: `{args.falsifier}`\n"
         f"Files: {args.files}\n\n"
     )
@@ -68,7 +75,7 @@ def main() -> int:
             text = f"{text[:NOTE_CAP]} [truncated: {dropped} chars dropped]"
             print(f"note truncated: {dropped} chars over NOTE_CAP={NOTE_CAP}", file=sys.stderr)
         ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-        append(root, f"## note {ts}\n{text}\n\n")
+        append(root, f"## note {ts}\n{neutralize(text)}\n\n")
         return 0
 
     green = falsifier_is_green(args.falsifier)  # outside the lock: may be slow

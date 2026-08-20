@@ -73,3 +73,51 @@ class TestNote:
         r = run(["note", "hello"], data)
         assert r.returncode == 0
         assert (data / "work.md").read_text().count("hello") == 1
+
+
+class TestReviewFindings:
+    """story-001 close review: forgery, no-repo error, git-derived root."""
+
+    def test_note_with_embedded_entry_header_cannot_forge_a_record(self, tmp_path):
+        forged = "log paste:\n## bug 2026-01-01T00:00:00Z\nClaim: forged"
+        run(["note", forged], tmp_path, check=True)
+        text = (tmp_path / "work.md").read_text()
+        headers = [ln for ln in text.splitlines() if ln.startswith("## ")]
+        assert len(headers) == 1, f"forged entry header: {headers}"
+
+    def test_multiline_claim_cannot_split_its_record(self, tmp_path):
+        run(
+            ["bug", "--claim", "a\n## note fake", "--falsifier", "false", "--files", "a.py"],
+            tmp_path,
+            check=True,
+        )
+        text = (tmp_path / "work.md").read_text()
+        assert sum(1 for ln in text.splitlines() if ln.startswith("## ")) == 1
+
+    def test_outside_git_repo_without_xp_data_errors_cleanly(self, tmp_path):
+        r = subprocess.run(
+            [sys.executable, str(WORK), "note", "hi"],
+            env={"PATH": "/usr/bin:/bin", "HOME": str(tmp_path)},
+            cwd="/",
+            capture_output=True,
+            text=True,
+        )
+        assert r.returncode == 2
+        assert "XP_DATA" in r.stderr and "Traceback" not in r.stderr
+
+    def test_git_derived_root_used_when_xp_data_unset(self, tmp_path):
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        env = {"PATH": "/usr/bin:/bin", "HOME": str(tmp_path)}
+        subprocess.run(["git", "init", "-q"], cwd=repo, check=True, env=env)
+        r = subprocess.run(
+            [sys.executable, str(WORK), "note", "rooted"],
+            env={"PATH": "/usr/bin:/bin", "HOME": str(tmp_path)},
+            cwd=repo,
+            capture_output=True,
+            text=True,
+        )
+        assert r.returncode == 0, r.stderr
+        roots = list((tmp_path / ".xp" / "data").iterdir())
+        assert len(roots) == 1 and len(roots[0].name) == 12
+        assert "rooted" in (roots[0] / "work.md").read_text()
