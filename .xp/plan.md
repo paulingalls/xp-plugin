@@ -158,7 +158,7 @@ Verify: pytest -q tests/test_close.py tests/test_stop_gate.py tests/test_session
 Close review: deep
 Executor: (default)
 
-#### story-012a — the structured gate; land never spawns   [ready]
+#### story-012a — the structured gate; land never spawns   [in-progress]
 Context: First half of the story-008-close redesign (work.md 17:43:13Z, 17:56:23Z,
 17:57:00Z), split on the seam the 17:33:21Z note named: "a fixing reviewer plus our
 current VERDICT-line gate would be strictly WORSE than today". The gate lands first;
