@@ -93,7 +93,7 @@ Deferred from DESIGN §10's sketch, explicitly: the exit-status-masking bash gat
 (§7 item 5) moves to Sprint 3 with the harness adapters — Verify entailment in
 bash_status already covers its worst case at the gate that matters.
 
-#### story-006 — /xp-setup scaffold   [ready]
+#### story-006 — /xp-setup scaffold   [done]
 Context: The plugin is installable but useless in an unprepared repo. One skill +
 script: create .xp/ from templates (constraints seeded from xp-agents' seeds +
 the comment rubric — work.md note; config.yml with tiers/caps; system.md and

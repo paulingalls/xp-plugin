@@ -1,0 +1,15 @@
+# xp wall (lefthook variant) — tiers read from .xp/config.yml at run time
+# via .githooks/hook-lib.sh (written by setup alongside this file)
+pre-commit:
+  piped: true
+  commands:
+    secrets:
+      priority: 1
+      run: sh -c '. .githooks/hook-lib.sh; secrets_scan'
+    fast-tier:
+      priority: 2
+      run: sh -c '. .githooks/hook-lib.sh; run_tier fast'
+pre-push:
+  commands:
+    story-tier:
+      run: sh -c '. .githooks/hook-lib.sh; run_tier story'
