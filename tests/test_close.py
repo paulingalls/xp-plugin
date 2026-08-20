@@ -30,6 +30,7 @@ def make_repo(tmp_path, status="in-progress", verify="true"):
     g("config", "user.email", "t@t")
     g("config", "user.name", "t")
     (repo / ".xp" / "plan.md").write_text(CARD.format(status=status, verify=verify))
+    (repo / ".xp" / "config.yml").write_text("tests:\n  story: true\n")
     (repo / ".xp" / "constraints.md").write_text("# Constraints\n1. CONSTRAINT-SENTINEL\n")
     (repo / ".xp" / "system.md").write_text("# System\nSYSTEM-SENTINEL\n")
     (repo / "VALUES.md").write_text("# XP Values\nVALUES-SENTINEL\n")
@@ -156,4 +157,44 @@ class TestReviewed:
             text=True,
         )
         assert "gh pr create" in r.stdout and "VERDICT: clean" in r.stdout
-        assert "gh pr merge" in r.stdout
+        merge_lines = [ln for ln in r.stdout.splitlines() if "gh pr merge" in ln]
+        assert len(merge_lines) == 1
+        assert "--merge" in merge_lines[0] and "--delete-branch" in merge_lines[0]
+        assert "VERDICT: clean" in merge_lines[0]  # verdict rides the merge, not only create
+        assert any(ln.startswith("git push") for ln in r.stdout.splitlines())
+
+    def test_reviewed_dirty_tree_refused(self, tmp_path):
+        repo, env, _g = make_repo(tmp_path)
+        close(repo, env, "start")
+        (repo / "fixed.txt").write_text("untracked dirt\n")
+        r = close(repo, env, "reviewed", "--verdict", "VERDICT: clean")
+        assert r.returncode == 2 and "dirty" in r.stderr.lower()
+        assert "[done]" not in (repo / ".xp" / "plan.md").read_text()
+
+    def test_story_tier_runs_after_verify(self, tmp_path):
+        repo, env, g = make_repo(tmp_path)  # card Verify is green (true)
+        (repo / ".xp" / "config.yml").write_text("tests:\n  story: false\n")
+        g("add", "-A")
+        g("commit", "-qm", "red story tier")
+        close(repo, env, "start")
+        r = close(repo, env, "reviewed", "--verdict", "VERDICT: clean")
+        assert r.returncode != 0 and "tier" in (r.stderr + r.stdout).lower()
+        assert "[done]" not in (repo / ".xp" / "plan.md").read_text()
+
+    def test_reviewed_without_start_refused_cleanly(self, tmp_path):
+        repo, env, _g = make_repo(tmp_path)
+        r = close(repo, env, "reviewed", "--verdict", "VERDICT: clean")
+        assert r.returncode == 2 and "start" in r.stderr
+        assert "Traceback" not in r.stderr
+
+    def test_unknown_story_refused_cleanly(self, tmp_path):
+        repo, env, _g = make_repo(tmp_path)
+        r = subprocess.run(
+            [sys.executable, str(CLOSE), "story", "story-999", "start", "--merge-mode", "local"],
+            cwd=repo,
+            env=env,
+            capture_output=True,
+            text=True,
+        )
+        assert r.returncode == 2 and "story-999" in r.stderr
+        assert "Traceback" not in r.stderr

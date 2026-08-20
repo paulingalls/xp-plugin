@@ -49,6 +49,22 @@ def verify_commands(card: str) -> str:
     return ""
 
 
+def story_tier_command() -> str:
+    """The `tests: story:` command from .xp/config.yml (stdlib line-parse, no yaml dep)."""
+    cfg = Path(".xp/config.yml")
+    if not cfg.exists():
+        return ""
+    in_tests = False
+    for ln in cfg.read_text().splitlines():
+        if ln.rstrip() == "tests:":
+            in_tests = True
+        elif in_tests and ln.strip().startswith("story:"):
+            return ln.split("story:", 1)[1].split("#")[0].strip()
+        elif in_tests and ln and not ln.startswith(" "):
+            in_tests = False
+    return ""
+
+
 def marker_path(story_id: str) -> Path:
     d = data_root() / "markers"
     d.mkdir(parents=True, exist_ok=True)
@@ -84,7 +100,10 @@ def cmd_start(story_id: str) -> int:
     if git("status", "--porcelain").stdout.strip():
         return fail("refused: working tree is dirty — commit or stash first")
     plan = Path(".xp/plan.md").read_text()
-    card, status = story_card(plan, story_id)
+    try:
+        card, status = story_card(plan, story_id)
+    except KeyError as e:
+        return fail(f"refused: {e.args[0]}")
     if status != "in-progress":
         return fail(f"refused: {story_id} is [{status}], start requires [in-progress]")
     base = git("merge-base", "main", "HEAD").stdout.strip()
@@ -102,7 +121,7 @@ def cmd_start(story_id: str) -> int:
     for title, body in sections:
         print(f"## {title}\n\n{body}\n")
     marker_path(story_id).write_text(
-        json.dumps({"phase": "reviewing", "reviewed_sha": git("rev-parse", "HEAD").stdout.strip()})
+        json.dumps({"reviewed_sha": git("rev-parse", "HEAD").stdout.strip()})
     )
     return 0
 
@@ -118,6 +137,8 @@ def _read_first(*candidates: str) -> str:
 def cmd_reviewed(story_id: str, verdict: str, merge_mode: str, dry_run: bool) -> int:
     if not verdict.strip():
         return fail("refused: --verdict text is required — a gate that clears must record content")
+    if git("status", "--porcelain").stdout.strip():
+        return fail("refused: working tree is dirty — Verify must judge the tree that merges")
     marker = marker_path(story_id)
     if not marker.exists():
         return fail(f"refused: no close in progress for {story_id} — run start first")
@@ -125,14 +146,20 @@ def cmd_reviewed(story_id: str, verdict: str, merge_mode: str, dry_run: bool) ->
     head = git("rev-parse", "HEAD").stdout.strip()
     if head != state["reviewed_sha"]:
         print(git("diff", f"{state['reviewed_sha']}..HEAD").stdout)
-        marker.write_text(json.dumps({"phase": "reviewing", "reviewed_sha": head}))
+        marker.write_text(json.dumps({"reviewed_sha": head}))
         return fail("drift: HEAD moved since review — delta above goes back to the reviewer")
 
     plan = Path(".xp/plan.md").read_text()
-    card, _ = story_card(plan, story_id)
+    try:
+        card, _ = story_card(plan, story_id)
+    except KeyError as e:
+        return fail(f"refused: {e.args[0]}")
     verify = verify_commands(card)
     if verify and subprocess.run(verify, shell=True).returncode != 0:
         return fail(f"refused: story Verify red: {verify}")
+    tier = story_tier_command()
+    if tier and subprocess.run(tier, shell=True).returncode != 0:
+        return fail(f"refused: story test tier red: {tier}")
 
     branch = git("rev-parse", "--abbrev-ref", "HEAD").stdout.strip()
     message = f"Merge {branch} ({story_id})\n\n{verdict}\n"
@@ -144,6 +171,7 @@ def cmd_reviewed(story_id: str, verdict: str, merge_mode: str, dry_run: bool) ->
         if dry_run:
             for c in cmds:
                 print(" ".join(c))
+            print("git push  # plan-flip bookkeeping commit, after gh merge")
             return 0
         for c in cmds:
             r = subprocess.run(c, capture_output=True, text=True)
@@ -166,6 +194,9 @@ def cmd_reviewed(story_id: str, verdict: str, merge_mode: str, dry_run: bool) ->
         git("commit", "--amend", "--no-edit", "-q")  # plan flip rides the merge commit
     else:
         git("commit", "-qm", f"{story_id} done", check=False)
+        pushed = git("push", check=False)  # remote main must learn [done]
+        if pushed.returncode != 0:
+            print("push the plan-flip commit manually: git push", file=sys.stderr)
     marker.unlink()
     print(f"{story_id} closed. Update the session digest (you are its sole writer).")
     return 0
