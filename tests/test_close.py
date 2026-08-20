@@ -19,14 +19,14 @@ Verify: {verify}
 """
 
 
-def make_repo(tmp_path, status="in-progress", verify="true"):
+def make_repo(tmp_path, status="in-progress", verify="true", branch="main"):
     repo = tmp_path / "repo"
     (repo / ".xp").mkdir(parents=True)
     env = {"PATH": "/usr/bin:/bin", "HOME": str(tmp_path), "XP_DATA": str(tmp_path / "data")}
     g = lambda *a, **k: subprocess.run(  # noqa: E731
         ["git", *a], cwd=repo, env=env, capture_output=True, text=True, **k
     )
-    g("init", "-q", "-b", "main")
+    g("init", "-q", "-b", branch)
     g("config", "user.email", "t@t")
     g("config", "user.name", "t")
     (repo / ".xp" / "plan.md").write_text(CARD.format(status=status, verify=verify))
@@ -130,6 +130,7 @@ class TestReviewed:
         g("add", "-A")
         g("commit", "-qm", "conflicting")
         g("checkout", "-q", "story-042-branch")
+        close(repo, env, "start")  # re-baseline: trunk-motion guard fires otherwise
         r = close(repo, env, "reviewed", "--verdict", "VERDICT: clean")
         assert r.returncode != 0 and "conflict" in (r.stderr + r.stdout).lower()
         assert "[done]" not in (repo / ".xp" / "plan.md").read_text()
@@ -198,3 +199,81 @@ class TestReviewed:
         )
         assert r.returncode == 2 and "story-999" in r.stderr
         assert "Traceback" not in r.stderr
+
+
+class TestSecondReviewRound:
+    """Findings from /code-review on the story-002 diff."""
+
+    def test_post_merge_plan_flip_preserves_main_side_changes(self, tmp_path):
+        repo, env, g = make_repo(tmp_path)
+        close(repo, env, "start")
+        g("checkout", "-q", "main")
+        plan = repo / ".xp" / "plan.md"
+        plan.write_text(plan.read_text() + "#### story-043 — other   [done]\nVerify: true\n")
+        g("add", "-A")
+        g("commit", "-qm", "story-043 done on main")
+        g("checkout", "-q", "story-042-branch")
+        close(repo, env, "start")  # re-baseline after main moved
+        r = close(repo, env, "reviewed", "--verdict", "VERDICT: clean")
+        assert r.returncode == 0, r.stderr
+        merged = g("show", "main:.xp/plan.md").stdout
+        assert "#### story-043 — other   [done]" in merged  # main-side change survives
+        assert "#### story-042 — demo story   [done]" in merged
+
+    def test_drift_does_not_self_clear(self, tmp_path):
+        repo, env, g = make_repo(tmp_path)
+        close(repo, env, "start")
+        (repo / "src" / "thing.py").write_text("A = 4\n")
+        g("add", "-A")
+        g("commit", "-qm", "post-review fix")
+        r1 = close(repo, env, "reviewed", "--verdict", "VERDICT: clean")
+        assert r1.returncode == 2
+        r2 = close(repo, env, "reviewed", "--verdict", "VERDICT: clean")
+        assert r2.returncode == 2, "second identical invocation must not merge"
+        assert "[done]" not in (repo / ".xp" / "plan.md").read_text()
+
+    def test_main_motion_after_start_refused(self, tmp_path):
+        repo, env, g = make_repo(tmp_path)
+        close(repo, env, "start")
+        g("checkout", "-q", "main")
+        (repo / "unrelated.txt").write_text("x\n")
+        g("add", "-A")
+        g("commit", "-qm", "main moved")
+        g("checkout", "-q", "story-042-branch")
+        r = close(repo, env, "reviewed", "--verdict", "VERDICT: clean")
+        assert r.returncode == 2 and "main" in (r.stderr + r.stdout)
+        assert "[done]" not in (repo / ".xp" / "plan.md").read_text()
+
+    def test_local_dry_run_performs_no_mutation(self, tmp_path):
+        repo, env, g = make_repo(tmp_path)
+        close(repo, env, "start")
+        r = close(repo, env, "reviewed", "--verdict", "VERDICT: clean", "--dry-run")
+        assert r.returncode == 0
+        assert "[done]" not in (repo / ".xp" / "plan.md").read_text()
+        assert g("log", "main", "--oneline").stdout.count("\n") == 1  # no merge happened
+        r2 = close(repo, env, "reviewed", "--verdict", "VERDICT: clean")
+        assert r2.returncode == 0, "marker must survive a dry-run"
+
+    def test_close_on_default_branch_refused(self, tmp_path):
+        repo, env, g = make_repo(tmp_path)
+        g("checkout", "-q", "main")
+        g("merge", "-q", "--ff-only", "story-042-branch")
+        r = close(repo, env, "start")
+        assert r.returncode == 2 and "main" in r.stderr
+
+    def test_missing_verify_line_refused(self, tmp_path):
+        repo, env, g = make_repo(tmp_path)
+        plan = repo / ".xp" / "plan.md"
+        plan.write_text(plan.read_text().replace("Verify: true\n", ""))
+        g("add", "-A")
+        g("commit", "-qm", "drop verify line")
+        close(repo, env, "start")
+        r = close(repo, env, "reviewed", "--verdict", "VERDICT: clean")
+        assert r.returncode == 2 and "verify" in r.stderr.lower()
+
+    def test_master_default_branch_supported(self, tmp_path):
+        repo, env, g = make_repo(tmp_path, branch="master")
+        close(repo, env, "start")
+        r = close(repo, env, "reviewed", "--verdict", "VERDICT: clean")
+        assert r.returncode == 0, r.stderr
+        assert "VERDICT: clean" in g("log", "master", "-1", "--format=%B").stdout
