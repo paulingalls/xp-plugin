@@ -222,9 +222,6 @@ def cmd_review(story_id: str, dry_run: bool = False) -> int:
     path = review.report_path(story_id, len(state.get("rounds", [])) + 1)
     if not dry_run:  # a preview must not delete the findings of a refused round
         path.unlink(missing_ok=True)
-        # the diff too: a refused round leaves one behind, and land prints this
-        # path by ROUND — a stale one would be handed to the lead as his assent
-        review.diff_path(path).unlink(missing_ok=True)
     head = git("rev-parse", "HEAD").stdout.strip()
     base = git("merge-base", f"refs/heads/{trunk}", "HEAD").stdout.strip()
     digest_before = review.marker_digest(marker)
