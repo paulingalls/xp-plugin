@@ -1,10 +1,8 @@
 #!/usr/bin/env python3
-"""Post-merge bookkeeping for close.py: gate-state cleanup, the close log,
-and story-branch deletion.
+"""Post-merge bookkeeping and rendering for close.py.
 
-Extracted at story-008 round 4: close.py had reached 496 lines against the
-500 hard cap (constraints #8), and these three are cohesive and independent
-of cmd_land's control flow — they take a story and a branch, not a pipeline.
+Everything here takes a story and a branch, never a pipeline — that is the
+seam, and it is why these live outside cmd_land's control flow.
 """
 
 import json
@@ -21,11 +19,9 @@ def git(*args: str, check: bool = False) -> subprocess.CompletedProcess:
 
 
 def delete_story_markers(story_id: str) -> None:
-    """Clear the story's test-status markers rather than writing a green into
-    them: those files are session-scoped gate state, and a green close.py never
-    measured is close.py forging another session's measurement (DESIGN §4,
-    constraints #6). The [done] flip is what honestly releases the Stop gate;
-    this only stops dead files accumulating."""
+    """Clear the story's test-status markers rather than writing a green into them:
+    a green close.py never measured is a forged measurement (constraints #6). The
+    [done] flip releases the Stop gate; this only stops dead files accumulating."""
     for path in (data_root() / "markers").glob(f"*.{story_id}.test-status"):
         path.unlink(missing_ok=True)
 
@@ -33,10 +29,8 @@ def delete_story_markers(story_id: str) -> None:
 def render_merge_body(rounds: list[dict]) -> str:
     """Every round, labelled by its TRUE round number.
 
-    Index IS the round: a round is recorded only with a valid report, so there are
-    no gaps to renumber over. story-008 appended only when a VERDICT line parsed,
-    labelled by list position, and its own merge body reads "Review round 1" for
-    round 6.
+    Index IS the round: a round is recorded only with a valid report, so there
+    are no gaps to renumber over.
     """
     out = []
     for i, r in enumerate(rounds, 1):
@@ -50,8 +44,7 @@ def render_prior_rounds(rounds: list[dict]) -> str:
     """Earlier rounds, for the next round's bundle — "" before round 2.
 
     A fixing reviewer with no memory re-edits the last round's fixes and reverses
-    what it deliberately punted, and the next-round-that-knows is the only
-    mechanism that has ever caught a reviewer-introduced defect.
+    what it deliberately punted.
     """
     body = render_merge_body(rounds)
     if not body:
@@ -65,9 +58,8 @@ def render_prior_rounds(rounds: list[dict]) -> str:
 def render_land_preview(
     verify: str, tier: str, merge_mode: str, branch: str, trunk: str, pr_steps: tuple
 ) -> str:
-    """What land WOULD do. A preview that drifts from the real steps is worse than
-    none — it certifies a plan nobody runs — so both arms read the same command
-    lists cmd_land executes, passed in rather than rebuilt here.
+    """What land WOULD do. A preview that drifts from the real steps certifies a
+    plan nobody runs, so both arms read the command lists cmd_land executes.
     """
     out = [f"would run: {verify}"] + ([f"would run: {tier}"] if tier else [])
     if merge_mode == "pr":
@@ -92,8 +84,7 @@ def render_land_preview(
 def render_noted(rounds: list[dict]) -> str:
     """The reviewer's deliberate punts, for the lead to file per PROCESS.md.
 
-    EVERY round's, not the last round's: an item punted in round 1 and never filed
-    is still owed.
+    EVERY round's: an item punted in round 1 and never filed is still owed.
     """
     noted = [n for r in rounds for n in r["noted"]]
     if not noted:
@@ -104,9 +95,9 @@ def render_noted(rounds: list[dict]) -> str:
 
 
 def log_close(story_id: str, card: str, rounds: list[dict], merge_sha: str) -> None:
-    """APPEND one line per close. A single overwritten file would be the
-    project-global mutable marker constraints #10 calls a design error; a log is
-    not, it survives two closes in one sprint, and the retro gets the history."""
+    """APPEND one line per close. An overwritten file would be the project-global
+    mutable marker constraints #10 forbids; a log survives two closes in one
+    sprint and the retro gets the history."""
     from datetime import datetime, timezone
 
     record = {
@@ -121,20 +112,13 @@ def log_close(story_id: str, card: str, rounds: list[dict], merge_sha: str) -> N
 
 
 def delete_story_branch(branch: str) -> list[str]:
-    """Delete the story branch, LOCAL FIRST.
+    """Delete the story branch, LOCAL FIRST — so `-d`'s merged check still has the
+    upstream ref to check against.
 
-    Local first so `-d`'s merged check runs while the upstream ref still exists.
-    Belt-and-braces at both call sites, where the merge is already reachable —
-    the measurement behind the ordering (story-007) was taken from the story
-    branch before the merge, where it IS load-bearing.
-
-    Idempotent on both sides: `gh pr merge --delete-branch` may already have
-    removed either, and reporting an already-done step as outstanding prints a
-    remediation that fails on re-run — a wolf-cry on the only channel M1's
-    "no hand-steps" has. The remote is asked with ls-remote rather than a
-    tracking ref, because `git fetch` without --prune leaves stale ones.
-
-    Returns the commands that failed, for the caller to surface.
+    Idempotent both sides: `gh pr merge --delete-branch` may have removed either,
+    and reporting a done step as outstanding prints a remediation that fails on
+    re-run. ls-remote, not a tracking ref: `git fetch` without --prune leaves
+    stale ones.
     """
     local_exists = git("rev-parse", "--verify", "-q", f"refs/heads/{branch}").returncode == 0
     if local_exists and git("branch", "-d", branch).returncode != 0:

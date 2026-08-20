@@ -1312,6 +1312,12 @@ class TestRoundThreeNoted:
         assert "N1: punted" not in r.stdout, "filing instructions for a close that failed"
 
 
+def prose(path: Path) -> str:
+    """File text with whitespace collapsed. A prose pin that breaks when a
+    paragraph is rewrapped tests the line breaks, not the rule."""
+    return " ".join(path.read_text().split())
+
+
 class TestShippedProseMatchesTheMechanism:
     """The prose is what a consuming project believes. story-012a AC 11/12."""
 
@@ -1323,6 +1329,23 @@ class TestShippedProseMatchesTheMechanism:
         ):
             head = path.read_text().split("import argparse")[0]
             assert "VERDICT" not in head, f"{path.name} still ships the deleted gate"
+
+    def test_the_comment_rubric_is_identical_in_every_shipped_copy(self):
+        """It must reach whoever writes code: the lead (PROCESS.md, injected each
+        session), the teammate (TEAMMATE.md, inlined by spawn) and the reviewer
+        (the charter, inlined by build_bundle). None of them receives the others,
+        so a pointer reaches nobody and three copies drift."""
+        rubric = (
+            "Comments: restates the code → delete · explains WHAT → rename it ·"
+            " a checkable claim → write the test · narrates history → delete, git"
+            " holds it. Keep only the why, an external constraint, a rejected design."
+        )
+        for path in (
+            PLUGIN / "PROCESS.md",
+            PLUGIN / "TEAMMATE.md",
+            PLUGIN / "agents" / "story-reviewer.md",
+        ):
+            assert rubric in prose(path), f"{path.name} has drifted from the rubric"
 
     def test_every_stopping_rule_copy_states_the_split_arithmetic(self):
         """land refuses unless the last round covers HEAD, so "close without
@@ -1340,7 +1363,7 @@ class TestShippedProseMatchesTheMechanism:
             PLUGIN / "skills" / "story-close" / "SKILL.md",
             Path(__file__).parent.parent / "docs" / "DESIGN.md",
         ):
-            text = path.read_text()
+            text = prose(path)
             assert "confirming round" in text, f"{path.name} still promises"
             assert "inside the round that found" in text, f"{path.name}: reviewer half"
             assert "past what the review covered" in text, f"{path.name}: lead half"

@@ -15,18 +15,15 @@ sys.path.insert(0, str(Path(__file__).parent))
 PLUGIN_ROOT = Path(__file__).parent.parent
 
 REPORT_KEYS = ("fixed", "blocking", "noted")
-# The report rides into the merge body, closes.jsonl and SessionStart's recovery
-# block. Bounded AT THE WRITE, not at each read: the predecessor's json bounded
-# size by validating on the way in, and three unbounded lists in the section that
-# already evicted constraints.md is the same defect with more shapes.
+# Bounded AT THE WRITE, not at each read: the report rides into the merge body,
+# closes.jsonl and the recovery block, and that section has evicted constraints.md
+# before.
 ITEM_CAP = 400
 LIST_CAP = 20
 
-# The reviewer FIXES now, so it writes. The deny-list never bounded that anyway —
-# Bash was always allowed and `git commit` was always reachable. What held
-# story-008's G1 was the moved-HEAD refusal, and story-012b replaces it with
-# AUTHORSHIP: the reviewer commits under its own identity, and any commit in the
-# range that is not its own means unreviewed work is riding along.
+# No tool deny-list: it never bounded a reviewer that had Bash, so `git commit`
+# was always reachable. AUTHORSHIP is the real bound — any commit in the range the
+# reviewer did not sign means unreviewed work is riding along.
 REVIEWER_NAME = "xp story-reviewer"
 REVIEWER_EMAIL = "story-reviewer@xp.local"
 
@@ -34,9 +31,8 @@ REVIEWER_EMAIL = "story-reviewer@xp.local"
 def charter() -> str:
     """agents/story-reviewer.md, frontmatter stripped.
 
-    The reviewer runs as a top-level headless session, not as a subagent, so the
-    harness never loads the agent file — inlining it is the mechanism and the
-    path is the fallback (spawn.py's rule).
+    It runs as a top-level headless session, not a subagent, so the harness never
+    loads the agent file: inlining is the mechanism, the path is the fallback.
     """
     from spawn import _read_shipped
 
@@ -49,10 +45,9 @@ def charter() -> str:
 
 
 def report_path(story_id: str, round_n: int) -> Path:
-    """Where this round's report goes. ROUND-scoped, not story-scoped: the round
-    index advances only on a RECORDED round, so every failed attempt at round N
-    reuses N's path and a leftover from a crashed reviewer would certify a round
-    that produced nothing. The caller unlinks before launching."""
+    """Where this round's report goes. ROUND-scoped: the index advances only on a
+    RECORDED round, so failed attempts at round N share N's path and a leftover
+    would certify a round that produced nothing. The caller unlinks first."""
     from work import data_root
 
     d = data_root() / "reports"
@@ -70,9 +65,8 @@ def _cap(items: list, path: Path) -> list:
 
 
 def read_report(path: Path) -> tuple[dict, str]:
-    """(report, error). Replaces the VERDICT-line grep, which was forgeable by
-    design (story-002) and then defeated by backticks (story-008). This fixes
-    PARSING, not forgery — a reviewer under bypass writes any path it likes.
+    """(report, error). This fixes PARSING, not forgery — a reviewer under bypass
+    writes any path it likes.
     """
     if not path.exists():
         return {}, (
@@ -101,11 +95,9 @@ def marker_digest(path: Path) -> str:
 
 
 def abort_text(reviewed_head: str, why: str) -> str:
-    """EVERY abort in the review leg, not only the motion checks. The tree now
-    holds commits from a process refused mid-fix — a state this pipeline has
-    never had, and "nothing was recorded" was written for a reviewer that could
-    not write. The undo is offered only when the reviewer actually moved
-    something: offering it on a tree nobody touched teaches the lead to skip it
+    """EVERY abort in the review leg, not only the motion checks: a refused run can
+    still have left commits behind. The undo is offered only when something
+    actually moved — offered on an untouched tree, it teaches the lead to skip it
     on the run where it is real.
     """
     from close import git
@@ -123,9 +115,8 @@ def abort_text(reviewed_head: str, why: str) -> str:
 def check_reviewer_motion(reviewed_head: str, marker: Path, digest_before: str) -> str:
     """The complete refusal text, or "" if the reviewer behaved.
 
-    The dirty-tree case never says WHO left the files: at story-008 the guard
-    blamed the reviewer for the LEAD's edit, and that misattribution is the
-    measured complaint this whole story descends from.
+    The dirty-tree case never says WHO left the files — a guard that blames the
+    reviewer for the lead's edit is worse than no guard.
     """
     from close import git
 
@@ -180,9 +171,8 @@ def diff_path(report: Path) -> Path:
 
 
 def write_reviewer_diff(report: Path, reviewed_head: str) -> Path | None:
-    """The reviewer's work, on disk beside its report. review's stdout is the
-    channel this project lost three reviews down in one session, and it is the
-    only place the assent artifact lived."""
+    """The reviewer's work, on disk beside its report: stdout is lossy and it was
+    the only place the assent artifact lived."""
     from close import git
 
     summary = reviewer_range(reviewed_head)
@@ -197,8 +187,7 @@ def run(prompt: str, cwd: Path, dry_run: bool = False) -> tuple[str, str]:
     """Launch the reviewer. Returns (result_text, error) — never raises on a
     reviewer that crashes, prints prose, or is missing from PATH.
 
-    Imports are function-local: spawn.py imports from close.py and close.py
-    imports this module, so module-level edges would close a cycle.
+    Function-local imports: spawn -> close -> review would close a cycle.
     """
     from spawn import claude_argv, resolve_role, run_agent
 

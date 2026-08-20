@@ -341,7 +341,7 @@ siblings landed: durable in 012a, bounded in 012b.
 
 #### story-010 — size-ratchet CI   [ready]
 Context: DESIGN §9's budgets become enforced acceptance criteria: shipped py
-≤5,000 (spawn ≤2,000 · close ≤800 · hooks+adapters ≤1,000 · misc ≤1,200), skill
+≤5,000 (spawn ≤2,000 · close ≤1,100 · hooks+adapters ≤1,000 · misc ≤900), skill
 prose ≤3,000 words, agent prose ≤2,500 words, tests ≤2× code lines. ratchet.py
 (stdlib) + a GitHub Action running it on PRs; also wired into pre-push.
 The close component is the budget expected to red first: it reaches ~690 of
@@ -349,6 +349,7 @@ DESIGN §9's 800 after 012a/012b, and story-009's sprint_close.py takes it over.
 Files: plugins/xp-plugin/scripts/ratchet.py, .github/workflows/ratchet.yml, lefthook.yml, tests/test_ratchet.py
 AC:
 - Given the repo within budgets, When ratchet.py runs, Then exit 0 with a one-line report
+- Given comments + docstrings over 20% of shipped Python lines, When ratchet.py runs, Then nonzero naming the density and the worst file — the one budget no test can enforce, because prose is the artifact that goes stale silently (the rubric ships in PROCESS/TEAMMATE/charter; only CI can count)
 - Given a fixture tree constructed OVER a budget, When ratchet.py runs, Then nonzero naming the budget and overage (the guard fault-injected, constraint 2)
 - Given the workflow file, Then it triggers on pull_request and invokes ratchet.py (structural pin; first live run verified manually at the sprint-002 release PR)
 - Given lefthook.yml, Then pre-push runs ratchet.py (structural pin)

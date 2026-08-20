@@ -199,12 +199,9 @@ def cmd_review(story_id: str, dry_run: bool = False) -> int:
     card, trunk, err = _preflight(story_id, "review")
     if err:
         return fail(err)
-    # merge-base does NOT move when trunk advances, so a review re-run after trunk
-    # motion re-baselines the trunk guard while the reviewer sees nothing new — the
-    # guard clears and the merged tree still contains commits no review read.
-    # BOTH refs, because land guards whichever one its mode integrates: local mode
-    # the local trunk, pr mode (the argparse default) origin's. Guarding only the
-    # local ref left the identical hole open on the axis pr mode actually merges.
+    # merge-base does NOT move when trunk advances, so a bare re-review re-baselines
+    # this guard while the reviewer sees nothing new. BOTH refs: land guards whichever
+    # one its mode integrates — local mode the local trunk, pr mode origin's.
     tips = (
         (trunk, git("rev-parse", f"refs/heads/{trunk}").stdout.strip()),
         (f"origin/{trunk}", origin_trunk_sha(trunk)),
@@ -245,15 +242,12 @@ def cmd_review(story_id: str, dry_run: bool = False) -> int:
     diff = review.write_reviewer_diff(path, head)
     if diff:
         print(f"the reviewer changed the tree. Its commits and full diff: {diff}")
-    # AFTER the leg, and provably equal to the pre-launch head by the refusal above.
-    # story-012b redefines this as the post-reviewer head and adds reviewed_head;
-    # reading it here means no assertion written today changes meaning then.
+    # AFTER the leg: the reviewer's own fixes are part of what the lead is shown.
     state["shown_sha"] = git("rev-parse", "HEAD").stdout.strip()
     state["review_base"] = base
-    # the tips READ BEFORE the launch, not re-read now: a teammate pushing during
-    # the review window would otherwise be recorded as the reviewed state, and land
-    # compares equal and merges what no reviewer saw. Same defect as AC 4, inside
-    # one review instead of across two.
+    # the tips READ BEFORE the launch: a teammate pushing during the review window
+    # would otherwise be recorded as the reviewed state, and land would compare
+    # equal and merge what no reviewer saw.
     state["trunk_sha"], state["origin_trunk_sha"] = tips[0][1], tips[1][1]
     marker.write_text(json.dumps(state))
     return 0
@@ -283,10 +277,8 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
             " the PR to main happens at sprint close"
         )
     head = git("rev-parse", "HEAD").stdout.strip()
-    # land NEVER spawns. Measured over story-008: it ran 4 times, spawned opus 4
-    # times, merged 0 times, and held the tree ~10 minutes a run — during which a
-    # lead edit trips the reviewer-dirtied guard and is blamed on the reviewer.
-    # Refusing instead makes this idempotent and makes the rounds the lead's choice.
+    # land NEVER spawns: a merge command that reviews owns the tree for minutes,
+    # is never idempotent, and makes rounds something inflicted rather than chosen.
     if head != state.get("shown_sha"):
         return fail(
             f"refused: HEAD moved since the review you were shown"
@@ -357,10 +349,7 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
     if tier and subprocess.run(tier, shell=True).returncode != 0:
         return fail(f"refused: story test tier red: {tier}")
 
-    # AFTER the gates, BEFORE the merge: printed earlier, a red Verify still told
-    # the lead to file records for a close that did not happen. EVERY round's noted,
-    # not the last one's — an item punted in round 1 and never filed is still owed.
-    # Assent is given by RUNNING land, so what it rests on must be readable here —
+    # Assent is given by RUNNING land, so what it rests on must be readable HERE —
     # not only in a review leg whose stdout may be long gone.
     reviewer_work = review.reviewer_range(state.get("reviewed_head", head))
     if reviewer_work:
@@ -390,9 +379,8 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
                 "post-resolution diff, then run review again to re-baseline"
             )
 
-    # AFTER the merge lands, not before: printed earlier, every refusal below the
-    # print — a red Verify, a missing gh, a failed pr create — still instructed the
-    # lead to file records for a close that did not happen (round-4 B1).
+    # AFTER the merge lands: printed earlier, any refusal below would still have
+    # instructed the lead to file records for a close that did not happen.
     print(render_noted(rounds), end="")
 
     failed = []
@@ -427,8 +415,7 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
     if not orphaning:
         # Record unless merge_sha is about to be orphaned. Every failure EXCEPT a
         # failed amend leaves it valid and on a ref, and by here the card reads
-        # [done] — so withholding the record on those made the close unrecordable
-        # by any command, and last_close() would name the previous story forever.
+        # [done] — withholding the record then makes the close unrecordable.
         delete_story_markers(story_id)
         log_close(story_id, card, rounds, merge_sha)
         marker.unlink()

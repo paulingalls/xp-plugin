@@ -45,8 +45,11 @@ spend most of your effort on checks 1–2 at full depth; `standard` weights 1, 3
    the code contradicts. Force the honest sentence into the record.
 4. **Constraint drift**: changed code vs constraints.md, quote the line.
 5. **Simplicity & reuse**: duplicated logic (grep for it), premature abstraction,
-   dead paths, misleading names, comments that restate code (delete), checkable
-   claims in comments (convert to test).
+   dead paths, misleading names. And prose in code, which no test can catch and which
+   goes stale silently when the code it describes moves —
+   Comments: restates the code → delete · explains WHAT → rename it · a checkable
+   claim → write the test · narrates history → delete, git holds it. Keep only the
+   why, an external constraint, a rejected design.
 
 ## Output
 
