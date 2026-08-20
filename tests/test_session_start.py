@@ -170,3 +170,14 @@ class TestReviewFindings:
         r = run_hook(repo, tmp_path)
         assert len(r.stdout) <= 12_000 and "truncated" in r.stdout
         assert "story-042" in r.stdout  # the freshest layer survives the cap
+
+
+class TestTrustBoundary:
+    def test_repo_sourced_sections_are_fenced_as_data(self, tmp_path):
+        repo, _g = xp_repo(tmp_path)
+        r = run_hook(repo, tmp_path)
+        assert "BEGIN project content" in r.stdout and "END project content" in r.stdout
+        fenced = r.stdout.split("BEGIN project content")[1]
+        assert "CONSTRAINT-SENTINEL" in fenced  # repo files inside the fence
+        head = r.stdout.split("BEGIN project content")[0]
+        assert "XP Values" in head  # plugin-owned prose outside it
