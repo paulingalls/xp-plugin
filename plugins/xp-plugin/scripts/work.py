@@ -48,15 +48,14 @@ def data_root() -> Path:
     return Path.home() / ".xp" / "data" / project_id
 
 
-def config_block_value(block: str, key: str, path: str = ".xp/config.yml") -> str:
+def config_block_value(block: str, key: str) -> str:
     """`key:` nested under `block:` in the project config.
 
-    Comments are stripped BEFORE the header compare: a trailing comment on
-    `roles:` hid every role until story-008, and the same defect in close.py's
-    copy fails OPEN — it silently skipped the story test tier. One parser so the
-    pair cannot drift apart again.
+    Comments are stripped BEFORE the header compare. Shared by the roles and
+    tests lookups so the pair cannot drift: they were separate copies of this
+    parser, and only one of them got fixed.
     """
-    cfg = Path(path)
+    cfg = Path(".xp/config.yml")
     if not cfg.exists():
         return ""
     inside = False

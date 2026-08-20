@@ -962,3 +962,98 @@ class TestStoryReviewFindings:
         ancestor = g("merge-base", "--is-ancestor", rec["merge_sha"], "origin/main")
         assert ancestor.returncode == 0, "recorded sha is not on trunk"
         assert "[done]" in g("show", "origin/main:.xp/plan.md").stdout, "trunk never learned"
+
+
+class TestDeltaReviewFindings:
+    """story-008 close review, round 2 (the delta the drift path reviewed)."""
+
+    def pr_repo(self, tmp_path):
+        repo, env, g = make_repo(tmp_path)
+        origin = tmp_path / "origin.git"
+        subprocess.run(["git", "init", "-q", "--bare", str(origin)], check=True, env=env)
+        g("remote", "add", "origin", str(origin))
+        g("push", "-q", "-u", "origin", "main")
+        gh = tmp_path / "bin" / "gh"
+        gh.write_text(
+            "#!/bin/sh\n"
+            'case "$*" in *"pr merge"*)\n'
+            "  git checkout -q -b _pr origin/main\n"
+            '  git merge -q --no-ff -m "Merge PR" story-042-branch\n'
+            "  git push -q origin _pr:main\n"
+            "  git checkout -q story-042-branch\n"
+            "  git branch -qD _pr ;; esac\n"
+        )
+        gh.chmod(0o755)
+        return repo, env, g
+
+    def land_pr(self, repo, env):
+        return subprocess.run(
+            [sys.executable, str(CLOSE), "story", "story-042", "land", "--merge-mode", "pr"],
+            cwd=repo,
+            env=env,
+            capture_output=True,
+            text=True,
+        )
+
+    def test_a_failing_amend_hook_does_not_traceback_or_lose_the_flip(self, tmp_path):
+        """F1: git() defaults check=True, and the amend re-runs the commit wall
+        on a tree that just gained a merge — a hook failure raised, leaving the
+        merge landed and the plan flip abandoned."""
+        repo, env, _g = make_repo(tmp_path)
+        close(repo, env, "review")
+        hook = repo / ".git" / "hooks" / "pre-commit"
+        hook.write_text("#!/bin/sh\nexit 1\n")
+        hook.chmod(0o755)
+        r = close(repo, env, "land")
+        assert "Traceback" not in r.stderr, r.stderr
+        assert r.returncode != 0, "an abandoned plan flip must not read as success"
+        assert "amend" in (r.stderr + r.stdout).lower()
+
+    def test_pr_merge_sha_is_the_merge_not_the_story_tip(self, tmp_path):
+        """F2: --is-ancestor cannot tell them apart — the story tip is an
+        ancestor of the merge too, so the assertion passed against the defect."""
+        repo, env, g = self.pr_repo(tmp_path)
+        close(repo, env, "review")
+        story_head = g("rev-parse", "HEAD").stdout.strip()
+        assert self.land_pr(repo, env).returncode == 0
+        rec = json.loads((tmp_path / "data" / "closes.jsonl").read_text().splitlines()[-1])
+        assert rec["merge_sha"] != story_head, "recorded the story tip, not the PR merge"
+
+    def test_pr_mode_also_deletes_the_local_story_branch(self, tmp_path):
+        """F3: AC 7 was met in local mode only. gh runs FROM the story branch,
+        so --delete-branch cannot remove it locally."""
+        repo, env, g = self.pr_repo(tmp_path)
+        close(repo, env, "review")
+        assert self.land_pr(repo, env).returncode == 0
+        assert "story-042-branch" not in g("branch", "--list").stdout
+
+    def test_pr_dry_run_previews_the_steps_that_actually_run(self, tmp_path):
+        """F4: the preview still printed a bare `git push` that no longer runs,
+        and omitted the three post-merge steps the delta added."""
+        repo, env, _g = self.pr_repo(tmp_path)
+        close(repo, env, "review")
+        r = subprocess.run(
+            [
+                sys.executable,
+                str(CLOSE),
+                "story",
+                "story-042",
+                "land",
+                "--merge-mode",
+                "pr",
+                "--dry-run",
+            ],
+            cwd=repo,
+            env=env,
+            capture_output=True,
+            text=True,
+        )
+        assert r.returncode == 0
+        for step in (
+            "git fetch -q origin",
+            "git checkout -q main",
+            "git merge --ff-only origin/main",
+            "git branch -d story-042-branch",
+        ):
+            assert step in r.stdout, f"preview omits {step!r}"
+        assert "\ngit push\n" not in r.stdout, "previewed a bare push that no longer runs"

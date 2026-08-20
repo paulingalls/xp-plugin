@@ -55,17 +55,6 @@ def verify_commands(card: str) -> str:
     return ""
 
 
-def story_tier_command() -> str:
-    """The `tests: story:` command from .xp/config.yml.
-
-    Shares work.py's parser with the roles lookup: this copy used to compare the
-    block header before stripping comments, and unlike the roles copy it failed
-    OPEN — `tests:   # fast / story / full` silently skipped the story tier and
-    a red tier closed green.
-    """
-    return config_block_value("tests", "story")
-
-
 def config_flat(key: str) -> str:
     """A flat top-level `key: value` from .xp/config.yml."""
     cfg = Path(".xp/config.yml")
@@ -276,21 +265,17 @@ def _log_close(story_id: str, card: str, verdicts: list[str], merge_sha: str) ->
         fh.write(json.dumps(record) + "\n")
 
 
-def _finish_branch(branch: str, trunk: str) -> list[str]:
+def _delete_story_branch(branch: str) -> list[str]:
     """Push the integration branch, then delete the story branch LOCAL FIRST.
 
     Local first so `-d`'s merged check runs while the upstream ref still exists.
-    At THIS call site the merge is already local, so -d passes on the
-    merged-into-HEAD test and the order is belt-and-braces, not load-bearing —
-    the measurement behind it (story-007 close) was taken from the story branch,
-    before the merge, where it IS load-bearing.
+    Belt-and-braces at both call sites, where the merge is already reachable —
+    the measurement behind the ordering (story-007) was taken from the story
+    branch before the merge, where it IS load-bearing.
 
     Returns the commands that failed, for the caller to surface.
     """
     failed = []
-    has_remote = bool(git("remote", check=False).stdout.strip())
-    if has_remote and git("push", "origin", trunk, check=False).returncode != 0:
-        failed.append(f"git push origin {trunk}")
     # only when origin actually carries the branch: a story closed with
     # --in-place never pushed one, and a spurious failure here reads as a defect
     origin_has_branch = (
@@ -351,7 +336,7 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
     verify = verify_commands(card)
     if not verify:
         return fail(f"refused: {story_id} has no Verify: line — an unverifiable story cannot close")
-    tier = story_tier_command()
+    tier = config_block_value("tests", "story")
     branch = git("rev-parse", "--abbrev-ref", "HEAD").stdout.strip()
     verdict = "\n".join(f"Review round {i}: {v}" for i, v in enumerate(state["verdicts"], 1))
     message = f"Merge {branch} ({story_id})\n\n{verdict}\n"
@@ -359,14 +344,26 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
         ["git", "push", "-u", "origin", branch],
         ["gh", "pr", "create", "--title", f"{story_id}", "--body", verdict],
         ["gh", "pr", "merge", "--merge", "--delete-branch", "--body", verdict],
-        ["git", "push"],  # plan-flip bookkeeping commit
+    ]
+    # the merge happened on the REMOTE, so trunk comes back here before the flip
+    pr_sync = [
+        ["git", "fetch", "-q", "origin"],
+        ["git", "checkout", "-q", trunk],
+        ["git", "merge", "--ff-only", f"origin/{trunk}"],
+    ]
+    pr_bookkeep = [
+        ["git", "commit", "-qm", f"{story_id} done"],
+        ["git", "push", "origin", trunk],
     ]
     if dry_run:  # pure preview: nothing runs, nothing changes, marker survives
         print(f"would run: {verify}")
         if tier:
             print(f"would run: {tier}")
         if merge_mode == "pr":
-            for c in pr_cmds:
+            for c in pr_cmds + pr_sync:
+                print(" ".join(c))
+            print("(flip .xp/plan.md to [done])")
+            for c in [*pr_bookkeep, ["git", "branch", "-d", branch]]:
                 print(" ".join(c))
         else:
             print(f"git merge --no-ff {branch} on {trunk}, then flip status + amend")
@@ -383,7 +380,7 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
             return fail(
                 "refused: pr mode needs the gh CLI on PATH — install it or use --merge-mode local"
             )
-        for c in pr_cmds[:-1]:
+        for c in pr_cmds:
             r = subprocess.run(c, capture_output=True, text=True)
             if r.returncode != 0:
                 return fail(f"{c[0]} failed: {r.stderr.strip()}")
@@ -400,28 +397,31 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
 
     failed = []
     if merge_mode == "pr":
-        # the PR merged on the REMOTE, so trunk has to come back here before the
-        # flip: committing it on the story branch left trunk never learning
-        # [done], and reading HEAD here recorded a sha that gh is about to delete
-        git("fetch", "-q", "origin", check=False)
+        for c in pr_sync:
+            if subprocess.run(c, capture_output=True, text=True).returncode != 0:
+                failed.append(" ".join(c))
         merge_sha = git("rev-parse", f"refs/remotes/origin/{trunk}").stdout.strip()
-        git("checkout", "-q", trunk, check=False)
-        if git("merge", "--ff-only", f"origin/{trunk}", check=False).returncode != 0:
-            failed.append(f"git merge --ff-only origin/{trunk}")
     merged_plan = Path(".xp/plan.md").read_text()  # POST-merge: keeps trunk-side changes
     Path(".xp/plan.md").write_text(_flip_status(merged_plan, story_id))
     git("add", ".xp/plan.md")
     if merge_mode == "local":
-        git("commit", "--amend", "--no-edit", "-q")  # plan flip rides the merge commit
+        # check=False: the amend re-runs the commit wall on a tree that just
+        # gained a merge, so it CAN fail — and raising there left the merge
+        # landed with the flip abandoned.
+        if git("commit", "--amend", "--no-edit", "-q", check=False).returncode != 0:
+            failed.append("git commit --amend --no-edit  (merge landed WITHOUT the [done] flip)")
         # merge_sha AFTER the amend: the pre-amend commit is on no ref and stops
         # resolving at gc, so a record holding it points at nothing.
         merge_sha = git("rev-parse", "HEAD").stdout.strip()
-        failed += _finish_branch(branch, trunk)
+        if bool(git("remote", check=False).stdout.strip()) and (
+            git("push", "origin", trunk, check=False).returncode != 0
+        ):
+            failed.append(f"git push origin {trunk}")
     else:
-        committed = git("commit", "-qm", f"{story_id} done", check=False)
-        pushed = git("push", "origin", trunk, check=False)
-        if committed.returncode != 0 or pushed.returncode != 0:
-            failed.append(f"git commit + git push origin {trunk} (the .xp/plan.md flip)")
+        for c in pr_bookkeep:
+            if subprocess.run(c, capture_output=True, text=True).returncode != 0:
+                failed.append(" ".join(c))
+    failed += _delete_story_branch(branch)
     _delete_story_markers(story_id)
     _log_close(story_id, card, state["verdicts"], merge_sha)
     marker.unlink()

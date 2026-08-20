@@ -7,7 +7,8 @@ from pathlib import Path
 
 SCRIPTS = Path(__file__).parent.parent / "plugins" / "xp-plugin" / "scripts"
 sys.path.insert(0, str(SCRIPTS))
-from close import config_flat, story_card, story_tier_command, verify_commands  # noqa: E402
+from close import config_flat, story_card, verify_commands  # noqa: E402
+from work import config_block_value  # noqa: E402
 
 
 def bare_repo(tmp_path, with_fake_lefthook=False):
@@ -45,7 +46,7 @@ class TestScaffold:
         assert "fault-inject" in constraints.lower()
         monkeypatch.chdir(repo)
         assert config_flat("release") == "sprint"
-        assert "EDIT-ME" in story_tier_command()  # tiers are placeholders to edit
+        assert "EDIT-ME" in config_block_value("tests", "story")  # tiers are placeholders
         cfg = (repo / ".xp" / "config.yml").read_text()
         assert "sprint_cap" in cfg and "debt_budget" in cfg and "constraints_cap" in cfg
         plan = (repo / ".xp" / "plan.md").read_text()
