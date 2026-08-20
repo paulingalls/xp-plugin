@@ -6,6 +6,7 @@ mostly prose (skills, agent charters, guides) plus a small Python core.
 
 **Stack**: Python 3.11+, stdlib only — zero external packages, the predecessor's
 strongest property. Markdown for all prose. lefthook for git hooks (dev of this repo);
+pytest-xdist (-n auto) as a DEV-ONLY dep — the stdlib-only rule governs shipped code;
 the plugin *scaffolds* equivalent hooks into consuming projects.
 
 **Layout (target)**:

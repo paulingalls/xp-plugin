@@ -19,9 +19,9 @@ pre-commit:
     fast-tests:
       priority: 4
       # exit 5 = no tests collected — legal while the suite is growing
-      run: sh -c 'pytest -q -m "not slow"; s=$?; [ $s -eq 5 ] && exit 0; exit $s'
+      run: sh -c 'pytest -q -n auto -m "not slow"; s=$?; [ $s -eq 5 ] && exit 0; exit $s'
 
 pre-push:
   commands:
     full-tests:
-      run: sh -c 'pytest -q; s=$?; [ $s -eq 5 ] && exit 0; exit $s'
+      run: sh -c 'pytest -q -n auto; s=$?; [ $s -eq 5 ] && exit 0; exit $s'

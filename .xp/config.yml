@@ -10,6 +10,6 @@ roles:                 # harness/model[/effort]; lead overrides per story in pla
   reviewer: claude/opus     # cross-harness (codex) once the adapter ships
 
 tests:
-  fast: pytest -q -m "not slow"     # pre-commit
-  story: pytest -q                  # pre-push + story close
-  full: pytest -q                   # sprint close (diverges when e2e/meta lands)
+  fast: pytest -q -n auto -m "not slow"     # pre-commit
+  story: pytest -q -n auto          # pre-push + story close
+  full: pytest -q -n auto           # sprint close (diverges when e2e/meta lands)
