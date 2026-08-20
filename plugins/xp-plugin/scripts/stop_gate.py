@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
-"""Stop hook, advisory: block once on any red Verify still in play; nudge on a
-stale digest. Deterministic reads only; honors stop_hook_active; fail-silent.
+"""Stop hook, advisory: block once on any red Verify still in play.
+
+Deterministic reads only; honors stop_hook_active; fail-silent. The stale-digest
+nudge was removed: Stop fires every turn (not at session end), so it nagged the
+user constantly, and its message could never reach the lead anyway — staleness
+is handled once, correctly, at SessionStart.
 """
 
 import json
@@ -16,18 +20,6 @@ from work import chdir_repo_root, data_root
 def git(*args: str) -> str:
     r = subprocess.run(["git", *args], capture_output=True, text=True)
     return r.stdout.strip() if r.returncode == 0 else ""
-
-
-def digest_is_stale() -> bool:
-    path = data_root() / "session.md"
-    if not path.exists():
-        return False
-    first = (path.read_text(errors="replace").splitlines() or [""])[0]
-    if " at " not in first:
-        return True  # stampless never reads fresh (session_start convention)
-    stamp = first.rsplit(" at ", 1)[1].strip()
-    distance = git("rev-list", "--count", f"{stamp}..HEAD")
-    return distance != "0" if distance else True
 
 
 def red_verify_in_play(session: str) -> str | None:
@@ -67,17 +59,6 @@ def main() -> int:
             )
         )
         return 0
-    if in_progress_verifies() and digest_is_stale():
-        print(
-            json.dumps(
-                {
-                    "systemMessage": (
-                        "xp: the session digest is stale — have the lead write its"
-                        " one-line next-step update before you quit"
-                    )
-                }
-            )
-        )
     return 0
 
 

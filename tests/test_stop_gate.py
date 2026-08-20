@@ -187,7 +187,9 @@ class TestStopGate:
         r = run_script("stop_gate.py", self.stop_payload(), repo, tmp_path)
         assert "block" not in r.stdout
 
-    def test_stale_digest_nudges_without_blocking(self, tmp_path):
+    def test_no_nudge_ever_stale_digest_or_not(self, tmp_path):
+        # the stale-digest nudge was removed: Stop fires per turn, not per session,
+        # and the message could only reach the user, not the lead
         repo, g = repo_with_story(tmp_path)
         old = g("rev-parse", "--short", "HEAD").stdout.strip()
         (tmp_path / "xp").mkdir()
@@ -196,39 +198,7 @@ class TestStopGate:
         g("add", "-A")
         g("commit", "-qm", "newer")
         r = run_script("stop_gate.py", self.stop_payload(), repo, tmp_path)
-        assert "block" not in r.stdout and "digest" in r.stdout
-
-    def test_stampless_digest_nudges(self, tmp_path):
-        repo, _g = repo_with_story(tmp_path)
-        (tmp_path / "xp").mkdir()
-        (tmp_path / "xp" / "session.md").write_text("no stamp\n")
-        r = run_script("stop_gate.py", self.stop_payload(), repo, tmp_path)
-        assert "digest" in r.stdout
-
-    def test_no_in_progress_story_no_nudge(self, tmp_path):
-        repo, g = repo_with_story(tmp_path)
-        plan = repo / ".xp" / "plan.md"
-        plan.write_text(plan.read_text().replace("[in-progress]", "[done]"))
-        old = g("rev-parse", "--short", "HEAD").stdout.strip()
-        (tmp_path / "xp").mkdir()
-        (tmp_path / "xp" / "session.md").write_text(f"# Session digest — written x at {old}old\n")
-        r = run_script("stop_gate.py", self.stop_payload(), repo, tmp_path)
-        assert "digest" not in r.stdout
-
-    def test_fresh_digest_no_nudge(self, tmp_path):
-        repo, g = repo_with_story(tmp_path)
-        head = g("rev-parse", "--short", "HEAD").stdout.strip()
-        (tmp_path / "xp").mkdir()
-        (tmp_path / "xp" / "session.md").write_text(f"# Session digest — written x at {head}\n")
-        r = run_script("stop_gate.py", self.stop_payload(), repo, tmp_path)
-        assert "digest" not in r.stdout and "block" not in r.stdout
-
-    def test_empty_session_md_is_stampless_hence_nudges(self, tmp_path):
-        repo, _g = repo_with_story(tmp_path)
-        (tmp_path / "xp").mkdir()
-        (tmp_path / "xp" / "session.md").write_text("")
-        r = run_script("stop_gate.py", self.stop_payload(), repo, tmp_path)
-        assert r.returncode == 0 and "digest" in r.stdout
+        assert r.returncode == 0 and r.stdout.strip() == ""
 
 
 class TestRegistration:
