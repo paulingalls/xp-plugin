@@ -16,28 +16,21 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
+# close must import back FUNCTION-LOCALLY: a module-level edge cycles
+# (close -> spawn -> close) and fails before fail/git exist (story-008).
 from close import fail, git, integration_target, story_card
 from work import chdir_repo_root, data_root, slugify, user_ns
 
 PLUGIN_ROOT = Path(__file__).parent.parent
 
-# MEASURED at story-007 close, not assumed (every figure from a live `claude -p`):
-#   auto / dontAsk  -> Bash ok, Write DENIED        -> teammate cannot write code
-#   acceptEdits     -> Write ok, `git add`/`git commit` DENIED -> cannot commit
-#   bypass          -> all ok
-# A story loop is edit -> test -> COMMIT, so bypass is required; the weaker modes
-# yield a teammate that works and then silently loses the work.
-#
-# No --allowedTools: measured, an allow-list under bypass restricts nothing
-# (allowedTools=Bash still let Read through), and shipping it would certify a
-# bound that does not exist. A DENY-list does bound under bypass (disallowedTools
-# =Read denied Read while Bash passed) — recorded for when we have a defect that
-# earns one. Not used for /story-close self-closing: Bash can invoke close.py
-# directly, so a tool-level deny there would be theater. That hard property is
-# close.py refusing XP_ROLE=teammate (story-008).
-#
-# THE TEAMMATE IS THEREFORE UNBOUNDED inside its throwaway worktree. Declared,
-# not believed.
+# Bypass is REQUIRED, measured not assumed: acceptEdits denies `git add`/`git
+# commit`, so weaker modes yield a teammate that writes code and silently loses
+# it. No --allowedTools: an allow-list under bypass restricts nothing, and
+# shipping one would certify a bound that does not exist (the pinning assert
+# lives in the tests; the full measurement table is the work.md note).
+# THE TEAMMATE IS THEREFORE UNBOUNDED in its throwaway worktree — declared, not
+# believed. Self-closing is close.py's refusal to make (story-008), not a
+# tool-deny: Bash can invoke close.py directly.
 PERMISSION_ARGV = ["--dangerously-skip-permissions"]
 
 # Tokens (chars//4). The cap covers prose WE ship — VALUES, TEAMMATE.md, the
@@ -83,12 +76,13 @@ def profile_report(card: str, prompt: str) -> tuple[str, str]:
         "constraints.md": len(_read(Path(".xp/constraints.md"))),
         "CLAUDE.md": len(_read(Path("CLAUDE.md"))),
     }
-    ours = len(prompt) - project["the story card"] - project["constraints.md"]
     total = (len(prompt) + project["CLAUDE.md"] + component_metadata_chars()) // 4
     shares = " · ".join(f"{k} {v // 4}" for k, v in project.items())
+    # the CAPPED quantity, not a prompt-derived cousin of it: two computations
+    # under one name let a lead read headroom the ratchet does not have
     line = (
-        f"profile: total {total} tokens · plugin-shipped {(ours + component_metadata_chars()) // 4}"
-        f" · {shares}"
+        f"profile: total {total} tokens · plugin-shipped"
+        f" {plugin_shipped_chars() // 4}/{PLUGIN_SHIPPED_CAP} · {shares}"
     )
     if total <= TOTAL_TARGET:
         return line, ""
@@ -167,19 +161,39 @@ def build_prompt(sections: list[tuple[str, str]]) -> str:
 
 def teammate_sections(card: str) -> list[tuple[str, str]]:
     return [
-        ("VALUES", _read(PLUGIN_ROOT / "VALUES.md")),
-        ("How you work", _read(PLUGIN_ROOT / "TEAMMATE.md")),
+        ("VALUES", _read_shipped(PLUGIN_ROOT / "VALUES.md")),
+        # the escalation command must be runnable: work.py is not on PATH, and
+        # spawn inlines this as raw prompt text, so ${CLAUDE_PLUGIN_ROOT} would
+        # arrive literal. A teammate hitting "command not found" guesses instead.
+        (
+            "How you work",
+            _read_shipped(PLUGIN_ROOT / "TEAMMATE.md").replace("{PLUGIN_ROOT}", str(PLUGIN_ROOT)),
+        ),
         ("Your story card", card),
         ("Constraints", _read(Path(".xp/constraints.md"))),
     ]
 
 
 def _read(path: Path) -> str:
+    """Project-owned files: a consuming project may legitimately lack them."""
     return path.read_text() if path.exists() else f"(missing: {path})"
 
 
+def _read_shipped(path: Path) -> str:
+    """Plugin-owned prose: absence is a broken install, not a project variation.
+    Soft-reading it hands the teammate "(missing: ...)" as its VALUES section."""
+    if not path.exists():
+        raise SystemExit(fail(f"refused: {path} is missing — the plugin install is broken"))
+    return path.read_text()
+
+
 def claude_argv(model: str, effort: str, output_format: str = "json") -> list[str]:
-    """The single owner of flag spellings — story-008 launches a reviewer through it."""
+    """The single owner of flag spellings — story-008 launches a reviewer through it.
+
+    `json` means a spawn prints nothing until the teammate finishes; `stream-json`
+    is the streaming spelling, and rendering it is DESIGN §9's first sacrificial
+    feature. Parameterized so 008's programmatic reviewer keeps a one-object parse.
+    """
     argv = ["claude", "-p", "--plugin-dir", str(PLUGIN_ROOT), *PERMISSION_ARGV]
     argv += ["--output-format", output_format, "--model", model]
     return argv + (["--effort", effort] if effort else [])
@@ -195,7 +209,7 @@ def worktree_path(story_id: str) -> Path:
     return data_root() / "worktrees" / story_id
 
 
-def flip_to_in_progress(tree: Path, story_id: str) -> None:
+def flip_to_in_progress(tree: Path, story_id: str) -> str:
     """Flip [ready] -> [in-progress] INSIDE the worktree, as the branch's first commit.
 
     Milestone 1 allows no hand-step besides the two judgment points, and
@@ -204,6 +218,11 @@ def flip_to_in_progress(tree: Path, story_id: str) -> None:
     here (not in the lead's tree) keeps spawn out of cross-tree mutation: the
     lead reads [ready] until the merge, and the flip shows up in the cumulative
     diff the reviewer reads.
+
+    Returns the git error, or "" on success. A worktree shares .git/hooks with
+    the common dir, so this commit runs the project's pre-commit wall and CAN
+    fail; swallowing that launches a teammate onto a branch still reading
+    [ready], and close.py's refusal then lands after the whole story is written.
     """
     plan = tree / ".xp" / "plan.md"
     out = []
@@ -213,7 +232,10 @@ def flip_to_in_progress(tree: Path, story_id: str) -> None:
         out.append(ln)
     plan.write_text("".join(out))
     for args in (["add", ".xp/plan.md"], ["commit", "-qm", f"{story_id} in-progress"]):
-        subprocess.run(["git", *args], cwd=tree, capture_output=True, text=True)
+        r = subprocess.run(["git", *args], cwd=tree, capture_output=True, text=True)
+        if r.returncode != 0:
+            return (r.stderr or r.stdout).strip() or f"git {args[0]} failed"
+    return ""
 
 
 def cmd_in_place(story_id: str, card: str) -> int:
@@ -236,7 +258,12 @@ def cmd_in_place(story_id: str, card: str) -> int:
     made = git("checkout", "-q", "-b", branch, trunk, check=False)
     if made.returncode != 0:
         return fail(f"git checkout -b failed: {made.stderr.strip()}")
-    flip_to_in_progress(Path.cwd(), story_id)
+    if err := flip_to_in_progress(Path.cwd(), story_id):
+        return fail(
+            f"refused: the status flip did not commit ({err}) — you are on {branch}"
+            f" with .xp/plan.md staged. Commit it, or `git checkout {trunk} &&"
+            f" git branch -D {branch}` and retry."
+        )
     print(f"{branch} off {trunk} — in place, nothing launched; you are the executor")
     return 0
 
@@ -255,6 +282,12 @@ def cmd_spawn(story_id: str, override: str, dry_run: bool, in_place: bool = Fals
     if status != "ready":
         return fail(f"refused: {story_id} is [{status}], spawn requires [ready]")
     if in_place:
+        if dry_run:
+            print(
+                f"would create {story_branch(card, story_id)} off {integration_target()},"
+                f" flip {story_id} to [in-progress], and launch nothing"
+            )
+            return 0
         return cmd_in_place(story_id, card)
     _harness, model, effort = resolve_role("executor", card, override)
     branch = story_branch(card, story_id)
@@ -286,7 +319,12 @@ def cmd_spawn(story_id: str, override: str, dry_run: bool, in_place: bool = Fals
                 f"refused: worktree bootstrap failed ({command!r}) — not launching"
                 f" a teammate into a broken tree. Worktree left at {tree}"
             )
-    flip_to_in_progress(tree, story_id)
+    if err := flip_to_in_progress(tree, story_id):
+        return fail(
+            f"refused: the status flip did not commit ({err}) — not launching a teammate"
+            f" onto a branch whose plan.md still reads [ready]; close.py would refuse the"
+            f" story only after it is written. Worktree left at {tree}"
+        )
     print(f"{branch} at {tree} (off {trunk})")
     return run_agent(argv, tree, prompt).returncode
 

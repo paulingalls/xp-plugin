@@ -119,6 +119,21 @@ class TestLaunchContract:
         assert "CONSTRAINT-SENTINEL" in launch["stdin"]
         assert not any("CONSTRAINT-SENTINEL" in a for a in launch["argv"])
 
+    def test_prompt_inlines_the_plugin_shipped_profile_not_paths_to_it(self, tmp_path):
+        """AC 1. `_read` degraded to "(missing: ...)" rather than raising, so a
+        moved or renamed shipped file yielded a teammate with no VALUES and no
+        rules while every other assertion stayed green (constraints.md #2)."""
+        repo, env, _g = make_repo(tmp_path)
+        rec = stub_claude(tmp_path)
+        assert spawn(repo, env, "story-042").returncode == 0
+        stdin = json.loads(rec.read_text())["stdin"]
+        assert "Honesty > Courage > Simplicity" in stdin  # VALUES.md
+        assert "never merge, never run" in stdin  # TEAMMATE.md
+        assert "demo story" in stdin  # the card
+        assert "CONSTRAINT-SENTINEL" in stdin  # constraints
+        assert "(missing:" not in stdin  # generic: every shipped-path defect
+        assert "{PLUGIN_ROOT}" not in stdin  # the escalation command is resolved
+
     def test_role_env_exported_so_teammate_does_not_get_the_lead_profile(self, tmp_path):
         repo, env, _g = make_repo(tmp_path)
         rec = stub_claude(tmp_path)
@@ -195,6 +210,36 @@ class TestWorktree:
         assert r.returncode == 0 and "--plugin-dir" in r.stdout
         assert not (tmp_path / "data" / "worktrees" / "story-042").exists()
         assert "story-042" not in in_tree(repo, env, "branch", "--list")
+
+
+def block_commits(repo):
+    """A red pre-commit in the COMMON dir — worktrees share it, and lefthook
+    installs exactly here, so this is the live configuration, not a contrivance."""
+    hook = repo / ".git" / "hooks" / "pre-commit"
+    hook.write_text("#!/bin/sh\necho 'fast tests red' >&2\nexit 1\n")
+    hook.chmod(0o755)
+
+
+class TestFlipFailure:
+    """The flip commit runs the project's pre-commit wall. Swallowing its failure
+    launches a teammate onto a branch whose plan.md still reads [ready], and
+    close.py's refusal then lands only after the whole story is written — the
+    exact cost flip_to_in_progress exists to avoid."""
+
+    def test_failed_flip_refuses_and_does_not_launch(self, tmp_path):
+        repo, env, _g = make_repo(tmp_path)
+        rec = stub_claude(tmp_path)
+        block_commits(repo)
+        r = spawn(repo, env, "story-042")
+        assert r.returncode == 2 and "flip" in r.stderr.lower()
+        assert not rec.exists()
+
+    def test_failed_flip_in_place_names_the_recovery(self, tmp_path):
+        repo, env, _g = make_repo(tmp_path)
+        block_commits(repo)
+        r = spawn(repo, env, "story-042", "--in-place")
+        assert r.returncode == 2 and "flip" in r.stderr.lower()
+        assert "branch -D" in r.stderr  # cannot unwind: name the way out
 
 
 class TestRefusals:
@@ -325,6 +370,17 @@ class TestBudget:
         assert _total(before) != _total(after)
         assert _total(after) > _total(before)
 
+    def test_printed_plugin_shipped_is_the_capped_quantity(self, tmp_path):
+        """Two computations shipped under one name: the printed figure omitted
+        templates/constraints.md, so a lead read ~300 tokens of headroom where
+        the ratchet had 52 — the story-009 note's failure, in the instrument."""
+        from spawn import PLUGIN_SHIPPED_CAP, plugin_shipped_chars
+
+        repo, env, _g = make_repo(tmp_path)
+        stub_claude(tmp_path)
+        out = spawn(repo, env, "story-042", "--dry-run").stdout
+        assert f"plugin-shipped {plugin_shipped_chars() // 4}/{PLUGIN_SHIPPED_CAP}" in out
+
     def test_warning_names_the_largest_project_owned_contributor(self, tmp_path):
         repo, env, _g = make_repo(tmp_path)
         stub_claude(tmp_path)
@@ -362,6 +418,25 @@ class TestInPlace:
         assert "[in-progress]" in (repo / ".xp" / "plan.md").read_text()
         assert in_tree(repo, env, "status", "--porcelain") == ""
 
+    def test_dry_run_creates_nothing(self, tmp_path):
+        """--in-place dispatched BEFORE the dry-run check, so the one flag whose
+        whole contract is "changes nothing" created a branch and a commit."""
+        repo, env, _g = make_repo(tmp_path)
+        before = in_tree(repo, env, "rev-parse", "HEAD")
+        r = spawn(repo, env, "story-042", "--in-place", "--dry-run")
+        assert r.returncode == 0 and "would create" in r.stdout
+        assert in_tree(repo, env, "branch", "--show-current") == "elsewhere"
+        assert in_tree(repo, env, "rev-parse", "HEAD") == before
+        assert "[ready]" in (repo / ".xp" / "plan.md").read_text()
+
+    def test_existing_branch_refused(self, tmp_path):
+        repo, env, _g = make_repo(tmp_path)
+        assert spawn(repo, env, "story-042", "--in-place").returncode == 0
+        subprocess.run(["git", "checkout", "-q", "main"], cwd=repo, env=env)
+        r = spawn(repo, env, "story-042", "--in-place")
+        assert r.returncode == 2 and "already exists" in r.stderr
+        assert in_tree(repo, env, "branch", "--show-current") == "main"
+
     def test_dirty_tree_refused(self, tmp_path):
         """git worktree tolerates a dirty tree; switching branches in place does
         not — uncommitted work would ride onto the story branch unreviewed."""
@@ -370,3 +445,9 @@ class TestInPlace:
         r = spawn(repo, env, "story-042", "--in-place")
         assert r.returncode == 2 and "dirty" in r.stderr.lower()
         assert in_tree(repo, env, "branch", "--show-current") == "elsewhere"
+
+
+def test_spawn_reaches_the_integration_target_only_through_close():
+    """A filed debt (story-009 retires config.yml sprint_branch) rests on spawn
+    never reading the key itself — a comment cannot rot loudly, a test can."""
+    assert "sprint_branch" not in SPAWN.read_text()

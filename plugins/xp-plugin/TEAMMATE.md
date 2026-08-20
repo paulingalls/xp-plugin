@@ -9,7 +9,7 @@ You have one story. The card below is the whole scope.
 - **Multi-file change?** Draft the plan, spawn the `plan-reviewer`, address its
   findings, then write implementation code.
 - **Escalate, don't guess.** Blocked, or the card is wrong? Say so and stop.
-  File it: `work.py note "..."`. A guess that compiles is still a guess.
+  File it: `python3 {PLUGIN_ROOT}/scripts/work.py note "..."`. A guess that compiles is still a guess.
 - **Record, never schedule.** bug = a falsifier that reds now, so fix it now.
   debt = falsifier green, leave it. Neither widens your story.
 - **Done = the card's Verify is green and you hand back.** You never close,
