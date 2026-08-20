@@ -45,6 +45,47 @@ def digest_with_staleness() -> str:
     return text
 
 
+CLOSE_CAP = 400  # the whole close detail; see _close_detail
+ROUND_CAP = 100  # per round within it
+
+
+def _close_detail(record: dict) -> str:
+    """Both record shapes, bounded.
+
+    closes.jsonl is append-only, so story-008's verdicts[] records outlive the
+    mechanism that wrote them; a reader that knows only rounds[] degrades this
+    whole layer to "(unreadable log)". Bounded because more review rounds must
+    never mean fewer constraints reaching the lead — this is the section that
+    evicted constraints.md once already.
+    """
+    rounds = record.get("rounds")
+    if rounds is None:
+        return _fit(record.get("verdicts") or ["(no verdict recorded)"])
+    shown = []
+    for i, r in enumerate(rounds, 1):
+        items = ", ".join([*r.get("fixed", []), *r.get("blocking", []), *r.get("noted", [])])
+        if len(items) > ROUND_CAP:
+            items = items[:ROUND_CAP] + "…"
+        shown.append(f"round {i}: {items or 'clean'}")
+    return _fit(shown)
+
+
+def _fit(parts: list) -> str:
+    """Joined and bounded — dropping the OLDEST parts, never the newest.
+
+    A head-truncating cap loses the last round, which is the one that gated the
+    merge: the only round land ever reads for blocking findings.
+    """
+    kept, dropped = list(parts), 0
+    while len(" · ".join(kept)) > CLOSE_CAP and len(kept) > 1:
+        kept.pop(0)
+        dropped += 1
+    detail = " · ".join(kept)
+    if len(detail) > CLOSE_CAP:
+        detail = detail[:CLOSE_CAP] + "…"
+    return f"(+{dropped} earlier elided) {detail}" if dropped else detail
+
+
 def last_close() -> str:
     """The most recent close, from close.py's append-only log.
 
@@ -61,7 +102,7 @@ def last_close() -> str:
     if not lines:
         return ""
     record = json.loads(lines[-1])
-    verdicts = " · ".join(record.get("verdicts") or ["(no verdict recorded)"])
+    verdicts = _close_detail(record)
     return (
         f"last close: {record['story']} — {record.get('title', '')}"
         f" at {str(record.get('merge_sha', ''))[:8]} on {record.get('closed_at', '?')}"

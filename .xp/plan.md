@@ -158,7 +158,7 @@ Verify: pytest -q tests/test_close.py tests/test_stop_gate.py tests/test_session
 Close review: deep
 Executor: (default)
 
-#### story-012a — the structured gate; land never spawns   [ready]
+#### story-012a — the structured gate; land never spawns   [done]
 Context: First half of the story-008-close redesign (work.md 17:43:13Z, 17:56:23Z,
 17:57:00Z), split on the seam the 17:33:21Z note named: "a fixing reviewer plus our
 current VERDICT-line gate would be strictly WORSE than today". The gate lands first;
@@ -195,11 +195,13 @@ reviewer whose stdout is lost, truncated, or unparseable. It does NOT survive a
 reviewer killed before it writes — that case wants the tee from the 17:08:23Z note and
 is not bought here. Live evidence: this session's plan-reviewer returned nothing twice;
 round 2 was told to write a file and the file is what survived.
-Size: after the stated moves close.py lands ~454/500 (constraint 8). Report parsing,
-validation, caps and round rendering go to review.py (~108); merge-body rendering to
-bookkeep.py (~86) beside log_close. Those moves buy the per-FILE cap, not DESIGN §9's
-800-line close COMPONENT budget, which goes 617 -> ~648 here and ~690 after 012b —
-story-009 is what takes it over, and story-010's ratchet is where that reds.
+Size: after the stated moves close.py lands under 500 (constraint 8) — MEASURED at
+close: 477, against a plan-review estimate of ~454, with review.py 121 (est. 108) and
+bookkeep.py 88 (est. 86). Report parsing, validation, caps and round rendering go to
+review.py; merge-body rendering to bookkeep.py beside log_close. Those moves buy the
+per-FILE cap, not DESIGN §9's 800-line close COMPONENT budget, which goes 617 -> 686
+here (est. 648) and ~730 after 012b — story-009 is what takes it over, and story-010's
+ratchet is where that reds.
 Files: plugins/xp-plugin/scripts/close.py, plugins/xp-plugin/scripts/review.py,
 plugins/xp-plugin/scripts/bookkeep.py, plugins/xp-plugin/scripts/session_start.py,
 plugins/xp-plugin/agents/story-reviewer.md, plugins/xp-plugin/agents/plan-reviewer.md,

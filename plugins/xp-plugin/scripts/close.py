@@ -2,15 +2,17 @@
 """Story-close pipeline: mechanical steps scripted, judgment left to the lead.
 
 Two invocations, one judgment gap between them:
-  close.py story <id> review -> preflight, spawn the story-reviewer, record its
-                                VERDICT line, print its findings
+  close.py story <id> review -> preflight, spawn the story-reviewer, record the
+                                structured report it writes, print its findings
   (the lead reads them and decides fix-or-ask — the one LLM-present moment the
    pipeline must not absorb, constraints.md #7)
-  close.py story <id> land   -> Verify, merge under the recorded verdict, push,
+  close.py story <id> land   -> Verify, merge under every recorded round, push,
                                 delete the story branch, log the close
 
-The verdict is PIPELINE-RECEIVED: there is no --verdict flag, because a
-lead-supplied verdict is forgeable, and Sprint 1 forged one.
+review owns the tree and is slow; land only moves refs, is a pure function of
+recorded state, and NEVER spawns — so the rounds are the lead's to choose. The
+report is pipeline-received: there is no --verdict flag, because a lead-supplied
+one is forgeable, and Sprint 1 forged one.
 """
 
 import argparse
@@ -21,7 +23,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
-from bookkeep import delete_story_branch, delete_story_markers, log_close
+from bookkeep import delete_story_branch, delete_story_markers, log_close, render_merge_body
 from work import chdir_repo_root, config_block_value, data_root
 
 
@@ -140,12 +142,14 @@ def work_entries_since(branch_point_epoch: int) -> str:
     return "\n".join(out)
 
 
-def build_bundle(card: str, base: str) -> str:
+def build_bundle(card: str, base: str, report: Path) -> str:
     import review  # function-local: spawn -> close -> review would close a cycle
 
     base_epoch = int(git("show", "-s", "--format=%ct", base).stdout.strip())
     sections = [
         ("Your charter", review.charter()),
+        # One greppable line: the charter explains the shape, this is the address.
+        ("Your report", f"REPORT_PATH: {report}"),
         ("Story card", card),
         ("Cumulative diff", git("diff", f"{base}..HEAD").stdout),
         ("work.md entries filed during the story", work_entries_since(base_epoch) or "none"),
@@ -180,54 +184,65 @@ def _preflight(story_id: str, action: str) -> tuple[str, str, str]:
     return card, trunk, ""
 
 
-def cmd_review(story_id: str, dry_run: bool = False, delta: bool = False) -> int:
+def cmd_review(story_id: str, dry_run: bool = False) -> int:
     import review
 
     card, trunk, err = _preflight(story_id, "review")
     if err:
         return fail(err)
-    marker = marker_path(story_id)
-    # load on BOTH paths: a full RE-review is round N. Resetting here erased
-    # earlier rounds from the merge body and closes.jsonl, and the positional
-    # label then asserted that round 1 had found what the last round found.
-    state = json.loads(marker.read_text()) if marker.exists() else {}
-    # HEAD is read BEFORE the launch. Read after, a reviewer that commits (it runs
-    # under bypass) has its own commit recorded as reviewed_sha, and land then
-    # merges unreviewed code under a verdict that never saw it.
-    head = git("rev-parse", "HEAD").stdout.strip()
-    base = (
-        state["reviewed_sha"]
-        if delta
-        else git("merge-base", f"refs/heads/{trunk}", "HEAD").stdout.strip()
+    # merge-base does NOT move when trunk advances, so a review re-run after trunk
+    # motion re-baselines the trunk guard while the reviewer sees nothing new — the
+    # guard clears and the merged tree still contains commits no review read.
+    # BOTH refs, because land guards whichever one its mode integrates: local mode
+    # the local trunk, pr mode (the argparse default) origin's. Guarding only the
+    # local ref left the identical hole open on the axis pr mode actually merges.
+    tips = (
+        (trunk, git("rev-parse", f"refs/heads/{trunk}").stdout.strip()),
+        (f"origin/{trunk}", origin_trunk_sha(trunk)),
     )
-    result, err = review.run(build_bundle(card, base), Path.cwd(), dry_run)
+    for label, tip in tips:
+        if tip and git("merge-base", "--is-ancestor", tip, "HEAD", check=False).returncode:
+            return fail(
+                f"refused: {label} has moved ahead of this branch's fork point."
+                f" Run `git merge {label}` here first — that moves the merge base, so"
+                " the review covers what land would actually merge. Re-running review"
+                " without it buys no coverage"
+            )
+    marker = marker_path(story_id)
+    state = json.loads(marker.read_text()) if marker.exists() else {}
+    path = review.report_path(story_id, len(state.get("rounds", [])) + 1)
+    if not dry_run:  # a preview must not delete the findings of a refused round
+        path.unlink(missing_ok=True)
+    head = git("rev-parse", "HEAD").stdout.strip()
+    base = git("merge-base", f"refs/heads/{trunk}", "HEAD").stdout.strip()
+    result, err = review.run(build_bundle(card, base, path), Path.cwd(), dry_run)
     if dry_run:
         return 0
     if err:
         return fail(f"refused: {err}")
+    # BEFORE any refusal below: a report the pipeline rejects still cost a full
+    # review, and its findings exist nowhere else.
+    print(result)
     dirtied = git("status", "--porcelain").stdout.strip()
     if git("rev-parse", "HEAD").stdout.strip() != head or dirtied:
         return fail(
             "refused: the reviewer moved HEAD or dirtied the working tree — it reviews,"
             " it does not write. Nothing was recorded; inspect the tree, then re-run review"
         )
-    print(result)
-    verdict = review.extract_verdict(result)
-    if not verdict:
-        print("WARNING: the reviewer emitted no VERDICT line — land will refuse", file=sys.stderr)
-    state["reviewed_sha"] = head
-    if verdict:
-        state["verdicts"] = [*state.get("verdicts", []), verdict]
-        # the sha the verdict actually SAW. reviewed_sha alone advanced even on a
-        # verdict-less delta, so round 1's verdict cleared land for work no
-        # reviewer ever read.
-        state["verdict_sha"] = head
-    if not delta:
-        # the delta path must NOT rewrite these: a trunk that moved during the
-        # review window would have its guard silently cleared, and the delta diff
-        # is on the story branch and covers no trunk motion.
-        state["trunk_sha"] = git("rev-parse", f"refs/heads/{trunk}").stdout.strip()
-        state["origin_trunk_sha"] = origin_trunk_sha(trunk)
+    report, err = review.read_report(path)
+    if err:
+        return fail(f"refused: {err}")
+    state.setdefault("rounds", []).append(report)
+    # AFTER the leg, and provably equal to the pre-launch head by the refusal above.
+    # story-012b redefines this as the post-reviewer head and adds reviewed_head;
+    # reading it here means no assertion written today changes meaning then.
+    state["shown_sha"] = git("rev-parse", "HEAD").stdout.strip()
+    state["review_base"] = base
+    # the tips READ BEFORE the launch, not re-read now: a teammate pushing during
+    # the review window would otherwise be recorded as the reviewed state, and land
+    # compares equal and merges what no reviewer saw. Same defect as AC 4, inside
+    # one review instead of across two.
+    state["trunk_sha"], state["origin_trunk_sha"] = tips[0][1], tips[1][1]
     marker.write_text(json.dumps(state))
     return 0
 
@@ -254,19 +269,32 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
             " the PR to main happens at sprint close"
         )
     head = git("rev-parse", "HEAD").stdout.strip()
-    if head != state["reviewed_sha"]:
-        print(f"drift: HEAD moved since review — reviewing {state['reviewed_sha'][:8]}..{head[:8]}")
-        rc = cmd_review(story_id, delta=True)
-        if rc != 0:
-            return rc
+    # land NEVER spawns. Measured over story-008: it ran 4 times, spawned opus 4
+    # times, merged 0 times, and held the tree ~10 minutes a run — during which a
+    # lead edit trips the reviewer-dirtied guard and is blamed on the reviewer.
+    # Refusing instead makes this idempotent and makes the rounds the lead's choice.
+    if head != state.get("shown_sha"):
         return fail(
-            "refused: the delta above was reviewed in-pipeline and recorded."
-            " Read the findings, then run land again"
+            f"refused: HEAD moved since the review you were shown"
+            f" ({str(state.get('shown_sha'))[:8]}..{head[:8]})."
+            f" Run `close.py story {story_id} review`, then land again"
         )
-    if state.get("verdict_sha") != head:
+    base = git("merge-base", f"refs/heads/{trunk}", "HEAD").stdout.strip()
+    if state.get("review_base") != base:
         return fail(
-            "refused: no VERDICT line covers this commit — no verdict, no merge."
-            " Re-run review; a reviewer that keeps emitting none IS the finding"
+            f"refused: the recorded round did not cover this tree — it was based on"
+            f" {str(state.get('review_base'))[:8]}, today's merge base is {base[:8]}."
+            f" Run `close.py story {story_id} review`"
+        )
+    rounds = state.get("rounds") or []
+    if not rounds:
+        return fail(f"refused: no recorded review round for {story_id} — run review first")
+    blocking = rounds[-1]["blocking"]
+    if blocking:
+        return fail(
+            "refused: the last review round left blocking findings:\n  "
+            + "\n  ".join(blocking)
+            + "\nFix them (or review again once fixed) — a flag cannot clear these"
         )
     moved = (
         origin_trunk_sha(trunk) != state.get("origin_trunk_sha")
@@ -289,7 +317,7 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
         return fail(f"refused: {story_id} has no Verify: line — an unverifiable story cannot close")
     tier = config_block_value("tests", "story")
     branch = git("rev-parse", "--abbrev-ref", "HEAD").stdout.strip()
-    verdict = "\n".join(f"Review round {i}: {v}" for i, v in enumerate(state["verdicts"], 1))
+    verdict = render_merge_body(rounds)
     message = f"Merge {branch} ({story_id})\n\n{verdict}\n"
     pr_cmds = [
         ["git", "push", "-u", "origin", branch],
@@ -334,6 +362,15 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
         return fail(f"refused: story Verify red: {verify}")
     if tier and subprocess.run(tier, shell=True).returncode != 0:
         return fail(f"refused: story test tier red: {tier}")
+
+    # AFTER the gates, BEFORE the merge: printed earlier, a red Verify still told
+    # the lead to file records for a close that did not happen. EVERY round's noted,
+    # not the last one's — an item punted in round 1 and never filed is still owed.
+    noted = [n for r in rounds for n in r["noted"]]
+    if noted:
+        print("noted by the reviewer, not fixed — file these per PROCESS.md:")
+        for n in noted:
+            print(f"  {n}")
 
     if merge_mode == "pr":
         import shutil
@@ -392,7 +429,7 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
         # [done] — so withholding the record on those made the close unrecordable
         # by any command, and last_close() would name the previous story forever.
         delete_story_markers(story_id)
-        log_close(story_id, card, state["verdicts"], merge_sha)
+        log_close(story_id, card, rounds, merge_sha)
         marker.unlink()
     if failed:
         # The merge HAS landed, so this is not a refusal (2) — but exiting 0
