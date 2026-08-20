@@ -133,7 +133,7 @@ Verify: pytest -q tests/test_spawn.py tests/test_work.py tests/test_session_star
 Close review: deep
 Executor: (default)
 
-#### story-008 — close.py spawns the reviewer (completes Milestone 1)   [ready]
+#### story-008 — close.py spawns the reviewer (completes Milestone 1)   [in-progress]
 Context: Depends on story-007. The verdict becomes PIPELINE-RECEIVED: reviewed
 splits into `review` (spawns the story-reviewer headless via spawn.py's runner,
 captures its VERDICT line into the close marker — no --verdict flag survives)
