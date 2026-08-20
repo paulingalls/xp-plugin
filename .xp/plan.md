@@ -227,39 +227,82 @@ Executor: (default)
 #### story-012b — the reviewer fixes; the lead reads its diff   [ready]
 Context: Second half, safe ONLY on top of 012a's structured gate (work.md 17:33:21Z,
 17:33:39Z, 17:43:13Z). Drop REVIEWER_DENY and the reviewer-dirtied-the-tree guard; the
-reviewer edits where the code under review is (Path.cwd() — close.py's XP_ROLE gate
-makes that the lead's own checkout, always). reviewed_sha becomes three recorded
-facts: review_base, reviewed_head (what the reviewer was shown) and shown_sha
-(post-reviewer HEAD, what the LEAD is shown). Running land IS assent.
+reviewer edits where the code under review is (Path.cwd(), which is the tree the lead
+closes from — the lead's checkout for a solo close, a worktree if the lead closes from
+one). reviewed_sha becomes three recorded facts: review_base, reviewed_head (what the
+reviewer was shown) and shown_sha (post-reviewer HEAD, what the LEAD is shown). Running
+land IS assent.
 WHAT ACTUALLY RETIRES, precisely: story-008's G1 was never held by the deny-list — a
 reviewer with Bash could always `git commit`. It was held by the moved-HEAD /
-dirtied-tree REFUSAL (close.py:208-213, fault-injected at tests/test_close.py:651).
-That refusal is what this story retires, and nothing replaces it in kind. What carries
-the weight instead: the lead's read of the reviewer's diff, the story Verify and tier
-land runs, and the commit wall on the reviewer's own commits. What the read CANNOT
-cover, and why the .xp/ guard exists: `git diff` shows tracked files only — not the
-marker that gates the merge, not work.md, not closes.jsonl.
-Tests this story deletes, named so the deletions are deliberate: :628 (reviewer cannot
-edit the lead tree — the deny-list drop), :651 (a reviewer that commits is refused),
-:906 (a reviewer that writes without committing is refused — its target moves to
-refusing the UNCOMMITTED write, AC 5).
+dirtied-tree REFUSAL, which had TWO jobs, and the card previously named one. Job A:
+stop a reviewer certifying its own commit — retired deliberately. Job B: notice that
+the LEAD committed while the reviewer held the tree (the measured incident, 17:56:23Z).
+Job B is NOT retired; it is re-established by authorship (AC 1), which is strictly
+better — it PERMITS the lead's concurrent commit instead of refusing it, and attributes
+it correctly instead of blaming the reviewer. That is the tree lock's cheap fix and it
+is why the reviewer-in-a-worktree idea is NOT in this card: `git worktree add` refuses a
+branch checked out elsewhere, so the reviewer would work detached or on a temp branch,
+and the write-back is a merge or rebase against a possibly-moved lead tree — which
+re-acquires the lock at write-back and resurrects the merge-conflict path 012a just made
+unreachable. Filed as its own card with those two problems stated.
+WHAT THE LEAD'S READ CANNOT COVER: the close marker, work.md and closes.jsonl live
+OUTSIDE the repo under ~/.xp/data/, so no diff shows them, and the reviewer's Bash can
+reach the marker that gates its own merge. That is what AC 6's marker hash is for. (.xp/
+IS tracked and IS in the diff — the previous card justified the .xp/ guard with a
+sentence describing files it does not protect. The .xp/ guard stands on its own merit:
+the reviewer may fix code, never the plan.)
+THE THREE-BUCKET CHARTER, which is the cycle-breaker's other half (Paul's call): the
+charter today says a gating finding is "one you would not merge over" — indexed to the
+reviewer's private taste, and taste cannot be disputed with evidence. It becomes: FIX it
+if you can; BLOCK only if you could not fix it AND its failure mode is silent or
+corrupting (false green, corrupted record, unreviewed merge — PROCESS.md's existing
+finding bar, so this displaces nothing); NOTE the rest. The bar must be COPIED into the
+charter, not pointed at: build_bundle never sends PROCESS.md, and DESIGN §8's reviewer
+profile deliberately excludes it — so a test asserts the charter's bar sentence and
+PROCESS.md's are byte-identical, or this becomes the "rule fixed in one of its two
+implementations" defect the story-008 reviewer caught three times.
+HONEST SCOPE OF THE WIN: this eliminates the round that exists because the LEAD moved
+HEAD applying a prescription — story-008's dominant cost, four of six rounds, and three
+of story-012a's. It does NOT eliminate a round when blocking[] is non-empty: reviewer
+declines to fix, lead fixes, HEAD moves past shown_sha, land refuses, round 2. And it
+MOVES the reviewer-introduced-defect class (story-008 rounds 3, 4, 6; story-012a rounds
+2 and 3) from "caught by the next adversarial round" to "caught by the lead's read" — an
+author-adjacent reader who has just been told the fixes are trustworthy. AC 8 is the
+recovery: the next round is TOLD what the last one changed, which is the detector that
+actually found them.
+Tests this story deletes, BY NAME (line numbers rot — the previous card's three were all
+wrong by the time it was reviewed): test_reviewer_cannot_edit_the_lead_tree_it_is_reviewing
+(the deny-list drop), test_a_reviewer_that_commits_is_refused_not_certified (Job A),
+test_a_reviewer_that_writes_without_committing_is_also_refused (its target moves to the
+UNCOMMITTED write, AC 5). AC 9 must also amend
+test_the_charter_names_the_report_path_and_the_route_left_open, which asserts the charter
+contains "heredoc" — once Write is allowed that paragraph is stale prose the test would
+keep certifying.
+Size: close.py is 477/500 and this story is ~+50 without an extraction, which is OVER the
+hard cap, not near it (constraint 8). Extraction named UP FRONT rather than discovered at
+the keyboard as bookkeep.py was: the reviewer-motion checks — dirty tree, .xp/ touched,
+marker unchanged, authorship — are cohesive and belong beside the thing that launched the
+reviewer. `review.check_reviewer_motion(reviewed_head) -> str` moves ~35 lines to
+review.py and leaves close.py below where it started. The §9 close component goes
+686 -> ~735 of 800 either way.
 Files: plugins/xp-plugin/scripts/close.py, plugins/xp-plugin/scripts/review.py,
 plugins/xp-plugin/scripts/spawn.py, plugins/xp-plugin/agents/story-reviewer.md,
 plugins/xp-plugin/skills/story-close/SKILL.md, plugins/xp-plugin/PROCESS.md,
-docs/DESIGN.md, tests/test_close.py
+docs/DESIGN.md, tests/test_close.py, tests/test_spawn.py
 AC:
 - Given a reviewer that edits AND commits in the tree under review, When review returns, Then reviewed_head is the pre-launch HEAD, shown_sha is the post-reviewer HEAD, and no dirtied-tree refusal fires (fault-inject: restoring the old guard reds the test)
-- Given the reviewer committed fixes, When review returns, Then it prints the commit range, `--stat`, and the full diff up to a stated char cap — above the cap, stat + range + the command to re-read
-- Given a recorded round where reviewed_head != shown_sha, When LAND runs, Then it prints the reviewer's range and `--stat` immediately before merging. The assent premise is "nothing merges unlooked-at" and review's stdout is the one channel this session lost three times; assent must be readable at the moment it is given, not by appeal to an earlier command
-- Given a reviewer commit, Then spawn.py sets GIT_AUTHOR_NAME/GIT_COMMITTER_NAME for role="reviewer" (run_agent sets only XP_ROLE today, so reviewer commits carry the LEAD's identity) — git then distinguishes them in every clone, and the merge body's range is a convenience rather than the only record
-- Given the reviewer returns leaving the tree DIRTY, When review finishes, Then it refuses naming the uncommitted files — shown_sha must name a commit, and review never commits on the reviewer's behalf
-- Given reviewer commits that touch .xp/, When review finishes, Then it refuses — the reviewer may fix code, never the plan, the constraints, or its own gate state (fault-inject)
-- Given a reviewer that hangs, Then run_agent bounds it with a wall clock and surfaces TimeoutExpired through the existing rc!=0 path — after the split, review is the only long-running command AND the only mutating one, and this story hands it write access to the live tree; unbounded, a hung reviewer owns that tree with edit rights indefinitely (story-008: land exceeded a 600s foreground limit and was backgrounded by hand)
-- Given the shipped charter, SKILL.md and the PROCESS.md stopping rule, Then they describe a fixing reviewer with the lead's read as the judgment point — today's text ("Do not edit code"; "fixes applied exactly as prescribed... close WITHOUT re-review") is written for a reporting reviewer, ships to consuming projects, and is injected into every lead session (constraint 1: displace what you add)
-Verify: pytest -q tests/test_close.py
+- Given ANY commit in reviewed_head..shown_sha not authored by the reviewer identity, When review finishes, Then it REFUSES and names the offending shas — a lead commit made while the reviewer held the tree is otherwise absorbed into shown_sha, land's HEAD==shown_sha holds by construction, and the lead reads his own commit in a range presented as the reviewer's. This is Job B of the guard this story deletes, and it makes AC 3's identity load-bearing rather than decorative (fault-inject: a stub that commits as the lead)
+- Given a reviewer commit, Then spawn.py sets GIT_AUTHOR_NAME/EMAIL and GIT_COMMITTER_NAME/EMAIL for role="reviewer" — asserted on the ARTIFACT (`git log --format=%an`), never on the launch env, which passes against a harness that strips it; EMAIL too, or every email-keyed tool still reports the lead
+- Given the reviewer committed fixes, When review returns, Then the range, `--stat` and the diff are written to a FILE beside the round's report and BOTH legs print its path — review's stdout is the channel this session lost three times, so the assent artifact must not live only there; land prints the path again before merging
+- Given the reviewer returns leaving the tree DIRTY, When review finishes, Then it refuses, describing the uncommitted files WITHOUT asserting who wrote them (that misattribution is the measured complaint at 17:56:23Z)
+- Given reviewer commits that touch .xp/, or a close marker whose hash changed across the launch, When review finishes, Then it refuses — the reviewer may fix code, never the plan, and never the file that gates its own merge (fault-inject both: a stub that edits .xp/, a stub that rewrites the marker's blocking[])
+- Given a reviewer that hangs, Then run_agent bounds it with a wall clock read from the environment (the suite cannot monkeypatch a subprocess) and surfaces the timeout through the existing rc!=0 path
+- Given ANY of the abort paths above, Then ONE message states that the reviewer's commits are in the tree, prints reviewed_head..HEAD --stat, and names `git reset --hard <reviewed_head>` as the undo — "nothing was recorded" was written for a reviewer that could not write, and under this story the tree holds commits from a process that was killed mid-fix
+- Given a round after the first, Then the bundle carries earlier rounds' fixed/blocking/noted labelled "do not re-litigate a settled fix; DO verify each fixed item still holds" — a fixing reviewer with no memory re-edits the last round's edits and reverses its deliberate punts, and the next-round-that-knows is the only mechanism that has ever caught a reviewer-introduced defect
+- Given the shipped charter, Then it states the three buckets and its finding-bar sentence is BYTE-IDENTICAL to PROCESS.md's; and SKILL.md/PROCESS.md/DESIGN §6 state the split arithmetic — a REVIEWER fix costs no confirming round (shown_sha covers it), a LEAD fix still does — replacing today's undifferentiated sentence in all three
+Verify: pytest -q tests/test_close.py tests/test_spawn.py
 Close review: deep
 Executor: (default)
-
 #### story-009 — sprint-close pipeline   [ready]
 Context: Automates Sprint 1's hand-run close. Lives in its OWN module,
 scripts/sprint_close.py, behind a ~2-line `close.py sprint` dispatch (plan
