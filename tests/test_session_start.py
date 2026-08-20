@@ -65,7 +65,9 @@ class TestInjection:
     def test_banner_names_version_and_gates(self, tmp_path):
         repo, _g = xp_repo(tmp_path)
         r = run_hook(repo, tmp_path)
-        assert "xp-plugin" in r.stdout and "0.1.0" in r.stdout
+        manifest = HOOK.parent.parent / ".claude-plugin" / "plugin.json"
+        version = json.loads(manifest.read_text())["version"]
+        assert "xp-plugin" in r.stdout and version in r.stdout
         assert "git hooks: none detected" in r.stdout  # fixture has no lefthook/.githooks
 
     def test_fresh_digest_injected_without_stale(self, tmp_path):
