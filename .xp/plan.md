@@ -148,6 +148,8 @@ AC:
 - Given land completes, Then the merge body carries the recorded verdict verbatim and the story's test-status marker reads green
 - Given reviewer output without a VERDICT line, When land runs, Then it refuses — no verdict, no merge
 - Given two in-progress stories with byte-identical Verify commands, When each records a test status, Then they get DISTINCT markers (story-scoped key, not verify-string) — the carried sprint-001 triage input
+- Given XP_ROLE=teammate, When close runs, Then it REFUSES — a teammate loaded via --plugin-dir can reach /story-close and close.py through Bash, so a self-close is an unreviewed merge; declaration in TEAMMATE.md is not enforcement (fault-inject it)
+- Given land completes, Then the integration branch is PUSHED and the story branch deleted local-then-origin (that order: `git branch -d` checks against the upstream ref, so deleting origin first forces a -D that discards the merged check). Both were hand-steps at story-007 close; M1 allows none.
 Verify: pytest -q tests/test_close.py
 Close review: deep
 Executor: (default)
@@ -173,6 +175,8 @@ AC:
 - Given human inputs, When sprint land runs, Then the release PR opens with the bump+tag and the digest is written — and the sprint_branch key survives until the PR is MERGED
 - Given a merged release PR, When the post-merge step runs, Then the key is retired
 - Given a not-releasable call, Then no PR opens and the key survives
+- Given a constraint is promoted, Then the append path enforces a per-item AND total char cap and REFUSES over it — constraints_cap counts line-items, not size (10 items = 2,090 chars here), and the predecessor's json bounded size by validating at write, not by being json
+- Given any size refusal, Then the message names the cap, the current value, and the next ACTION (which item to retire), and the line that blew is the line that reds — story-007's budget test sent the reader to trim TEAMMATE.md for a defect that was a new agent
 Verify: pytest -q tests/test_sprint_close.py
 Close review: deep
 Executor: (default)
