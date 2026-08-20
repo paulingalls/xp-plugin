@@ -27,14 +27,14 @@ AC:
 Verify: pytest -q tests/test_work.py
 Executor: (default)
 
-#### story-002 — close.py: story close   [ready]
+#### story-002 — close.py: story close   [in-progress]
 Context: Automates .claude/skills/story-close (the checklist IS the spec). Pipeline:
 preflight → spawn story-reviewer (stop: fix-or-ask) → run story Verify + story tier →
 verdict into PR body/merge trailer → merge; re-review on conflicted/drifted merge
 (DESIGN §6). Sub-budget ≤800 lines.
 Files: plugins/xp-plugin/scripts/close.py, tests/test_close.py
 AC:
-- Given a clean story branch, When close runs, Then it stops exactly twice for judgment (reviewer findings; nothing else) and the merge commit/PR body carries the reviewer's VERDICT line verbatim
+- Given a clean story branch, When close runs end to end, Then exactly one judgment gap exists (reviewer findings, between start and reviewed) — every other step is mechanical with no stop — and the merge commit/PR body carries the reviewer's VERDICT line verbatim
 - Given a merge conflict, When resolved, Then close refuses to complete until a re-review covers the post-resolution diff
 - Given a red story Verify, When close runs, Then it aborts before merge naming the failing command
 Verify: pytest -q tests/test_close.py
