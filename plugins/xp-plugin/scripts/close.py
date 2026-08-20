@@ -75,14 +75,15 @@ def default_branch() -> str:
     raise SystemExit(fail("no main/master branch found and origin/HEAD unset"))
 
 
-def trunk_ref(trunk: str) -> str:
-    """origin/<trunk> (fetched) when a remote exists — local trunk never moves in a
-    pr-mode workflow, so guarding it alone leaves the default mode unguarded."""
-    if git("remote", check=False).stdout.strip():
-        git("fetch", "-q", "origin", trunk, check=False)
-        if git("rev-parse", "--verify", "-q", f"origin/{trunk}", check=False).returncode == 0:
-            return f"origin/{trunk}"
-    return trunk
+def origin_trunk_sha(trunk: str) -> str | None:
+    """Fetched origin/<trunk> sha, or None without a remote. pr mode merges on
+    origin; local mode merges the local trunk — each mode guards the ref it
+    actually integrates (recording both at start, since mode is unknown then)."""
+    if not git("remote", check=False).stdout.strip():
+        return None
+    git("fetch", "-q", "origin", trunk, check=False)
+    r = git("rev-parse", "--verify", "-q", f"origin/{trunk}", check=False)
+    return r.stdout.strip() if r.returncode == 0 else None
 
 
 def marker_path(story_id: str) -> Path:
@@ -151,7 +152,8 @@ def cmd_start(story_id: str) -> int:
         json.dumps(
             {
                 "reviewed_sha": git("rev-parse", "HEAD").stdout.strip(),
-                "trunk_sha": git("rev-parse", trunk_ref(trunk)).stdout.strip(),
+                "trunk_sha": git("rev-parse", trunk).stdout.strip(),
+                "origin_trunk_sha": origin_trunk_sha(trunk),
             }
         )
     )
@@ -183,7 +185,12 @@ def cmd_reviewed(story_id: str, verdict: str, merge_mode: str, dry_run: bool) ->
             "drift: HEAD moved since review — delta above goes back to the reviewer,"
             " then run start again to re-baseline"
         )
-    if git("rev-parse", trunk_ref(trunk)).stdout.strip() != state.get("trunk_sha"):
+    moved = (
+        origin_trunk_sha(trunk) != state.get("origin_trunk_sha")
+        if merge_mode == "pr"
+        else git("rev-parse", trunk).stdout.strip() != state.get("trunk_sha")
+    )
+    if moved:
         return fail(
             f"refused: {trunk} moved since start — the merged tree would differ from"
             " what was reviewed; run start again to re-baseline"
