@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.2.1 — 2026-08-19 · post-release tweaks
+
+Retro presentation becomes a close duty; changelog added; stale sprint_branch
+key retired. Also the release-discipline fix these tweaks exposed: **main only
+moves by release** — every merge to main bumps and tags, and between-sprint
+work rides free branches (close.py card-less mode: Sprint-2).
+
 ## v0.2.0 — 2026-08-19 · Sprint 1: the self-hosting core
 
 The plugin becomes real: installable, hook-driven, and built end-to-end under
