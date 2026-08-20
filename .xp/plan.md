@@ -80,7 +80,7 @@ config-known string match, not heuristic detection; honors stop_hook_active, no
 block-count assumptions. Same binding: stale-digest nudge (timestamp compare only).
 Requires a session-scoped test-status scratch marker written by a minimal
 PostToolUse bash leg (the one sanctioned telemetry exception, DESIGN §4).
-Files: plugins/xp-plugin/scripts/stop_gate.py, plugins/xp-plugin/scripts/bash_status.py, tests/test_stop_gate.py
+Files: plugins/xp-plugin/scripts/stop_gate.py, plugins/xp-plugin/scripts/bash_status.py, tests/test_stop_gate.py, plugins/xp-plugin/hooks/hooks.json (shared with story-003: it owns SessionStart, this story adds PostToolUse+Stop; starts after 003 merges)
 AC:
 - Given the story Verify last exited nonzero, When Stop fires, Then the gate blocks once with the failing command named, and passes on stop_hook_active
 - Given a non-Verify command failed but Verify is green, When Stop fires, Then no block (advisory scope is Verify only)
