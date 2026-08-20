@@ -31,7 +31,8 @@ One page. The values (VALUES.md) cover what this page doesn't.
    usually now (keep sprints small), else carried to the plan boundary; prefer
    flags that dark-launch unready behavior over holding the branch. Full tier + archived falsifiers batch-run + broad review +
    security review + retro (one-page narrative + a proposed diff to constraints/config
-   — a learning that changes nothing executable isn't recorded). Debt triage with the
+   — a learning that changes nothing executable isn't recorded; the narrative is
+   PRESENTED to the human at close, never just filed). Debt triage with the
    human, under the **finding bar**: a finding earns work only if its failure mode is
    silent or corrupting (false green, corrupted record, unreviewed merge). Loud +
    patch-scale → fix now only if minutes. Loud + self-healing → NEVER — everything
