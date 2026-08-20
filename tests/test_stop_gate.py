@@ -250,3 +250,41 @@ class TestRegistration:
         assert any("stop_gate.py" in c for c in stop)
         assert any("bash_status.py" in c for c in post)
         assert any("bash_status.py" in c for c in post_fail)
+
+
+class TestSprintCloseFindings:
+    def test_gate_works_from_repo_subdirectory(self, tmp_path):
+        repo, _g = repo_with_story(tmp_path)
+        sub = repo / "src"
+        sub.mkdir()
+        p = failure_payload("pytest -q tests/test_x.py")
+        subprocess.run(
+            [sys.executable, str(SCRIPTS / "bash_status.py")],
+            input=json.dumps(p),
+            env={"PATH": "/usr/bin:/bin", "HOME": str(tmp_path), "XP_DATA": str(tmp_path / "xp")},
+            cwd=sub,
+            capture_output=True,
+            text=True,
+        )
+        r = subprocess.run(
+            [sys.executable, str(SCRIPTS / "stop_gate.py")],
+            input=json.dumps({"session_id": "sess-1", "cwd": ".", "stop_hook_active": False}),
+            env={"PATH": "/usr/bin:/bin", "HOME": str(tmp_path), "XP_DATA": str(tmp_path / "xp")},
+            cwd=sub,
+            capture_output=True,
+            text=True,
+        )
+        assert json.loads(r.stdout)["decision"] == "block"
+
+    def test_corrupt_marker_does_not_disable_the_gate(self, tmp_path):
+        repo, _g = repo_with_story(tmp_path)
+        markers_dir = tmp_path / "xp" / "markers"
+        markers_dir.mkdir(parents=True)
+        (markers_dir / "sess-1.deadbeef.test-status").write_text("{not json")
+        run_script("bash_status.py", failure_payload("pytest -q tests/test_x.py"), repo, tmp_path)
+        r = run_script("stop_gate.py", self_payload(), repo, tmp_path)
+        assert json.loads(r.stdout)["decision"] == "block"  # garbage file cannot hide the red
+
+
+def self_payload(session="sess-1", active=False):
+    return {"session_id": session, "cwd": ".", "stop_hook_active": active}

@@ -10,7 +10,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 from bash_status import in_progress_verifies
-from work import data_root
+from work import chdir_repo_root, data_root
 
 
 def git(*args: str) -> str:
@@ -38,7 +38,10 @@ def red_verify_in_play(session: str) -> str | None:
     """
     live = set(in_progress_verifies())
     for path in (data_root() / "markers").glob(f"{session}.*.test-status"):
-        status = json.loads(path.read_text())
+        try:
+            status = json.loads(path.read_text())
+        except Exception:
+            continue  # one corrupt file must not disable the gate
         if status.get("red") and status.get("verify") in live:
             return str(status.get("verify"))
     return None
@@ -46,6 +49,8 @@ def red_verify_in_play(session: str) -> str | None:
 
 def main() -> int:
     data = json.load(sys.stdin)
+    if not chdir_repo_root():
+        return 0
     if data.get("stop_hook_active"):
         return 0
     session = str(data.get("session_id", "unknown"))[:64]

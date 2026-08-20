@@ -45,7 +45,11 @@ def digest_with_staleness() -> str:
 
 def recovery_block(root: Path) -> str:
     """Computed fresh from always-current sources — the layer that can't go stale."""
-    stories = [ln for ln in read(root / ".xp" / "plan.md").splitlines() if ln.startswith("#### ")]
+    stories = [
+        ln
+        for ln in read(root / ".xp" / "plan.md").splitlines()
+        if ln.startswith("#### ") and "[done]" not in ln
+    ]
     lines = read(data_root() / "work.md").splitlines()
     entries = []  # heading + its claim/body line: content, not just timestamps
     for i, ln in enumerate(lines):

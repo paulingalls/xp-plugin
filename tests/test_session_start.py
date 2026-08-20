@@ -181,3 +181,12 @@ class TestTrustBoundary:
         assert "CONSTRAINT-SENTINEL" in fenced  # repo files inside the fence
         head = r.stdout.split("BEGIN project content")[0]
         assert "XP Values" in head  # plugin-owned prose outside it
+
+
+class TestSprintCloseFindings:
+    def test_done_stories_excluded_from_recovery_block(self, tmp_path):
+        repo, _g = xp_repo(tmp_path)
+        plan = repo / ".xp" / "plan.md"
+        plan.write_text(plan.read_text() + "#### story-001 — ancient   [done]\nVerify: true\n")
+        r = run_hook(repo, tmp_path)
+        assert "story-042" in r.stdout and "ancient" not in r.stdout
