@@ -863,8 +863,9 @@ class TestLandBookkeeping:
         records = (tmp_path / "data" / "closes.jsonl").read_text().splitlines()
         assert [json.loads(r)["story"] for r in records] == ["story-042", "story-043"]
 
-    def test_an_enormous_verdict_cannot_evict_constraints_from_the_next_session(self, tmp_path):
-        """G5: session_start truncates its TAIL, and constraints.md is last."""
+    def test_a_verdict_is_capped_at_the_write(self, tmp_path):
+        """It never invoked session_start and never checked constraints.md — the
+        eviction it was named for is real, total, and filed as its own bug."""
         repo, env, _g = make_repo(tmp_path)
         stub_reviewer(tmp_path, result="VERDICT: " + "x" * 4000)
         close(repo, env, "review")
@@ -1102,3 +1103,44 @@ class TestDeltaReviewFindings:
         # make_repo has NO remote, and both pushes are runtime-guarded on one —
         # previewing them here is the same overstatement F4 was filed for
         assert "git push origin" not in r.stdout, "previewed pushes that never run"
+
+
+class TestFullReviewFindings:
+    """story-008 close review, round 5 — the first review over the whole story."""
+
+    def test_a_full_re_review_appends_rather_than_erasing_prior_rounds(self, tmp_path):
+        """R5F1: the non-delta path reset verdicts while the delta path appended
+        — the same rule fixed in one of its two implementations. The merge body
+        then labelled the survivor 'round 1', asserting round 1 found what round
+        2 found. This is the exact workflow the full_sha bug prescribes."""
+        repo, env, g = make_repo(tmp_path)
+        stub_reviewer(tmp_path, result="VERDICT: 8 findings (3 gating)")
+        close(repo, env, "review")
+        (repo / "src" / "thing.py").write_text("A = 7\n")
+        g("add", "-A")
+        g("commit", "-qm", "lead fixes the findings")
+        stub_reviewer(tmp_path, result="VERDICT: clean")
+        close(repo, env, "review")  # a second FULL review, not a delta
+        assert marker(tmp_path)["verdicts"] == [
+            "VERDICT: 8 findings (3 gating)",
+            "VERDICT: clean",
+        ]
+        assert close(repo, env, "land").returncode == 0
+        body = g("log", "-1", "--format=%B", "main").stdout
+        assert "Review round 1: VERDICT: 8 findings (3 gating)" in body
+        assert "Review round 2: VERDICT: clean" in body
+
+    def test_a_verdict_wrapped_in_markdown_is_still_captured(self, tmp_path):
+        """Live blocker: the real reviewer emitted `VERDICT: 5 findings (2
+        gating)` in backticks, so the parser saw no verdict and land refused.
+        The charter asks for a verdict line, not for unformatted prose."""
+        repo, env, _g = make_repo(tmp_path)
+        stub_reviewer(tmp_path, result="findings...\n`VERDICT: 5 findings (2 gating)`")
+        close(repo, env, "review")
+        assert marker(tmp_path)["verdicts"] == ["VERDICT: 5 findings (2 gating)"]
+
+    def test_a_bolded_verdict_is_also_captured(self, tmp_path):
+        repo, env, _g = make_repo(tmp_path)
+        stub_reviewer(tmp_path, result="**VERDICT: clean**")
+        close(repo, env, "review")
+        assert marker(tmp_path)["verdicts"] == ["VERDICT: clean"]

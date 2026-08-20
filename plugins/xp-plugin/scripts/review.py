@@ -15,9 +15,11 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 PLUGIN_ROOT = Path(__file__).parent.parent
 
-# A verdict rides into SessionStart's recovery block, and session_start.py
-# truncates the TAIL of its output — so an unbounded verdict silently evicts
-# constraints.md from the next lead's profile. Bounded at the write.
+# A verdict rides into SessionStart's recovery block, so it is bounded at the
+# write rather than trusted to be short. It does NOT protect constraints.md from
+# the profile cap: measured at story-008 close, the assembled profile already
+# overflows and delivers ZERO constraint items, with or without this cap. That
+# eviction is filed as its own bug against session_start.py.
 VERDICT_CAP = 200
 
 # The reviewer runs under --dangerously-skip-permissions (spawn.claude_argv) in
@@ -47,9 +49,15 @@ def charter() -> str:
 
 
 def extract_verdict(result: str) -> str:
-    """The LAST VERDICT line, capped. Empty when the reviewer emitted none."""
+    """The LAST VERDICT line, capped. Empty when the reviewer emitted none.
+
+    Markdown decoration is stripped first: a real reviewer emitted
+    `VERDICT: 5 findings (2 gating)` in backticks and the close refused, having
+    read a verdict it was looking straight at. The charter asks for a verdict
+    line, not for unformatted prose.
+    """
     for line in reversed(result.splitlines()):
-        candidate = line.strip()
+        candidate = line.strip().strip("`*_ ").strip()
         if candidate.startswith("VERDICT"):
             if len(candidate) > VERDICT_CAP:
                 return candidate[: VERDICT_CAP - 1] + "…"

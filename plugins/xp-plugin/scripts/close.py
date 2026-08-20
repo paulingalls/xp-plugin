@@ -187,7 +187,10 @@ def cmd_review(story_id: str, dry_run: bool = False, delta: bool = False) -> int
     if err:
         return fail(err)
     marker = marker_path(story_id)
-    state = json.loads(marker.read_text()) if delta and marker.exists() else {}
+    # load on BOTH paths: a full RE-review is round N. Resetting here erased
+    # earlier rounds from the merge body and closes.jsonl, and the positional
+    # label then asserted that round 1 had found what the last round found.
+    state = json.loads(marker.read_text()) if marker.exists() else {}
     # HEAD is read BEFORE the launch. Read after, a reviewer that commits (it runs
     # under bypass) has its own commit recorded as reviewed_sha, and land then
     # merges unreviewed code under a verdict that never saw it.
@@ -214,17 +217,15 @@ def cmd_review(story_id: str, dry_run: bool = False, delta: bool = False) -> int
         print("WARNING: the reviewer emitted no VERDICT line — land will refuse", file=sys.stderr)
     state["reviewed_sha"] = head
     if verdict:
+        state["verdicts"] = [*state.get("verdicts", []), verdict]
         # the sha the verdict actually SAW. reviewed_sha alone advanced even on a
         # verdict-less delta, so round 1's verdict cleared land for work no
         # reviewer ever read.
         state["verdict_sha"] = head
-    if delta:
-        # ONLY the sha and the verdict. Rewriting trunk_sha here would silently
-        # clear the guard against a trunk that moved during the review window —
-        # the delta diff is on the story branch and covers no trunk motion.
-        state["verdicts"] = state.get("verdicts", []) + ([verdict] if verdict else [])
-    else:
-        state["verdicts"] = [verdict] if verdict else []
+    if not delta:
+        # the delta path must NOT rewrite these: a trunk that moved during the
+        # review window would have its guard silently cleared, and the delta diff
+        # is on the story branch and covers no trunk motion.
         state["trunk_sha"] = git("rev-parse", f"refs/heads/{trunk}").stdout.strip()
         state["origin_trunk_sha"] = origin_trunk_sha(trunk)
     marker.write_text(json.dumps(state))
