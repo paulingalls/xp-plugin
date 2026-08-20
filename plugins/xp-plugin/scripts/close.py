@@ -23,7 +23,14 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
-from bookkeep import delete_story_branch, delete_story_markers, log_close, render_merge_body
+from bookkeep import (
+    delete_story_branch,
+    delete_story_markers,
+    log_close,
+    render_land_preview,
+    render_merge_body,
+    render_noted,
+)
 from work import chdir_repo_root, config_block_value, data_root
 
 
@@ -142,7 +149,7 @@ def work_entries_since(branch_point_epoch: int) -> str:
     return "\n".join(out)
 
 
-def build_bundle(card: str, base: str, report: Path) -> str:
+def build_bundle(card: str, base: str, report: Path, prior: str = "") -> str:
     import review  # function-local: spawn -> close -> review would close a cycle
 
     base_epoch = int(git("show", "-s", "--format=%ct", base).stdout.strip())
@@ -151,6 +158,13 @@ def build_bundle(card: str, base: str, report: Path) -> str:
         # One greppable line: the charter explains the shape, this is the address.
         ("Your report", f"REPORT_PATH: {report}"),
         ("Story card", card),
+        # A fixing reviewer with no memory re-edits the last round's fixes and
+        # reverses what it deliberately punted. The next-round-that-knows is also
+        # the only mechanism that has ever caught a reviewer-introduced defect.
+        (
+            "Earlier rounds of THIS story",
+            prior or "none — you are round 1",
+        ),
         ("Cumulative diff", git("diff", f"{base}..HEAD").stdout),
         ("work.md entries filed during the story", work_entries_since(base_epoch) or "none"),
         ("VALUES", _read_first(str(Path(__file__).parent.parent / "VALUES.md"))),
@@ -215,7 +229,14 @@ def cmd_review(story_id: str, dry_run: bool = False) -> int:
         path.unlink(missing_ok=True)
     head = git("rev-parse", "HEAD").stdout.strip()
     base = git("merge-base", f"refs/heads/{trunk}", "HEAD").stdout.strip()
-    result, err = review.run(build_bundle(card, base, path), Path.cwd(), dry_run)
+    digest_before = review.marker_digest(marker)
+    prior = render_merge_body(state.get("rounds", []))
+    if prior:
+        prior += (
+            "\n\nDo NOT re-litigate a settled fix. DO verify each `fixed` item still"
+            " holds in the tree you were given."
+        )
+    result, err = review.run(build_bundle(card, base, path, prior), Path.cwd(), dry_run)
     if dry_run:
         return 0
     if err:
@@ -223,16 +244,17 @@ def cmd_review(story_id: str, dry_run: bool = False) -> int:
     # BEFORE any refusal below: a report the pipeline rejects still cost a full
     # review, and its findings exist nowhere else.
     print(result)
-    dirtied = git("status", "--porcelain").stdout.strip()
-    if git("rev-parse", "HEAD").stdout.strip() != head or dirtied:
-        return fail(
-            "refused: the reviewer moved HEAD or dirtied the working tree — it reviews,"
-            " it does not write. Nothing was recorded; inspect the tree, then re-run review"
-        )
+    motion = review.check_reviewer_motion(head, marker, digest_before)
+    if motion:
+        return fail(motion)
     report, err = review.read_report(path)
     if err:
         return fail(f"refused: {err}")
     state.setdefault("rounds", []).append(report)
+    state["reviewed_head"] = head  # the tree the REVIEWER was shown
+    diff = review.write_reviewer_diff(path, head)
+    if diff:
+        print(f"the reviewer changed the tree. Its commits and full diff: {diff}")
     # AFTER the leg, and provably equal to the pre-launch head by the refusal above.
     # story-012b redefines this as the post-reviewer head and adds reviewed_head;
     # reading it here means no assertion written today changes meaning then.
@@ -256,6 +278,8 @@ def _read_first(*candidates: str) -> str:
 
 
 def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
+    import review
+
     if git("status", "--porcelain").stdout.strip():
         return fail("refused: working tree is dirty — Verify must judge the tree that merges")
     marker = marker_path(story_id)
@@ -334,29 +358,9 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
         ["git", "commit", "-qm", f"{story_id} done"],
         ["git", "push", "origin", trunk],
     ]
+    pr_steps = (pr_cmds, pr_sync, pr_bookkeep)
     if dry_run:  # pure preview: nothing runs, nothing changes, marker survives
-        print(f"would run: {verify}")
-        if tier:
-            print(f"would run: {tier}")
-        if merge_mode == "pr":
-            for c in pr_cmds + pr_sync:
-                print(" ".join(c))
-            print("(flip .xp/plan.md to [done])")
-            for c in [*pr_bookkeep, ["git", "branch", "-d", branch]]:
-                print(" ".join(c))
-        else:
-            print(f"git merge --no-ff {branch} on {trunk}")
-            print("(flip .xp/plan.md to [done], then git commit --amend --no-edit)")
-            has_remote = bool(git("remote", check=False).stdout.strip())
-            steps = [["git", "branch", "-d", branch]]
-            if has_remote:  # both pushes are runtime-guarded on a remote existing
-                steps = [
-                    ["git", "push", "origin", trunk],
-                    *steps,
-                    ["git", "push", "origin", "--delete", branch],
-                ]
-            for c in steps:
-                print(" ".join(c))
+        print(render_land_preview(verify, tier, merge_mode, branch, trunk, pr_steps), end="")
         return 0
     if subprocess.run(verify, shell=True).returncode != 0:
         return fail(f"refused: story Verify red: {verify}")
@@ -366,11 +370,12 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
     # AFTER the gates, BEFORE the merge: printed earlier, a red Verify still told
     # the lead to file records for a close that did not happen. EVERY round's noted,
     # not the last one's — an item punted in round 1 and never filed is still owed.
-    noted = [n for r in rounds for n in r["noted"]]
-    if noted:
-        print("noted by the reviewer, not fixed — file these per PROCESS.md:")
-        for n in noted:
-            print(f"  {n}")
+    # Assent is given by RUNNING land, so what it rests on must be readable here —
+    # not only in a review leg whose stdout may be long gone.
+    reviewer_work = review.reviewer_range(state.get("reviewed_head", head))
+    if reviewer_work:
+        print("the reviewer changed this tree — you are merging its work:")
+        print(reviewer_work, end="")
 
     if merge_mode == "pr":
         import shutil
@@ -393,6 +398,11 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
                 "merge conflict: resolve on the story branch, re-review the "
                 "post-resolution diff, then run review again to re-baseline"
             )
+
+    # AFTER the merge lands, not before: printed earlier, every refusal below the
+    # print — a red Verify, a missing gh, a failed pr create — still instructed the
+    # lead to file records for a close that did not happen (round-4 B1).
+    print(render_noted(rounds), end="")
 
     failed = []
     orphaning = False  # only a failed amend leaves merge_sha on no ref

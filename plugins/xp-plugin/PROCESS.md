@@ -19,18 +19,18 @@ One page. The values (VALUES.md) cover what this page doesn't.
    the merge body, and merges. Review and merge are separate commands: land never
    spawns — on drift or a conflict it refuses and names the review leg, so a round is
    something you choose to run, not something a merge inflicts.
-   **Review stopping rule** (diminishing returns): one full review always. Fixes
-   applied exactly as prescribed, with red-first tests, are owed no further round of
-   FINDINGS — the prescription was the review — but a fix moves HEAD and land
-   requires the last review to cover HEAD, so it still costs one confirming round.
-   That is the price of the coverage guarantee, paid once per fix batch, and it is
-   why fix batches are batches. Faithful means SCOPE-IDENTICAL: generalizing
+   **Review stopping rule** (diminishing returns): one full review always. The
+   REVIEWER's own fixes cost nothing extra — they are inside the round that found
+   them, and the lead's read of its diff is the judgment. A LEAD fix still moves HEAD
+   past what the review covered, so it costs one confirming round; that is the price
+   of the coverage guarantee and it is why fix batches are batches. Faithful means
+   SCOPE-IDENTICAL: generalizing
    or "improving" a prescription is a deviation owed re-review (story-002 round 3
    widened a mode-scoped fix to both modes and regressed the guard it fixed).
    When faithfulness is uncertain, one delta ping beats a wrong self-call.
    Re-review is owed for deviations, new uncovered behavior, or conflict
-   resolutions. Hard cap two rounds; still contested after that → the human
-   decides, not a third round.
+   resolutions. Hard cap two rounds OF FINDINGS; still contested after that → the
+   human decides, not a third round.
 4. **Sprint close** (release: sprint — the default): stories integrated on the
    sprint branch throughout; the batch PRs to main when it is RELEASABLE —
    usually now (keep sprints small), else carried to the plan boundary; prefer

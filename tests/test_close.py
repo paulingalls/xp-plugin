@@ -590,8 +590,8 @@ class TestSprintCloseFindings:
         assert r.returncode == 2 and "Traceback" not in r.stderr
 
 
-class TestPipelineReceivedVerdict:
-    """story-008 AC 1/4: the pipeline spawns the reviewer and records its verdict."""
+class TestReviewLeg:
+    """The pipeline spawns the reviewer itself and records its structured report."""
 
     def test_review_launches_the_reviewer_with_the_bundle_inlined(self, tmp_path):
         repo, env, _g = make_repo(tmp_path)
@@ -615,39 +615,6 @@ class TestPipelineReceivedVerdict:
         close(repo, env, "review")
         (launch,) = launches(tmp_path)
         assert launch["env"]["XP_ROLE"] == "reviewer"
-
-    def test_reviewer_cannot_edit_the_lead_tree_it_is_reviewing(self, tmp_path):
-        """G1: spawn's bypass posture was justified by a THROWAWAY worktree; the
-        reviewer runs in the lead's live tree, so the write tools are denied."""
-        repo, env, _g = make_repo(tmp_path)
-        close(repo, env, "review")
-        (launch,) = launches(tmp_path)
-        argv = launch["argv"]
-        denied = argv[argv.index("--disallowedTools") + 1]
-        assert {"Edit", "Write", "NotebookEdit"} <= set(denied.split(","))
-
-    def test_a_reviewer_that_commits_is_refused_not_certified(self, tmp_path):
-        """G1 fault-injection: the stub commits, exactly as a bypassed agent could.
-
-        It must ALSO write a valid report. story-012a put the no-report refusal in
-        front of this guard, so a report-less stub greened on THAT instead and the
-        moved-HEAD guard could be deleted with all 113 tests still passing — a
-        fault-injection that had stopped injecting the fault it names.
-        """
-        repo, env, _g = make_repo(tmp_path)
-        bin_dir = tmp_path / "bin"
-        (bin_dir / "claude").write_text(
-            "#!/bin/sh\n"
-            "echo 'x = 1' >> src/thing.py\n"
-            "git add -A && git commit -qm 'reviewer wrote this'\n"
-            "p=$(sed -n 's/^REPORT_PATH: //p')\n"
-            'printf \'{"fixed": [], "blocking": [], "noted": []}\' > "$p"\n'
-            'printf \'{"result": "clean, and I committed"}\'\n'
-        )
-        (bin_dir / "claude").chmod(0o755)
-        r = close(repo, env, "review")
-        assert r.returncode == 2 and "reviewer" in r.stderr.lower()
-        assert not (tmp_path / "data" / "markers" / "story-042.close.json").exists()
 
     def test_reviewer_crash_refuses_cleanly_surfacing_its_stderr(self, tmp_path):
         repo, env, _g = make_repo(tmp_path)
@@ -1371,13 +1338,198 @@ class TestShippedProseMatchesTheMechanism:
         ):
             assert "confirming round" in path.read_text(), f"{path.name} still promises"
 
-    def test_the_charter_names_the_report_path_and_the_route_left_open(self):
-        charter = (PLUGIN / "agents" / "story-reviewer.md").read_text()
-        assert "REPORT_PATH" in charter
-        assert "heredoc" in charter.lower(), "Write is denied; the only route must be named"
+    def test_the_charter_names_the_report_path(self):
+        assert "REPORT_PATH" in (PLUGIN / "agents" / "story-reviewer.md").read_text()
 
     def test_the_plan_reviewer_charter_asks_for_a_file(self):
         assert (
             "write your findings to a file"
             in (PLUGIN / "agents" / "plan-reviewer.md").read_text().lower()
         )
+
+
+REVIEWER_NAME = "xp story-reviewer"
+
+
+class TestFixingReviewer:
+    """story-012b: the reviewer fixes; the lead reads its diff."""
+
+    def fixing_stub(self, tmp_path, extra="", author=REVIEWER_NAME):
+        """A reviewer that fixes and commits, as a bypassed agent now may."""
+        bin_dir = tmp_path / "bin"
+        bin_dir.mkdir(exist_ok=True)
+        (bin_dir / "claude").write_text(
+            "#!/bin/sh\n"
+            "p=$(sed -n 's/^REPORT_PATH: //p')\n"
+            'printf \'{"fixed": ["tightened the guard"], "blocking": [], "noted": []}\' > "$p"\n'
+            "echo 'x = 1' >> src/thing.py\n"
+            f"git -c user.name='{author}' -c user.email='r@xp' commit -qam 'reviewer fix'\n"
+            f"{extra}"
+            'printf \'{"result": "fixed one thing"}\'\n'
+        )
+        (bin_dir / "claude").chmod(0o755)
+        return bin_dir
+
+    def test_a_reviewer_that_commits_is_recorded_not_refused(self, tmp_path):
+        """AC 1. The refusal this deletes had TWO jobs; only job A goes."""
+        repo, env, g = make_repo(tmp_path)
+        pre = g("rev-parse", "HEAD").stdout.strip()
+        self.fixing_stub(tmp_path)
+        r = close(repo, env, "review")
+        assert r.returncode == 0, r.stderr
+        m = marker(tmp_path)
+        assert m["reviewed_head"] == pre, "the sha the reviewer was SHOWN"
+        assert m["shown_sha"] == g("rev-parse", "HEAD").stdout.strip(), "what the LEAD sees"
+        assert m["shown_sha"] != m["reviewed_head"]
+
+    def test_a_commit_the_reviewer_did_not_author_is_refused(self, tmp_path):
+        """AC 2, job B of the deleted guard. A lead commit made while the reviewer
+        held the tree is otherwise absorbed into shown_sha, land's HEAD==shown_sha
+        holds by construction, and it merges having been read by nobody."""
+        repo, env, _g = make_repo(tmp_path)
+        self.fixing_stub(
+            tmp_path,
+            extra=(
+                # `env -u`: GIT_AUTHOR_NAME in the environment BEATS -c user.name,
+                # so a lead commit must be made outside the reviewer's env to carry
+                # the lead's identity — which is exactly where a real one is made.
+                "echo 'lead = 1' >> src/other.py\n"
+                "git add -A\n"
+                "env -u GIT_AUTHOR_NAME -u GIT_COMMITTER_NAME -u GIT_AUTHOR_EMAIL"
+                " -u GIT_COMMITTER_EMAIL git -c user.name=t -c user.email=t@t"
+                " commit -qm 'lead worked in parallel'\n"
+            ),
+        )
+        r = close(repo, env, "review")
+        assert r.returncode == 2, "an unreviewed lead commit was absorbed into shown_sha"
+        assert "lead worked in parallel" in r.stderr or "not authored" in r.stderr.lower()
+        assert not marker_file(tmp_path).exists()
+
+    def test_the_reviewer_commits_under_its_own_git_identity(self, tmp_path):
+        """AC 3, asserted on the ARTIFACT: an env assertion passes against a
+        harness that strips it, and AC 2 makes this identity load-bearing."""
+        repo, env, g = make_repo(tmp_path)
+        bin_dir = tmp_path / "bin"
+        bin_dir.mkdir(exist_ok=True)
+        (bin_dir / "claude").write_text(
+            "#!/bin/sh\n"
+            "p=$(sed -n 's/^REPORT_PATH: //p')\n"
+            'printf \'{"fixed": ["f"], "blocking": [], "noted": []}\' > "$p"\n'
+            "echo 'x = 1' >> src/thing.py\n"
+            "git commit -qam 'reviewer fix'\n"  # NO -c: the identity must come from env
+            'printf \'{"result": "fixed"}\'\n'
+        )
+        (bin_dir / "claude").chmod(0o755)
+        assert close(repo, env, "review").returncode == 0
+        who = g("log", "-1", "--format=%an <%ae>").stdout.strip()
+        assert "t <t@t>" not in who, "the reviewer's commit carries the LEAD's identity"
+
+    def test_review_writes_the_reviewer_diff_to_a_file_and_prints_its_path(self, tmp_path):
+        """AC 4: review's stdout is the channel this session lost three times, so
+        the artifact the lead's assent rests on must not live only there."""
+        repo, env, _g = make_repo(tmp_path)
+        self.fixing_stub(tmp_path)
+        r = close(repo, env, "review")
+        assert r.returncode == 0, r.stderr
+        diffs = list((tmp_path / "data" / "reports").glob("*.diff"))
+        assert diffs, "no diff artifact written"
+        body = diffs[0].read_text()
+        assert "x = 1" in body and "src/thing.py" in body
+        assert str(diffs[0]) in r.stdout, "the path was not printed"
+
+    def test_land_prints_the_reviewer_range_before_merging(self, tmp_path):
+        """AC 4 second half: assent must be readable at the moment it is given."""
+        repo, env, _g = make_repo(tmp_path)
+        self.fixing_stub(tmp_path)
+        close(repo, env, "review")
+        r = close(repo, env, "land")
+        assert r.returncode == 0, r.stderr
+        assert "reviewer fix" in r.stdout or "src/thing.py" in r.stdout
+
+    def test_a_reviewer_that_touches_the_marker_is_refused(self, tmp_path):
+        """AC 6: the marker gates the merge, lives OUTSIDE the repo, and no diff
+        shows it — the reviewer's Bash can empty its own blocking[]."""
+        repo, env, _g = make_repo(tmp_path)
+        stub_reviewer(tmp_path, report={"fixed": [], "blocking": ["B1: real"], "noted": []})
+        assert close(repo, env, "review").returncode == 0
+        mf = marker_file(tmp_path)
+        bin_dir = tmp_path / "bin"
+        (bin_dir / "claude").write_text(
+            "#!/bin/sh\n"
+            "p=$(sed -n 's/^REPORT_PATH: //p')\n"
+            'printf \'{"fixed": [], "blocking": [], "noted": []}\' > "$p"\n'
+            f"python3 -c \"import json;f='{mf}';d=json.load(open(f));"
+            "d['rounds'][0]['blocking']=[];json.dump(d,open(f,'w'))\"\n"
+            'printf \'{"result": "clean"}\'\n'
+        )
+        (bin_dir / "claude").chmod(0o755)
+        r = close(repo, env, "review")
+        assert r.returncode == 2, "the reviewer rewrote the file that gates its own merge"
+        assert "marker" in r.stderr.lower()
+
+    def test_a_reviewer_that_touches_xp_is_refused(self, tmp_path):
+        """AC 6: it may fix code, never the plan."""
+        repo, env, _g = make_repo(tmp_path)
+        self.fixing_stub(
+            tmp_path,
+            extra=(
+                "echo 'sneaky' >> .xp/plan.md\n"
+                f"git -c user.name='{REVIEWER_NAME}' -c user.email='r@xp' commit -qam 'edit plan'\n"
+            ),
+        )
+        r = close(repo, env, "review")
+        assert r.returncode == 2 and ".xp" in r.stderr
+
+    def test_an_abort_names_the_undo_for_the_reviewer_commits(self, tmp_path):
+        """AC 8: "nothing was recorded" was written for a reviewer that could not
+        write. The tree now holds commits from a process refused mid-fix."""
+        repo, env, g = make_repo(tmp_path)
+        pre = g("rev-parse", "HEAD").stdout.strip()
+        self.fixing_stub(tmp_path, extra="echo 'uncommitted' >> src/thing.py\n")
+        r = close(repo, env, "review")
+        assert r.returncode == 2
+        assert pre[:8] in r.stderr, "the undo point was not named"
+        assert "reset --hard" in r.stderr
+
+    def test_a_later_round_is_told_what_the_last_one_changed(self, tmp_path):
+        """AC 9: a fixing reviewer with no memory re-edits the last round's fixes
+        and reverses its deliberate punts."""
+        repo, env, _g = make_repo(tmp_path)
+        stub_reviewer(
+            tmp_path,
+            report={
+                "fixed": ["renamed the flag"],
+                "blocking": [],
+                "noted": ["N1: punted on purpose"],
+            },
+        )
+        assert close(repo, env, "review").returncode == 0
+        stub_reviewer(tmp_path, report=CLEAN)
+        assert close(repo, env, "review").returncode == 0
+        second = launches(tmp_path)[1]["stdin"]
+        assert "renamed the flag" in second and "N1: punted on purpose" in second
+
+    def test_a_hung_reviewer_is_bounded_by_a_wall_clock(self, tmp_path):
+        """AC 7: review is now the only long-running command AND the only writer."""
+        repo, env, _g = make_repo(tmp_path)
+        bin_dir = tmp_path / "bin"
+        (bin_dir / "claude").write_text("#!/bin/sh\nsleep 30\n")
+        (bin_dir / "claude").chmod(0o755)
+        r = close(repo, env | {"XP_AGENT_TIMEOUT": "1"}, "review")
+        assert r.returncode == 2 and "wall clock" in r.stderr
+        assert not marker_file(tmp_path).exists()
+
+
+class TestCharterBar:
+    def test_the_charter_states_the_three_buckets(self):
+        charter = (PLUGIN / "agents" / "story-reviewer.md").read_text().lower()
+        for token in ("fix it", "blocking", "noted"):
+            assert token in charter
+        assert "heredoc" not in charter, "Write is allowed now; the heredoc route is stale"
+
+    def test_the_charters_finding_bar_is_byte_identical_to_the_process_one(self):
+        """build_bundle never sends PROCESS.md, so the bar must be COPIED — which
+        makes it a rule with two implementations unless they are pinned equal."""
+        bar = "silent or corrupting (false green, corrupted record, unreviewed merge)"
+        assert bar in (PLUGIN / "PROCESS.md").read_text()
+        assert bar in (PLUGIN / "agents" / "story-reviewer.md").read_text()

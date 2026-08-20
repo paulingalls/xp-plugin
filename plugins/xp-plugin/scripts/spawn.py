@@ -198,7 +198,26 @@ def run_agent(
     and capture=True (the verdict has to be read, not streamed past).
     """
     env = os.environ | {"XP_ROLE": role}
-    return subprocess.run(argv, cwd=cwd, input=prompt, text=True, env=env, capture_output=capture)
+    # A wall clock, because after story-012a's split `review` is both the only
+    # long-running command AND the only one that writes: a hung reviewer would
+    # otherwise own the lead's tree, with edit rights, forever. Read from the
+    # environment because every test drives these as subprocesses and cannot patch.
+    timeout = float(os.environ.get("XP_AGENT_TIMEOUT", 3600))
+    if role == "reviewer":
+        # Its fixes must be distinguishable from the lead's IN GIT, in every clone,
+        # forever — close.py gates on this, so it is load-bearing, not a label.
+        # EMAIL too: with name alone, every email-keyed tool still reports the lead.
+        from review import REVIEWER_EMAIL, REVIEWER_NAME
+
+        env |= {
+            "GIT_AUTHOR_NAME": REVIEWER_NAME,
+            "GIT_COMMITTER_NAME": REVIEWER_NAME,
+            "GIT_AUTHOR_EMAIL": REVIEWER_EMAIL,
+            "GIT_COMMITTER_EMAIL": REVIEWER_EMAIL,
+        }
+    return subprocess.run(
+        argv, cwd=cwd, input=prompt, text=True, env=env, capture_output=capture, timeout=timeout
+    )
 
 
 def worktree_path(story_id: str) -> Path:
