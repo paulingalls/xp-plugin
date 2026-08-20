@@ -305,22 +305,36 @@ Close review: deep
 Executor: (default)
 #### story-009 — sprint-close pipeline   [ready]
 Context: Automates Sprint 1's hand-run close. Lives in its OWN module,
-scripts/sprint_close.py, behind a ~2-line `close.py sprint` dispatch (plan
-review: dissolves the close.py collision with 008/011 and the 500-line file
-cap in one move — the §9 close sub-budget spans the component). May run
-parallel to the 007→008→011 chain. `sprint start`: full tier + archive.md
+scripts/sprint_close.py, behind a ~2-line `close.py sprint` dispatch — close.py
+is 474 of its 500 file cap, and the §9 close component is 821 of the 1,100 it
+was raised to at sprint-002, so this story has ~280 lines of component headroom
+and the prose bar (≤20%) applies. `sprint start`: full tier + archive.md
 falsifier batch (a red re-files as bug and aborts) + work.md note consumption
 (each note: promote to constraints/system via the retro diff, or archive) +
-emits the retro skeleton and triage list FOR THE HUMAN. `sprint land`: after
+emits the retro skeleton and triage list FOR THE HUMAN.
+RECORDS HAVE NO RESOLUTION VERB, and this story is where that lands or the
+falsifier batch is born broken. Measured now: the full_sha bug (work.md
+17:23:06Z) was FIXED by story-012a, but work.md is append-only and nothing can
+say so, and its falsifier greps for an identifier the fix renamed — so the
+batch would report a fixed bug as unfixed on its first run, and every run
+after, forever. Two defects meeting: a record lifecycle with no way to close a
+record, and a falsifier coupled to an identifier rather than to its claim
+(three instances this sprint). The batch cannot be written until a record can
+be resolved.
+BOOTSTRAP, stated so the close reviewer does not flag it as circular: this
+story closes the sprint it was built in, the same shape as story-005 closing
+itself. `sprint land`: after
 human triage/retro, opens the release PR with version bump + tag; the
 sprint_branch key is retired only ON MERGE, never at PR-open (a stalled PR
 with a dead key is the v0.2.0 defect mirrored — plan review). Not-releasable →
 branch carries, key stays. Boundary: the broad review and LLM security review
 stay LLM-present steps named in the sprint-close skill checklist — a hook/
 script cannot absorb them (constraint 7).
-Files: plugins/xp-plugin/scripts/sprint_close.py, plugins/xp-plugin/scripts/close.py (dispatch only), tests/test_sprint_close.py
+Files: plugins/xp-plugin/scripts/sprint_close.py, plugins/xp-plugin/scripts/close.py (dispatch only), plugins/xp-plugin/scripts/work.py (the resolution verb), tests/test_sprint_close.py, tests/test_work.py
 AC:
-- Given all sprint stories done, When sprint start runs, Then full tier + archived falsifiers execute (a red aborts, re-filed as bug) and every work.md note is emitted for promote-or-archive triage alongside the retro skeleton
+- Given a filed bug whose fix has landed, When it is resolved through the append CLI, Then the falsifier batch SKIPS it and the resolution is itself an appended record — never an edit, because work.md is append-only and a mutable record is the project-global marker constraint 10 forbids
+- Given a resolution that names no prior record, or names one already resolved, Then the CLI refuses — a resolution verb that can be applied to nothing is a way to silence a live bug
+- Given all sprint stories done, When sprint start runs, Then full tier + unresolved archived falsifiers execute (a red aborts, re-filed as bug) and every work.md note is emitted for promote-or-archive triage alongside the retro skeleton
 - Given human inputs, When sprint land runs, Then the release PR opens with the bump+tag and the digest is written — and the sprint_branch key survives until the PR is MERGED
 - Given a merged release PR, When the post-merge step runs, Then the key is retired
 - Given a not-releasable call, Then no PR opens and the key survives
