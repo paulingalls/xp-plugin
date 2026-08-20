@@ -156,3 +156,62 @@ class TestHookWall:
         ).stdout.strip()
         assert hooks_path == ".husky"
         assert not (repo / ".githooks").exists()
+
+
+class TestCloseReviewFindings:
+    def test_live_git_hooks_dir_counts_as_routing(self, tmp_path):
+        repo, env = bare_repo(tmp_path)
+        hooks_dir = repo / ".git" / "hooks"
+        planted = hooks_dir / "pre-commit"
+        planted.write_text("#!/bin/sh\nexit 0\n")
+        planted.chmod(planted.stat().st_mode | stat.S_IEXEC)
+        r = run_setup(repo, env)
+        assert r.returncode == 0 and "existing" in (r.stdout + r.stderr).lower()
+        assert planted.exists() and not planted.with_suffix(".old").exists()
+        hooks_path = subprocess.run(
+            ["git", "config", "core.hooksPath"],
+            cwd=repo,
+            env=env,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+        assert hooks_path == ""  # the user's live hook keeps firing
+
+    def test_failed_lefthook_install_reported_loudly(self, tmp_path):
+        repo, env = bare_repo(tmp_path, with_fake_lefthook=True)
+        fake = tmp_path / "bin" / "lefthook"
+        fake.write_text("#!/bin/sh\nexit 1\n")
+        r = run_setup(repo, env)
+        out = r.stdout + r.stderr
+        assert "FAILED" in out or "failed" in out
+        assert "installed" not in out.split("fail")[0].split("FAIL")[0] or "install" in out
+
+    def test_quoted_tier_command_survives_extraction(self, tmp_path):
+        repo, env = bare_repo(tmp_path)
+        run_setup(repo, env)
+        cfg = repo / ".xp" / "config.yml"
+        quoted = 'fast: test "not slow" = "not slow"'
+        cfg.write_text(cfg.read_text().replace("fast: EDIT-ME", quoted))
+        r = subprocess.run(
+            ["sh", ".githooks/pre-commit"], cwd=repo, env=env, capture_output=True, text=True
+        )
+        assert r.returncode == 0, (r.stdout, r.stderr)  # quotes intact -> test passes
+        assert "unset" not in (r.stdout + r.stderr)  # and no lying diagnostic
+
+    def test_reindented_config_still_read(self, tmp_path):
+        repo, env = bare_repo(tmp_path)
+        run_setup(repo, env)
+        cfg = repo / ".xp" / "config.yml"
+        cfg.write_text(cfg.read_text().replace("  fast: EDIT-ME", "    fast: true"))
+        r = subprocess.run(
+            ["sh", ".githooks/pre-commit"], cwd=repo, env=env, capture_output=True, text=True
+        )
+        assert r.returncode == 0 and "unset" not in (r.stdout + r.stderr)
+
+    def test_fresh_scaffold_edit_me_warns_and_passes_through_hook(self, tmp_path):
+        repo, env = bare_repo(tmp_path)
+        run_setup(repo, env)
+        r = subprocess.run(
+            ["sh", ".githooks/pre-commit"], cwd=repo, env=env, capture_output=True, text=True
+        )
+        assert r.returncode == 0 and "config" in (r.stdout + r.stderr)

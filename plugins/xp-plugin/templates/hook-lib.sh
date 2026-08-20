@@ -1,7 +1,9 @@
 # shared by the scaffolded hooks — tiers come from .xp/config.yml AT RUN TIME
 # so config stays declared-once (editing tiers never means editing hooks)
-tier_cmd() {  # $1 = fast|story|full
-  sed -n "/^tests:/,/^[^ ]/p" .xp/config.yml | sed -n "s/^  $1:\([^#]*\).*/\1/p" | head -1 | xargs echo
+tier_cmd() {  # $1 = fast|story|full — trim with sed, never xargs (xargs eats quotes)
+  sed -n "/^tests:/,/^[^ ]/p" .xp/config.yml \
+    | sed -n "s/^[[:space:]][[:space:]]*$1:\([^#]*\).*/\1/p" | head -1 \
+    | sed "s/^[[:space:]]*//;s/[[:space:]]*$//"
 }
 secrets_scan() {
   if command -v gitleaks >/dev/null 2>&1; then
@@ -13,7 +15,7 @@ secrets_scan() {
 run_tier() {
   cmd="$(tier_cmd "$1")"
   if [ -z "$cmd" ] || [ "$cmd" = "EDIT-ME" ]; then
-    echo "xp wall: tests.$1 is unset in .xp/config.yml — edit it (running nothing)" >&2
+    echo "xp wall: tests.$1 is unset or unreadable in .xp/config.yml — edit it (running nothing)" >&2
     return 0
   fi
   sh -c "$cmd"

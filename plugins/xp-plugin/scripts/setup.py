@@ -36,6 +36,12 @@ def existing_hook_routing() -> str:
     ).stdout.strip()
     if hooks_path:
         return f"core.hooksPath={hooks_path}"
+    git_hooks = subprocess.run(
+        ["git", "rev-parse", "--git-path", "hooks"], capture_output=True, text=True
+    ).stdout.strip()
+    live = [p.name for p in Path(git_hooks).glob("*") if not p.name.endswith(".sample")]
+    if live:
+        return f"live hooks in .git/hooks ({', '.join(sorted(live)[:3])})"
     if Path(".githooks").exists():
         return ".githooks/"
     for name in LEFTHOOK_CONFIGS:
@@ -55,7 +61,14 @@ def scaffold_wall() -> str:
     if shutil.which("lefthook"):
         write_hook_lib()
         shutil.copy(TEMPLATES / "lefthook.yml", "lefthook.yml")
-        subprocess.run(["lefthook", "install"], check=False)
+        installed = subprocess.run(["lefthook", "install"], check=False)
+        if installed.returncode != 0:
+            print(
+                "wall: lefthook.yml written but `lefthook install` FAILED — run it"
+                " yourself and read its error",
+                file=sys.stderr,
+            )
+            return "wall: lefthook.yml written; install FAILED (see stderr)"
         return "wall: lefthook.yml written and installed"
     write_hook_lib()
     for hook in ("pre-commit", "pre-push"):

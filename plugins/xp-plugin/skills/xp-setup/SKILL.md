@@ -8,8 +8,9 @@ description: >-
 # xp-setup
 
 1. Run `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/setup.py` from anywhere in the
-   repo. It refuses if `.xp/` exists or hook routing is already configured —
-   read its output rather than assuming.
+   repo. It refuses if `.xp/` exists; pre-existing hook
+   routing (incl. live `.git/hooks`) makes it SKIP the wall half — read its
+   output rather than assuming.
 2. With the human, fill in what the scaffold cannot know:
    - `tests.fast/story/full` in `.xp/config.yml` — the wall reads these at run
      time, so this is the only place tiers live
