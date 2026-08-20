@@ -10,13 +10,6 @@ repo runs under the same artifacts the plugin will ship. docs/AUDIT.md (evidence
 and docs/DESIGN.md (architecture, decided) are the authorities; don't re-litigate
 settled decisions, propose diffs to them instead.
 
-## Session start (shim — replaced by the SessionStart hook in story-003)
-
-Read, in order: `plugins/xp-plugin/VALUES.md` · `plugins/xp-plugin/PROCESS.md` · `.xp/constraints.md` · the current
-sprint in `.xp/plan.md`. Then reconstruct state: `git status`, `git log --oneline -5`,
-story states in plan.md. The session digest, once it exists at
-`~/.xp/data/<project-id>/session.md`, is advisory — artifacts win on conflict.
-
 ## The process, enforced
 
 - Multi-file change → draft plan → spawn `plan-reviewer` agent → address findings →
