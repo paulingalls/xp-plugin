@@ -19,7 +19,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 # close must import back FUNCTION-LOCALLY: a module-level edge cycles
 # (close -> spawn -> close) and fails before fail/git exist (story-008).
 from close import fail, git, integration_target, story_card
-from work import chdir_repo_root, data_root, slugify, user_ns
+from work import card_title, chdir_repo_root, config_block_value, data_root, slugify, user_ns
 
 PLUGIN_ROOT = Path(__file__).parent.parent
 
@@ -136,24 +136,7 @@ def _card_executor(card: str) -> str:
 
 
 def _config_role(role: str) -> str:
-    cfg = Path(".xp/config.yml")
-    if not cfg.exists():
-        return ""
-    in_roles = False
-    for raw in cfg.read_text().splitlines():
-        ln = raw.split("#", 1)[0]  # a trailing comment must not hide the block
-        if ln.rstrip() == "roles:":
-            in_roles = True
-        elif in_roles and ln.strip().startswith(f"{role}:"):
-            return ln.split(f"{role}:", 1)[1].strip()
-        elif in_roles and ln.strip() and not ln.startswith(" "):
-            in_roles = False
-    return ""
-
-
-def card_title(card: str) -> str:
-    header = card.splitlines()[0]
-    return header.split("— ", 1)[1].split(" [")[0].strip() if "— " in header else ""
+    return config_block_value("roles", role)
 
 
 def build_prompt(sections: list[tuple[str, str]]) -> str:
@@ -210,9 +193,9 @@ def run_agent(
     """Prompt on stdin: it keeps ~2k tokens out of argv and out of `ps`.
 
     `role` and `capture` default to the teammate launch, so story-007's call
-    sites are unchanged; story-008's reviewer needs role="reviewer" (it must not
-    receive the teammate profile, and close.py refuses any non-lead role) and
-    capture=True (the verdict has to be read, not streamed past).
+    sites are unchanged; story-008's reviewer needs role="reviewer" (close.py
+    refuses any non-lead role, so the reviewer it spawns cannot close either)
+    and capture=True (the verdict has to be read, not streamed past).
     """
     env = os.environ | {"XP_ROLE": role}
     return subprocess.run(argv, cwd=cwd, input=prompt, text=True, env=env, capture_output=capture)

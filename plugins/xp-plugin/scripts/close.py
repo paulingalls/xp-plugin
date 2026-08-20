@@ -21,7 +21,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
-from work import chdir_repo_root, data_root
+from work import card_title, chdir_repo_root, config_block_value, data_root
 
 
 def fail(msg: str) -> "int":
@@ -56,19 +56,14 @@ def verify_commands(card: str) -> str:
 
 
 def story_tier_command() -> str:
-    """The `tests: story:` command from .xp/config.yml (stdlib line-parse, no yaml dep)."""
-    cfg = Path(".xp/config.yml")
-    if not cfg.exists():
-        return ""
-    in_tests = False
-    for ln in cfg.read_text().splitlines():
-        if ln.rstrip() == "tests:":
-            in_tests = True
-        elif in_tests and ln.strip().startswith("story:"):
-            return ln.split("story:", 1)[1].split("#")[0].strip()
-        elif in_tests and ln and not ln.startswith(" "):
-            in_tests = False
-    return ""
+    """The `tests: story:` command from .xp/config.yml.
+
+    Shares work.py's parser with the roles lookup: this copy used to compare the
+    block header before stripping comments, and unlike the roles copy it failed
+    OPEN — `tests:   # fast / story / full` silently skipped the story tier and
+    a red tier closed green.
+    """
+    return config_block_value("tests", "story")
 
 
 def config_flat(key: str) -> str:
@@ -228,6 +223,11 @@ def cmd_review(story_id: str, dry_run: bool = False, delta: bool = False) -> int
     if not verdict:
         print("WARNING: the reviewer emitted no VERDICT line — land will refuse", file=sys.stderr)
     state["reviewed_sha"] = head
+    if verdict:
+        # the sha the verdict actually SAW. reviewed_sha alone advanced even on a
+        # verdict-less delta, so round 1's verdict cleared land for work no
+        # reviewer ever read.
+        state["verdict_sha"] = head
     if delta:
         # ONLY the sha and the verdict. Rewriting trunk_sha here would silently
         # clear the guard against a trunk that moved during the review window —
@@ -267,7 +267,7 @@ def _log_close(story_id: str, card: str, verdicts: list[str], merge_sha: str) ->
 
     record = {
         "story": story_id,
-        "title": card.splitlines()[0].split("— ", 1)[-1].split(" [")[0].strip(),
+        "title": card_title(card),
         "verdicts": verdicts,
         "merge_sha": merge_sha,
         "closed_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
@@ -279,9 +279,11 @@ def _log_close(story_id: str, card: str, verdicts: list[str], merge_sha: str) ->
 def _finish_branch(branch: str, trunk: str) -> list[str]:
     """Push the integration branch, then delete the story branch LOCAL FIRST.
 
-    Order is load-bearing and was measured at story-007 close: `git branch -d`
-    checks the branch against its UPSTREAM ref, so deleting origin first forces a
-    -D, which discards the only check that the work is actually merged.
+    Local first so `-d`'s merged check runs while the upstream ref still exists.
+    At THIS call site the merge is already local, so -d passes on the
+    merged-into-HEAD test and the order is belt-and-braces, not load-bearing —
+    the measurement behind it (story-007 close) was taken from the story branch,
+    before the merge, where it IS load-bearing.
 
     Returns the commands that failed, for the caller to surface.
     """
@@ -315,11 +317,6 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
             f"refused: release: sprint stories close with --merge-mode local into {trunk};"
             " the PR to main happens at sprint close"
         )
-    if not state.get("verdicts"):
-        return fail(
-            "refused: no VERDICT line was recorded — no verdict, no merge."
-            " Re-run review; if the reviewer keeps emitting none, that is the finding"
-        )
     head = git("rev-parse", "HEAD").stdout.strip()
     if head != state["reviewed_sha"]:
         print(f"drift: HEAD moved since review — reviewing {state['reviewed_sha'][:8]}..{head[:8]}")
@@ -329,6 +326,11 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
         return fail(
             "refused: the delta above was reviewed in-pipeline and recorded."
             " Read the findings, then run land again"
+        )
+    if state.get("verdict_sha") != head:
+        return fail(
+            "refused: no VERDICT line covers this commit — no verdict, no merge."
+            " Re-run review; a reviewer that keeps emitting none IS the finding"
         )
     moved = (
         origin_trunk_sha(trunk) != state.get("origin_trunk_sha")
@@ -396,22 +398,30 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
                 "post-resolution diff, then run review again to re-baseline"
             )
 
+    failed = []
+    if merge_mode == "pr":
+        # the PR merged on the REMOTE, so trunk has to come back here before the
+        # flip: committing it on the story branch left trunk never learning
+        # [done], and reading HEAD here recorded a sha that gh is about to delete
+        git("fetch", "-q", "origin", check=False)
+        merge_sha = git("rev-parse", f"refs/remotes/origin/{trunk}").stdout.strip()
+        git("checkout", "-q", trunk, check=False)
+        if git("merge", "--ff-only", f"origin/{trunk}", check=False).returncode != 0:
+            failed.append(f"git merge --ff-only origin/{trunk}")
     merged_plan = Path(".xp/plan.md").read_text()  # POST-merge: keeps trunk-side changes
     Path(".xp/plan.md").write_text(_flip_status(merged_plan, story_id))
     git("add", ".xp/plan.md")
-    failed = []
     if merge_mode == "local":
         git("commit", "--amend", "--no-edit", "-q")  # plan flip rides the merge commit
         # merge_sha AFTER the amend: the pre-amend commit is on no ref and stops
         # resolving at gc, so a record holding it points at nothing.
         merge_sha = git("rev-parse", "HEAD").stdout.strip()
-        failed = _finish_branch(branch, trunk)
+        failed += _finish_branch(branch, trunk)
     else:
         committed = git("commit", "-qm", f"{story_id} done", check=False)
-        pushed = git("push", check=False)  # remote trunk must learn [done]
-        merge_sha = git("rev-parse", "HEAD").stdout.strip()
+        pushed = git("push", "origin", trunk, check=False)
         if committed.returncode != 0 or pushed.returncode != 0:
-            failed.append("git commit + push .xp/plan.md")
+            failed.append(f"git commit + git push origin {trunk} (the .xp/plan.md flip)")
     _delete_story_markers(story_id)
     _log_close(story_id, card, state["verdicts"], merge_sha)
     marker.unlink()

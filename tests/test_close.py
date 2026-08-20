@@ -863,3 +863,102 @@ class TestLandBookkeeping:
         stub_reviewer(tmp_path, result="VERDICT: " + "x" * 4000)
         close(repo, env, "review")
         assert len(marker(tmp_path)["verdicts"][0]) <= 200
+
+
+class TestStoryReviewFindings:
+    """story-008 close review, run by this story's own pipeline."""
+
+    def test_a_delta_without_a_verdict_cannot_ride_round_ones(self, tmp_path):
+        """G1: reviewed_sha advanced on a verdict-less delta review, so round 1's
+        verdict satisfied land's check and unreviewed work merged under it."""
+        repo, env, g = make_repo(tmp_path)
+        close(repo, env, "review")  # records VERDICT: clean
+        (repo / "src" / "thing.py").write_text("A = 666\n")
+        g("add", "-A")
+        g("commit", "-qm", "work added after the review")
+        stub_reviewer(tmp_path, result="I ran out of turns before writing a verdict.")
+        assert close(repo, env, "land").returncode == 2  # drift: delta reviewed
+        r = close(repo, env, "land")
+        assert r.returncode == 2, "merged under a verdict that never saw the delta"
+        assert "A = 666" not in g("show", "main:src/thing.py").stdout
+
+    def test_a_comment_on_the_tests_header_cannot_silence_the_story_tier(self, tmp_path):
+        """G2: the twin of the roles: bug, and this copy fails OPEN — a red tier
+        is skipped and the story closes green."""
+        repo, env, g = make_repo(tmp_path)
+        (repo / ".xp" / "config.yml").write_text(
+            "roles:\n  reviewer: claude/opus\ntests:   # fast / story / full\n  story: false\n"
+        )
+        g("add", "-A")
+        g("commit", "-qm", "commented tests header")
+        close(repo, env, "review")
+        r = close(repo, env, "land")
+        assert r.returncode != 0 and "tier" in (r.stderr + r.stdout).lower()
+        assert "[done]" not in (repo / ".xp" / "plan.md").read_text()
+
+    def test_a_reviewer_that_writes_without_committing_is_also_refused(self, tmp_path):
+        """G5: the `or dirtied` half was vacuous — Bash is deliberately not
+        denied, so an uncommitted scratch write is the likelier defect."""
+        repo, env, _g = make_repo(tmp_path)
+        (tmp_path / "bin" / "claude").write_text(
+            "#!/bin/sh\necho 'scratch' >> src/thing.py\nprintf '{\"result\": \"VERDICT: clean\"}'\n"
+        )
+        (tmp_path / "bin" / "claude").chmod(0o755)
+        r = close(repo, env, "review")
+        assert r.returncode == 2 and "reviewer" in r.stderr.lower()
+
+    def test_a_dashless_card_header_does_not_poison_the_close_log(self, tmp_path):
+        """G6: _log_close reimplemented card_title without its guard."""
+        repo, env, g = make_repo(tmp_path)
+        plan = repo / ".xp" / "plan.md"
+        plan.write_text(plan.read_text().replace("#### story-042 — demo story", "#### story-042"))
+        g("add", "-A")
+        g("commit", "-qm", "dashless header")
+        close(repo, env, "review")
+        assert close(repo, env, "land").returncode == 0
+        rec = json.loads((tmp_path / "data" / "closes.jsonl").read_text().splitlines()[-1])
+        assert "####" not in rec["title"]
+
+    def test_a_broken_plugin_install_refuses_instead_of_tracebacking(self, tmp_path):
+        """G7: review.charter() read the agent file unguarded, in a module where
+        nine tests assert no traceback reaches the lead."""
+        r = subprocess.run(
+            [
+                sys.executable,
+                "-c",
+                f"import sys, pathlib; sys.path.insert(0, {str(CLOSE.parent)!r}); import review;"
+                " review.PLUGIN_ROOT = pathlib.Path('/nonexistent'); review.charter()",
+            ],
+            capture_output=True,
+            text=True,
+        )
+        assert r.returncode != 0 and "Traceback" not in r.stderr
+
+    def test_pr_mode_records_the_real_merge_and_lands_done_on_trunk(self, tmp_path):
+        """G3: pr mode is the argparse DEFAULT and the only mode a release: story
+        consumer gets, and no test executed it to a merge. It recorded the story
+        branch's HEAD as the merge sha — on a branch gh is about to delete — and
+        committed the [done] flip onto the story branch, so trunk never learned."""
+        repo, env, g = make_repo(tmp_path)
+        origin = tmp_path / "origin.git"
+        subprocess.run(["git", "init", "-q", "--bare", str(origin)], check=True, env=env)
+        g("remote", "add", "origin", str(origin))
+        g("push", "-q", "-u", "origin", "main")
+        gh = tmp_path / "bin" / "gh"
+        gh.write_text(
+            '#!/bin/sh\ncase "$*" in *"pr merge"*) git push -q origin HEAD:main ;; esac\n'
+        )
+        gh.chmod(0o755)
+        close(repo, env, "review")
+        r = subprocess.run(
+            [sys.executable, str(CLOSE), "story", "story-042", "land", "--merge-mode", "pr"],
+            cwd=repo,
+            env=env,
+            capture_output=True,
+            text=True,
+        )
+        assert r.returncode == 0, r.stderr + r.stdout
+        rec = json.loads((tmp_path / "data" / "closes.jsonl").read_text().splitlines()[-1])
+        ancestor = g("merge-base", "--is-ancestor", rec["merge_sha"], "origin/main")
+        assert ancestor.returncode == 0, "recorded sha is not on trunk"
+        assert "[done]" in g("show", "origin/main:.xp/plan.md").stdout, "trunk never learned"

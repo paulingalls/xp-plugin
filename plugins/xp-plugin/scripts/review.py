@@ -36,7 +36,9 @@ def charter() -> str:
     harness never loads the agent file — inlining it is the mechanism and the
     path is the fallback (spawn.py's rule).
     """
-    text = (PLUGIN_ROOT / "agents" / "story-reviewer.md").read_text()
+    from spawn import _read_shipped
+
+    text = _read_shipped(PLUGIN_ROOT / "agents" / "story-reviewer.md")
     if text.startswith("---"):
         parts = text.split("---", 2)
         if len(parts) == 3:

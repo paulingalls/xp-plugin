@@ -48,6 +48,35 @@ def data_root() -> Path:
     return Path.home() / ".xp" / "data" / project_id
 
 
+def config_block_value(block: str, key: str, path: str = ".xp/config.yml") -> str:
+    """`key:` nested under `block:` in the project config.
+
+    Comments are stripped BEFORE the header compare: a trailing comment on
+    `roles:` hid every role until story-008, and the same defect in close.py's
+    copy fails OPEN — it silently skipped the story test tier. One parser so the
+    pair cannot drift apart again.
+    """
+    cfg = Path(path)
+    if not cfg.exists():
+        return ""
+    inside = False
+    for raw in cfg.read_text(errors="replace").splitlines():
+        line = raw.split("#", 1)[0]
+        if line.rstrip() == f"{block}:":
+            inside = True
+        elif inside and line.strip().startswith(f"{key}:"):
+            return line.split(f"{key}:", 1)[1].strip()
+        elif inside and line.strip() and not line.startswith(" "):
+            inside = False
+    return ""
+
+
+def card_title(card: str) -> str:
+    """The story title from a card header, or "" when it carries no em-dash."""
+    header = card.splitlines()[0]
+    return header.split("— ", 1)[1].split(" [")[0].strip() if "— " in header else ""
+
+
 def slugify(s: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", s.lower()).strip("-")[:20].strip("-")
 
