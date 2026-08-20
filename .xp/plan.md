@@ -18,7 +18,7 @@ concurrent writers never lose updates (DESIGN §4). Shapes are structural: bug =
 claim + falsifier + files (falsifier must red to file); debt = same, falsifier
 green; note = free text. Long free text truncates with a notice, never rejects.
 State root: ~/.xp/data/<project-id>/ (project-id from git-common-dir hash).
-Files: plugins/xp/scripts/work.py, tests/test_work.py
+Files: plugins/xp-plugin/scripts/work.py, tests/test_work.py
 AC:
 - Given two concurrent appends, When both complete, Then work.md contains both entries intact (flock, no lost update)
 - Given a bug entry whose falsifier command exits 0, When filed, Then the CLI refuses with a message naming the green falsifier
@@ -32,7 +32,7 @@ Context: Automates .claude/skills/story-close (the checklist IS the spec). Pipel
 preflight → spawn story-reviewer (stop: fix-or-ask) → run story Verify + story tier →
 verdict into PR body/merge trailer → merge; re-review on conflicted/drifted merge
 (DESIGN §6). Sub-budget ≤800 lines.
-Files: plugins/xp/scripts/close.py, tests/test_close.py
+Files: plugins/xp-plugin/scripts/close.py, tests/test_close.py
 AC:
 - Given a clean story branch, When close runs, Then it stops exactly twice for judgment (reviewer findings; nothing else) and the merge commit/PR body carries the reviewer's VERDICT line verbatim
 - Given a merge conflict, When resolved, Then close refuses to complete until a re-review covers the post-resolution diff
@@ -45,7 +45,7 @@ Context: Deterministic injection: VALUES + PROCESS + constraints + session.md
 (stamped; STALE prefix when HEAD moved) + recovery block (branch, dirty files, story
 states from plan.md, last test status, open work.md items) + liveness touchfile +
 enforcement banner (DESIGN §5b, §7). Replaces the CLAUDE.md shim lines.
-Files: plugins/xp/hooks/hooks.claude.json, plugins/xp/scripts/session_start.py, tests/test_session_start.py
+Files: plugins/xp-plugin/hooks/hooks.claude.json, plugins/xp-plugin/scripts/session_start.py, tests/test_session_start.py
 AC:
 - Given a session.md older than HEAD, When session starts, Then the injection prefixes STALE with the commit distance
 - Given no session.md, When session starts, Then the recovery block alone is injected (no error)
@@ -59,7 +59,7 @@ config-known string match, not heuristic detection; honors stop_hook_active, no
 block-count assumptions. Same binding: stale-digest nudge (timestamp compare only).
 Requires a session-scoped test-status scratch marker written by a minimal
 PostToolUse bash leg (the one sanctioned telemetry exception, DESIGN §4).
-Files: plugins/xp/scripts/stop_gate.py, plugins/xp/scripts/bash_status.py, tests/test_stop_gate.py
+Files: plugins/xp-plugin/scripts/stop_gate.py, plugins/xp-plugin/scripts/bash_status.py, tests/test_stop_gate.py
 AC:
 - Given the story Verify last exited nonzero, When Stop fires, Then the gate blocks once with the failing command named, and passes on stop_hook_active
 - Given a non-Verify command failed but Verify is green, When Stop fires, Then no block (advisory scope is Verify only)

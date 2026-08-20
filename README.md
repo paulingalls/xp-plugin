@@ -43,9 +43,8 @@ The [audit](docs/AUDIT.md) measured what actually earned its keep; the
 |---|---|
 | `docs/AUDIT.md` | Evidence: what xp-agents' mechanisms actually delivered |
 | `docs/DESIGN.md` | The successor's architecture and build order |
-| `VALUES.md` / `PROCESS.md` | The one-page process (shipped prose, dogfooded here) |
+| `plugins/xp-plugin/` | The shipped plugin: manifest, VALUES/PROCESS, agents, skills |
 | `.xp/` | This repo's own instance of the state the plugin manages |
-| `.claude/agents/` | plan-reviewer, story-reviewer charters |
-| `plugins/xp/` | The shipped plugin (grows from Sprint 1) |
+| `.claude/` | Symlinks into the plugin for dogfooding |
 
 *by Paul Ingalls, with Claude — built under review by the process it implements.*

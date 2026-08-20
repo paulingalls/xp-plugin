@@ -1,0 +1,13 @@
+{
+  "name": "xp-plugin",
+  "owner": {
+    "name": "Paul Ingalls"
+  },
+  "plugins": [
+    {
+      "name": "xp-plugin",
+      "source": "./plugins/xp-plugin",
+      "description": "Extreme Programming for coding agents — adversarial reviews, executable acceptance, git-hook enforcement. Claude Code + Codex."
+    }
+  ]
+}

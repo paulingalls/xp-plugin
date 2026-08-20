@@ -9,10 +9,10 @@ strongest property. Markdown for all prose. lefthook for git hooks (dev of this 
 the plugin *scaffolds* equivalent hooks into consuming projects.
 
 **Layout (target)**:
-- `plugins/xp/` — the shipped plugin: skills/, agents/, hooks/ (per-harness), scripts/
+- `plugins/xp-plugin/` — the shipped plugin: .claude-plugin/plugin.json, skills/, agents/, hooks/ (per-harness), scripts/; root .claude-plugin/marketplace.json makes the repo a git marketplace
 - `.xp/` — this repo's own instance of the state the plugin manages (we dogfood)
 - `docs/` — audit, design
-- root prose (VALUES.md, PROCESS.md, TEAMMATE.md) moves into the plugin at packaging
+- shipped prose (VALUES.md, PROCESS.md) lives in plugins/xp-plugin/; .claude/ symlinks to it for dogfooding
 
 **Conventions**:
 - Test tiers: `fast` (pre-commit) / `story` (pre-push, story close) / `full`
