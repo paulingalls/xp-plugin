@@ -290,8 +290,11 @@ class TestSecondReviewRound:
         (repo / "unrelated.txt").write_text("x\n")
         g("add", "-A")
         g("commit", "-qm", "landed on origin")
+        old = g("rev-parse", "HEAD~1").stdout.strip()
         g("push", "-q", "origin", "main")
         g("reset", "-q", "--hard", "HEAD~1")
+        # stale tracking ref: only a real fetch can observe the motion
+        g("update-ref", "refs/remotes/origin/main", old)
         g("checkout", "-q", "story-042-branch")
         r = subprocess.run(
             [
@@ -312,3 +315,20 @@ class TestSecondReviewRound:
             text=True,
         )
         assert r.returncode == 2 and "moved" in r.stderr
+
+    def test_local_trunk_motion_with_remote_present_refused(self, tmp_path):
+        repo, env, g = make_repo(tmp_path)
+        origin = tmp_path / "origin.git"
+        subprocess.run(["git", "init", "-q", "--bare", str(origin)], env=env, check=True)
+        g("remote", "add", "origin", str(origin))
+        g("push", "-q", "origin", "main", "story-042-branch")
+        close(repo, env, "start")
+        # commit lands on LOCAL main only; origin/main stays put (local-mode workflow)
+        g("checkout", "-q", "main")
+        (repo / "unrelated.txt").write_text("x\n")
+        g("add", "-A")
+        g("commit", "-qm", "local main moved")
+        g("checkout", "-q", "story-042-branch")
+        r = close(repo, env, "reviewed", "--verdict", "VERDICT: clean")
+        assert r.returncode == 2 and "moved" in r.stderr
+        assert "[done]" not in (repo / ".xp" / "plan.md").read_text()

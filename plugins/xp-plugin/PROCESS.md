@@ -17,9 +17,13 @@ One page. The values (VALUES.md) cover what this page doesn't.
    body, and merges. A conflicted or drifted merge goes back to the reviewer.
    **Review stopping rule** (diminishing returns): one full review always; fixes
    applied exactly as prescribed, with red-first tests, close WITHOUT re-review —
-   the prescription was the review. Re-review is owed only for deviations, new
-   uncovered behavior, or conflict resolutions. Hard cap two rounds; still
-   contested after that → the human decides, not a third round.
+   the prescription was the review. Faithful means SCOPE-IDENTICAL: generalizing
+   or "improving" a prescription is a deviation owed re-review (story-002 round 3
+   widened a mode-scoped fix to both modes and regressed the guard it fixed).
+   When faithfulness is uncertain, one delta ping beats a wrong self-call.
+   Re-review is owed for deviations, new uncovered behavior, or conflict
+   resolutions. Hard cap two rounds; still contested after that → the human
+   decides, not a third round.
 4. **Sprint close**: full tier + archived falsifiers batch-run + broad review +
    security review + retro (one-page narrative + a proposed diff to constraints/config
    — a learning that changes nothing executable isn't recorded). Debt triage with the
