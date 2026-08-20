@@ -20,5 +20,7 @@ description: >-
 5. **Open the PR / merge**, with the reviewer's VERDICT line verbatim in the PR body
    (or merge-commit trailer). If the merge conflicts or files outside the reviewed
    diff changed, return to step 2 with the post-resolution diff.
+   Stopping rule: prescription-faithful fixes with red-first tests need no
+   re-review; two rounds maximum, then escalate to the human.
 6. **Mark the story done** in .xp/plan.md; update the ≤30-line session digest
    (intent, surprises, next step) — you are its sole writer.

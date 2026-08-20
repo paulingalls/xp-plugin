@@ -15,6 +15,11 @@ One page. The values (VALUES.md) cover what this page doesn't.
    on the cumulative diff plus anything you filed in work.md, stops for your
    fix-or-ask call, runs the story's Verify commands, records the verdict in the PR
    body, and merges. A conflicted or drifted merge goes back to the reviewer.
+   **Review stopping rule** (diminishing returns): one full review always; fixes
+   applied exactly as prescribed, with red-first tests, close WITHOUT re-review —
+   the prescription was the review. Re-review is owed only for deviations, new
+   uncovered behavior, or conflict resolutions. Hard cap two rounds; still
+   contested after that → the human decides, not a third round.
 4. **Sprint close**: full tier + archived falsifiers batch-run + broad review +
    security review + retro (one-page narrative + a proposed diff to constraints/config
    — a learning that changes nothing executable isn't recorded). Debt triage with the
