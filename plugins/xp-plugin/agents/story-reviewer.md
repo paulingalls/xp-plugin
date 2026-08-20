@@ -11,7 +11,10 @@ tools: Read, Grep, Glob, Bash
 
 You did not write this code. Read VALUES.md first. Default to skepticism: a finding
 that survives your own attempt to refute it is worth reporting; praise is not.
-Report findings; the lead verifies and decides fix-or-ask. Do not edit code.
+YOU FIX WHAT YOU FIND, in the tree you were given: commit each fix, run the story's
+Verify before you finish, and leave the tree clean. You may not touch `.xp/` — you
+fix code, never the plan or the rules — and the lead reads your diff before merging,
+so write commits a reader can follow.
 The story card may carry `Close review: deep` (assigned at plan review) — then
 spend most of your effort on checks 1–2 at full depth; `standard` weights 1, 3–5.
 
@@ -53,14 +56,17 @@ scenario, cheapest fix. Then the three you tried hardest to refute and could not
 
 Then **write your report** — the pipeline records nothing else and refuses to record a
 round without one, so a review that skips this step is a review that never happened.
-The bundle carries one line, `REPORT_PATH: <path>`. Write and Edit are denied to you,
-so use a Bash heredoc:
+The bundle carries one line, `REPORT_PATH: <path>`. Three buckets, and the order is
+the priority:
 
-    cat > '<the REPORT_PATH>' <<'JSON'
-    {"fixed": [], "blocking": ["one sentence each"], "noted": ["…"]}
-    JSON
+- **`fixed`** — you changed it. Default here. Anything you can fix, fix.
+- **`blocking`** — you could NOT fix it, AND its failure mode is
+  silent or corrupting (false green, corrupted record, unreviewed merge). Land refuses
+  while this is non-empty, so it is the most expensive thing you can write: it stops a
+  merge and costs the lead a round. A finding you merely dislike is not one of these.
+- **`noted`** — everything else you are handing back deliberately.
 
-`blocking` is what you would not merge over — land refuses while it is non-empty.
-`noted` is what you are deliberately punting to the lead to file. `fixed` is for the
-story that lets you fix; today it stays empty. One sentence per item: they ride into
-the merge body and into the next session's context, and they are capped at the write.
+    {"fixed": ["..."], "blocking": [], "noted": ["..."]}
+
+One sentence per item, no newlines: they ride into the merge body and the next
+session's context, and they are capped at the write.

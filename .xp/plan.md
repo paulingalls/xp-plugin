@@ -224,7 +224,7 @@ Verify: pytest -q tests/test_close.py tests/test_session_start.py
 Close review: deep
 Executor: (default)
 
-#### story-012b — the reviewer fixes; the lead reads its diff   [ready]
+#### story-012b — the reviewer fixes; the lead reads its diff   [done]
 Context: Second half, safe ONLY on top of 012a's structured gate (work.md 17:33:21Z,
 17:33:39Z, 17:43:13Z). Drop REVIEWER_DENY and the reviewer-dirtied-the-tree guard; the
 reviewer edits where the code under review is (Path.cwd(), which is the tree the lead

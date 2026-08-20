@@ -12,8 +12,11 @@ call on the reviewer's findings. Everything else is scripted, and a step you fin
 yourself doing by hand is a defect in the pipeline — file it.
 
 1. **Preflight**: `git status` clean, and you are on the story branch.
-2. **`close.py story <id> review`** spawns the story-reviewer itself and prints its
-   ranked findings. The bundle bases the cumulative diff on the INTEGRATION TARGET
+2. **`close.py story <id> review`** spawns the story-reviewer itself, which FIXES what
+   it finds in your tree and commits, then prints its ranked findings and the path to
+   its commits and full diff. Reading that diff is your judgment point: running land is
+   how you accept it. A commit in the range that the reviewer did not author — yours,
+   made while it ran — is refused, not absorbed. The bundle bases the cumulative diff on the INTEGRATION TARGET
    (the sprint branch under `release: sprint`, else the default branch) and carries
    the charter, the story card, the work.md entries filed during the story, and
    constraints.md + system.md. The reviewer writes `{fixed, blocking, noted}` to a
@@ -26,10 +29,11 @@ yourself doing by hand is a defect in the pipeline — file it.
 3. **Judgment point** (yours, and the only one): fix blocking findings now; file the
    noted ones as bug/debt/note per PROCESS.md; ask the human only where you and the
    reviewer disagree on whether a finding blocks. YOU choose the rounds — running
-   review again is the only thing that starts one. Stopping rule: prescription-faithful
-   fixes with red-first tests are owed no further round of FINDINGS — but a fix moves
-   HEAD, and land requires the last review to cover HEAD, so a fix batch costs one
-   confirming round. Two rounds of findings maximum, then escalate to the human.
+   review again is the only thing that starts one. Stopping rule: the REVIEWER's fixes
+   cost no confirming round — they are inside the round that found them, and your read
+   of its diff is the judgment. YOUR fixes move HEAD past what the review covered, so a
+   lead fix batch costs one confirming round. Two rounds of findings maximum, then
+   escalate to the human.
 4. **`close.py story <id> land`** is deterministic and spawns nothing. It refuses
    while the last round has blocking findings, while HEAD has moved since the review
    you were shown, or while the recorded round does not cover this tree — naming the

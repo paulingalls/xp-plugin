@@ -46,6 +46,63 @@ def render_merge_body(rounds: list[dict]) -> str:
     return "\n".join(out)
 
 
+def render_prior_rounds(rounds: list[dict]) -> str:
+    """Earlier rounds, for the next round's bundle — "" before round 2.
+
+    A fixing reviewer with no memory re-edits the last round's fixes and reverses
+    what it deliberately punted, and the next-round-that-knows is the only
+    mechanism that has ever caught a reviewer-introduced defect.
+    """
+    body = render_merge_body(rounds)
+    if not body:
+        return ""
+    return body + (
+        "\n\nDo NOT re-litigate a settled fix. DO verify each `fixed` item still"
+        " holds in the tree you were given."
+    )
+
+
+def render_land_preview(
+    verify: str, tier: str, merge_mode: str, branch: str, trunk: str, pr_steps: tuple
+) -> str:
+    """What land WOULD do. A preview that drifts from the real steps is worse than
+    none — it certifies a plan nobody runs — so both arms read the same command
+    lists cmd_land executes, passed in rather than rebuilt here.
+    """
+    out = [f"would run: {verify}"] + ([f"would run: {tier}"] if tier else [])
+    if merge_mode == "pr":
+        pr_cmds, pr_sync, pr_bookkeep = pr_steps
+        out += [" ".join(c) for c in pr_cmds + pr_sync]
+        out.append("(flip .xp/plan.md to [done])")
+        out += [" ".join(c) for c in [*pr_bookkeep, ["git", "branch", "-d", branch]]]
+    else:
+        out.append(f"git merge --no-ff {branch} on {trunk}")
+        out.append("(flip .xp/plan.md to [done], then git commit --amend --no-edit)")
+        steps = [["git", "branch", "-d", branch]]
+        if git("remote").stdout.strip():  # both pushes are runtime-guarded on a remote
+            steps = [
+                ["git", "push", "origin", trunk],
+                *steps,
+                ["git", "push", "origin", "--delete", branch],
+            ]
+        out += [" ".join(c) for c in steps]
+    return "".join(f"{ln}\n" for ln in out)
+
+
+def render_noted(rounds: list[dict]) -> str:
+    """The reviewer's deliberate punts, for the lead to file per PROCESS.md.
+
+    EVERY round's, not the last round's: an item punted in round 1 and never filed
+    is still owed.
+    """
+    noted = [n for r in rounds for n in r["noted"]]
+    if not noted:
+        return ""
+    return "noted by the reviewer, not fixed — file these per PROCESS.md:\n" + "".join(
+        f"  {n}\n" for n in noted
+    )
+
+
 def log_close(story_id: str, card: str, rounds: list[dict], merge_sha: str) -> None:
     """APPEND one line per close. A single overwritten file would be the
     project-global mutable marker constraints #10 calls a design error; a log is

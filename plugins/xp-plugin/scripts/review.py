@@ -6,6 +6,7 @@ only seam, and close.py runs against the 500-line hard cap (constraints.md #8).
 """
 
 import json
+import subprocess
 import sys
 from pathlib import Path
 
@@ -21,13 +22,13 @@ REPORT_KEYS = ("fixed", "blocking", "noted")
 ITEM_CAP = 400
 LIST_CAP = 20
 
-# The reviewer runs under --dangerously-skip-permissions (spawn.claude_argv) in
-# the LEAD'S LIVE TREE. story-007 accepted that unboundedness because a teammate
-# sits in a throwaway worktree; that justification does not transfer here, and
-# the charter's "do not edit code" is advisory-by-declaration (constraints #5).
-# MEASURED at story-007 close: --disallowedTools DOES bound under bypass,
-# --allowedTools does not. Bash stays, so the charter's scratch runs still work.
-REVIEWER_DENY = ["--disallowedTools", "Edit,Write,NotebookEdit"]
+# The reviewer FIXES now, so it writes. The deny-list never bounded that anyway —
+# Bash was always allowed and `git commit` was always reachable. What held
+# story-008's G1 was the moved-HEAD refusal, and story-012b replaces it with
+# AUTHORSHIP: the reviewer commits under its own identity, and any commit in the
+# range that is not its own means unreviewed work is riding along.
+REVIEWER_NAME = "xp story-reviewer"
+REVIEWER_EMAIL = "story-reviewer@xp.local"
 
 
 def charter() -> str:
@@ -90,6 +91,108 @@ def read_report(path: Path) -> tuple[dict, str]:
     return {k: _cap([str(i) for i in data[k]], path) for k in REPORT_KEYS}, ""
 
 
+def marker_digest(path: Path) -> str:
+    """Content hash of the file that GATES the merge. It lives outside the repo,
+    so no diff shows it, and the reviewer's Bash can reach it — emptying its own
+    blocking[] is the charter's own "gate that advances its own state"."""
+    from hashlib import sha256
+
+    return sha256(path.read_bytes()).hexdigest() if path.exists() else ""
+
+
+def abort_text(reviewed_head: str, why: str) -> str:
+    """EVERY abort in the review leg, not only the motion checks. The tree now
+    holds commits from a process refused mid-fix — a state this pipeline has
+    never had, and "nothing was recorded" was written for a reviewer that could
+    not write. The undo is offered only when the reviewer actually moved
+    something: offering it on a tree nobody touched teaches the lead to skip it
+    on the run where it is real.
+    """
+    from close import git
+
+    moved = git("rev-parse", "HEAD").stdout.strip() != reviewed_head
+    if not (moved or git("status", "--porcelain").stdout.strip()):
+        return f"refused: {why}"
+    stat = git("diff", "--stat", f"{reviewed_head}..HEAD").stdout
+    return (
+        f"refused: {why}\n\n{stat}\nNo round was recorded, and the reviewer's work is"
+        f" in your tree — yours to keep or undo: git reset --hard {reviewed_head[:8]}"
+    )
+
+
+def check_reviewer_motion(reviewed_head: str, marker: Path, digest_before: str) -> str:
+    """The complete refusal text, or "" if the reviewer behaved.
+
+    The dirty-tree case never says WHO left the files: at story-008 the guard
+    blamed the reviewer for the LEAD's edit, and that misattribution is the
+    measured complaint this whole story descends from.
+    """
+    from close import git
+
+    def refuse(why: str) -> str:
+        return abort_text(reviewed_head, why)
+
+    dirty = git("status", "--porcelain").stdout.strip()
+    if dirty:
+        return refuse(
+            "the working tree is dirty at the end of the review; uncommitted:\n  " + dirty
+        )
+
+    if marker_digest(marker) != digest_before:
+        return refuse(
+            f"the close marker changed during the review ({marker}). It is the file"
+            " land reads for blocking findings, it is outside the repo, and no diff"
+            " shows it — a review may not move its own gate"
+        )
+    rng = f"{reviewed_head}..HEAD"
+    strays = [
+        ln
+        for ln in git("log", "--format=%h|%an|%s", rng).stdout.splitlines()
+        if ln.split("|")[1] != REVIEWER_NAME
+    ]
+    if strays:
+        return refuse(
+            "commits in this review's range were not authored by the reviewer, so"
+            " work no reviewer read would ride the merge:\n  " + "\n  ".join(strays)
+        )
+    touched = git("diff", "--name-only", rng).stdout.splitlines()
+    if any(f.startswith(".xp/") for f in touched):
+        return refuse("the reviewer changed .xp/ — it may fix code, never the plan or the rules")
+    return ""
+
+
+def reviewer_range(reviewed_head: str) -> str:
+    """`git log` + `--stat` over what the reviewer committed, or "" if it committed
+    nothing. The lead reads this to accept the fixes; land re-prints it because
+    assent is given by RUNNING land, not by having read an earlier command."""
+    from close import git
+
+    if git("rev-parse", "HEAD").stdout.strip() == reviewed_head:
+        return ""
+    rng = f"{reviewed_head}..HEAD"
+    return git("log", "--format=%h %an %s", rng).stdout + git("diff", "--stat", rng).stdout
+
+
+def diff_path(report: Path) -> Path:
+    """One spelling: review writes it, review unlinks the stale one, land prints
+    it — three sites that would otherwise drift."""
+    return report.with_suffix(".diff")
+
+
+def write_reviewer_diff(report: Path, reviewed_head: str) -> Path | None:
+    """The reviewer's work, on disk beside its report. review's stdout is the
+    channel this project lost three reviews down in one session, and it is the
+    only place the assent artifact lived."""
+    from close import git
+
+    summary = reviewer_range(reviewed_head)
+    if not summary:
+        return None
+    diff = diff_path(report)
+    diff.write_text(summary + "\n" + git("diff", f"{reviewed_head}..HEAD").stdout)
+    return diff
+
+
 def run(prompt: str, cwd: Path, dry_run: bool = False) -> tuple[str, str]:
     """Launch the reviewer. Returns (result_text, error) — never raises on a
     reviewer that crashes, prints prose, or is missing from PATH.
@@ -100,7 +203,7 @@ def run(prompt: str, cwd: Path, dry_run: bool = False) -> tuple[str, str]:
     from spawn import claude_argv, resolve_role, run_agent
 
     _harness, model, effort = resolve_role("reviewer")
-    argv = claude_argv(model, effort, "json") + REVIEWER_DENY
+    argv = claude_argv(model, effort, "json")
     if dry_run:
         print("would launch: " + " ".join(argv))
         print(prompt)
@@ -112,6 +215,11 @@ def run(prompt: str, cwd: Path, dry_run: bool = False) -> tuple[str, str]:
         proc = run_agent(argv, cwd, prompt, role="reviewer", capture=True)
     except OSError as e:  # claude absent from PATH
         return "", f"could not launch the reviewer: {e}"
+    except subprocess.TimeoutExpired as e:
+        return "", (
+            f"the reviewer exceeded its {e.timeout:.0f}s wall clock and was killed."
+            " Its output is lost; check the tree for commits it made before dying"
+        )
     if proc.returncode != 0:
         detail = (proc.stderr or proc.stdout or "").strip()[:500]
         return "", f"reviewer exited {proc.returncode}: {detail}"
