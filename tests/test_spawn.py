@@ -102,8 +102,13 @@ class TestLaunchContract:
         # without --plugin-dir the teammate loads no hooks, agents or skills:
         # a worktree session applies no project-scoped marketplace enablement
         assert Path(argv[argv.index("--plugin-dir") + 1]).name == "xp-plugin"
-        # headless denies tool permission by default -> prose-only teammate, exit 0
+        # headless denies tool permission by default -> prose-only teammate, exit 0.
+        # bypass specifically: acceptEdits was MEASURED to deny `git add`/`git
+        # commit`, so weaker modes lose the teammate's work rather than block it
         assert "--dangerously-skip-permissions" in argv
+        # and no allow-list: measured to restrict nothing under bypass, so
+        # shipping one would certify a bound that does not exist
+        assert "--allowedTools" not in argv
         assert argv[argv.index("--output-format") + 1] == "json"
 
     def test_prompt_arrives_on_stdin_not_argv(self, tmp_path):

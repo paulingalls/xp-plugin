@@ -21,10 +21,23 @@ from work import chdir_repo_root, data_root, slugify, user_ns
 
 PLUGIN_ROOT = Path(__file__).parent.parent
 
-# Headless denies tool permission requests by default, which yields a teammate
-# that writes prose and exits 0. --allowedTools is an ALLOW-list under a full
-# bypass and therefore bounds nothing; the teammate is declared UNBOUNDED until
-# the story-close smoke measures which of {auto, dontAsk, bypass} is required.
+# MEASURED at story-007 close, not assumed (every figure from a live `claude -p`):
+#   auto / dontAsk  -> Bash ok, Write DENIED        -> teammate cannot write code
+#   acceptEdits     -> Write ok, `git add`/`git commit` DENIED -> cannot commit
+#   bypass          -> all ok
+# A story loop is edit -> test -> COMMIT, so bypass is required; the weaker modes
+# yield a teammate that works and then silently loses the work.
+#
+# No --allowedTools: measured, an allow-list under bypass restricts nothing
+# (allowedTools=Bash still let Read through), and shipping it would certify a
+# bound that does not exist. A DENY-list does bound under bypass (disallowedTools
+# =Read denied Read while Bash passed) — recorded for when we have a defect that
+# earns one. Not used for /story-close self-closing: Bash can invoke close.py
+# directly, so a tool-level deny there would be theater. That hard property is
+# close.py refusing XP_ROLE=teammate (story-008).
+#
+# THE TEAMMATE IS THEREFORE UNBOUNDED inside its throwaway worktree. Declared,
+# not believed.
 PERMISSION_ARGV = ["--dangerously-skip-permissions"]
 
 # Tokens (chars//4). The cap covers prose WE ship — VALUES, TEAMMATE.md, the
