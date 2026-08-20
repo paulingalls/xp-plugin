@@ -46,6 +46,7 @@ def digest_with_staleness() -> str:
 
 
 CLOSE_CAP = 400  # the whole close detail; see _close_detail
+ROUND_CAP = 100  # per round within it
 
 
 def _close_detail(record: dict) -> str:
@@ -59,16 +60,30 @@ def _close_detail(record: dict) -> str:
     """
     rounds = record.get("rounds")
     if rounds is None:
-        detail = " · ".join(record.get("verdicts") or ["(no verdict recorded)"])
-    else:
-        detail = " · ".join(
-            f"round {i}: "
-            + ", ".join([*r.get("fixed", []), *r.get("blocking", []), *r.get("noted", [])])
-            for i, r in enumerate(rounds, 1)
-        )
+        return _fit(record.get("verdicts") or ["(no verdict recorded)"])
+    shown = []
+    for i, r in enumerate(rounds, 1):
+        items = ", ".join([*r.get("fixed", []), *r.get("blocking", []), *r.get("noted", [])])
+        if len(items) > ROUND_CAP:
+            items = items[:ROUND_CAP] + "…"
+        shown.append(f"round {i}: {items or 'clean'}")
+    return _fit(shown)
+
+
+def _fit(parts: list) -> str:
+    """Joined and bounded — dropping the OLDEST parts, never the newest.
+
+    A head-truncating cap loses the last round, which is the one that gated the
+    merge: the only round land ever reads for blocking findings.
+    """
+    kept, dropped = list(parts), 0
+    while len(" · ".join(kept)) > CLOSE_CAP and len(kept) > 1:
+        kept.pop(0)
+        dropped += 1
+    detail = " · ".join(kept)
     if len(detail) > CLOSE_CAP:
-        detail = detail[:CLOSE_CAP] + f"… (+{len(detail) - CLOSE_CAP} chars, see closes.jsonl)"
-    return detail
+        detail = detail[:CLOSE_CAP] + "…"
+    return f"(+{dropped} earlier elided) {detail}" if dropped else detail
 
 
 def last_close() -> str:

@@ -628,14 +628,22 @@ class TestPipelineReceivedVerdict:
         assert {"Edit", "Write", "NotebookEdit"} <= set(denied.split(","))
 
     def test_a_reviewer_that_commits_is_refused_not_certified(self, tmp_path):
-        """G1 fault-injection: the stub commits, exactly as a bypassed agent could."""
+        """G1 fault-injection: the stub commits, exactly as a bypassed agent could.
+
+        It must ALSO write a valid report. story-012a put the no-report refusal in
+        front of this guard, so a report-less stub greened on THAT instead and the
+        moved-HEAD guard could be deleted with all 113 tests still passing — a
+        fault-injection that had stopped injecting the fault it names.
+        """
         repo, env, _g = make_repo(tmp_path)
         bin_dir = tmp_path / "bin"
         (bin_dir / "claude").write_text(
             "#!/bin/sh\n"
             "echo 'x = 1' >> src/thing.py\n"
             "git add -A && git commit -qm 'reviewer wrote this'\n"
-            'printf \'{"result": "VERDICT: clean"}\'\n'
+            "p=$(sed -n 's/^REPORT_PATH: //p')\n"
+            'printf \'{"fixed": [], "blocking": [], "noted": []}\' > "$p"\n'
+            'printf \'{"result": "clean, and I committed"}\'\n'
         )
         (bin_dir / "claude").chmod(0o755)
         r = close(repo, env, "review")
@@ -662,7 +670,7 @@ class TestPipelineReceivedVerdict:
         assert r.returncode == 0 and launches(tmp_path) == []
 
 
-class TestDriftReReview:
+class TestTrunkMotionGuards:
     """story-008 AC 2: drift is reviewed in-pipeline, on the delta only."""
 
     def test_a_bare_re_review_cannot_clear_the_trunk_guard(self, tmp_path):
@@ -891,7 +899,7 @@ class TestStoryReviewFindings:
         assert "[done]" in g("show", "origin/main:.xp/plan.md").stdout, "trunk never learned"
 
 
-class TestDeltaReviewFindings:
+class TestLandFailureModes:
     """story-008 close review, round 2 (the delta the drift path reviewed)."""
 
     def pr_repo(self, tmp_path):
@@ -1214,12 +1222,62 @@ class TestStructuredGate:
             assert f"Review round {i}" in body and f"round {i} fix" in body
 
 
+class TestStoryReviewFindings012a:
+    """Blocking findings from story-012a's own close review."""
+
+    def test_pr_mode_review_refuses_on_ORIGIN_trunk_motion(self, tmp_path):
+        """B1: the new guard read the LOCAL trunk ref only. pr mode — the argparse
+        default — integrates against origin, which the local ref never tracks, so a
+        bare re-review still cleared land's origin guard with the reviewer seeing
+        nothing new. The exact twin AC 4 claims to close, on the other axis."""
+        repo, env, g = make_repo(tmp_path)
+        origin = tmp_path / "origin.git"
+        subprocess.run(["git", "init", "-q", "--bare", str(origin)], env=env, check=True)
+        g("remote", "add", "origin", str(origin))
+        g("push", "-q", "origin", "main", "story-042-branch")
+        close(repo, env, "review")
+        g("checkout", "-q", "main")
+        (repo / "unrelated.txt").write_text("x\n")
+        g("add", "-A")
+        g("commit", "-qm", "landed on origin")
+        old = g("rev-parse", "HEAD~1").stdout.strip()
+        g("push", "-q", "origin", "main")
+        g("reset", "-q", "--hard", "HEAD~1")
+        g("update-ref", "refs/remotes/origin/main", old)
+        g("checkout", "-q", "story-042-branch")
+        r = close(repo, env, "review")
+        assert r.returncode == 2, "a bare re-review re-baselined the origin guard"
+        assert "git merge" in r.stderr
+
+    def test_the_newest_round_survives_the_close_detail_bound(self, tmp_path):
+        """B3: the cap kept the HEAD of the joined string, so one long early round
+        silently dropped the round that actually gated the merge."""
+        sys.path.insert(0, str(CLOSE.parent))
+        import session_start
+
+        record = {
+            "rounds": [
+                {"fixed": ["x" * 2000], "blocking": [], "noted": []},
+                {"fixed": [], "blocking": [], "noted": []},
+                {"fixed": [], "blocking": ["R3-THE-BLOCKER-THAT-GATED-THE-MERGE"], "noted": []},
+            ]
+        }
+        detail = session_start._close_detail(record)
+        assert "R3-THE-BLOCKER-THAT-GATED-THE-MERGE" in detail
+        assert len(detail) <= session_start.CLOSE_CAP + 120
+
+
 class TestShippedProseMatchesTheMechanism:
     """The prose is what a consuming project believes. story-012a AC 11/12."""
 
     def test_no_verdict_token_survives_in_the_shipped_prose(self):
-        for path in (PLUGIN / "skills" / "story-close" / "SKILL.md", PLUGIN / "PROCESS.md"):
-            assert "VERDICT" not in path.read_text(), f"{path.name} still ships the deleted gate"
+        for path in (
+            PLUGIN / "skills" / "story-close" / "SKILL.md",
+            PLUGIN / "PROCESS.md",
+            PLUGIN / "scripts" / "close.py",  # --help is the first surface a lead reads
+        ):
+            head = path.read_text().split("import argparse")[0]
+            assert "VERDICT" not in head, f"{path.name} still ships the deleted gate"
 
     def test_the_charter_names_the_report_path_and_the_route_left_open(self):
         charter = (PLUGIN / "agents" / "story-reviewer.md").read_text()

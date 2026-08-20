@@ -2,15 +2,17 @@
 """Story-close pipeline: mechanical steps scripted, judgment left to the lead.
 
 Two invocations, one judgment gap between them:
-  close.py story <id> review -> preflight, spawn the story-reviewer, record its
-                                VERDICT line, print its findings
+  close.py story <id> review -> preflight, spawn the story-reviewer, record the
+                                structured report it writes, print its findings
   (the lead reads them and decides fix-or-ask — the one LLM-present moment the
    pipeline must not absorb, constraints.md #7)
-  close.py story <id> land   -> Verify, merge under the recorded verdict, push,
+  close.py story <id> land   -> Verify, merge under every recorded round, push,
                                 delete the story branch, log the close
 
-The verdict is PIPELINE-RECEIVED: there is no --verdict flag, because a
-lead-supplied verdict is forgeable, and Sprint 1 forged one.
+review owns the tree and is slow; land only moves refs, is a pure function of
+recorded state, and NEVER spawns — so the rounds are the lead's to choose. The
+report is pipeline-received: there is no --verdict flag, because a lead-supplied
+one is forgeable, and Sprint 1 forged one.
 """
 
 import argparse
@@ -191,13 +193,20 @@ def cmd_review(story_id: str, dry_run: bool = False) -> int:
     # merge-base does NOT move when trunk advances, so a review re-run after trunk
     # motion re-baselines the trunk guard while the reviewer sees nothing new — the
     # guard clears and the merged tree still contains commits no review read.
-    if git("merge-base", "--is-ancestor", f"refs/heads/{trunk}", "HEAD", check=False).returncode:
-        return fail(
-            f"refused: {trunk} has moved ahead of this branch's fork point."
-            f" Run `git merge {trunk}` here first — that moves the merge base, so the"
-            " review covers what land would actually merge. Re-running review without"
-            " it buys no coverage"
-        )
+    # BOTH refs, because land guards whichever one its mode integrates: local mode
+    # the local trunk, pr mode (the argparse default) origin's. Guarding only the
+    # local ref left the identical hole open on the axis pr mode actually merges.
+    for label, tip in (
+        (trunk, git("rev-parse", f"refs/heads/{trunk}").stdout.strip()),
+        (f"origin/{trunk}", origin_trunk_sha(trunk)),
+    ):
+        if tip and git("merge-base", "--is-ancestor", tip, "HEAD", check=False).returncode:
+            return fail(
+                f"refused: {label} has moved ahead of this branch's fork point."
+                f" Run `git merge {label}` here first — that moves the merge base, so"
+                " the review covers what land would actually merge. Re-running review"
+                " without it buys no coverage"
+            )
     marker = marker_path(story_id)
     state = json.loads(marker.read_text()) if marker.exists() else {}
     path = review.report_path(story_id, len(state.get("rounds", [])) + 1)
