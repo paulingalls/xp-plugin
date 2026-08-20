@@ -140,12 +140,13 @@ def _config_role(role: str) -> str:
     if not cfg.exists():
         return ""
     in_roles = False
-    for ln in cfg.read_text().splitlines():
+    for raw in cfg.read_text().splitlines():
+        ln = raw.split("#", 1)[0]  # a trailing comment must not hide the block
         if ln.rstrip() == "roles:":
             in_roles = True
         elif in_roles and ln.strip().startswith(f"{role}:"):
-            return ln.split(f"{role}:", 1)[1].split("#")[0].strip()
-        elif in_roles and ln and not ln.startswith(" "):
+            return ln.split(f"{role}:", 1)[1].strip()
+        elif in_roles and ln.strip() and not ln.startswith(" "):
             in_roles = False
     return ""
 

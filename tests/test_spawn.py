@@ -451,3 +451,18 @@ def test_spawn_reaches_the_integration_target_only_through_close():
     """A filed debt (story-009 retires config.yml sprint_branch) rests on spawn
     never reading the key itself — a comment cannot rot loudly, a test can."""
     assert "sprint_branch" not in SPAWN.read_text()
+
+
+class TestConfigRoleParsing:
+    """Found by running close.py's review leg against this repo's real config."""
+
+    def test_a_comment_on_the_roles_line_does_not_hide_every_role(self, tmp_path):
+        repo, env, _g = make_repo(tmp_path)
+        (repo / ".xp" / "config.yml").write_text(
+            "roles:   # harness/model[/effort]; lead overrides per story\n"
+            "  executor: claude/opus     # codex once the adapter ships\n"
+        )
+        stub_claude(tmp_path)
+        r = spawn(repo, env, "story-042", "--dry-run")
+        assert r.returncode == 0, r.stderr
+        assert "--model opus" in r.stdout, r.stdout
