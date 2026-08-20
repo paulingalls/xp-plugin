@@ -23,10 +23,10 @@ def git(*args: str) -> str:
 
 
 def read(path: Path) -> str:
-    return path.read_text() if path.exists() else ""
+    return path.read_text(errors="replace") if path.exists() else ""
 
 
-def digest_with_staleness(root: Path) -> str:
+def digest_with_staleness() -> str:
     """session.md, STALE-prefixed by commit distance; stampless never reads fresh."""
     text = read(data_root() / "session.md")
     if not text:
@@ -46,9 +46,13 @@ def digest_with_staleness(root: Path) -> str:
 def recovery_block(root: Path) -> str:
     """Computed fresh from always-current sources — the layer that can't go stale."""
     stories = [ln for ln in read(root / ".xp" / "plan.md").splitlines() if ln.startswith("#### ")]
-    work_heads = [ln for ln in read(data_root() / "work.md").splitlines() if ln.startswith("## ")][
-        -3:
-    ]
+    lines = read(data_root() / "work.md").splitlines()
+    entries = []  # heading + its claim/body line: content, not just timestamps
+    for i, ln in enumerate(lines):
+        if ln.startswith("## "):
+            body = lines[i + 1] if i + 1 < len(lines) else ""
+            entries.append(f"{ln}\n  {body}")
+    work_heads = entries[-3:]
     dirty = git("status", "--porcelain")
     return "\n".join(
         [
@@ -82,27 +86,35 @@ def main() -> int:
     root = Path(top)
     if not (root / ".xp").is_dir():
         return 0
-    sections = [
-        banner(root),
-        read(PLUGIN_ROOT / "VALUES.md"),
-        read(PLUGIN_ROOT / "PROCESS.md"),
-        read(root / ".xp" / "constraints.md"),
-        digest_with_staleness(root),
-        recovery_block(root),
-    ]
-    out = "\n\n".join(s for s in sections if s)
-    if len(out) > OUTPUT_CAP:
-        out = out[: OUTPUT_CAP - 60] + "\n[truncated: lead-profile budget is 12,000 chars]"
-    print(out)
+    # liveness first: a later section failure must not read as "no live session"
     session = str(data.get("session_id", "unknown"))[:64]
     markers = data_root() / "markers"
     markers.mkdir(parents=True, exist_ok=True)
     (markers / f"{session}.alive").touch()
+    # freshest layers first: the cap truncates the tail, so static prose goes last
+    builders = [
+        lambda: banner(root),
+        lambda: recovery_block(root),
+        lambda: digest_with_staleness(),
+        lambda: read(root / ".xp" / "constraints.md"),
+        lambda: read(PLUGIN_ROOT / "VALUES.md"),
+        lambda: read(PLUGIN_ROOT / "PROCESS.md"),
+    ]
+    sections = []
+    for build in builders:  # one bad file degrades one section, never all
+        try:
+            sections.append(build())
+        except Exception:
+            sections.append("")
+    out = "\n\n".join(s for s in sections if s)
+    if len(out) > OUTPUT_CAP:
+        out = out[: OUTPUT_CAP - 60] + "\n[truncated: lead-profile budget is 12,000 chars]"
+    print(out)
     return 0
 
 
 if __name__ == "__main__":
     try:
         sys.exit(main())
-    except Exception:
-        sys.exit(0)  # degrade to silence, never break a session
+    except (Exception, SystemExit):
+        sys.exit(0)  # degrade to silence (SystemExit included), never break a session

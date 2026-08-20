@@ -124,3 +124,49 @@ class TestRegistration:
         entries = cfg["hooks"]["SessionStart"]
         cmds = [h["command"] for e in entries for h in e["hooks"]]
         assert any("${CLAUDE_PLUGIN_ROOT}/scripts/session_start.py" in c for c in cmds)
+
+
+class TestReviewFindings:
+    """story-003 close review: resilience, content, guard pins."""
+
+    def test_corrupt_session_md_degrades_one_section_not_all(self, tmp_path):
+        repo, _g = xp_repo(tmp_path)
+        data = tmp_path / "xp"
+        data.mkdir()
+        (data / "session.md").write_bytes(b"\xff\xfe garbage \xff")
+        r = run_hook(repo, tmp_path, session_id="sess-corrupt")
+        assert r.returncode == 0
+        assert "CONSTRAINT-SENTINEL" in r.stdout  # other sections survive
+        assert (tmp_path / "xp" / "markers" / "sess-corrupt.alive").exists()
+
+    def test_recovery_block_carries_work_item_claims(self, tmp_path):
+        repo, _g = xp_repo(tmp_path)
+        import subprocess as sp
+
+        work = Path(__file__).parent.parent / "plugins" / "xp-plugin" / "scripts" / "work.py"
+        sp.run(
+            [sys.executable, str(work), "note", "OPEN-ITEM-CLAIM lives here"],
+            cwd=repo,
+            capture_output=True,
+            env={"PATH": "/usr/bin:/bin", "XP_DATA": str(tmp_path / "xp")},
+            check=True,
+        )
+        r = run_hook(repo, tmp_path)
+        assert "OPEN-ITEM-CLAIM" in r.stdout  # content, not just timestamps
+
+    def test_branch_line_pinned(self, tmp_path):
+        repo, _g = xp_repo(tmp_path)
+        r = run_hook(repo, tmp_path)
+        assert "branch: main" in r.stdout
+
+    def test_scope_refusals_leave_no_marker(self, tmp_path):
+        r = run_hook(tmp_path, tmp_path, session_id="sess-outside")
+        assert r.returncode == 0 and r.stdout == ""
+        assert not (tmp_path / "xp" / "markers").exists()
+
+    def test_truncation_preserves_recovery_block(self, tmp_path):
+        repo, _g = xp_repo(tmp_path)
+        (repo / ".xp" / "constraints.md").write_text("HUGE\n" * 5000)
+        r = run_hook(repo, tmp_path)
+        assert len(r.stdout) <= 12_000 and "truncated" in r.stdout
+        assert "story-042" in r.stdout  # the freshest layer survives the cap
