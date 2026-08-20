@@ -107,6 +107,27 @@ def worktree_path(story_id: str) -> Path:
     return data_root() / "worktrees" / story_id
 
 
+def flip_to_in_progress(tree: Path, story_id: str) -> None:
+    """Flip [ready] -> [in-progress] INSIDE the worktree, as the branch's first commit.
+
+    Milestone 1 allows no hand-step besides the two judgment points, and
+    close.py refuses a story that is not [in-progress] — a refusal that would
+    otherwise land only AFTER the teammate has done the whole story. Flipping
+    here (not in the lead's tree) keeps spawn out of cross-tree mutation: the
+    lead reads [ready] until the merge, and the flip shows up in the cumulative
+    diff the reviewer reads.
+    """
+    plan = tree / ".xp" / "plan.md"
+    out = []
+    for ln in plan.read_text().splitlines(keepends=True):
+        if ln.startswith(f"#### {story_id} ") and "[ready]" in ln:
+            ln = ln.replace("[ready]", "[in-progress]")
+        out.append(ln)
+    plan.write_text("".join(out))
+    for args in (["add", ".xp/plan.md"], ["commit", "-qm", f"{story_id} in-progress"]):
+        subprocess.run(["git", *args], cwd=tree, capture_output=True, text=True)
+
+
 def cmd_spawn(story_id: str, override: str, dry_run: bool) -> int:
     if not Path(".xp/plan.md").exists():
         return fail("refused: no .xp/plan.md here — is this an xp-managed repo?")
@@ -134,6 +155,7 @@ def cmd_spawn(story_id: str, override: str, dry_run: bool) -> int:
     added = git("worktree", "add", "-b", branch, str(tree), trunk, check=False)
     if added.returncode != 0:
         return fail(f"git worktree add failed: {added.stderr.strip()}")
+    flip_to_in_progress(tree, story_id)
     print(f"{branch} at {tree} (off {trunk})")
     return run_agent(argv, tree, prompt).returncode
 

@@ -117,3 +117,130 @@ class TestLaunchContract:
         rec = stub_claude(tmp_path)
         assert spawn(repo, env, "story-042").returncode == 0
         assert json.loads(rec.read_text())["env"].get("XP_ROLE") == "teammate"
+
+
+def trunk_sha(repo, env, trunk="main"):
+    return subprocess.run(
+        ["git", "rev-parse", f"refs/heads/{trunk}"],
+        cwd=repo,
+        env=env,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+
+
+def in_tree(tree, env, *args):
+    return subprocess.run(
+        ["git", *args], cwd=tree, env=env, capture_output=True, text=True
+    ).stdout.strip()
+
+
+class TestWorktree:
+    def test_worktree_branches_off_the_integration_target_not_head(self, tmp_path):
+        """HEAD carries a divergent commit the trunk does not have, so a
+        `worktree add` that omits the base argument reds here instead of
+        passing because HEAD happened to be the trunk (constraints.md #2)."""
+        repo, env, _g = make_repo(tmp_path)
+        stub_claude(tmp_path)
+        assert spawn(repo, env, "story-042").returncode == 0
+        tree = tmp_path / "data" / "worktrees" / "story-042"
+        assert tree.is_dir()
+        assert not (tree / "drift.txt").exists()  # the divergent commit is absent
+        assert trunk_sha(repo, env) in in_tree(tree, env, "log", "--format=%H")
+
+    def test_branch_is_namespaced_per_identity_so_clones_cannot_collide(self, tmp_path):
+        repo, env, _g = make_repo(tmp_path)
+        stub_claude(tmp_path)
+        assert spawn(repo, env, "story-042").returncode == 0
+        first = in_tree(
+            tmp_path / "data" / "worktrees" / "story-042", env, "branch", "--show-current"
+        )
+        assert first == "ada/story-042-demo-story"
+
+        other = tmp_path / "clone2"
+        subprocess.run(["git", "clone", "-q", str(repo), str(other)], env=env, check=True)
+        env2 = dict(env, XP_DATA=str(tmp_path / "data2"))
+        for k, v in (("user.email", "grace@example.com"), ("user.name", "Grace H")):
+            subprocess.run(["git", "config", k, v], cwd=other, env=env2, check=True)
+        subprocess.run(["git", "checkout", "-q", "main"], cwd=other, env=env2)
+        assert spawn(other, env2, "story-042").returncode == 0
+        second = in_tree(
+            tmp_path / "data2" / "worktrees" / "story-042", env2, "branch", "--show-current"
+        )
+        assert second == "grace/story-042-demo-story"
+        assert first != second
+
+    def test_status_flip_is_committed_in_the_worktree(self, tmp_path):
+        repo, env, _g = make_repo(tmp_path)
+        stub_claude(tmp_path)
+        assert spawn(repo, env, "story-042").returncode == 0
+        tree = tmp_path / "data" / "worktrees" / "story-042"
+        assert "[in-progress]" in (tree / ".xp" / "plan.md").read_text()
+        assert in_tree(tree, env, "status", "--porcelain") == ""
+        # the lead's tree still reads [ready]: git is the memory, and the
+        # reviewer sees the flip in the cumulative diff
+        assert "[ready]" in (repo / ".xp" / "plan.md").read_text()
+
+    def test_dry_run_creates_nothing(self, tmp_path):
+        repo, env, _g = make_repo(tmp_path)
+        stub_claude(tmp_path)
+        r = spawn(repo, env, "story-042", "--dry-run")
+        assert r.returncode == 0 and "--plugin-dir" in r.stdout
+        assert not (tmp_path / "data" / "worktrees" / "story-042").exists()
+        assert "story-042" not in in_tree(repo, env, "branch", "--list")
+
+
+class TestRefusals:
+    def test_existing_worktree_refused(self, tmp_path):
+        repo, env, _g = make_repo(tmp_path)
+        stub_claude(tmp_path)
+        assert spawn(repo, env, "story-042").returncode == 0
+        r = spawn(repo, env, "story-042")
+        assert r.returncode == 2 and "already" in r.stderr
+
+    def test_existing_branch_refused_when_the_worktree_is_gone(self, tmp_path):
+        repo, env, _g = make_repo(tmp_path)
+        stub_claude(tmp_path)
+        assert spawn(repo, env, "story-042").returncode == 0
+        subprocess.run(
+            [
+                "git",
+                "worktree",
+                "remove",
+                "--force",
+                str(tmp_path / "data" / "worktrees" / "story-042"),
+            ],
+            cwd=repo,
+            env=env,
+            check=True,
+        )
+        r = spawn(repo, env, "story-042")
+        assert r.returncode == 2 and "branch" in r.stderr
+
+    def test_non_ready_story_refused(self, tmp_path):
+        repo, env, _g = make_repo(tmp_path, status="done")
+        r = spawn(repo, env, "story-042")
+        assert r.returncode == 2 and "ready" in r.stderr
+
+    def test_codex_harness_refused_naming_sprint_3(self, tmp_path):
+        repo, env, _g = make_repo(tmp_path, executor="codex/gpt-5/high")
+        r = spawn(repo, env, "story-042")
+        assert r.returncode == 2 and "Sprint 3" in r.stderr
+
+
+class TestExecutorResolution:
+    def test_card_executor_beats_config(self, tmp_path):
+        repo, env, _g = make_repo(tmp_path, executor="claude/opus/high")
+        rec = stub_claude(tmp_path)
+        assert spawn(repo, env, "story-042").returncode == 0
+        argv = json.loads(rec.read_text())["argv"]
+        assert argv[argv.index("--model") + 1] == "opus"
+        assert argv[argv.index("--effort") + 1] == "high"
+
+    def test_cli_override_beats_the_card(self, tmp_path):
+        repo, env, _g = make_repo(tmp_path, executor="claude/opus/high")
+        rec = stub_claude(tmp_path)
+        assert spawn(repo, env, "story-042", "claude/haiku").returncode == 0
+        argv = json.loads(rec.read_text())["argv"]
+        assert argv[argv.index("--model") + 1] == "haiku"
+        assert "--effort" not in argv  # two-part spec: reviewer role shape (story-008)
