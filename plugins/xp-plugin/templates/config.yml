@@ -1,0 +1,15 @@
+# xp project config — EDIT the tiers for your stack, then re-run your first commit
+release: sprint      # sprint = stories integrate on a sprint branch, sprint close PRs main
+sprint_cap: 6        # max stories per sprint
+debt_budget: 0.2     # max share of sprint stories that are scheduled debt
+constraints_cap: 15  # constraints.md line-items; add-over-cap requires a retire
+
+roles:               # harness/model[/effort]; the lead overrides per story in plan.md
+  lead: claude/opus
+  executor: claude/sonnet/medium
+  reviewer: claude/opus
+
+tests:
+  fast: EDIT-ME      # pre-commit: seconds (e.g. `pytest -q -m "not slow"` or `bun test --changed`)
+  story: EDIT-ME     # pre-push + story close (e.g. `pytest -q`)
+  full: EDIT-ME      # sprint close: everything incl. e2e
