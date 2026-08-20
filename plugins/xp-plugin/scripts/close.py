@@ -196,10 +196,11 @@ def cmd_review(story_id: str, dry_run: bool = False) -> int:
     # BOTH refs, because land guards whichever one its mode integrates: local mode
     # the local trunk, pr mode (the argparse default) origin's. Guarding only the
     # local ref left the identical hole open on the axis pr mode actually merges.
-    for label, tip in (
+    tips = (
         (trunk, git("rev-parse", f"refs/heads/{trunk}").stdout.strip()),
         (f"origin/{trunk}", origin_trunk_sha(trunk)),
-    ):
+    )
+    for label, tip in tips:
         if tip and git("merge-base", "--is-ancestor", tip, "HEAD", check=False).returncode:
             return fail(
                 f"refused: {label} has moved ahead of this branch's fork point."
@@ -210,7 +211,8 @@ def cmd_review(story_id: str, dry_run: bool = False) -> int:
     marker = marker_path(story_id)
     state = json.loads(marker.read_text()) if marker.exists() else {}
     path = review.report_path(story_id, len(state.get("rounds", [])) + 1)
-    path.unlink(missing_ok=True)
+    if not dry_run:  # a preview must not delete the findings of a refused round
+        path.unlink(missing_ok=True)
     head = git("rev-parse", "HEAD").stdout.strip()
     base = git("merge-base", f"refs/heads/{trunk}", "HEAD").stdout.strip()
     result, err = review.run(build_bundle(card, base, path), Path.cwd(), dry_run)
@@ -236,8 +238,11 @@ def cmd_review(story_id: str, dry_run: bool = False) -> int:
     # reading it here means no assertion written today changes meaning then.
     state["shown_sha"] = git("rev-parse", "HEAD").stdout.strip()
     state["review_base"] = base
-    state["trunk_sha"] = git("rev-parse", f"refs/heads/{trunk}").stdout.strip()
-    state["origin_trunk_sha"] = origin_trunk_sha(trunk)
+    # the tips READ BEFORE the launch, not re-read now: a teammate pushing during
+    # the review window would otherwise be recorded as the reviewed state, and land
+    # compares equal and merges what no reviewer saw. Same defect as AC 4, inside
+    # one review instead of across two.
+    state["trunk_sha"], state["origin_trunk_sha"] = tips[0][1], tips[1][1]
     marker.write_text(json.dumps(state))
     return 0
 
@@ -313,11 +318,6 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
     tier = config_block_value("tests", "story")
     branch = git("rev-parse", "--abbrev-ref", "HEAD").stdout.strip()
     verdict = render_merge_body(rounds)
-    noted = [n for r in rounds for n in r["noted"]]
-    if noted:
-        print("noted by the reviewer, not fixed — file these per PROCESS.md:")
-        for n in noted:
-            print(f"  {n}")
     message = f"Merge {branch} ({story_id})\n\n{verdict}\n"
     pr_cmds = [
         ["git", "push", "-u", "origin", branch],
@@ -362,6 +362,15 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
         return fail(f"refused: story Verify red: {verify}")
     if tier and subprocess.run(tier, shell=True).returncode != 0:
         return fail(f"refused: story test tier red: {tier}")
+
+    # AFTER the gates, BEFORE the merge: printed earlier, a red Verify still told
+    # the lead to file records for a close that did not happen. EVERY round's noted,
+    # not the last one's — an item punted in round 1 and never filed is still owed.
+    noted = [n for r in rounds for n in r["noted"]]
+    if noted:
+        print("noted by the reviewer, not fixed — file these per PROCESS.md:")
+        for n in noted:
+            print(f"  {n}")
 
     if merge_mode == "pr":
         import shutil

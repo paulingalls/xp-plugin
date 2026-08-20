@@ -1200,7 +1200,7 @@ class TestStructuredGate:
         assert r.returncode == 2 and "B1: the new guard is vacuous" in r.stderr
 
     def test_land_prints_noted_items_for_filing(self, tmp_path):
-        repo, env, _g = make_repo(tmp_path)
+        repo, env, g = make_repo(tmp_path)
         stub_reviewer(
             tmp_path, report={"fixed": [], "blocking": [], "noted": ["N1: this name misleads"]}
         )
@@ -1208,6 +1208,9 @@ class TestStructuredGate:
         r = close(repo, env, "land")
         assert r.returncode == 0, r.stderr
         assert "N1: this name misleads" in r.stdout and "PROCESS.md" in r.stdout
+        # the merge body is DESIGN §6's git-versioned audit trail: assert the ITEM,
+        # not just its count — deleting "noted" from the renderer passed 192 tests
+        assert "noted: N1: this name misleads" in g("log", "-1", "--format=%B", "main").stdout
 
     def test_three_rounds_are_labelled_by_their_true_round_number(self, tmp_path):
         repo, env, g = make_repo(tmp_path)
@@ -1275,6 +1278,71 @@ class TestStoryReviewFindings012a:
 
         detail = session_start._close_detail({"rounds": [{"fixed": ["y" * 900], "blocking": []}]})
         assert len(detail) <= session_start.ROUND_CAP + 40, "the per-round bound is gone"
+
+
+class TestRoundThreeFindings:
+    """Blocking findings from story-012a's third close-review round."""
+
+    def test_trunk_motion_DURING_the_review_window_is_not_recorded_as_reviewed(self, tmp_path):
+        """B1: the guard read the trunk tips before the launch and the marker re-read
+        them ten minutes later, so a teammate landing during the window was recorded
+        as the reviewed state and land compared equal. AC 4's defect, inside one
+        review instead of across two."""
+        repo, env, _g = make_repo(tmp_path)
+        bin_dir = tmp_path / "bin"
+        (bin_dir / "claude").write_text(
+            "#!/bin/sh\n"
+            "p=$(sed -n 's/^REPORT_PATH: //p')\n"
+            'printf \'{"fixed": [], "blocking": [], "noted": []}\' > "$p"\n'
+            "NEW=$(git commit-tree HEAD^{tree} -p main -m 'teammate landed mid-review')\n"
+            "git update-ref refs/heads/main $NEW\n"
+            'printf \'{"result": "clean"}\'\n'
+        )
+        (bin_dir / "claude").chmod(0o755)
+        assert close(repo, env, "review").returncode == 0
+        r = close(repo, env, "land")
+        assert r.returncode == 2 and "moved" in r.stderr, "unreviewed trunk commits merged"
+
+    def test_dry_run_review_does_not_delete_a_planted_report(self, tmp_path):
+        """B3: the unlink ran before the dry-run return, so a preview destroyed the
+        findings of a round that had been refused — the exact file the card's
+        durability paragraph exists to keep."""
+        repo, env, _g = make_repo(tmp_path)
+        reports = tmp_path / "data" / "reports"
+        reports.mkdir(parents=True)
+        planted = reports / "story-042.round-1.json"
+        planted.write_text(
+            '{"fixed": ["findings from a refused round"], "blocking": [], "noted": []}'
+        )
+        assert close(repo, env, "review", "--dry-run").returncode == 0
+        assert planted.exists(), "a pure preview deleted real findings"
+
+
+class TestRoundThreeNoted:
+    def test_a_json_array_report_refuses_instead_of_tracebacking(self, tmp_path):
+        repo, env, _g = make_repo(tmp_path)
+        stub_reviewer(tmp_path, report="[1, 2, 3]")
+        r = close(repo, env, "review")
+        assert r.returncode == 2 and "not an object" in r.stderr
+        assert "Traceback" not in r.stderr
+
+    def test_each_round_writes_its_own_report_file(self, tmp_path):
+        """The reports are the audit trail behind a merge body; a story-scoped path
+        would clobber each earlier round and passed the whole suite."""
+        repo, env, _g = make_repo(tmp_path)
+        for i in (1, 2):
+            stub_reviewer(tmp_path, report={"fixed": [f"round {i}"], "blocking": [], "noted": []})
+            assert close(repo, env, "review").returncode == 0
+        written = sorted(p.name for p in (tmp_path / "data" / "reports").glob("*.json"))
+        assert written == ["story-042.round-1.json", "story-042.round-2.json"]
+
+    def test_a_red_verify_does_not_ask_the_lead_to_file_records(self, tmp_path):
+        repo, env, _g = make_repo(tmp_path, verify="false")
+        stub_reviewer(tmp_path, report={"fixed": [], "blocking": [], "noted": ["N1: punted"]})
+        close(repo, env, "review")
+        r = close(repo, env, "land")
+        assert r.returncode != 0
+        assert "N1: punted" not in r.stdout, "filing instructions for a close that failed"
 
 
 class TestShippedProseMatchesTheMechanism:
