@@ -103,6 +103,31 @@ class TestBashStatus:
         run_script("bash_status.py", mention, repo, tmp_path)
         assert [m["red"] for m in markers(tmp_path)] == [True]  # mention is not invocation
 
+    def test_success_masking_never_greens_a_red(self, tmp_path):
+        repo, _g = repo_with_story(tmp_path)
+        run_script("bash_status.py", failure_payload("pytest -q tests/test_x.py"), repo, tmp_path)
+        for masked in (
+            "pytest -q tests/test_x.py 2>&1 | tail -5",
+            "pytest -q tests/test_x.py; echo done",
+            "pytest -q tests/test_x.py || true",
+            "pytest -q tests/test_x.py::test_one",
+        ):
+            run_script("bash_status.py", success_payload(masked), repo, tmp_path)
+            assert [m["red"] for m in markers(tmp_path)] == [True], f"greened by: {masked}"
+
+    def test_exact_verify_with_and_chain_greens(self, tmp_path):
+        repo, _g = repo_with_story(tmp_path)
+        run_script("bash_status.py", failure_payload("pytest -q tests/test_x.py"), repo, tmp_path)
+        ok = success_payload("pytest -q tests/test_x.py && git push")
+        run_script("bash_status.py", ok, repo, tmp_path)
+        assert [m["red"] for m in markers(tmp_path)] == [False]
+
+    def test_multiline_command_failure_records_red(self, tmp_path):
+        repo, _g = repo_with_story(tmp_path)
+        p = failure_payload("cd sub\npytest -q tests/test_x.py")
+        run_script("bash_status.py", p, repo, tmp_path)
+        assert [m["red"] for m in markers(tmp_path)] == [True]
+
     def test_matches_any_in_progress_story_with_per_verify_markers(self, tmp_path):
         repo, _g = repo_with_story(tmp_path)
         plan = repo / ".xp" / "plan.md"
@@ -198,12 +223,12 @@ class TestStopGate:
         r = run_script("stop_gate.py", self.stop_payload(), repo, tmp_path)
         assert "digest" not in r.stdout and "block" not in r.stdout
 
-    def test_empty_session_md_is_harmless(self, tmp_path):
+    def test_empty_session_md_is_stampless_hence_nudges(self, tmp_path):
         repo, _g = repo_with_story(tmp_path)
         (tmp_path / "xp").mkdir()
         (tmp_path / "xp" / "session.md").write_text("")
         r = run_script("stop_gate.py", self.stop_payload(), repo, tmp_path)
-        assert r.returncode == 0
+        assert r.returncode == 0 and "digest" in r.stdout
 
 
 class TestRegistration:

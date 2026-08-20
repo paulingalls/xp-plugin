@@ -38,12 +38,23 @@ def in_progress_verifies() -> list[str]:
     return verifies
 
 
-def invoked_verify(command: str) -> str | None:
-    """The verify a command actually RUNS: a segment startswith, never a substring."""
-    segments = [s.strip() for s in re.split(r"&&|\|\||[;|]", command)]
+def invoked_verify(command: str, event_is_green: bool) -> str | None:
+    """The verify whose status the command's OVERALL exit actually entails.
+
+    Segments must EQUAL the verify exactly (a subset like `verify::test_one` or a
+    mention is not the verify). Green additionally requires every separator to the
+    verify's right to be `&&` — the tool's shell has no pipefail, so `verify | tail`,
+    `verify; echo`, `verify || true` all exit 0 over a red verify (proven live).
+    Red accepts any position: a conservative false-red self-clears on the next
+    honest green run. Anything else -> no marker (advisory fail-open).
+    """
+    tokens = [t.strip() for t in re.split(r"(&&|\|\||[;|]|\n)", command)]
     for verify in in_progress_verifies():
-        if any(seg.startswith(verify) for seg in segments):
-            return verify
+        for i, tok in enumerate(tokens):
+            if tok == verify:
+                rest_seps = [t for t in tokens[i + 1 :] if t in ("&&", "||", ";", "|", "")]
+                if not event_is_green or all(t == "&&" for t in rest_seps):
+                    return verify
     return None
 
 
@@ -57,17 +68,17 @@ def marker_file(session: str, verify: str) -> Path:
 def main() -> int:
     data = json.load(sys.stdin)
     command = str(data.get("tool_input", {}).get("command", ""))
-    verify = invoked_verify(command)
-    if verify is None:
-        return 0
     event = data.get("hook_event_name", "")
     if event == "PostToolUseFailure":
         if not str(data.get("error", "")).startswith("Exit code "):
             return 0  # permission denial / interruption — not a test outcome
         red = True
     elif event == "PostToolUse":
-        red = False  # the event itself implies the command succeeded
+        red = False  # the command succeeded; entailment for the verify checked below
     else:
+        return 0
+    verify = invoked_verify(command, event_is_green=not red)
+    if verify is None:
         return 0
     session = str(data.get("session_id", "unknown"))[:64]
     marker_file(session, verify).write_text(json.dumps({"verify": verify, "red": red}))
