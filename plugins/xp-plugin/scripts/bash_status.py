@@ -1,13 +1,20 @@
 #!/usr/bin/env python3
-"""PostToolUse(Bash) hook: record Verify outcomes for the Stop gate.
+"""Bash-outcome telemetry for the Stop gate — the one sanctioned exception (DESIGN §4).
 
-The ONE sanctioned telemetry exception (DESIGN §4): a session-scoped scratch
-marker, never a work record. Matching is against the in-progress stories'
-config-known Verify strings — no heuristic test-command detection (the
-six-spellings evasion class). No derivable signal -> no marker (advisory).
+Payload shapes are from LIVE captures, not docs: a failing Bash command fires
+PostToolUseFailure with a top-level `error: "Exit code N\\n..."` and no
+tool_response; a PostToolUse(Bash) event itself implies success (its
+tool_response has no exit_code). Registered under BOTH events.
+
+Matching: the command must contain a shell segment that STARTS WITH an
+in-progress story's config-known Verify string — a mention (commit message,
+grep) is not an invocation. One marker per verify (constraint 10: story B's
+green must not hide story A's red).
 """
 
+import hashlib
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -31,22 +38,39 @@ def in_progress_verifies() -> list[str]:
     return verifies
 
 
+def invoked_verify(command: str) -> str | None:
+    """The verify a command actually RUNS: a segment startswith, never a substring."""
+    segments = [s.strip() for s in re.split(r"&&|\|\||[;|]", command)]
+    for verify in in_progress_verifies():
+        if any(seg.startswith(verify) for seg in segments):
+            return verify
+    return None
+
+
+def marker_file(session: str, verify: str) -> Path:
+    d = data_root() / "markers"
+    d.mkdir(parents=True, exist_ok=True)
+    digest = hashlib.sha1(verify.encode()).hexdigest()[:8]
+    return d / f"{session}.{digest}.test-status"
+
+
 def main() -> int:
     data = json.load(sys.stdin)
     command = str(data.get("tool_input", {}).get("command", ""))
-    response = data.get("tool_response", {})
-    exit_code = response.get("exit_code") if isinstance(response, dict) else None
-    if exit_code is None:
+    verify = invoked_verify(command)
+    if verify is None:
         return 0
-    matched = next((v for v in in_progress_verifies() if v in command), None)
-    if matched is None:
+    event = data.get("hook_event_name", "")
+    if event == "PostToolUseFailure":
+        if not str(data.get("error", "")).startswith("Exit code "):
+            return 0  # permission denial / interruption — not a test outcome
+        red = True
+    elif event == "PostToolUse":
+        red = False  # the event itself implies the command succeeded
+    else:
         return 0
     session = str(data.get("session_id", "unknown"))[:64]
-    markers = data_root() / "markers"
-    markers.mkdir(parents=True, exist_ok=True)
-    (markers / f"{session}.test-status").write_text(
-        json.dumps({"verify": matched, "red": exit_code != 0})
-    )
+    marker_file(session, verify).write_text(json.dumps({"verify": verify, "red": red}))
     return 0
 
 
