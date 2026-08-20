@@ -74,7 +74,7 @@ AC:
 Verify: pytest -q tests/test_session_start.py
 Executor: (default)
 
-#### story-004 — Stop advisory gate   [ready]
+#### story-004 — Stop advisory gate   [in-progress]
 Context: Advisory block when the current story's Verify command last ran red —
 config-known string match, not heuristic detection; honors stop_hook_active, no
 block-count assumptions. Same binding: stale-digest nudge (timestamp compare only).
