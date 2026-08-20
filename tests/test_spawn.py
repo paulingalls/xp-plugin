@@ -5,6 +5,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).parent.parent / "plugins" / "xp-plugin" / "scripts"))
+
 SPAWN = Path(__file__).parent.parent / "plugins" / "xp-plugin" / "scripts" / "spawn.py"
 
 CARD = """# plan
@@ -244,3 +246,94 @@ class TestExecutorResolution:
         argv = json.loads(rec.read_text())["argv"]
         assert argv[argv.index("--model") + 1] == "haiku"
         assert "--effort" not in argv  # two-part spec: reviewer role shape (story-008)
+
+
+def set_system_md(repo, line):
+    (repo / ".xp" / "system.md").write_text(f"# System\n{line}\n")
+    subprocess.run(["git", "add", "-A"], cwd=repo, capture_output=True)
+    subprocess.run(
+        ["git", "commit", "-qm", "system.md"],
+        cwd=repo,
+        capture_output=True,
+        env={"PATH": "/usr/bin:/bin", "HOME": str(repo.parent)},
+    )
+
+
+class TestBootstrap:
+    def test_backticked_command_runs_in_the_worktree(self, tmp_path):
+        repo, env, _g = make_repo(tmp_path)
+        stub_claude(tmp_path)
+        set_system_md(repo, "- Worktree bootstrap: `touch bootstrapped`")
+        assert spawn(repo, env, "story-042").returncode == 0
+        assert (tmp_path / "data" / "worktrees" / "story-042" / "bootstrapped").exists()
+
+    def test_prose_mentioning_a_backticked_path_does_not_execute(self, tmp_path):
+        """The whole value must be one backticked command. Otherwise
+        `none needed — see `docs/setup.md`` would execute docs/setup.md."""
+        repo, env, _g = make_repo(tmp_path)
+        stub_claude(tmp_path)
+        set_system_md(repo, "- Worktree bootstrap: none needed — see `touch pwned`")
+        assert spawn(repo, env, "story-042").returncode == 0
+        assert not (tmp_path / "data" / "worktrees" / "story-042" / "pwned").exists()
+
+    def test_red_bootstrap_refuses_and_does_not_launch(self, tmp_path):
+        """A teammate in a non-working tree is the silent-corrupting failure."""
+        repo, env, _g = make_repo(tmp_path)
+        rec = stub_claude(tmp_path)
+        set_system_md(repo, "- Worktree bootstrap: `exit 3`")
+        r = spawn(repo, env, "story-042")
+        assert r.returncode == 2 and "bootstrap" in r.stderr.lower()
+        assert not rec.exists()  # nothing launched
+
+
+class TestBudget:
+    """(i) is a hard cap on prose WE ship. There is deliberately no assertion on
+    the composed total: CLAUDE.md, constraints.md and the cards belong to the
+    consuming project, and a plugin gate over prose we do not own would red on
+    someone else's file."""
+
+    def test_plugin_shipped_profile_within_cap(self):
+        from spawn import PLUGIN_SHIPPED_CAP, component_metadata_chars, plugin_shipped_chars
+
+        # inner cap FIRST: a newly added skill or agent must red THIS line, not
+        # the total — otherwise the ratchet blames TEAMMATE.md for a defect that
+        # is a new component shipping unbudgeted prose into every spawn
+        components = component_metadata_chars() // 4
+        assert components <= 300, (
+            f"always-on component metadata is {components} tokens (cap 300) —"
+            " a skill or agent grew; retire prose there, not in TEAMMATE.md"
+        )
+        shipped = plugin_shipped_chars() // 4
+        assert shipped <= PLUGIN_SHIPPED_CAP, (
+            f"plugin-shipped profile is {shipped} tokens (cap {PLUGIN_SHIPPED_CAP});"
+            f" components account for {components}"
+        )
+
+    def test_composed_total_is_computed_not_printed(self, tmp_path):
+        """A print-a-constant implementation passes 'it prints a total' forever."""
+        repo, env, _g = make_repo(tmp_path)
+        stub_claude(tmp_path)
+        before = spawn(repo, env, "story-042", "--dry-run").stdout
+        plan = repo / ".xp" / "plan.md"
+        plan.write_text(plan.read_text().replace("Context: demo.", "Context: " + "x" * 4000))
+        after = spawn(repo, env, "story-042", "--dry-run").stdout
+        assert _total(before) != _total(after)
+        assert _total(after) > _total(before)
+
+    def test_warning_names_the_largest_project_owned_contributor(self, tmp_path):
+        repo, env, _g = make_repo(tmp_path)
+        stub_claude(tmp_path)
+        quiet = spawn(repo, env, "story-042", "--dry-run")
+        assert "over the" not in quiet.stderr
+
+        (repo / ".xp" / "constraints.md").write_text("# Constraints\n" + "bloat\n" * 3000)
+        loud = spawn(repo, env, "story-042", "--dry-run")
+        assert "constraints.md" in loud.stderr and "over the" in loud.stderr
+        assert loud.returncode == 0  # reports, never refuses: the project's tradeoff
+
+
+def _total(stdout):
+    for ln in stdout.splitlines():
+        if ln.startswith("profile:"):
+            return int(ln.split("total ", 1)[1].split(" ", 1)[0])
+    raise AssertionError(f"no profile line in: {stdout[:200]}")

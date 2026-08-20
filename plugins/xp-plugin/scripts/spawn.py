@@ -10,6 +10,7 @@ agents or skills.
 
 import argparse
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -25,6 +26,80 @@ PLUGIN_ROOT = Path(__file__).parent.parent
 # bypass and therefore bounds nothing; the teammate is declared UNBOUNDED until
 # the story-close smoke measures which of {auto, dontAsk, bypass} is required.
 PERMISSION_ARGV = ["--dangerously-skip-permissions"]
+
+# Tokens (chars//4). The cap covers prose WE ship — VALUES, TEAMMATE.md, the
+# seed constraints file and always-on component metadata — because ownership is
+# about who authored the prose, not which directory it lands in after install.
+# Deliberately NOT a cap on the composed total: CLAUDE.md, the project's grown
+# constraints.md and its cards are the consuming project's, and a plugin gate
+# over prose we do not own certifies nothing (DESIGN §8 diff proposed at close).
+PLUGIN_SHIPPED_CAP = 1200
+COMPONENT_METADATA_CAP = 300  # so a new skill reds the component line, not TEAMMATE.md
+TOTAL_TARGET = 2500  # composed profile: reported, never enforced
+
+
+def component_metadata_chars() -> int:
+    """Frontmatter of every skill and agent — always-on in any session that
+    loads the plugin, so it taxes every spawn forever. Bodies are excluded:
+    progressive disclosure loads a SKILL.md body only when invoked."""
+    total = 0
+    for path in sorted(PLUGIN_ROOT.glob("skills/*/SKILL.md")) + sorted(
+        PLUGIN_ROOT.glob("agents/*.md")
+    ):
+        parts = path.read_text().split("---", 2)
+        if len(parts) > 2:
+            total += len(parts[1])
+    return total
+
+
+def plugin_shipped_chars() -> int:
+    shipped = [
+        PLUGIN_ROOT / "VALUES.md",
+        PLUGIN_ROOT / "TEAMMATE.md",
+        PLUGIN_ROOT / "templates" / "constraints.md",
+    ]
+    return sum(len(_read(p)) for p in shipped) + component_metadata_chars()
+
+
+def profile_report(card: str, prompt: str) -> tuple[str, str]:
+    """(breakdown for the lead, warning or "") — routed to the LEAD, never into
+    the teammate's prompt where it is noise and unactionable. An always-identical
+    table is wallpaper (constraints.md #3), so the warning is what carries news."""
+    project = {
+        "the story card": len(card),
+        "constraints.md": len(_read(Path(".xp/constraints.md"))),
+        "CLAUDE.md": len(_read(Path("CLAUDE.md"))),
+    }
+    ours = len(prompt) - project["the story card"] - project["constraints.md"]
+    total = (len(prompt) + project["CLAUDE.md"] + component_metadata_chars()) // 4
+    shares = " · ".join(f"{k} {v // 4}" for k, v in project.items())
+    line = (
+        f"profile: total {total} tokens · plugin-shipped {(ours + component_metadata_chars()) // 4}"
+        f" · {shares}"
+    )
+    if total <= TOTAL_TARGET:
+        return line, ""
+    largest = max(project, key=lambda k: project[k])
+    return line, (
+        f"note: teammate profile is {total} tokens, over the {TOTAL_TARGET} target."
+        f" Largest project-owned contributor is {largest} ({project[largest] // 4} tokens)"
+        " — yours to retire, not the plugin's."
+    )
+
+
+def bootstrap_command(system_md: str) -> str:
+    """The whole value must be ONE backticked command, or nothing runs.
+
+    A substring match would execute the path in a line like
+    "Worktree bootstrap: none needed - see [a backticked path]". Deterministic
+    by construction: no judging prose (constraints.md #7).
+    """
+    for ln in system_md.splitlines():
+        if "Worktree bootstrap:" in ln:
+            value = ln.split("Worktree bootstrap:", 1)[1].strip().rstrip(".")
+            m = re.fullmatch(r"`(.+)`", value)
+            return m.group(1) if m else ""
+    return ""
 
 
 def resolve_role(role: str, card: str = "", override: str = "") -> tuple[str, str, str]:
@@ -142,6 +217,10 @@ def cmd_spawn(story_id: str, override: str, dry_run: bool) -> int:
     tree = worktree_path(story_id)
     argv = claude_argv(model, effort)
     prompt = build_prompt(teammate_sections(card))
+    report, warning = profile_report(card, prompt)
+    print(report)
+    if warning:
+        print(warning, file=sys.stderr)
     if dry_run:
         print(" ".join(argv))
         print(prompt)
@@ -155,6 +234,14 @@ def cmd_spawn(story_id: str, override: str, dry_run: bool) -> int:
     added = git("worktree", "add", "-b", branch, str(tree), trunk, check=False)
     if added.returncode != 0:
         return fail(f"git worktree add failed: {added.stderr.strip()}")
+    if command := bootstrap_command(_read(Path(".xp/system.md"))):
+        done = subprocess.run(command, shell=True, cwd=tree, capture_output=True, text=True)
+        if done.returncode != 0:
+            print(done.stderr.strip(), file=sys.stderr)
+            return fail(
+                f"refused: worktree bootstrap failed ({command!r}) — not launching"
+                f" a teammate into a broken tree. Worktree left at {tree}"
+            )
     flip_to_in_progress(tree, story_id)
     print(f"{branch} at {tree} (off {trunk})")
     return run_agent(argv, tree, prompt).returncode

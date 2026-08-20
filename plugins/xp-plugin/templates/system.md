@@ -12,3 +12,8 @@ ACs must be executed by a surface-driving test named in its Verify.>
 
 **Conventions**: <the rules a reviewer should enforce that constraints.md
 doesn't carry>
+
+**Worktree bootstrap**: <one backticked command that makes a fresh worktree
+runnable — e.g. `npm ci` or `uv sync` — or "none needed". Only a value that is
+entirely one backticked command runs; anything else is a no-op, so prose here
+can never execute by accident. A nonzero exit refuses the spawn.>
