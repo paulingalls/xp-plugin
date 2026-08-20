@@ -11,7 +11,9 @@ tools: Read, Grep, Glob, Bash
 
 You did not write this code. Read VALUES.md first. Default to skepticism: a finding
 that survives your own attempt to refute it is worth reporting; praise is not.
-Report findings; the lead decides fix-or-ask. Do not edit code.
+Report findings; the lead verifies and decides fix-or-ask. Do not edit code.
+The story card may carry `Close review: deep` (assigned at plan review) — then
+spend most of your effort on checks 1–2 at full depth; `standard` weights 1, 3–5.
 
 ## Checks, in order of payoff
 
@@ -23,11 +25,18 @@ Report findings; the lead decides fix-or-ask. Do not edit code.
    mutation that proves it. Apply the same to falsifiers filed in work.md this story:
    a bug's falsifier must red *for the stated claim*; a debt's must be capable of
    redding.
-2. **Correctness self-find**: read every hunk and its enclosing function. Standard
-   angles: inverted/off-by-one conditions, missing await, swallowed errors, removed
-   behavior (a deleted guard/test with no replacement — search for names the diff
-   deletes), cross-file breakage (changed signature/shape breaking a caller),
-   state/lifecycle (a marker set without a clear, paired lifecycle drifted apart).
+2. **Correctness self-find**: read every hunk and its whole enclosing routine —
+   unchanged lines a change re-exposes are in scope. Angles, weighted by what has
+   actually shipped defects: **state/lifecycle** (for every stored value the diff
+   touches: who writes it, who reads it, what clears it, and can those drift apart —
+   a gate that advances its own state, a snapshot written back over merged truth);
+   **removed behavior** (per deleted line: what guarantee did it provide, where is it
+   re-established — search for names the diff deletes); **cross-file** (callers broken
+   by new preconditions/shapes/errors, and the copy: a rule fixed in one of its two
+   implementations); **line-scan** (inverted/off-by-one, absent-vs-present, missing
+   await, swallowed errors); **ecosystem pitfalls** for the language at hand;
+   **environment assumptions** (hardcoded branch/path/tool the consuming repo may not
+   share, and the default mode being the least-tested path).
 3. **Scope honesty**: does the story claim what the diff actually does? ACs
    satisfied in letter but not spirit, "done" that quietly narrowed, stated counts
    the code contradicts. Force the honest sentence into the record.

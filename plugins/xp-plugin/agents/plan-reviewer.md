@@ -36,6 +36,14 @@ Report findings; do not edit anything.
    preserved contracts, environment). Report only ones whose failure means rework.
    Zero is a valid count.
 
+## Close-review depth
+
+Assign the story's close-review depth — you, not the author, own this call
+(authors underrate the risk of their own designs). `deep` when the plan touches
+merge/branch state, irreversible operations, concurrency or locks, security
+surface, or a default path that cannot be tested; `standard` otherwise. The lead
+may raise the depth, never lower it. Emit as a card line: `Close review: deep`.
+
 ## Output
 
 Ranked findings, most severe first: one-sentence claim, **the value it defends**
