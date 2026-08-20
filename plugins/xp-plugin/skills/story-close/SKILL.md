@@ -8,10 +8,11 @@ description: >-
 # Story Close (manual checklist — the spec for close.py)
 
 1. **Preflight**: story branch pushed; `git status` clean; story's AC list open.
-2. **Spawn the story-reviewer** (Agent tool, `story-reviewer`), passing: the
-   cumulative story diff (`git diff main...HEAD`), the story card from .xp/plan.md,
-   any work.md entries filed during this story, and paths to .xp/constraints.md +
-   .xp/system.md. Wait for its ranked findings + VERDICT line.
+2. **Spawn the story-reviewer** (Agent tool, `story-reviewer`) on the bundle
+   `close.py story <id> start` emits: it bases the cumulative diff on the
+   INTEGRATION TARGET (the sprint branch under `release: sprint`, else the default
+   branch) and carries the story card, the work.md entries filed during the story,
+   and constraints.md + system.md. Wait for its ranked findings + VERDICT line.
 3. **Judgment point** (yours): fix gating findings now; file non-gating ones as
    bug/debt/note per PROCESS.md; ask the human only where reviewer and you disagree
    on gating.
