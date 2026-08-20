@@ -192,3 +192,46 @@ class TestSprintCloseFindings:
         plan.write_text(plan.read_text() + "#### story-001 — ancient   [done]\nVerify: true\n")
         r = run_hook(repo, tmp_path)
         assert "story-042" in r.stdout and "ancient" not in r.stdout
+
+
+def run_hook_as(cwd, data_dir, role=None):
+    """Same hook, with XP_ROLE set — spawn exports it for teammate sessions."""
+    env = {"PATH": "/usr/bin:/bin", "HOME": str(data_dir), "XP_DATA": str(data_dir / "xp")}
+    if role is not None:
+        env["XP_ROLE"] = role
+    return subprocess.run(
+        [sys.executable, str(HOOK)],
+        input=json.dumps({"cwd": str(cwd), "session_id": "sess-role", "source": "startup"}),
+        env=env,
+        cwd=cwd,
+        capture_output=True,
+        text=True,
+    )
+
+
+class TestRoleProfile:
+    """Both paths emit POSITIVE, distinct output. A silent teammate path would
+    pass identically when the hook crashes — main() ends in a bare
+    `except (Exception, SystemExit): sys.exit(0)` — so "no output" cannot
+    distinguish "role gate worked" from "role gate never ran" (constraint 2)."""
+
+    def test_teammate_gets_one_line_marker_not_the_lead_profile(self, tmp_path):
+        repo, _g = xp_repo(tmp_path)
+        r = run_hook_as(repo, tmp_path, role="teammate")
+        assert r.returncode == 0
+        assert "teammate" in r.stdout.lower()
+        assert len(r.stdout.strip().splitlines()) == 1
+        # the lead profile's own sentinels must be ABSENT: spawn already inlines
+        # VALUES + the card + constraints, so re-injecting them is duplicate tokens
+        assert "BEGIN project content" not in r.stdout
+        assert "XP Values" not in r.stdout
+
+    def test_unset_role_is_the_lead(self, tmp_path):
+        repo, _g = xp_repo(tmp_path)
+        r = run_hook_as(repo, tmp_path, role=None)
+        assert "BEGIN project content" in r.stdout
+
+    def test_explicit_lead_role_gets_the_lead_profile(self, tmp_path):
+        repo, _g = xp_repo(tmp_path)
+        r = run_hook_as(repo, tmp_path, role="lead")
+        assert "BEGIN project content" in r.stdout
