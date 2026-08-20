@@ -12,7 +12,7 @@ review has caught ≥1 real defect across the milestone (MVP acceptance, DESIGN 
 
 ### Sprint 1
 
-#### story-001 — work.md append CLI   [in-progress]
+#### story-001 — work.md append CLI   [done]
 Context: All work records (bug/debt/note) go through one flock'd append CLI so
 concurrent writers never lose updates (DESIGN §4). Shapes are structural: bug =
 claim + falsifier + files (falsifier must red to file); debt = same, falsifier
