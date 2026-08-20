@@ -801,6 +801,12 @@ class TestLandBookkeeping:
         r = close(repo, env, "land")
         assert r.returncode == 3, "push failure must not read as success"
         assert "git push origin main" in r.stderr
+        # the merge, flip and amend all landed and merge_sha is on a ref — only a
+        # failed AMEND orphans it. Withholding the record here made the close
+        # unrecordable by any command, because the card already reads [done].
+        rec = json.loads((tmp_path / "data" / "closes.jsonl").read_text().splitlines()[-1])
+        assert rec["story"] == "story-042"
+        assert not (tmp_path / "data" / "markers" / "story-042.close.json").exists()
 
     def test_land_clears_the_stories_test_status_markers(self, tmp_path):
         """AC 3: cleared, never greened — close.py may not forge another
@@ -982,7 +988,9 @@ class TestDeltaReviewFindings:
             "  git push -q origin _pr:main\n"
             "  git checkout -q main\n"
             "  git branch -qD _pr\n"
-            "  git push -q origin --delete story-042-branch 2>/dev/null\n"
+            # server-side delete, as the real gh API does: the tracking ref is
+            # deliberately left stale, because `git fetch` without --prune keeps it
+            f"  git --git-dir={origin} update-ref -d refs/heads/story-042-branch\n"
             "  git branch -qD story-042-branch ;; esac\n"
         )
         gh.chmod(0o755)
@@ -1090,5 +1098,7 @@ class TestDeltaReviewFindings:
         close(repo, env, "review")
         r = close(repo, env, "land", "--dry-run")
         assert r.returncode == 0
-        for step in ("git push origin main", "git branch -d story-042-branch"):
-            assert step in r.stdout, f"preview omits {step!r}"
+        assert "git branch -d story-042-branch" in r.stdout
+        # make_repo has NO remote, and both pushes are runtime-guarded on one —
+        # previewing them here is the same overstatement F4 was filed for
+        assert "git push origin" not in r.stdout, "previewed pushes that never run"

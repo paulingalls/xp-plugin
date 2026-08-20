@@ -21,7 +21,8 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
-from work import card_title, chdir_repo_root, config_block_value, data_root
+from bookkeep import delete_story_branch, delete_story_markers, log_close
+from work import chdir_repo_root, config_block_value, data_root
 
 
 def fail(msg: str) -> "int":
@@ -238,62 +239,6 @@ def _read_first(*candidates: str) -> str:
     return f"(missing: {candidates[0]})"
 
 
-def _delete_story_markers(story_id: str) -> None:
-    """Clear the story's test-status markers rather than writing a green into
-    them: those files are session-scoped gate state, and a green close.py never
-    measured is close.py forging another session's measurement (DESIGN §4,
-    constraints #6). The [done] flip is what honestly releases the Stop gate;
-    this only stops dead files accumulating."""
-    for path in (data_root() / "markers").glob(f"*.{story_id}.test-status"):
-        path.unlink(missing_ok=True)
-
-
-def _log_close(story_id: str, card: str, verdicts: list[str], merge_sha: str) -> None:
-    """APPEND one line per close. A single overwritten file would be the
-    project-global mutable marker constraints #10 calls a design error; a log is
-    not, it survives two closes in one sprint, and the retro gets the history."""
-    from datetime import datetime, timezone
-
-    record = {
-        "story": story_id,
-        "title": card_title(card),
-        "verdicts": verdicts,
-        "merge_sha": merge_sha,
-        "closed_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-    }
-    with (data_root() / "closes.jsonl").open("a") as fh:
-        fh.write(json.dumps(record) + "\n")
-
-
-def _delete_story_branch(branch: str) -> list[str]:
-    """Delete the story branch, LOCAL FIRST.
-
-    Local first so `-d`'s merged check runs while the upstream ref still exists.
-    Belt-and-braces at both call sites, where the merge is already reachable —
-    the measurement behind the ordering (story-007) was taken from the story
-    branch before the merge, where it IS load-bearing.
-
-    Idempotent on both sides: `gh pr merge --delete-branch` may already have
-    removed either, and reporting an already-done step as outstanding prints a
-    remediation that fails on re-run — a wolf-cry on the only channel M1's
-    "no hand-steps" has. The remote is asked with ls-remote rather than a
-    tracking ref, because `git fetch` without --prune leaves stale ones.
-
-    Returns the commands that failed, for the caller to surface.
-    """
-    local_exists = (
-        git("rev-parse", "--verify", "-q", f"refs/heads/{branch}", check=False).returncode == 0
-    )
-    if local_exists and git("branch", "-d", branch, check=False).returncode != 0:
-        return [f"git branch -d {branch}"]
-    on_origin = (
-        git("ls-remote", "--exit-code", "--heads", "origin", branch, check=False).returncode == 0
-    )
-    if on_origin and git("push", "origin", "--delete", branch, check=False).returncode != 0:
-        return [f"git push origin --delete {branch}"]
-    return []
-
-
 def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
     if git("status", "--porcelain").stdout.strip():
         return fail("refused: working tree is dirty — Verify must judge the tree that merges")
@@ -373,11 +318,15 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
         else:
             print(f"git merge --no-ff {branch} on {trunk}")
             print("(flip .xp/plan.md to [done], then git commit --amend --no-edit)")
-            for c in [
-                ["git", "push", "origin", trunk],
-                ["git", "branch", "-d", branch],
-                ["git", "push", "origin", "--delete", branch],
-            ]:
+            has_remote = bool(git("remote", check=False).stdout.strip())
+            steps = [["git", "branch", "-d", branch]]
+            if has_remote:  # both pushes are runtime-guarded on a remote existing
+                steps = [
+                    ["git", "push", "origin", trunk],
+                    *steps,
+                    ["git", "push", "origin", "--delete", branch],
+                ]
+            for c in steps:
                 print(" ".join(c))
         return 0
     if subprocess.run(verify, shell=True).returncode != 0:
@@ -408,6 +357,7 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
             )
 
     failed = []
+    orphaning = False  # only a failed amend leaves merge_sha on no ref
     if merge_mode == "pr":
         for c in pr_sync:
             if subprocess.run(c, capture_output=True, text=True).returncode != 0:
@@ -420,7 +370,8 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
         # check=False: the amend re-runs the commit wall on a tree that just
         # gained a merge, so it CAN fail — and raising there left the merge
         # landed with the flip abandoned.
-        if git("commit", "--amend", "--no-edit", "-q", check=False).returncode != 0:
+        orphaning = git("commit", "--amend", "--no-edit", "-q", check=False).returncode != 0
+        if orphaning:
             failed.append("git commit --amend --no-edit  (merge landed WITHOUT the [done] flip)")
         # merge_sha AFTER the amend: the pre-amend commit is on no ref and stops
         # resolving at gc, so a record holding it points at nothing.
@@ -433,21 +384,22 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
         for c in pr_bookkeep:
             if subprocess.run(c, capture_output=True, text=True).returncode != 0:
                 failed.append(" ".join(c))
-    failed += _delete_story_branch(branch)
+    failed += delete_story_branch(branch)
+    if not orphaning:
+        # Record unless merge_sha is about to be orphaned. Every failure EXCEPT a
+        # failed amend leaves it valid and on a ref, and by here the card reads
+        # [done] — so withholding the record on those made the close unrecordable
+        # by any command, and last_close() would name the previous story forever.
+        delete_story_markers(story_id)
+        log_close(story_id, card, state["verdicts"], merge_sha)
+        marker.unlink()
     if failed:
         # The merge HAS landed, so this is not a refusal (2) — but exiting 0
-        # would make a hand-step invisible, which M1's done-when forbids. No
-        # close record and no marker unlink: the record is the fact layer AC 8
-        # exists for, and one written here would name a sha the remediation
-        # below orphans. An absent record beats a record that points at nothing.
+        # would make a hand-step invisible, which M1's done-when forbids.
         print("\nincomplete — the merge landed, these did not. Re-run them:", file=sys.stderr)
         for c in failed:
             print(f"  {c}", file=sys.stderr)
-        print(f"  ...then this close is done; {story_id} is NOT recorded closed", file=sys.stderr)
         return 3
-    _delete_story_markers(story_id)
-    _log_close(story_id, card, state["verdicts"], merge_sha)
-    marker.unlink()
     print(
         f"{story_id} closed. Update the session digest (you are its sole writer);"
         " first line must be: # Session digest — written <ISO-ts> at <short-sha>"
