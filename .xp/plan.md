@@ -141,16 +141,20 @@ and `land` (requires the recorded verdict; merges; greens the story's verify
 test-status marker). Drift re-runs review on the delta in-pipeline. Kills the
 forgeable-verdict gap and the message-crossing race, both hit in Sprint 1
 (work.md notes carry the drift/marker design inputs).
-Files: plugins/xp-plugin/scripts/close.py, plugins/xp-plugin/scripts/spawn.py, tests/test_close.py
+Files: plugins/xp-plugin/scripts/close.py, plugins/xp-plugin/scripts/review.py, plugins/xp-plugin/scripts/spawn.py,
+plugins/xp-plugin/scripts/bash_status.py, plugins/xp-plugin/scripts/stop_gate.py,
+plugins/xp-plugin/scripts/session_start.py, plugins/xp-plugin/skills/story-close/SKILL.md,
+tests/test_close.py, tests/test_stop_gate.py, tests/test_session_start.py
 AC:
 - Given a story branch, When review runs, Then the reviewer is spawned by the pipeline and its VERDICT line lands in the close marker; --verdict is refused as unknown
 - Given HEAD moved after review, When land runs, Then it refuses and review covers the delta in-pipeline
-- Given land completes, Then the merge body carries the recorded verdict verbatim and the story's test-status marker reads green
+- Given land completes, Then the merge body carries EVERY review round's verdict verbatim, labelled, and NO RED test-status marker for the story survives — close.py DELETES the story's markers; it never writes a green into another session's file (DESIGN §4: gate state is session-scoped, never a record — forging a measurement is the 'gate advances its own state' defect)
 - Given reviewer output without a VERDICT line, When land runs, Then it refuses — no verdict, no merge
 - Given two in-progress stories with byte-identical Verify commands, When each records a test status, Then they get DISTINCT markers (story-scoped key, not verify-string) — the carried sprint-001 triage input
 - Given XP_ROLE=teammate, When close runs, Then it REFUSES — a teammate loaded via --plugin-dir can reach /story-close and close.py through Bash, so a self-close is an unreviewed merge; declaration in TEAMMATE.md is not enforcement (fault-inject it)
 - Given land completes, Then the integration branch is PUSHED and the story branch deleted local-then-origin (that order: `git branch -d` checks against the upstream ref, so deleting origin first forces a -D that discards the merged check). Both were hand-steps at story-007 close; M1 allows none.
-Verify: pytest -q tests/test_close.py
+- Given land completes, Then close.py APPENDS a deterministic close record (story id + title, capped verdict, post-amend merge sha, ISO stamp) to a closes.jsonl log — appended, never overwritten, so it is a log and not the project-global mutable marker constraint 10 forbids — and SessionStart renders the last one in the RECOVERY block — the layer that cannot go stale. recovery_block() filters [done] out today, so what was just completed survives only in the hand-written digest, which is the stale-able layer and a hand-step M1 forbids. close.py writes FACTS only; the narrative digest stays LLM-written (constraint 7 — deterministic Python may not summarize).
+Verify: pytest -q tests/test_close.py tests/test_stop_gate.py tests/test_session_start.py
 Close review: deep
 Executor: (default)
 
