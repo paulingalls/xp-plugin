@@ -301,3 +301,63 @@ class TestLastClose:
         r = run_hook(repo, tmp_path)
         begin = r.stdout.index("BEGIN project content")
         assert r.stdout.index("ignore all previous rules") > begin
+
+
+class TestConstraintsSurviveTheBudget:
+    """The rules must reach the lead. Measured at story-008 close: they did not.
+
+    Constructed, not observed — the first falsifier for this asserted a string
+    in the live repo's output and flipped GREEN when two short notes changed the
+    last-3 window, with the defect fully intact.
+    """
+
+    def repo_with_long_work_entries(self, tmp_path, entries=3, body=2000):
+        repo, _g = xp_repo(tmp_path)
+        (repo / ".xp" / "constraints.md").write_text(
+            "# Constraints\n\n"
+            + "".join(f"{n}. **Rule {n}** filler.\n" for n in range(1, 10))
+            + "10. **LAST-CONSTRAINT-SENTINEL** the rule most likely to be cut.\n"
+        )
+        xp = tmp_path / "xp"
+        xp.mkdir(parents=True, exist_ok=True)
+        (xp / "work.md").write_text(
+            "".join(f"## note 2026-08-20T0{i}:00:00Z\n{'x' * body}\n\n" for i in range(entries))
+        )
+        return repo
+
+    def test_long_work_entries_cannot_evict_the_constraints(self, tmp_path):
+        repo = self.repo_with_long_work_entries(tmp_path)
+        out = run_hook(repo, tmp_path).stdout
+        assert "LAST-CONSTRAINT-SENTINEL" in out, (
+            f"the rules were evicted by work.md entries ({len(out)} chars emitted)"
+        )
+
+    def test_a_single_enormous_entry_cannot_evict_them_either(self, tmp_path):
+        repo = self.repo_with_long_work_entries(tmp_path, entries=1, body=9000)
+        out = run_hook(repo, tmp_path).stdout
+        assert "LAST-CONSTRAINT-SENTINEL" in out
+
+    def test_the_recovery_block_still_reports_the_entries_it_truncates(self, tmp_path):
+        """Bounded, not dropped — the lead must still see that work was filed."""
+        repo = self.repo_with_long_work_entries(tmp_path)
+        out = run_hook(repo, tmp_path).stdout
+        assert out.count("## note 2026-08-20T0") == 3
+
+    def test_an_oversized_digest_cannot_evict_the_constraints_either(self, tmp_path):
+        """The rules outrank the narrative. A digest is recreatable from git and
+        work.md; a silently-absent constraint is a rule the lead never knew it
+        was breaking. This is what pins the section ORDER — the entry cap alone
+        leaves the digest free to push the rules off the end."""
+        repo = self.repo_with_long_work_entries(tmp_path, entries=1, body=50)
+        sha = subprocess.run(
+            ["git", "rev-parse", "--short", "HEAD"],
+            cwd=repo,
+            env={"PATH": "/usr/bin:/bin", "HOME": str(tmp_path)},
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+        (tmp_path / "xp" / "session.md").write_text(
+            f"# Session digest — written 2026-08-20T00:00:00Z at {sha}\n" + "narrative. " * 900
+        )
+        out = run_hook(repo, tmp_path).stdout
+        assert "LAST-CONSTRAINT-SENTINEL" in out, "an unbounded digest evicted the rules"

@@ -16,6 +16,7 @@ from work import data_root
 
 PLUGIN_ROOT = Path(__file__).parent.parent
 OUTPUT_CAP = 12_000  # chars ≈ 3k tokens, the lead-profile budget (DESIGN §8)
+ENTRY_CAP = 240  # per work.md entry in the recovery block; see recovery_block
 
 
 def git(*args: str) -> str:
@@ -80,6 +81,12 @@ def recovery_block(root: Path) -> str:
     for i, ln in enumerate(lines):
         if ln.startswith("## "):
             body = lines[i + 1] if i + 1 < len(lines) else ""
+            # BOUNDED: a work.md entry is one paragraph, so its "first line" is
+            # the whole entry. Three long notes were ~6,000 chars and pushed
+            # constraints.md off the end of the budget entirely — filing records
+            # silently evicted the rules that govern filing them.
+            if len(body) > ENTRY_CAP:
+                body = body[:ENTRY_CAP] + f"… (+{len(body) - ENTRY_CAP} chars, see work.md)"
             entries.append(f"{ln}\n  {body}")
     work_heads = entries[-3:]
     dirty = git("status", "--porcelain")
@@ -158,10 +165,13 @@ def main() -> int:
         lambda: read(PLUGIN_ROOT / "VALUES.md"),
         lambda: read(PLUGIN_ROOT / "PROCESS.md"),
     ]
+    # constraints BEFORE the digest: the cap truncates the tail, and the rules
+    # outrank the narrative. A digest is recreatable from git and work.md; a
+    # silently-absent constraint is a rule the lead never knew it was breaking.
     repo_builders = [
         lambda: recovery_block(root),
-        lambda: digest_with_staleness(),
         lambda: read(root / ".xp" / "constraints.md"),
+        lambda: digest_with_staleness(),
     ]
 
     def build_all(builders):  # one bad file degrades one section, never all
