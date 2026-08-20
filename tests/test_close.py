@@ -1349,6 +1349,7 @@ class TestShippedProseMatchesTheMechanism:
 
 
 REVIEWER_NAME = "xp story-reviewer"
+REVIEWER_EMAIL = "story-reviewer@xp.local"
 
 
 class TestFixingReviewer:
@@ -1422,7 +1423,9 @@ class TestFixingReviewer:
         (bin_dir / "claude").chmod(0o755)
         assert close(repo, env, "review").returncode == 0
         who = g("log", "-1", "--format=%an <%ae>").stdout.strip()
-        assert "t <t@t>" not in who, "the reviewer's commit carries the LEAD's identity"
+        # POSITIVE and whole: `"t <t@t>" not in who` passed with EMAIL dropped and
+        # NAME kept, so the half of AC 3 that says "EMAIL too" was unguarded.
+        assert who == f"{REVIEWER_NAME} <{REVIEWER_EMAIL}>", who
 
     def test_review_writes_the_reviewer_diff_to_a_file_and_prints_its_path(self, tmp_path):
         """AC 4: review's stdout is the channel this session lost three times, so
