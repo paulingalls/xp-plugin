@@ -8,11 +8,11 @@ tool_response has no exit_code). Registered under BOTH events.
 
 Matching: the command must contain a shell segment that STARTS WITH an
 in-progress story's config-known Verify string — a mention (commit message,
-grep) is not an invocation. One marker per verify (constraint 10: story B's
-green must not hide story A's red).
+grep) is not an invocation. One marker per STORY, not per verify string
+(constraint 10): two stories can carry byte-identical Verify commands — sprint-1
+shipped a pair — and a verify-keyed marker cannot tell whose status it holds.
 """
 
-import hashlib
 import json
 import re
 import sys
@@ -23,23 +23,27 @@ from close import story_card, verify_commands
 from work import chdir_repo_root, data_root
 
 
-def in_progress_verifies() -> list[str]:
+def in_progress_stories() -> list[tuple[str, str]]:
+    """(story_id, verify) for every [in-progress] story that declares a Verify."""
     plan_path = Path(".xp/plan.md")
     if not plan_path.exists():
         return []
     plan = plan_path.read_text(errors="replace")
-    verifies = []
+    stories = []
     for ln in plan.splitlines():
         if ln.startswith("#### ") and "[in-progress]" in ln:
             story_id = ln.removeprefix("#### ").split(" ", 1)[0]
             card, _ = story_card(plan, story_id)
             if v := verify_commands(card):
-                verifies.append(v)
-    return verifies
+                stories.append((story_id, v))
+    return stories
 
 
-def invoked_verify(command: str, event_is_green: bool) -> str | None:
-    """The verify whose status the command's OVERALL exit actually entails.
+def invoked_stories(command: str, event_is_green: bool) -> list[tuple[str, str]]:
+    """Every story whose Verify the command's OVERALL exit actually entails.
+
+    A list, not one story: byte-identical Verify commands genuinely entail both
+    stories' status, and each gets its own marker.
 
     Segments must EQUAL the verify exactly (a subset like `verify::test_one` or a
     mention is not the verify). Green additionally requires every separator to the
@@ -49,20 +53,21 @@ def invoked_verify(command: str, event_is_green: bool) -> str | None:
     honest green run. Anything else -> no marker (advisory fail-open).
     """
     tokens = [t.strip() for t in re.split(r"(&&|\|\||[;|]|\n)", command)]
-    for verify in in_progress_verifies():
+    hits = []
+    for story_id, verify in in_progress_stories():
         for i, tok in enumerate(tokens):
             if tok == verify:
                 rest_seps = [t for t in tokens[i + 1 :] if t in ("&&", "||", ";", "|", "")]
                 if not event_is_green or all(t == "&&" for t in rest_seps):
-                    return verify
-    return None
+                    hits.append((story_id, verify))
+                    break
+    return hits
 
 
-def marker_file(session: str, verify: str) -> Path:
+def marker_file(session: str, story_id: str) -> Path:
     d = data_root() / "markers"
     d.mkdir(parents=True, exist_ok=True)
-    digest = hashlib.sha1(verify.encode()).hexdigest()[:8]
-    return d / f"{session}.{digest}.test-status"
+    return d / f"{session}.{story_id}.test-status"
 
 
 def main() -> int:
@@ -79,11 +84,14 @@ def main() -> int:
         red = False  # the command succeeded; entailment for the verify checked below
     else:
         return 0
-    verify = invoked_verify(command, event_is_green=not red)
-    if verify is None:
+    hits = invoked_stories(command, event_is_green=not red)
+    if not hits:
         return 0
     session = str(data.get("session_id", "unknown"))[:64]
-    marker_file(session, verify).write_text(json.dumps({"verify": verify, "red": red}))
+    for story_id, verify in hits:
+        marker_file(session, story_id).write_text(
+            json.dumps({"story": story_id, "verify": verify, "red": red})
+        )
     return 0
 
 

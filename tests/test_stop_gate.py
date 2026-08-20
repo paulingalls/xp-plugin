@@ -258,3 +258,41 @@ class TestSprintCloseFindings:
 
 def self_payload(session="sess-1", active=False):
     return {"session_id": session, "cwd": ".", "stop_hook_active": active}
+
+
+class TestStoryScopedMarkers:
+    """story-008 AC 5: the carried sprint-001 triage input. Keying markers by the
+    verify STRING collides across stories that share a Verify command — measured
+    on story-002/005, which had byte-identical ones."""
+
+    def two_stories(self, tmp_path, verify_a, verify_b):
+        repo, _g = repo_with_story(tmp_path, verify=verify_a)
+        plan = repo / ".xp" / "plan.md"
+        plan.write_text(
+            plan.read_text() + f"#### story-043 — other   [in-progress]\nVerify: {verify_b}\n"
+        )
+        return repo
+
+    def test_identical_verify_commands_get_distinct_markers(self, tmp_path):
+        shared = "pytest -q tests/test_shared.py"
+        repo = self.two_stories(tmp_path, shared, shared)
+        run_script("bash_status.py", failure_payload(shared), repo, tmp_path)
+        files = sorted(p.name for p in (tmp_path / "xp" / "markers").glob("*.test-status"))
+        assert len(files) == 2, f"one marker for two stories: {files}"
+        assert {m["story"] for m in markers(tmp_path)} == {"story-042", "story-043"}
+
+    def test_the_marker_name_carries_the_story_not_a_verify_hash(self, tmp_path):
+        """Fault-injection for the key itself: a verify-string hash is identical
+        for both stories, so only a story-scoped name can satisfy this."""
+        shared = "pytest -q tests/test_shared.py"
+        repo = self.two_stories(tmp_path, shared, shared)
+        run_script("bash_status.py", failure_payload(shared), repo, tmp_path)
+        names = sorted(p.name for p in (tmp_path / "xp" / "markers").glob("*.test-status"))
+        assert names == ["sess-1.story-042.test-status", "sess-1.story-043.test-status"]
+
+    def test_distinct_verifies_still_scope_per_story(self, tmp_path):
+        repo = self.two_stories(tmp_path, "pytest -q a.py", "bun test x")
+        run_script("bash_status.py", failure_payload("pytest -q a.py"), repo, tmp_path)
+        run_script("bash_status.py", success_payload("bun test x"), repo, tmp_path)
+        by_story = {m["story"]: m["red"] for m in markers(tmp_path)}
+        assert by_story == {"story-042": True, "story-043": False}

@@ -13,7 +13,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
-from bash_status import in_progress_verifies
+from bash_status import in_progress_stories
 from work import chdir_repo_root, data_root
 
 
@@ -28,14 +28,14 @@ def red_verify_in_play(session: str) -> str | None:
     A story flipped to done/deferred in plan.md releases its red honestly —
     that IS the deferral path the block message names.
     """
-    live = set(in_progress_verifies())
+    live = {story_id for story_id, _verify in in_progress_stories()}
     for path in (data_root() / "markers").glob(f"{session}.*.test-status"):
         try:
             status = json.loads(path.read_text())
         except Exception:
             continue  # one corrupt file must not disable the gate
-        if status.get("red") and status.get("verify") in live:
-            return str(status.get("verify"))
+        if status.get("red") and status.get("story") in live:
+            return str(status.get("verify"))  # the verify is what the lead can act on
     return None
 
 
