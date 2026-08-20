@@ -30,7 +30,23 @@ def delete_story_markers(story_id: str) -> None:
         path.unlink(missing_ok=True)
 
 
-def log_close(story_id: str, card: str, verdicts: list[str], merge_sha: str) -> None:
+def render_merge_body(rounds: list[dict]) -> str:
+    """Every round, labelled by its TRUE round number.
+
+    Index IS the round: a round is recorded only with a valid report, so there are
+    no gaps to renumber over. story-008 appended only when a VERDICT line parsed,
+    labelled by list position, and its own merge body reads "Review round 1" for
+    round 6.
+    """
+    out = []
+    for i, r in enumerate(rounds, 1):
+        counts = " · ".join(f"{len(r[k])} {k}" for k in ("fixed", "blocking", "noted"))
+        out.append(f"Review round {i}: {counts}")
+        out += [f"  {k}: {item}" for k in ("fixed", "blocking", "noted") for item in r[k]]
+    return "\n".join(out)
+
+
+def log_close(story_id: str, card: str, rounds: list[dict], merge_sha: str) -> None:
     """APPEND one line per close. A single overwritten file would be the
     project-global mutable marker constraints #10 calls a design error; a log is
     not, it survives two closes in one sprint, and the retro gets the history."""
@@ -39,7 +55,7 @@ def log_close(story_id: str, card: str, verdicts: list[str], merge_sha: str) -> 
     record = {
         "story": story_id,
         "title": card_title(card),
-        "verdicts": verdicts,
+        "rounds": rounds,
         "merge_sha": merge_sha,
         "closed_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
     }

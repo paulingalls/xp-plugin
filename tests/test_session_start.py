@@ -266,6 +266,44 @@ class TestLastClose:
         assert "story-041" in r.stdout and "a finished story" in r.stdout
         assert "VERDICT: clean" in r.stdout
 
+    def test_both_close_record_shapes_render(self, tmp_path):
+        """story-012a replaces verdicts[] with rounds[]. closes.jsonl is append-only
+        and already holds story-008's verdicts[] record, so a reader that knows only
+        the new shape degrades the whole recovery layer to "(unreadable log)" — the
+        same silent eviction class as the constraints bug."""
+        repo, _g = xp_repo(tmp_path)
+        new_shape = {
+            "story": "story-012a",
+            "title": "the structured gate",
+            "rounds": [{"fixed": ["f1"], "blocking": [], "noted": ["n1"]}],
+            "merge_sha": "def5678",
+            "closed_at": "2026-08-20T19:00:00Z",
+        }
+        self.write_closes(tmp_path, self.record(), new_shape)
+        r = run_hook(repo, tmp_path)
+        assert "story-012a" in r.stdout and "unreadable" not in r.stdout
+        assert "f1" in r.stdout, "the round's findings never reached the lead"
+        self.write_closes(tmp_path, new_shape, self.record())
+        old = run_hook(repo, tmp_path)
+        assert "VERDICT: clean" in old.stdout, "the old shape stopped rendering"
+
+    def test_a_long_round_list_cannot_evict_the_rules(self, tmp_path):
+        repo, _g = xp_repo(tmp_path)
+        self.write_closes(
+            tmp_path,
+            {
+                "story": "story-042",
+                "title": "many rounds",
+                "rounds": [
+                    {"fixed": ["x" * 500], "blocking": [], "noted": ["y" * 500]} for _ in range(8)
+                ],
+                "merge_sha": "abc1234",
+                "closed_at": "2026-08-20T19:00:00Z",
+            },
+        )
+        r = run_hook(repo, tmp_path)
+        assert "CONSTRAINT-SENTINEL" in r.stdout, "the close record evicted constraints.md"
+
     def test_only_the_most_recent_close_is_rendered(self, tmp_path):
         repo, _g = xp_repo(tmp_path)
         self.write_closes(

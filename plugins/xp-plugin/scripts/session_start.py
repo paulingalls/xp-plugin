@@ -45,6 +45,32 @@ def digest_with_staleness() -> str:
     return text
 
 
+CLOSE_CAP = 400  # the whole close detail; see _close_detail
+
+
+def _close_detail(record: dict) -> str:
+    """Both record shapes, bounded.
+
+    closes.jsonl is append-only, so story-008's verdicts[] records outlive the
+    mechanism that wrote them; a reader that knows only rounds[] degrades this
+    whole layer to "(unreadable log)". Bounded because more review rounds must
+    never mean fewer constraints reaching the lead — this is the section that
+    evicted constraints.md once already.
+    """
+    rounds = record.get("rounds")
+    if rounds is None:
+        detail = " · ".join(record.get("verdicts") or ["(no verdict recorded)"])
+    else:
+        detail = " · ".join(
+            f"round {i}: "
+            + ", ".join([*r.get("fixed", []), *r.get("blocking", []), *r.get("noted", [])])
+            for i, r in enumerate(rounds, 1)
+        )
+    if len(detail) > CLOSE_CAP:
+        detail = detail[:CLOSE_CAP] + f"… (+{len(detail) - CLOSE_CAP} chars, see closes.jsonl)"
+    return detail
+
+
 def last_close() -> str:
     """The most recent close, from close.py's append-only log.
 
@@ -61,7 +87,7 @@ def last_close() -> str:
     if not lines:
         return ""
     record = json.loads(lines[-1])
-    verdicts = " · ".join(record.get("verdicts") or ["(no verdict recorded)"])
+    verdicts = _close_detail(record)
     return (
         f"last close: {record['story']} — {record.get('title', '')}"
         f" at {str(record.get('merge_sha', ''))[:8]} on {record.get('closed_at', '?')}"

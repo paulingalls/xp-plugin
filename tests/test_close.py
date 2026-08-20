@@ -23,21 +23,36 @@ Verify: {verify}
 CONFIG = "roles:\n  reviewer: claude/opus\ntests:\n  story: true\n"
 
 
-def stub_reviewer(tmp_path, result="VERDICT: clean", exit_code=0, raw=None):
+def stub_reviewer(tmp_path, result="findings above", exit_code=0, raw=None, report=...):
     """A fake `claude` that APPENDS one JSONL record per launch.
 
     Append, not overwrite: an overwriting stub makes "the reviewer was not
     launched again" pass vacuously by re-reading the previous launch's record.
+
+    `report` is what a REAL reviewer does under story-012a: find the REPORT_PATH
+    line in the bundle and write its findings there. Defaults to a clean report,
+    since most tests here are about what happens AFTER a review. Pass a dict for
+    specific findings, a str for malformed JSON, None to write nothing at all (the
+    prose-only reviewer, which the pipeline must refuse).
     """
+    if report is ...:
+        report = {"fixed": [], "blocking": [], "noted": []}
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir(exist_ok=True)
     rec = tmp_path / "launches.jsonl"
     payload = raw if raw is not None else json.dumps({"result": result})
+    body = report if isinstance(report, str) or report is None else json.dumps(report)
     (bin_dir / "claude").write_text(
         "#!/usr/bin/env python3\n"
-        "import json, os, sys\n"
+        "import json, os, re, sys\n"
+        "stdin = sys.stdin.read()\n"
         f"open({str(rec)!r}, 'a').write(json.dumps({{'argv': sys.argv[1:],"
-        f" 'env': dict(os.environ), 'stdin': sys.stdin.read()}}) + '\\n')\n"
+        " 'env': dict(os.environ), 'stdin': stdin}) + '\\n')\n"
+        f"body = {body!r}\n"
+        "if body is not None:\n"
+        "    m = re.search(r'^REPORT_PATH: (.+)$', stdin, re.M)\n"
+        "    assert m, 'the bundle named no REPORT_PATH'\n"
+        "    open(m.group(1).strip(), 'w').write(body)\n"
         f"sys.stdout.write({payload!r})\n"
         f"sys.exit({exit_code})\n"
     )
@@ -150,19 +165,8 @@ class TestReviewed:
         r = close(repo, env, "land")
         assert r.returncode == 0, r.stderr
         body = g("log", "main", "-1", "--format=%B").stdout
-        assert "VERDICT: clean" in body
+        assert "Review round 1" in body
         assert "[done]" in (repo / ".xp" / "plan.md").read_text()
-
-    def test_drift_resets_to_reviewing_with_delta(self, tmp_path):
-        repo, env, g = make_repo(tmp_path)
-        close(repo, env, "review")
-        (repo / "src" / "thing.py").write_text("A = 4\n")
-        g("add", "-A")
-        g("commit", "-qm", "fix from review")
-        r = close(repo, env, "land")
-        assert r.returncode == 2  # not merged
-        assert "A = 4" in launches(tmp_path)[1]["stdin"]  # delta went to the reviewer
-        assert "[done]" not in (repo / ".xp" / "plan.md").read_text()
 
     def test_conflicting_main_aborts_back_to_reviewing(self, tmp_path):
         repo, env, g = make_repo(tmp_path)
@@ -172,9 +176,13 @@ class TestReviewed:
         g("add", "-A")
         g("commit", "-qm", "conflicting")
         g("checkout", "-q", "story-042-branch")
-        close(repo, env, "review")  # re-baseline: trunk-motion guard fires otherwise
-        r = close(repo, env, "land")
-        assert r.returncode != 0 and "conflict" in (r.stderr + r.stdout).lower()
+        # land refuses on the trunk motion, and review sends the lead to merge trunk
+        # in — which is where the conflict now surfaces: on the story branch, in the
+        # lead's own working tree, before any review is spent on it
+        assert close(repo, env, "land").returncode == 2
+        assert "git merge main" in close(repo, env, "review").stderr
+        assert g("merge", "main").returncode != 0
+        g("merge", "--abort")
         assert "[done]" not in (repo / ".xp" / "plan.md").read_text()
         assert g("status", "--porcelain").stdout == ""  # no half-merged tree left behind
 
@@ -197,11 +205,11 @@ class TestReviewed:
             capture_output=True,
             text=True,
         )
-        assert "gh pr create" in r.stdout and "VERDICT: clean" in r.stdout
+        assert "gh pr create" in r.stdout and "Review round 1" in r.stdout
         merge_lines = [ln for ln in r.stdout.splitlines() if "gh pr merge" in ln]
         assert len(merge_lines) == 1
         assert "--merge" in merge_lines[0] and "--delete-branch" in merge_lines[0]
-        assert "VERDICT: clean" in merge_lines[0]  # verdict rides the merge, not only create
+        assert "Review round 1" in merge_lines[0]  # rounds ride the merge, not only create
         assert any(ln.startswith("git push") for ln in r.stdout.splitlines())
 
     def test_reviewed_dirty_tree_refused(self, tmp_path):
@@ -253,29 +261,13 @@ class TestSecondReviewRound:
         g("add", "-A")
         g("commit", "-qm", "story-043 done on main")
         g("checkout", "-q", "story-042-branch")
-        close(repo, env, "review")  # re-baseline after main moved
+        g("merge", "-q", "main", "-m", "merge trunk before re-review")
+        close(repo, env, "review")  # re-baseline: the merge is what moves the base
         r = close(repo, env, "land")
         assert r.returncode == 0, r.stderr
         merged = g("show", "main:.xp/plan.md").stdout
         assert "#### story-043 — other   [done]" in merged  # main-side change survives
         assert "#### story-042 — demo story   [done]" in merged
-
-    def test_every_drift_costs_a_review(self, tmp_path):
-        repo, env, g = make_repo(tmp_path)
-        close(repo, env, "review")
-        (repo / "src" / "thing.py").write_text("A = 4\n")
-        g("add", "-A")
-        g("commit", "-qm", "post-review fix")
-        assert close(repo, env, "land").returncode == 2
-        # a SECOND drift must cost a SECOND review — re-baselining is earned by
-        # the delta review, never by re-running land
-        (repo / "src" / "thing.py").write_text("A = 5\n")
-        g("add", "-A")
-        g("commit", "-qm", "another post-review fix")
-        assert close(repo, env, "land").returncode == 2
-        assert len(launches(tmp_path)) == 3, "full review + one delta review per drift"
-        assert "A = 5" in launches(tmp_path)[2]["stdin"]
-        assert "[done]" not in (repo / ".xp" / "plan.md").read_text()
 
     def test_main_motion_after_start_refused(self, tmp_path):
         repo, env, g = make_repo(tmp_path)
@@ -321,7 +313,7 @@ class TestSecondReviewRound:
         close(repo, env, "review")
         r = close(repo, env, "land")
         assert r.returncode == 0, r.stderr
-        assert "VERDICT: clean" in g("log", "master", "-1", "--format=%B").stdout
+        assert "Review round 1" in g("log", "master", "-1", "--format=%B").stdout
 
     def test_pr_mode_detects_origin_trunk_motion(self, tmp_path):
         repo, env, g = make_repo(tmp_path)
@@ -408,9 +400,9 @@ class TestSprintIntegration:
         assert "earlier story landed here" not in r.stdout
         r = close(repo, env, "land")
         assert r.returncode == 0, r.stderr
-        assert "VERDICT: clean" in g("log", "sprint-001", "-1", "--format=%B").stdout
+        assert "Review round 1" in g("log", "sprint-001", "-1", "--format=%B").stdout
         assert "[done]" in g("show", "sprint-001:.xp/plan.md").stdout
-        assert "VERDICT" not in g("log", "main", "--format=%B").stdout  # main untouched
+        assert "Review round" not in g("log", "main", "--format=%B").stdout  # main untouched
 
     def test_sprint_release_without_branch_key_falls_back_to_default(self, tmp_path):
         repo, env, g = make_repo(tmp_path)
@@ -420,7 +412,7 @@ class TestSprintIntegration:
         close(repo, env, "review")
         r = close(repo, env, "land")
         assert r.returncode == 0, r.stderr
-        assert "VERDICT: clean" in g("log", "main", "-1", "--format=%B").stdout
+        assert "Review round 1" in g("log", "main", "-1", "--format=%B").stdout
 
     def test_story_release_ignores_sprint_branch_key(self, tmp_path):
         repo, env, g = make_repo(tmp_path)
@@ -433,7 +425,7 @@ class TestSprintIntegration:
         close(repo, env, "review")
         r = close(repo, env, "land")
         assert r.returncode == 0, r.stderr
-        assert "VERDICT: clean" in g("log", "main", "-1", "--format=%B").stdout
+        assert "Review round 1" in g("log", "main", "-1", "--format=%B").stdout
 
     def test_guards_watch_sprint_branch_not_main(self, tmp_path):
         repo, env, g = self.sprint_repo(tmp_path)
@@ -635,19 +627,6 @@ class TestPipelineReceivedVerdict:
         denied = argv[argv.index("--disallowedTools") + 1]
         assert {"Edit", "Write", "NotebookEdit"} <= set(denied.split(","))
 
-    def test_verdict_lands_in_the_marker_verbatim(self, tmp_path):
-        repo, env, _g = make_repo(tmp_path)
-        stub_reviewer(tmp_path, result="findings...\nVERDICT: 3 findings (1 gating)\ntail")
-        close(repo, env, "review")
-        assert marker(tmp_path)["verdicts"] == ["VERDICT: 3 findings (1 gating)"]
-
-    def test_reviewed_sha_is_captured_before_the_launch(self, tmp_path):
-        """G1: read after the launch, a reviewer that commits certifies itself."""
-        repo, env, g = make_repo(tmp_path)
-        head_before = g("rev-parse", "HEAD").stdout.strip()
-        close(repo, env, "review")
-        assert marker(tmp_path)["reviewed_sha"] == head_before
-
     def test_a_reviewer_that_commits_is_refused_not_certified(self, tmp_path):
         """G1 fault-injection: the stub commits, exactly as a bypassed agent could."""
         repo, env, _g = make_repo(tmp_path)
@@ -662,15 +641,6 @@ class TestPipelineReceivedVerdict:
         r = close(repo, env, "review")
         assert r.returncode == 2 and "reviewer" in r.stderr.lower()
         assert not (tmp_path / "data" / "markers" / "story-042.close.json").exists()
-
-    def test_no_verdict_line_means_no_merge(self, tmp_path):
-        """AC 4."""
-        repo, env, _g = make_repo(tmp_path)
-        stub_reviewer(tmp_path, result="I read the diff and it seemed fine.")
-        close(repo, env, "review")
-        r = close(repo, env, "land")
-        assert r.returncode == 2 and "verdict" in r.stderr.lower()
-        assert "[done]" not in (repo / ".xp" / "plan.md").read_text()
 
     def test_reviewer_crash_refuses_cleanly_surfacing_its_stderr(self, tmp_path):
         repo, env, _g = make_repo(tmp_path)
@@ -695,41 +665,11 @@ class TestPipelineReceivedVerdict:
 class TestDriftReReview:
     """story-008 AC 2: drift is reviewed in-pipeline, on the delta only."""
 
-    def test_drift_reviews_the_delta_and_still_refuses_to_land(self, tmp_path):
-        repo, env, g = make_repo(tmp_path)
-        close(repo, env, "review")
-        (repo / "src" / "thing.py").write_text("A = 3\n")
-        g("add", "-A")
-        g("commit", "-qm", "post-review fix")
-        r = close(repo, env, "land")
-        assert r.returncode == 2
-        assert "[done]" not in (repo / ".xp" / "plan.md").read_text()
-        assert len(launches(tmp_path)) == 2, "the delta review must run in-pipeline"
-        delta_prompt = launches(tmp_path)[1]["stdin"]
-        assert "+A = 3" in delta_prompt
-        assert "-A = 1" not in delta_prompt, "the delta is reviewed, not the whole story again"
-
-    def test_delta_rebaseline_keeps_both_verdicts_and_lands(self, tmp_path):
-        """N1: a delta 'clean' must not erase round 1's findings from the record."""
-        repo, env, g = make_repo(tmp_path)
-        stub_reviewer(tmp_path, result="VERDICT: 2 findings (1 gating)")
-        close(repo, env, "review")
-        (repo / "src" / "thing.py").write_text("A = 3\n")
-        g("add", "-A")
-        g("commit", "-qm", "fix the gating finding")
-        stub_reviewer(tmp_path, result="VERDICT: clean")
-        close(repo, env, "land")
-        assert marker(tmp_path)["verdicts"] == [
-            "VERDICT: 2 findings (1 gating)",
-            "VERDICT: clean",
-        ]
-        r = close(repo, env, "land")
-        assert r.returncode == 0, r.stderr
-        body = g("log", "-1", "--format=%B", "main").stdout
-        assert "VERDICT: 2 findings (1 gating)" in body and "VERDICT: clean" in body
-
-    def test_delta_rebaseline_does_not_clear_the_trunk_guard(self, tmp_path):
-        """G4: trunk motion during the review window must survive the re-baseline."""
+    def test_a_bare_re_review_cannot_clear_the_trunk_guard(self, tmp_path):
+        """Re-running review after trunk motion used to re-baseline the guard while
+        the reviewer saw nothing new: merge-base does not move when trunk advances.
+        The refusal must hold, and `git merge <trunk>` must be what clears it —
+        a guard whose remediation does not work is a wall."""
         repo, env, g = make_repo(tmp_path)
         close(repo, env, "review")
         g("checkout", "-q", "main")
@@ -737,12 +677,14 @@ class TestDriftReReview:
         g("add", "-A")
         g("commit", "-qm", "trunk moved")
         g("checkout", "-q", "story-042-branch")
-        (repo / "src" / "thing.py").write_text("A = 3\n")
-        g("add", "-A")
-        g("commit", "-qm", "post-review fix")
-        assert close(repo, env, "land").returncode == 2  # drift; delta reviewed
+        assert close(repo, env, "land").returncode == 2
+        bare = close(repo, env, "review")
+        assert bare.returncode == 2 and "git merge main" in bare.stderr
+        g("merge", "-q", "main", "-m", "merge trunk")
+        assert close(repo, env, "review").returncode == 0
         r = close(repo, env, "land")
-        assert r.returncode == 2 and "moved" in r.stderr
+        assert r.returncode == 0, r.stderr
+        assert "someone else landed a story" in (repo / "other.txt").read_text()
 
 
 class TestSelfCloseRefusal:
@@ -832,7 +774,7 @@ class TestLandBookkeeping:
         assert len(lines) == 1
         rec = json.loads(lines[0])
         assert rec["story"] == "story-042" and rec["title"] == "demo story"
-        assert rec["verdicts"] == ["VERDICT: clean"]
+        assert rec["rounds"] == [{"fixed": [], "blocking": [], "noted": []}]
         assert rec["merge_sha"] == g("rev-parse", "main").stdout.strip()
         assert g("cat-file", "-t", rec["merge_sha"]).stdout.strip() == "commit"
 
@@ -863,31 +805,9 @@ class TestLandBookkeeping:
         records = (tmp_path / "data" / "closes.jsonl").read_text().splitlines()
         assert [json.loads(r)["story"] for r in records] == ["story-042", "story-043"]
 
-    def test_a_verdict_is_capped_at_the_write(self, tmp_path):
-        """It never invoked session_start and never checked constraints.md — the
-        eviction it was named for is real, total, and filed as its own bug."""
-        repo, env, _g = make_repo(tmp_path)
-        stub_reviewer(tmp_path, result="VERDICT: " + "x" * 4000)
-        close(repo, env, "review")
-        assert len(marker(tmp_path)["verdicts"][0]) <= 200
-
 
 class TestStoryReviewFindings:
     """story-008 close review, run by this story's own pipeline."""
-
-    def test_a_delta_without_a_verdict_cannot_ride_round_ones(self, tmp_path):
-        """G1: reviewed_sha advanced on a verdict-less delta review, so round 1's
-        verdict satisfied land's check and unreviewed work merged under it."""
-        repo, env, g = make_repo(tmp_path)
-        close(repo, env, "review")  # records VERDICT: clean
-        (repo / "src" / "thing.py").write_text("A = 666\n")
-        g("add", "-A")
-        g("commit", "-qm", "work added after the review")
-        stub_reviewer(tmp_path, result="I ran out of turns before writing a verdict.")
-        assert close(repo, env, "land").returncode == 2  # drift: delta reviewed
-        r = close(repo, env, "land")
-        assert r.returncode == 2, "merged under a verdict that never saw the delta"
-        assert "A = 666" not in g("show", "main:src/thing.py").stdout
 
     def test_a_comment_on_the_tests_header_cannot_silence_the_story_tier(self, tmp_path):
         """G2: the twin of the roles: bug, and this copy fails OPEN — a red tier
@@ -1114,33 +1034,200 @@ class TestFullReviewFindings:
         then labelled the survivor 'round 1', asserting round 1 found what round
         2 found. This is the exact workflow the full_sha bug prescribes."""
         repo, env, g = make_repo(tmp_path)
-        stub_reviewer(tmp_path, result="VERDICT: 8 findings (3 gating)")
+        stub_reviewer(
+            tmp_path, report={"fixed": [], "blocking": ["round one blocker"], "noted": []}
+        )
         close(repo, env, "review")
         (repo / "src" / "thing.py").write_text("A = 7\n")
         g("add", "-A")
         g("commit", "-qm", "lead fixes the findings")
-        stub_reviewer(tmp_path, result="VERDICT: clean")
-        close(repo, env, "review")  # a second FULL review, not a delta
-        assert marker(tmp_path)["verdicts"] == [
-            "VERDICT: 8 findings (3 gating)",
-            "VERDICT: clean",
-        ]
+        stub_reviewer(tmp_path, report={"fixed": [], "blocking": [], "noted": ["round two note"]})
+        close(repo, env, "review")
+        rounds = marker(tmp_path)["rounds"]
+        assert [r["blocking"] for r in rounds] == [["round one blocker"], []]
         assert close(repo, env, "land").returncode == 0
         body = g("log", "-1", "--format=%B", "main").stdout
-        assert "Review round 1: VERDICT: 8 findings (3 gating)" in body
-        assert "Review round 2: VERDICT: clean" in body
+        assert "Review round 1: 0 fixed · 1 blocking · 0 noted" in body
+        assert "blocking: round one blocker" in body
+        assert "Review round 2: 0 fixed · 0 blocking · 1 noted" in body
 
-    def test_a_verdict_wrapped_in_markdown_is_still_captured(self, tmp_path):
-        """Live blocker: the real reviewer emitted `VERDICT: 5 findings (2
-        gating)` in backticks, so the parser saw no verdict and land refused.
-        The charter asks for a verdict line, not for unformatted prose."""
-        repo, env, _g = make_repo(tmp_path)
-        stub_reviewer(tmp_path, result="findings...\n`VERDICT: 5 findings (2 gating)`")
-        close(repo, env, "review")
-        assert marker(tmp_path)["verdicts"] == ["VERDICT: 5 findings (2 gating)"]
 
-    def test_a_bolded_verdict_is_also_captured(self, tmp_path):
-        repo, env, _g = make_repo(tmp_path)
-        stub_reviewer(tmp_path, result="**VERDICT: clean**")
+CLEAN = {"fixed": [], "blocking": [], "noted": []}
+PLUGIN = Path(__file__).parent.parent / "plugins" / "xp-plugin"
+
+
+def marker_file(tmp_path, story_id="story-042"):
+    return tmp_path / "data" / "markers" / f"{story_id}.close.json"
+
+
+class TestStructuredGate:
+    """story-012a: the report replaces the VERDICT line, and land never spawns."""
+
+    def test_land_refuses_on_drift_naming_review_and_spawns_nothing(self, tmp_path):
+        repo, env, g = make_repo(tmp_path)
+        stub_reviewer(tmp_path, report=CLEAN)
+        assert close(repo, env, "review").returncode == 0
+        (repo / "src" / "thing.py").write_text("A = 3\n")
+        g("add", "-A")
+        g("commit", "-qm", "lead fix after review")
+        r = close(repo, env, "land")
+        assert r.returncode == 2
+        assert "close.py story story-042 review" in r.stderr
+        assert len(launches(tmp_path)) == 1, "land spawned the reviewer"
+
+    def test_land_on_drift_is_idempotent(self, tmp_path):
+        repo, env, g = make_repo(tmp_path)
+        stub_reviewer(tmp_path, report=CLEAN)
+        assert close(repo, env, "review").returncode == 0
+        (repo / "src" / "thing.py").write_text("A = 3\n")
+        g("add", "-A")
+        g("commit", "-qm", "lead fix after review")
+        first, second = close(repo, env, "land"), close(repo, env, "land")
+        assert first.returncode == second.returncode == 2
+        # the SAME refusal twice, not "refuses, then proceeds": land used to review
+        # on the first call by construction, so a close cost two invocations minimum
+        assert first.stderr == second.stderr
+        assert "close.py story story-042 review" in first.stderr
+        assert len(launches(tmp_path)) == 1
+
+    def test_a_second_round_reviews_the_whole_story_diff_not_a_delta(self, tmp_path):
+        repo, env, g = make_repo(tmp_path)
+        stub_reviewer(tmp_path, report=CLEAN)
         close(repo, env, "review")
-        assert marker(tmp_path)["verdicts"] == ["VERDICT: clean"]
+        (repo / "src" / "thing.py").write_text("A = 3\n")
+        g("add", "-A")
+        g("commit", "-qm", "more story work")
+        assert close(repo, env, "review").returncode == 0
+        # `-A = 1` is the trunk-side line only a merge-base..HEAD diff carries; a
+        # delta (reviewed..HEAD) would show `-A = 2`. The inverse of the assertion
+        # the deleted delta path used to earn.
+        assert "-A = 1" in launches(tmp_path)[1]["stdin"]
+
+    def test_review_refuses_while_trunk_is_ahead_of_the_merge_base(self, tmp_path):
+        repo, env, g = make_repo(tmp_path)
+        g("checkout", "-q", "main")
+        (repo / "other.py").write_text("x = 1\n")
+        g("add", "-A")
+        g("commit", "-qm", "another story landed on trunk")
+        g("checkout", "-q", "story-042-branch")
+        stub_reviewer(tmp_path, report=CLEAN)
+        r = close(repo, env, "review")
+        assert r.returncode == 2, r.stdout
+        assert "merge main" in r.stderr
+        assert launches(tmp_path) == [], "opus was spent on a diff that cannot cover the merge"
+
+    def test_shown_sha_is_head_at_the_end_of_a_clean_round(self, tmp_path):
+        repo, env, g = make_repo(tmp_path)
+        stub_reviewer(tmp_path, report=CLEAN)
+        assert close(repo, env, "review").returncode == 0
+        assert marker(tmp_path)["shown_sha"] == g("rev-parse", "HEAD").stdout.strip()
+
+    def test_land_refuses_when_the_recorded_base_is_not_todays_merge_base(self, tmp_path):
+        repo, env, _g = make_repo(tmp_path)
+        stub_reviewer(tmp_path, report=CLEAN)
+        close(repo, env, "review")
+        state = json.loads(marker_file(tmp_path).read_text())
+        state["review_base"] = "0" * 40  # construct the condition; never observe it
+        marker_file(tmp_path).write_text(json.dumps(state))
+        r = close(repo, env, "land")
+        assert r.returncode == 2 and "did not cover" in r.stderr
+
+    def test_report_items_are_capped_at_the_write(self, tmp_path):
+        repo, env, _g = make_repo(tmp_path)
+        stub_reviewer(
+            tmp_path,
+            report={"fixed": ["x" * 5000], "blocking": [], "noted": [f"n{i}" for i in range(200)]},
+        )
+        assert close(repo, env, "review").returncode == 0
+        round1 = marker(tmp_path)["rounds"][0]
+        assert len(round1["fixed"][0]) <= 400
+        assert len(round1["noted"]) <= 20
+
+    def test_a_prose_only_reviewer_is_refused_and_its_output_is_printed_first(self, tmp_path):
+        repo, env, _g = make_repo(tmp_path)
+        stub_reviewer(
+            tmp_path, result="VERDICT: clean\nthe findings I spent ten minutes on", report=None
+        )
+        r = close(repo, env, "review")
+        assert r.returncode == 2
+        assert "the findings I spent ten minutes on" in r.stdout, "a good review was destroyed"
+        assert not marker_file(tmp_path).exists(), "a round was recorded without a report"
+
+    def test_an_unparseable_report_is_refused(self, tmp_path):
+        repo, env, _g = make_repo(tmp_path)
+        stub_reviewer(tmp_path, report="{not json at all")
+        r = close(repo, env, "review")
+        # name the real refusal: "exit 2" alone also greens on a stub that dies
+        # because no REPORT_PATH was ever offered to it
+        assert r.returncode == 2 and "not JSON" in r.stderr
+        assert not marker_file(tmp_path).exists()
+
+    def test_a_report_without_the_three_keys_is_refused(self, tmp_path):
+        repo, env, _g = make_repo(tmp_path)
+        stub_reviewer(tmp_path, report={"findings": ["something"]})
+        r = close(repo, env, "review")
+        assert r.returncode == 2 and "blocking" in r.stderr, "the refusal must name what is missing"
+        assert not marker_file(tmp_path).exists()
+
+    def test_a_planted_report_cannot_certify_a_round_that_wrote_nothing(self, tmp_path):
+        repo, env, _g = make_repo(tmp_path)
+        reports = tmp_path / "data" / "reports"
+        reports.mkdir(parents=True)
+        (reports / "story-042.round-1.json").write_text(
+            json.dumps({"fixed": ["a fix that never happened"], "blocking": [], "noted": []})
+        )
+        stub_reviewer(tmp_path, report=None)
+        r = close(repo, env, "review")
+        assert r.returncode == 2
+        assert not marker_file(tmp_path).exists(), "a stale report certified an empty round"
+
+    def test_land_refuses_while_the_last_round_has_blocking_findings(self, tmp_path):
+        repo, env, _g = make_repo(tmp_path)
+        stub_reviewer(
+            tmp_path,
+            report={"fixed": [], "blocking": ["B1: the new guard is vacuous"], "noted": []},
+        )
+        close(repo, env, "review")
+        r = close(repo, env, "land")
+        assert r.returncode == 2 and "B1: the new guard is vacuous" in r.stderr
+
+    def test_land_prints_noted_items_for_filing(self, tmp_path):
+        repo, env, _g = make_repo(tmp_path)
+        stub_reviewer(
+            tmp_path, report={"fixed": [], "blocking": [], "noted": ["N1: this name misleads"]}
+        )
+        close(repo, env, "review")
+        r = close(repo, env, "land")
+        assert r.returncode == 0, r.stderr
+        assert "N1: this name misleads" in r.stdout and "PROCESS.md" in r.stdout
+
+    def test_three_rounds_are_labelled_by_their_true_round_number(self, tmp_path):
+        repo, env, g = make_repo(tmp_path)
+        for i in (1, 2, 3):
+            stub_reviewer(
+                tmp_path, report={"fixed": [f"round {i} fix"], "blocking": [], "noted": []}
+            )
+            assert close(repo, env, "review").returncode == 0
+        assert close(repo, env, "land").returncode == 0
+        body = g("log", "-1", "--format=%B").stdout
+        for i in (1, 2, 3):
+            assert f"Review round {i}" in body and f"round {i} fix" in body
+
+
+class TestShippedProseMatchesTheMechanism:
+    """The prose is what a consuming project believes. story-012a AC 11/12."""
+
+    def test_no_verdict_token_survives_in_the_shipped_prose(self):
+        for path in (PLUGIN / "skills" / "story-close" / "SKILL.md", PLUGIN / "PROCESS.md"):
+            assert "VERDICT" not in path.read_text(), f"{path.name} still ships the deleted gate"
+
+    def test_the_charter_names_the_report_path_and_the_route_left_open(self):
+        charter = (PLUGIN / "agents" / "story-reviewer.md").read_text()
+        assert "REPORT_PATH" in charter
+        assert "heredoc" in charter.lower(), "Write is denied; the only route must be named"
+
+    def test_the_plan_reviewer_charter_asks_for_a_file(self):
+        assert (
+            "write your findings to a file"
+            in (PLUGIN / "agents" / "plan-reviewer.md").read_text().lower()
+        )

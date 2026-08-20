@@ -15,8 +15,10 @@ One page. The values (VALUES.md) cover what this page doesn't.
    commit says so in its body instead.
 3. **Story close**: run the `/story-close` checklist — it spawns the **story-reviewer**
    on the cumulative diff plus anything you filed in work.md, stops for your
-   fix-or-ask call, runs the story's Verify commands, records the verdict in the PR
-   body, and merges. A conflicted or drifted merge goes back to the reviewer.
+   fix-or-ask call, runs the story's Verify commands, records every review round in
+   the merge body, and merges. Review and merge are separate commands: land never
+   spawns — on drift or a conflict it refuses and names the review leg, so a round is
+   something you choose to run, not something a merge inflicts.
    **Review stopping rule** (diminishing returns): one full review always; fixes
    applied exactly as prescribed, with red-first tests, close WITHOUT re-review —
    the prescription was the review. Faithful means SCOPE-IDENTICAL: generalizing

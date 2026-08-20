@@ -47,8 +47,20 @@ spend most of your effort on checks 1–2 at full depth; `standard` weights 1, 3
 
 ## Output
 
-Ranked findings: claim, **the value it defends** (one of the five), concrete failure scenario, cheapest fix. End with a verdict
-line the close pipeline records verbatim: `VERDICT: clean` or
-`VERDICT: N findings (M gating)` — a gating finding is one you would not merge over.
-Then the three findings you tried hardest to refute and could not (or "none survived
-refutation"). No praise.
+Ranked findings: claim, **the value it defends** (one of the five), concrete failure
+scenario, cheapest fix. Then the three you tried hardest to refute and could not (or
+"none survived refutation"). No praise.
+
+Then **write your report** — the pipeline records nothing else and refuses to record a
+round without one, so a review that skips this step is a review that never happened.
+The bundle carries one line, `REPORT_PATH: <path>`. Write and Edit are denied to you,
+so use a Bash heredoc:
+
+    cat > '<the REPORT_PATH>' <<'JSON'
+    {"fixed": [], "blocking": ["one sentence each"], "noted": ["…"]}
+    JSON
+
+`blocking` is what you would not merge over — land refuses while it is non-empty.
+`noted` is what you are deliberately punting to the lead to file. `fixed` is for the
+story that lets you fix; today it stays empty. One sentence per item: they ride into
+the merge body and into the next session's context, and they are capped at the write.

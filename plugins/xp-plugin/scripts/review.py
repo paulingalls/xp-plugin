@@ -1,10 +1,8 @@
 #!/usr/bin/env python3
-"""Spawn the story-reviewer and capture its verdict — close.py's review leg.
+"""Spawn the story-reviewer and read its structured report — close.py's review leg.
 
-Extracted from close.py at story-008 rather than left inline: story-011 lands
-`free` mode in close.py this same sprint, and 442 + ~75 breaches the 500-line
-hard cap (constraints.md #8). This block is the only seam — everything else in
-close.py is preflight, merge and bookkeeping.
+Extracted from close.py at story-008 rather than left inline: this block is the
+only seam, and close.py runs against the 500-line hard cap (constraints.md #8).
 """
 
 import json
@@ -15,12 +13,13 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 PLUGIN_ROOT = Path(__file__).parent.parent
 
-# A verdict rides into SessionStart's recovery block, so it is bounded at the
-# write rather than trusted to be short. It does NOT protect constraints.md from
-# the profile cap: measured at story-008 close, the assembled profile already
-# overflows and delivers ZERO constraint items, with or without this cap. That
-# eviction is filed as its own bug against session_start.py.
-VERDICT_CAP = 200
+REPORT_KEYS = ("fixed", "blocking", "noted")
+# The report rides into the merge body, closes.jsonl and SessionStart's recovery
+# block. Bounded AT THE WRITE, not at each read: the predecessor's json bounded
+# size by validating on the way in, and three unbounded lists in the section that
+# already evicted constraints.md is the same defect with more shapes.
+ITEM_CAP = 400
+LIST_CAP = 20
 
 # The reviewer runs under --dangerously-skip-permissions (spawn.claude_argv) in
 # the LEAD'S LIVE TREE. story-007 accepted that unboundedness because a teammate
@@ -48,21 +47,47 @@ def charter() -> str:
     return text.strip()
 
 
-def extract_verdict(result: str) -> str:
-    """The LAST VERDICT line, capped. Empty when the reviewer emitted none.
+def report_path(story_id: str, round_n: int) -> Path:
+    """Where this round's report goes. ROUND-scoped, not story-scoped: the round
+    index advances only on a RECORDED round, so every failed attempt at round N
+    reuses N's path and a leftover from a crashed reviewer would certify a round
+    that produced nothing. The caller unlinks before launching."""
+    from work import data_root
 
-    Markdown decoration is stripped first: a real reviewer emitted
-    `VERDICT: 5 findings (2 gating)` in backticks and the close refused, having
-    read a verdict it was looking straight at. The charter asks for a verdict
-    line, not for unformatted prose.
+    d = data_root() / "reports"
+    d.mkdir(parents=True, exist_ok=True)
+    return d / f"{story_id}.round-{round_n}.json"
+
+
+def _cap(items: list) -> list:
+    kept = [i if len(i) <= ITEM_CAP else i[: ITEM_CAP - 1] + "…" for i in items[:LIST_CAP]]
+    if len(items) > LIST_CAP:
+        kept[-1] = (
+            f"(+{len(items) - LIST_CAP + 1} more, see {' / '.join(REPORT_KEYS)} in the report)"
+        )
+    return kept
+
+
+def read_report(path: Path) -> tuple[dict, str]:
+    """(report, error). Replaces the VERDICT-line grep, which was forgeable by
+    design (story-002) and then defeated by backticks (story-008). This fixes
+    PARSING, not forgery — a reviewer under bypass writes any path it likes.
     """
-    for line in reversed(result.splitlines()):
-        candidate = line.strip().strip("`*_ ").strip()
-        if candidate.startswith("VERDICT"):
-            if len(candidate) > VERDICT_CAP:
-                return candidate[: VERDICT_CAP - 1] + "…"
-            return candidate
-    return ""
+    if not path.exists():
+        return {}, (
+            f"the reviewer wrote no report at {path} — its findings are above and"
+            " are all that survives. No report, no round"
+        )
+    try:
+        data = json.loads(path.read_text())
+    except ValueError as e:
+        return {}, f"the reviewer's report is not JSON ({e})"
+    if not isinstance(data, dict):
+        return {}, "the reviewer's report is not JSON — expected an object"
+    missing = [k for k in REPORT_KEYS if not isinstance(data.get(k), list)]
+    if missing:
+        return {}, f"the reviewer's report is missing list keys: {', '.join(missing)}"
+    return {k: _cap([str(i) for i in data[k]]) for k in REPORT_KEYS}, ""
 
 
 def run(prompt: str, cwd: Path, dry_run: bool = False) -> tuple[str, str]:
