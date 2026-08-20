@@ -43,9 +43,10 @@ Executor: (default)
 #### story-005 — sprint-integration branching in close.py   [in-progress]
 Context: release: sprint (config.yml) — stories integrate on a sprint branch;
 sprint close PRs main (the release moment, where the heavy gates already live).
-close.py resolves its target: release==sprint AND a sprint branch exists (marker
-or config naming it) -> merge/PR the story into the sprint branch; else default
-branch (today's behavior; story-005 itself closes that way — bootstrap). Trunk
+close.py resolves its target: release==sprint AND config sprint_branch names an
+existing local branch -> merge the story into it (config-only per plan review,
+constraint 10; a configured-but-missing branch REFUSES, never falls back); else
+default branch (today's behavior; story-005 itself closes that way — bootstrap). Trunk
 guards target whichever branch integration points at. Schedule BEFORE 003/004:
 they land on the sprint branch this story enables.
 Files: plugins/xp-plugin/scripts/close.py, tests/test_close.py
@@ -61,7 +62,11 @@ Context: Deterministic injection: VALUES + PROCESS + constraints + session.md
 (stamped; STALE prefix when HEAD moved) + recovery block (branch, dirty files, story
 states from plan.md, last test status, open work.md items) + liveness touchfile +
 enforcement banner (DESIGN §5b, §7). Replaces the CLAUDE.md shim lines.
-Files: plugins/xp-plugin/hooks/hooks.claude.json, plugins/xp-plugin/scripts/session_start.py, tests/test_session_start.py
+Files: plugins/xp-plugin/hooks/hooks.json, plugins/xp-plugin/scripts/session_start.py, tests/test_session_start.py, plugins/xp-plugin/scripts/close.py (digest-format prompt only)
+Notes: "last test status" in the recovery block defers to story-004's marker. The
+CLAUDE.md shim retires at the plugin-load step (post-sprint), where the hook's real
+firing is verified via claude --debug — not in this story (plugin not yet loaded
+into dogfood sessions).
 AC:
 - Given a session.md older than HEAD, When session starts, Then the injection prefixes STALE with the commit distance
 - Given no session.md, When session starts, Then the recovery block alone is injected (no error)

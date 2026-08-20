@@ -81,7 +81,18 @@ def integration_target() -> str:
     release: sprint (when it exists), else the default branch."""
     if config_flat("release") == "sprint":
         branch = config_flat("sprint_branch")
-        if branch and git("rev-parse", "--verify", "-q", branch, check=False).returncode == 0:
+        if branch:
+            # refs/heads explicitly: a tag with the same name wins plain rev-parse
+            # and would freeze every guard on a ref that never moves
+            ok = git("rev-parse", "--verify", "-q", f"refs/heads/{branch}", check=False)
+            if ok.returncode != 0:
+                print(
+                    f"sprint_branch is configured but refs/heads/{branch} does not exist —"
+                    " refusing to fall back to the default branch (a fresh clone must"
+                    " create the sprint branch, not silently merge to main)",
+                    file=sys.stderr,
+                )
+                raise SystemExit(2)
             return branch
     return default_branch()
 
@@ -91,7 +102,7 @@ def default_branch() -> str:
     if head.returncode == 0:
         return head.stdout.strip().rsplit("/", 1)[1]
     for name in ("main", "master"):
-        if git("rev-parse", "--verify", "-q", name, check=False).returncode == 0:
+        if git("rev-parse", "--verify", "-q", f"refs/heads/{name}", check=False).returncode == 0:
             return name
     raise SystemExit(fail("no main/master branch found and origin/HEAD unset"))
 
@@ -103,7 +114,7 @@ def origin_trunk_sha(trunk: str) -> str | None:
     if not git("remote", check=False).stdout.strip():
         return None
     git("fetch", "-q", "origin", trunk, check=False)
-    r = git("rev-parse", "--verify", "-q", f"origin/{trunk}", check=False)
+    r = git("rev-parse", "--verify", "-q", f"refs/remotes/origin/{trunk}", check=False)
     return r.stdout.strip() if r.returncode == 0 else None
 
 
@@ -155,7 +166,7 @@ def cmd_start(story_id: str) -> int:
             f"refused: close from a story branch, not {branch} — a self-merge is a no-op"
             " that records the verdict nowhere"
         )
-    base = git("merge-base", trunk, "HEAD").stdout.strip()
+    base = git("merge-base", f"refs/heads/{trunk}", "HEAD").stdout.strip()
     diff = git("diff", f"{base}..HEAD").stdout
     base_epoch = int(git("show", "-s", "--format=%ct", base).stdout.strip())
     sections = [
@@ -173,7 +184,7 @@ def cmd_start(story_id: str) -> int:
         json.dumps(
             {
                 "reviewed_sha": git("rev-parse", "HEAD").stdout.strip(),
-                "trunk_sha": git("rev-parse", trunk).stdout.strip(),
+                "trunk_sha": git("rev-parse", f"refs/heads/{trunk}").stdout.strip(),
                 "origin_trunk_sha": origin_trunk_sha(trunk),
             }
         )
@@ -199,6 +210,11 @@ def cmd_reviewed(story_id: str, verdict: str, merge_mode: str, dry_run: bool) ->
         return fail(f"refused: no close in progress for {story_id} — run start first")
     state = json.loads(marker.read_text())
     trunk = integration_target()
+    if merge_mode == "pr" and trunk != default_branch():
+        return fail(
+            f"refused: release: sprint stories close with --merge-mode local into {trunk};"
+            " the PR to main happens at sprint close"
+        )
     head = git("rev-parse", "HEAD").stdout.strip()
     if head != state["reviewed_sha"]:
         print(git("diff", f"{state['reviewed_sha']}..HEAD").stdout)
@@ -209,7 +225,7 @@ def cmd_reviewed(story_id: str, verdict: str, merge_mode: str, dry_run: bool) ->
     moved = (
         origin_trunk_sha(trunk) != state.get("origin_trunk_sha")
         if merge_mode == "pr"
-        else git("rev-parse", trunk).stdout.strip() != state.get("trunk_sha")
+        else git("rev-parse", f"refs/heads/{trunk}").stdout.strip() != state.get("trunk_sha")
     )
     if moved:
         return fail(
@@ -222,11 +238,6 @@ def cmd_reviewed(story_id: str, verdict: str, merge_mode: str, dry_run: bool) ->
         card, _ = story_card(plan, story_id)
     except KeyError as e:
         return fail(f"refused: {e.args[0]}")
-    if merge_mode == "pr" and trunk != default_branch():
-        return fail(
-            f"refused: release: sprint stories close with --merge-mode local into {trunk};"
-            " the PR to main happens at sprint close"
-        )
     verify = verify_commands(card)
     if not verify:
         return fail(f"refused: {story_id} has no Verify: line — an unverifiable story cannot close")
