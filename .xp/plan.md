@@ -127,6 +127,7 @@ AC:
 - Given the dry-run prompt, Then its size respects the <2k-token teammate budget (structural assert — DESIGN §8)
 - Given two clones with different git identities, When each spawns the same story, Then the branch names are namespaced (<user-ns>/<story-id>-<slug>) and do not collide
 - Given a spawn completes, Then the worktree's plan.md reads [in-progress] and the flip is committed on the story branch
+- Given the lead executes a story solo, When spawn --in-place runs, Then the story branch is created off the integration target with the status flipped and NOTHING launched — the solo path had no branch step, so solo work landed on the sprint branch
 - Given the launched session, Then its argv carries --plugin-dir (the worktree has no marketplace enablement) and the teammate's SessionStart injects the teammate profile, not the lead's
 Verify: pytest -q tests/test_spawn.py tests/test_work.py tests/test_session_start.py
 Close review: deep

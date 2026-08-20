@@ -216,7 +216,36 @@ def flip_to_in_progress(tree: Path, story_id: str) -> None:
         subprocess.run(["git", *args], cwd=tree, capture_output=True, text=True)
 
 
-def cmd_spawn(story_id: str, override: str, dry_run: bool) -> int:
+def cmd_in_place(story_id: str, card: str) -> int:
+    """Create the story branch in the CURRENT tree and stop — no worktree, no launch.
+
+    The lead implementing a story solo (DESIGN §8) otherwise has no
+    branch-creation step at all, so the work lands on the integration branch and
+    close.py's trunk refusal fires only after the story is written. Loud, but the
+    recovery is cheap only while nothing is pushed.
+    """
+    if git("status", "--porcelain").stdout.strip():
+        return fail(
+            "refused: working tree is dirty — commit or stash first, or the"
+            " uncommitted work rides onto the story branch unreviewed"
+        )
+    branch = story_branch(card, story_id)
+    if git("rev-parse", "--verify", "-q", f"refs/heads/{branch}", check=False).returncode == 0:
+        return fail(f"refused: branch {branch} already exists")
+    trunk = integration_target()
+    made = git("checkout", "-q", "-b", branch, trunk, check=False)
+    if made.returncode != 0:
+        return fail(f"git checkout -b failed: {made.stderr.strip()}")
+    flip_to_in_progress(Path.cwd(), story_id)
+    print(f"{branch} off {trunk} — in place, nothing launched; you are the executor")
+    return 0
+
+
+def story_branch(card: str, story_id: str) -> str:
+    return f"{user_ns()}/{story_id}-{slugify(card_title(card))}"
+
+
+def cmd_spawn(story_id: str, override: str, dry_run: bool, in_place: bool = False) -> int:
     if not Path(".xp/plan.md").exists():
         return fail("refused: no .xp/plan.md here — is this an xp-managed repo?")
     try:
@@ -225,8 +254,10 @@ def cmd_spawn(story_id: str, override: str, dry_run: bool) -> int:
         return fail(f"refused: {e.args[0]}")
     if status != "ready":
         return fail(f"refused: {story_id} is [{status}], spawn requires [ready]")
+    if in_place:
+        return cmd_in_place(story_id, card)
     _harness, model, effort = resolve_role("executor", card, override)
-    branch = f"{user_ns()}/{story_id}-{slugify(card_title(card))}"
+    branch = story_branch(card, story_id)
     tree = worktree_path(story_id)
     argv = claude_argv(model, effort)
     prompt = build_prompt(teammate_sections(card))
@@ -265,10 +296,15 @@ def main() -> int:
     p.add_argument("story_id")
     p.add_argument("executor", nargs="?", default="", help="harness/model[/effort] override")
     p.add_argument("--dry-run", action="store_true")
+    p.add_argument(
+        "--in-place",
+        action="store_true",
+        help="create the story branch here and stop — the lead executes it solo",
+    )
     a = p.parse_args()
     if not chdir_repo_root():
         return fail("refused: not inside a git repository")
-    return cmd_spawn(a.story_id, a.executor, a.dry_run)
+    return cmd_spawn(a.story_id, a.executor, a.dry_run, a.in_place)
 
 
 if __name__ == "__main__":

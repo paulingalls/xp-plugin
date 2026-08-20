@@ -342,3 +342,31 @@ def _total(stdout):
         if ln.startswith("profile:"):
             return int(ln.split("total ", 1)[1].split(" ", 1)[0])
     raise AssertionError(f"no profile line in: {stdout[:200]}")
+
+
+class TestInPlace:
+    """The lead implementing a story solo (DESIGN §8) had NO branch-creation step:
+    spawn made one only on the delegation path, so solo work landed straight on
+    the sprint branch. close.py refuses to close from the trunk, but only after
+    the whole story is written — and the recovery (branch + reset) is cheap only
+    while nothing is pushed. Measured on story-007 itself."""
+
+    def test_creates_the_story_branch_without_launching(self, tmp_path):
+        repo, env, _g = make_repo(tmp_path)
+        rec = stub_claude(tmp_path)
+        r = spawn(repo, env, "story-042", "--in-place")
+        assert r.returncode == 0, r.stderr
+        assert not rec.exists()  # nothing launched: the lead does the work
+        assert not (tmp_path / "data" / "worktrees" / "story-042").exists()
+        assert in_tree(repo, env, "branch", "--show-current") == "ada/story-042-demo-story"
+        assert "[in-progress]" in (repo / ".xp" / "plan.md").read_text()
+        assert in_tree(repo, env, "status", "--porcelain") == ""
+
+    def test_dirty_tree_refused(self, tmp_path):
+        """git worktree tolerates a dirty tree; switching branches in place does
+        not — uncommitted work would ride onto the story branch unreviewed."""
+        repo, env, _g = make_repo(tmp_path)
+        (repo / "scratch.txt").write_text("uncommitted\n")
+        r = spawn(repo, env, "story-042", "--in-place")
+        assert r.returncode == 2 and "dirty" in r.stderr.lower()
+        assert in_tree(repo, env, "branch", "--show-current") == "elsewhere"
