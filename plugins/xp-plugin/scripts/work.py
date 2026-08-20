@@ -10,6 +10,7 @@ import argparse
 import fcntl
 import hashlib
 import os
+import re
 import subprocess
 import sys
 from datetime import datetime, timezone
@@ -45,6 +46,29 @@ def data_root() -> Path:
     common = proc.stdout.strip()
     project_id = hashlib.sha256(os.path.realpath(common).encode()).hexdigest()[:12]
     return Path.home() / ".xp" / "data" / project_id
+
+
+def slugify(s: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "-", s.lower()).strip("-")[:20].strip("-")
+
+
+def user_ns() -> str:
+    """The branch-naming namespace: git identity, slugified.
+
+    Here rather than in spawn.py because this module already owns per-clone
+    identity (data_root), and because close.py and spawn.py both import it —
+    story-011's `<user>/free-...` branches get it with no new import edge.
+    The "user" fallback is unreachable in any repo that can commit; it is a
+    default, not a case to guard.
+    """
+    for key, take_local_part in (("user.email", True), ("user.name", False)):
+        r = subprocess.run(["git", "config", key], capture_output=True, text=True)
+        value = r.stdout.strip()
+        if take_local_part:
+            value = value.split("@")[0]
+        if slug := slugify(value):
+            return slug
+    return "user"
 
 
 def append(root: Path, block: str) -> None:

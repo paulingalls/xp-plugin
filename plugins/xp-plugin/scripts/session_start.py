@@ -6,6 +6,7 @@ silence on any unexpected state: a broken hook must never break a session.
 """
 
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -70,9 +71,29 @@ def recovery_block(root: Path) -> str:
     )
 
 
-def banner(root: Path) -> str:
+def plugin_version() -> str:
     manifest = read(PLUGIN_ROOT / ".claude-plugin" / "plugin.json")
-    version = json.loads(manifest).get("version", "unknown") if manifest else "unknown"
+    return json.loads(manifest).get("version", "unknown") if manifest else "unknown"
+
+
+def teammate_marker() -> str:
+    """The non-lead profile: one POSITIVE line, never silence.
+
+    Silence would be indistinguishable from this hook crashing — main() degrades
+    to exit 0 on anything — so a silent gate could never be told apart from a
+    gate that never ran (constraints.md #2). The teammate's rules are already
+    inlined in its prompt by spawn.py; re-injecting the lead profile on top is
+    duplicate tokens against the DESIGN §8 budget, which is the whole reason
+    this gate exists.
+    """
+    return (
+        f"xp-plugin {plugin_version()} · teammate session · your card, VALUES and "
+        "constraints are in your prompt · you never close, never merge"
+    )
+
+
+def banner(root: Path) -> str:
+    version = plugin_version()
     hooks = "lefthook" if (root / "lefthook.yml").exists() else ""
     hooks = hooks or (".githooks" if (root / ".githooks").is_dir() else "none detected")
     constraints_lines = len(read(root / ".xp" / "constraints.md").splitlines())
@@ -95,6 +116,11 @@ def main() -> int:
     markers = data_root() / "markers"
     markers.mkdir(parents=True, exist_ok=True)
     (markers / f"{session}.alive").touch()
+    # Role gates the PROFILE only, never the gates: stop_gate and bash_status
+    # stay live for a teammate, which is the agent actually running the tests.
+    if os.environ.get("XP_ROLE", "lead") != "lead":
+        print(teammate_marker())
+        return 0
     # freshest layers first: the cap truncates the tail, so static prose goes last
     plugin_builders = [
         lambda: banner(root),

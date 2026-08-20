@@ -108,21 +108,28 @@ Verify: pytest -q tests/test_setup.py
 Close review: standard
 Executor: (default)
 
-#### story-007 — spawn CLI (claude harness)   [ready]
+#### story-007 — spawn CLI (claude harness)   [done]
 Context: The piece neither harness provides: spawn <story-id> creates a worktree
 (or in-place branch) off the integration target, on a named story branch, and
 launches headless claude -p with the teammate profile INLINED (VALUES +
 TEAMMATE.md — written in this story, DESIGN §8 one-pager — + story card +
 constraints; paths are fallback, never the mechanism). harness/model/effort from
 the card's Executor: line, else config roles. Codex leg is Sprint 3.
-Files: plugins/xp-plugin/scripts/spawn.py, plugins/xp-plugin/TEAMMATE.md, tests/test_spawn.py
+Files: plugins/xp-plugin/scripts/spawn.py, plugins/xp-plugin/TEAMMATE.md,
+plugins/xp-plugin/scripts/work.py, plugins/xp-plugin/scripts/session_start.py,
+plugins/xp-plugin/templates/system.md, tests/test_spawn.py, tests/test_work.py,
+tests/test_session_start.py
 AC:
 - Given a ready story card, When spawn --dry-run runs, Then the printed command carries the resolved model/effort and the prompt inlines VALUES, TEAMMATE, the card, and constraints
 - Given spawn for a story, Then a worktree exists on its branch off the integration target (bootstrap per system.md)
 - Given the card has an Executor: override, Then it beats the config default
 - Given the worktree already exists, Then spawn refuses
 - Given the dry-run prompt, Then its size respects the <2k-token teammate budget (structural assert — DESIGN §8)
-Verify: pytest -q tests/test_spawn.py
+- Given two clones with different git identities, When each spawns the same story, Then the branch names are namespaced (<user-ns>/<story-id>-<slug>) and do not collide
+- Given a spawn completes, Then the worktree's plan.md reads [in-progress] and the flip is committed on the story branch
+- Given the lead executes a story solo, When spawn --in-place runs, Then the story branch is created off the integration target with the status flipped and NOTHING launched — the solo path had no branch step, so solo work landed on the sprint branch
+- Given the launched session, Then its argv carries --plugin-dir (the worktree has no marketplace enablement) and the teammate's SessionStart injects the teammate profile, not the lead's
+Verify: pytest -q tests/test_spawn.py tests/test_work.py tests/test_session_start.py
 Close review: deep
 Executor: (default)
 
