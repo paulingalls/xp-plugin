@@ -1278,6 +1278,9 @@ class TestShippedProseMatchesTheMechanism:
         ):
             head = path.read_text().split("import argparse")[0]
             assert "VERDICT" not in head, f"{path.name} still ships the deleted gate"
+            # found by USING the pipeline: land refuses unless the last round covers
+            # HEAD, and every fix moves HEAD, so this promise cannot be kept
+            assert "close WITHOUT re-review" not in head, f"{path.name} promises what land refuses"
 
     def test_the_charter_names_the_report_path_and_the_route_left_open(self):
         charter = (PLUGIN / "agents" / "story-reviewer.md").read_text()

@@ -19,9 +19,12 @@ One page. The values (VALUES.md) cover what this page doesn't.
    the merge body, and merges. Review and merge are separate commands: land never
    spawns — on drift or a conflict it refuses and names the review leg, so a round is
    something you choose to run, not something a merge inflicts.
-   **Review stopping rule** (diminishing returns): one full review always; fixes
-   applied exactly as prescribed, with red-first tests, close WITHOUT re-review —
-   the prescription was the review. Faithful means SCOPE-IDENTICAL: generalizing
+   **Review stopping rule** (diminishing returns): one full review always. Fixes
+   applied exactly as prescribed, with red-first tests, are owed no further round of
+   FINDINGS — the prescription was the review — but a fix moves HEAD and land
+   requires the last review to cover HEAD, so it still costs one confirming round.
+   That is the price of the coverage guarantee, paid once per fix batch, and it is
+   why fix batches are batches. Faithful means SCOPE-IDENTICAL: generalizing
    or "improving" a prescription is a deviation owed re-review (story-002 round 3
    widened a mode-scoped fix to both modes and regressed the guard it fixed).
    When faithfulness is uncertain, one delta ping beats a wrong self-call.
