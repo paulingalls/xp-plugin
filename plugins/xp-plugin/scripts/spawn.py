@@ -199,10 +199,22 @@ def claude_argv(model: str, effort: str, output_format: str = "json") -> list[st
     return argv + (["--effort", effort] if effort else [])
 
 
-def run_agent(argv: list[str], cwd: Path, prompt: str) -> subprocess.CompletedProcess:
-    """Prompt on stdin: it keeps ~2k tokens out of argv and out of `ps`."""
-    env = os.environ | {"XP_ROLE": "teammate"}
-    return subprocess.run(argv, cwd=cwd, input=prompt, text=True, env=env)
+def run_agent(
+    argv: list[str],
+    cwd: Path,
+    prompt: str,
+    role: str = "teammate",
+    capture: bool = False,
+) -> subprocess.CompletedProcess:
+    """Prompt on stdin: it keeps ~2k tokens out of argv and out of `ps`.
+
+    `role` and `capture` default to the teammate launch, so story-007's call
+    sites are unchanged; story-008's reviewer needs role="reviewer" (it must not
+    receive the teammate profile, and close.py refuses any non-lead role) and
+    capture=True (the verdict has to be read, not streamed past).
+    """
+    env = os.environ | {"XP_ROLE": role}
+    return subprocess.run(argv, cwd=cwd, input=prompt, text=True, env=env, capture_output=capture)
 
 
 def worktree_path(story_id: str) -> Path:
