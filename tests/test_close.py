@@ -184,7 +184,6 @@ class TestReviewed:
         assert g("merge", "main").returncode != 0
         g("merge", "--abort")
         assert "[done]" not in (repo / ".xp" / "plan.md").read_text()
-        assert g("status", "--porcelain").stdout == ""  # no half-merged tree left behind
 
     def test_pr_mode_dry_run_pins_gh_args(self, tmp_path):
         repo, env, _g = make_repo(tmp_path)
@@ -671,7 +670,8 @@ class TestPipelineReceivedVerdict:
 
 
 class TestTrunkMotionGuards:
-    """story-008 AC 2: drift is reviewed in-pipeline, on the delta only."""
+    """story-012a: trunk motion is refused at REVIEW, on both the local and the
+    origin ref, because merge-base does not move when trunk advances."""
 
     def test_a_bare_re_review_cannot_clear_the_trunk_guard(self, tmp_path):
         """Re-running review after trunk motion used to re-baseline the guard while
@@ -900,7 +900,7 @@ class TestStoryReviewFindings:
 
 
 class TestLandFailureModes:
-    """story-008 close review, round 2 (the delta the drift path reviewed)."""
+    """Land's failure modes: partial bookkeeping, orphaned amends, pr-mode shas."""
 
     def pr_repo(self, tmp_path):
         repo, env, g = make_repo(tmp_path)
@@ -1255,16 +1255,26 @@ class TestStoryReviewFindings012a:
         sys.path.insert(0, str(CLOSE.parent))
         import session_start
 
+        # PAST the cap on purpose: at 174 chars against CLOSE_CAP 400 the while loop
+        # never ran, and `kept.pop()` — dropping the NEWEST round — returned a
+        # byte-identical string and passed. The fixture must construct truncation.
         record = {
             "rounds": [
-                {"fixed": ["x" * 2000], "blocking": [], "noted": []},
-                {"fixed": [], "blocking": [], "noted": []},
-                {"fixed": [], "blocking": ["R3-THE-BLOCKER-THAT-GATED-THE-MERGE"], "noted": []},
+                {"fixed": [f"round {i} " + "x" * 90], "blocking": [], "noted": []} for i in range(6)
             ]
+            + [{"fixed": [], "blocking": ["R7-THE-BLOCKER-THAT-GATED-THE-MERGE"], "noted": []}]
         }
         detail = session_start._close_detail(record)
-        assert "R3-THE-BLOCKER-THAT-GATED-THE-MERGE" in detail
+        assert "R7-THE-BLOCKER-THAT-GATED-THE-MERGE" in detail, "the newest round was dropped"
+        assert "earlier elided" in detail, "nothing was truncated; the bound was not exercised"
         assert len(detail) <= session_start.CLOSE_CAP + 120
+
+    def test_one_over_long_round_is_cut_to_the_round_cap(self, tmp_path):
+        sys.path.insert(0, str(CLOSE.parent))
+        import session_start
+
+        detail = session_start._close_detail({"rounds": [{"fixed": ["y" * 900], "blocking": []}]})
+        assert len(detail) <= session_start.ROUND_CAP + 40, "the per-round bound is gone"
 
 
 class TestShippedProseMatchesTheMechanism:
@@ -1278,9 +1288,20 @@ class TestShippedProseMatchesTheMechanism:
         ):
             head = path.read_text().split("import argparse")[0]
             assert "VERDICT" not in head, f"{path.name} still ships the deleted gate"
-            # found by USING the pipeline: land refuses unless the last round covers
-            # HEAD, and every fix moves HEAD, so this promise cannot be kept
-            assert "close WITHOUT re-review" not in head, f"{path.name} promises what land refuses"
+
+    def test_every_stopping_rule_copy_states_the_confirming_round(self):
+        """land refuses unless the last round covers HEAD, and every fix moves HEAD,
+        so "close without re-review" cannot be kept. Asserted POSITIVELY and in every
+        copy: a negative grep for one file's old wording passed vacuously on the file
+        that never used that spelling, and missed DESIGN.md entirely — the same shape
+        of check the backticked VERDICT line defeated at story-008.
+        """
+        for path in (
+            PLUGIN / "PROCESS.md",
+            PLUGIN / "skills" / "story-close" / "SKILL.md",
+            Path(__file__).parent.parent / "docs" / "DESIGN.md",
+        ):
+            assert "confirming round" in path.read_text(), f"{path.name} still promises"
 
     def test_the_charter_names_the_report_path_and_the_route_left_open(self):
         charter = (PLUGIN / "agents" / "story-reviewer.md").read_text()

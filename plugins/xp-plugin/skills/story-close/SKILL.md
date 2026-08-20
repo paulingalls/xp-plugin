@@ -27,8 +27,9 @@ yourself doing by hand is a defect in the pipeline — file it.
    noted ones as bug/debt/note per PROCESS.md; ask the human only where you and the
    reviewer disagree on whether a finding blocks. YOU choose the rounds — running
    review again is the only thing that starts one. Stopping rule: prescription-faithful
-   fixes with red-first tests need no re-review; two rounds maximum, then escalate to
-   the human.
+   fixes with red-first tests are owed no further round of FINDINGS — but a fix moves
+   HEAD, and land requires the last review to cover HEAD, so a fix batch costs one
+   confirming round. Two rounds of findings maximum, then escalate to the human.
 4. **`close.py story <id> land`** is deterministic and spawns nothing. It refuses
    while the last round has blocking findings, while HEAD has moved since the review
    you were shown, or while the recorded round does not cover this tree — naming the

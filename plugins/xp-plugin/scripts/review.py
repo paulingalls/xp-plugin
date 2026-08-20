@@ -59,12 +59,12 @@ def report_path(story_id: str, round_n: int) -> Path:
     return d / f"{story_id}.round-{round_n}.json"
 
 
-def _cap(items: list) -> list:
+def _cap(items: list, path: Path) -> list:
     kept = [i if len(i) <= ITEM_CAP else i[: ITEM_CAP - 1] + "…" for i in items[:LIST_CAP]]
     if len(items) > LIST_CAP:
-        kept[-1] = (
-            f"(+{len(items) - LIST_CAP + 1} more, see {' / '.join(REPORT_KEYS)} in the report)"
-        )
+        # name the FILE: the merge body is where this is read, and without a path
+        # the reader knows only that something was elided, not where it survives
+        kept[-1] = f"(+{len(items) - LIST_CAP + 1} more, in full at {path})"
     return kept
 
 
@@ -83,11 +83,11 @@ def read_report(path: Path) -> tuple[dict, str]:
     except ValueError as e:
         return {}, f"the reviewer's report is not JSON ({e})"
     if not isinstance(data, dict):
-        return {}, "the reviewer's report is not JSON — expected an object"
+        return {}, f"the reviewer's report is JSON but not an object: got {type(data).__name__}"
     missing = [k for k in REPORT_KEYS if not isinstance(data.get(k), list)]
     if missing:
         return {}, f"the reviewer's report is missing list keys: {', '.join(missing)}"
-    return {k: _cap([str(i) for i in data[k]]) for k in REPORT_KEYS}, ""
+    return {k: _cap([str(i) for i in data[k]], path) for k in REPORT_KEYS}, ""
 
 
 def run(prompt: str, cwd: Path, dry_run: bool = False) -> tuple[str, str]:
