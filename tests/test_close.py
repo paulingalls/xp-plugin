@@ -1324,19 +1324,26 @@ class TestShippedProseMatchesTheMechanism:
             head = path.read_text().split("import argparse")[0]
             assert "VERDICT" not in head, f"{path.name} still ships the deleted gate"
 
-    def test_every_stopping_rule_copy_states_the_confirming_round(self):
-        """land refuses unless the last round covers HEAD, and every fix moves HEAD,
-        so "close without re-review" cannot be kept. Asserted POSITIVELY and in every
-        copy: a negative grep for one file's old wording passed vacuously on the file
-        that never used that spelling, and missed DESIGN.md entirely — the same shape
-        of check the backticked VERDICT line defeated at story-008.
+    def test_every_stopping_rule_copy_states_the_split_arithmetic(self):
+        """land refuses unless the last round covers HEAD, so "close without
+        re-review" cannot be kept. Asserted POSITIVELY and in every copy: a
+        negative grep for one file's old wording passed vacuously on the file
+        that never used that spelling, and missed DESIGN.md entirely.
+
+        story-012b SPLIT the rule — a REVIEWER fix costs no confirming round, a
+        LEAD fix still does — and `"confirming round" in text` was already true of
+        all three files BEFORE the split, so it certified the undifferentiated
+        sentence AC 10 exists to replace. Both halves, or neither is guarded.
         """
         for path in (
             PLUGIN / "PROCESS.md",
             PLUGIN / "skills" / "story-close" / "SKILL.md",
             Path(__file__).parent.parent / "docs" / "DESIGN.md",
         ):
-            assert "confirming round" in path.read_text(), f"{path.name} still promises"
+            text = path.read_text()
+            assert "confirming round" in text, f"{path.name} still promises"
+            assert "inside the round that found" in text, f"{path.name}: reviewer half"
+            assert "past what the review covered" in text, f"{path.name}: lead half"
 
     def test_the_charter_names_the_report_path(self):
         assert "REPORT_PATH" in (PLUGIN / "agents" / "story-reviewer.md").read_text()
@@ -1564,7 +1571,10 @@ class TestFixingReviewer:
 class TestCharterBar:
     def test_the_charter_states_the_three_buckets(self):
         charter = (PLUGIN / "agents" / "story-reviewer.md").read_text().lower()
-        for token in ("fix it", "blocking", "noted"):
+        # the bucket NAMES as the charter writes them: "fix it" matched the
+        # blocking bullet's "could NOT fix it", so the `fixed` bucket the whole
+        # story turns on was the one token this loop never actually required.
+        for token in ("`fixed`", "`blocking`", "`noted`"):
             assert token in charter
         assert "heredoc" not in charter, "Write is allowed now; the heredoc route is stale"
 
