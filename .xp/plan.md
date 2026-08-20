@@ -27,7 +27,7 @@ AC:
 Verify: pytest -q tests/test_work.py
 Executor: (default)
 
-#### story-002 — close.py: story close   [in-progress]
+#### story-002 — close.py: story close   [done]
 Context: Automates .claude/skills/story-close (the checklist IS the spec). Pipeline:
 preflight → spawn story-reviewer (stop: fix-or-ask) → run story Verify + story tier →
 verdict into PR body/merge trailer → merge; re-review on conflicted/drifted merge
