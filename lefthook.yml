@@ -1,0 +1,27 @@
+# The unforgeable floor (DESIGN.md §7). pre-commit = seconds; full suite at push.
+# piped: rewriters run before readers; first failure aborts (single clear error).
+pre-commit:
+  piped: true
+  commands:
+    ruff-check:
+      glob: "*.py"
+      priority: 1
+      run: ruff check --fix {staged_files}
+      stage_fixed: true
+    ruff-format:
+      glob: "*.py"
+      priority: 2
+      run: ruff format {staged_files}
+      stage_fixed: true
+    secrets:
+      priority: 3
+      run: gitleaks protect --staged --no-banner --redact
+    fast-tests:
+      priority: 4
+      # exit 5 = no tests collected — legal while the suite is growing
+      run: sh -c 'pytest -q -m "not slow"; s=$?; [ $s -eq 5 ] && exit 0; exit $s'
+
+pre-push:
+  commands:
+    full-tests:
+      run: sh -c 'pytest -q; s=$?; [ $s -eq 5 ] && exit 0; exit $s'
