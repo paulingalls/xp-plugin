@@ -160,33 +160,46 @@ Executor: (default)
 
 #### story-012a — the structured gate; land never spawns   [ready]
 Context: First half of the story-008-close redesign (work.md 17:43:13Z, 17:56:23Z,
-17:57:00Z). SPLIT per plan review, on the seam the 17:33:21Z note already named: "a
-fixing reviewer plus our current VERDICT-line gate would be strictly WORSE than
-today". So the gate lands first and 012b reverses the reviewer's posture on top of
-it. Three moves, all deterministic. (1) LAND NEVER SPAWNS: on drift it refuses,
-naming `close.py story <id> review`. Measured over story-008 — land ran 4x, spawned
-opus 4x, merged 0x, owning the tree ~10 min a run, and a lead edit during one tripped
-the reviewer-dirtied guard and blamed the reviewer. (2) THE DELTA PATH IS DELETED:
-every review covers merge-base..HEAD. `delta=True` has no CLI surface and cmd_land is
-its only caller, so deleting land's call while keeping the path strands dead code
-behind an AC no test can reach. The deletion also closes the open full_sha bug
-(17:23:06Z) — whose falsifier `grep -q full_sha` greens on a token, the third
-falsifier-coupled-to-an-identifier this session; AC 2 is its behavioural red.
-(3) STRUCTURED REPORT replaces the VERDICT-line grep, which failed twice: forgeable
-by design (story-002), then defeated by backticks (story-008). The reviewer writes
-{fixed[],blocking[],noted[]} JSON to a ROUND-SCOPED path the bundle names, under
-data_root()/reports/ — outside the repo and outside markers/, so it never rides in a
-fix commit and does not sit in the directory holding its own gate. IT FIXES PARSING,
-NOT FORGERY: an agent under bypass can write any path it likes, and it is 012b that
-knowingly retires story-008's G1 property. Stated here rather than implied away.
-DURABILITY (Paul, this session): a reviewer whose stdout is lost, truncated or
-unparseable still leaves its findings on disk. Live evidence — this session's
-plan-reviewer returned nothing twice and its report survived only by being re-sent by
-hand. The plan-reviewer charter gets the same instruction; that leg is carried by the
-harness, not by close.py, so prose is the only lever there.
-Size: close.py is 449/500 and this story is net-additive (constraint 8). Report
-parsing, validation, caps and round rendering live in review.py; merge-body rendering
-moves to bookkeep.py beside log_close; close.py keeps gates only.
+17:57:00Z), split on the seam the 17:33:21Z note named: "a fixing reviewer plus our
+current VERDICT-line gate would be strictly WORSE than today". The gate lands first;
+012b reverses the reviewer's posture on top of it. Three moves, all deterministic.
+(1) LAND NEVER SPAWNS: on drift it refuses, naming `close.py story <id> review`.
+Measured over story-008 — land ran 4x, spawned opus 4x, merged 0x, owned the tree
+~10 min a run, and a lead edit during one tripped the reviewer-dirtied guard and
+blamed the reviewer. (2) THE DELTA PATH IS DELETED: every review covers
+merge-base..HEAD. `delta=True` has no CLI surface and cmd_land is its only caller, so
+deleting land's call while keeping the path strands dead code behind an unreachable
+AC. It also closes the open full_sha bug (17:23:06Z), whose falsifier `grep -q
+full_sha` greens on a token — AC 2 is its behavioural red. PRICE, stated because it
+is the 17:03:25Z note's option (a) and it is not free: every fix round now costs a
+full review of the whole story diff instead of a cheap delta. A fixing reviewer
+(012b) is what buys the round count back down. (3) STRUCTURED REPORT replaces the
+VERDICT-line grep, which failed twice: forgeable by design (story-002), then defeated
+by backticks (story-008). The reviewer writes {fixed[],blocking[],noted[]} JSON — each
+item a STRING CARRYING THE FINDING TEXT, so the findings survive outside stdout — to a
+round-scoped path under data_root()/reports/, outside the repo and outside markers/,
+so it never rides in a fix commit and does not sit in the directory holding its own
+gate. Reports are KEPT at close (delete_story_markers clears markers/, not reports/):
+they are the audit trail behind a merge body. IT FIXES PARSING, NOT FORGERY: an agent
+under bypass writes any path it likes.
+WRITE IS DENIED IN THIS STORY. REVIEWER_DENY still blocks Edit/Write/NotebookEdit, so
+the reviewer's only route to the report is a Bash heredoc — the charter must name that
+route and the exact path, or the first live run ends with ten minutes of opus, prose
+findings, no file, and a refusal that looks like a reviewer defect.
+DESIGN §6 REPLACEMENT TEXT, so the implementer does not draft process at the keyboard:
+land never re-reviews — it refuses and names the review leg; and the two-round cap
+survives as a rule THE LEAD applies (constraint 7 reserves exactly that judgment),
+restated as "the lead chooses the rounds; land requires the last round to cover HEAD."
+DURABILITY (Paul, this session), with its honest bound: the report on disk survives a
+reviewer whose stdout is lost, truncated, or unparseable. It does NOT survive a
+reviewer killed before it writes — that case wants the tee from the 17:08:23Z note and
+is not bought here. Live evidence: this session's plan-reviewer returned nothing twice;
+round 2 was told to write a file and the file is what survived.
+Size: after the stated moves close.py lands ~454/500 (constraint 8). Report parsing,
+validation, caps and round rendering go to review.py (~108); merge-body rendering to
+bookkeep.py (~86) beside log_close. Those moves buy the per-FILE cap, not DESIGN §9's
+800-line close COMPONENT budget, which goes 617 -> ~648 here and ~690 after 012b —
+story-009 is what takes it over, and story-010's ratchet is where that reds.
 Files: plugins/xp-plugin/scripts/close.py, plugins/xp-plugin/scripts/review.py,
 plugins/xp-plugin/scripts/bookkeep.py, plugins/xp-plugin/scripts/session_start.py,
 plugins/xp-plugin/agents/story-reviewer.md, plugins/xp-plugin/agents/plan-reviewer.md,
@@ -194,43 +207,53 @@ plugins/xp-plugin/skills/story-close/SKILL.md, plugins/xp-plugin/PROCESS.md,
 docs/DESIGN.md, tests/test_close.py, tests/test_session_start.py
 AC:
 - Given HEAD moved since review, When land runs, Then it refuses naming `close.py story <id> review` and SPAWNS NOTHING (fault-inject: the test reds if land launches the reviewer), and running land twice returns the same answer
-- Given any review round, Then it covers merge-base(trunk,HEAD)..HEAD — no delta spelling exists on the CLI or in the code — and land refuses unless the recorded review_base equals today's merge-base AND shown_sha equals HEAD (the full_sha bug, behaviourally: full round, lead commit, land refuses)
-- Given the reviewer's JSON report, When review runs, Then fixed[]/blocking[]/noted[] land in the close marker with per-item AND per-list caps applied AT THE WRITE; Given a report missing, unparseable, or without those keys, Then review refuses and records no round — and a bare `VERDICT:` line in prose is NEVER parsed (fault-inject with a prose-only stub reviewer)
-- Given a round-scoped report path, When a reviewer crashes or writes nothing, Then review refuses rather than reading the previous round's file — a stale report certifying a round nothing produced is story-008's gate-advances-its-own-state defect (constraint 10: the round is the scope)
-- Given blocking[] non-empty in the last recorded round, When land runs, Then it refuses naming each blocking item — the last round governs, and only when its shown_sha == HEAD
+- Given a second review round after a commit, Then the bundle carries the WHOLE story diff and not a delta (tests/test_close.py:698 asserts `-A = 1` ABSENT from the delta prompt today; this story inverts that assertion), and land refuses unless the recorded review_base equals today's merge-base AND shown_sha equals HEAD — the full_sha bug, behaviourally: full round, lead commit, land refuses
+- Given a clean round, Then shown_sha is HEAD read AFTER the review leg finishes — which under this story's still-present moved-HEAD refusal provably equals the pre-launch HEAD, the pre-launch read staying as that refusal's input. So 012b adds reviewed_head and deletes a guard, and NO assertion written here changes meaning later. This re-expresses tests/test_close.py:644, whose real property is the refusal at :651, not the ordering of a read
+- Given trunk moved after a recorded round, When review runs again, Then it REFUSES naming "merge <trunk> into the story branch first" — merge-base does not move when trunk advances, so a re-baseline that leaves review_base unchanged clears land's trunk guard while the reviewer sees nothing new (the full_sha bug's twin on the integration axis)
+- Given the reviewer's JSON report, When review runs, Then fixed[]/blocking[]/noted[] land in the close marker with per-item AND per-list caps applied AT THE WRITE; Given a report missing, unparseable, or without those keys, Then the reviewer's raw output is PRINTED FIRST and then review refuses, recording no round — and a bare `VERDICT:` line in prose is NEVER parsed (fault-inject with a prose-only stub reviewer)
+- Given a report already sitting at this round's path, When a reviewer writes nothing, Then review refuses and the marker gains no round — the path is unlinked BEFORE the launch, because the round index advances only on a recorded round, so every failed attempt at round N reuses N's path (fault-inject by PLANTING the file, not by observing one)
+- Given blocking[] non-empty in the last recorded round, When land runs, Then it refuses naming each blocking item
 - Given noted[] items, When land runs, Then it prints them under "file these per PROCESS.md" and the merge body carries them — the filing itself stays judgment (constraint 7)
 - Given three review rounds, When land merges, Then the merge body labels them 1/2/3 by list index — a round is recorded only with a valid report, so index IS the round number (round-6 F1: story-008's body read "round 1" for round 6)
 - Given a closes.jsonl holding both old verdicts[] records and new ones, When SessionStart renders, Then last_close() renders BOTH shapes and the recovery block stays bounded per-round and in total (round-6 F4, in the section that already evicted constraints.md)
-- Given the shipped prose — PROCESS.md, DESIGN §6, SKILL.md and review.charter() — Then it describes THIS mechanism: no VERDICT line, no round cap the pipeline does not count, and the report path named where the reviewer will read it. A COHERENCE PIN, not a behavioural check; added prose displaces equal weight (constraint 1)
-- Given the plan-reviewer charter, Then it instructs the reviewer to write its findings to a file before returning — this session's loss, on the leg close.py does not own
+- Given the shipped prose, Then PROCESS.md and SKILL.md contain no "VERDICT" token and carry the §6 replacement text above, and review.charter() names the report path AND the Bash-heredoc route Write denial leaves open — all three assertable, so this is a red test and not a coherence pin
+- Given agents/plan-reviewer.md, Then it instructs the reviewer to write its findings to a file before returning (this session's loss, on the leg close.py does not own — prose is the only lever there, so the test asserts the prose)
 Verify: pytest -q tests/test_close.py tests/test_session_start.py
 Close review: deep
 Executor: (default)
 
 #### story-012b — the reviewer fixes; the lead reads its diff   [ready]
 Context: Second half, safe ONLY on top of 012a's structured gate (work.md 17:33:21Z,
-17:33:39Z, 17:43:13Z). Drop REVIEWER_DENY and the reviewer-dirtied-the-tree guard;
-the reviewer edits where the code under review is (Path.cwd() — the live tree for a
-solo close, the worktree for a spawned one, no code change for that half). reviewed_sha
-becomes three recorded facts: review_base, reviewed_head (what the reviewer was shown)
-and shown_sha (post-reviewer HEAD, what the LEAD is shown). Running land IS assent.
-THIS RETIRES story-008's gating finding G1 — that the tree a verdict names cannot have
-been touched by the thing that issued the verdict — it does not replace it. What
-carries the weight instead: the lead's read of the reviewer's diff, the story Verify
-and tier that land runs, and the commit wall on the reviewer's own commits. What that
-read CANNOT cover, and why the .xp/ guard exists: the reviewer runs under
---dangerously-skip-permissions and `git diff` shows tracked files only — not the
-marker that gates its own merge, not work.md, not closes.jsonl.
+17:33:39Z, 17:43:13Z). Drop REVIEWER_DENY and the reviewer-dirtied-the-tree guard; the
+reviewer edits where the code under review is (Path.cwd() — close.py's XP_ROLE gate
+makes that the lead's own checkout, always). reviewed_sha becomes three recorded
+facts: review_base, reviewed_head (what the reviewer was shown) and shown_sha
+(post-reviewer HEAD, what the LEAD is shown). Running land IS assent.
+WHAT ACTUALLY RETIRES, precisely: story-008's G1 was never held by the deny-list — a
+reviewer with Bash could always `git commit`. It was held by the moved-HEAD /
+dirtied-tree REFUSAL (close.py:208-213, fault-injected at tests/test_close.py:651).
+That refusal is what this story retires, and nothing replaces it in kind. What carries
+the weight instead: the lead's read of the reviewer's diff, the story Verify and tier
+land runs, and the commit wall on the reviewer's own commits. What the read CANNOT
+cover, and why the .xp/ guard exists: `git diff` shows tracked files only — not the
+marker that gates the merge, not work.md, not closes.jsonl.
+Tests this story deletes, named so the deletions are deliberate: :628 (reviewer cannot
+edit the lead tree — the deny-list drop), :651 (a reviewer that commits is refused),
+:906 (a reviewer that writes without committing is refused — its target moves to
+refusing the UNCOMMITTED write, AC 5).
 Files: plugins/xp-plugin/scripts/close.py, plugins/xp-plugin/scripts/review.py,
-plugins/xp-plugin/agents/story-reviewer.md, plugins/xp-plugin/skills/story-close/SKILL.md,
-plugins/xp-plugin/PROCESS.md, docs/DESIGN.md, tests/test_close.py
+plugins/xp-plugin/scripts/spawn.py, plugins/xp-plugin/agents/story-reviewer.md,
+plugins/xp-plugin/skills/story-close/SKILL.md, plugins/xp-plugin/PROCESS.md,
+docs/DESIGN.md, tests/test_close.py
 AC:
 - Given a reviewer that edits AND commits in the tree under review, When review returns, Then reviewed_head is the pre-launch HEAD, shown_sha is the post-reviewer HEAD, and no dirtied-tree refusal fires (fault-inject: restoring the old guard reds the test)
-- Given the reviewer committed fixes, When review returns, Then it prints the commit range, `--stat`, and the full diff up to a stated char cap — above the cap, stat + range + the command to re-read. The assent premise is "nothing merges unlooked-at", so the mechanism is NAMED, BOUNDED and asserted on stdout; story-008 shipped a defect from an AC whose verb had no artifact behind it
-- Given land merges, Then the merge body carries the reviewer's commit range — reviewer commits carry the LEAD's git identity (run_agent sets only XP_ROLE), so nothing in git distinguishes them and DESIGN §6's audit trail is otherwise lost
+- Given the reviewer committed fixes, When review returns, Then it prints the commit range, `--stat`, and the full diff up to a stated char cap — above the cap, stat + range + the command to re-read
+- Given a recorded round where reviewed_head != shown_sha, When LAND runs, Then it prints the reviewer's range and `--stat` immediately before merging. The assent premise is "nothing merges unlooked-at" and review's stdout is the one channel this session lost three times; assent must be readable at the moment it is given, not by appeal to an earlier command
+- Given a reviewer commit, Then spawn.py sets GIT_AUTHOR_NAME/GIT_COMMITTER_NAME for role="reviewer" (run_agent sets only XP_ROLE today, so reviewer commits carry the LEAD's identity) — git then distinguishes them in every clone, and the merge body's range is a convenience rather than the only record
 - Given the reviewer returns leaving the tree DIRTY, When review finishes, Then it refuses naming the uncommitted files — shown_sha must name a commit, and review never commits on the reviewer's behalf
 - Given reviewer commits that touch .xp/, When review finishes, Then it refuses — the reviewer may fix code, never the plan, the constraints, or its own gate state (fault-inject)
-- Given the shipped charter, SKILL.md and the PROCESS.md stopping rule, Then they describe a fixing reviewer with the lead's read as the judgment point — today's text ("Do not edit code"; "fixes applied exactly as prescribed... close WITHOUT re-review"; "hard cap two rounds") is written for a reporting reviewer, ships to consuming projects, and is injected into every lead session (constraint 1: displace what you add)
+- Given a reviewer that hangs, Then run_agent bounds it with a wall clock and surfaces TimeoutExpired through the existing rc!=0 path — after the split, review is the only long-running command AND the only mutating one, and this story hands it write access to the live tree; unbounded, a hung reviewer owns that tree with edit rights indefinitely (story-008: land exceeded a 600s foreground limit and was backgrounded by hand)
+- Given the shipped charter, SKILL.md and the PROCESS.md stopping rule, Then they describe a fixing reviewer with the lead's read as the judgment point — today's text ("Do not edit code"; "fixes applied exactly as prescribed... close WITHOUT re-review") is written for a reporting reviewer, ships to consuming projects, and is injected into every lead session (constraint 1: displace what you add)
 Verify: pytest -q tests/test_close.py
 Close review: deep
 Executor: (default)
@@ -267,12 +290,17 @@ DEFERRED HERE AT story-012's plan review (Paul's call): story-010 is where DESIG
 already puts it — its presence in Sprint 2 was drift — and story-011 rebases onto
 whatever 012b lands, so closing it first would build free mode on a dead design.
 Sprint 2 is at its cap of 6 with 012a/012b; these two are what the split displaced.
+Also deferred here from the story-012 candidate note (17:03:25Z): a CONFIGURABLE
+reviewer (`--reviewer` override) — the seam the codex adapter needs. Its two
+siblings landed: durable in 012a, bounded in 012b.
 
 #### story-010 — size-ratchet CI   [ready]
 Context: DESIGN §9's budgets become enforced acceptance criteria: shipped py
 ≤5,000 (spawn ≤2,000 · close ≤800 · hooks+adapters ≤1,000 · misc ≤1,200), skill
 prose ≤3,000 words, agent prose ≤2,500 words, tests ≤2× code lines. ratchet.py
 (stdlib) + a GitHub Action running it on PRs; also wired into pre-push.
+The close component is the budget expected to red first: it reaches ~690 of
+DESIGN §9's 800 after 012a/012b, and story-009's sprint_close.py takes it over.
 Files: plugins/xp-plugin/scripts/ratchet.py, .github/workflows/ratchet.yml, lefthook.yml, tests/test_ratchet.py
 AC:
 - Given the repo within budgets, When ratchet.py runs, Then exit 0 with a one-line report
