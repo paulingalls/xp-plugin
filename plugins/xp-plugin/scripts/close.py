@@ -30,6 +30,7 @@ from bookkeep import (
     render_land_preview,
     render_merge_body,
     render_noted,
+    render_prior_rounds,
 )
 from work import chdir_repo_root, config_block_value, data_root
 
@@ -158,13 +159,7 @@ def build_bundle(card: str, base: str, report: Path, prior: str = "") -> str:
         # One greppable line: the charter explains the shape, this is the address.
         ("Your report", f"REPORT_PATH: {report}"),
         ("Story card", card),
-        # A fixing reviewer with no memory re-edits the last round's fixes and
-        # reverses what it deliberately punted. The next-round-that-knows is also
-        # the only mechanism that has ever caught a reviewer-introduced defect.
-        (
-            "Earlier rounds of THIS story",
-            prior or "none — you are round 1",
-        ),
+        ("Earlier rounds of THIS story", prior or "none — you are round 1"),
         ("Cumulative diff", git("diff", f"{base}..HEAD").stdout),
         ("work.md entries filed during the story", work_entries_since(base_epoch) or "none"),
         ("VALUES", _read_first(str(Path(__file__).parent.parent / "VALUES.md"))),
@@ -227,20 +222,18 @@ def cmd_review(story_id: str, dry_run: bool = False) -> int:
     path = review.report_path(story_id, len(state.get("rounds", [])) + 1)
     if not dry_run:  # a preview must not delete the findings of a refused round
         path.unlink(missing_ok=True)
+        # the diff too: a refused round leaves one behind, and land prints this
+        # path by ROUND — a stale one would be handed to the lead as his assent
+        review.diff_path(path).unlink(missing_ok=True)
     head = git("rev-parse", "HEAD").stdout.strip()
     base = git("merge-base", f"refs/heads/{trunk}", "HEAD").stdout.strip()
     digest_before = review.marker_digest(marker)
-    prior = render_merge_body(state.get("rounds", []))
-    if prior:
-        prior += (
-            "\n\nDo NOT re-litigate a settled fix. DO verify each `fixed` item still"
-            " holds in the tree you were given."
-        )
+    prior = render_prior_rounds(state.get("rounds", []))
     result, err = review.run(build_bundle(card, base, path, prior), Path.cwd(), dry_run)
     if dry_run:
         return 0
-    if err:
-        return fail(f"refused: {err}")
+    if err:  # crash, timeout, absent binary — it may still have committed first
+        return fail(review.abort_text(head, err))
     # BEFORE any refusal below: a report the pipeline rejects still cost a full
     # review, and its findings exist nowhere else.
     print(result)
@@ -249,7 +242,7 @@ def cmd_review(story_id: str, dry_run: bool = False) -> int:
         return fail(motion)
     report, err = review.read_report(path)
     if err:
-        return fail(f"refused: {err}")
+        return fail(review.abort_text(head, err))
     state.setdefault("rounds", []).append(report)
     state["reviewed_head"] = head  # the tree the REVIEWER was shown
     diff = review.write_reviewer_diff(path, head)
@@ -376,6 +369,7 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
     if reviewer_work:
         print("the reviewer changed this tree — you are merging its work:")
         print(reviewer_work, end="")
+        print(f"full diff: {review.diff_path(review.report_path(story_id, len(rounds)))}")
 
     if merge_mode == "pr":
         import shutil

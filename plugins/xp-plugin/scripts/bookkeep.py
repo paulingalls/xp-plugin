@@ -46,6 +46,22 @@ def render_merge_body(rounds: list[dict]) -> str:
     return "\n".join(out)
 
 
+def render_prior_rounds(rounds: list[dict]) -> str:
+    """Earlier rounds, for the next round's bundle — "" before round 2.
+
+    A fixing reviewer with no memory re-edits the last round's fixes and reverses
+    what it deliberately punted, and the next-round-that-knows is the only
+    mechanism that has ever caught a reviewer-introduced defect.
+    """
+    body = render_merge_body(rounds)
+    if not body:
+        return ""
+    return body + (
+        "\n\nDo NOT re-litigate a settled fix. DO verify each `fixed` item still"
+        " holds in the tree you were given."
+    )
+
+
 def render_land_preview(
     verify: str, tier: str, merge_mode: str, branch: str, trunk: str, pr_steps: tuple
 ) -> str:

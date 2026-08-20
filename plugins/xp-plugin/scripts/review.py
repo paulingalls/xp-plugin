@@ -100,23 +100,37 @@ def marker_digest(path: Path) -> str:
     return sha256(path.read_bytes()).hexdigest() if path.exists() else ""
 
 
+def abort_text(reviewed_head: str, why: str) -> str:
+    """EVERY abort in the review leg, not only the motion checks. The tree now
+    holds commits from a process refused mid-fix — a state this pipeline has
+    never had, and "nothing was recorded" was written for a reviewer that could
+    not write. The undo is offered only when the reviewer actually moved
+    something: offering it on a tree nobody touched teaches the lead to skip it
+    on the run where it is real.
+    """
+    from close import git
+
+    moved = git("rev-parse", "HEAD").stdout.strip() != reviewed_head
+    if not (moved or git("status", "--porcelain").stdout.strip()):
+        return f"refused: {why}"
+    stat = git("diff", "--stat", f"{reviewed_head}..HEAD").stdout
+    return (
+        f"refused: {why}\n\n{stat}\nNo round was recorded, and the reviewer's work is"
+        f" in your tree — yours to keep or undo: git reset --hard {reviewed_head[:8]}"
+    )
+
+
 def check_reviewer_motion(reviewed_head: str, marker: Path, digest_before: str) -> str:
     """The complete refusal text, or "" if the reviewer behaved.
 
-    Complete, because the tree now holds commits from a process refused mid-fix —
-    a state this pipeline has never had, and "nothing was recorded" was written
-    for a reviewer that could not write. The dirty-tree case never says WHO left
-    the files: at story-008 the guard blamed the reviewer for the LEAD's edit, and
-    that misattribution is the measured complaint this whole story descends from.
+    The dirty-tree case never says WHO left the files: at story-008 the guard
+    blamed the reviewer for the LEAD's edit, and that misattribution is the
+    measured complaint this whole story descends from.
     """
     from close import git
 
     def refuse(why: str) -> str:
-        stat = git("diff", "--stat", f"{reviewed_head}..HEAD").stdout
-        return (
-            f"refused: {why}\n\n{stat}\nNo round was recorded. Any commits above are"
-            f" in your tree, yours to keep or undo: git reset --hard {reviewed_head[:8]}"
-        )
+        return abort_text(reviewed_head, why)
 
     dirty = git("status", "--porcelain").stdout.strip()
     if dirty:
@@ -141,7 +155,7 @@ def check_reviewer_motion(reviewed_head: str, marker: Path, digest_before: str) 
             "commits in this review's range were not authored by the reviewer, so"
             " work no reviewer read would ride the merge:\n  " + "\n  ".join(strays)
         )
-    touched = git("diff", "--name-only", rng).stdout.split()
+    touched = git("diff", "--name-only", rng).stdout.splitlines()
     if any(f.startswith(".xp/") for f in touched):
         return refuse("the reviewer changed .xp/ — it may fix code, never the plan or the rules")
     return ""
@@ -159,6 +173,12 @@ def reviewer_range(reviewed_head: str) -> str:
     return git("log", "--format=%h %an %s", rng).stdout + git("diff", "--stat", rng).stdout
 
 
+def diff_path(report: Path) -> Path:
+    """One spelling: review writes it, review unlinks the stale one, land prints
+    it — three sites that would otherwise drift."""
+    return report.with_suffix(".diff")
+
+
 def write_reviewer_diff(report: Path, reviewed_head: str) -> Path | None:
     """The reviewer's work, on disk beside its report. review's stdout is the
     channel this project lost three reviews down in one session, and it is the
@@ -168,7 +188,7 @@ def write_reviewer_diff(report: Path, reviewed_head: str) -> Path | None:
     summary = reviewer_range(reviewed_head)
     if not summary:
         return None
-    diff = report.with_suffix(".diff")
+    diff = diff_path(report)
     diff.write_text(summary + "\n" + git("diff", f"{reviewed_head}..HEAD").stdout)
     return diff
 

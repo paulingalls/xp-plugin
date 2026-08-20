@@ -1494,6 +1494,44 @@ class TestFixingReviewer:
         assert pre[:8] in r.stderr, "the undo point was not named"
         assert "reset --hard" in r.stderr
 
+    def test_an_abort_before_the_motion_checks_still_names_the_undo(self, tmp_path):
+        """AC 8 says ANY abort path. A reviewer that fixes, commits, and then
+        writes no report is the likeliest of them, and it aborts UPSTREAM of
+        check_reviewer_motion — so the message that owns the undo never runs."""
+        repo, env, g = make_repo(tmp_path)
+        pre = g("rev-parse", "HEAD").stdout.strip()
+        stub = tmp_path / "bin" / "claude"
+        stub.write_text(
+            "#!/bin/sh\n"
+            "echo 'x = 1' >> src/thing.py\n"
+            f"git -c user.name='{REVIEWER_NAME}' -c user.email='r@xp' commit -qam 'fix'\n"
+            'printf \'{"result": "fixed it, forgot the report"}\'\n'
+        )
+        stub.chmod(0o755)
+        r = close(repo, env, "review")
+        assert r.returncode == 2
+        assert g("rev-parse", "HEAD").stdout.strip() != pre, "the commit is in the tree"
+        assert pre[:8] in r.stderr and "reset --hard" in r.stderr
+
+    def test_an_abort_that_changed_nothing_offers_no_undo(self, tmp_path):
+        """The other half: a reset instruction for a tree nobody touched teaches
+        the lead to ignore it on the run where it is real."""
+        repo, env, _g = make_repo(tmp_path)
+        stub_reviewer(tmp_path, report=None)
+        r = close(repo, env, "review")
+        assert r.returncode == 2 and "reset --hard" not in r.stderr
+
+    def test_land_prints_the_path_to_the_reviewer_diff(self, tmp_path):
+        """AC 4: BOTH legs print its path. By land, review's stdout is scrolled
+        away — the file is the artifact the lead's assent actually rests on."""
+        repo, env, _g = make_repo(tmp_path)
+        self.fixing_stub(tmp_path)
+        assert close(repo, env, "review").returncode == 0
+        (diff,) = list((tmp_path / "data" / "reports").glob("*.diff"))
+        r = close(repo, env, "land")
+        assert r.returncode == 0, r.stderr
+        assert str(diff) in r.stdout
+
     def test_a_later_round_is_told_what_the_last_one_changed(self, tmp_path):
         """AC 9: a fixing reviewer with no memory re-edits the last round's fixes
         and reverses its deliberate punts."""
