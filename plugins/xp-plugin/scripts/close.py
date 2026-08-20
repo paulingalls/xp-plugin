@@ -266,27 +266,32 @@ def _log_close(story_id: str, card: str, verdicts: list[str], merge_sha: str) ->
 
 
 def _delete_story_branch(branch: str) -> list[str]:
-    """Push the integration branch, then delete the story branch LOCAL FIRST.
+    """Delete the story branch, LOCAL FIRST.
 
     Local first so `-d`'s merged check runs while the upstream ref still exists.
     Belt-and-braces at both call sites, where the merge is already reachable —
     the measurement behind the ordering (story-007) was taken from the story
     branch before the merge, where it IS load-bearing.
 
+    Idempotent on both sides: `gh pr merge --delete-branch` may already have
+    removed either, and reporting an already-done step as outstanding prints a
+    remediation that fails on re-run — a wolf-cry on the only channel M1's
+    "no hand-steps" has. The remote is asked with ls-remote rather than a
+    tracking ref, because `git fetch` without --prune leaves stale ones.
+
     Returns the commands that failed, for the caller to surface.
     """
-    failed = []
-    # only when origin actually carries the branch: a story closed with
-    # --in-place never pushed one, and a spurious failure here reads as a defect
-    origin_has_branch = (
-        git("rev-parse", "--verify", "-q", f"refs/remotes/origin/{branch}", check=False).returncode
-        == 0
+    local_exists = (
+        git("rev-parse", "--verify", "-q", f"refs/heads/{branch}", check=False).returncode == 0
     )
-    if git("branch", "-d", branch, check=False).returncode != 0:
-        failed.append(f"git branch -d {branch}")
-    elif origin_has_branch and git("push", "origin", "--delete", branch, check=False).returncode:
-        failed.append(f"git push origin --delete {branch}")
-    return failed
+    if local_exists and git("branch", "-d", branch, check=False).returncode != 0:
+        return [f"git branch -d {branch}"]
+    on_origin = (
+        git("ls-remote", "--exit-code", "--heads", "origin", branch, check=False).returncode == 0
+    )
+    if on_origin and git("push", "origin", "--delete", branch, check=False).returncode != 0:
+        return [f"git push origin --delete {branch}"]
+    return []
 
 
 def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
@@ -366,7 +371,14 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
             for c in [*pr_bookkeep, ["git", "branch", "-d", branch]]:
                 print(" ".join(c))
         else:
-            print(f"git merge --no-ff {branch} on {trunk}, then flip status + amend")
+            print(f"git merge --no-ff {branch} on {trunk}")
+            print("(flip .xp/plan.md to [done], then git commit --amend --no-edit)")
+            for c in [
+                ["git", "push", "origin", trunk],
+                ["git", "branch", "-d", branch],
+                ["git", "push", "origin", "--delete", branch],
+            ]:
+                print(" ".join(c))
         return 0
     if subprocess.run(verify, shell=True).returncode != 0:
         return fail(f"refused: story Verify red: {verify}")
@@ -422,6 +434,17 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
             if subprocess.run(c, capture_output=True, text=True).returncode != 0:
                 failed.append(" ".join(c))
     failed += _delete_story_branch(branch)
+    if failed:
+        # The merge HAS landed, so this is not a refusal (2) — but exiting 0
+        # would make a hand-step invisible, which M1's done-when forbids. No
+        # close record and no marker unlink: the record is the fact layer AC 8
+        # exists for, and one written here would name a sha the remediation
+        # below orphans. An absent record beats a record that points at nothing.
+        print("\nincomplete — the merge landed, these did not. Re-run them:", file=sys.stderr)
+        for c in failed:
+            print(f"  {c}", file=sys.stderr)
+        print(f"  ...then this close is done; {story_id} is NOT recorded closed", file=sys.stderr)
+        return 3
     _delete_story_markers(story_id)
     _log_close(story_id, card, state["verdicts"], merge_sha)
     marker.unlink()
@@ -429,13 +452,6 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
         f"{story_id} closed. Update the session digest (you are its sole writer);"
         " first line must be: # Session digest — written <ISO-ts> at <short-sha>"
     )
-    if failed:
-        # the merge HAS landed, so this is not a refusal (2) — but exiting 0
-        # would make a hand-step invisible, which is what M1's done-when forbids
-        print("\nincomplete — the merge landed, these did not. Re-run them:", file=sys.stderr)
-        for c in failed:
-            print(f"  {c}", file=sys.stderr)
-        return 3
     return 0
 
 

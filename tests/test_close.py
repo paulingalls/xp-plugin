@@ -980,8 +980,10 @@ class TestDeltaReviewFindings:
             "  git checkout -q -b _pr origin/main\n"
             '  git merge -q --no-ff -m "Merge PR" story-042-branch\n'
             "  git push -q origin _pr:main\n"
-            "  git checkout -q story-042-branch\n"
-            "  git branch -qD _pr ;; esac\n"
+            "  git checkout -q main\n"
+            "  git branch -qD _pr\n"
+            "  git push -q origin --delete story-042-branch 2>/dev/null\n"
+            "  git branch -qD story-042-branch ;; esac\n"
         )
         gh.chmod(0o755)
         return repo, env, g
@@ -1008,6 +1010,7 @@ class TestDeltaReviewFindings:
         assert "Traceback" not in r.stderr, r.stderr
         assert r.returncode != 0, "an abandoned plan flip must not read as success"
         assert "amend" in (r.stderr + r.stdout).lower()
+        assert "[done]" in (repo / ".xp" / "plan.md").read_text(), "the flip was discarded"
 
     def test_pr_merge_sha_is_the_merge_not_the_story_tip(self, tmp_path):
         """F2: --is-ancestor cannot tell them apart — the story tip is an
@@ -1057,3 +1060,35 @@ class TestDeltaReviewFindings:
         ):
             assert step in r.stdout, f"preview omits {step!r}"
         assert "\ngit push\n" not in r.stdout, "previewed a bare push that no longer runs"
+
+    def test_a_successful_pr_close_does_not_cry_wolf_on_exit_3(self, tmp_path):
+        """R3F1: gh --delete-branch had already removed the branch, so the
+        unconditional delete 'failed' and every successful pr close exited 3
+        naming a command that fails again on re-run."""
+        repo, env, _g = self.pr_repo(tmp_path)
+        close(repo, env, "review")
+        r = self.land_pr(repo, env)
+        assert r.returncode == 0, f"clean close reported incomplete: {r.stderr}"
+        assert "incomplete" not in r.stderr
+
+    def test_a_failed_amend_writes_no_close_record(self, tmp_path):
+        """R3F2: the record is the fact layer AC 8 exists for — it must not name
+        a sha that close.py's own printed remediation orphans."""
+        repo, env, _g = make_repo(tmp_path)
+        close(repo, env, "review")
+        hook = repo / ".git" / "hooks" / "pre-commit"
+        hook.write_text("#!/bin/sh\nexit 1\n")
+        hook.chmod(0o755)
+        assert close(repo, env, "land").returncode == 3
+        assert not (tmp_path / "data" / "closes.jsonl").exists(), "recorded an incomplete close"
+        assert (tmp_path / "data" / "markers" / "story-042.close.json").exists()
+
+    def test_local_dry_run_previews_the_destructive_steps_too(self, tmp_path):
+        """R3F4: F4's rule was applied to the pr arm only, and local is the mode
+        release: sprint forces — the un-fixed copy is the one in daily use."""
+        repo, env, _g = make_repo(tmp_path)
+        close(repo, env, "review")
+        r = close(repo, env, "land", "--dry-run")
+        assert r.returncode == 0
+        for step in ("git push origin main", "git branch -d story-042-branch"):
+            assert step in r.stdout, f"preview omits {step!r}"
