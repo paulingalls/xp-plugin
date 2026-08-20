@@ -44,6 +44,30 @@ def digest_with_staleness() -> str:
     return text
 
 
+def last_close() -> str:
+    """The most recent close, from close.py's append-only log.
+
+    Written here rather than left to session.md because the story list below
+    filters [done] out, so what was just finished appeared only in the digest —
+    the layer that goes stale, and whose author is a hand-step (Milestone 1
+    allows none). Facts only: close.py is deterministic Python and may not
+    summarize (constraints #7); the narrative digest stays LLM-written.
+    """
+    path = data_root() / "closes.jsonl"
+    if not path.exists():
+        return ""
+    lines = [ln for ln in path.read_text(errors="replace").splitlines() if ln.strip()]
+    if not lines:
+        return ""
+    record = json.loads(lines[-1])
+    verdicts = " · ".join(record.get("verdicts") or ["(no verdict recorded)"])
+    return (
+        f"last close: {record['story']} — {record.get('title', '')}"
+        f" at {str(record.get('merge_sha', ''))[:8]} on {record.get('closed_at', '?')}"
+        f"\n  {verdicts}"
+    )
+
+
 def recovery_block(root: Path) -> str:
     """Computed fresh from always-current sources — the layer that can't go stale."""
     stories = [
@@ -59,10 +83,17 @@ def recovery_block(root: Path) -> str:
             entries.append(f"{ln}\n  {body}")
     work_heads = entries[-3:]
     dirty = git("status", "--porcelain")
+    try:
+        closed = last_close()
+    except Exception:
+        # a corrupt log must cost its own line, not the whole recovery layer:
+        # build_all try/excepts per BUILDER, and this is one builder
+        closed = "last close: (unreadable log)"
     return "\n".join(
         [
             f"branch: {git('rev-parse', '--abbrev-ref', 'HEAD')}",
             f"dirty files: {len(dirty.splitlines()) if dirty else 0}",
+            *([closed] if closed else []),
             "stories:",
             *stories,
             "recent work.md entries:",
