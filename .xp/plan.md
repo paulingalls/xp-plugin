@@ -40,7 +40,7 @@ AC:
 Verify: pytest -q tests/test_close.py
 Executor: (default)
 
-#### story-005 — sprint-integration branching in close.py   [ready]
+#### story-005 — sprint-integration branching in close.py   [in-progress]
 Context: release: sprint (config.yml) — stories integrate on a sprint branch;
 sprint close PRs main (the release moment, where the heavy gates already live).
 close.py resolves its target: release==sprint AND a sprint branch exists (marker

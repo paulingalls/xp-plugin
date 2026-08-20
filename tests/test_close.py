@@ -332,3 +332,103 @@ class TestSecondReviewRound:
         r = close(repo, env, "reviewed", "--verdict", "VERDICT: clean")
         assert r.returncode == 2 and "moved" in r.stderr
         assert "[done]" not in (repo / ".xp" / "plan.md").read_text()
+
+
+class TestSprintIntegration:
+    """story-005: release: sprint — stories integrate on the sprint branch."""
+
+    def sprint_repo(self, tmp_path):
+        repo, env, g = make_repo(tmp_path)
+        (repo / ".xp" / "config.yml").write_text(
+            "release: sprint\nsprint_branch: sprint-001\ntests:\n  story: true\n"
+        )
+        g("checkout", "-q", "main")
+        g("add", "-A")
+        g("commit", "-qm", "sprint config")
+        g("branch", "sprint-001")
+        g("checkout", "-q", "story-042-branch")
+        g("merge", "-q", "main", "-m", "sync config")  # story branch sees the config
+        return repo, env, g
+
+    def test_close_merges_into_sprint_branch_not_main(self, tmp_path):
+        repo, env, g = self.sprint_repo(tmp_path)
+        close(repo, env, "start")
+        r = close(repo, env, "reviewed", "--verdict", "VERDICT: clean")
+        assert r.returncode == 0, r.stderr
+        assert "VERDICT: clean" in g("log", "sprint-001", "-1", "--format=%B").stdout
+        assert "[done]" in g("show", "sprint-001:.xp/plan.md").stdout
+        assert "VERDICT" not in g("log", "main", "--format=%B").stdout  # main untouched
+
+    def test_sprint_release_without_branch_key_falls_back_to_default(self, tmp_path):
+        repo, env, g = make_repo(tmp_path)
+        (repo / ".xp" / "config.yml").write_text("release: sprint\ntests:\n  story: true\n")
+        g("add", "-A")
+        g("commit", "-qm", "sprint release, no branch yet")
+        close(repo, env, "start")
+        r = close(repo, env, "reviewed", "--verdict", "VERDICT: clean")
+        assert r.returncode == 0, r.stderr
+        assert "VERDICT: clean" in g("log", "main", "-1", "--format=%B").stdout
+
+    def test_story_release_ignores_sprint_branch_key(self, tmp_path):
+        repo, env, g = make_repo(tmp_path)
+        (repo / ".xp" / "config.yml").write_text(
+            "release: story\nsprint_branch: sprint-001\ntests:\n  story: true\n"
+        )
+        g("branch", "sprint-001", "main")
+        g("add", "-A")
+        g("commit", "-qm", "story release")
+        close(repo, env, "start")
+        r = close(repo, env, "reviewed", "--verdict", "VERDICT: clean")
+        assert r.returncode == 0, r.stderr
+        assert "VERDICT: clean" in g("log", "main", "-1", "--format=%B").stdout
+
+    def test_guards_watch_sprint_branch_not_main(self, tmp_path):
+        repo, env, g = self.sprint_repo(tmp_path)
+        close(repo, env, "start")
+        g("checkout", "-q", "sprint-001")
+        (repo / "sprint-file.txt").write_text("x\n")
+        g("add", "-A")
+        g("commit", "-qm", "sprint branch moved")
+        g("checkout", "-q", "story-042-branch")
+        r = close(repo, env, "reviewed", "--verdict", "VERDICT: clean")
+        assert r.returncode == 2 and "moved" in r.stderr
+
+    def test_main_motion_does_not_block_sprint_close(self, tmp_path):
+        repo, env, g = self.sprint_repo(tmp_path)
+        close(repo, env, "start")
+        g("checkout", "-q", "main")
+        (repo / "main-file.txt").write_text("x\n")
+        g("add", "-A")
+        g("commit", "-qm", "main moved — sprint close's concern, not ours")
+        g("checkout", "-q", "story-042-branch")
+        r = close(repo, env, "reviewed", "--verdict", "VERDICT: clean")
+        assert r.returncode == 0, r.stderr
+
+    def test_pr_mode_with_sprint_target_refused(self, tmp_path):
+        repo, env, _g = self.sprint_repo(tmp_path)
+        close(repo, env, "start")
+        r = subprocess.run(
+            [
+                sys.executable,
+                str(CLOSE),
+                "story",
+                "story-042",
+                "reviewed",
+                "--verdict",
+                "VERDICT: clean",
+                "--merge-mode",
+                "pr",
+            ],
+            cwd=repo,
+            env=env,
+            capture_output=True,
+            text=True,
+        )
+        assert r.returncode == 2 and "local" in r.stderr
+
+    def test_start_from_default_branch_still_refused(self, tmp_path):
+        repo, env, g = self.sprint_repo(tmp_path)
+        g("checkout", "-q", "main")
+        g("merge", "-q", "--ff-only", "story-042-branch")
+        r = close(repo, env, "start")
+        assert r.returncode == 2

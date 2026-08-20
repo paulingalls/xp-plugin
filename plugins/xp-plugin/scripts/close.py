@@ -65,6 +65,27 @@ def story_tier_command() -> str:
     return ""
 
 
+def config_flat(key: str) -> str:
+    """A flat top-level `key: value` from .xp/config.yml."""
+    cfg = Path(".xp/config.yml")
+    if not cfg.exists():
+        return ""
+    for ln in cfg.read_text().splitlines():
+        if ln.startswith(f"{key}:"):
+            return ln.split(":", 1)[1].split("#")[0].strip()
+    return ""
+
+
+def integration_target() -> str:
+    """The branch this story integrates into: the sprint branch under
+    release: sprint (when it exists), else the default branch."""
+    if config_flat("release") == "sprint":
+        branch = config_flat("sprint_branch")
+        if branch and git("rev-parse", "--verify", "-q", branch, check=False).returncode == 0:
+            return branch
+    return default_branch()
+
+
 def default_branch() -> str:
     head = git("symbolic-ref", "refs/remotes/origin/HEAD", check=False)
     if head.returncode == 0:
@@ -127,11 +148,11 @@ def cmd_start(story_id: str) -> int:
         return fail(f"refused: {e.args[0]}")
     if status != "in-progress":
         return fail(f"refused: {story_id} is [{status}], start requires [in-progress]")
-    trunk = default_branch()
+    trunk = integration_target()
     branch = git("rev-parse", "--abbrev-ref", "HEAD").stdout.strip()
-    if branch == trunk:
+    if branch in (trunk, default_branch()):
         return fail(
-            f"refused: close from a story branch, not {trunk} — a self-merge is a no-op"
+            f"refused: close from a story branch, not {branch} — a self-merge is a no-op"
             " that records the verdict nowhere"
         )
     base = git("merge-base", trunk, "HEAD").stdout.strip()
@@ -177,7 +198,7 @@ def cmd_reviewed(story_id: str, verdict: str, merge_mode: str, dry_run: bool) ->
     if not marker.exists():
         return fail(f"refused: no close in progress for {story_id} — run start first")
     state = json.loads(marker.read_text())
-    trunk = default_branch()
+    trunk = integration_target()
     head = git("rev-parse", "HEAD").stdout.strip()
     if head != state["reviewed_sha"]:
         print(git("diff", f"{state['reviewed_sha']}..HEAD").stdout)
@@ -201,6 +222,11 @@ def cmd_reviewed(story_id: str, verdict: str, merge_mode: str, dry_run: bool) ->
         card, _ = story_card(plan, story_id)
     except KeyError as e:
         return fail(f"refused: {e.args[0]}")
+    if merge_mode == "pr" and trunk != default_branch():
+        return fail(
+            f"refused: release: sprint stories close with --merge-mode local into {trunk};"
+            " the PR to main happens at sprint close"
+        )
     verify = verify_commands(card)
     if not verify:
         return fail(f"refused: {story_id} has no Verify: line — an unverifiable story cannot close")
