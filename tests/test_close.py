@@ -277,3 +277,38 @@ class TestSecondReviewRound:
         r = close(repo, env, "reviewed", "--verdict", "VERDICT: clean")
         assert r.returncode == 0, r.stderr
         assert "VERDICT: clean" in g("log", "master", "-1", "--format=%B").stdout
+
+    def test_pr_mode_detects_origin_trunk_motion(self, tmp_path):
+        repo, env, g = make_repo(tmp_path)
+        origin = tmp_path / "origin.git"
+        subprocess.run(["git", "init", "-q", "--bare", str(origin)], env=env, check=True)
+        g("remote", "add", "origin", str(origin))
+        g("push", "-q", "origin", "main", "story-042-branch")
+        close(repo, env, "start")
+        # origin/main moves while local main stays put (the pr-mode workflow shape)
+        g("checkout", "-q", "main")
+        (repo / "unrelated.txt").write_text("x\n")
+        g("add", "-A")
+        g("commit", "-qm", "landed on origin")
+        g("push", "-q", "origin", "main")
+        g("reset", "-q", "--hard", "HEAD~1")
+        g("checkout", "-q", "story-042-branch")
+        r = subprocess.run(
+            [
+                sys.executable,
+                str(CLOSE),
+                "story",
+                "story-042",
+                "reviewed",
+                "--verdict",
+                "VERDICT: clean",
+                "--merge-mode",
+                "pr",
+                "--dry-run",
+            ],
+            cwd=repo,
+            env=env,
+            capture_output=True,
+            text=True,
+        )
+        assert r.returncode == 2 and "moved" in r.stderr

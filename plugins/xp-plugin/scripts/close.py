@@ -75,6 +75,16 @@ def default_branch() -> str:
     raise SystemExit(fail("no main/master branch found and origin/HEAD unset"))
 
 
+def trunk_ref(trunk: str) -> str:
+    """origin/<trunk> (fetched) when a remote exists — local trunk never moves in a
+    pr-mode workflow, so guarding it alone leaves the default mode unguarded."""
+    if git("remote", check=False).stdout.strip():
+        git("fetch", "-q", "origin", trunk, check=False)
+        if git("rev-parse", "--verify", "-q", f"origin/{trunk}", check=False).returncode == 0:
+            return f"origin/{trunk}"
+    return trunk
+
+
 def marker_path(story_id: str) -> Path:
     d = data_root() / "markers"
     d.mkdir(parents=True, exist_ok=True)
@@ -141,7 +151,7 @@ def cmd_start(story_id: str) -> int:
         json.dumps(
             {
                 "reviewed_sha": git("rev-parse", "HEAD").stdout.strip(),
-                "trunk_sha": git("rev-parse", trunk).stdout.strip(),
+                "trunk_sha": git("rev-parse", trunk_ref(trunk)).stdout.strip(),
             }
         )
     )
@@ -173,7 +183,7 @@ def cmd_reviewed(story_id: str, verdict: str, merge_mode: str, dry_run: bool) ->
             "drift: HEAD moved since review — delta above goes back to the reviewer,"
             " then run start again to re-baseline"
         )
-    if git("rev-parse", trunk).stdout.strip() != state.get("trunk_sha"):
+    if git("rev-parse", trunk_ref(trunk)).stdout.strip() != state.get("trunk_sha"):
         return fail(
             f"refused: {trunk} moved since start — the merged tree would differ from"
             " what was reviewed; run start again to re-baseline"
@@ -223,8 +233,8 @@ def cmd_reviewed(story_id: str, verdict: str, merge_mode: str, dry_run: bool) ->
             git("merge", "--abort", check=False)
             git("checkout", branch)
             return fail(
-                "merge conflict: resolve on the story branch, then re-review "
-                "the post-resolution diff (phase stays reviewing)"
+                "merge conflict: resolve on the story branch, re-review the "
+                "post-resolution diff, then run start again to re-baseline"
             )
 
     merged_plan = Path(".xp/plan.md").read_text()  # POST-merge: keeps trunk-side changes
