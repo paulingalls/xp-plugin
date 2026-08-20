@@ -89,6 +89,9 @@ Verify: pytest -q tests/test_stop_gate.py
 Executor: (default)
 
 ### Sprint 2 — the process runs itself
+Deferred from DESIGN §10's sketch, explicitly: the exit-status-masking bash gate
+(§7 item 5) moves to Sprint 3 with the harness adapters — Verify entailment in
+bash_status already covers its worst case at the gate that matters.
 
 #### story-006 — /xp-setup scaffold   [ready]
 Context: The plugin is installable but useless in an unprepared repo. One skill +
@@ -102,6 +105,7 @@ AC:
 - Given lefthook on PATH, When setup runs, Then lefthook.yml is written and installed; Given none, Then .githooks + core.hooksPath carry secrets scan + fast tier
 - Given an existing .xp/, When setup runs, Then it refuses without touching anything
 Verify: pytest -q tests/test_setup.py
+Close review: standard
 Executor: (default)
 
 #### story-007 — spawn CLI (claude harness)   [ready]
@@ -117,7 +121,9 @@ AC:
 - Given spawn for a story, Then a worktree exists on its branch off the integration target (bootstrap per system.md)
 - Given the card has an Executor: override, Then it beats the config default
 - Given the worktree already exists, Then spawn refuses
+- Given the dry-run prompt, Then its size respects the <2k-token teammate budget (structural assert — DESIGN §8)
 Verify: pytest -q tests/test_spawn.py
+Close review: deep
 Executor: (default)
 
 #### story-008 — close.py spawns the reviewer (completes Milestone 1)   [ready]
@@ -134,22 +140,34 @@ AC:
 - Given HEAD moved after review, When land runs, Then it refuses and review covers the delta in-pipeline
 - Given land completes, Then the merge body carries the recorded verdict verbatim and the story's test-status marker reads green
 - Given reviewer output without a VERDICT line, When land runs, Then it refuses — no verdict, no merge
+- Given two in-progress stories with byte-identical Verify commands, When each records a test status, Then they get DISTINCT markers (story-scoped key, not verify-string) — the carried sprint-001 triage input
 Verify: pytest -q tests/test_close.py
+Close review: deep
 Executor: (default)
 
 #### story-009 — sprint-close pipeline   [ready]
-Context: Automates Sprint 1's hand-run close. `close.py sprint start`: full tier +
-archive.md falsifier batch (a red re-files as bug and aborts) + emits the retro
-skeleton and triage list FOR THE HUMAN (presentation is a close duty). `close.py
-sprint land`: after human triage/retro, opens the release PR with version bump +
-tag step, retires the sprint_branch key, writes the digest. Not-releasable →
-branch carries, key stays.
-Files: plugins/xp-plugin/scripts/close.py, tests/test_sprint_close.py
+Context: Automates Sprint 1's hand-run close. Lives in its OWN module,
+scripts/sprint_close.py, behind a ~2-line `close.py sprint` dispatch (plan
+review: dissolves the close.py collision with 008/011 and the 500-line file
+cap in one move — the §9 close sub-budget spans the component). May run
+parallel to the 007→008→011 chain. `sprint start`: full tier + archive.md
+falsifier batch (a red re-files as bug and aborts) + work.md note consumption
+(each note: promote to constraints/system via the retro diff, or archive) +
+emits the retro skeleton and triage list FOR THE HUMAN. `sprint land`: after
+human triage/retro, opens the release PR with version bump + tag; the
+sprint_branch key is retired only ON MERGE, never at PR-open (a stalled PR
+with a dead key is the v0.2.0 defect mirrored — plan review). Not-releasable →
+branch carries, key stays. Boundary: the broad review and LLM security review
+stay LLM-present steps named in the sprint-close skill checklist — a hook/
+script cannot absorb them (constraint 7).
+Files: plugins/xp-plugin/scripts/sprint_close.py, plugins/xp-plugin/scripts/close.py (dispatch only), tests/test_sprint_close.py
 AC:
-- Given all sprint stories done, When sprint start runs, Then full tier + archived falsifiers execute and the retro/triage materials are emitted (a red archived falsifier aborts, re-filed as bug)
-- Given human inputs, When sprint land runs, Then the release PR opens with the bump+tag and the sprint_branch key is retired and the digest written
+- Given all sprint stories done, When sprint start runs, Then full tier + archived falsifiers execute (a red aborts, re-filed as bug) and every work.md note is emitted for promote-or-archive triage alongside the retro skeleton
+- Given human inputs, When sprint land runs, Then the release PR opens with the bump+tag and the digest is written — and the sprint_branch key survives until the PR is MERGED
+- Given a merged release PR, When the post-merge step runs, Then the key is retired
 - Given a not-releasable call, Then no PR opens and the key survives
 Verify: pytest -q tests/test_sprint_close.py
+Close review: deep
 Executor: (default)
 
 #### story-010 — size-ratchet CI   [ready]
@@ -159,9 +177,12 @@ prose ≤3,000 words, agent prose ≤2,500 words, tests ≤2× code lines. ratch
 (stdlib) + a GitHub Action running it on PRs; also wired into pre-push.
 Files: plugins/xp-plugin/scripts/ratchet.py, .github/workflows/ratchet.yml, lefthook.yml, tests/test_ratchet.py
 AC:
-- Given the repo within budgets, When ratchet.py runs, Then exit 0 with a one-line report; Given any budget exceeded, Then nonzero naming the budget and the overage
-- Given a PR, Then the action runs ratchet.py
+- Given the repo within budgets, When ratchet.py runs, Then exit 0 with a one-line report
+- Given a fixture tree constructed OVER a budget, When ratchet.py runs, Then nonzero naming the budget and overage (the guard fault-injected, constraint 2)
+- Given the workflow file, Then it triggers on pull_request and invokes ratchet.py (structural pin; first live run verified manually at the sprint-002 release PR)
+- Given lefthook.yml, Then pre-push runs ratchet.py (structural pin)
 Verify: pytest -q tests/test_ratchet.py
+Close review: standard
 Executor: (default)
 
 #### story-011 — free mode (card-less close)   [ready]
@@ -176,4 +197,5 @@ AC:
 - Given free land with a pipeline-received verdict, Then the PR to main carries the patch bump
 - Given free land without a verdict, Then it refuses
 Verify: pytest -q tests/test_close.py
+Close review: standard
 Executor: (default)
