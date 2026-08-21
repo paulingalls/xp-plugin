@@ -6,7 +6,7 @@ description: >-
 
 # Sprint Close
 
-`close.py sprint <id>` runs the mechanical steps. Three of them are yours and a
+`close.py sprint <id>` runs the mechanical steps. Two of them are yours and a
 script cannot absorb them (constraint 7).
 
 0. **Open the sprint first** (once, before its stories): `git switch -c sprint-00N`
@@ -41,7 +41,7 @@ script cannot absorb them (constraint 7).
    It REFUSES unless both lenses have a round covering HEAD with no blocking
    findings — a release PR over unreviewed commits was bug c9b48a66, measured on
    a real release. Not releasable? Don't run it — the branch carries, the key stays.
-4. **`close.py sprint <id> post-merge`**, AFTER the PR merges: cuts the bump and
+5. **`close.py sprint <id> post-merge`**, AFTER the PR merges: cuts the bump and
    the tag on the sha that actually shipped, and retires the `sprint_branch` key.
    Both facts become true in one leg, because a tag cut at PR-open names a commit
    that is not the release.
