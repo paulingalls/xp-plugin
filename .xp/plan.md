@@ -381,7 +381,7 @@ TO SPRINT 4 with the `--reviewer` override, which is that adapter's seam and not
 a standalone want. Sprint-002 closed by finding defects in the close machinery
 ITSELF — an unbounded re-review, and three resolutions of which two, then three,
 did not cover their claims. A second harness on top of that buys blast radius,
-not product. FIVE stories against a cap of 6, and the smallness is deliberate:
+not product. SIX stories against a cap of 6, and the smallness is deliberate:
 two are `Close review: deep`, one breaches a file cap on day one, and Sprint 4
 reopens the same files.
 ADDED MID-SPRINT (Paul's call — the human schedules, agents record): story-017,
@@ -601,4 +601,50 @@ Verify: pytest -q tests/test_spawn.py tests/test_close.py
 Close review: deep — raised from standard by the plan review: pipe-blocking and
 deadlock logic, a subprocess contract, a default path the stub cannot execute, and
 a prose contract every future teammate runs under.
+Executor: (default)
+
+#### story-018 — coverage is about overlap, not motion   [planned]
+Context: MEASURED THIS SPRINT, three times on one story. The review leg refuses
+when trunk has moved ahead of the fork point, and land refuses when trunk moved
+since the review — so ANY commit on the sprint branch invalidates every in-flight
+story's review, including commits touching nothing the story touches. story-010
+was reviewed three times: once refused on the fork point, once on the .xp/ guard,
+once because the lead's own bug-fix commits moved trunk. That serialises stories
+the sprint deliberately planned to be file-disjoint, and it turns the parallelism
+worktrees exist to provide back into a queue.
+THE GUARD CONFLATES TWO PROPERTIES: (a) the review covered the STORY's own
+changes — essential, and what bug f1391db4 was actually about; (b) the review
+covered the exact MERGE RESULT — much stronger, and the reason any motion costs a
+round. (b) earns its cost only where the two diffs touch the same files, which is
+where semantic conflict lives and where no later review makes the interaction
+cheap to find.
+THE RULE: review computes the story's diff from its fork point (it already does)
+and stops refusing on trunk motion; land refuses only when trunk moved AND the
+files trunk changed intersect the files the story changed, or when the merge
+conflicts (which PROCESS already owes a round). Disjoint motion lands unreviewed
+by neither party's choice — it was never in either diff.
+THE STANDING PRACTICE THIS RESTS ON, Paul's, and written down here because it
+lived only in his head: we do not run stories in parallel whose file domains
+overlap. Nothing checks it — DESIGN §11's cross-story collision check was never
+built — so land's overlap test is ALSO the detector for that practice being
+violated, and it must NAME the overlapping files rather than merely refuse.
+DANGER, and the reason this card is not a two-line change: bug f1391db4's
+resolution falsifier is `pytest -q tests/test_close.py -k "recorded_base or
+bare_re_review or trunk_motion_DURING"` — the exact tests this story rewrites.
+Gutting or renaming them silently empties a filed record's coverage while the
+batch keeps reporting green, which is constraint 11's failure arriving through
+the back door. The story must re-point that resolution deliberately, and
+`trunk_motion_DURING` (a teammate pushing DURING the review window) is a
+different case that STAYS.
+Depends on story-014 for the sprint-level twin: sprint land's coverage check
+(c9b48a66) should use this rule rather than invent a second one.
+Files: plugins/xp-plugin/scripts/close.py, docs/DESIGN.md, tests/test_close.py
+AC:
+- Given trunk moved with a file set DISJOINT from the story's since the review, When land runs, Then it merges without a new round — fault-inject the pair: the same fixture with one OVERLAPPING file must refuse
+- Given trunk moved touching a file the story also changed, Then land REFUSES naming the overlapping files — the message is the cross-story collision detector DESIGN §11 never built
+- Given the review leg and trunk ahead of the fork point, Then it no longer refuses; the story's diff is computed from its fork point as today
+- Given f1391db4's resolution, Then it is re-resolved against whichever tests survive, with the substitution covering the SAME claim (a merge whose recorded review never covered the story's own changes) — verified by construction, not by the batch going green
+- Given DESIGN §6, Then it states overlap-not-motion, because the doc moves with the code or they disagree
+Verify: pytest -q tests/test_close.py
+Close review: deep
 Executor: (default)
