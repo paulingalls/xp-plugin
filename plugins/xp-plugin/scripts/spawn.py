@@ -362,34 +362,45 @@ def cmd_spawn(story_id: str, override: str, dry_run: bool, in_place: bool = Fals
             f" story only after it is written. Worktree left at {tree}"
         )
     print(f"{branch} at {tree} (off {trunk})")
-    flip_head = subprocess.run(
-        ["git", "rev-parse", "HEAD"], cwd=tree, capture_output=True, text=True
-    ).stdout.strip()
+    handed_over = tree_state(tree)
     rc = run_teammate(argv, tree, prompt, story_id, data_root())
-    if rc != 0:
-        return rc
-    if err := unclean_teammate_result(tree, flip_head):
+    # NOT `if rc: return rc` — a teammate that crashed is the likeliest one to
+    # have left work uncommitted, so skipping the guard there withholds the
+    # refusal exactly when it is worth most.
+    if err := unclean_teammate_result(tree, handed_over):
         return fail(err)
-    return 0
+    return rc
 
 
-def unclean_teammate_result(tree: Path, flip_head: str) -> str:
+def tree_state(tree: Path) -> tuple[str, str]:
+    """(HEAD, porcelain) — the baseline the completion guard measures against."""
+
+    def out(*args: str) -> str:
+        r = subprocess.run(["git", *args], cwd=tree, capture_output=True, text=True)
+        return r.stdout.strip()
+
+    return out("rev-parse", "HEAD"), out("status", "--porcelain")
+
+
+def unclean_teammate_result(tree: Path, handed_over: tuple[str, str]) -> str:
     """ "" when the teammate left a clean, committed story behind; otherwise the
-    refusal, naming both recoveries. `flip_head` is HEAD right after the flip
-    commit, not `trunk..HEAD` — the flip itself is a commit on the branch, so
-    that range can never reach zero and would be vacuous (constraints.md #11)."""
+    refusal, naming both recoveries.
+
+    Both halves measure against the tree AS HANDED OVER. `trunk..HEAD` is the
+    vacuous spelling — the flip is itself a commit, so that range never reaches
+    zero (constraints.md #11) — and raw porcelain the false one: it charges the
+    teammate with whatever the bootstrap command dirtied before it started.
+    """
+    flip_head, handed_dirty = handed_over
+    head, dirty = tree_state(tree)
     recovery = (
         f" Recover by committing by hand in {tree}, or by"
         f" `git worktree remove {tree}` and re-spawning."
     )
-    dirty = subprocess.run(
-        ["git", "status", "--porcelain"], cwd=tree, capture_output=True, text=True
-    ).stdout.strip()
-    if dirty:
-        return f"refused: the teammate left {tree} dirty:\n{dirty}\n{recovery}"
-    head = subprocess.run(
-        ["git", "rev-parse", "HEAD"], cwd=tree, capture_output=True, text=True
-    ).stdout.strip()
+    if left := sorted(set(dirty.splitlines()) - set(handed_dirty.splitlines())):
+        return "refused: the teammate left work uncommitted in {}:\n{}\n{}".format(
+            tree, "\n".join(left), recovery
+        )
     if head == flip_head:
         return f"refused: the teammate made no commits of its own in {tree}.{recovery}"
     return ""

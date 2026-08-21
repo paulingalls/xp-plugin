@@ -1,10 +1,6 @@
 #!/usr/bin/env python3
 """Tee a teammate's stream-json output: verbatim to a durable log, a compact
-line per event to stdout.
-
-Extracted from spawn.py at story-017 (the split ../xp-agents made for the same
-reason): the loop plus its parsing pushed spawn.py over the per-file cap.
-"""
+line per event to stdout."""
 
 import contextlib
 import json
@@ -31,8 +27,7 @@ def log_path(data_root: Path, story_id: str) -> Path:
 
 
 def summarize_event(evt: dict) -> str:
-    """One compact line for a parsed stream-json object. Every recognised shape
-    gets a line — the summary must never be the thing that goes silent."""
+    """One compact line for a parsed stream-json object."""
     kind = evt.get("type", "?")
     if kind in ("assistant", "user"):
         blocks = (evt.get("message") or {}).get("content") or []
@@ -47,11 +42,8 @@ def summarize_event(evt: dict) -> str:
 
 def tee_stream(lines: Iterable[str], log_write: LogWrite, out_write: OutWrite) -> dict | None:
     """Drain `lines` fully no matter what `log_write` does — ceasing to drain
-    deadlocks a healthy child writing to a full pipe. Returns the terminal
-    `type == "result"` object, or None if the stream never carried one.
-
-    Unparseable lines are logged (verbatim, above) and skipped here — that is
-    not an error; a stream with no terminal result object is the only one.
+    deadlocks a healthy child writing to a full pipe. An unparseable line is
+    tolerated; a stream carrying no terminal result object is the only error.
     """
     result = None
     for line in lines:
@@ -87,9 +79,7 @@ def closing_line(story_id: str, result: dict) -> str:
 def _feed_stdin(proc: subprocess.Popen, prompt: str) -> None:
     """A child that dies before consuming the prompt breaks this pipe. That is
     not news — the missing result object already says it — and an unhandled
-    exception in a thread prints a traceback the lead reads ahead of the real
-    diagnosis, which `subprocess.run(input=...)` never did.
-    """
+    exception in a thread buries that diagnosis under a traceback."""
     assert proc.stdin is not None
     with contextlib.suppress(BrokenPipeError):
         try:

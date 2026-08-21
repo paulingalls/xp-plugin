@@ -65,7 +65,7 @@ def make_repo(tmp_path, status="ready", executor="(default)", trunk="main"):
     return repo, env, g
 
 
-def stub_claude(tmp_path, commit=True, emit_result=True, write_file=False):
+def stub_claude(tmp_path, commit=True, emit_result=True, write_file=False, add_all=True):
     """A fake `claude` that records argv, env and stdin, then (by default)
     commits its own "work" and emits a stream-json terminal result object —
     the shape of a clean, successful teammate run. The other three knobs
@@ -90,7 +90,10 @@ def stub_claude(tmp_path, commit=True, emit_result=True, write_file=False):
     if commit:
         # add -A, not --allow-empty alone: a real teammate's "done" commit
         # picks up whatever it left in the tree, bootstrap byproducts included
-        body.append("subprocess.run(['git', 'add', '-A'])")
+        # — except with add_all=False, which is the teammate that stages only
+        # its own files and leaves a pre-existing leftover where it found it
+        if add_all:
+            body.append("subprocess.run(['git', 'add', '-A'])")
         body.append("subprocess.run(['git', 'commit', '--allow-empty', '-qm', 'teammate work'])")
     if emit_result:
         body.append(
@@ -728,6 +731,10 @@ class TestTeammateCompletion:
         assert "commit" in r.stderr.lower() and "worktree remove" in r.stderr
 
     def test_no_commits_of_its_own_is_refused_naming_both_recoveries(self, tmp_path):
+        """Also the flip-commit case: the tree here holds exactly one commit,
+        the [in-progress] flip, so `trunk..HEAD` counts 1 and the vacuous
+        spelling constraints.md #11 forbids greens. Only comparing against
+        HEAD-after-the-flip lets this red."""
         repo, env, _g = make_repo(tmp_path)
         stub_claude(tmp_path, commit=False)  # clean tree, but nothing committed
         r = spawn(repo, env, "story-042")
@@ -735,14 +742,38 @@ class TestTeammateCompletion:
         assert "no commits" in r.stderr.lower()
         assert "commit" in r.stderr.lower() and "worktree remove" in r.stderr
 
-    def test_the_flip_commit_itself_does_not_count_as_the_teammates_work(self, tmp_path):
-        """`trunk..HEAD` includes the [in-progress] flip and can never be zero —
-        the vacuous spelling constraints.md #11 forbids. The guard must compare
-        against HEAD-after-the-flip, not the trunk, or this test cannot red."""
+    def test_a_crashed_teammate_that_left_work_behind_still_names_it(self, tmp_path):
+        """The likeliest way a run "ends with a dirty tree" is that it never
+        ended: a crash, a kill, a launch the binary refused. Returning the
+        child's code straight from the stream loop skips the completion guard
+        on exactly that path, so the lead is told the stream had no result
+        object and never told about the file left uncommitted underneath it."""
         repo, env, _g = make_repo(tmp_path)
-        stub_claude(tmp_path, commit=False)
+        stub_claude(tmp_path, commit=False, write_file=True, emit_result=False)
         r = spawn(repo, env, "story-042")
-        assert r.returncode == 2 and "no commits" in r.stderr.lower()
+        assert r.returncode != 0
+        assert "teammate-left-this-uncommitted.txt" in r.stderr
+        assert "worktree remove" in r.stderr
+
+    def test_a_leftover_from_the_bootstrap_is_not_blamed_on_the_teammate(self, tmp_path):
+        """`Worktree bootstrap:` runs BEFORE the teammate and can leave the tree
+        dirty by itself — `npm install` rewriting a lockfile is the ordinary
+        case. Reading the raw porcelain accuses the teammate of it and tells the
+        lead to commit it by hand; the baseline is the tree as the teammate
+        RECEIVED it, which is why both halves of the guard compare against the
+        post-flip state and not against ambient state (constraints.md #11)."""
+        repo, env, _g = make_repo(tmp_path)
+        (repo / ".xp" / "system.md").write_text(
+            "# System\n- Worktree bootstrap: `touch vendored-by-bootstrap.txt`\n"
+        )
+        subprocess.run(["git", "add", "-A"], cwd=repo, env=env, check=True)
+        subprocess.run(["git", "commit", "-qm", "bootstrap"], cwd=repo, env=env, check=True)
+        stub_claude(tmp_path, add_all=False)  # commits its own work, stages nothing else
+        r = spawn(repo, env, "story-042")
+        assert r.returncode == 0, r.stderr
+        assert (
+            tmp_path / "data" / "worktrees" / "story-042" / "vendored-by-bootstrap.txt"
+        ).exists()
 
     def test_a_clean_committed_run_is_accepted(self, tmp_path):
         repo, env, _g = make_repo(tmp_path)
