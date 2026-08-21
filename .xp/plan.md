@@ -587,7 +587,11 @@ AC:
 - Given the test, Then it asserts the CHECK COUNT (five where six) — a count, not a token grep — and the card states plainly that this certifies a count and CANNOT certify the duty works; test_the_plan_reviewer_charter_asks_for_a_file must pass UNCHANGED as the behaviour-preserving proof
 - Given the charter's "write your findings to a file and say where" (lines 58-60), Then it NAMES the durable location — `<data-root>/plans/<story-id>.md` (Paul's call — `reports/` is story-review reports keyed by story and round; plan findings get their own home, and it is where the plan itself lands if story-019 goes ahead) — because "say where" let each reviewer pick: this sprint's went to a session scratchpad under /private/tmp and a teammate invented `.xp/reviews/` inside the repo. Same words, one more fact
 - Given acceptance, Then it is Paul reading the walk transcripts: agent prose has no harness (system.md declares CLI as the only surface) and this story's entire product is prose
-Verify: pytest -q tests/test_close.py -k charter_has_five_checks — the THIRD spelling. `-k prose` selected story-010's test; `-k plan_reviewer_charter` substring-matches the existing test_the_plan_reviewer_charter_asks_for_a_file (measured, exit 0). Both earlier spellings were GREEN AT HEAD. Pre-registered red is exit 5, no tests ran
+Verify spelling, THIRD attempt and why it is not on the Verify line: `-k prose` selected
+story-010's test; `-k plan_reviewer_charter` substring-matches the existing
+test_the_plan_reviewer_charter_asks_for_a_file (measured, exit 0). Both earlier spellings
+were GREEN AT HEAD. Pre-registered red is exit 5, no tests ran.
+Verify: pytest -q tests/test_close.py -k charter_has_five_checks
 Close review: deep — raised by the plan review, not lowerable: the charter is a
 default path that cannot be tested, every future plan review runs under it, and
 CLAUDE.md makes plan review the gate on all multi-file work. Degradation is silent.
