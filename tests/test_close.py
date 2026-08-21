@@ -99,6 +99,17 @@ def make_repo(tmp_path, status="in-progress", verify="true", branch="main"):
     return repo, env, g
 
 
+def close_bare(repo, env, *args):
+    """The invocation the skills actually document: no --merge-mode."""
+    return subprocess.run(
+        [sys.executable, str(CLOSE), "story", "story-042", *args],
+        cwd=repo,
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+
+
 def close(repo, env, *args):
     return subprocess.run(
         [sys.executable, str(CLOSE), "story", "story-042", *args, "--merge-mode", "local"],
@@ -447,6 +458,19 @@ class TestSprintIntegration:
         g("checkout", "-q", "story-042-branch")
         r = close(repo, env, "land")
         assert r.returncode == 0, r.stderr
+
+    def test_the_documented_invocation_works_on_a_sprint_branch(self, tmp_path):
+        """Broad review B2: `merge-mode` appears in NO shipped prose, and the
+        documented `close.py story <id> land` defaulted to pr — which cmd_land
+        refuses whenever the integration target is not the default branch. So the
+        invocation the skill tells a consuming project to run was the one that
+        refuses. The mode is derived now."""
+        repo, env, g = self.sprint_repo(tmp_path)
+        stub_reviewer(tmp_path, report=CLEAN)
+        assert close_bare(repo, env, "review").returncode == 0
+        r = close_bare(repo, env, "land")
+        assert r.returncode == 0, r.stderr
+        assert "Review round 1" in g("log", "sprint-001", "-1", "--format=%B").stdout
 
     def test_pr_mode_with_sprint_target_refused(self, tmp_path):
         repo, env, _g = self.sprint_repo(tmp_path)

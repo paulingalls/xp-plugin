@@ -319,6 +319,16 @@ def cmd_spawn(story_id: str, override: str, dry_run: bool, in_place: bool = Fals
         print(" ".join(argv))
         print(prompt)
         return 0
+    # The worktree is cut from a COMMIT, so anything uncommitted — including the
+    # scaffold itself on a fresh repo — is simply absent from the teammate's tree.
+    # Without this the first spawn after xp-setup tracebacks on a missing plan.md
+    # and leaves the worktree behind.
+    if dirty := git("status", "--porcelain", check=False).stdout.strip():
+        return fail(
+            "refused: commit your work before spawning — the teammate's worktree is"
+            " cut from a commit, so uncommitted files (a fresh .xp/ scaffold included)"
+            f" would not be in it:\n{dirty}"
+        )
     if tree.exists():
         return fail(f"refused: {tree} already exists — {story_id} is already spawned")
     if git("rev-parse", "--verify", "-q", f"refs/heads/{branch}", check=False).returncode == 0:

@@ -490,3 +490,24 @@ class TestConfigRoleParsing:
         r = spawn(repo, env, "story-042", "--dry-run")
         assert r.returncode == 0, r.stderr
         assert "--model opus" in r.stdout, r.stdout
+
+
+class TestFirstSpawnInAScaffoldedRepo:
+    """Broad review B3: the worktree path is the DEFAULT and the one the plugin
+    exists for, and it had no dirty-tree guard — so the literal shipped sequence
+    (xp-setup, fill in the plan, spawn) tracebacked and orphaned git state."""
+
+    def test_an_uncommitted_scaffold_refuses_instead_of_tracebacking(self, tmp_path):
+        repo, env, g = make_repo(tmp_path)
+        stub_claude(tmp_path)
+        g("checkout", "-q", "main")
+        # the literal shipped sequence: scaffold, edit the plan, spawn — uncommitted
+        (repo / ".xp" / "plan.md").write_text(
+            (repo / ".xp" / "plan.md").read_text()
+            + "\n#### story-777 — fresh   [ready]\nVerify: true\n"
+        )
+        r = spawn(repo, env, "story-777")
+        assert r.returncode == 2, r.stdout
+        assert "Traceback" not in r.stderr
+        assert "commit" in r.stderr.lower(), "the refusal must name the fix"
+        assert not (tmp_path / "data" / "worktrees").exists(), "orphaned worktree"

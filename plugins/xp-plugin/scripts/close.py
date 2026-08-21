@@ -452,7 +452,10 @@ def main() -> int:
     s = sub.add_parser("story")
     s.add_argument("story_id")
     s.add_argument("action", choices=["review", "land"])
-    s.add_argument("--merge-mode", choices=["pr", "local"], default="pr")
+    # DERIVED, not chosen: pr mode is refused whenever the integration target is not
+    # the default branch, and `merge-mode` appeared in no shipped prose — so the
+    # documented invocation was the one that refuses.
+    s.add_argument("--merge-mode", choices=["pr", "local"], default=None)
     s.add_argument("--dry-run", action="store_true")
     a = p.parse_args()
     # The gate the teammate profile only DECLARES (constraints #5): a teammate
@@ -479,7 +482,8 @@ def main() -> int:
         return sprint_close.cmd_post_merge(a.sprint_id)
     if a.action == "review":
         return cmd_review(a.story_id, a.dry_run)
-    return cmd_land(a.story_id, a.merge_mode, a.dry_run)
+    mode = a.merge_mode or ("local" if integration_target() != default_branch() else "pr")
+    return cmd_land(a.story_id, mode, a.dry_run)
 
 
 if __name__ == "__main__":

@@ -9,6 +9,10 @@ description: >-
 `close.py sprint <id>` runs the mechanical steps. Three of them are yours and a
 script cannot absorb them (constraint 7).
 
+0. **Open the sprint first** (once, before its stories): `git switch -c sprint-00N`
+   and set `sprint_branch: sprint-00N` in `.xp/config.yml`. Under `release: sprint`
+   this is what makes stories integrate on a branch instead of landing on the default
+   one — post-merge retires the key at the end, so every sprint needs this step.
 1. **`close.py sprint <id> start`** — refuses while any story in THAT sprint is
    unfinished, runs the full tier, then runs every unresolved falsifier in work.md
    and archive.md. A red aborts and is re-filed as a bug: a debt or archived
