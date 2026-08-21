@@ -22,7 +22,7 @@ MISC = 750
 TOTAL = 5000
 
 CLOSE_NAMES = {"close", "review", "bookkeep", "sprint_close"}
-HOOKS_NAMES = {"session_start", "stop_gate", "bash_status"}
+HOOKS_NAMES = {"hooks", "session_start", "stop_gate", "bash_status"}
 SPAWN_NAMES = {"spawn"}
 
 DENSITY_THRESHOLD = 0.20
@@ -32,8 +32,8 @@ class NoScriptsFound(Exception):
     """A measurement of nothing must not read as a pass — it certifies (constraint 2)."""
 
 
-def scripts_dir(root):
-    return root / "plugins" / "xp-plugin" / "scripts"
+def plugin_dir(root):
+    return root / "plugins" / "xp-plugin"
 
 
 def component_for(rel):
@@ -80,7 +80,7 @@ def comment_and_docstring_lines(path):
 
 
 def measure(root):
-    d = scripts_dir(root)
+    d = plugin_dir(root)
     paths = sorted(p for p in d.rglob("*.py") if "__pycache__" not in p.parts)
     if not paths:
         raise NoScriptsFound(d)
@@ -120,12 +120,11 @@ def report(root):
                 f"BUDGET EXCEEDED: {name} measured {measured}, cap {cap}, over by {measured - cap}"
             )
 
-    worst_path = worst[1] if worst else None
+    worst_path = worst[1]
     lines.append(
-        f"density     {density:>6.1%}   {DENSITY_THRESHOLD:.1%}  "
-        f"(worst file: {worst_path.name if worst_path else '(none)'})"
+        f"density     {density:>6.2%}   {DENSITY_THRESHOLD:.2%}  (worst file: {worst_path.name})"
     )
-    if density > DENSITY_THRESHOLD and worst_path is not None:
+    if density > DENSITY_THRESHOLD:
         violations.append(
             f"DENSITY EXCEEDED: comments+docstrings {density:.2%} of shipped Python, "
             f"cap {DENSITY_THRESHOLD:.2%}, worst file {worst_path}"

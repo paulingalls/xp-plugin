@@ -6,7 +6,8 @@ import sys
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).parent.parent
-RATCHET = REPO_ROOT / "plugins" / "xp-plugin" / "scripts" / "ratchet.py"
+PLUGIN_ROOT = REPO_ROOT / "plugins" / "xp-plugin"
+RATCHET = PLUGIN_ROOT / "scripts" / "ratchet.py"
 CLAUDE_MD = REPO_ROOT / "CLAUDE.md"
 SYSTEM_MD = REPO_ROOT / ".xp" / "system.md"
 LEFTHOOK = REPO_ROOT / "lefthook.yml"
@@ -26,11 +27,14 @@ def run_ratchet(root=None):
     return subprocess.run(args, capture_output=True, text=True)
 
 
-def build_scripts_tree(tmp_path, files):
-    scripts_dir = tmp_path / "plugins" / "xp-plugin" / "scripts"
-    scripts_dir.mkdir(parents=True)
+def build_plugin_tree(tmp_path, files):
+    """Keys are relative to the plugin root, not to scripts/ — the budget covers
+    every directory of the shipped plugin and the fixtures have to be able to
+    say so."""
+    plugin_dir = tmp_path / "plugins" / "xp-plugin"
+    plugin_dir.mkdir(parents=True)
     for name, content in files.items():
-        path = scripts_dir / name
+        path = plugin_dir / name
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(content)
     return tmp_path
@@ -54,7 +58,7 @@ def test_real_repo_within_budget_exits_zero_and_prints_table():
         assert label in result.stdout.lower(), result.stdout
     shipped = sum(
         len(p.read_text().splitlines())
-        for p in RATCHET.parent.rglob("*.py")
+        for p in PLUGIN_ROOT.rglob("*.py")
         if "__pycache__" not in p.parts
     )
     printed = re.findall(r"^(?:spawn|close|hooks|misc)\s+(\d+)\s", result.stdout, re.M)
@@ -65,8 +69,8 @@ def test_extracted_subpackage_counts_against_its_component(tmp_path):
     """Constraint 8 hard-caps a file at 500 lines, so a component's growth path is
     close.py -> close/. Scanning one directory level certified a tree with 3,000
     lines of close sitting one directory down (measured: exit 0)."""
-    files = {"setup.py": "x = 1\n", "close/big.py": "x = 1\n" * 1300}
-    root = build_scripts_tree(tmp_path, files)  # setup.py so the empty-tree refusal cannot mask it
+    files = {"scripts/setup.py": "x = 1\n", "scripts/close/big.py": "x = 1\n" * 1300}
+    root = build_plugin_tree(tmp_path, files)  # setup.py so the empty-tree refusal cannot mask it
     result = run_ratchet(root)
     assert result.returncode != 0, result.stdout
     (violation,) = violation_lines(result.stdout)
@@ -74,9 +78,27 @@ def test_extracted_subpackage_counts_against_its_component(tmp_path):
     assert "over by 50" in violation, violation
 
 
+def test_python_outside_scripts_counts_against_its_component(tmp_path):
+    """The budget is the shipped plugin's Python, not one directory of it. The
+    Codex adapter and the per-harness hooks land beside scripts/, and a scan
+    rooted there printed an unchanged table and exited 0 over 3,400 lines sitting
+    in plugins/xp-plugin/adapters/ and plugins/xp-plugin/hooks/ (measured)."""
+    files = {
+        "scripts/setup.py": "x = 1\n",
+        "adapters/codex.py": "x = 1\n" * 800,
+        "hooks/codex_hook.py": "x = 1\n" * 1100,
+    }
+    root = build_plugin_tree(tmp_path, files)
+    result = run_ratchet(root)
+    assert result.returncode != 0, result.stdout
+    violations = "\n".join(violation_lines(result.stdout))
+    assert "hooks measured 1100" in violations, violations
+    assert "misc measured 801" in violations, violations
+
+
 def test_fixture_over_spawn_budget_reds_naming_budget_and_overage(tmp_path):
     padded = "x = 1\n" * 2100
-    root = build_scripts_tree(tmp_path, {"spawn.py": padded})
+    root = build_plugin_tree(tmp_path, {"scripts/spawn.py": padded})
     result = run_ratchet(root)
     assert result.returncode != 0, result.stdout
     (violation,) = violation_lines(result.stdout)
@@ -87,7 +109,7 @@ def test_fixture_over_spawn_budget_reds_naming_budget_and_overage(tmp_path):
 
 def test_fixture_dense_comments_reds_naming_density_and_file(tmp_path):
     lines = ["# comment line\n"] * 90 + ["x = 1\n"] * 10
-    root = build_scripts_tree(tmp_path, {"chatty.py": "".join(lines)})
+    root = build_plugin_tree(tmp_path, {"scripts/chatty.py": "".join(lines)})
     result = run_ratchet(root)
     assert result.returncode != 0, result.stdout
     (violation,) = violation_lines(result.stdout)
@@ -100,9 +122,9 @@ def test_density_is_the_aggregate_not_the_worst_file(tmp_path):
     """One chatty small file does not breach a repo that is overwhelmingly code.
     DESIGN §9 budgets the ratio of shipped Python, not of any single file, and the
     single-file fixture above passes against a per-file implementation too."""
-    root = build_scripts_tree(
+    root = build_plugin_tree(
         tmp_path,
-        {"chatty.py": "# comment\n" * 9 + "x = 1\n", "bulk.py": "x = 1\n" * 200},
+        {"scripts/chatty.py": "# comment\n" * 9 + "x = 1\n", "scripts/bulk.py": "x = 1\n" * 200},
     )
     result = run_ratchet(root)
     assert result.returncode == 0, result.stdout
@@ -110,7 +132,7 @@ def test_density_is_the_aggregate_not_the_worst_file(tmp_path):
 
 
 def test_empty_scripts_tree_refuses_rather_than_certifying(tmp_path):
-    root = build_scripts_tree(tmp_path, {})
+    root = build_plugin_tree(tmp_path, {})
     result = run_ratchet(root)
     assert result.returncode != 0, result.stdout
     assert "MEASURED NOTHING" in result.stdout, result.stdout
@@ -137,6 +159,20 @@ def test_design_sub_allocation_matches_ratchet_constants():
         ]
     finally:
         sys.path.remove(str(RATCHET.parent))
+
+
+def test_design_names_the_directory_the_ratchet_scans():
+    """DESIGN §9 states the density denominator's scope in prose and ratchet.py
+    implements it — c2d7ffdf's drift one level up. Narrowing the scan back to
+    scripts/ while §9 still said the whole plugin left 3,400 lines unmeasured."""
+    sys.path.insert(0, str(RATCHET.parent))
+    try:
+        import ratchet
+
+        scanned = ratchet.plugin_dir(REPO_ROOT).relative_to(REPO_ROOT).as_posix()
+    finally:
+        sys.path.remove(str(RATCHET.parent))
+    assert f"`{scanned}/**`" in DESIGN.read_text()
 
 
 def test_subbudgets_sum_to_total():
