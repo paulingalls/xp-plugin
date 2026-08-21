@@ -1478,6 +1478,45 @@ class TestShippedProseMatchesTheMechanism:
             in (PLUGIN / "agents" / "plan-reviewer.md").read_text().lower()
         )
 
+    def test_the_plan_reviewer_charter_has_five_checks(self):
+        """story-016: check 4 absorbs the CUT duty (moved out of Output's
+        standing-to-cut sentence) and the old check 5's "really three stories"
+        clause; check 5's sprint-cap clause folds into check 1. A structural
+        count, not a token grep — it certifies the count only, not that the
+        duty is followed."""
+        charter = (PLUGIN / "agents" / "plan-reviewer.md").read_text()
+        section = charter.split("## Checks, in order of payoff")[1]
+        section = section.split("## Close-review depth")[0]
+        numbered = [
+            line
+            for line in section.splitlines()
+            if len(line.strip()) > 2 and line.strip()[0].isdigit() and line.strip()[1:3] == ". "
+        ]
+        assert len(numbered) == 5, f"expected 5 checks, found {len(numbered)}"
+
+    def test_the_plan_reviewer_charter_stays_under_its_word_backstop(self):
+        """The check count above is load-bearing; this is only the backstop —
+        parity prices every word the same and cannot see meaning."""
+        charter = (PLUGIN / "agents" / "plan-reviewer.md").read_text()
+        assert len(charter.split()) <= 524
+
+    def test_the_plan_reviewer_charter_names_the_durable_report_location(self):
+        """AC6: "say where" let two reviewers pick two different places this
+        sprint — a session scratchpad under /private/tmp for one, `.xp/reviews/`
+        for another. One location, named in the charter."""
+        charter = (PLUGIN / "agents" / "plan-reviewer.md").read_text()
+        assert "<data-root>/plans/<story-id>.md" in charter
+
+    def test_the_plan_review_location_is_pinned_in_both_copies(self):
+        """Same fact, asserted positively in both places it lives, so one can't
+        drift without the other reding — the pattern
+        test_every_stopping_rule_copy_states_the_split_arithmetic already uses."""
+        location = "<data-root>/plans/<story-id>.md"
+        charter = (PLUGIN / "agents" / "plan-reviewer.md").read_text()
+        design = (Path(__file__).parent.parent / "docs" / "DESIGN.md").read_text()
+        assert location in charter, "plan-reviewer.md dropped the location"
+        assert location in design, "DESIGN.md dropped the location"
+
 
 REVIEWER_NAME = "xp story-reviewer"
 REVIEWER_EMAIL = "story-reviewer@xp.local"
