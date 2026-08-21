@@ -120,17 +120,20 @@ def cmd_start(sprint_id: str) -> int:
 
 def _next_version() -> str:
     """Minor bump off the latest TAG — a sprint release is a minor. The tag is the
-    source of truth: a plugin.json path is meaningless in a consuming project."""
+    source of truth: a plugin.json path is meaningless in a consuming project,
+    which is also why the scheme is checked: theirs is the input we don't pick.
+    Returns "" when the latest tag is not semver, so the caller refuses."""
     latest = git("describe", "--tags", "--abbrev=0", check=False).stdout.strip() or "v0.0.0"
-    major, minor, _patch = [*latest.lstrip("v").split("."), "0", "0"][:3]
-    return f"v{major}.{int(minor) + 1}.0"
+    if not (m := re.fullmatch(r"v?(\d+)\.(\d+)(\..*)?", latest)):
+        return ""
+    return f"v{m.group(1)}.{int(m.group(2)) + 1}.0"
 
 
 def cmd_land(sprint_id: str, dry_run: bool) -> int:
     import shutil
 
     branch = git("rev-parse", "--abbrev-ref", "HEAD").stdout.strip()
-    version = _next_version()
+    version = _next_version() or "?"
     cmds = [
         ["git", "push", "-u", "origin", branch],
         ["gh", "pr", "create", "--title", f"release {version}", "--body", f"Sprint {sprint_id}"],
@@ -173,7 +176,9 @@ def cmd_post_merge(sprint_id: str) -> int:
             f"refused: {sprint_branch} is not merged into {trunk} — tagging here would"
             " name a commit containing none of the sprint. Merge the release PR first"
         )
-    version = _next_version()
+    if not (version := _next_version()):
+        latest = git("describe", "--tags", "--abbrev=0", check=False).stdout.strip()
+        return fail(f"refused: latest tag {latest!r} is not vMAJOR.MINOR — cannot bump it")
     if git("rev-parse", "--verify", "-q", f"refs/tags/{version}", check=False).returncode == 0:
         return fail(f"refused: tag {version} already exists — nothing was changed")
     config = Path(".xp/config.yml")

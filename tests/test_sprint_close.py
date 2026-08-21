@@ -345,6 +345,18 @@ class TestLandAndPostMerge:
         assert r.returncode == 2, "tagged a release that contains none of the sprint"
         assert "v0.3.0" not in g("tag").stdout.split()
 
+    def test_a_non_semver_latest_tag_refuses(self, tmp_path):
+        """AC 12 makes the latest git tag the version source so the leg works in
+        a CONSUMING project — whose tag scheme is exactly the input we do not
+        control. `v1.x` tracebacked; `release-2024` minted `vrelease-2024.1.0`."""
+        repo, env, g = make_repo(tmp_path)
+        g("tag", "release-2024")
+        g("checkout", "-q", "main")
+        g("merge", "-q", "--no-ff", "sprint-002", "-m", "release")
+        r = sprint(repo, env, "post-merge")
+        assert r.returncode == 2 and "Traceback" not in r.stderr, r.stderr
+        assert g("tag").stdout.split() == ["release-2024"], "minted a version off a non-semver tag"
+
     def test_post_merge_without_a_config_refuses_rather_than_tracebacks(self, tmp_path):
         repo, env, g = make_repo(tmp_path)
         g("tag", "v0.2.1")
