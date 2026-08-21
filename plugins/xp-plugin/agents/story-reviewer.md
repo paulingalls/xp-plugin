@@ -1,9 +1,7 @@
 ---
 name: story-reviewer
 description: >-
-  Fresh-context adversarial review at story close. Spawn with the cumulative
-  story diff, the story card (context, files, ACs, Verify), work.md entries
-  filed during the story, and .xp/constraints.md + .xp/system.md.
+  Fresh-context adversarial review at story close, on the cumulative diff.
 tools: Read, Grep, Glob, Bash
 ---
 

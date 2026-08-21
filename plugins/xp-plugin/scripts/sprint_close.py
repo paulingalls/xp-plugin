@@ -79,11 +79,6 @@ def cmd_start(sprint_id: str) -> int:
             + "\n  ".join(unfinished)
         )
 
-    if tier := config_block_value("tests", "full"):
-        print(f"running the full tier: {tier}")
-        if subprocess.run(tier, shell=True).returncode != 0:
-            return fail(f"refused: full tier red: {tier}")
-
     root = data_root()
     batch = corpus(root)
     # the red path is the re-run path, so re-file only what is not already a bug
@@ -103,6 +98,11 @@ def cmd_start(sprint_id: str) -> int:
                 f"refused: batch falsifier RED for {eid} ({head}):\n  {falsifier}\n"
                 f"{filed}. Fix it, then run start again"
             )
+
+    if tier := config_block_value("tests", "full"):
+        print(f"running the full tier: {tier}")
+        if subprocess.run(tier, shell=True).returncode != 0:
+            return fail(f"refused: full tier red: {tier}")
 
     notes = [t for _eid, t in entries(root) if t.startswith("## note ")]
     print(f"\n{len(members)} stories, {len(notes)} notes to triage. Each note: promote to")

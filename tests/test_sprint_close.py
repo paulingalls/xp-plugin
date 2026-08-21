@@ -108,6 +108,27 @@ class TestFullTier:
         assert r.returncode == 2, "a red full tier did not stop the close"
         assert "full tier" in r.stderr
 
+    def test_a_red_batch_refuses_before_the_full_tier_runs(self, tmp_path):
+        """afbd01a3: the batch ran the full tier (256 tests, ~25s) before refusing
+        on a falsifier it could have checked first. The tier writes a sentinel;
+        BOTH halves are asserted, because absence alone also passes an
+        implementation that simply deleted the tier."""
+        sentinel = tmp_path / "tier-ran"
+        repo, env, _g = make_repo(
+            tmp_path, config=CONFIG.replace("full: true", f"full: touch {sentinel}")
+        )
+        flag = tmp_path / "flag"
+        flag.write_text("ok")
+        work(
+            repo, env, "debt", "--claim", "latent", "--falsifier", f"test -f {flag}", "--files", "a"
+        )
+        flag.unlink()
+        assert sprint(repo, env, "start").returncode == 2
+        assert not sentinel.exists(), "the expensive tier ran before the cheap batch refused"
+        flag.write_text("ok")
+        assert sprint(repo, env, "start").returncode == 0
+        assert sentinel.exists(), "a green batch never reached the tier"
+
     def test_a_stray_top_level_key_cannot_override_the_declared_tier(self, tmp_path):
         """`full:` is only ever nested under `tests:` — the flat lookup was dead
         code, and worse than dead: a stray top-level key silently replaced the
@@ -382,6 +403,38 @@ class TestLandAndPostMerge:
         r = sprint(repo, env, "post-merge")
         assert r.returncode == 2 and "v0.3.0" in r.stderr
         assert "sprint_branch:" in (repo / ".xp" / "config.yml").read_text()
+
+
+class TestSprintCharter:
+    def test_the_sprint_charter_is_a_delta_not_a_second_charter(self):
+        """An opus executor with no bound models this on story-reviewer.md (712
+        words), whose FIRST duty is "YOU FIX WHAT YOU FIND, in the tree you were
+        given" — a fixing charter for a leg whose mechanism refuses any motion."""
+        text = (PLUGIN / "agents" / "sprint-reviewer.md").read_text()
+        body = text.split("---", 2)[2]
+        assert len(body.split()) <= 150, f"{len(body.split())} words: a charter, not a delta"
+        assert "in the tree you were given" not in body, "the fixing duty contradicts this leg"
+        assert "report-only" in body.lower()
+        assert "PROCESS.md" in body, "the bar and the rubric are POINTED at, never restated"
+        # the report SHAPE as the reviewer must write it, not the bucket names in
+        # prose: `noted` reads fine in a sentence that never states the JSON
+        for token in ('"fixed"', '"blocking"', '"noted"', "broad", "security"):
+            assert token in body, f"the charter never names {token}"
+
+    def test_the_new_agent_files_frontmatter_is_funded_not_added(self):
+        """Both shipped-prose caps sit at 240/300 and 1197/1200 — one token of
+        headroom before this story. Constraint 1 is mechanical here: the sprint
+        charter's frontmatter is paid for out of story-reviewer.md's."""
+        sys.path.insert(0, str(CLOSE.parent))
+        from spawn import (
+            COMPONENT_METADATA_CAP,
+            PLUGIN_SHIPPED_CAP,
+            component_metadata_chars,
+            plugin_shipped_chars,
+        )
+
+        assert component_metadata_chars() // 4 <= COMPONENT_METADATA_CAP
+        assert plugin_shipped_chars() // 4 <= PLUGIN_SHIPPED_CAP
 
 
 class TestShippedProse:
