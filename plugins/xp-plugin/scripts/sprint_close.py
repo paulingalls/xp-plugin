@@ -6,17 +6,28 @@ and mutates nothing but appends. `land` opens the release PR. `post-merge` cuts
 the bump and the tag on the sha that actually shipped, and retires the key.
 """
 
+import json
 import re
 import subprocess
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
-from close import config_flat, default_branch, fail, git
-from work import append, config_block_value, data_root, entries, falsifier_is_green, stamp
+from close import config_flat, default_branch, fail, git, story_card
+from work import (
+    append,
+    config_block_value,
+    data_root,
+    entries,
+    falsifier_is_green,
+    stamp,
+    work_entries_since,
+)
 
 PLUGIN_ROOT = Path(__file__).parent.parent
 FALSIFIER = re.compile(r"^Falsifier: `(.+)`$", re.M)
+RESOLVES = re.compile(r"^Resolves: (\w+)$", re.M)
+LENSES = ("broad", "security")
 
 
 def sprint_stories(plan: str, sprint_id: str) -> list[str]:
@@ -62,6 +73,117 @@ def corpus(root: Path) -> list[tuple[str, str, str]]:
         for m in FALSIFIER.finditer(archive.read_text()):
             records[f"archive:{len(records)}"] = ("archive.md entry", m.group(1))
     return [(eid, head, resolutions.get(eid, f)) for eid, (head, f) in records.items()]
+
+
+def sprint_cards(plan: str, sprint_id: str) -> str:
+    return "\n".join(story_card(plan, ln.split()[1])[0] for ln in sprint_stories(plan, sprint_id))
+
+
+def sprint_marker(sprint_id: str, lens: str) -> Path:
+    d = data_root() / "markers" / "sprint"
+    d.mkdir(parents=True, exist_ok=True)
+    return d / f"{sprint_id}.{lens}.json"
+
+
+def _sprint_records(root: Path, since_epoch: int) -> tuple[str, str]:
+    """(resolutions, the raw work.md section without its `## resolved` blocks).
+
+    Both from ONE split, because shipping a resolution in both places hands the
+    reviewer every superseded correction verbatim and invites the re-litigation
+    the dedup exists to prevent. corpus() cannot serve the first: substitution is
+    exactly where it discards the falsifier a reader needs to judge the swap.
+    """
+    originals = {e: t for e, t in entries(root) if t.startswith(("## bug ", "## debt "))}
+    latest, kept = {}, []
+    for block in re.split(r"^(?=## )", work_entries_since(since_epoch), flags=re.M):
+        if not block.startswith("## resolved "):
+            kept.append(block)
+        elif (ref := RESOLVES.search(block)) and (new := FALSIFIER.search(block)):
+            latest[ref.group(1)] = new.group(1)
+    out = []
+    for ref, new in latest.items():
+        text = originals.get(ref, "")
+        claim = next((ln[7:] for ln in text.splitlines() if ln.startswith("Claim: ")), "")
+        old = FALSIFIER.search(text)
+        out.append(
+            f"- {ref}: {claim or '(no record with this id)'}\n  original falsifier:"
+            f" `{old.group(1) if old else '(none)'}`\n  replacement: `{new}`"
+        )
+    return "\n".join(out) or "none", "\n".join(kept).strip() or "none"
+
+
+def build_sprint_bundle(sprint_id: str, lens: str, cards: str, base: str, report: Path) -> str:
+    import review
+    from bookkeep import render_sprint_prior
+    from close import _read_first
+
+    state = json.loads(p.read_text()) if (p := sprint_marker(sprint_id, lens)).exists() else {}
+    resolutions, work_md = _sprint_records(
+        data_root(), int(git("show", "-s", "--format=%ct", base).stdout.strip())
+    )
+    sections = [
+        ("Your charter", review.charter("sprint-reviewer")),
+        ("Your lens", lens),
+        ("Your report", f"REPORT_PATH: {report}"),
+        (f"The stories in sprint {sprint_id}", cards),
+        ("Findings from earlier rounds of THIS lens", render_sprint_prior(state.get("rounds", []))),
+        ("Cumulative sprint diff", git("diff", f"{base}..HEAD").stdout),
+        ("Resolutions filed during the sprint", resolutions),
+        ("work.md entries filed during the sprint", work_md),
+        ("PROCESS", _read_first(str(PLUGIN_ROOT / "PROCESS.md"))),
+        ("VALUES", _read_first(str(PLUGIN_ROOT / "VALUES.md"))),
+        ("Constraints", _read_first(".xp/constraints.md")),
+        ("System context", _read_first(".xp/system.md")),
+    ]
+    return "".join(f"## {title}\n\n{body}\n\n" for title, body in sections)
+
+
+def cmd_review(sprint_id: str, lens: str, dry_run: bool) -> int:
+    import review
+
+    if lens not in LENSES:
+        return fail(f"refused: --lens must be one of {', '.join(LENSES)}, not {lens!r}")
+    if git("status", "--porcelain").stdout.strip():
+        return fail("refused: working tree is dirty — commit or stash first")
+    plan = Path(".xp/plan.md")
+    if not plan.exists():
+        return fail("refused: no .xp/plan.md here — is this an xp-managed repo?")
+    trunk = default_branch()
+    if (branch := git("rev-parse", "--abbrev-ref", "HEAD").stdout.strip()) == trunk:
+        return fail(
+            f"refused: review the sprint from its branch, not {branch} — the diff"
+            " against the default branch would be empty and certify nothing"
+        )
+    if not (cards := sprint_cards(plan.read_text(), sprint_id)):
+        return fail(f"refused: no `### Sprint {sprint_id}` section in .xp/plan.md")
+
+    marker = sprint_marker(sprint_id, lens)
+    state = json.loads(marker.read_text()) if marker.exists() else {}
+    path = review.sprint_report_path(sprint_id, lens, len(state.get("rounds", [])) + 1)
+    if not dry_run:  # a preview must not delete the findings of a refused round
+        path.unlink(missing_ok=True)
+    # BOTH before the launch: the reviewer may not move the tree, and recording a
+    # post-run head would make anything it moved count as reviewed.
+    head = git("rev-parse", "HEAD").stdout.strip()
+    base = git("merge-base", f"refs/heads/{trunk}", "HEAD").stdout.strip()
+    digest_before = review.marker_digest(marker)
+    bundle = build_sprint_bundle(sprint_id, lens, cards, base, path)
+    result, err = review.run(bundle, Path.cwd(), dry_run, name="sprint-reviewer")
+    if dry_run:
+        return 0
+    if err:
+        return fail(review.abort_text(head, err))
+    print(result)  # before any refusal: the findings exist nowhere else yet
+    if motion := review.check_report_only(head, marker, digest_before):
+        return fail(motion)
+    report, err = review.read_report(path)
+    if err:
+        return fail(review.abort_text(head, err))
+    state.setdefault("rounds", []).append(report)
+    state["shown_sha"] = head
+    marker.write_text(json.dumps(state))
+    print(f"{lens} round {len(state['rounds'])} recorded at {head[:8]}")
+    return 0
 
 
 def cmd_start(sprint_id: str) -> int:

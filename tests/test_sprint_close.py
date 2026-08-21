@@ -1,8 +1,11 @@
 """story-009: sprint-close pipeline. Verify: pytest -q tests/test_sprint_close.py"""
 
+import json
 import subprocess
 import sys
 from pathlib import Path
+
+from test_close import launches, stub_reviewer
 
 CLOSE = Path(__file__).parent.parent / "plugins" / "xp-plugin" / "scripts" / "close.py"
 WORK = Path(__file__).parent.parent / "plugins" / "xp-plugin" / "scripts" / "work.py"
@@ -21,13 +24,20 @@ Verify: true
 Verify: true
 """
 
-CONFIG = "release: sprint\nsprint_branch: sprint-002\ntests:\n  full: true\n"
+CONFIG = (
+    "release: sprint\nsprint_branch: sprint-002\n"
+    "roles:\n  reviewer: claude/opus\ntests:\n  full: true\n"
+)
 
 
 def make_repo(tmp_path, plan=PLAN, config=CONFIG):
     repo = tmp_path / "repo"
     (repo / ".xp").mkdir(parents=True)
-    env = {"PATH": "/usr/bin:/bin", "HOME": str(tmp_path), "XP_DATA": str(tmp_path / "data")}
+    env = {
+        "PATH": f"{stub_reviewer(tmp_path)}:/usr/bin:/bin",
+        "HOME": str(tmp_path),
+        "XP_DATA": str(tmp_path / "data"),
+    }
     g = lambda *a: subprocess.run(  # noqa: E731
         ["git", *a], cwd=repo, env=env, capture_output=True, text=True
     )
@@ -36,21 +46,48 @@ def make_repo(tmp_path, plan=PLAN, config=CONFIG):
     g("config", "user.name", "t")
     (repo / ".xp" / "plan.md").write_text(plan)
     (repo / ".xp" / "config.yml").write_text(config)
+    (repo / ".xp" / "constraints.md").write_text("# Constraints\n1. CONSTRAINT-SENTINEL\n")
+    (repo / ".xp" / "system.md").write_text("# System\nSYSTEM-SENTINEL\n")
     (repo / "src.py").write_text("A = 1\n")
     g("add", "-A")
     g("commit", "-qm", "base")
     g("checkout", "-qb", "sprint-002")
+    # the sprint's own work, absent from the default branch: under `release:
+    # sprint` an integration_target() diff would not carry it
+    (repo / "src.py").write_text("A = 1\nB = 'SPRINT-ONLY-SENTINEL'\n")
+    g("add", "-A")
+    g("commit", "-qm", "story work on the sprint branch")
     return repo, env, g
 
 
-def sprint(repo, env, *args):
+def sprint(repo, env, *args, sprint_id="2"):
     return subprocess.run(
-        [sys.executable, str(CLOSE), "sprint", "2", *args],
+        [sys.executable, str(CLOSE), "sprint", sprint_id, *args],
         cwd=repo,
         env=env,
         capture_output=True,
         text=True,
     )
+
+
+def head(repo, env):
+    return subprocess.run(
+        ["git", "rev-parse", "HEAD"], cwd=repo, env=env, capture_output=True, text=True
+    ).stdout.strip()
+
+
+def marker_path(tmp_path, lens, sprint_id="2"):
+    return tmp_path / "data" / "markers" / "sprint" / f"{sprint_id}.{lens}.json"
+
+
+def record_reviews(tmp_path, repo, env, blocking=(), lenses=("broad", "security")):
+    """CONSTRUCT the state a real review leaves, so land's guard is exercised
+    against markers rather than against the absence of them."""
+    for lens in lenses:
+        path = marker_path(tmp_path, lens)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        round_ = {"fixed": [], "blocking": list(blocking), "noted": []}
+        path.write_text(json.dumps({"rounds": [round_], "shown_sha": head(repo, env)}))
 
 
 def work(repo, env, *args):
@@ -403,6 +440,189 @@ class TestLandAndPostMerge:
         r = sprint(repo, env, "post-merge")
         assert r.returncode == 2 and "v0.3.0" in r.stderr
         assert "sprint_branch:" in (repo / ".xp" / "config.yml").read_text()
+
+
+class TestReviewLeg:
+    """story-014: the sprint close marshals its reviews, one leg, two lenses."""
+
+    def test_the_bundle_diffs_against_the_DEFAULT_branch_not_the_integration_target(self, tmp_path):
+        """Under `release: sprint`, integration_target() returns the SPRINT branch
+        and the fixture is ON it — so that diff is EMPTY and the reviewer would
+        certify nothing. A header-grep assertion passes over an empty diff, which
+        is bug c9b48a66's own failure mode; a hardcoded "main" passes vacuously
+        here and breaks a `master` consumer. So: a string only a sprint-branch
+        commit carries."""
+        repo, env, _g = make_repo(tmp_path)
+        r = sprint(repo, env, "review", "--lens", "broad")
+        assert r.returncode == 0, r.stderr
+        assert "SPRINT-ONLY-SENTINEL" in launches(tmp_path)[0]["stdin"]
+
+    def test_the_bundle_carries_the_cards_constraints_and_system(self, tmp_path):
+        repo, env, _g = make_repo(tmp_path)
+        assert sprint(repo, env, "review", "--lens", "broad").returncode == 0
+        bundle = launches(tmp_path)[0]["stdin"]
+        assert "CONSTRAINT-SENTINEL" in bundle and "SYSTEM-SENTINEL" in bundle
+        assert "story-042 — done thing" in bundle, "the sprint's story cards"
+        assert "story-099" not in bundle, "another sprint's card rode along"
+        assert "Polarity" in bundle, "PROCESS.md, which the charter points at"
+
+    def test_a_story_cannot_shadow_the_sprints_report_or_marker_key(self, tmp_path):
+        """Constraint 10, fault-injected against the id that would collide: a
+        story literally named `sprint-2.broad`. BOTH keys — scoping the report and
+        not the marker hands the land gate the collision the report just refused.
+        Driven through both real legs, because comparing two Path expressions
+        holds even against an implementation nobody can reach."""
+        plan = PLAN.replace(
+            "#### story-043 — also done   [done]",
+            "#### story-043 — also done   [done]\n"
+            "#### sprint-2.broad — the colliding id   [in-progress]\nVerify: true",
+        )
+        repo, env, g = make_repo(tmp_path, plan=plan)
+        g("checkout", "-qb", "story-branch")
+        story = subprocess.run(
+            [sys.executable, str(CLOSE), "story", "sprint-2.broad", "review"],
+            cwd=repo,
+            env=env,
+            capture_output=True,
+            text=True,
+        )
+        assert story.returncode == 0, story.stderr
+        g("checkout", "-q", "sprint-002")
+        assert sprint(repo, env, "review", "--lens", "broad").returncode == 0
+        data = tmp_path / "data"
+        written = sorted(p.name for p in (data / "reports").rglob("*.json"))
+        markers = sorted(p.name for p in (data / "markers").rglob("*.json"))
+        assert len(written) == 2, f"the sprint and the story shared a report key: {written}"
+        assert len(markers) == 2, f"the sprint and the story shared a marker key: {markers}"
+        assert marker_path(tmp_path, "broad").exists()
+
+    def test_the_review_leg_run_from_the_default_branch_is_refused(self, tmp_path):
+        """close.py:186 has this guard for the story leg. Without it the diff is
+        empty and land pushes whatever branch HEAD happens to be on."""
+        repo, env, g = make_repo(tmp_path)
+        g("checkout", "-q", "main")
+        r = sprint(repo, env, "review", "--lens", "broad")
+        assert r.returncode == 2 and "main" in r.stderr
+        assert launches(tmp_path) == [], "spawned a reviewer over an empty diff"
+
+    def test_an_unknown_lens_is_refused_naming_the_ones_that_exist(self, tmp_path):
+        repo, env, _g = make_repo(tmp_path)
+        r = sprint(repo, env, "review", "--lens", "vibes")
+        assert r.returncode == 2 and "broad" in r.stderr and "security" in r.stderr
+        assert launches(tmp_path) == []
+
+    def test_shown_sha_is_the_head_captured_BEFORE_the_launch(self, tmp_path):
+        """close.cmd_review records POST-run deliberately, because its motion
+        checks bound what could have moved. This leg has no such checks, so
+        copying that ordering makes anything the reviewer commits count as
+        reviewed and ride the release PR."""
+        repo, env, _g = make_repo(tmp_path)
+        before = head(repo, env)
+        assert sprint(repo, env, "review", "--lens", "broad").returncode == 0
+        assert json.loads(marker_path(tmp_path, "broad").read_text())["shown_sha"] == before
+
+    def test_dry_run_launches_nothing_and_records_nothing(self, tmp_path):
+        repo, env, _g = make_repo(tmp_path)
+        r = sprint(repo, env, "review", "--lens", "broad", "--dry-run")
+        assert r.returncode == 0, r.stderr
+        assert launches(tmp_path) == []
+        assert not marker_path(tmp_path, "broad").exists()
+
+    def test_the_two_lenses_keep_separate_markers_reports_and_findings(self, tmp_path):
+        repo, env, _g = make_repo(tmp_path)
+        stub_reviewer(tmp_path, report={"fixed": [], "blocking": [], "noted": ["BROAD-FINDING"]})
+        assert sprint(repo, env, "review", "--lens", "broad").returncode == 0
+        assert sprint(repo, env, "review", "--lens", "security").returncode == 0
+        assert marker_path(tmp_path, "broad").exists()
+        assert marker_path(tmp_path, "security").exists()
+        assert "BROAD-FINDING" not in launches(tmp_path)[1]["stdin"], "prior findings leaked lens"
+
+
+class TestModeSwitch:
+    """Note bae0b87b: findings handed in -> validate each; none handed in -> run
+    the full pass. The mode switch is what BOUNDS the work — sprint-002's close
+    re-reviewed four fix-commits with no prior findings to bound the pass."""
+
+    def test_round_1_tells_the_reviewer_to_run_the_full_pass(self, tmp_path):
+        repo, env, _g = make_repo(tmp_path)
+        assert sprint(repo, env, "review", "--lens", "broad").returncode == 0
+        # the SECTION's own words: the charter also says "run the full pass",
+        # so a bare "full pass" grep passes on every bundle ever built
+        assert "none — run the full pass yourself" in launches(tmp_path)[0]["stdin"]
+
+    def test_a_second_round_of_the_same_lens_carries_the_prior_findings(self, tmp_path):
+        """Read from the MARKER state, which is where close.py keeps rounds.
+        Reading `reports/` off disk would be a second source of truth — so the
+        fixture CONSTRUCTS the marker, never the report file."""
+        repo, env, _g = make_repo(tmp_path)
+        path = marker_path(tmp_path, "broad")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            json.dumps(
+                {
+                    "rounds": [
+                        {"fixed": [], "blocking": ["ROUND-1-BLOCKER"], "noted": ["ROUND-1-NOTE"]}
+                    ],
+                    "shown_sha": head(repo, env),
+                }
+            )
+        )
+        assert sprint(repo, env, "review", "--lens", "broad").returncode == 0
+        bundle = launches(tmp_path)[0]["stdin"]
+        assert "ROUND-1-BLOCKER" in bundle and "ROUND-1-NOTE" in bundle
+        assert "validate that each was addressed; do not re-derive the diff" in bundle
+        assert "run the full pass yourself" not in bundle, "handed findings AND told to re-derive"
+
+
+def committing_stub(tmp_path, body):
+    """A stub that writes a valid report and then moves the tree. A stub that
+    never moves it certifies nothing (constraint 2)."""
+    bin_dir = stub_reviewer(tmp_path)
+    claude = bin_dir / "claude"
+    claude.write_text(claude.read_text().replace("sys.stdout.write(", body + "\nsys.stdout.write("))
+    claude.chmod(0o755)
+    return bin_dir
+
+
+class TestReportOnlyIsAMechanism:
+    """AC 2. The card calls report-only a MECHANISM, not a charter claim, because
+    the plan review found the claim unenforced. The agent file's `tools:` line
+    bounds nothing here: review.run launches a TOP-LEVEL claude session that never
+    loads the agent file — which is why charter() inlines it."""
+
+    def test_a_reviewer_that_COMMITS_is_refused_and_records_nothing(self, tmp_path):
+        repo, env, _g = make_repo(tmp_path)
+        committing_stub(
+            tmp_path,
+            "open('snuck.py','w').write('X = 1\\n')\n"
+            "os.system('git add -A && git commit -qm snuck')\n",
+        )
+        before = head(repo, env)
+        r = sprint(repo, env, "review", "--lens", "broad")
+        assert r.returncode == 2, r.stdout
+        assert before[:8] in r.stderr, "the undo names no sha to reset to"
+        assert not marker_path(tmp_path, "broad").exists(), "recorded a round it refused"
+
+    def test_a_reviewer_that_leaves_the_tree_DIRTY_is_refused(self, tmp_path):
+        repo, env, _g = make_repo(tmp_path)
+        committing_stub(tmp_path, "open('src.py','a').write('# edited\\n')\n")
+        r = sprint(repo, env, "review", "--lens", "broad")
+        assert r.returncode == 2 and "dirty" in r.stderr
+        assert not marker_path(tmp_path, "broad").exists()
+
+    def test_a_reviewer_that_rewrites_the_MARKER_is_refused(self, tmp_path):
+        """The marker is outside the repo, no diff shows it, and it is the file
+        land reads for rounds and blocking[] — a review may not move its own gate."""
+        repo, env, _g = make_repo(tmp_path)
+        path = marker_path(tmp_path, "broad")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps({"rounds": [], "shown_sha": "x"}))
+        committing_stub(
+            tmp_path,
+            f"open({str(path)!r},'w').write('{json.dumps({'rounds': [], 'shown_sha': 'y'})}')\n",
+        )
+        r = sprint(repo, env, "review", "--lens", "broad")
+        assert r.returncode == 2 and "marker" in r.stderr
 
 
 class TestSprintCharter:

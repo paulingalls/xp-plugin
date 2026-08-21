@@ -55,6 +55,17 @@ def render_prior_rounds(rounds: list[dict]) -> str:
     )
 
 
+def render_sprint_prior(rounds: list[dict]) -> str:
+    """The MODE SWITCH (note bae0b87b): findings handed in bound the pass to
+    validating them; none handed in means re-derive everything. Sprint-002's
+    close had no prior findings for its four fix-commits and re-reviewed
+    unbounded — the loop this process exists to avoid."""
+    body = render_merge_body(rounds)
+    if not body:
+        return "none — run the full pass yourself"
+    return body + "\n\nvalidate that each was addressed; do not re-derive the diff."
+
+
 def render_land_preview(
     verify: str, tier: str, merge_mode: str, branch: str, trunk: str, pr_steps: tuple
 ) -> str:
