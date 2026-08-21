@@ -508,33 +508,6 @@ must be added rather than reused, and a budget ledger. story-010 showed
 sonnet/medium handling a five-file story well, but that story added one new module
 and changed no shared signature.
 
-#### story-011 — free mode (card-less close)   [ready]
-Context: `close.py free start <slug>` cuts <user>/free-YYYY-MM-DD-<slug> off the
-default branch and emits a diff-only bundle; review via the 008 pipeline leg;
-`free land` opens the PR to main carrying the patch bump — a free close targeting
-main IS a release (v0.2.1 rule, DESIGN §6). This is what makes small out-of-sprint
-fixes legal at all: today they either wait for a sprint or move main by hand.
-Carries 012b handback N2, because this is the next story to open close.py: a
-reviewer that REWRITES HISTORY (reset --hard or rebase, then commit) passes all
-four motion checks — its range shows only its own commits, authorship holds, .xp/
-is clean — and land merges with the lead's story commits DROPPED.
-Runs AFTER story-014, which also opens close.py and moves the `render_*` helpers
-to bookkeep.py — so 490 is not this story's baseline; re-measure at its plan step.
-Size: close.py is 490 today against constraint 8's hard cap of 500, and free mode
-adds ~60-80. The extraction is NAMED, not promised: free mode becomes its own
-module behind a ~2-line dispatch in close.py — the shape story-009 already set
-with sprint_close.py, which costs nothing against the per-file cap and keeps the
-component arithmetic honest.
-Files: plugins/xp-plugin/scripts/close.py, tests/test_close.py
-AC:
-- Given free start on the default branch, Then the dated free branch exists and the bundle is emitted without a story card
-- Given free land with a pipeline-received report, Then the PR to main carries the patch bump
-- Given free land with no report, Then it refuses
-- Given a reviewed head that is no longer an ancestor of HEAD, When land runs, Then it REFUSES — fault-inject by rewriting history in a fixture, never by asserting the merge-base call is present
-Verify: pytest -q tests/test_close.py
-Close review: deep
-Executor: (default)
-
 #### story-016 — the plan reviewer's duty to say no   [done]
 Context: Paul, at this sprint's planning: the simplicity challenge came from HIM,
 not from the review. THE OBVIOUS DIAGNOSIS IS WRONG, and the round-2 review caught
@@ -643,6 +616,14 @@ Close review: deep — raised from standard by the plan review: pipe-blocking an
 deadlock logic, a subprocess contract, a default path the stub cannot execute, and
 a prose contract every future teammate runs under.
 Executor: (default)
+
+### Sprint 4
+MOVED HERE AT SPRINT 3'S CLOSE, not planned yet — full planning (one plan review
+across all cards, per the draft) happens at Sprint 4 planning. story-018 carried
+because Sprint 3 had no parallel work left for it to enable; story-011 carried
+because close had seven lines of headroom. DESIGN §10's Codex adapter slips a
+THIRD time: that makes it a want rather than scheduled work, and Sprint 4 planning
+decides whether it is ever happening.
 
 #### story-018 — coverage is about overlap, not motion   [planned]
 Context: MEASURED THIS SPRINT, three times on one story. The review leg refuses
@@ -760,9 +741,32 @@ Verify: pytest -q tests/test_close.py
 Close review: deep
 Executor: (default)
 
-### Sprint 4
-DESIGN §10's Codex adapter + packaging lands here, deferred from Sprint 3 with the
-`--reviewer` override that is its seam.
+#### story-011 — free mode (card-less close)   [ready]
+Context: `close.py free start <slug>` cuts <user>/free-YYYY-MM-DD-<slug> off the
+default branch and emits a diff-only bundle; review via the 008 pipeline leg;
+`free land` opens the PR to main carrying the patch bump — a free close targeting
+main IS a release (v0.2.1 rule, DESIGN §6). This is what makes small out-of-sprint
+fixes legal at all: today they either wait for a sprint or move main by hand.
+Carries 012b handback N2, because this is the next story to open close.py: a
+reviewer that REWRITES HISTORY (reset --hard or rebase, then commit) passes all
+four motion checks — its range shows only its own commits, authorship holds, .xp/
+is clean — and land merges with the lead's story commits DROPPED.
+Runs AFTER story-014, which also opens close.py and moves the `render_*` helpers
+to bookkeep.py — so 490 is not this story's baseline; re-measure at its plan step.
+Size: close.py is 490 today against constraint 8's hard cap of 500, and free mode
+adds ~60-80. The extraction is NAMED, not promised: free mode becomes its own
+module behind a ~2-line dispatch in close.py — the shape story-009 already set
+with sprint_close.py, which costs nothing against the per-file cap and keeps the
+component arithmetic honest.
+Files: plugins/xp-plugin/scripts/close.py, tests/test_close.py
+AC:
+- Given free start on the default branch, Then the dated free branch exists and the bundle is emitted without a story card
+- Given free land with a pipeline-received report, Then the PR to main carries the patch bump
+- Given free land with no report, Then it refuses
+- Given a reviewed head that is no longer an ancestor of HEAD, When land runs, Then it REFUSES — fault-inject by rewriting history in a fixture, never by asserting the merge-base call is present
+Verify: pytest -q tests/test_close.py
+Close review: deep
+Executor: (default)
 
 #### story-019 — the execution plan is per-clone   [planned]
 Context: A REAL USER REQUIREMENT, not a cleanup. Paul runs three clones of one repo
