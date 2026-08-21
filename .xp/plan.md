@@ -467,7 +467,16 @@ POINT, DON'T RESTATE (Paul): the comment rubric and the finding bar ship as pinn
 copies for one stated reason — "build_bundle never sends PROCESS.md" — which is
 one line of Python, not a fact. TEAMMATE.md keeps its copy: spawn inlines into a
 fresh session with no bundle, so for that reader the premise holds.
-Size: component measures 1,041 and story-010 moves 150 from misc, so the cap is
+Size: DENSITY BINDS BEFORE LINES DO. Measured after story-017: 19.84% against a
+20.00% cap — about five comment or docstring lines plugin-wide. This story may add
+at most ~30 comment+docstring lines across its whole diff; sprint_close.corpus()
+alone spends 11 on one docstring, so the house style does not fit. Rationale goes
+into TEST NAMES (constraint 9: a checkable claim becomes a test, where it rots
+loudly), or funds itself by cutting stale prose in the four files it edits. Run
+ratchet.py BEFORE the first commit and at the end — a density red found at pre-push
+after 165 lines is paid in rewriting, not deleting. Deleting cmd_land's dominated
+branch removes 3 comment-free lines, which RAISES density.
+Component measures 1,041 and story-010 moves 150 from misc, so the cap is
 1,250 with story-011 (+60-80) still to come. Plan-reviewed estimate +125-165, NOT
 the +90-130 I first wrote: the enumeration omitted the land guards (~15-20) and
 the resolutions section cannot reuse corpus(), which discards the original
@@ -480,12 +489,15 @@ plugins/xp-plugin/scripts/work.py, plugins/xp-plugin/agents/sprint-reviewer.md,
 plugins/xp-plugin/agents/story-reviewer.md, plugins/xp-plugin/skills/sprint-close/SKILL.md,
 docs/DESIGN.md, tests/test_sprint_close.py, tests/test_close.py
 AC:
-- Given `close.py sprint <id> review --lens broad`, Then it spawns with a bundle (cumulative diff against `integration_target()` — never a hardcoded "main", which passes vacuously in a fixture and breaks a `master` consumer — constraints, system, the sprint's story cards) and records the report under a key a story cannot shadow. Fault-inject BOTH keys: construct a story literally named "sprint-3.broad" and assert its report path AND its marker path differ from the sprint's. The marker is the file land reads for rounds and blocking[]; scoping the report and not the marker hands the gate the collision the report just refused (constraint 10)
+- Given `close.py sprint <id> review --lens broad`, Then it spawns with a bundle (cumulative diff against `default_branch()` — NOT `integration_target()`, which under `release: sprint` returns the SPRINT branch, so the diff would be EMPTY and the reviewer would certify nothing; the fixture checks out the sprint branch, so a header-grep assertion passes over that empty diff, which is c9b48a66's own failure mode inside the story that closes it. Assert a known string from a sprint-branch commit appears in the diff section — never a hardcoded "main", which passes vacuously in a fixture and breaks a `master` consumer — constraints, system, the sprint's story cards) and records the report under a key a story cannot shadow. Fault-inject BOTH keys: construct a story literally named "sprint-3.broad" and assert its report path AND its marker path differ from the sprint's. The marker is the file land reads for rounds and blocking[]; scoping the report and not the marker hands the gate the collision the report just refused (constraint 10)
 - Given a sprint reviewer that COMMITS, When the leg finishes, Then it REFUSES via `review.abort_text` and records nothing — capture head BEFORE the launch and record `shown_sha` as that head, not as post-run HEAD. close.cmd_review records post-run deliberately because motion checks bound what could have moved; copying that ordering into a leg WITHOUT them makes anything the reviewer commits count as reviewed and ride the release PR. Fault-inject with a stub that commits — a stub that never commits certifies nothing
 - Given a SECOND review of the same lens, Then the bundle carries the prior findings labelled "validate that each was addressed; do not re-derive the diff" — read from the MARKER state, which is where close.py keeps rounds; reading `reports/` off disk would be a second source of truth. Construct the marker, not the report file
-- Given NO recorded review at all, When sprint land runs, Then it REFUSES — the base case IS c9b48a66's claim, and a guard that fires only when a record exists greens the do-nothing path. Also refuses when the recorded review does not cover HEAD, EXCEPT where the whole delta is under .xp/ (Paul's call): retro, digest and plan-status commits always land after the reviews, so a strict rule forces a fresh broad AND security review at every close — the afbd01a3 wedge, where completing the close invalidates the review that permits it. Code motion is never exempt
+- Given NO recorded review at all, When sprint land runs, Then it REFUSES — the base case IS c9b48a66's claim, and a guard that fires only when a record exists greens the do-nothing path. Also refuses when the recorded review does not cover HEAD, EXCEPT where the whole delta is under .xp/ (Paul's call — resting on the retro diff having its own human review at triage, NOT on .xp/ being harmless, or the clause is later read as 'rule changes need no review'): retro, digest and plan-status commits always land after the reviews, so a strict rule forces a fresh broad AND security review at every close — the afbd01a3 wedge, where completing the close invalidates the review that permits it. Code motion is never exempt
 - Given resolutions filed during the sprint, Then the bundle carries the LATEST per record with the claim and ORIGINAL falsifier it replaced, and `## resolved` blocks are FILTERED OUT of the raw work.md section — they are work.md entries, so shipping both hands the reviewer every superseded correction verbatim and invites the re-litigation the dedup exists to prevent. Three of three resolutions needing independent reading were caught by a READER, never by resolve()'s green-check (7df6b116, b9382e2d, 997c0c63)
 - Given a batch falsifier that reds, When start runs, Then the full tier HAS NOT RUN — the tier command writes a sentinel; assert its ABSENCE after the refusal AND its presence after a green batch, because absence alone also passes an implementation that deleted the tier
+- Given agents/sprint-reviewer.md, Then it is a DELTA, not a charter: report-only, the altitude line, the two lenses, the {fixed,blocking,noted} shape, and a POINTER to PROCESS.md which this story makes the bundle carry. At most 150 words against the ~80 freed from story-reviewer.md. Without this AC an opus executor models it on story-reviewer.md (712 words), whose first duty is "fix in the tree under review" — the contradiction the plan review rejected
+- Given the leg run from the DEFAULT branch, Then it REFUSES — the story leg has this guard (close.py:186-192); without it the diff is empty and land pushes whatever branch HEAD is on
+- Given sprint land, Then it guards HEAD COVERAGE ONLY and must NOT gain a "main moved since the review" clause: that is trunk motion, which is story-018's business, and a card whose first word is SYMMETRY invites exactly that wrong copy from close.cmd_land
 - Given the story-reviewer bundle, Then it carries PROCESS.md and the charter points at it. The two pins are NOT two-into-one: narrow test_close.py:1357 to PROCESS ↔ TEAMMATE (whose copy stays), DELETE :1628, and add a test that the bundle carries the file. PROCESS.md itself states the finding bar twice, so "exists once" is false as written
 - Given skills/sprint-close/SKILL.md, Then step 2 no longer tells a human to hand-compose the two reviews this story automates, asserted by the shipped-prose class in test_close.py — and the story is WALKED before close: `close.py sprint 3 review --lens broad --dry-run` in this repo, output read (constraint 12, bitten twice)
 Verify: pytest -q tests/test_sprint_close.py tests/test_close.py
@@ -536,6 +548,27 @@ which is why the walk below has two arms and can tell us we are wrong.
 The rubric does NOT go into the story-reviewer: a reviewer reading a merged diff
 cannot cut a story, and plan time is the only moment the cut is cheap.
 Depends on story-010 only for the agent-prose budget backstop.
+REVISED AT ITS OWN PLAN REVIEW, which disclosed that it is the agent whose charter
+this rewrites and named where its interests ran with and against each finding.
+THREE OF MY FOUR NAMED CUTS WERE WRONG: DESIGN.md:106 names exactly three
+plan-reviewer duties (sprint cap, Files-as-collision-declaration, runnable Verify),
+and lines 22-24's examples are the charter's ONLY implementation of two of them.
+Answered from use rather than theory: that review's own top two findings came from
+walking those two clauses. My thesis was "teeth are the long concrete clauses, fat
+is the short abstract ones" — then I cut the concrete examples and kept the
+abstract question above them. LINES 22-24 STAY. The displacement instead: check 5
+splits — (b) "really three stories" folds into check 4 with the duty, (a) the
+sprint-cap count moves into check 1, which already checks the plan against declared
+numbers. Six checks become five, funded by 52-54 (~18 words) and check 5's header.
+ARM 3 IS DROPPED, confounded three ways and fatally by one: the charter says "Read
+VALUES.md first", and a fixture copied outside this repo HAS no VALUES.md — arms 1
+and 2 would get a dangling pointer while arm 3 got 230 words of values, and it
+would win by having values at all. Paul's question (does inlining change what a
+reviewer CATCHES or only what it CITES) is filed for Sprint 4 with the confound
+named; its budget pays for the negative control.
+THE ≤524-WORD CAP IS DROPPED: nothing enforces it (ratchet counts no prose; spawn's
+cap covers agent FRONTMATTER only), the successor number is written nowhere, and it
+contradicts this card's own displace-at-checks thesis three lines up.
 Size: DISPLACE AT THE LEVEL OF CHECKS, not words — parity prices every word the
 same, but a charter's teeth are its long concrete clauses and its fat is its short
 abstract ones, so word-parity under time pressure deletes an example. Six checks
@@ -546,14 +579,19 @@ stories" IS a cut finding. Funded by named lines: 52-54 (the standing sentence,
 sentence above them (~22 words, keeping the third, which fired this round), the
 five nouns at 32-34 trimmed to two (~12), and check 5's header (~10). Measured
 before: 524 words, 6 checks. Do not touch 25-28, 58-60 or 12-13.
-Files: plugins/xp-plugin/agents/plan-reviewer.md, tests/test_ratchet.py
+Files: plugins/xp-plugin/agents/plan-reviewer.md, tests/test_close.py, docs/DESIGN.md
 AC:
 - Given the plan-reviewer charter, Then check 4 carries the CUT duty — name the stories and ACs that should not exist, say what is lost by cutting each, rank the cut with the other findings — the file has FIVE checks where it had six, and its word count is ≤ 524 as a backstop. The check count is the load-bearing number; the card carries before/after so the plan reviewer can check it. NOTE, corrected at story-010's close review: ratchet.py measures NO prose word count — it owns the Python budgets only, and the 1,236-of-2,500 figure belongs to spawn.py's injection profile, whose own comment says 'reported, never enforced'. The word count is therefore a card-level check by the plan reviewer, not a CI one, and this story must say so rather than inherit a mechanism that does not exist
-- Given tests/fixtures/overdesigned_plan.md (story-013 and story-015 as first written this sprint), COPIED to a directory outside this repo for the run so its later history and note 33ff82cc are not reachable — the sprint header names both cuts and note 33ff82cc gives the reasoning, so an in-repo fixture is open-book — When a fresh plan reviewer is run against it under the OLD charter and again under the NEW, with the same prompt and no simplicity question in either, Then the new arm recommends cutting at least one story and the old arm does not. TWO ARMS OR NONE: a single green arm measures the prompt and certifies the charter, and if both arms cut, the diagnosis was wrong and we learn that for one extra spawn, which is what a falsifier is for
+- Given tests/fixtures/overdesigned_plan.md — which MUST gain a NEGATIVE CONTROL, a story that should SURVIVE (story-014 or story-010 as carded) — COPIED outside this repo with VALUES.md, constraints.md and system.md beside it, every arm run as `claude -p` with the charter INLINED frontmatter-stripped and cwd inside that directory (a Task subagent's charter is loaded by the harness, so swapping the file mid-session may hand both arms the SAME charter, and two arms would silently be one) — the sprint header names both cuts and note 33ff82cc gives the reasoning, so an in-repo fixture is open-book — When a fresh plan reviewer is run against it under the OLD charter and again under the NEW, with the same prompt and no simplicity question in either, Then the new arm recommends cutting at least one story and the old arm does not. TWO ARMS OR NONE: a single green arm measures the prompt and certifies the charter, and if both arms cut, the diagnosis was wrong and we learn that for one extra spawn, which is what a falsifier is for
 - Given a THIRD arm — new charter, same fixture, same prompt, but VALUES.md INLINED in the prompt rather than pointed at — Then its findings are compared with arm 2's, and the comparison is recorded whichever way it falls. The question is Paul's: prose telling an agent to read a doc may cause the file to be opened without making it binding, because a file an agent READS arrives as tool output (data) while charter prose arrives as instruction — a boundary this repo already draws in session_start.py, which wraps repo content as "not plugin instructions". MEASURED so far, and it is only half an answer: the round-1/2 reviewer did read VALUES.md (one Read, plus a wc -w) and named the five values 99 times. That shows the pointer causes the read, not that it binds. The counter-evidence is the lead: VALUES.md is injected verbatim into every lead session and the lead still built a guard it had cut minutes earlier (note 997c0c63), so presence is not the variable that moved — independence was. One extra spawn buys the difference between "changes what a reviewer CATCHES" and "changes what it CITES", and if it changes nothing the pointer stays and 230 words stay out of every prompt
-- Given the walk, Then its outcome is recorded in work.md with the reviewer's own words, all three arms, including the outcomes where the diagnosis is refuted
-Verify: pytest -q tests/test_close.py -k plan_reviewer_charter  (NOT `-k prose`, which already selects story-010's unrelated test and exits 0 — a Verify that greens before the story writes a line, measured at story-010's close review)
-Close review: standard
+- Given the walk, Then it is RUN under a reading pre-registered on this card and both transcripts recorded verbatim — the differential is a FINDING, not an AC, because "the new arm cuts and the old does not" is an outcome no implementation can make true, and at n=1 it occurs ~25% of the time under the null. Without the negative control the walk can red only against "nothing changed", never against "the new charter became trigger-happy" — constraint 2 applied to the experiment itself
+- Given the test, Then it asserts the CHECK COUNT (five where six) — a count, not a token grep — and the card states plainly that this certifies a count and CANNOT certify the duty works; test_the_plan_reviewer_charter_asks_for_a_file must pass UNCHANGED as the behaviour-preserving proof
+- Given the charter's "write your findings to a file and say where" (lines 58-60), Then it NAMES the durable location — `<data-root>/plans/<story-id>.md` (Paul's call — `reports/` is story-review reports keyed by story and round; plan findings get their own home, and it is where the plan itself lands if story-019 goes ahead) — because "say where" let each reviewer pick: this sprint's went to a session scratchpad under /private/tmp and a teammate invented `.xp/reviews/` inside the repo. Same words, one more fact
+- Given acceptance, Then it is Paul reading the walk transcripts: agent prose has no harness (system.md declares CLI as the only surface) and this story's entire product is prose
+Verify: pytest -q tests/test_close.py -k charter_has_five_checks — the THIRD spelling. `-k prose` selected story-010's test; `-k plan_reviewer_charter` substring-matches the existing test_the_plan_reviewer_charter_asks_for_a_file (measured, exit 0). Both earlier spellings were GREEN AT HEAD. Pre-registered red is exit 5, no tests ran
+Close review: deep — raised by the plan review, not lowerable: the charter is a
+default path that cannot be tested, every future plan review runs under it, and
+CLAUDE.md makes plan review the gate on all multi-file work. Degradation is silent.
 Executor: (default)
 
 #### story-017 — the teammate spawn is live and durable   [done]
@@ -623,6 +661,37 @@ and stops refusing on trunk motion; land refuses only when trunk moved AND the
 files trunk changed intersect the files the story changed, or when the merge
 conflicts (which PROCESS already owes a round). Disjoint motion lands unreviewed
 by neither party's choice — it was never in either diff.
+REVISED AT ITS PLAN REVIEW, which found the rule INERT AS WRITTEN. `.xp/plan.md` is
+contended by construction — spawn commits the [in-progress] flip inside the story
+worktree, land puts [done] into the merge commit — so a naive intersection is
+non-empty in exactly the scenario the card exists to fix, and AC 1 would have gone
+GREEN anyway because the fixture's card names `Files: src/thing.py` and its story
+branch never commits its own flip. EXEMPT `.xp/plan.md` ONLY, on its own terms — a
+container of per-story records with no cross-record semantics. NOT the directory:
+constraints.md is the rubric the review applied, config.yml holds the tier land
+runs, system.md declares the surfaces the ACs execute at. My "already out of scope
+for review" argument was laundered — PROTECTED_XP is a separation-of-powers rule,
+and build_bundle demonstrably sends the card.
+THE MERGE-CONFLICT BACKSTOP DOES NOT FIRE. Measured, three fixtures under git ort:
+a lead editing the Context line ONE line below the status header conflicts;
+rewriting the ACs FOUR lines below merges CLEAN AND SILENT — the review read the old
+ACs, the merged card carries new ones, nothing fires. Conflict is a function of line
+distance, not semantic sameness. Carve it out deterministically: the exemption does
+NOT apply when the story's own card differs between the recorded trunk_sha and tip.
+THE BIGGER FINDING — THE RULE DELETES THE ONLY EXECUTION OF THE MERGED TREE. Today
+the fork-point refusal forces `git merge <trunk>` on the story branch, so land's
+Verify and tier run on an INTEGRATED tree. Under the new rule they never do: land
+runs Verify, then the tier, then merges. The named case is story-014's own declared
+shape — A changes review.run's signature, B adds a call site in another file:
+disjoint, clean merge, broken product, and no review reliably catches a call-graph
+break. FIX, keeping the whole parallelism win: on ANY motion land TRIAL-MERGES and
+runs Verify plus the tier on the merged tree (merge --no-commit --no-ff, run,
+--abort on red — deterministic, no spawn, no round); a review ROUND is owed only on
+overlap. That splits "something executed the merge result" from "someone reviewed
+it".
+THE 014 DEPENDENCY IS CUT: one sprint branch, one release, so there is no
+parallelism to recover at sprint level. 014 builds HEAD-coverage motion-based; 018
+narrows the story level only.
 THE STANDING PRACTICE THIS RESTS ON, Paul's, and written down here because it
 lived only in his head: we do not run stories in parallel whose file domains
 overlap. Nothing checks it — DESIGN §11's cross-story collision check was never
@@ -636,9 +705,31 @@ batch keeps reporting green, which is constraint 11's failure arriving through
 the back door. The story must re-point that resolution deliberately, and
 `trunk_motion_DURING` (a teammate pushing DURING the review window) is a
 different case that STAYS.
-Depends on story-014 for the sprint-level twin: sprint land's coverage check
-(c9b48a66) should use this rule rather than invent a second one.
-Files: plugins/xp-plugin/scripts/close.py, docs/DESIGN.md, tests/test_close.py
+Size: close.py 486 of the 500 hard cap; component 1044 of 1250; density 19.84% of
+20.00% — about five comment lines plugin-wide. Before this story: 1044 + 014's
+125-165 + 011's 60-80 = 1229-1289 against 1250. The extraction is NAMED: the
+coverage and motion guards move together into scripts/close/coverage.py — that path
+deliberately, because ratchet.component_for matches any path part, so scripts/close/
+counts against CLOSE (its sanctioned growth path) while a top-level
+scripts/coverage.py lands in misc and launders 60 lines out of the component
+without removing one. Rationale into test names, not docstrings.
+AT-RISK TESTS, six not three: recorded_base (:1124) carries f1391db4's claim under
+the new rule and must survive UNCHANGED as the substitute falsifier's core;
+bare_re_review (:667) loses its purpose but carries a second claim — a guard whose
+remediation does not work is a wall — so the overlapping arm must assert the refusal
+CLEARS after merge and review; trunk_motion_DURING (:1277) stays, and overlap must
+be computed against the tip recorded BEFORE the launch (state["trunk_sha"]) or its
+ordering property is gone. Also flipping refuse->merge:
+test_pr_mode_detects_origin_trunk_motion (:328),
+test_local_trunk_motion_with_remote_present_refused (:364) — 012a round-4's guards,
+one per ref — and test_tag_named_like_sprint_branch_cannot_freeze_the_guard (:545).
+Compute on BOTH refs and inject on both.
+THE RESIDUAL BET, stated so the rule is reversible if it bites: an interaction
+neither the suite nor a conflict can see — two stories adding the same CLI
+subcommand in different files, or the same key to the shared close marker. The
+sprint broad review is the only remaining net.
+Files: plugins/xp-plugin/scripts/close.py, plugins/xp-plugin/scripts/close/coverage.py,
+docs/DESIGN.md, plugins/xp-plugin/skills/story-close/SKILL.md, tests/test_close.py
 AC:
 - Given trunk moved with a file set DISJOINT from the story's since the review, When land runs, Then it merges without a new round — fault-inject the pair: the same fixture with one OVERLAPPING file must refuse
 - Given trunk moved touching a file the story also changed, Then land REFUSES naming the overlapping files — the message is the cross-story collision detector DESIGN §11 never built
@@ -646,5 +737,52 @@ AC:
 - Given f1391db4's resolution, Then it is re-resolved against whichever tests survive, with the substitution covering the SAME claim (a merge whose recorded review never covered the story's own changes) — verified by construction, not by the batch going green
 - Given DESIGN §6, Then it states overlap-not-motion, because the doc moves with the code or they disagree
 Verify: pytest -q tests/test_close.py
+Close review: deep
+Executor: (default)
+
+### Sprint 4
+DESIGN §10's Codex adapter + packaging lands here, deferred from Sprint 3 with the
+`--reviewer` override that is its seam.
+
+#### story-019 — the execution plan is per-clone   [planned]
+Context: A REAL USER REQUIREMENT, not a cleanup. Paul runs three clones of one repo
+(../legacy, ../legacy2, ../legacy3 — one remote, one `develop`) each driving a
+DIFFERENT workstream under xp-agents, each with its own execution_plan.json and
+sprint.json in its own SMM dir: 'Tip Jar + Store Launch', 'Admin accounts &
+analytics dashboard', 'Mobile mockup-fidelity depth', 'M6 Backlog Paydown'. He wants
+xp-plugin to replace xp-agents there, and today it cannot: `.xp/plan.md` is one
+in-repo file, so three streams would fight over it. The predecessor already drew the
+line this story adopts — SHARED understanding of the system, PER-CLONE execution —
+and Legacy's own CLAUDE.md says so: "this repo is worked in parallel clones".
+NO NEW MECHANISM: `data_root()` hashes the git-common-dir, so three clones already
+have three state roots and every worktree of one clone shares its clone's — which is
+exactly the sharing a spawned teammate needs. The move is a path change.
+WHAT STAYS IN THE REPO, because the split is not "everything moves": constraints.md
+(three streams on one codebase obey the same rules, and a promotion in one binds the
+others), config.yml (tiers, roles, caps), system.md (describes the SYSTEM, not the
+work — xp-agents duplicated it per clone; in-repo is better and it barely churns).
+COSTS, stated so they are decisions and not discoveries: (1) the plan stops being
+git-versioned — measured on this repo, the CHANGELOG carries release narrative and
+docs/retros/ the sprint narrative, but card-level deliberation (why 013 and 015 were
+cut, why 014 moved behind 010, three estimate revisions) lives ONLY in commit
+messages today, so PROCESS's "decisions go in work.md with the value tradeoff named"
+becomes the sole record; (2) a fresh clone starts with no plan, correct for this
+model but xp-setup must scaffold into the state root; (3) sprint membership and the
+release become per-stream, which is coherent here and would not be under one shared
+sprint.
+SIDE EFFECT, deliberately not the justification: it dissolves the plan.md contention
+that serialised sprint-003 — no story diff contains the plan, so no card edit
+invalidates an in-flight review. story-018 should be re-read after this lands; its
+plan.md exemption may become unnecessary.
+Full proposed DESIGN §3/§4 diff drafted at <data-root>/plans/design-diff-plan-per-clone.md.
+Files: docs/DESIGN.md, plugins/xp-plugin/scripts/{close,spawn,sprint_close,setup,session_start}.py,
+plugins/xp-plugin/skills/xp-setup/SKILL.md, plugins/xp-plugin/PROCESS.md, tests/*
+AC:
+- Given two clones of one repo, When each writes a plan, Then neither sees the other's — fault-inject by constructing two repos with distinct git-common-dirs and asserting distinct plan paths, not by asserting the path format
+- Given a worktree of a clone, Then it reads its CLONE's plan, not a per-worktree copy — the teammate must see the card the lead wrote
+- Given `xp-setup` on a bare repo, Then the plan is scaffolded into the state root and `.xp/` holds only config, constraints and system
+- Given a repo whose `.xp/plan.md` still exists (every project scaffolded before this), Then the tools REFUSE with a message naming the move rather than silently reading an empty plan — a silent empty plan is a sprint close that reports no stories
+- Given DESIGN §3 and §4, Then the layout and the three stated costs move with the code
+Verify: pytest -q tests/test_setup.py tests/test_close.py tests/test_spawn.py tests/test_sprint_close.py
 Close review: deep
 Executor: (default)
