@@ -1,6 +1,7 @@
 """story-002: close.py story-close pipeline. Verify: pytest -q tests/test_close.py"""
 
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -1477,6 +1478,63 @@ class TestShippedProseMatchesTheMechanism:
             "write your findings to a file"
             in (PLUGIN / "agents" / "plan-reviewer.md").read_text().lower()
         )
+
+    def test_the_plan_reviewer_charter_has_five_checks(self):
+        """story-016: check 4 absorbs the CUT duty (moved out of Output's
+        standing-to-cut sentence) and the old check 5's "really three stories"
+        clause; check 5's sprint-cap clause folds into check 1. A structural
+        count, not a token grep — it certifies the count only, not that the
+        duty is followed."""
+        charter = (PLUGIN / "agents" / "plan-reviewer.md").read_text()
+        section = charter.split("## Checks, in order of payoff")[1]
+        section = section.split("## Close-review depth")[0]
+        numbered = [line for line in section.splitlines() if re.match(r"\d+\. ", line)]
+        assert len(numbered) == 5, f"expected 5 checks, found {len(numbered)}"
+
+    def test_the_walk_fixture_names_no_cut_and_no_control(self):
+        """Bug 271de3bd, whose falsifier selects this test BY NAME. This header IS
+        the prompt both walk arms receive, so the arms are comparable only while
+        it is byte-identical between them — and it
+        once named 013 and 015 as the cuts and 010 as the negative control, which
+        let either arm answer by reading. A list of banned phrases could not hold
+        that: "two of these three were dropped by planning; the last was kept as
+        carded" is a complete answer key and passes every one of them. Pinning the
+        literal makes any edit to the experiment's prompt deliberate. The cards
+        below it are NOT pinned — they legitimately quote planning history."""
+        fixture = (Path(__file__).parent / "fixtures" / "overdesigned_plan.md").read_text()
+        assert fixture.split("#### ")[0] == (
+            "# Plan slice under review — three candidate stories\n"
+            "\n"
+            "Review these three story cards as a plan reviewer would: the sprint they belong\n"
+            "to has a cap of 6 and currently holds three other stories. The project is a\n"
+            "lightweight XP process plugin for coding agents; its constraints and system\n"
+            "context are in the files handed to you alongside this one.\n"
+            "\n"
+        )
+
+    def test_the_plan_review_location_is_pinned_in_both_copies(self):
+        """AC5: "say where" let two reviewers pick two different places this
+        sprint — a session scratchpad under /private/tmp for one, `.xp/reviews/`
+        for another. One location, asserted in both places it lives so neither can
+        drift without reding — the pattern
+        test_every_stopping_rule_copy_states_the_split_arithmetic already uses.
+
+        The ROUND clause is pinned with it because one name for a file written
+        once per round destroys the earlier round on write, and plan review does
+        run in rounds: story-014's two rounds are both on disk, and story-016's
+        own card credits its round-2 review. review.py already round-scopes the
+        story reviewer's report; nothing did the same here. Both copies are held
+        to the same LITERAL: "round-scoped" alone greened here off DESIGN's
+        unrelated sentence about that report (fault-injected, constraint 2).
+        """
+        location = "<data-root>/plans/<story-id>.md"
+        charter = (PLUGIN / "agents" / "plan-reviewer.md").read_text()
+        design = (Path(__file__).parent.parent / "docs" / "DESIGN.md").read_text()
+        assert location in charter, "plan-reviewer.md dropped the location"
+        assert location in design, "DESIGN.md dropped the location"
+        rounds = "<story-id>.round-N.md"
+        assert rounds in charter, "the charter lost the round rule"
+        assert rounds in design, "DESIGN.md lost the round rule"
 
 
 REVIEWER_NAME = "xp story-reviewer"

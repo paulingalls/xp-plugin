@@ -1,7 +1,7 @@
-# Plan slice under review — two candidate stories
+# Plan slice under review — three candidate stories
 
-Review these two story cards as a plan reviewer would: the sprint they belong to
-has a cap of 6 and currently holds three other stories. The project is a
+Review these three story cards as a plan reviewer would: the sprint they belong
+to has a cap of 6 and currently holds three other stories. The project is a
 lightweight XP process plugin for coding agents; its constraints and system
 context are in the files handed to you alongside this one.
 
@@ -50,4 +50,33 @@ AC:
 - Given PROCESS.md's record lifecycle section, Then it carries the archive purge rule and the waits-on-release state, asserted as a red test, not as a coherence pin
 Verify: pytest -q tests/test_work.py tests/test_sprint_close.py
 Close review: deep
+Executor: (default)
+
+#### story-010 — size-ratchet   [ready]
+Context: DESIGN §9's budgets become a command. FIRST, not last: the close
+component measures 1,041 of 1,100 today (close.py 490 + review.py 218 +
+bookkeep.py 129 + sprint_close.py 204) and story-014 spends into that headroom —
+the wall goes up before the spend, not as a post-hoc verdict on a merged story.
+NO GITHUB ACTION, cut at plan review: it is a second copy of a gate pre-push
+already runs, on a surface system.md declares no harness for, and it cannot be
+executed before it merges (constraint 12, which has bitten twice). The only hole
+it would cover is `--no-verify`, which CLAUDE.md already calls a values violation.
+ONE COPY OF THE NUMBERS: ratchet.py holds the sub-allocation and DESIGN §9 keeps
+the total, the rationale, the only-ever-lowers rule and the sacrificial-feature
+order. Closes bug c2d7ffdf — but its falsifier asserts the digits are PRESENT in
+CLAUDE.md and .xp/system.md, so deleting them REDS it: this story must `work.py
+resolve` it with a replacement covering the stronger claim, or it wedges the
+sprint's own close (found at plan review; it was a trap of my own making).
+Size: ratchet.py lands in misc, measured 366 of 900.
+Files: plugins/xp-plugin/scripts/ratchet.py, lefthook.yml, tests/test_ratchet.py,
+CLAUDE.md, .xp/system.md, docs/DESIGN.md
+AC:
+- Given the repo within budgets, When ratchet.py runs, Then exit 0 printing the per-component MEASURED/cap table — a live number on every push, because the sprint-002 SIZE BREACH was an agent estimating against a stale one and a pointer does not fix that
+- Given a fixture tree constructed OVER a budget, Then nonzero naming the budget and the overage (the guard fault-injected, constraint 2)
+- Given a FIXTURE tree whose comments + docstrings exceed 20% of its Python lines, Then nonzero naming the density and the worst file — a fixture, not this repo, which sits near 17% and would green a do-nothing implementation
+- Given the sub-budgets, Then a test asserts they sum to ≤ the total, so raising one requires lowering another — constraint 1's displacement rule made mechanical rather than promised
+- Given lefthook.yml, Then pre-push runs ratchet.py (structural pin)
+- Given CLAUDE.md and .xp/system.md, Then neither states a budget NUMBER (the falsifier matches the budget shape — `≤N lines/words` against a component name — not any digit: system.md:7 says "Python 3.11+"); both point at the command, CLAUDE.md's "DESIGN is the authority" line gains the budget clause, and c2d7ffdf is resolved with a replacement that reds if a number comes back
+Verify: pytest -q tests/test_ratchet.py
+Close review: standard
 Executor: (default)
