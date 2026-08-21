@@ -46,7 +46,7 @@ Here the values are **operational**, not decorative:
 | Declarative records: a bug is a claim + falsifier that reds now; a debt's falsifier is green, scheduled-or-dropped at planning; telemetry never filed | Honesty, Simplicity |
 | Milestones with executable "done", stories with Given/When/Then ACs and runnable Verify commands | Communication, Feedback |
 | Delegation-first: expensive model orchestrates, cheaper/different models execute and review (cross-harness) | Feedback (independent perspectives) |
-| CI-enforced size budgets: ≤5k lines Python, ≤3k words skill prose, tests ≤2× code; every rule displaces one | Simplicity, Courage |
+| Size budgets as acceptance criteria (DESIGN §9), the Python ones measured live by `ratchet.py` at pre-push; every rule displaces one | Simplicity, Courage |
 
 ## Layout
 

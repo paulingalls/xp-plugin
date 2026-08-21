@@ -29,7 +29,8 @@ instead.
 
 ## Size discipline
 
-Budgets and rationale live in DESIGN.md §9; `ratchet.py` enforces them live at
-pre-push — read the table it prints, not a cached number. Every added rule
-displaces one. When in doubt: VALUES.md, conflicts resolve Honesty > Courage >
-Simplicity > Feedback > Communication.
+Budgets and rationale live in DESIGN.md §9; `ratchet.py` measures the Python ones
+live at pre-push (the prose budgets are still read-and-judge) — run it and read
+the table, never a cached number. Every added rule displaces one. When in doubt:
+VALUES.md, conflicts resolve Honesty > Courage > Simplicity > Feedback >
+Communication.

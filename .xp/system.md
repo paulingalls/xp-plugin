@@ -22,6 +22,6 @@ Story ACs must be executed by a test named in the story's Verify.
 **Conventions**:
 - Test tiers: `fast` (pre-commit) / `story` (pre-push, story close) / `full`
   (sprint close). Declared in .xp/config.yml.
-- Size budgets are acceptance criteria (DESIGN.md §9, rationale and numbers);
-  `ratchet.py` enforces the Python budgets live at pre-push.
+- Size budgets are acceptance criteria (DESIGN.md §9, rationale and numbers); run
+  `plugins/xp-plugin/scripts/ratchet.py` for the live table — pre-push runs it too.
 - **Worktree bootstrap**: none needed (stdlib only, no install step).
