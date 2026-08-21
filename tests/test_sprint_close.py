@@ -98,6 +98,26 @@ class TestMembership:
         assert r.returncode == 2 and "story-043" in r.stderr
 
 
+class TestFullTier:
+    def test_a_red_full_tier_refuses(self, tmp_path):
+        """The fixture tier was `true` — green by construction — so deleting the
+        returncode check left every test passing. It is the primary gate of the
+        leg: unguarded, sprint close certifies a red suite as a release."""
+        repo, env, _g = make_repo(tmp_path, config=CONFIG.replace("full: true", "full: false"))
+        r = sprint(repo, env, "start")
+        assert r.returncode == 2, "a red full tier did not stop the close"
+        assert "full tier" in r.stderr
+
+    def test_a_stray_top_level_key_cannot_override_the_declared_tier(self, tmp_path):
+        """`full:` is only ever nested under `tests:` — the flat lookup was dead
+        code, and worse than dead: a stray top-level key silently replaced the
+        real tier with a green one and the close certified an unrun suite."""
+        repo, env, _g = make_repo(
+            tmp_path, config="full: true\n" + CONFIG.replace("full: true", "full: false")
+        )
+        assert sprint(repo, env, "start").returncode == 2, "a stray key shadowed the real tier"
+
+
 class TestFalsifierBatch:
     def test_a_red_falsifier_aborts_and_is_refiled_as_a_bug(self, tmp_path):
         """Constructed, never observed: the fixture files a debt whose falsifier is
@@ -145,6 +165,27 @@ class TestFalsifierBatch:
             assert sprint(repo, env, "start").returncode == 2
         filed = (tmp_path / "data" / "work.md").read_text().count("## bug ")
         assert filed == 1, f"three runs filed {filed} bugs for one unfixed red"
+
+    def test_a_red_archived_falsifier_aborts_too(self, tmp_path):
+        """The corpus is BOTH work.md and archive.md: a dropped debt that matters
+        reds again, and that is the only mechanism that ever re-reads one."""
+        repo, env, _g = make_repo(tmp_path)
+        root = tmp_path / "data"
+        root.mkdir(parents=True, exist_ok=True)
+        (root / "archive.md").write_text(
+            "## debt 2026-01-01T00:00:00Z (dropped)\nClaim: latent\n"
+            "Falsifier: `false`\nFiles: a.py\n\n"
+        )
+        r = sprint(repo, env, "start")
+        assert r.returncode == 2, "archive.md falsifiers were never run"
+        assert "archive" in r.stderr
+
+    def test_a_green_archived_falsifier_does_not_abort(self, tmp_path):
+        repo, env, _g = make_repo(tmp_path)
+        root = tmp_path / "data"
+        root.mkdir(parents=True, exist_ok=True)
+        (root / "archive.md").write_text("Falsifier: `true`\n\n")
+        assert sprint(repo, env, "start").returncode == 0
 
     def test_a_resolved_record_runs_the_RESOLUTION_falsifier_not_nothing(self, tmp_path):
         """A resolution that was wrong must red later and reopen the record."""

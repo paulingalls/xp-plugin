@@ -13,7 +13,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 from close import config_flat, default_branch, fail, git
-from work import append, data_root, entries, falsifier_is_green
+from work import append, config_block_value, data_root, entries, falsifier_is_green, stamp
 
 PLUGIN_ROOT = Path(__file__).parent.parent
 FALSIFIER = re.compile(r"^Falsifier: `(.+)`$", re.M)
@@ -79,7 +79,7 @@ def cmd_start(sprint_id: str) -> int:
             + "\n  ".join(unfinished)
         )
 
-    if tier := config_flat("full") or _tests_full():
+    if tier := config_block_value("tests", "full"):
         print(f"running the full tier: {tier}")
         if subprocess.run(tier, shell=True).returncode != 0:
             return fail(f"refused: full tier red: {tier}")
@@ -93,7 +93,7 @@ def cmd_start(sprint_id: str) -> int:
             if falsifier not in known:
                 append(
                     root,
-                    f"## bug {_stamp()}\nClaim: a falsifier in the sprint-close batch RED"
+                    f"## bug {stamp()}\nClaim: a falsifier in the sprint-close batch RED"
                     f" for record {eid} ({head}). A debt or archived falsifier asserts the"
                     " system is still OK, so red means the latent problem materialised.\n"
                     f"Falsifier: `{falsifier}`\nFiles: unknown\n\n",
@@ -116,18 +116,6 @@ def cmd_start(sprint_id: str) -> int:
         " narrative (constraint 7). First line: # Session digest — written <ISO-ts> at <short-sha>"
     )
     return 0
-
-
-def _tests_full() -> str:
-    from close import config_block_value
-
-    return config_block_value("tests", "full")
-
-
-def _stamp() -> str:
-    from datetime import datetime, timezone
-
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def _next_version() -> str:

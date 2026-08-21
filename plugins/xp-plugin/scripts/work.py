@@ -112,6 +112,10 @@ def append(root: Path, block: str) -> str:
     return entry_id(block)
 
 
+def stamp() -> str:
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
 def entry_id(text: str) -> str:
     """A record's name, DERIVED from its text rather than stored in it.
 
@@ -135,9 +139,8 @@ def falsifier_is_green(command: str) -> bool:
 
 
 def entry(kind: str, args: argparse.Namespace) -> str:
-    ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     return (
-        f"## {kind} {ts}\n"
+        f"## {kind} {stamp()}\n"
         f"Claim: {neutralize(args.claim)}\n"
         f"Falsifier: `{neutralize(args.falsifier)}`\n"
         f"Files: {neutralize(args.files)}\n\n"
@@ -167,11 +170,10 @@ def resolve(root: Path, args: argparse.Namespace) -> int:
             file=sys.stderr,
         )
         return 2
-    ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     print(
         append(
             root,
-            f"## resolved {ts}\nResolves: {args.ref}\nFalsifier: `{args.falsifier}`\n\n",
+            f"## resolved {stamp()}\nResolves: {args.ref}\nFalsifier: `{args.falsifier}`\n\n",
         )
     )
     return 0
@@ -206,8 +208,7 @@ def main() -> int:
             dropped = len(text) - NOTE_CAP
             text = f"{text[:NOTE_CAP]} [truncated: {dropped} chars dropped]"
             print(f"note truncated: {dropped} chars over NOTE_CAP={NOTE_CAP}", file=sys.stderr)
-        ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-        print(append(root, f"## note {ts}\n{neutralize(text)}\n\n"))
+        print(append(root, f"## note {stamp()}\n{neutralize(text)}\n\n"))
         return 0
 
     green = falsifier_is_green(args.falsifier)  # outside the lock: may be slow
