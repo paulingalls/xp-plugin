@@ -278,9 +278,7 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
             f" {str(state.get('review_base'))[:8]}, today's merge base is {base[:8]}."
             f" Run `close.py story {story_id} review`"
         )
-    rounds = state.get("rounds") or []
-    if not rounds:
-        return fail(f"refused: no recorded review round for {story_id} — run review first")
+    rounds = state["rounds"]
     blocking = rounds[-1]["blocking"]
     if blocking:
         return fail(

@@ -47,17 +47,11 @@ def sprint_stories(plan: str, sprint_id: str) -> list[str]:
 
 
 def corpus(root: Path) -> list[tuple[str, str, str]]:
-    """(id, headline, falsifier) for every record the batch must run.
-
-    A resolved record contributes its RESOLUTION's falsifier, not its original:
-    resolution substitutes a claim-coupled check for one that no longer holds, so
-    a wrong resolution reds here and the record reopens.
-
-    Substitution is keyed off the `## resolved` heading `work.py resolve` writes,
-    never off a `Resolves:` line anywhere in a block: a record that merely
-    REFERENCES an id would otherwise substitute its own green falsifier and
-    silence a live bug, with resolve's green-check never having run.
-    """
+    """(id, headline, falsifier) for every record the batch must run — a resolved
+    record contributing its RESOLUTION's falsifier. Keyed off the `## resolved`
+    heading, never a `Resolves:` line anywhere in a block: a record that merely
+    REFERENCES an id would silence a live bug with resolve's green-check never
+    having run."""
     records, resolutions = {}, {}
     for eid, text in entries(root):
         head = text.splitlines()[0]
@@ -86,13 +80,9 @@ def sprint_marker(sprint_id: str, lens: str) -> Path:
 
 
 def _sprint_records(root: Path, since_epoch: int) -> tuple[str, str]:
-    """(resolutions, the raw work.md section without its `## resolved` blocks).
-
-    Both from ONE split, because shipping a resolution in both places hands the
-    reviewer every superseded correction verbatim and invites the re-litigation
-    the dedup exists to prevent. corpus() cannot serve the first: substitution is
-    exactly where it discards the falsifier a reader needs to judge the swap.
-    """
+    """(resolutions, the raw work.md section minus its `## resolved` blocks) from
+    ONE split. corpus() cannot serve the first: substitution is exactly where it
+    discards the original falsifier a reader needs to judge the swap."""
     originals = {e: t for e, t in entries(root) if t.startswith(("## bug ", "## debt "))}
     latest, kept = {}, []
     for block in re.split(r"^(?=## )", work_entries_since(since_epoch), flags=re.M):
@@ -122,8 +112,7 @@ def build_sprint_bundle(sprint_id: str, lens: str, cards: str, base: str, report
         data_root(), int(git("show", "-s", "--format=%ct", base).stdout.strip())
     )
     sections = [
-        ("Your charter", review.charter("sprint-reviewer")),
-        ("Your lens", lens),
+        (f"Your charter, for the {lens} lens", review.charter("sprint-reviewer")),
         ("Your report", f"REPORT_PATH: {report}"),
         (f"The stories in sprint {sprint_id}", cards),
         ("Findings from earlier rounds of THIS lens", render_sprint_prior(state.get("rounds", []))),
@@ -256,9 +245,51 @@ def _refuse_unbumpable() -> int:
     return fail(f"refused: latest tag {latest!r} is not vMAJOR.MINOR — cannot bump it")
 
 
+def _coverage_refusal(sprint_id: str, head: str) -> str:
+    """ "" if a round of EVERY lens covers HEAD, else why not. Bug c9b48a66.
+
+    HEAD coverage only — deliberately no "trunk moved since the review" clause:
+    that is trunk motion, a different guard's business, and copying it here from
+    close.cmd_land is the wrong half of the symmetry.
+    """
+    exempt = []
+    for lens in LENSES:
+        marker = sprint_marker(sprint_id, lens)
+        state = json.loads(marker.read_text()) if marker.exists() else {}
+        rerun = f"run `close.py sprint {sprint_id} review --lens {lens}`"
+        if not (rounds := state.get("rounds") or []):
+            return f"refused: no recorded {lens} review for sprint {sprint_id} — {rerun}"
+        if blocking := rounds[-1]["blocking"]:
+            return (
+                f"refused: the last {lens} round left blocking findings:\n  "
+                + "\n  ".join(blocking)
+                + "\nFix them, then review again — a flag cannot clear these"
+            )
+        if (shown := str(state.get("shown_sha"))) == head:
+            continue
+        # check=False: a rebased, reset or gc'd sha must refuse, never raise
+        # CalledProcessError from inside the gate that guards the release
+        moved = git("diff", "--name-only", shown, head, check=False)
+        if moved.returncode != 0:
+            return (
+                f"refused: the {lens} review recorded {shown[:8]}, which no longer exists — {rerun}"
+            )
+        if code := [f for f in moved.stdout.split() if not f.startswith(".xp/")]:
+            return (
+                f"refused: the {lens} review did not cover HEAD — {', '.join(code)}"
+                f" changed since {shown[:8]}. {rerun}"
+            )
+        exempt += moved.stdout.split()
+    if exempt:
+        print(f"reviewed earlier; the delta since is .xp/ only: {', '.join(sorted(set(exempt)))}")
+    return ""
+
+
 def cmd_land(sprint_id: str, dry_run: bool) -> int:
     import shutil
 
+    if refusal := _coverage_refusal(sprint_id, git("rev-parse", "HEAD").stdout.strip()):
+        return fail(refusal)
     branch = git("rev-parse", "--abbrev-ref", "HEAD").stdout.strip()
     if not (version := _next_version()):
         return _refuse_unbumpable()

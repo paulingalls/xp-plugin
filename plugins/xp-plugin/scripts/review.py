@@ -70,9 +70,7 @@ def sprint_report_path(sprint_id: str, lens: str, round_n: int) -> Path:
 
 def check_report_only(shown_head: str, marker: Path, digest_before: str) -> str:
     """Refusal text, or "" if the reviewer only reported. NOT check_reviewer_motion,
-    which PERMITS commits the reviewer authored because the story leg's reviewer
-    fixes what it finds; this leg permits no motion, so anything committed here
-    would count as reviewed and ride the release PR with no reader."""
+    which PERMITS commits the reviewer authored: this leg permits no motion."""
     from close import git
 
     if git("rev-parse", "HEAD").stdout.strip() != shown_head:

@@ -339,6 +339,7 @@ class TestStartIsReadOnly:
 class TestLandAndPostMerge:
     def test_land_dry_run_previews_the_commands_it_would_run(self, tmp_path):
         repo, env, _g = make_repo(tmp_path)
+        record_reviews(tmp_path, repo, env)  # land now refuses without a covering review
         r = sprint(repo, env, "land", "--dry-run")
         assert r.returncode == 0, r.stderr
         assert "gh pr create" in r.stdout
@@ -353,11 +354,13 @@ class TestLandAndPostMerge:
         """The PR title names the release; guessing there is the same lie."""
         repo, env, g = make_repo(tmp_path)
         g("tag", "release-2024")
+        record_reviews(tmp_path, repo, env)
         r = sprint(repo, env, "land", "--dry-run")
         assert r.returncode == 2 and "release-2024" in r.stderr
 
     def test_land_refuses_without_gh_before_anything_moves(self, tmp_path):
         repo, env, _g = make_repo(tmp_path)
+        record_reviews(tmp_path, repo, env)
         r = sprint(repo, env, "land")
         assert r.returncode == 2 and "gh" in r.stderr
 
@@ -440,6 +443,110 @@ class TestLandAndPostMerge:
         r = sprint(repo, env, "post-merge")
         assert r.returncode == 2 and "v0.3.0" in r.stderr
         assert "sprint_branch:" in (repo / ".xp" / "config.yml").read_text()
+
+
+class TestLandCoverage:
+    """Bug c9b48a66: sprint land had NO coverage check, so a release PR could open
+    over unreviewed commits. Measured at sprint-002's own release — the broad
+    review ran at 9b91b1f and four commits (15 files, +261/-18) landed after it.
+
+    Every test here drives `land --dry-run`. Under the fixture PATH there is no
+    `gh`, so a real land already exits 2 at shutil.which having pushed nothing —
+    "rc 2 and nothing pushed" cannot tell this guard from that refusal, and would
+    have certified a coverage check that does not exist. --dry-run returns 0
+    BEFORE the gh check, so rc 0 vs rc 2 is a discriminator no pre-existing
+    refusal can produce.
+    """
+
+    def test_land_with_no_recorded_review_at_all_refuses(self, tmp_path):
+        """The base case IS the bug's claim. A guard that fires only when a record
+        exists greens the do-nothing path — which is the whole defect."""
+        repo, env, _g = make_repo(tmp_path)
+        r = sprint(repo, env, "land", "--dry-run")
+        assert r.returncode == 2, "a release PR opened with no review recorded anywhere"
+        assert "review --lens" in r.stderr, "the refusal names no way out"
+
+    def test_land_refuses_when_only_one_lens_was_reviewed(self, tmp_path):
+        """PROCESS.md §4 and the skill both mandate the two reviews, so a one-lens
+        gate certifies a close the process forbids."""
+        repo, env, _g = make_repo(tmp_path)
+        record_reviews(tmp_path, repo, env, lenses=("broad",))
+        r = sprint(repo, env, "land", "--dry-run")
+        assert r.returncode == 2 and "security" in r.stderr
+
+    def test_land_proceeds_once_both_lenses_cover_head(self, tmp_path):
+        repo, env, _g = make_repo(tmp_path)
+        record_reviews(tmp_path, repo, env)
+        r = sprint(repo, env, "land", "--dry-run")
+        assert r.returncode == 0, r.stderr
+        assert "gh pr create" in r.stdout
+
+    def test_land_refuses_while_the_last_round_has_blocking_findings(self, tmp_path):
+        repo, env, _g = make_repo(tmp_path)
+        record_reviews(tmp_path, repo, env, blocking=["A-BLOCKING-FINDING"])
+        r = sprint(repo, env, "land", "--dry-run")
+        assert r.returncode == 2 and "A-BLOCKING-FINDING" in r.stderr
+
+    def test_land_refuses_when_a_CODE_commit_landed_after_the_review(self, tmp_path):
+        repo, env, g = make_repo(tmp_path)
+        record_reviews(tmp_path, repo, env)
+        (repo / "src.py").write_text("A = 1\nUNREVIEWED = 2\n")
+        g("add", "-A")
+        g("commit", "-qm", "code after the review")
+        r = sprint(repo, env, "land", "--dry-run")
+        assert r.returncode == 2 and "did not cover" in r.stderr
+
+    def test_land_proceeds_when_the_whole_delta_since_the_review_is_under_xp(self, tmp_path):
+        """Paul's call, and it rests on the retro diff having its own human review
+        at triage — NOT on .xp/ being harmless. Retro, digest and plan-status
+        commits always land after the reviews, so a strict rule forces a fresh
+        broad AND security review at every close: the afbd01a3 wedge, where
+        completing the close invalidates the review that permits it."""
+        repo, env, g = make_repo(tmp_path)
+        record_reviews(tmp_path, repo, env)
+        (repo / ".xp" / "plan.md").write_text(PLAN + "\n<!-- retro -->\n")
+        g("add", "-A")
+        g("commit", "-qm", "retro and plan flips")
+        r = sprint(repo, env, "land", "--dry-run")
+        assert r.returncode == 0, r.stderr
+        assert ".xp/plan.md" in r.stdout, "an exemption nobody is shown is a silent one"
+
+    def test_a_code_change_alongside_an_xp_change_is_NOT_exempt(self, tmp_path):
+        """Code motion is never exempt; without this the exemption is a hole."""
+        repo, env, g = make_repo(tmp_path)
+        record_reviews(tmp_path, repo, env)
+        (repo / ".xp" / "plan.md").write_text(PLAN + "\n<!-- retro -->\n")
+        (repo / "src.py").write_text("A = 1\nSMUGGLED = 3\n")
+        g("add", "-A")
+        g("commit", "-qm", "retro, and one line of code")
+        r = sprint(repo, env, "land", "--dry-run")
+        assert r.returncode == 2 and "src.py" in r.stderr
+
+    def test_land_does_NOT_refuse_because_the_default_branch_moved(self, tmp_path):
+        """HEAD coverage ONLY. Trunk motion is story-018's business, and a card
+        whose first word is SYMMETRY invites exactly that wrong copy from
+        close.cmd_land."""
+        repo, env, g = make_repo(tmp_path)
+        record_reviews(tmp_path, repo, env)
+        g("checkout", "-q", "main")
+        (repo / "unrelated.py").write_text("C = 3\n")
+        g("add", "-A")
+        g("commit", "-qm", "trunk moved under us")
+        g("checkout", "-q", "sprint-002")
+        r = sprint(repo, env, "land", "--dry-run")
+        assert r.returncode == 0, r.stderr
+
+    def test_a_recorded_sha_that_no_longer_resolves_refuses_not_tracebacks(self, tmp_path):
+        """close.git runs check=True, so a rebased or gc'd sha would raise
+        CalledProcessError inside the release gate."""
+        repo, env, _g = make_repo(tmp_path)
+        record_reviews(tmp_path, repo, env)
+        path = marker_path(tmp_path, "broad")
+        state = json.loads(path.read_text())
+        state["shown_sha"] = "0" * 40
+        path.write_text(json.dumps(state))
+        r = sprint(repo, env, "land", "--dry-run")
+        assert r.returncode == 2 and "Traceback" not in r.stderr, r.stderr
 
 
 class TestReviewLeg:
