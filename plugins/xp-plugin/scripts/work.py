@@ -264,3 +264,28 @@ def main() -> int:
 
 if __name__ == "__main__":
     sys.exit(main())
+
+
+def work_entries_since(branch_point_epoch: int) -> str:
+    """work.md entries whose header timestamp postdates the branch point."""
+    from datetime import datetime, timezone
+
+    path = data_root() / "work.md"
+    if not path.exists():
+        return ""
+    out, keep = [], False
+    for ln in path.read_text().splitlines():
+        if ln.startswith("## "):
+            ts = ln.rsplit(" ", 1)[1]
+            try:
+                epoch = (
+                    datetime.strptime(ts, "%Y-%m-%dT%H:%M:%SZ")
+                    .replace(tzinfo=timezone.utc)
+                    .timestamp()
+                )
+                keep = epoch >= branch_point_epoch
+            except ValueError:
+                keep = False
+        if keep:
+            out.append(ln)
+    return "\n".join(out)

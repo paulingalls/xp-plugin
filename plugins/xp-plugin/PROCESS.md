@@ -5,9 +5,10 @@ One page. The values (VALUES.md) cover what this page doesn't.
 ## The loop
 
 1. **Plan** (any multi-file change): draft the plan, then spawn the **plan-reviewer**
-   (fresh context — it owes your plan nothing). Address its findings before writing
-   implementation code. It checks TDD ordering, artifact coherence, constraint
-   conflicts, and sprint size.
+   (fresh context — it owes your plan nothing). A card starts `[planned]` and the
+   review is what clears it to `[ready]`, which is the only state spawn accepts —
+   so address the findings before implementation code. It checks TDD ordering,
+   artifact coherence, constraint conflicts, and sprint size.
 2. **Story**: red → green → refactor, small commits. Done = ACs verified against
    the running system at its surface (the story loop), not "tests green" (the
    commit loop) — two loops, two clocks. Git hooks are the wall: lint,

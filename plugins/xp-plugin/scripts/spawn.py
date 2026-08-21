@@ -302,7 +302,11 @@ def cmd_spawn(story_id: str, override: str, dry_run: bool, in_place: bool = Fals
     except KeyError as e:
         return fail(f"refused: {e.args[0]}")
     if status != "ready":
-        return fail(f"refused: {story_id} is [{status}], spawn requires [ready]")
+        return fail(
+            f"refused: {story_id} is [{status}], spawn requires [ready]. A card starts"
+            " [planned]; the plan review is what clears it — twice in sprint-003 a card"
+            " reached a teammate with no review, and only a human caught it"
+        )
     if in_place:
         if dry_run:
             print(
