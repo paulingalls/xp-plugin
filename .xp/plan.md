@@ -416,7 +416,7 @@ the lead files a note and lands by hand, which is exactly what 012a round 4 did.
 every release, so the key is per-sprint and lives on the branch it names, and the
 harm it feared is already a refusal (story-005).
 
-#### story-010 — size-ratchet   [ready]
+#### story-010 — size-ratchet   [done]
 Context: DESIGN §9's budgets become a command. FIRST, not last: the close
 component measures 1,041 of 1,100 today (close.py 490 + review.py 218 +
 bookkeep.py 129 + sprint_close.py 204) and story-014 spends into that headroom —
