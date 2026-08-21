@@ -1537,6 +1537,23 @@ class TestFixingReviewer:
         r = close(repo, env, "review")
         assert r.returncode == 2 and ".xp" in r.stderr
 
+    def test_a_reviewer_may_fix_an_xp_file_the_story_itself_edits(self, tmp_path):
+        """The refusal message says "the plan or the rules"; the check was the whole
+        directory. Measured at story-010, whose card names .xp/system.md in Files —
+        deleting the budget numbers from it IS an AC — so the reviewer refining that
+        same file wedged the story: no round recorded, nine fixes left ungated."""
+        repo, env, _g = make_repo(tmp_path)
+        self.fixing_stub(
+            tmp_path,
+            extra=(
+                "echo '- run ratchet.py' >> .xp/system.md\n"
+                f"git -c user.name='{REVIEWER_NAME}' -c user.email='r@xp'"
+                " commit -qam 'point system.md at the command'\n"
+            ),
+        )
+        r = close(repo, env, "review")
+        assert r.returncode == 0, r.stderr
+
     def test_an_abort_names_the_undo_for_the_reviewer_commits(self, tmp_path):
         """AC 8: "nothing was recorded" was written for a reviewer that could not
         write. The tree now holds commits from a process refused mid-fix."""

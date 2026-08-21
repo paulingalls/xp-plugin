@@ -381,7 +381,7 @@ TO SPRINT 4 with the `--reviewer` override, which is that adapter's seam and not
 a standalone want. Sprint-002 closed by finding defects in the close machinery
 ITSELF — an unbounded re-review, and three resolutions of which two, then three,
 did not cover their claims. A second harness on top of that buys blast radius,
-not product. FIVE stories against a cap of 6, and the smallness is deliberate:
+not product. SIX stories against a cap of 6, and the smallness is deliberate:
 two are `Close review: deep`, one breaches a file cap on day one, and Sprint 4
 reopens the same files.
 ADDED MID-SPRINT (Paul's call — the human schedules, agents record): story-017,
@@ -548,45 +548,89 @@ Close review: standard
 Executor: (default)
 
 #### story-017 — the teammate spawn is live and durable   [ready]
-Context: A RECOVERED DIRECTIVE, not new scope. At story-008's close Paul directed
-that full `claude -p` output be captured, naming ../xp-agents'
-teammate_runner.py `run_with_tee` as the port (notes 1de5317c, 452cf7a9). It had
-three properties — DURABLE, BOUNDED, LIVE. story-012a landed durability and 012b
-boundedness, but by different means (a REPORT_PATH file plus a .diff artifact;
-XP_AGENT_TIMEOUT) and both scoped to the REVIEWER. Liveness landed nowhere and
-the teammate leg got none of the three, so a directive was two-thirds discharged
-and the last third evaporated — nothing in the process can say "two of three
-shipped" (note b6335017). MEASURED at sprint-003: the first real teammate spawn
-was invisible until it exited, and the failure that stopped it was legible only
-because spawn.py's own subprocess printed it. DESIGN §9's first sacrificial
-feature was RENDERING stream-json; note 452cf7a9 established that CONSUMING it is
-not what was cut, so this reverses no decided tradeoff.
-NO WATCHDOG, deliberately: spawn.py's own comment argues a teammate legitimately
-outruns any wall clock, and cmd_spawn's call site has no except, so a bound there
-kills a running story and abandons its worktree. That reasoning stands. Liveness
-is what lets a HUMAN see a hang, which is the property actually wanted.
-WIDENED at story-010's handback (Paul: "we need to work on teammate.md if it
-isn't running things right"), because the same leg owns both halves: the teammate
-reported SUCCESS with an uncommitted tree and spawn exited 0 (note 68780848), and
-the contract it was handed cannot be satisfied as written — the pre-commit wall
-runs the fast tier, so a RED TEST IS UNCOMMITTABLE, while TEAMMATE.md asks for
-"watch it fail" and "small commits" two bullets apart and never reconciles them
-(note 11e799b9, Paul's correction of my first reading). The teammate did the
-sensible thing with a contradictory contract. What it still owes is GREEN commits
-— a test-and-implementation pair per AC is committable — and a handback that is
-not called success while the tree is dirty.
-Size: spawn.py measures 376 of the 2,000 spawn budget; the close component is
-untouched, which is why this can be added without disturbing story-014's squeeze.
-Files: plugins/xp-plugin/scripts/spawn.py, plugins/xp-plugin/TEAMMATE.md,
-tests/test_spawn.py
+Context: A RECOVERED DIRECTIVE (notes 1de5317c, 452cf7a9, b6335017). At story-008's
+close Paul directed that full `claude -p` output be captured, porting ../xp-agents'
+`run_with_tee`. It had three properties — DURABLE, BOUNDED, LIVE. story-012a landed
+durability and 012b boundedness, both by other means and both scoped to the
+REVIEWER; liveness landed nowhere and the teammate leg got none of the three.
+MEASURED at sprint-003: the first real teammate spawn was invisible until it exited.
+REDIRECTED at its plan review, which happened LATE — this card was spawned without
+one (note ec72dd8b) and the review found the headline change unshippable. Measured
+against the installed binary, not reasoned about: `claude -p --output-format
+stream-json` exits 1 with "requires --verbose". `stub_claude` accepts any argv, so
+the suite would have gone green while every real spawn died. The teammate was
+stopped with zero commits; its `teammate_tee.py` name is kept.
+NO WATCHDOG, deliberately (spawn.py:201-204 argues a teammate legitimately outruns
+any wall clock, and cmd_spawn's call site has no except, so a bound there kills a
+running story and abandons its worktree). HONEST CONSEQUENCE, stated so this card
+does not overclaim the way the directive it recovers did: liveness gives a human
+the ABILITY to see a hang; it does not DETECT one. Detection stays "someone
+notices", exactly as today.
+ASSUMPTION, and Paul's to correct: spawns are launched THROUGH THE LEAD's Bash
+tool, not from a human terminal, so "live" means the lead can read a growing file
+mid-run. That is why stdout gets a compact line per event and the LOG gets every
+line verbatim — the raw stream is a firehose of thinking blocks and tool results
+(57 turns on story-010) and would land, truncated, in the lead's context.
+Size: spawn.py measures 376 against constraint 8's per-FILE hard cap of 500, and
+this adds ~90-150 — so the extraction is NAMED, not promised: the loop lands in a
+leaf `scripts/teammate_tee.py`, the split ../xp-agents made for the same reason.
+The close component is untouched; ratchet.py lands this sprint and will measure it.
+Files: plugins/xp-plugin/scripts/spawn.py, plugins/xp-plugin/scripts/teammate_tee.py,
+plugins/xp-plugin/TEAMMATE.md, tests/test_spawn.py, tests/test_close.py
 AC:
-- Given a teammate launch, Then argv carries `--output-format stream-json` and the leg parses the final result object off the stream — fault-inject with a stub emitting a multi-line stream: the parsed result must equal what the single-object `json` path yielded, and a stream carrying NO result object must be an error rather than a silent empty success
-- Given a running teammate, Then every line read is written to BOTH stdout and a project-scoped log, flushed per line — construct it: kill the child mid-stream and assert the log holds the lines emitted before the kill (capture_output holds everything in a pipe and loses ALL of it on kill, measured twice at story-008)
-- Given a re-spawn after a failed run, Then the log APPENDS under a `===== spawn <story> <iso-ts> =====` header — after a hang, the forensic record of the hang is the thing you need, and truncating it is the one unrecoverable move
-- Given a log that cannot be opened, or a write that fails mid-stream, Then the spawn warns and KEEPS DRAINING the child's stdout — best-effort, never load-bearing: ceasing to drain deadlocks a healthy child on a full pipe
-- Given a teammate that ends with a dirty tree or with ZERO commits on its branch, When the spawn finishes, Then it exits NONZERO naming what is uncommitted — the check belongs in the thing doing the work (constraint 5), not in close.py's preflight, which today refuses only after the teammate has reported success and exited. Fault-inject with a stub that writes a file and exits 0
-- Given TEAMMATE.md, Then ONE rule replaces the two bullets that contradict each other (Paul): YOU ARE NOT FINISHED UNTIL EVERY CHANGE IS COMMITTED. The wall gates commits on green, so "all committed" already implies "all green" — one requirement carries both, and nothing needs reconciling. "Watch it fail" goes: it asks for a state this wall makes uncommittable, and diagnosticity is what the reviewer can actually check (note 11e799b9)
-- Given review.py, Then it is UNCHANGED — it parses one object and already has durability in REPORT_PATH. The fence is the AC: widening this to the reviewer is how a two-file story becomes four
+- Given a teammate launch, Then argv carries `--output-format stream-json` AND `--verbose`, which that combination REQUIRES — fault-inject against the real refusal, not the stub: a stub that rejects stream-json-without-verbose must red the old argv and green the new. review.py passes "json" explicitly, so its argv is untouched
+- Given review.py, Then it is UNCHANGED and `tests/test_close.py::TestReviewLeg` passes UNCHANGED — `run_agent` is shared and this story rewrites it, so the proof of a behaviour-preserving change to a shared function is the existing checks passing, which is why test_close.py joins Verify
+- Given a running teammate, Then every line goes verbatim to a project-scoped log, flushed per line, and a COMPACT one-line summary per event goes to stdout — construct it: kill the child mid-stream and assert the log holds the lines emitted before the kill
+- Given a re-spawn after a failed run, Then the log APPENDS under a `===== spawn <story> <iso-ts> =====` header — after a hang the forensic record IS the artifact, and truncating it is the one unrecoverable move
+- Given a log write that fails mid-stream, Then the loop warns and KEEPS CONSUMING the stream — ceasing to drain deadlocks a healthy child on a full pipe. Testable because `tee_stream(lines, log_write, out_write)` is a pure function: inject a writer raising OSError on its second call, assert every line was still consumed, a warning was emitted, and the run completed. An implementation that lets OSError propagate reds on the first assertion
+- Given stderr merged into the stream, Then unparseable lines are logged and skipped, and the ONLY error is the absence of a terminal `type == "result"` object — one hook warning must not fail a good run
+- Given a completed teammate, Then spawn prints one closing line built from that result object (turns, duration, cost, is_error) — this is the parse's only consumer, and without it the parse is a helper with no caller
+- Given a teammate that ends with a dirty tree, or with NO commits of its own, When the spawn finishes, Then it exits NONZERO naming what is uncommitted AND the two recoveries (commit by hand in the worktree, or `git worktree remove` and re-spawn). "No commits of its own" is HEAD-after-the-flip compared with HEAD-after-the-run: `trunk..HEAD` counts the [in-progress] flip and can never reach zero, so that spelling is vacuous by construction. Two injections: a stub that writes a file and exits 0, and the existing stub that writes nothing
+- Given TEAMMATE.md, Then ONE bullet replaces the two that contradict each other: red first, commit green, the wall stands, and a blocked teammate still escalates. Paul's rule holds — you are not finished until every change is committed — but it keeps the `--no-verify` prohibition inside it, because an absolute obligation to commit with the only sentence forbidding the bypass deleted MANUFACTURES the pressure to bypass; and it carves out escalation, or a stuck teammate commits half-written code to satisfy the guard and buries the escalation. "Watch it fail" STAYS: the wall gates commits, not edits, so watching a test fail is a working-copy action fully compatible with committing green pairs — and TEAMMATE.md is the executor's only contract, so deleting it there while VALUES, PROCESS, CLAUDE.md and the story-reviewer charter all still assert red-first leaves four artifacts diverged and the property enforced by nobody
+- Given tests/test_spawn.py:114 (`test_the_teammate_launch_is_not`), Then it is UPDATED to the new path rather than left passing over one the teammate no longer takes — a falsifier covering an abandoned path is constraint 11's complaint
+Verify: pytest -q tests/test_spawn.py tests/test_close.py
+Close review: deep — raised from standard by the plan review: pipe-blocking and
+deadlock logic, a subprocess contract, a default path the stub cannot execute, and
+a prose contract every future teammate runs under.
+Executor: (default)
+
+#### story-018 — a card that was never plan-reviewed cannot spawn   [planned]
+Context: MEASURED TWICE IN ONE DAY, both caught by Paul rather than by anything in
+the process (notes ec72dd8b, b6335017). story-017 was added mid-sprint, after the
+sprint plan's two review rounds, and spawned with no plan review at all — and
+nothing distinguished it from a card that had survived one. plan.md carries
+[ready]/[in-progress]/[done] and no reviewed bit; spawn does not ask. The lever is
+spawn, because spawn is the thing DOING the work (constraint 5), and a state token
+is deterministic, so nothing in the gate has to judge anything (constraint 7).
+ONE NEW STATE, NOT TWO: `[ready]` already means "cleared to start", which is
+exactly what spawn reads, so the plan review's transition is `[planned]` →
+`[ready]` and a separate `[plan-reviewed]` would be a second name for what
+`[ready]` already says. Grandfathering is honest rather than convenient: every
+card in this repo is `[ready]` and every one was reviewed at the sprint plan —
+except story-017, whose late review is running as this card is written.
+NO PLAN FILE, though the option was on the table: the card IS the plan. A separate
+plan document is a second copy that goes stale, and story-014 demonstrated the
+working pattern — draft it, review it, FOLD IT INTO THE CARD, discard the draft.
+NO DIGEST COVERAGE, deliberately, and against the precedent of story-level land:
+addressing review findings IS editing the card (story-014's was rewritten after
+its review), so a coverage check would red on the normal workflow, and separating
+"edited to address findings" from "edited materially" is judgment, which
+constraint 7 forbids in a deterministic gate. This gate catches NEVER REVIEWED,
+which is the failure that was measured, and nothing more. Stated so the next
+reader does not read the omission as an oversight.
+NOT FIXED BY THIS, and it is the sibling miss: nothing still tracks a directive
+spanning several stories, which is how the stream-json port lost its third part.
+Different absence, still open, deliberately not widened into here.
+Size: spawn.py measures 376 of 2,000 and story-017 is spending in the same file —
+this story runs AFTER it and re-measures rather than estimating against a stale
+number, the mistake story-014's card made about the close component.
+Files: plugins/xp-plugin/scripts/spawn.py, plugins/xp-plugin/templates/plan.md,
+plugins/xp-plugin/PROCESS.md, tests/test_spawn.py
+AC:
+- Given a card marked `[planned]`, When spawn runs, Then it REFUSES, naming the missing plan review and the transition that clears it — fault-inject: the same fixture card at `[ready]` must launch, or the test proves only that spawn can refuse something
+- Given a card whose status token is unrecognised, When spawn runs, Then it REFUSES rather than defaulting to launch — an unknown token must never read as permission, and a typo is the likely real case
+- Given close.py and sprint_close.py, Then they are UNCHANGED: `[in-progress]` still gates the close and `[done]` still gates the sprint close. The fence is the AC, because a four-state change invites touching every state machine that reads plan.md
+- Given PROCESS.md and templates/plan.md, Then they name the four states and which transition the plan review performs, displacing equal prose (constraint 1)
 Verify: pytest -q tests/test_spawn.py
 Close review: standard
 Executor: (default)
