@@ -71,6 +71,19 @@ def test_fixture_dense_comments_reds_naming_density_and_file(tmp_path):
     assert "chatty.py" in violation, violation
 
 
+def test_density_is_the_aggregate_not_the_worst_file(tmp_path):
+    """One chatty small file does not breach a repo that is overwhelmingly code.
+    DESIGN §9 budgets the ratio of shipped Python, not of any single file, and the
+    single-file fixture above passes against a per-file implementation too."""
+    root = build_scripts_tree(
+        tmp_path,
+        {"chatty.py": "# comment\n" * 9 + "x = 1\n", "bulk.py": "x = 1\n" * 200},
+    )
+    result = run_ratchet(root)
+    assert result.returncode == 0, result.stdout
+    assert "chatty.py" in result.stdout, result.stdout  # still named as worst
+
+
 def test_empty_scripts_tree_refuses_rather_than_certifying(tmp_path):
     root = build_scripts_tree(tmp_path, {})
     result = run_ratchet(root)
