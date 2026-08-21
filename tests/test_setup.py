@@ -52,7 +52,10 @@ class TestScaffold:
         assert "sprint_cap" in cfg and "debt_budget" in cfg and "constraints_cap" in cfg
         plan = (repo / ".xp" / "plan.md").read_text()
         card, status = story_card(plan, "story-001")  # template parses with the real parser
-        assert status == "ready" and verify_commands(card)
+        # SEEDED [planned], not [ready]: a scaffolded project's first card must not
+        # be spawnable before its plan review. Both sprint-003 misses were forgetting,
+        # and a state nothing defaults to cannot catch forgetting.
+        assert status == "planned" and verify_commands(card)
         assert (repo / ".xp" / "system.md").exists()
 
     def test_existing_xp_refused_untouched(self, tmp_path):
