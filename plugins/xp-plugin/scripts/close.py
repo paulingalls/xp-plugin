@@ -32,7 +32,7 @@ from bookkeep import (
     render_noted,
     render_prior_rounds,
 )
-from work import chdir_repo_root, config_block_value, data_root
+from work import chdir_repo_root, config_block_value, data_root, work_entries_since
 
 
 def fail(msg: str) -> "int":
@@ -119,35 +119,21 @@ def origin_trunk_sha(trunk: str) -> str | None:
     return r.stdout.strip() if r.returncode == 0 else None
 
 
+def trunk_worktree(trunk: str) -> str:
+    """Path of the worktree holding <trunk>, or "" if no tree has it checked out."""
+    path = ""
+    for ln in git("worktree", "list", "--porcelain").stdout.splitlines():
+        if ln.startswith("worktree "):
+            path = ln[9:]
+        elif ln == f"branch refs/heads/{trunk}":
+            return path
+    return ""
+
+
 def marker_path(story_id: str) -> Path:
     d = data_root() / "markers"
     d.mkdir(parents=True, exist_ok=True)
     return d / f"{story_id}.close.json"
-
-
-def work_entries_since(branch_point_epoch: int) -> str:
-    """work.md entries whose header timestamp postdates the branch point."""
-    from datetime import datetime, timezone
-
-    path = data_root() / "work.md"
-    if not path.exists():
-        return ""
-    out, keep = [], False
-    for ln in path.read_text().splitlines():
-        if ln.startswith("## "):
-            ts = ln.rsplit(" ", 1)[1]
-            try:
-                epoch = (
-                    datetime.strptime(ts, "%Y-%m-%dT%H:%M:%SZ")
-                    .replace(tzinfo=timezone.utc)
-                    .timestamp()
-                )
-                keep = epoch >= branch_point_epoch
-            except ValueError:
-                keep = False
-        if keep:
-            out.append(ln)
-    return "\n".join(out)
 
 
 def build_bundle(card: str, base: str, report: Path, prior: str = "") -> str:
@@ -369,6 +355,16 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
             if r.returncode != 0:
                 return fail(f"{c[0]} failed: {r.stderr.strip()}")
     else:
+        # git refuses to check out a branch held by another worktree (exit 128), and
+        # that is spawn.py's DEFAULT arrangement — the lead's tree holds trunk, the
+        # story lives in a worktree. Refuse with the next action rather than dying
+        # on an unchecked CalledProcessError, which is what landing story-010 did.
+        if (held := trunk_worktree(trunk)) and Path(held).resolve() != Path.cwd().resolve():
+            return fail(
+                f"refused: {trunk} is checked out at {held}, so this tree cannot merge into"
+                f" it. Land from there: remove this worktree (`git worktree remove {Path.cwd()}`),"
+                f" `git switch {branch}` in {held}, and re-run land"
+            )
         git("checkout", trunk)
         merged = git("merge", "--no-ff", branch, "-m", message, check=False)
         if merged.returncode != 0:

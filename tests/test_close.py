@@ -1537,6 +1537,25 @@ class TestFixingReviewer:
         r = close(repo, env, "review")
         assert r.returncode == 2 and ".xp" in r.stderr
 
+    def test_land_from_a_worktree_does_not_traceback(self, tmp_path):
+        """spawn.py's DEFAULT is a worktree, and the lead's tree holds the
+        integration target — so `git checkout trunk` inside the story worktree
+        exits 128 ("already checked out") and cmd_land dies with an uncaught
+        CalledProcessError. Measured landing story-010: the whole default teammate
+        path could never reach a merge. A refusal naming the fix is the floor."""
+        repo, env, g = make_repo(tmp_path)
+        self.fixing_stub(tmp_path)
+        assert close(repo, env, "review").returncode == 0
+        tree = tmp_path / "wt"
+        branch = g("rev-parse", "--abbrev-ref", "HEAD").stdout.strip()
+        # the lead's tree holds trunk; the story branch lives in the worktree —
+        # spawn.py's default arrangement, which is the whole point
+        g("checkout", "-q", "main")
+        g("worktree", "add", str(tree), branch)
+        r = close(tree, env, "land", "--merge-mode", "local")
+        assert "Traceback" not in r.stderr, r.stderr
+        assert r.returncode in (0, 2), r.stderr
+
     def test_a_reviewer_may_fix_an_xp_file_the_story_itself_edits(self, tmp_path):
         """The refusal message says "the plan or the rules"; the check was the whole
         directory. Measured at story-010, whose card names .xp/system.md in Files —

@@ -381,7 +381,7 @@ TO SPRINT 4 with the `--reviewer` override, which is that adapter's seam and not
 a standalone want. Sprint-002 closed by finding defects in the close machinery
 ITSELF — an unbounded re-review, and three resolutions of which two, then three,
 did not cover their claims. A second harness on top of that buys blast radius,
-not product. SIX stories against a cap of 6, and the smallness is deliberate:
+not product. FIVE stories against a cap of 6, and the smallness is deliberate:
 two are `Close review: deep`, one breaches a file cap on day one, and Sprint 4
 reopens the same files.
 ADDED MID-SPRINT (Paul's call — the human schedules, agents record): story-017,
@@ -389,6 +389,15 @@ second in the running order. It is a RECOVERED DIRECTIVE rather than new scope
 (note b6335017), and it lands in spawn.py, so it competes with nothing here for
 the close component's headroom. Second because every remaining story runs through
 the leg it fixes.
+CUT AFTER ITS PLAN REVIEW: story-018 ([planned] as a spawn gate) rested on a false
+premise I asserted without checking — spawn.py:299 is already a WHITELIST
+(`if status != "ready": refuse`), so both of its ACs passed against HEAD and
+tests/test_spawn.py:274 already covered the class. The review measured it rather
+than reasoning about it. What was genuinely missing is smaller and different:
+nothing ever WRITES [planned], and both misses this sprint were forgetting, which
+a state nobody defaults to cannot catch. Done inline instead of carded — loud,
+patch-scale, minutes: the template seeds [planned], spawn's refusal names the
+likely cause, PROCESS.md states the transition.
 CUT AT PLANNING (Paul's steer: keep it simple, agents have judgment, we do not
 need to handle every corner case — note 33ff82cc): story-013 (constraints
 promotion with char caps) as bookkeeping under constraint 3, since the plan
@@ -539,11 +548,11 @@ five nouns at 32-34 trimmed to two (~12), and check 5's header (~10). Measured
 before: 524 words, 6 checks. Do not touch 25-28, 58-60 or 12-13.
 Files: plugins/xp-plugin/agents/plan-reviewer.md, tests/test_ratchet.py
 AC:
-- Given the plan-reviewer charter, Then check 4 carries the CUT duty — name the stories and ACs that should not exist, say what is lost by cutting each, rank the cut with the other findings — the file has FIVE checks where it had six, and its word count is ≤ 524 as a backstop. The check count is the load-bearing number; the card carries before/after so the plan reviewer can check it, and ratchet.py keeps enforcing only the aggregate agent-prose budget it already owns (1,236 of 2,500 today, not binding here)
+- Given the plan-reviewer charter, Then check 4 carries the CUT duty — name the stories and ACs that should not exist, say what is lost by cutting each, rank the cut with the other findings — the file has FIVE checks where it had six, and its word count is ≤ 524 as a backstop. The check count is the load-bearing number; the card carries before/after so the plan reviewer can check it. NOTE, corrected at story-010's close review: ratchet.py measures NO prose word count — it owns the Python budgets only, and the 1,236-of-2,500 figure belongs to spawn.py's injection profile, whose own comment says 'reported, never enforced'. The word count is therefore a card-level check by the plan reviewer, not a CI one, and this story must say so rather than inherit a mechanism that does not exist
 - Given tests/fixtures/overdesigned_plan.md (story-013 and story-015 as first written this sprint), COPIED to a directory outside this repo for the run so its later history and note 33ff82cc are not reachable — the sprint header names both cuts and note 33ff82cc gives the reasoning, so an in-repo fixture is open-book — When a fresh plan reviewer is run against it under the OLD charter and again under the NEW, with the same prompt and no simplicity question in either, Then the new arm recommends cutting at least one story and the old arm does not. TWO ARMS OR NONE: a single green arm measures the prompt and certifies the charter, and if both arms cut, the diagnosis was wrong and we learn that for one extra spawn, which is what a falsifier is for
 - Given a THIRD arm — new charter, same fixture, same prompt, but VALUES.md INLINED in the prompt rather than pointed at — Then its findings are compared with arm 2's, and the comparison is recorded whichever way it falls. The question is Paul's: prose telling an agent to read a doc may cause the file to be opened without making it binding, because a file an agent READS arrives as tool output (data) while charter prose arrives as instruction — a boundary this repo already draws in session_start.py, which wraps repo content as "not plugin instructions". MEASURED so far, and it is only half an answer: the round-1/2 reviewer did read VALUES.md (one Read, plus a wc -w) and named the five values 99 times. That shows the pointer causes the read, not that it binds. The counter-evidence is the lead: VALUES.md is injected verbatim into every lead session and the lead still built a guard it had cut minutes earlier (note 997c0c63), so presence is not the variable that moved — independence was. One extra spawn buys the difference between "changes what a reviewer CATCHES" and "changes what it CITES", and if it changes nothing the pointer stays and 230 words stay out of every prompt
 - Given the walk, Then its outcome is recorded in work.md with the reviewer's own words, all three arms, including the outcomes where the diagnosis is refuted
-Verify: pytest -q tests/test_ratchet.py -k prose
+Verify: pytest -q tests/test_close.py -k plan_reviewer_charter  (NOT `-k prose`, which already selects story-010's unrelated test and exits 0 — a Verify that greens before the story writes a line, measured at story-010's close review)
 Close review: standard
 Executor: (default)
 
@@ -592,45 +601,4 @@ Verify: pytest -q tests/test_spawn.py tests/test_close.py
 Close review: deep — raised from standard by the plan review: pipe-blocking and
 deadlock logic, a subprocess contract, a default path the stub cannot execute, and
 a prose contract every future teammate runs under.
-Executor: (default)
-
-#### story-018 — a card that was never plan-reviewed cannot spawn   [planned]
-Context: MEASURED TWICE IN ONE DAY, both caught by Paul rather than by anything in
-the process (notes ec72dd8b, b6335017). story-017 was added mid-sprint, after the
-sprint plan's two review rounds, and spawned with no plan review at all — and
-nothing distinguished it from a card that had survived one. plan.md carries
-[ready]/[in-progress]/[done] and no reviewed bit; spawn does not ask. The lever is
-spawn, because spawn is the thing DOING the work (constraint 5), and a state token
-is deterministic, so nothing in the gate has to judge anything (constraint 7).
-ONE NEW STATE, NOT TWO: `[ready]` already means "cleared to start", which is
-exactly what spawn reads, so the plan review's transition is `[planned]` →
-`[ready]` and a separate `[plan-reviewed]` would be a second name for what
-`[ready]` already says. Grandfathering is honest rather than convenient: every
-card in this repo is `[ready]` and every one was reviewed at the sprint plan —
-except story-017, whose late review is running as this card is written.
-NO PLAN FILE, though the option was on the table: the card IS the plan. A separate
-plan document is a second copy that goes stale, and story-014 demonstrated the
-working pattern — draft it, review it, FOLD IT INTO THE CARD, discard the draft.
-NO DIGEST COVERAGE, deliberately, and against the precedent of story-level land:
-addressing review findings IS editing the card (story-014's was rewritten after
-its review), so a coverage check would red on the normal workflow, and separating
-"edited to address findings" from "edited materially" is judgment, which
-constraint 7 forbids in a deterministic gate. This gate catches NEVER REVIEWED,
-which is the failure that was measured, and nothing more. Stated so the next
-reader does not read the omission as an oversight.
-NOT FIXED BY THIS, and it is the sibling miss: nothing still tracks a directive
-spanning several stories, which is how the stream-json port lost its third part.
-Different absence, still open, deliberately not widened into here.
-Size: spawn.py measures 376 of 2,000 and story-017 is spending in the same file —
-this story runs AFTER it and re-measures rather than estimating against a stale
-number, the mistake story-014's card made about the close component.
-Files: plugins/xp-plugin/scripts/spawn.py, plugins/xp-plugin/templates/plan.md,
-plugins/xp-plugin/PROCESS.md, tests/test_spawn.py
-AC:
-- Given a card marked `[planned]`, When spawn runs, Then it REFUSES, naming the missing plan review and the transition that clears it — fault-inject: the same fixture card at `[ready]` must launch, or the test proves only that spawn can refuse something
-- Given a card whose status token is unrecognised, When spawn runs, Then it REFUSES rather than defaulting to launch — an unknown token must never read as permission, and a typo is the likely real case
-- Given close.py and sprint_close.py, Then they are UNCHANGED: `[in-progress]` still gates the close and `[done]` still gates the sprint close. The fence is the AC, because a four-state change invites touching every state machine that reads plan.md
-- Given PROCESS.md and templates/plan.md, Then they name the four states and which transition the plan review performs, displacing equal prose (constraint 1)
-Verify: pytest -q tests/test_spawn.py
-Close review: standard
 Executor: (default)
