@@ -194,7 +194,7 @@ Injection budgets are enforced outward too: `config.yml` caps constraints.md's s
 | Per-session injection | ~10k+ tokens | < 3k tokens | ~70% |
 | Kickoff subagent tax | ~115k tokens measured | 0 | 100% |
 
-These are acceptance criteria for the build, not aspirations: CI fails a size ratchet if the budgets are exceeded. Meta-tests are budgeted too: test lines ≤ 2× code lines (today: 3.6×).
+These are acceptance criteria for the build, not aspirations: `ratchet.py` fails at pre-push if the budgets are exceeded (the sub-allocation below is its sole other copy — CLAUDE.md and system.md point here and to the command, never restate the numbers). Meta-tests are budgeted too: test lines ≤ 2× code lines (today: 3.6×).
 
 **Prose inside code is budgeted like any other prose**: comments + docstrings ≤ 20% of shipped Python lines, and the ratchet only ever lowers it. The predecessor reached 33% with no counter-pressure. The reason it needs a number rather than good intentions: a comment is the one artifact no test can check, so it goes stale SILENTLY — sprint-002 found a comment still describing a block that had moved away from it, asserting something false, with the suite green. The rubric that says which prose to cut ships in PROCESS.md, TEAMMATE.md and the reviewer charter (pinned identical — none of the three readers receives the others); the number lives here because only CI can count.
 

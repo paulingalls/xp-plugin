@@ -1,0 +1,137 @@
+"""story-010: size ratchet. Sole holder of the sub-budget numbers (DESIGN §9
+keeps the total, rationale and sacrificial-feature order; this file is the only
+place a budget NUMBER may live in code or prose besides DESIGN.md itself).
+
+Usage: python3 ratchet.py [--root PATH]
+"""
+
+import argparse
+import ast
+import sys
+import tokenize
+from pathlib import Path
+
+SPAWN = 2000
+CLOSE = 1100
+HOOKS = 1000
+MISC = 900
+TOTAL = 5000
+
+CLOSE_FILES = {"close.py", "review.py", "bookkeep.py", "sprint_close.py"}
+HOOKS_FILES = {"session_start.py", "stop_gate.py", "bash_status.py"}
+SPAWN_FILES = {"spawn.py"}
+
+DENSITY_THRESHOLD = 0.20
+
+
+def scripts_dir(root):
+    return root / "plugins" / "xp-plugin" / "scripts"
+
+
+def component_for(name):
+    if name in SPAWN_FILES:
+        return "spawn"
+    if name in CLOSE_FILES:
+        return "close"
+    if name in HOOKS_FILES:
+        return "hooks"
+    return "misc"
+
+
+def count_lines(path):
+    return len(path.read_text().splitlines())
+
+
+def comment_and_docstring_lines(path):
+    text = path.read_text()
+    lines = set()
+
+    for tok in tokenize.generate_tokens(iter(text.splitlines(keepends=True)).__next__):
+        if tok.type == tokenize.COMMENT:
+            lines.add(tok.start[0])
+
+    tree = ast.parse(text)
+    docstring_owners = (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)
+    for node in ast.walk(tree):
+        if not isinstance(node, docstring_owners) or not node.body:
+            continue
+        first = node.body[0]
+        if (
+            isinstance(first, ast.Expr)
+            and isinstance(first.value, ast.Constant)
+            and isinstance(first.value.value, str)
+        ):
+            end = first.end_lineno or first.lineno
+            for lineno in range(first.lineno, end + 1):
+                lines.add(lineno)
+
+    return len(lines)
+
+
+def measure(root):
+    totals = {"spawn": 0, "close": 0, "hooks": 0, "misc": 0}
+    total_lines = 0
+    total_commented = 0
+    worst = None  # (ratio, path) — diagnostic only, not the trigger
+
+    for path in sorted(scripts_dir(root).glob("*.py")):
+        n = count_lines(path)
+        totals[component_for(path.name)] += n
+        total_lines += n
+
+        commented = comment_and_docstring_lines(path)
+        total_commented += commented
+
+        ratio = commented / n if n else 0
+        if worst is None or ratio > worst[0]:
+            worst = (ratio, path)
+
+    density = total_commented / total_lines if total_lines else 0
+    return totals, density, worst
+
+
+def report(root):
+    totals, density, worst = measure(root)
+    budgets = {"spawn": SPAWN, "close": CLOSE, "hooks": HOOKS, "misc": MISC}
+    lines = ["component   measured   cap"]
+    violations = []
+
+    for name in ("spawn", "close", "hooks", "misc"):
+        measured, cap = totals[name], budgets[name]
+        lines.append(f"{name:<10}  {measured:>6}   {cap}")
+        if measured > cap:
+            violations.append(
+                f"BUDGET EXCEEDED: {name} measured {measured}, cap {cap}, over by {measured - cap}"
+            )
+
+    worst_path = worst[1] if worst else None
+    lines.append(
+        f"density     {density:.0%}      {DENSITY_THRESHOLD:.0%}  "
+        f"(worst file: {worst_path.name if worst_path else '(none)'})"
+    )
+    if density > DENSITY_THRESHOLD and worst_path is not None:
+        violations.append(
+            f"DENSITY EXCEEDED: comments+docstrings {density:.0%} of shipped Python, "
+            f"cap {DENSITY_THRESHOLD:.0%}, worst file {worst_path}"
+        )
+
+    return "\n".join(lines), violations
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--root", type=Path, default=Path(__file__).resolve().parents[3])
+    args = parser.parse_args()
+
+    table, violations = report(args.root)
+    print(table)
+    if violations:
+        print()
+        for v in violations:
+            print(v)
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
