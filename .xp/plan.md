@@ -381,9 +381,14 @@ TO SPRINT 4 with the `--reviewer` override, which is that adapter's seam and not
 a standalone want. Sprint-002 closed by finding defects in the close machinery
 ITSELF — an unbounded re-review, and three resolutions of which two, then three,
 did not cover their claims. A second harness on top of that buys blast radius,
-not product. FOUR stories against a cap of 6, and the smallness is deliberate:
+not product. FIVE stories against a cap of 6, and the smallness is deliberate:
 two are `Close review: deep`, one breaches a file cap on day one, and Sprint 4
 reopens the same files.
+ADDED MID-SPRINT (Paul's call — the human schedules, agents record): story-017,
+second in the running order. It is a RECOVERED DIRECTIVE rather than new scope
+(note b6335017), and it lands in spawn.py, so it competes with nothing here for
+the close component's headroom. Second because every remaining story runs through
+the leg it fixes.
 CUT AT PLANNING (Paul's steer: keep it simple, agents have judgment, we do not
 need to handle every corner case — note 33ff82cc): story-013 (constraints
 promotion with char caps) as bookkeeping under constraint 3, since the plan
@@ -542,5 +547,36 @@ AC:
 - Given a THIRD arm — new charter, same fixture, same prompt, but VALUES.md INLINED in the prompt rather than pointed at — Then its findings are compared with arm 2's, and the comparison is recorded whichever way it falls. The question is Paul's: prose telling an agent to read a doc may cause the file to be opened without making it binding, because a file an agent READS arrives as tool output (data) while charter prose arrives as instruction — a boundary this repo already draws in session_start.py, which wraps repo content as "not plugin instructions". MEASURED so far, and it is only half an answer: the round-1/2 reviewer did read VALUES.md (one Read, plus a wc -w) and named the five values 99 times. That shows the pointer causes the read, not that it binds. The counter-evidence is the lead: VALUES.md is injected verbatim into every lead session and the lead still built a guard it had cut minutes earlier (note 997c0c63), so presence is not the variable that moved — independence was. One extra spawn buys the difference between "changes what a reviewer CATCHES" and "changes what it CITES", and if it changes nothing the pointer stays and 230 words stay out of every prompt
 - Given the walk, Then its outcome is recorded in work.md with the reviewer's own words, all three arms, including the outcomes where the diagnosis is refuted
 Verify: pytest -q tests/test_ratchet.py -k prose
+Close review: standard
+Executor: (default)
+
+#### story-017 — the teammate spawn is live and durable   [ready]
+Context: A RECOVERED DIRECTIVE, not new scope. At story-008's close Paul directed
+that full `claude -p` output be captured, naming ../xp-agents'
+teammate_runner.py `run_with_tee` as the port (notes 1de5317c, 452cf7a9). It had
+three properties — DURABLE, BOUNDED, LIVE. story-012a landed durability and 012b
+boundedness, but by different means (a REPORT_PATH file plus a .diff artifact;
+XP_AGENT_TIMEOUT) and both scoped to the REVIEWER. Liveness landed nowhere and
+the teammate leg got none of the three, so a directive was two-thirds discharged
+and the last third evaporated — nothing in the process can say "two of three
+shipped" (note b6335017). MEASURED at sprint-003: the first real teammate spawn
+was invisible until it exited, and the failure that stopped it was legible only
+because spawn.py's own subprocess printed it. DESIGN §9's first sacrificial
+feature was RENDERING stream-json; note 452cf7a9 established that CONSUMING it is
+not what was cut, so this reverses no decided tradeoff.
+NO WATCHDOG, deliberately: spawn.py's own comment argues a teammate legitimately
+outruns any wall clock, and cmd_spawn's call site has no except, so a bound there
+kills a running story and abandons its worktree. That reasoning stands. Liveness
+is what lets a HUMAN see a hang, which is the property actually wanted.
+Size: spawn.py measures 376 of the 2,000 spawn budget; the close component is
+untouched, which is why this can be added without disturbing story-014's squeeze.
+Files: plugins/xp-plugin/scripts/spawn.py, tests/test_spawn.py
+AC:
+- Given a teammate launch, Then argv carries `--output-format stream-json` and the leg parses the final result object off the stream — fault-inject with a stub emitting a multi-line stream: the parsed result must equal what the single-object `json` path yielded, and a stream carrying NO result object must be an error rather than a silent empty success
+- Given a running teammate, Then every line read is written to BOTH stdout and a project-scoped log, flushed per line — construct it: kill the child mid-stream and assert the log holds the lines emitted before the kill (capture_output holds everything in a pipe and loses ALL of it on kill, measured twice at story-008)
+- Given a re-spawn after a failed run, Then the log APPENDS under a `===== spawn <story> <iso-ts> =====` header — after a hang, the forensic record of the hang is the thing you need, and truncating it is the one unrecoverable move
+- Given a log that cannot be opened, or a write that fails mid-stream, Then the spawn warns and KEEPS DRAINING the child's stdout — best-effort, never load-bearing: ceasing to drain deadlocks a healthy child on a full pipe
+- Given review.py, Then it is UNCHANGED — it parses one object and already has durability in REPORT_PATH. The fence is the AC: widening this to the reviewer is how a two-file story becomes four
+Verify: pytest -q tests/test_spawn.py
 Close review: standard
 Executor: (default)
