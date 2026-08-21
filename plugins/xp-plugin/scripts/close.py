@@ -445,6 +445,10 @@ def _flip_status(plan: str, story_id: str) -> str:
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__)
     sub = p.add_subparsers(dest="kind", required=True)
+    sp = sub.add_parser("sprint")
+    sp.add_argument("sprint_id")
+    sp.add_argument("action", choices=["start", "land", "post-merge"])
+    sp.add_argument("--dry-run", action="store_true")
     s = sub.add_parser("story")
     s.add_argument("story_id")
     s.add_argument("action", choices=["review", "land"])
@@ -465,6 +469,14 @@ def main() -> int:
         )
     if not chdir_repo_root():
         return fail("refused: not inside a git repository")
+    if a.kind == "sprint":
+        import sprint_close
+
+        if a.action == "start":
+            return sprint_close.cmd_start(a.sprint_id)
+        if a.action == "land":
+            return sprint_close.cmd_land(a.sprint_id, a.dry_run)
+        return sprint_close.cmd_post_merge(a.sprint_id)
     if a.action == "review":
         return cmd_review(a.story_id, a.dry_run)
     return cmd_land(a.story_id, a.merge_mode, a.dry_run)

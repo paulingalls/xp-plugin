@@ -51,12 +51,16 @@ One page. The values (VALUES.md) cover what this page doesn't.
 - **debt** — claim + falsifier (currently green) + files. Considered only at sprint
   planning: scheduled or dropped to archive. Never scheduled mid-sprint unless it
   blocks the current story's acceptance (which makes it a bug).
+- **Polarity**: a debt or archived falsifier asserts the system is still OK. Red means
+  the latent problem materialised. One that greens BECAUSE the flaw is present is
+  inverted, and aborts the sprint close on the day someone fixes it.
+- **resolve** — substitutes a falsifier that must be green NOW; the batch runs the
+  replacement, so a wrong resolution reds later and the record reopens. Records are
+  named by id (`work.py list`), never by timestamp: 48 appends in one second share one.
 - **note** — decisions (choice + because, naming which value won and which lost)
-  and discoveries. Triaged at SPRINT close: promoted to constraints.md, or
-  archived — so a note never reaches the story it talks about, and the session
-  banner shows only the last few. A directive the next story must FOLLOW goes on
-  that story's CARD, which close.py reads, the plan reviewer gets, and spawn
-  inlines into the teammate; the note keeps the evidence.
+  and discoveries. Triaged at SPRINT close: promoted to constraints.md, or archived.
+  A directive the next story must FOLLOW goes on that story's CARD, which close.py
+  reads and spawn inlines into the teammate; the note keeps the evidence.
 
 Telemetry (test/lint failures) is never recorded — the gate re-measures next run.
 

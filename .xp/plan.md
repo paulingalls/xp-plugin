@@ -303,7 +303,7 @@ AC:
 Verify: pytest -q tests/test_close.py tests/test_spawn.py
 Close review: deep
 Executor: (default)
-#### story-009 — sprint-close pipeline   [ready]
+#### story-009 — sprint-close pipeline   [done]
 Context: Automates Sprint 1's hand-run close, in its OWN module,
 scripts/sprint_close.py, behind a ~2-line `close.py sprint` dispatch. close.py is
 474/500 and the §9 close component is 821 of the 1,100 it was raised to, so this
