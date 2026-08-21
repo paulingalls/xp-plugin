@@ -741,6 +741,92 @@ Verify: pytest -q tests/test_close.py
 Close review: deep
 Executor: (default)
 
+#### story-022 — the review that finds, judges, fixes, then clears   [planned]
+Context: MEASURED at sprint-003's close by running three reviewers over the SAME
+release diff. The single sprint-reviewer found 1 blocking + 8 noted. A frozen
+iteration of the harness's own reviewer found 5, including the only defect that
+broke the OUT-OF-THE-BOX path. A 28-agent multi-angle pass (ported from xp-agents'
+xp-code-review shape) found FOUR more, all CONFIRMED, all silent: a review
+credential with no writer and no clearer, a deny-list that let the agent under
+review write a file spawn EXECUTES via shell, an exemption that waved through the
+gate's own config, and a failed fetch recording a pre-merge sha then deleting the
+marker. Three shapes, three different capabilities — process context, empirical
+execution, sustained narrow attention — and the third found what the others could
+not because nobody holding a whole diff carries one question across every line.
+WHY WE OWN IT RATHER THAN CALL THE HARNESS'S: `/code-review` is harness-owned and
+has been CHANGED AND REMOVED across versions. A release gate that can vanish under
+a consuming project is not a gate. This is constraint 5's logic at the scale of a
+mechanism: a frozen iteration we control beats a better one we do not.
+THE COST PROBLEM, measured: 1.47M tokens and 28 agents, against 135K for the
+harness pass. TWENTY-TWO refuter agents killed THREE candidates — ~80% of the
+spend bought a 12% filter, because xp-agents runs one refuter per LOCATION and
+locations barely collide.
+THE BAR IS TWO BARS, and conflating them is why the report was long (Paul's call
+at the close). CONFIDENCE stays generous — PLAUSIBLE is the default, refuters
+decide, and the four findings that mattered were ones a finder was least sure of
+at first sight; tightening here is the failure the verdict ladder names, where
+looking rigorous quietly removes what the review exists to surface. CONSEQUENCE
+gets strict AT FIND TIME: PROCESS.md's finding bar already says a finding earns
+work only if its failure mode is SILENT or CORRUPTING, and the angles never
+carried it. Checked against the close: every finding the lead acted on was silent;
+the bar would have roughly halved the report and kept all of them.
+Size: xp-agents' code_review.js is 479 lines and this is NOT a port of it. Target
+a fraction: the angles ship as prose (`.md`, project-neutral by construction —
+state/lifecycle, test vacuity, line scan, removed behavior, cross-file, language
+pitfalls, cleanup) and the control flow is the small part. Price it at the plan
+step against a close component sitting at 1,300 of 1,300 — a rebalance from spawn
+(567 of 1,950) is the named source and it is Paul's call, not the story's.
+Files: plugins/xp-plugin/workflows/*, plugins/xp-plugin/scripts/*_angle_*.md,
+plugins/xp-plugin/scripts/sprint_close.py, plugins/xp-plugin/scripts/review.py,
+plugins/xp-plugin/skills/sprint-close/SKILL.md, docs/DESIGN.md, tests/*
+AC:
+- Given the broad lens, Then it runs N BLIND finders — each reading only its own angle file, each over the WHOLE diff, never a slice — and a finder that did not read its angle is detectable, because a mis-rendered path otherwise yields a generalist pass that looks exactly like a working one. Fault-inject the path
+- Given a finder, Then its instructions carry PROCESS.md's finding bar as the CONSEQUENCE test (silent or corrupting earns a finding; loud and self-healing never does) while leaving CONFIDENCE generous. Assert both halves are present: a prompt carrying only one is the conflation this story exists to fix
+- Given candidates, Then verification is BATCHED — one agent judging several, not one per location — and the batch count is bounded by a config key, not by the candidate count. Assert the agent count does not scale 1:1 with candidates, which is the 22-to-kill-3 shape measured at sprint-003
+- Given surviving findings, Then a FIXER applies them in the tree, exactly as the story reviewer does — measured at sprint-002: a reporting reviewer took 4 rounds and 11 blocking findings and never converged, a fixing one took 1 round with 7 fixed and 0 blocking. The lead reads its diff; running land is how the lead accepts it
+- Given the fixer has run, Then ONE final pass looks for BLOCKERS ONLY and passes otherwise (Paul's design). A blocker returns to the lead to deal with; anything else is not the closing pass's business. Fault-inject with a planted blocker AND with a clean tree — a pass that cannot fail certifies
+- Given the fixer commits, Then sprint land's coverage check must not be invalidated by the reviewer's OWN fixes — the afbd01a3 wedge. The story leg already solves this: reviewer commits sit INSIDE the reviewed range, gated by authorship (check_reviewer_motion). The sprint leg compares a bare shown_sha and must gain the same authorship-aware range. THIS REVERSES story-014's check_report_only, which was a deliberate mechanism three commits before this card; reverse it knowingly and say so in DESIGN
+- Given the security lens, Then it uses the same machinery with its own angles. It stays: whether a security finding exists is the CONSUMING PROJECT's answer, not ours — a Node app with sessions has the surface this repo does not
+Verify: pytest -q tests/test_sprint_close.py tests/test_review.py
+Close review: deep — it is the gate on every release, and a review that passes
+wrongly is silent by definition.
+Executor: claude/opus
+
+#### story-023 — [ready] is a credential nothing binds to the card   [planned]
+Context: CONFIRMED by sprint-003's multi-angle review. "This card was plan-reviewed"
+is stored as a status bracket on the card's heading — a bit with a reader
+(spawn.py:304) and NO WRITER and NO CLEARER anywhere in scripts/. So editing a
+card's ACs, Files or Verify after its review keeps the credential, and spawn cuts
+a worktree and launches an unbounded teammate on text no plan-reviewer ever saw.
+MEASURED THIS SPRINT, three times, which is what makes it a story rather than a
+worry: story-016's card contradicted itself (Context dropped arm 3, the AC list
+still required it) and a teammate escalated at $0.77; story-018's card and the
+sprint preamble disagreed about which cmd_land branches die; story-016's Context
+said LINES 22-24 STAY while its Size section listed them as funding, and the
+teammate followed Size and deleted two duty-implementing examples. Every one was
+the lead folding a plan review into a card and never reconciling what sat below.
+The bracket said [ready] throughout.
+DESIGN.md:43/125/147 already describe a `<plan-id>.plan-reviewed` marker and a
+PreToolUse write-block. NEITHER EXISTS in scripts/ — the doc describes a mechanism
+that was never built, which is its own finding.
+THE FIX SHAPE, not prescribed but named: make the credential a DIGEST rather than
+a bit. At plan review, hash the whole card block — the same slice close.py takes
+and spawn inlines — and at spawn recompute and refuse on mismatch. The bracket
+becomes display only. That also makes the [planned] -> [ready] transition
+something a mechanism performs rather than something a human remembers, which is
+the other half of what went wrong this sprint.
+Size: spawn is 567 of 1,950 — the one component with real headroom.
+Files: plugins/xp-plugin/scripts/spawn.py, plugins/xp-plugin/scripts/close.py,
+plugins/xp-plugin/PROCESS.md, docs/DESIGN.md, tests/test_spawn.py
+AC:
+- Given a card reviewed and then EDITED below its heading, When spawn runs, Then it REFUSES naming the drift — construct the edit, do not grep for a bracket. The pair matters: the same card unedited must spawn
+- Given the credential, Then it covers the whole card block, not the heading line: every failure this sprint was a change to ACs, Files or Context with the heading untouched
+- Given DESIGN.md:43/125/147, Then they describe what exists — a marker and a PreToolUse block are documented today and neither is built
+- Given a card at [planned], Then whatever writes [ready] is a mechanism, not a hand-edit, or the digest is a credential a human still mints by typing
+Verify: pytest -q tests/test_spawn.py
+Close review: deep
+Executor: (default)
+
 #### story-011 — free mode (card-less close)   [ready]
 Context: `close.py free start <slug>` cuts <user>/free-YYYY-MM-DD-<slug> off the
 default branch and emits a diff-only bundle; review via the 008 pipeline leg;
