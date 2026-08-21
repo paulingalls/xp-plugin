@@ -538,6 +538,76 @@ class TestReviewLeg:
         assert "BROAD-FINDING" not in launches(tmp_path)[1]["stdin"], "prior findings leaked lens"
 
 
+WORK_SECTION = "work.md entries filed during the sprint"
+
+
+def section(bundle, title, until):
+    """A named section's body. Sliced between two titles rather than split on a
+    blank-line-plus-`## ` boundary, because the raw work.md section carries
+    `## note` headings of its own and would cut itself in half."""
+    head = f"## {title}\n\n"
+    start = bundle.index(head) + len(head)
+    return bundle[start : bundle.index(f"## {until}\n\n", start)]
+
+
+class TestResolutionsAreCarried:
+    """AC 5. Three of three resolutions that needed independent reading were
+    caught by a READER, never by resolve()'s green-check (7df6b116, b9382e2d,
+    997c0c63) — and resolutions filed AT the close are read by no reviewer at
+    all, which is the moment they are most likely to be falsified."""
+
+    def _resolved_twice(self, tmp_path):
+        repo, env, _g = make_repo(tmp_path)
+        work(
+            repo,
+            env,
+            "bug",
+            "--claim",
+            "THE-ORIGINAL-CLAIM",
+            "--falsifier",
+            "false # ORIGINAL-FALSIFIER",
+            "--files",
+            "a.py",
+        )
+        ref = work(repo, env, "list").stdout.split()[0]
+        for attempt in ("SUPERSEDED-TRY", "LATEST-TRY"):
+            assert (
+                work(
+                    repo, env, "resolve", "--ref", ref, "--falsifier", f"true # {attempt}"
+                ).returncode
+                == 0
+            )
+        assert sprint(repo, env, "review", "--lens", "broad").returncode == 0
+        return ref, launches(tmp_path)[0]["stdin"]
+
+    def test_the_bundle_carries_the_claim_and_original_falsifier_it_replaced(self, tmp_path):
+        """corpus() cannot serve this: substitution is exactly where it discards
+        the original, and the original is what makes the swap judgeable."""
+        ref, bundle = self._resolved_twice(tmp_path)
+        body = section(bundle, "Resolutions filed during the sprint", WORK_SECTION)
+        assert ref in body
+        assert "THE-ORIGINAL-CLAIM" in body
+        assert "ORIGINAL-FALSIFIER" in body, "no original: the reader cannot judge the swap"
+        assert "LATEST-TRY" in body
+
+    def test_only_the_latest_resolution_per_record_survives(self, tmp_path):
+        _ref, bundle = self._resolved_twice(tmp_path)
+        assert "SUPERSEDED-TRY" not in bundle, "every superseded correction shipped verbatim"
+
+    def test_resolved_blocks_are_filtered_out_of_the_raw_work_md_section(self, tmp_path):
+        """They are work.md entries, so shipping both hands the reviewer the same
+        substitution twice and invites the re-litigation the dedup prevents."""
+        repo, env, _g = make_repo(tmp_path)
+        work(repo, env, "bug", "--claim", "c", "--falsifier", "false", "--files", "a.py")
+        ref = work(repo, env, "list").stdout.split()[0]
+        work(repo, env, "resolve", "--ref", ref, "--falsifier", "true # THE-REPLACEMENT")
+        work(repo, env, "note", "A-PLAIN-NOTE")
+        assert sprint(repo, env, "review", "--lens", "broad").returncode == 0
+        raw = section(launches(tmp_path)[0]["stdin"], WORK_SECTION, "PROCESS")
+        assert "A-PLAIN-NOTE" in raw, "the raw section lost the entries it exists to carry"
+        assert "## resolved " not in raw
+
+
 class TestModeSwitch:
     """Note bae0b87b: findings handed in -> validate each; none handed in -> run
     the full pass. The mode switch is what BOUNDS the work — sprint-002's close
