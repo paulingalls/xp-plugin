@@ -192,15 +192,15 @@ def run_agent(
     argv: list[str],
     cwd: Path,
     prompt: str,
-    role: str = "teammate",
-    capture: bool = False,
+    role: str,
+    capture: bool,
 ) -> subprocess.CompletedProcess:
     """Prompt on stdin: it keeps ~2k tokens out of argv and out of `ps`.
 
-    `role` and `capture` default to the teammate launch, so story-007's call
-    sites are unchanged; story-008's reviewer needs role="reviewer" (close.py
-    refuses any non-lead role, so the reviewer it spawns cannot close either)
-    and capture=True (the verdict has to be read, not streamed past).
+    `role` and `capture` carried defaults shaped for the teammate launch until
+    story-017 moved that leg to teammate_tee.run_teammate. Defaulting them now
+    hands a future caller XP_ROLE=teammate and no wall clock by omission — the
+    two things the branch below turns on.
     """
     env = os.environ | {"XP_ROLE": role}
     # REVIEWER ONLY. It is the one launch that is both long-running AND writing:

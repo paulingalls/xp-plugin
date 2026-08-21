@@ -477,9 +477,9 @@ class TestInPlace:
 
 
 class TestAgentWallClock:
-    """story-012b bounds the reviewer, but run_agent is SHARED with the teammate
-    launch — and cmd_spawn's call site has no except, so a bound there kills a
-    running story with a traceback and abandons its worktree."""
+    """story-012b bounds the reviewer. cmd_spawn's launch call site has no
+    except, so a bound there kills a running story with a traceback and abandons
+    its worktree — the two legs must therefore stay bounded and unbounded."""
 
     def test_the_reviewer_is_bounded(self, monkeypatch, tmp_path):
         import spawn
@@ -560,6 +560,19 @@ class TestLiveTee:
 
         result = tee_stream(['{"type": "system"}\n'], lambda _l: None, lambda _l: None)
         assert result is None
+
+    def test_a_failed_run_is_not_reported_as_ok(self):
+        """`is_error` is one of the four things the card asks the closing line to
+        carry, and it is the only one a lead ACTS on. Gutting both renderings to
+        a constant "ok" left the whole suite green — a teammate that failed was
+        announced as a teammate that succeeded."""
+        from teammate_tee import closing_line, summarize_event
+
+        failed = {"type": "result", "is_error": True, "num_turns": 2}
+        assert "ERROR" in closing_line("story-042", failed)
+        assert "error" in summarize_event(failed)
+        assert "ERROR" not in closing_line("story-042", dict(failed, is_error=False))
+        assert "error" not in summarize_event(dict(failed, is_error=False))
 
     def test_a_log_write_failure_warns_but_does_not_stop_draining(self):
         """Fault-inject: a writer that reds on its second call. Every line must
