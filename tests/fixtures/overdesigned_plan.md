@@ -5,12 +5,6 @@ to has a cap of 6 and currently holds three other stories. The project is a
 lightweight XP process plugin for coding agents; its constraints and system
 context are in the files handed to you alongside this one.
 
-story-013 and story-015 are the sprint's actual cuts (planning judged them
-bookkeeping/redundant-with-existing-loops). story-010 is a NEGATIVE CONTROL — a
-story that survived its own plan review as carded — included to check whether a
-reviewer recommends cutting it too, which would mean it has become trigger-happy
-rather than more discerning.
-
 #### story-013 — constraints promotion with caps   [ready]
 Context: CUT from story-009 at its plan review — a work.py subcommand sharing
 nothing with sprint_close.py but a call site, and the only piece of the sprint

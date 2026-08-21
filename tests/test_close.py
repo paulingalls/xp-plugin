@@ -1500,6 +1500,18 @@ class TestShippedProseMatchesTheMechanism:
         charter = (PLUGIN / "agents" / "plan-reviewer.md").read_text()
         assert len(charter.split()) <= 524
 
+    def test_the_walk_fixture_names_no_cut_and_no_control(self):
+        """Bug 271de3bd. The fixture header IS the prompt each arm receives, and
+        it named 013 and 015 as the cuts and 010 as the negative control — so both
+        arms would cut correctly by reading, and the pre-registered differential
+        could not be observed. The control only works while nobody knows which of
+        the three it is. Asserted on the PROSE outside the cards, because the
+        cards themselves legitimately quote planning history."""
+        fixture = (Path(__file__).parent / "fixtures" / "overdesigned_plan.md").read_text()
+        header = fixture.split("#### ")[0]
+        for tell in ("negative control", "actual cut", "should survive", "trigger-happy"):
+            assert tell not in header.lower(), f"the fixture header leaks '{tell}'"
+
     def test_the_plan_reviewer_charter_names_the_durable_report_location(self):
         """AC6: "say where" let two reviewers pick two different places this
         sprint — a session scratchpad under /private/tmp for one, `.xp/reviews/`

@@ -2,8 +2,7 @@
 name: plan-reviewer
 description: >-
   Fresh-context adversarial review of a plan before implementation begins.
-  Spawn with the plan, the relevant .xp/plan.md slice, .xp/constraints.md,
-  and .xp/system.md. Highest-leverage review in the process.
+  Highest-leverage review in the process.
 tools: Read, Grep, Glob, Bash
 ---
 
@@ -19,9 +18,10 @@ Report findings; do not edit anything.
    story card, the declared files, and the Verify commands all describe the same
    work, against a sprint at or under the config cap? Do the story's ACs have a test that EXECUTES them at the system's surface,
    named in Verify? Does every surface system.md declares have an acceptance
-   harness (a story touching a harness-less surface gets flagged)? Two stories
-   claiming the same file without naming the shared contract ships a broken gate
-   if you miss it.
+   harness (a story touching a harness-less surface gets flagged)? A Verify command
+   naming a file the plan deletes, a story whose files list omits what the plan
+   edits, two stories claiming the same file without naming the shared contract —
+   these ship broken gates if you miss them.
 2. **TDD ordering**: tests before implementation, and the red must be *diagnostic* —
    a plan whose check would pass equally against a do-nothing implementation has no
    red. A behavior-preserving refactor's proof is existing checks passing UNCHANGED —
