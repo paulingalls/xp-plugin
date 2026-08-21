@@ -618,15 +618,24 @@ class TestReviewLeg:
         assert r.returncode == 2 and "broad" in r.stderr and "security" in r.stderr
         assert launches(tmp_path) == []
 
-    def test_shown_sha_is_the_head_captured_BEFORE_the_launch(self, tmp_path):
-        """close.cmd_review records POST-run deliberately, because its motion
-        checks bound what could have moved. This leg has no such checks, so
-        copying that ordering makes anything the reviewer commits count as
-        reviewed and ride the release PR."""
+    def test_a_dirty_tree_is_refused_before_the_reviewer_is_launched(self, tmp_path):
+        """Untested until round 1: deleting this guard left all 54 green. Without
+        it the leg spends a whole review and only then refuses, on dirt the lead
+        may have left."""
         repo, env, _g = make_repo(tmp_path)
-        before = head(repo, env)
-        assert sprint(repo, env, "review", "--lens", "broad").returncode == 0
-        assert json.loads(marker_path(tmp_path, "broad").read_text())["shown_sha"] == before
+        (repo / "src.py").write_text("A = 1\nUNCOMMITTED = 2\n")
+        r = sprint(repo, env, "review", "--lens", "broad")
+        assert r.returncode == 2 and "dirty" in r.stderr
+        assert launches(tmp_path) == [], "reviewed a tree that was already dirty"
+
+    def test_a_sprint_id_with_no_section_in_the_plan_is_refused(self, tmp_path):
+        """Also untested until round 1. cmd_start has this guard; the review leg
+        would otherwise spawn over empty cards and record coverage for a sprint
+        that does not exist, which sprint land then honours."""
+        repo, env, _g = make_repo(tmp_path)
+        r = sprint(repo, env, "review", "--lens", "broad", sprint_id="99")
+        assert r.returncode == 2 and "99" in r.stderr
+        assert launches(tmp_path) == []
 
     def test_dry_run_launches_nothing_and_records_nothing(self, tmp_path):
         repo, env, _g = make_repo(tmp_path)
@@ -768,6 +777,10 @@ class TestReportOnlyIsAMechanism:
     loads the agent file — which is why charter() inlines it."""
 
     def test_a_reviewer_that_COMMITS_is_refused_and_records_nothing(self, tmp_path):
+        """This is ALSO where the pre-launch head capture is pinned. A stub that
+        never commits cannot tell a pre-launch head from a post-run one, so the
+        test that asserted the ordering directly was vacuous and was deleted in
+        round 1; deleting check_report_only's head compare reds THIS test."""
         repo, env, _g = make_repo(tmp_path)
         committing_stub(
             tmp_path,
