@@ -19,15 +19,18 @@ from pathlib import Path
 NOTE_CAP = 2000  # chars; a judgment call, not a derived number
 
 
-def neutralize(text: str) -> str:
-    """A record body must not mint entry headers (Honesty: the record cannot lie).
+STRUCTURAL = re.compile(r"^(## |Claim:|Falsifier:|Resolves:|Files:)", re.M)
 
-    Every field, not just the claim: the block boundary is now the record's ID,
-    and `## resolved` is a verb the sprint-close batch obeys, so a heading forged
-    through any field silences a live bug with no green check ever run.
+
+def neutralize(text: str) -> str:
+    """A record body must not mint a heading OR a field line.
+
+    work.md is a grammar now: the block boundary is the record's id, `## resolved`
+    substitutes another record's falsifier, and the batch EXECUTES the first
+    `Falsifier:` line in a block. So a field forged through any free-text argument
+    silences a live bug with the green check never having run.
     """
-    text = text.replace("\n## ", "\n ## ")
-    return f" {text}" if text.startswith("## ") else text
+    return STRUCTURAL.sub(r" \1", text)
 
 
 def chdir_repo_root() -> bool:
@@ -147,6 +150,18 @@ def entry(kind: str, args: argparse.Namespace) -> str:
     )
 
 
+def _single_line(value: str, field: str) -> bool:
+    if "\n" in value or "`" in value:
+        print(
+            f"refused: --{field} must be one line and must not contain a backtick —"
+            " the record format holds it inside backticks on a single line, so"
+            " anything else forges the record that follows it.",
+            file=sys.stderr,
+        )
+        return False
+    return True
+
+
 def resolve(root: Path, args: argparse.Namespace) -> int:
     """Resolve a record by SUBSTITUTING a falsifier, never by deleting one.
 
@@ -154,6 +169,8 @@ def resolve(root: Path, args: argparse.Namespace) -> int:
     silence a live bug forever. The replacement must be green now and the batch
     runs it, so a wrong resolution reds later and the record reopens.
     """
+    if not _single_line(args.falsifier, "falsifier"):
+        return 2
     matches = [(eid, text) for eid, text in entries(root) if eid == args.ref]
     if len(matches) != 1:
         print(
@@ -220,6 +237,8 @@ def main() -> int:
         print(append(root, f"## note {stamp()}\n{neutralize(text)}\n\n"))
         return 0
 
+    if not _single_line(args.falsifier, "falsifier"):
+        return 2
     green = falsifier_is_green(args.falsifier)  # outside the lock: may be slow
     if args.kind == "bug" and green:
         print(

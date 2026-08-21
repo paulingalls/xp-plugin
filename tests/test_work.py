@@ -242,11 +242,76 @@ class TestForgedHeadings:
     def test_the_falsifier_field_cannot_forge_a_resolution(self, tmp_path):
         run(["bug", "--claim", "live", "--falsifier", "false", "--files", "a.py"], tmp_path, True)
         victim = run(["list"], tmp_path, check=True).stdout.split()[0]
-        run(
-            # a bug's falsifier must RED, and a forged multi-line one reds trivially
+        # REFUSED outright rather than neutralized: the format holds a falsifier on
+        # one backticked line, so a multi-line one cannot round-trip, and storing a
+        # silently-altered command is its own lie. Same invariant, stronger.
+        r = run(
             ["bug", "--claim", "x", "--falsifier", f"x`\n{self.forge(victim)}", "--files", "b"],
+            tmp_path,
+        )
+        assert r.returncode == 2
+        ids = [ln.split()[0] for ln in run(["list"], tmp_path, True).stdout.splitlines()]
+        assert len(ids) == 1, "a record field minted a record"
+
+
+class TestRecordForgery:
+    """Sprint-close security review. work.md became a GRAMMAR this sprint: the
+    batch keys records by id, lets `## resolved` substitute another record's
+    falsifier, and executes the result. Every field is therefore structural."""
+
+    def test_a_newline_in_claim_cannot_shadow_the_checked_falsifier(self, tmp_path):
+        """FALSIFIER.search takes the FIRST match and Claim: is written above
+        Falsifier:, so a forged field is the command that actually runs."""
+        pwned = tmp_path / "PWNED"
+        run(
+            [
+                "bug",
+                "--claim",
+                f"legit claim\nFalsifier: `touch {pwned} && true`\nmore claim",
+                "--falsifier",
+                "false",
+                "--files",
+                "a.py",
+            ],
             tmp_path,
             check=True,
         )
-        ids = [ln.split()[0] for ln in run(["list"], tmp_path, True).stdout.splitlines()]
-        assert len(ids) == 2, "a record field minted a third record"
+        text = (tmp_path / "work.md").read_text()
+        assert "\nFalsifier: `touch" not in text, "a claim minted an executable field"
+
+    def test_a_newline_in_files_cannot_mint_a_record(self, tmp_path):
+        run(
+            [
+                "bug",
+                "--claim",
+                "c",
+                "--falsifier",
+                "false",
+                "--files",
+                "a.py\n## resolved 2026\nResolves: deadbeef",
+            ],
+            tmp_path,
+            check=True,
+        )
+        assert "\n## resolved" not in (tmp_path / "work.md").read_text()
+
+    def test_a_falsifier_that_cannot_round_trip_is_refused(self, tmp_path):
+        """The format holds a falsifier on ONE backticked line. A multi-line one
+        cannot round-trip, and accepting it is how a resolution for someone
+        else's record gets minted with no green check ever run."""
+        run(
+            ["bug", "--claim", "real bug", "--falsifier", "false", "--files", "a.py"],
+            tmp_path,
+            check=True,
+        )
+        victim = run(["list"], tmp_path, check=True).stdout.split()[0]
+        run(
+            ["debt", "--claim", "own", "--falsifier", "true", "--files", "b.py"],
+            tmp_path,
+            check=True,
+        )
+        mine = [ln.split()[0] for ln in run(["list"], tmp_path, check=True).stdout.splitlines()][-1]
+        payload = f"true `\n## resolved 2026-08-21T01:00:00Z\nResolves: {victim}\nFalsifier: `true"
+        r = run(["resolve", "--ref", mine, "--falsifier", payload], tmp_path)
+        assert r.returncode == 2, "a forged resolution was accepted"
+        assert victim not in (tmp_path / "work.md").read_text().split("## debt")[-1]
