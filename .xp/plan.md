@@ -741,6 +741,55 @@ Verify: pytest -q tests/test_close.py
 Close review: deep
 Executor: (default)
 
+#### story-024 — land guards the TREE, not its own bookkeeping   [ready]
+Context: MEASURED at sprint-003's close, which took hours and was overridden twice.
+Land refused FIVE times that day and exactly ONE refusal was about the tree: a red
+falsifier in the batch, which `start` runs, not land. The other four were about
+RECORDED STATE that was stale — trunk checked out in another worktree (land could
+simply do it, and now does), HEAD moved after the lead fixed a typo in a Verify
+line, and twice a marker holding a `blocking[]` that a later round had already
+validated as fixed. In every one of those the tree was correct and the RECORD was
+behind, and the only way to refresh the record was another spawn of a reviewer to
+re-confirm what two reviewers had already confirmed.
+CONSTRAINT 3 IS THE ARGUMENT: a mechanism must be able to tell us something we did
+not already believe. Land never has. Every refusal named something visible — a
+sha, a marker, a checkout — and the unreviewed-merge it claims to prevent has never
+once been attempted, because the process runs the reviews. A gate defending an
+event that has not happened, while blocking merges that were correct, is the trade
+constraint 3 exists to refuse.
+NOT A DELETION (Paul's call, considered and rejected in favour of this): keep what
+is real. Verify and the tier run against the tree that merges and refuse on red —
+that is a property of the tree and it is the half that has never wasted a minute.
+WHAT CHANGES: the sha-freshness family stops REFUSING and starts REPORTING. "HEAD
+moved since the review you were shown" prints what moved and merges. The case it
+defends — an agent slipping a commit into the reviewed range — is already a TREE
+property covered by check_reviewer_motion's authorship gate, which stays hard.
+THE BLOCKING LIST IS THE OTHER HALF, and it is what cost this close: a recorded
+round cannot supersede an earlier round's `blocking[]`, so a fixed finding blocks
+forever until that lens is spawned again. The latest recorded round for a lens
+wins. story-022 carries the fixer that makes this rarer; this card makes it stop
+wedging.
+Size: cmd_land is 185 lines with 15 refusal paths and close.py is 495 of
+constraint 8's 500 — this story REMOVES from both. If it does not come out net
+negative, say so at the plan step rather than adding a component move.
+Files: plugins/xp-plugin/scripts/close.py, plugins/xp-plugin/scripts/sprint_close.py,
+plugins/xp-plugin/skills/story-close/SKILL.md,
+plugins/xp-plugin/skills/sprint-close/SKILL.md, docs/DESIGN.md, tests/test_close.py,
+tests/test_sprint_close.py
+AC:
+- Given HEAD has moved since the recorded review, When land runs, Then it PRINTS what moved and MERGES — fault-inject the pair: the same fixture where a commit in the range was authored by someone other than the reviewer must still REFUSE, because that is check_reviewer_motion's tree property and it stays hard
+- Given a lens whose latest recorded round has `blocking: []`, When an EARLIER round of that lens left blocking findings, Then land proceeds — the latest round wins. Construct two rounds; do not hand-edit a marker
+- Given the story Verify or the tier reds, Then land still REFUSES — this is the half that works and a strip-down that loosened it would be the defect. Both arms
+- Given the strip-down, Then cmd_land is SMALLER: assert its line count and refusal count both fall. A count, not a token grep, and the card carries the before (185 lines, 15 refusals) so the plan reviewer can check it
+- Given both SKILL.md files, Then they no longer describe refusals that are now reports, asserted by the shipped-prose class — and the word budgets stay
+Verify: pytest -q tests/test_close.py tests/test_sprint_close.py
+Close review: deep — it loosens the gate on every merge, and a gate that passes
+wrongly is silent by definition.
+Executor: claude/opus — it removes guards from the most-guarded function in the
+codebase, and the distinction it must hold (tree property vs recorded state) is
+the whole story.
+RUN EARLY, on sprint-003, riding the open v0.4.0 PR (Paul's call at the close).
+
 #### story-022 — the review that finds, judges, fixes, then clears   [planned]
 Context: MEASURED at sprint-003's close by running three reviewers over the SAME
 release diff. The single sprint-reviewer found 1 blocking + 8 noted. A frozen
