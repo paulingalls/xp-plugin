@@ -294,6 +294,12 @@ def cmd_land(sprint_id: str, dry_run: bool) -> int:
     if refusal := _coverage_refusal(sprint_id, git("rev-parse", "HEAD").stdout.strip()):
         return fail(refusal)
     branch = git("rev-parse", "--abbrev-ref", "HEAD").stdout.strip()
+    # start's tier is stale by construction: SKILL.md puts triage, the retro and
+    # the release artifacts BETWEEN it and here, so the tree that ships is never the
+    # tree that was measured (sprint-003: four commits, one of them this file).
+    tier = config_block_value("tests", "full")
+    if tier and subprocess.run(tier, shell=True).returncode != 0:
+        return fail(f"refused: full tier red on the tree you are releasing: {tier}")
     if not (version := _next_version()):
         return _refuse_unbumpable()
     cmds = [

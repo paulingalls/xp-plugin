@@ -882,3 +882,26 @@ class TestLandPromisesOnlyWhatPostMergeDoes:
         src = (PLUGIN / "scripts" / "sprint_close.py").read_text()
         promise = src[src.index("post-merge —") : src.index("post-merge —") + 60]
         assert "bump" not in promise, promise
+
+
+class TestLandRunsTheTierItReleasesOn:
+    """Sprint-003 broad review, blocking. `start` runs the full tier; SKILL.md then
+    MANDATES note triage, the retro, the changelog and the manifest bump BEFORE the
+    reviews, so retro commits cannot invalidate them; `land` checked review coverage
+    and ran no tier. Measured on that close: FOUR commits postdated the tier and one
+    changed sprint_close.py itself. Story-014 gated the reviews and left the tier
+    ungated — c9b48a66's class, one gate over."""
+
+    def test_land_refuses_on_a_red_full_tier(self, tmp_path):
+        repo, env, _g = make_repo(tmp_path, config=CONFIG.replace("full: true", "full: false"))
+        record_reviews(tmp_path, repo, env)
+        r = sprint(repo, env, "land", "--dry-run")
+        assert r.returncode == 2, r.stdout + r.stderr
+        assert "tier" in r.stderr.lower(), r.stderr
+
+    def test_land_proceeds_on_a_green_tier(self, tmp_path):
+        """Absence of a refusal also passes an implementation that deleted the
+        tier, so the green arm pins that land still reaches its normal exit."""
+        repo, env, _g = make_repo(tmp_path)
+        record_reviews(tmp_path, repo, env)
+        assert sprint(repo, env, "land", "--dry-run").returncode == 0
