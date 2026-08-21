@@ -133,6 +133,33 @@ class TestStart:
         r = close(repo, env, "review")
         assert r.returncode == 2 and "in-progress" in r.stderr
 
+    def test_the_story_bundle_diffs_against_the_INTEGRATION_TARGET(self, tmp_path):
+        """Bug 66272ab4: /story-close bundled `main...HEAD`, so under
+        `release: sprint` every earlier story already integrated on the sprint
+        branch rode into this story's review. Its filed falsifier greps SKILL.md
+        for the absence of a token, which constraint 11 forbids — it greens on a
+        rewording while the defect returns.
+
+        The earlier story lives on the SPRINT BRANCH ONLY, never on main: that is
+        what makes the two bases differ, and a first version of this test put it
+        on both and passed against the injected bug."""
+        repo, env, g = make_repo(tmp_path)
+        g("checkout", "-qb", "sprint-001", "main")
+        (repo / "earlier_story.py").write_text("EARLIER_STORY_SENTINEL = 1\n")
+        (repo / ".xp" / "config.yml").write_text(
+            CONFIG + "\nrelease: sprint\nsprint_branch: sprint-001\n"
+        )
+        g("add", "-A")
+        g("commit", "-qm", "an earlier story, integrated on the sprint branch")
+        g("checkout", "-q", "story-042-branch")
+        g("merge", "-q", "--no-edit", "sprint-001")
+        assert close(repo, env, "review").returncode == 0
+        bundle = launches(tmp_path)[0]["stdin"]
+        assert "EARLIER_STORY_SENTINEL" not in bundle, (
+            "the bundle diffed against the default branch, so an already-integrated"
+            " story rode into this story's review"
+        )
+
     def test_bundle_inlines_rules_diff_card_and_work_entries(self, tmp_path):
         repo, env, _g = make_repo(tmp_path)
         subprocess.run(
