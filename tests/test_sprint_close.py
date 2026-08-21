@@ -836,8 +836,12 @@ class TestSprintCharter:
 
 class TestShippedProse:
     def test_the_sprint_close_skill_names_the_human_only_steps(self):
+        """The two reviews stopped being human-only at story-014 — the pipeline
+        marshals them. What a script still cannot absorb (constraint 7) is note
+        triage and the retro narrative, so those are what this pins now."""
         skill = (PLUGIN / "skills" / "sprint-close" / "SKILL.md").read_text().lower()
-        assert "security review" in skill and "broad review" in skill
+        assert "note triage" in skill and "retro" in skill
+        assert "narrative is the part" in skill, "the judgment step lost its reason"
 
     def test_process_carries_the_record_lifecycle_and_the_polarity_contract(self):
         process = (PLUGIN / "PROCESS.md").read_text()
