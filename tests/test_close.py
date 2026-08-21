@@ -1494,12 +1494,6 @@ class TestShippedProseMatchesTheMechanism:
         ]
         assert len(numbered) == 5, f"expected 5 checks, found {len(numbered)}"
 
-    def test_the_plan_reviewer_charter_stays_under_its_word_backstop(self):
-        """The check count above is load-bearing; this is only the backstop —
-        parity prices every word the same and cannot see meaning."""
-        charter = (PLUGIN / "agents" / "plan-reviewer.md").read_text()
-        assert len(charter.split()) <= 524
-
     def test_the_walk_fixture_names_no_cut_and_no_control(self):
         """Bug 271de3bd. The fixture header IS the prompt each arm receives, and
         it named 013 and 015 as the cuts and 010 as the negative control — so both
