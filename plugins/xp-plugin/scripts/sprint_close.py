@@ -56,7 +56,7 @@ def corpus(root: Path) -> list[tuple[str, str, str]]:
     for eid, text in entries(root):
         head = text.splitlines()[0]
         if head.startswith("## resolved "):
-            ref, m = re.search(r"^Resolves: (\w+)$", text, re.M), FALSIFIER.search(text)
+            ref, m = RESOLVES.search(text), FALSIFIER.search(text)
             if ref and m:
                 resolutions[ref.group(1)] = m.group(1)
         elif head.startswith(("## bug ", "## debt ")) and (m := FALSIFIER.search(text)):

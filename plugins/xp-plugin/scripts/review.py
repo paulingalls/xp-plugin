@@ -74,9 +74,9 @@ def check_report_only(shown_head: str, marker: Path, digest_before: str) -> str:
     from close import git
 
     if git("rev-parse", "HEAD").stdout.strip() != shown_head:
-        why = "the sprint reviewer COMMITTED — this leg is report-only"
+        why = "HEAD moved during the review — this leg is report-only"
     elif dirty := git("status", "--porcelain").stdout.strip():
-        why = "the sprint reviewer left the tree dirty; uncommitted:\n  " + dirty
+        why = "the tree is dirty at the end of the review; uncommitted:\n  " + dirty
     elif marker_digest(marker) != digest_before:
         why = (
             f"the close marker changed during the review ({marker}) — it is what land"
