@@ -28,8 +28,11 @@ One page. The values (VALUES.md) cover what this page doesn't.
    covered, so it costs one confirming round; that is why fix batches are batches.
    Faithful means SCOPE-IDENTICAL — generalizing a prescription is a deviation, and
    deviations, new uncovered behavior and conflict resolutions are owed a real round.
-   Uncertain? One delta ping beats a wrong self-call. Hard cap two rounds OF
-   FINDINGS; still contested → the human decides, not a third round.
+   Uncertain? One delta ping beats a wrong self-call. What ENDS a round is the
+   finding bar, not a count: a finding earns another round only if its failure mode
+   is silent or corrupting (false green, corrupted record, unreviewed merge). Loud
+   and patch-scale → fix it now if that is minutes, else file it. A round cap was
+   tried and retired — nothing counted it, and it gave the human no way to act.
 4. **Sprint close** (release: sprint — the default): stories integrated on the
    sprint branch throughout; the batch PRs to main when it is RELEASABLE —
    usually now (keep sprints small), else carried to the plan boundary; prefer

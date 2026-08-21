@@ -31,8 +31,8 @@ yourself doing by hand is a defect in the pipeline — file it.
    review again is the only thing that starts one. Stopping rule: the REVIEWER's fixes
    cost no confirming round — they are inside the round that found them, and your read
    of its diff is the judgment. YOUR fixes move HEAD past what the review covered, so a
-   lead fix batch costs one confirming round. Two rounds of findings maximum, then
-   escalate to the human.
+   lead fix batch costs one confirming round. What ends the rounds is the finding
+   bar — silent or corrupting earns another, loud does not — never a count.
 4. **`close.py story <id> land`** is deterministic and spawns nothing. It refuses
    while the last round has blocking findings, while HEAD has moved since the review
    you were shown, or while the recorded round does not cover this tree — naming the
