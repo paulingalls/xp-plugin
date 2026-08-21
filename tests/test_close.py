@@ -1773,6 +1773,46 @@ class TestFixingReviewer:
         assert close(tree, env, "land", "--merge-mode", "local").returncode == 0
         assert sentinel.exists()
 
+    def test_pr_mode_runs_gh_from_the_STORY_tree(self, tmp_path):
+        """`gh pr create` and `gh pr merge` take no --head: gh derives the head
+        branch from the CURRENT BRANCH of the cwd repo. The land fix hoisted
+        os.chdir(held) above both merge arms on a plan review's advice, which put
+        gh in the tree holding trunk — so it would infer `main` and refuse.
+
+        THIS IS THE OUT-OF-THE-BOX PATH: templates/config.yml leaves sprint_branch
+        commented, so integration_target() == default_branch() and close.py:489
+        derives pr mode; spawn's default puts trunk in the lead's tree, so `held`
+        is set. Every consuming project's first land. Untested because every
+        worktree test here passes --merge-mode local and every pr test runs from
+        the non-worktree repo."""
+        _repo, env, g, tree, branch = self._worktree_land_setup(tmp_path)
+        bare = tmp_path / "origin.git"
+        subprocess.run(["git", "init", "-q", "--bare", str(bare)], env=env, check=True)
+        g("remote", "add", "origin", str(bare))
+        gh = tmp_path / "ghbin"
+        gh.mkdir()
+        (gh / "gh").write_text(
+            "#!/bin/sh\n"
+            f'echo "$(git rev-parse --abbrev-ref HEAD)" >> {tmp_path}/gh-branches\n'
+            "exit 0\n"
+        )
+        (gh / "gh").chmod(0o755)
+        env = {**env, "PATH": f"{gh}:{env['PATH']}"}
+        r = subprocess.run(
+            [sys.executable, str(CLOSE), "story", "story-042", "land", "--merge-mode", "pr"],
+            cwd=tree,
+            env=env,
+            capture_output=True,
+            text=True,
+        )
+        log = tmp_path / "gh-branches"
+        seen = log.read_text().split() if log.exists() else []
+        assert seen, f"gh was never invoked: rc={r.returncode} {r.stderr[:300]}"
+        assert all(b == branch for b in seen), (
+            f"gh ran on {seen} but the story branch is {branch} — it would infer the"
+            " wrong head and refuse"
+        )
+
     def test_land_from_the_tree_holding_trunk_removes_no_worktree(self, tmp_path):
         """Without this the fix can pass by only ever handling the worktree case.
         'Unchanged' spelled out: the merge lands in cwd, the card flips, and the

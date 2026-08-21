@@ -345,14 +345,11 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
         print(reviewer_work, end="")
         print(f"full diff: {review.diff_path(review.report_path(story_id, len(rounds)))}")
 
-    # Everything above reads the STORY tree — its plan.md, its Verify, its tier, the
-    # reviewer's range. Everything below writes the tree that holds trunk. Both arms
-    # need it: pr_sync's `git checkout -q trunk` collides identically, and it runs
-    # AFTER `gh pr merge`, so there it lands as an exit-3 with the PR already merged.
-    # A worktree shares refs with its clone, so the motion guards above stay true here.
+    # `gh pr create|merge` take no --head: gh derives the head branch from the
+    # CURRENT BRANCH of the cwd repo, so it must run in the STORY tree. The chdir
+    # to the trunk tree happens per-arm below, after gh and before pr_sync, which
+    # is the first thing that actually needs trunk checked out.
     story_tree = str(Path.cwd())
-    if held:
-        os.chdir(held)
     if merge_mode == "pr":
         import shutil
 
@@ -364,8 +361,12 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
             r = subprocess.run(c, capture_output=True, text=True)
             if r.returncode != 0:
                 return fail(f"{c[0]} failed: {r.stderr.strip()}")
+        if held:
+            os.chdir(held)
     else:
-        if not held:
+        if held:
+            os.chdir(held)
+        else:
             git("checkout", trunk)
         merged = git("merge", "--no-ff", branch, "-m", message, check=False)
         if merged.returncode != 0:

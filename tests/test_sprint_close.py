@@ -895,9 +895,22 @@ class TestLandRunsTheTierItReleasesOn:
     def test_land_refuses_on_a_red_full_tier(self, tmp_path):
         repo, env, _g = make_repo(tmp_path, config=CONFIG.replace("full: true", "full: false"))
         record_reviews(tmp_path, repo, env)
-        r = sprint(repo, env, "land", "--dry-run")
+        # NOT --dry-run: a preview runs nothing. The fixture PATH has no `gh`, so
+        # land exits 2 either way — the MESSAGE is the discriminator, and the tier
+        # runs before the gh check precisely so a red tier is what you are told.
+        r = sprint(repo, env, "land")
         assert r.returncode == 2, r.stdout + r.stderr
         assert "tier" in r.stderr.lower(), r.stderr
+
+    def test_dry_run_does_not_run_the_tier(self, tmp_path):
+        """af9023f put the tier ABOVE the `if dry_run` return, so a preview paid
+        the whole sprint suite and a red tier turned a preview into a refusal.
+        The story-side analogue is explicit: "pure preview: nothing runs, nothing
+        changes". A red tier is the discriminator — under the bug it refuses."""
+        repo, env, _g = make_repo(tmp_path, config=CONFIG.replace("full: true", "full: false"))
+        record_reviews(tmp_path, repo, env)
+        r = sprint(repo, env, "land", "--dry-run")
+        assert r.returncode == 0, r.stdout + r.stderr
 
     def test_land_proceeds_on_a_green_tier(self, tmp_path):
         """Absence of a refusal also passes an implementation that deleted the

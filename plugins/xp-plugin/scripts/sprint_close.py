@@ -294,12 +294,6 @@ def cmd_land(sprint_id: str, dry_run: bool) -> int:
     if refusal := _coverage_refusal(sprint_id, git("rev-parse", "HEAD").stdout.strip()):
         return fail(refusal)
     branch = git("rev-parse", "--abbrev-ref", "HEAD").stdout.strip()
-    # start's tier is stale by construction: SKILL.md puts triage, the retro and
-    # the release artifacts BETWEEN it and here, so the tree that ships is never the
-    # tree that was measured (sprint-003: four commits, one of them this file).
-    tier = config_block_value("tests", "full")
-    if tier and subprocess.run(tier, shell=True).returncode != 0:
-        return fail(f"refused: full tier red on the tree you are releasing: {tier}")
     if not (version := _next_version()):
         return _refuse_unbumpable()
     cmds = [
@@ -310,7 +304,18 @@ def cmd_land(sprint_id: str, dry_run: bool) -> int:
         for c in cmds:
             print(" ".join(c))
         print(f"(then: close.py sprint {sprint_id} post-merge — tag {version}, retire the key)")
+        full = config_block_value("tests", "full") or "none configured"
+        print(f"(and first: the full tier — {full})")
         return 0
+
+    # start's tier is stale by construction: SKILL.md puts triage, the retro and the
+    # release artifacts BETWEEN it and here, so the tree that ships is never the one
+    # that was measured (sprint-003: four commits, one of them this file). BELOW the
+    # dry-run return because a preview runs nothing, and ABOVE the gh check so a red
+    # tier is what you are told about, not a missing binary.
+    tier = config_block_value("tests", "full")
+    if tier and subprocess.run(tier, shell=True).returncode != 0:
+        return fail(f"refused: full tier red on the tree you are releasing: {tier}")
     if not shutil.which("gh"):
         return fail(
             "refused: pr mode needs the gh CLI on PATH — install it, or open the PR by hand"
