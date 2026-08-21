@@ -1,6 +1,10 @@
-"""story-010: size ratchet. Sole holder of the sub-budget numbers (DESIGN §9
-keeps the total, rationale and sacrificial-feature order; this file is the only
-place a budget NUMBER may live in code or prose besides DESIGN.md itself).
+#!/usr/bin/env python3
+"""Size ratchet: measure shipped Python against the sub-budgets, red if over.
+
+Sole holder of the sub-budget numbers in code; DESIGN §9 keeps the total, the
+rationale and the sacrificial-feature order, and test_ratchet pins its copy of
+the sub-allocation to the constants below so the two cannot drift (bug c2d7ffdf
+was that drift, between two prose copies nobody could run).
 
 Usage: python3 ratchet.py [--root PATH]
 """
@@ -22,6 +26,10 @@ HOOKS_FILES = {"session_start.py", "stop_gate.py", "bash_status.py"}
 SPAWN_FILES = {"spawn.py"}
 
 DENSITY_THRESHOLD = 0.20
+
+
+class NoScriptsFound(Exception):
+    """A measurement of nothing must not read as a pass — it certifies (constraint 2)."""
 
 
 def scripts_dir(root):
@@ -69,12 +77,17 @@ def comment_and_docstring_lines(path):
 
 
 def measure(root):
+    d = scripts_dir(root)
+    paths = sorted(d.glob("*.py"))
+    if not paths:
+        raise NoScriptsFound(d)
+
     totals = {"spawn": 0, "close": 0, "hooks": 0, "misc": 0}
     total_lines = 0
     total_commented = 0
     worst = None  # (ratio, path) — diagnostic only, not the trigger
 
-    for path in sorted(scripts_dir(root).glob("*.py")):
+    for path in paths:
         n = count_lines(path)
         totals[component_for(path.name)] += n
         total_lines += n
@@ -106,13 +119,13 @@ def report(root):
 
     worst_path = worst[1] if worst else None
     lines.append(
-        f"density     {density:.0%}      {DENSITY_THRESHOLD:.0%}  "
+        f"density     {density:>6.1%}   {DENSITY_THRESHOLD:.1%}  "
         f"(worst file: {worst_path.name if worst_path else '(none)'})"
     )
     if density > DENSITY_THRESHOLD and worst_path is not None:
         violations.append(
-            f"DENSITY EXCEEDED: comments+docstrings {density:.0%} of shipped Python, "
-            f"cap {DENSITY_THRESHOLD:.0%}, worst file {worst_path}"
+            f"DENSITY EXCEEDED: comments+docstrings {density:.1%} of shipped Python, "
+            f"cap {DENSITY_THRESHOLD:.1%}, worst file {worst_path}"
         )
 
     return "\n".join(lines), violations
@@ -123,7 +136,12 @@ def main():
     parser.add_argument("--root", type=Path, default=Path(__file__).resolve().parents[3])
     args = parser.parse_args()
 
-    table, violations = report(args.root)
+    try:
+        table, violations = report(args.root)
+    except NoScriptsFound as exc:
+        print(f"MEASURED NOTHING: no *.py under {exc.args[0]} — the ratchet cannot certify")
+        return 2
+
     print(table)
     if violations:
         print()

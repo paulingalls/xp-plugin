@@ -10,6 +10,8 @@ RATCHET = REPO_ROOT / "plugins" / "xp-plugin" / "scripts" / "ratchet.py"
 CLAUDE_MD = REPO_ROOT / "CLAUDE.md"
 SYSTEM_MD = REPO_ROOT / ".xp" / "system.md"
 LEFTHOOK = REPO_ROOT / "lefthook.yml"
+README = REPO_ROOT / "README.md"
+DESIGN = REPO_ROOT / "docs" / "DESIGN.md"
 
 # Matches the budget SHAPE: some label, then <= a number — e.g. "close ≤1,100",
 # "Python ≤5,000 lines", "skill prose ≤3,000 words". Must NOT match
@@ -32,6 +34,14 @@ def build_scripts_tree(tmp_path, files):
     return tmp_path
 
 
+def violation_lines(stdout):
+    """Only the EXCEEDED lines. The table prints every component name, every cap
+    and the word `density` unconditionally, so asserting against whole stdout
+    passes against a ratchet whose violation messages say nothing (measured:
+    gutting both messages left all six tests green)."""
+    return [ln for ln in stdout.splitlines() if "EXCEEDED" in ln]
+
+
 def test_real_repo_within_budget_exits_zero_and_prints_table():
     result = run_ratchet()
     assert result.returncode == 0, result.stdout + result.stderr
@@ -44,9 +54,10 @@ def test_fixture_over_spawn_budget_reds_naming_budget_and_overage(tmp_path):
     root = build_scripts_tree(tmp_path, {"spawn.py": padded})
     result = run_ratchet(root)
     assert result.returncode != 0, result.stdout
-    assert "spawn" in result.stdout.lower()
-    assert "2000" in result.stdout or "2,000" in result.stdout
-    assert "100" in result.stdout  # overage: 2100 - 2000
+    (violation,) = violation_lines(result.stdout)
+    assert "spawn" in violation, violation
+    assert "cap 2000" in violation, violation
+    assert "over by 100" in violation, violation
 
 
 def test_fixture_dense_comments_reds_naming_density_and_file(tmp_path):
@@ -54,8 +65,40 @@ def test_fixture_dense_comments_reds_naming_density_and_file(tmp_path):
     root = build_scripts_tree(tmp_path, {"chatty.py": "".join(lines)})
     result = run_ratchet(root)
     assert result.returncode != 0, result.stdout
-    assert "density" in result.stdout.lower()
-    assert "chatty.py" in result.stdout
+    (violation,) = violation_lines(result.stdout)
+    assert "DENSITY EXCEEDED" in violation, violation
+    assert "90.0%" in violation, violation
+    assert "chatty.py" in violation, violation
+
+
+def test_empty_scripts_tree_refuses_rather_than_certifying(tmp_path):
+    root = build_scripts_tree(tmp_path, {})
+    result = run_ratchet(root)
+    assert result.returncode != 0, result.stdout
+    assert "MEASURED NOTHING" in result.stdout, result.stdout
+
+
+def test_design_sub_allocation_matches_ratchet_constants():
+    """DESIGN §9 states the sub-allocation in prose and ratchet.py holds it in code.
+    Bug c2d7ffdf was exactly this drift, between copies nobody could run."""
+    stated = re.search(
+        r"spawn CLI ≤ ([\d,]+) · close component ≤ ([\d,]+) · "
+        r"hooks \+ both harness adapters ≤ ([\d,]+) · scaffolding/validators/misc ≤ ([\d,]+)",
+        DESIGN.read_text(),
+    )
+    assert stated, "DESIGN §9's sub-allocation sentence no longer parses"
+    sys.path.insert(0, str(RATCHET.parent))
+    try:
+        import ratchet
+
+        assert [int(n.replace(",", "")) for n in stated.groups()] == [
+            ratchet.SPAWN,
+            ratchet.CLOSE,
+            ratchet.HOOKS,
+            ratchet.MISC,
+        ]
+    finally:
+        sys.path.remove(str(RATCHET.parent))
 
 
 def test_subbudgets_sum_to_total():
@@ -74,7 +117,7 @@ def test_lefthook_pre_push_runs_ratchet():
     assert "ratchet.py" in pre_push
 
 
-def test_no_budget_number_shape_in_claude_md_or_system_md():
-    for path in (CLAUDE_MD, SYSTEM_MD):
+def test_no_budget_number_shape_in_the_injected_prose():
+    for path in (CLAUDE_MD, SYSTEM_MD, README):
         matches = BUDGET_NUMBER_SHAPE.findall(path.read_text())
         assert not matches, f"{path}: {matches}"
