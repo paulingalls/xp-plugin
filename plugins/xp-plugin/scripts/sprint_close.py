@@ -40,12 +40,18 @@ def corpus(root: Path) -> list[tuple[str, str, str]]:
     A resolved record contributes its RESOLUTION's falsifier, not its original:
     resolution substitutes a claim-coupled check for one that no longer holds, so
     a wrong resolution reds here and the record reopens.
+
+    Substitution is keyed off the `## resolved` heading `work.py resolve` writes,
+    never off a `Resolves:` line anywhere in a block: a record that merely
+    REFERENCES an id would otherwise substitute its own green falsifier and
+    silence a live bug, with resolve's green-check never having run.
     """
     records, resolutions = {}, {}
     for eid, text in entries(root):
         head = text.splitlines()[0]
-        if ref := re.search(r"^Resolves: (\w+)$", text, re.M):
-            if m := FALSIFIER.search(text):
+        if head.startswith("## resolved "):
+            ref, m = re.search(r"^Resolves: (\w+)$", text, re.M), FALSIFIER.search(text)
+            if ref and m:
                 resolutions[ref.group(1)] = m.group(1)
         elif head.startswith(("## bug ", "## debt ")) and (m := FALSIFIER.search(text)):
             claim = next((ln for ln in text.splitlines() if ln.startswith("Claim: ")), "")

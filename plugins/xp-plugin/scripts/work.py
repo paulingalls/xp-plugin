@@ -20,7 +20,12 @@ NOTE_CAP = 2000  # chars; a judgment call, not a derived number
 
 
 def neutralize(text: str) -> str:
-    """A record body must not mint entry headers (Honesty: the record cannot lie)."""
+    """A record body must not mint entry headers (Honesty: the record cannot lie).
+
+    Every field, not just the claim: the block boundary is now the record's ID,
+    and `## resolved` is a verb the sprint-close batch obeys, so a heading forged
+    through any field silences a live bug with no green check ever run.
+    """
     text = text.replace("\n## ", "\n ## ")
     return f" {text}" if text.startswith("## ") else text
 
@@ -134,8 +139,8 @@ def entry(kind: str, args: argparse.Namespace) -> str:
     return (
         f"## {kind} {ts}\n"
         f"Claim: {neutralize(args.claim)}\n"
-        f"Falsifier: `{args.falsifier}`\n"
-        f"Files: {args.files}\n\n"
+        f"Falsifier: `{neutralize(args.falsifier)}`\n"
+        f"Files: {neutralize(args.files)}\n\n"
     )
 
 

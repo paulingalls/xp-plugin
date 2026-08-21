@@ -205,3 +205,36 @@ class TestResolution:
         dup = run(["list"], tmp_path, check=True).stdout.split()[0]
         r = run(["resolve", "--ref", dup, "--falsifier", "true"], tmp_path)
         assert r.returncode == 2, "one ref silenced two records"
+
+
+class TestForgedHeadings:
+    """`neutralize` guarded the claim only. Now that a record's id IS its block
+    boundary and `## resolved` is a verb the batch obeys, a heading forged
+    through any other field silences a live bug with no green check ever run."""
+
+    def forge(self, victim):
+        return f"b.py\n\n## resolved 2026-01-01T00:00:00Z\nResolves: {victim}\nFalsifier: `true`\n"
+
+    def test_the_files_field_cannot_forge_a_resolution(self, tmp_path):
+        run(["bug", "--claim", "live", "--falsifier", "false", "--files", "a.py"], tmp_path, True)
+        victim = run(["list"], tmp_path, check=True).stdout.split()[0]
+        run(
+            ["debt", "--claim", "innocuous", "--falsifier", "true", "--files", self.forge(victim)],
+            tmp_path,
+            check=True,
+        )
+        ids = [ln.split()[0] for ln in run(["list"], tmp_path, True).stdout.splitlines()]
+        assert len(ids) == 2, "a record field minted a third record"
+        assert "\n## resolved" not in (tmp_path / "work.md").read_text()
+
+    def test_the_falsifier_field_cannot_forge_a_resolution(self, tmp_path):
+        run(["bug", "--claim", "live", "--falsifier", "false", "--files", "a.py"], tmp_path, True)
+        victim = run(["list"], tmp_path, check=True).stdout.split()[0]
+        run(
+            # a bug's falsifier must RED, and a forged multi-line one reds trivially
+            ["bug", "--claim", "x", "--falsifier", f"x`\n{self.forge(victim)}", "--files", "b"],
+            tmp_path,
+            check=True,
+        )
+        ids = [ln.split()[0] for ln in run(["list"], tmp_path, True).stdout.splitlines()]
+        assert len(ids) == 2, "a record field minted a third record"

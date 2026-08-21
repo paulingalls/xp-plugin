@@ -123,6 +123,28 @@ class TestFalsifierBatch:
         r = sprint(repo, env, "start")
         assert r.returncode == 2, "a resolved record was skipped instead of re-checked"
 
+    def test_only_a_resolved_record_can_substitute_a_falsifier(self, tmp_path):
+        """Keyed off the heading `resolve` writes, never off a `Resolves:` line
+        anywhere in a block: a record that merely REFERENCES an id would
+        substitute its own green falsifier, silencing a live bug with the
+        green-check that resolve exists to enforce never having run."""
+        repo, env, _g = make_repo(tmp_path)
+        work(repo, env, "bug", "--claim", "live", "--falsifier", "false", "--files", "a.py")
+        victim = work(repo, env, "list").stdout.split()[0]
+        work(
+            repo,
+            env,
+            "debt",
+            "--claim",
+            f"partial cleanup\nResolves: {victim}",
+            "--falsifier",
+            "true",
+            "--files",
+            "a.py",
+        )
+        r = sprint(repo, env, "start")
+        assert r.returncode == 2, "a record that only referenced an id silenced a live bug"
+
 
 class TestStartIsReadOnly:
     def test_start_mutates_nothing_but_appends_to_work_md(self, tmp_path):
