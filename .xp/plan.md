@@ -3,7 +3,7 @@
 Source: docs/DESIGN.md (§10 bootstrap order). Sprint 0 (hand-built artifacts) is
 this commit. Building proceeds under the process these artifacts define.
 
-## Milestone 1 — A self-hosting core   [in-progress]
+## Milestone 1 — A self-hosting core   [done]
 Goal: every Sprint-0 hand-rolled piece replaced by the real component, built under
 review by the process itself.
 Done when: a story on this repo runs plan-review → TDD → story-close (close.py) →
@@ -367,85 +367,168 @@ Verify: pytest -q tests/test_sprint_close.py tests/test_work.py
 Close review: deep
 Executor: (default)
 
-### Sprint 3
-DEFERRED HERE AT story-012's plan review (Paul's call): story-010 is where DESIGN §10
-already puts it — its presence in Sprint 2 was drift — and story-011 rebases onto
-whatever 012b lands, so closing it first would build free mode on a dead design.
-Sprint 2 is at its cap of 6 with 012a/012b; these two are what the split displaced.
-Also deferred here from the story-012 candidate note (17:03:25Z): a CONFIGURABLE
-reviewer (`--reviewer` override) — the seam the codex adapter needs. Its two
-siblings landed: durable in 012a, bounded in 012b.
+## Milestone 2 — The close runs itself   [in-progress]
+Goal: the sprint close is marshalled rather than hand-composed, the size budgets
+are enforced by something anyone can run, and out-of-sprint work has a legal path
+that does not move main by hand.
+Done when: `close.py sprint 3` runs start → review → land → post-merge on this
+repo with zero hand-composed review prompts and no hand-steps besides the human
+judgment points, and the budgets are enforced by a command on every push.
+
+### Sprint 3 — the close runs itself
+PLANNED 2026-08-21. DESIGN §10 puts the Codex adapter + packaging here; it SLIPS
+TO SPRINT 4 with the `--reviewer` override, which is that adapter's seam and not
+a standalone want. Sprint-002 closed by finding defects in the close machinery
+ITSELF — an unbounded re-review, and three resolutions of which two, then three,
+did not cover their claims. A second harness on top of that buys blast radius,
+not product. FOUR stories against a cap of 6, and the smallness is deliberate:
+two are `Close review: deep`, one breaches a file cap on day one, and Sprint 4
+reopens the same files.
+CUT AT PLANNING (Paul's steer: keep it simple, agents have judgment, we do not
+need to handle every corner case — note 33ff82cc): story-013 (constraints
+promotion with char caps) as bookkeeping under constraint 3, since the plan
+reviewer, the SessionStart size banner and the human are all already in that
+loop; story-015 (escape hatches for three record-lifecycle wedges) because all
+three are LOUD — the batch refuses and names the record — and PROCESS's finding
+bar says loud + patch-scale is fixed in minutes or filed, never scheduled.
+Simplicity won and Feedback lost; the bet is that judgment covers loud failures.
+NOTES DISPOSED HERE, because never is a decision and not a backlog: f7dfec27 and
+6ce977cd — the two unreachable branches in `cmd_land` are DELETED by story-014,
+which part-funds its lines; `reports/` growing forever is DROPPED (a directory of
+diffs on one machine, loud and cheap, nobody bitten). a1196cd6 (`blocking[]` has
+no human override) — DROPPED as a mechanism: the override exists and is human,
+the lead files a note and lands by hand, which is exactly what 012a round 4 did.
+1e3aa69c (per-clone branch names) — DROPPED: post-merge retires `sprint_branch`
+every release, so the key is per-sprint and lives on the branch it names, and the
+harm it feared is already a refusal (story-005).
+
+#### story-010 — size-ratchet   [ready]
+Context: DESIGN §9's budgets become a command. FIRST, not last: the close
+component measures 1,041 of 1,100 today (close.py 490 + review.py 218 +
+bookkeep.py 129 + sprint_close.py 204) and story-014 spends into that headroom —
+the wall goes up before the spend, not as a post-hoc verdict on a merged story.
+NO GITHUB ACTION, cut at plan review: it is a second copy of a gate pre-push
+already runs, on a surface system.md declares no harness for, and it cannot be
+executed before it merges (constraint 12, which has bitten twice). The only hole
+it would cover is `--no-verify`, which CLAUDE.md already calls a values violation.
+ONE COPY OF THE NUMBERS: ratchet.py holds the sub-allocation and DESIGN §9 keeps
+the total, the rationale, the only-ever-lowers rule and the sacrificial-feature
+order. Closes bug c2d7ffdf — but its falsifier asserts the digits are PRESENT in
+CLAUDE.md and .xp/system.md, so deleting them REDS it: this story must `work.py
+resolve` it with a replacement covering the stronger claim, or it wedges the
+sprint's own close (found at plan review; it was a trap of my own making).
+Size: ratchet.py lands in misc, measured 366 of 900.
+Files: plugins/xp-plugin/scripts/ratchet.py, lefthook.yml, tests/test_ratchet.py,
+CLAUDE.md, .xp/system.md, docs/DESIGN.md
+AC:
+- Given the repo within budgets, When ratchet.py runs, Then exit 0 printing the per-component MEASURED/cap table — a live number on every push, because the sprint-002 SIZE BREACH was an agent estimating against a stale one and a pointer does not fix that
+- Given a fixture tree constructed OVER a budget, Then nonzero naming the budget and the overage (the guard fault-injected, constraint 2)
+- Given a FIXTURE tree whose comments + docstrings exceed 20% of its Python lines, Then nonzero naming the density and the worst file — a fixture, not this repo, which sits near 17% and would green a do-nothing implementation
+- Given the sub-budgets, Then a test asserts they sum to ≤ the total, so raising one requires lowering another — constraint 1's displacement rule made mechanical rather than promised
+- Given lefthook.yml, Then pre-push runs ratchet.py (structural pin)
+- Given CLAUDE.md and .xp/system.md, Then neither states a budget NUMBER (the falsifier matches the budget shape — `≤N lines/words` against a component name — not any digit: system.md:7 says "Python 3.11+"); both point at the command, CLAUDE.md's "DESIGN is the authority" line gains the budget clause, and c2d7ffdf is resolved with a replacement that reds if a number comes back
+Verify: pytest -q tests/test_ratchet.py
+Close review: standard
+Executor: (default)
 
 #### story-014 — the sprint close marshals its reviews   [ready]
 Context: SYMMETRY, not new machinery. The story close marshals its one review —
 close.py builds a bundle, spawns the reviewer, receives {fixed,blocking,noted},
 and carries EARLIER ROUNDS so a later round validates instead of re-deriving
-(story-012b AC 9). The sprint close marshals nothing: sprint_close.py contains
-the word "review" once, in a docstring, and the skill only tells a human to run
-a broad review and a security review. Measured at sprint-002's close: both
-prompts were hand-composed, and when four fix-commits needed re-checking there
-were no prior findings to bound the pass — an unbounded re-review, the exact
-loop the process exists to avoid. From ../xp-agents (xp-code-reviewer.md:18-19,
-note bae0b87b): the bounding mechanism is a MODE SWITCH — findings handed in →
-validate each and move on; none handed in → run the full pass. We already have
-it at story level under a different name.
-Depends on story-009. Also closes the sprint-level half of bug c9b48a66: with
-the reviews marshalled, sprint land can require that a recorded broad review
-covers HEAD, which is what story-level land already requires.
+(012b AC 9). The sprint close marshals nothing: sprint_close.py contains the word
+"review" once, in a docstring. Measured at sprint-002's close: both prompts were
+hand-composed, and when four fix-commits needed re-checking there were no prior
+findings to bound the pass — an unbounded re-review, the loop this process exists
+to avoid. The bounding mechanism is a MODE SWITCH (../xp-agents
+xp-code-reviewer.md:18-19, note bae0b87b): findings handed in → validate each;
+none handed in → run the full pass. We have it at story level already.
+A SEPARATE `review` LEG, not inside `start`: story-009's shipped contract is that
+`start` is read-and-emit and idempotent ("run twice → the second is a no-op
+beyond its own appends"), and a spawning, tree-touching `start` breaks it. This
+is DESIGN §6's split-review-from-commit at sprint level, the same split 012a made
+at story level. ONE LEG, TWO LENSES (`--lens broad|security`): same bundle, same
+report shape: two pipelines and a charter that does not exist yet is machinery.
+The property worth keeping is that the report is RECORDED — three were lost to
+stdout in one session. The sprint reviewer is REPORT-ONLY; a fixing reviewer here
+would inherit 012b's whole apparatus (motion checks, authorship gate, abort path)
+unscoped against a whole-sprint diff.
+Closes bug c9b48a66. Also deletes the two unreachable `cmd_land` branches
+(f7dfec27, 6ce977cd), which part-funds its lines.
+Size: 59 lines of component headroom (1,041 of 1,100) against an estimated
++90-130. Either the named extraction — close.py's `render_*` helpers move to
+bookkeep.py, their home — covers it, or the story carries a DESIGN §9 diff moving
+100 from misc (366 of 900); story-010's sum assertion makes that zero-sum, and
+constraint 1 says it moves by reviewed diff, never by discovery at the keyboard.
 Files: plugins/xp-plugin/scripts/sprint_close.py, plugins/xp-plugin/scripts/review.py,
-plugins/xp-plugin/skills/sprint-close/SKILL.md, tests/test_sprint_close.py
+plugins/xp-plugin/scripts/close.py, plugins/xp-plugin/scripts/bookkeep.py,
+plugins/xp-plugin/scripts/work.py, plugins/xp-plugin/skills/sprint-close/SKILL.md,
+docs/DESIGN.md, tests/test_sprint_close.py
 AC:
-- Given sprint start, When the broad review runs, Then the pipeline spawns it with a bundle (cumulative diff main...HEAD, constraints, system, the sprint's stories) and records its {fixed,blocking,noted} report — the lead composes no prompt
-- Given a second broad review after fixes, Then the bundle carries the PRIOR findings labelled "validate that each was addressed; do not re-derive the diff", and the reviewer reports per-finding outcomes rather than a fresh sweep (fault-inject: the second bundle must contain round 1's findings)
-- Given a recorded broad review whose coverage does not include HEAD, When sprint land runs, Then it REFUSES — the sprint-level twin of the guard story-012a gave land, and the reason bug c9b48a66 exists
-- Given the security review, Then it is marshalled the same way and its report is recorded beside the broad one — a report that lives only in stdout is lost, which happened three times in one session
+- Given `close.py sprint <id> review --lens broad`, Then it spawns the reviewer with a bundle (cumulative diff main...HEAD, constraints, system, the sprint's stories) and records the {fixed,blocking,noted} report under a key that cannot collide with a story's report file
+- Given `--lens security`, Then the same leg, bundle and report shape are used with the security lens, and its report is recorded beside the broad one
+- Given a SECOND review of the same lens, Then the bundle carries the prior findings labelled "validate that each was addressed; do not re-derive the diff" and the reviewer reports per-finding outcomes — fault-inject: construct a round-1 report and assert round 2's bundle contains its findings
+- Given NO recorded review at all, When sprint land runs, Then it REFUSES, and separately when a recorded review's coverage does not include HEAD. c9b48a66's claim is that a PR can open over UNREVIEWED commits, so the base case IS the claim — a guard that fires only when a review record exists greens the do-nothing path and satisfies a carelessly worded AC (story land has `if not marker.exists(): refuse`; this is its twin)
+- Given resolutions filed during the sprint, Then the bundle carries the LATEST per record with the claim and original falsifier it replaced, and a test pins `corpus()`'s last-wins substitution, which is undeclared and untested today — 4687f4b2 already carries three resolutions, so "each" would hand the reviewer two superseded corrections and invite re-litigating a fix already made. THREE OF THREE resolutions needing independent reading were caught by a READER, never by resolve()'s green-check (7df6b116, b9382e2d) — this is the only mechanism in the sprint that has already fired, and the argument against building any further check into resolve()
+- Given a batch falsifier that reds, When start runs, Then the FULL TIER HAS NOT RUN — assert by construction (the tier command writes a sentinel; the sentinel is absent after the refusal), not by a cheapness predicate, which would be judgment in deterministic code. Sprint-002 spent 256 tests to refuse on a grep
 Verify: pytest -q tests/test_sprint_close.py
 Close review: deep
 Executor: (default)
 
-#### story-013 — constraints promotion with caps   [ready]
-Context: CUT from story-009 at its plan review — a work.py subcommand sharing
-nothing with sprint_close.py but a call site, and the only piece of the sprint
-close whose absence does not block one (a human hand-edits constraints.md at the
-retro, which is what sprint-001 did). Depends on story-009's record ids.
-Files: plugins/xp-plugin/scripts/work.py, tests/test_work.py
-AC:
-- Given a constraint is promoted, Then the append path enforces a per-item AND total char cap and REFUSES over it — constraints_cap counts line-items, not size (10 items = 2,090 chars here), and the predecessor's json bounded size by validating at write, not by being json
-- Given any size refusal, Then the message names the cap, the current value, and the next ACTION (which item to retire), and the line that blew is the line that reds — story-007's budget test sent the reader to trim TEAMMATE.md for a defect that was a new agent
-Verify: pytest -q tests/test_work.py
-Close review: standard
-Executor: (default)
-
-#### story-010 — size-ratchet CI   [ready]
-Context: DESIGN §9's budgets become enforced acceptance criteria: shipped py
-≤5,000 (spawn ≤2,000 · close ≤1,100 · hooks+adapters ≤1,000 · misc ≤900), skill
-prose ≤3,000 words, agent prose ≤2,500 words, tests ≤2× code lines. ratchet.py
-(stdlib) + a GitHub Action running it on PRs; also wired into pre-push.
-The close component is the budget expected to red first: it reaches ~690 of
-DESIGN §9's 800 after 012a/012b, and story-009's sprint_close.py takes it over.
-Files: plugins/xp-plugin/scripts/ratchet.py, .github/workflows/ratchet.yml, lefthook.yml, tests/test_ratchet.py
-AC:
-- Given the repo within budgets, When ratchet.py runs, Then exit 0 with a one-line report
-- Given comments + docstrings over 20% of shipped Python lines, When ratchet.py runs, Then nonzero naming the density and the worst file — the one budget no test can enforce, because prose is the artifact that goes stale silently (the rubric ships in PROCESS/TEAMMATE/charter; only CI can count)
-- Given a fixture tree constructed OVER a budget, When ratchet.py runs, Then nonzero naming the budget and overage (the guard fault-injected, constraint 2)
-- Given the workflow file, Then it triggers on pull_request and invokes ratchet.py (structural pin; first live run verified manually at the sprint-002 release PR)
-- Given lefthook.yml, Then pre-push runs ratchet.py (structural pin)
-Verify: pytest -q tests/test_ratchet.py
-Close review: standard
-Executor: (default)
-
 #### story-011 — free mode (card-less close)   [ready]
-Context: Depends on story-008. Between-sprint tweaks: `close.py free start <slug>`
-cuts <user>/free-YYYY-MM-DD-<slug> off the default branch and emits a diff-only
-bundle; review via the 008 pipeline leg; `free land` opens the PR to main
-including the patch version bump — a free close targeting main IS a release
-(v0.2.1 rule, DESIGN §6).
+Context: `close.py free start <slug>` cuts <user>/free-YYYY-MM-DD-<slug> off the
+default branch and emits a diff-only bundle; review via the 008 pipeline leg;
+`free land` opens the PR to main carrying the patch bump — a free close targeting
+main IS a release (v0.2.1 rule, DESIGN §6). This is what makes small out-of-sprint
+fixes legal at all: today they either wait for a sprint or move main by hand.
+Carries 012b handback N2, because this is the next story to open close.py: a
+reviewer that REWRITES HISTORY (reset --hard or rebase, then commit) passes all
+four motion checks — its range shows only its own commits, authorship holds, .xp/
+is clean — and land merges with the lead's story commits DROPPED.
+Runs AFTER story-014, which also opens close.py and moves the `render_*` helpers
+to bookkeep.py — so 490 is not this story's baseline; re-measure at its plan step.
+Size: close.py is 490 today against constraint 8's hard cap of 500, and free mode
+adds ~60-80. The extraction is NAMED, not promised: free mode becomes its own
+module behind a ~2-line dispatch in close.py — the shape story-009 already set
+with sprint_close.py, which costs nothing against the per-file cap and keeps the
+component arithmetic honest.
 Files: plugins/xp-plugin/scripts/close.py, tests/test_close.py
 AC:
 - Given free start on the default branch, Then the dated free branch exists and the bundle is emitted without a story card
-- Given free land with a pipeline-received verdict, Then the PR to main carries the patch bump
-- Given free land without a verdict, Then it refuses
+- Given free land with a pipeline-received report, Then the PR to main carries the patch bump
+- Given free land with no report, Then it refuses
+- Given a reviewed head that is no longer an ancestor of HEAD, When land runs, Then it REFUSES — fault-inject by rewriting history in a fixture, never by asserting the merge-base call is present
 Verify: pytest -q tests/test_close.py
-Close review: standard
+Close review: deep
 Executor: (default)
 
+#### story-016 — the plan reviewer's duty to say no   [ready]
+Context: Paul, at this sprint's planning: the simplicity challenge came from HIM,
+not from the review. THE OBVIOUS DIAGNOSIS IS WRONG, and the round-2 review caught
+it by reading the file I had not: plan-reviewer.md:52-54 ALREADY says "you have
+standing to recommend dropping scope entirely — saying no is a Courage finding,
+not an overstep", and check 4 already asks "what test demands this?". The reviewer
+had permission and did not use it; what moved this session was the PROMPT, which
+asked the simplicity questions directly. So the change is permission → DUTY, and
+the honest position is that we are not sure the charter is the variable at all —
+which is why the walk below has two arms and can tell us we are wrong.
+The rubric does NOT go into the story-reviewer: a reviewer reading a merged diff
+cannot cut a story, and plan time is the only moment the cut is cheap.
+Depends on story-010 only for the agent-prose budget backstop.
+Size: DISPLACE AT THE LEVEL OF CHECKS, not words — parity prices every word the
+same, but a charter's teeth are its long concrete clauses and its fat is its short
+abstract ones, so word-parity under time pressure deletes an example. Six checks
+become five: the CUT duty folds into check 4 (Simplicity), which already owns the
+question, and check 5 (Size) folds in with it because "a story that is really three
+stories" IS a cut finding. Funded by named lines: 52-54 (the standing sentence,
+~18 words — it becomes the duty), the first two examples at 22-24 which restate the
+sentence above them (~22 words, keeping the third, which fired this round), the
+five nouns at 32-34 trimmed to two (~12), and check 5's header (~10). Measured
+before: 524 words, 6 checks. Do not touch 25-28, 58-60 or 12-13.
+Files: plugins/xp-plugin/agents/plan-reviewer.md, tests/test_ratchet.py
+AC:
+- Given the plan-reviewer charter, Then check 4 carries the CUT duty — name the stories and ACs that should not exist, say what is lost by cutting each, rank the cut with the other findings — the file has FIVE checks where it had six, and its word count is ≤ 524 as a backstop. The check count is the load-bearing number; the card carries before/after so the plan reviewer can check it, and ratchet.py keeps enforcing only the aggregate agent-prose budget it already owns (1,236 of 2,500 today, not binding here)
+- Given the over-designed draft from this sprint's planning (story-013 and story-015 as first written), extracted to an ISOLATED fixture file so the repo's later history is not reachable — the sprint header names both cuts and note 33ff82cc gives the reasoning, so an in-repo fixture is open-book — When a fresh plan reviewer is run against it under the OLD charter and again under the NEW, with the same prompt and no simplicity question in either, Then the new arm recommends cutting at least one story and the old arm does not. TWO ARMS OR NONE: a single green arm measures the prompt and certifies the charter, and if both arms cut, the diagnosis was wrong and we learn that for one extra spawn, which is what a falsifier is for
+- Given the walk, Then its outcome is recorded in work.md with the reviewer's own words, both arms, including the outcome where the diagnosis is refuted
+Verify: pytest -q tests/test_ratchet.py -k prose
+Close review: standard
+Executor: (default)
