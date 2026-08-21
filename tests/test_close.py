@@ -1419,6 +1419,29 @@ class TestShippedProseMatchesTheMechanism:
         assert skill.index("Note triage") < skill.index("review --lens broad")
         assert "BEFORE the reviews" in skill
 
+    def test_a_script_driving_skill_does_not_restate_the_mechanism(self):
+        """Measured drift, three times in two sprints, caught by a READER every
+        time and by no test: sprint-close's step count went stale when the
+        pipeline absorbed two reviews, and story-close described `-d` ordering
+        and a branch precondition that the land fix reversed. Prose describing a
+        mechanism is a second copy of it. The refusals name their own remediation,
+        so the enumerations were duplicating text the lead is handed anyway.
+        Pinned as a WORD BUDGET, not a token grep: a count reds when the
+        enumerations grow back under any wording, which is the failure mode.
+        """
+        for skill, cap in (("story-close", 330), ("sprint-close", 330)):
+            body = prose(PLUGIN / "skills" / skill / "SKILL.md")
+            assert len(body.split()) <= cap, f"{skill} regrew to {len(body.split())} words"
+
+    def test_the_skills_keep_the_negative_space_that_earns_its_words(self):
+        """The counterweight to the cut: what deliberately does NOT exist cannot be
+        read off the code an agent has not read, so it is the one description that
+        stays. Without this pin the word budget above is satisfiable by deleting
+        exactly the sentences that stop an agent hunting for a flag."""
+        story = prose(PLUGIN / "skills" / "story-close" / "SKILL.md")
+        assert "DOES NOT EXIST" in story, "the lead will hunt for a delta review"
+        assert "never spawns" in story, "land's one hard guarantee"
+
     def test_the_charter_names_the_report_path(self):
         assert "REPORT_PATH" in (PLUGIN / "agents" / "story-reviewer.md").read_text()
 

@@ -10,15 +10,12 @@ description: >-
 script cannot absorb them (constraint 7).
 
 0. **Open the sprint first** (once, before its stories): `git switch -c sprint-00N`
-   and set `sprint_branch: sprint-00N` in `.xp/config.yml`. Under `release: sprint`
-   this is what makes stories integrate on a branch instead of landing on the default
-   one — post-merge retires the key at the end, so every sprint needs this step.
-1. **`close.py sprint <id> start`** — refuses while any story in THAT sprint is
-   unfinished, runs the full tier, then runs every unresolved falsifier in work.md
-   and archive.md. A red aborts and is re-filed as a bug: a debt or archived
+   and set `sprint_branch: sprint-00N` in `.xp/config.yml`. Step 5 retires the key,
+   so every sprint needs this again.
+1. **`close.py sprint <id> start`** — appends only; re-running it is a no-op.
+   A red falsifier ABORTS the close and is re-filed as a bug: a debt or archived
    falsifier asserts the system is still OK, so red means the latent problem
-   materialised. It then emits the notes for triage, the retro skeleton, and the
-   digest prompt. It mutates nothing but appends, and re-running it is a no-op.
+   materialised.
 2. **Note triage, then the retro — YOURS, and they come FIRST.**
    Each note is promoted to constraints.md/system.md via the retro diff, or
    archived. A learning that changes nothing executable is not recorded, and every
@@ -33,15 +30,8 @@ script cannot absorb them (constraint 7).
      change, at a different altitude from the stories you already reviewed.
    - `close.py sprint <id> review --lens security` — secrets, injection surfaces,
      anything the sprint made reachable that was not before.
-   Both are report-only and refuse if the reviewer touches the tree. Re-running a
-   lens hands the reviewer that lens's earlier findings to VALIDATE rather than
-   re-derive, so a second round is bounded. Fix what they block, then re-run the
-   lens that blocked.
-4. **`close.py sprint <id> land`** opens the release PR with the proposed version.
-   It REFUSES unless both lenses have a round covering HEAD with no blocking
-   findings — a release PR over unreviewed commits was bug c9b48a66, measured on
-   a real release. Not releasable? Don't run it — the branch carries, the key stays.
-5. **`close.py sprint <id> post-merge`**, AFTER the PR merges: cuts the bump and
-   the tag on the sha that actually shipped, and retires the `sprint_branch` key.
-   Both facts become true in one leg, because a tag cut at PR-open names a commit
-   that is not the release.
+   Fix what they block, then re-run the lens that blocked.
+4. **`close.py sprint <id> land`** opens the release PR. Not releasable? Don't run
+   it — the branch carries, the key stays.
+5. **`close.py sprint <id> post-merge`**, AFTER the PR merges — it retires the
+   `sprint_branch` key step 0 sets.

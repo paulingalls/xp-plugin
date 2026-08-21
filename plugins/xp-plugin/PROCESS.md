@@ -17,6 +17,10 @@ One page. The values (VALUES.md) cover what this page doesn't.
    Comments: restates the code → delete · explains WHAT → rename it · a checkable
    claim → write the test · narrates history → delete, git holds it. Keep only the
    why, an external constraint, a rejected design.
+   A SKILL driving a script says what to run, what you own, and how to respond to
+   results. Mechanism lives in the code and remediation in the refusal text, so
+   describing either ships a second copy that only drifts. Negative space — what
+   deliberately does not exist — is the one description that earns its words.
 3. **Story close**: run the `/story-close` checklist — it spawns the **story-reviewer**
    on the cumulative diff plus anything you filed in work.md, stops for your
    fix-or-ask call, runs the story's Verify commands, records every review round in

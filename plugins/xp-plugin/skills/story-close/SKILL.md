@@ -11,20 +11,11 @@ call on the reviewer's findings. Everything else is scripted, and a step you fin
 yourself doing by hand is a defect in the pipeline — file it.
 
 1. **Preflight**: `git status` clean, and you are on the story branch.
-2. **`close.py story <id> review`** spawns the story-reviewer itself, which FIXES what
-   it finds in your tree and commits, then prints its ranked findings and the path to
-   its commits and full diff. Reading that diff is your judgment point: running land is
-   how you accept it. A commit in the range that the reviewer did not author — yours,
-   made while it ran — is refused, not absorbed. The bundle bases the cumulative diff on the INTEGRATION TARGET
-   (the sprint branch under `release: sprint`, else the default branch) and carries
-   the charter, the story card, the work.md entries filed during the story, and
-   constraints.md + system.md. The reviewer writes `{fixed, blocking, noted}` to a
-   round-scoped report file the bundle names; that report is the only thing recorded,
-   and no report means no round. Every round covers the whole story diff — there is no
-   delta review, and no flag by which you can supply a finding yourself.
-   If the integration branch has moved ahead of your fork point, review refuses and
-   asks you to merge it in first: re-reviewing without that leaves the merge base
-   where it was, so the reviewer never sees what land would merge.
+2. **`close.py story <id> review`** spawns the story-reviewer, which FIXES what it
+   finds in your tree and commits. Reading its diff is your judgment point; running
+   land is how you accept it.
+   DOES NOT EXIST, so do not go looking: a delta review, a flag by which you supply
+   a finding yourself, a round recorded without the reviewer's own report.
 3. **Judgment point** (yours, and the only one): fix blocking findings now; file the
    noted ones as bug/debt/note per PROCESS.md; ask the human only where you and the
    reviewer disagree on whether a finding blocks. YOU choose the rounds — running
@@ -33,18 +24,10 @@ yourself doing by hand is a defect in the pipeline — file it.
    of its diff is the judgment. YOUR fixes move HEAD past what the review covered, so a
    lead fix batch costs one confirming round. What ends the rounds is the finding
    bar — silent or corrupting earns another, loud does not — never a count.
-4. **`close.py story <id> land`** is deterministic and spawns nothing. It refuses
-   while the last round has blocking findings, while HEAD has moved since the review
-   you were shown, or while the recorded round does not cover this tree — naming the
-   review command each time, so running it twice gives the same answer. Otherwise it
-   runs the story's Verify and the story tier, merges under every round labelled by
-   its number, flips the card to `[done]`, pushes the integration branch, removes the
-   story worktree, deletes the story branch (origin first, then local — `-d` checks
-   against the upstream ref, and the reviewer's commits never reach it), and logs the
-   close. Run it from the story worktree: land merges in whichever tree holds the
-   integration branch, so YOUR SHELL IS LEFT IN A DELETED DIRECTORY — cd out after.
-   A red Verify aborts
-   before the merge.
+4. **`close.py story <id> land`** — deterministic, and it never spawns. Run it from
+   the story worktree: it merges in whichever tree holds the integration branch, so
+   YOUR SHELL IS LEFT IN A DELETED DIRECTORY. Every refusal names its own next
+   action; run it twice and you get the same answer.
 5. **Write the session digest** (≤30 lines: intent, surprises, next step). You are
    its sole writer — the pipeline records the facts of the close, never the
    narrative.
