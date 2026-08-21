@@ -1,5 +1,44 @@
 # Changelog
 
+## v0.3.0 — 2026-08-20 · Sprint 2: the process runs itself
+
+The reviewer stopped reporting and started **fixing**. That is the release.
+
+Measured on the two halves of the same redesign, same model, same story size:
+under a reporting reviewer story-012a took **4 review rounds and 11 blocking
+findings** and never converged; under a fixing reviewer story-012b took **1
+round — 7 fixed, 0 blocking**. The round-trip was the cost, not the reviewing.
+
+- **The reviewer fixes in the tree under review** and commits under its own git
+  identity, which is a GATE: any commit in the range it did not author means
+  unreviewed work would ride the merge, so review refuses. That also permits the
+  lead to keep working during a review instead of tripping a guard.
+- **Review and merge are separate commands.** `land` is deterministic, mutates
+  only refs, and never spawns — it refuses on blocking findings, on HEAD moving
+  since the review you were shown, or on a round that does not cover the merge
+  base. Story-008's land ran four times, spawned four reviewers, and merged
+  nothing; that shape is gone.
+- **A structured `{fixed, blocking, noted}` report** replaces the VERDICT line
+  the pipeline used to grep — forgeable by design, then defeated by backticks.
+  It fixes parsing, not forgery, and the prose says so.
+- **Records are named and can be resolved.** An ISO second is not a name (48
+  concurrent appends produce 48 identical headings), so ids are derived from
+  entry text — which works retroactively on an append-only file. A resolution
+  SUBSTITUTES a falsifier that must be green now, so a wrong one reds later and
+  the record reopens.
+- **`sprint start` / `land` / `post-merge`** automate the sprint close: full
+  tier, the falsifier batch, note triage, the retro skeleton. The tag is cut
+  post-merge on the sha that actually shipped, never at PR-open.
+- **`/xp-setup`** scaffolds `.xp/` and the git-hook wall, and the first-user path
+  is now walked rather than only tested.
+- Prose in code is budgeted (≤20% of shipped Python) with the rubric shipped in
+  PROCESS.md, TEAMMATE.md and the reviewer charter, pinned identical.
+
+Fixed at the release gate, none of it findable from inside a story: `release:
+sprint` could not work in a scaffolded repo, the first spawn after `xp-setup`
+tracebacked, and two `work.md` fields could forge records past the falsifier
+green-check.
+
 ## v0.2.1 — 2026-08-19 · post-release tweaks
 
 Retro presentation becomes a close duty; changelog added; stale sprint_branch

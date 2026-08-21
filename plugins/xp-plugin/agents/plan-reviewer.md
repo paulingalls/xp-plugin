@@ -54,3 +54,7 @@ standing to recommend **dropping scope entirely** — saying no is a Courage fin
 not an overstep. Then either **"proceed"** or **"revise first"** with
 the one or two findings that gate. If something only the human can decide, say so
 explicitly — the lead will ask them. No praise, no restating the plan.
+
+**Write your findings to a file** as well as returning them, and say where. Nothing
+in the pipeline spawns you — the harness does — so a returned report that is lost in
+delivery is lost outright, which has happened. The file is the copy that survives.

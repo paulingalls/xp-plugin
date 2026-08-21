@@ -133,3 +133,246 @@ class TestSprintCloseFindings:
         text = (tmp_path / "work.md").read_text()
         headers = [ln for ln in text.splitlines() if ln.startswith("## ")]
         assert len(headers) == 1, headers
+
+
+class TestRecordIdentity:
+    """story-009: a timestamp is not a name. MEASURED at plan review — 48
+    concurrent appends produced 48 identical `## kind ISO` headings, and the live
+    work.md already holds six colliding values, one shared by three entries."""
+
+    def test_concurrent_appends_get_distinct_ids(self, tmp_path):
+        with Pool(4) as pool:
+            pool.map(_append_notes, [(tmp_path, w, 12) for w in range(4)])
+        listed = run(["list"], tmp_path, check=True).stdout.splitlines()
+        ids = [ln.split()[0] for ln in listed if ln.strip()]
+        assert len(ids) == 48, f"listed {len(ids)} of 48"
+        assert len(set(ids)) == 48, "ids collided where timestamps did"
+
+    def test_ids_are_derivable_for_entries_written_before_ids_existed(self, tmp_path):
+        """The 53 legacy entries can never be backfilled: the file is append-only,
+        so the id must be computed from the text, not stored in it."""
+        (tmp_path / "work.md").write_text(
+            "## note 2026-08-20T03:41:29Z\nlegacy one\n\n"
+            "## note 2026-08-20T03:41:29Z\nlegacy two\n\n"
+        )
+        listed = run(["list"], tmp_path, check=True).stdout.splitlines()
+        ids = [ln.split()[0] for ln in listed if ln.strip()]
+        assert len(ids) == 2 and len(set(ids)) == 2, "colliding timestamps, colliding ids"
+
+    def test_append_prints_the_id_it_minted(self, tmp_path):
+        r = run(["note", "something worth resolving later"], tmp_path, check=True)
+        listed = run(["list"], tmp_path, check=True).stdout
+        assert r.stdout.strip(), "append printed no id"
+        assert r.stdout.strip().split()[-1] in listed
+
+
+class TestResolution:
+    """A resolution is a SUBSTITUTED falsifier, never a deletion: marking a record
+    done is an unchecked assertion, and the batch is the only thing that ever
+    re-reads a filed bug."""
+
+    def filed_bug(self, tmp_path):
+        run(
+            ["bug", "--claim", "the guard is vacuous", "--falsifier", "false", "--files", "a.py"],
+            tmp_path,
+            check=True,
+        )
+        return run(["list"], tmp_path, check=True).stdout.split()[0]
+
+    def test_a_resolution_whose_falsifier_reds_is_refused(self, tmp_path):
+        ref = self.filed_bug(tmp_path)
+        r = run(["resolve", "--ref", ref, "--falsifier", "false"], tmp_path)
+        assert r.returncode == 2 and "green" in r.stderr
+        assert "resolved" not in (tmp_path / "work.md").read_text()
+
+    def test_a_green_resolution_is_appended_never_edited(self, tmp_path):
+        ref = self.filed_bug(tmp_path)
+        before = (tmp_path / "work.md").read_text()
+        r = run(["resolve", "--ref", ref, "--falsifier", "true"], tmp_path)
+        assert r.returncode == 0, r.stderr
+        after = (tmp_path / "work.md").read_text()
+        assert after.startswith(before), "an edited record is the mutable state #10 forbids"
+        assert ref in after[len(before) :]
+
+    def test_only_a_bug_or_debt_can_be_resolved(self, tmp_path):
+        """Resolving a note or a resolution reported success with a fresh id and
+        did nothing: the batch only ever substitutes for a bug or a debt. An exit
+        0 that asserts a resolution none of the machinery will honour is the
+        record lying about itself."""
+        run(["note", "just a discovery"], tmp_path, check=True)
+        note = run(["list"], tmp_path, check=True).stdout.split()[0]
+        r = run(["resolve", "--ref", note, "--falsifier", "true"], tmp_path)
+        assert r.returncode == 2, "a note reported itself resolved"
+        assert "note" in r.stderr
+        assert "resolved" not in (tmp_path / "work.md").read_text()
+
+    def test_a_ref_matching_zero_or_many_entries_is_refused(self, tmp_path):
+        self.filed_bug(tmp_path)
+        assert (
+            run(["resolve", "--ref", "deadbeef", "--falsifier", "true"], tmp_path).returncode == 2
+        )
+        (tmp_path / "work.md").write_text(
+            "## note 2026-08-20T03:41:29Z\nidentical\n\n## note 2026-08-20T03:41:29Z\nidentical\n\n"
+        )
+        dup = run(["list"], tmp_path, check=True).stdout.split()[0]
+        r = run(["resolve", "--ref", dup, "--falsifier", "true"], tmp_path)
+        assert r.returncode == 2, "one ref silenced two records"
+
+
+class TestForgedHeadings:
+    """`neutralize` guarded the claim only. Now that a record's id IS its block
+    boundary and `## resolved` is a verb the batch obeys, a heading forged
+    through any other field silences a live bug with no green check ever run."""
+
+    def forge(self, victim):
+        return f"b.py\n\n## resolved 2026-01-01T00:00:00Z\nResolves: {victim}\nFalsifier: `true`\n"
+
+    def test_the_files_field_cannot_forge_a_resolution(self, tmp_path):
+        run(["bug", "--claim", "live", "--falsifier", "false", "--files", "a.py"], tmp_path, True)
+        victim = run(["list"], tmp_path, check=True).stdout.split()[0]
+        run(
+            ["debt", "--claim", "innocuous", "--falsifier", "true", "--files", self.forge(victim)],
+            tmp_path,
+            check=True,
+        )
+        ids = [ln.split()[0] for ln in run(["list"], tmp_path, True).stdout.splitlines()]
+        assert len(ids) == 2, "a record field minted a third record"
+        assert "\n## resolved" not in (tmp_path / "work.md").read_text()
+
+    def test_the_falsifier_field_cannot_forge_a_resolution(self, tmp_path):
+        run(["bug", "--claim", "live", "--falsifier", "false", "--files", "a.py"], tmp_path, True)
+        victim = run(["list"], tmp_path, check=True).stdout.split()[0]
+        # REFUSED outright rather than neutralized: the format holds a falsifier on
+        # one backticked line, so a multi-line one cannot round-trip, and storing a
+        # silently-altered command is its own lie. Same invariant, stronger.
+        r = run(
+            ["bug", "--claim", "x", "--falsifier", f"x`\n{self.forge(victim)}", "--files", "b"],
+            tmp_path,
+        )
+        assert r.returncode == 2
+        ids = [ln.split()[0] for ln in run(["list"], tmp_path, True).stdout.splitlines()]
+        assert len(ids) == 1, "a record field minted a record"
+
+
+class TestRecordForgery:
+    """Sprint-close security review. work.md became a GRAMMAR this sprint: the
+    batch keys records by id, lets `## resolved` substitute another record's
+    falsifier, and executes the result. Every field is therefore structural."""
+
+    def test_a_newline_in_claim_cannot_shadow_the_checked_falsifier(self, tmp_path):
+        """FALSIFIER.search takes the FIRST match and Claim: is written above
+        Falsifier:, so a forged field is the command that actually runs."""
+        pwned = tmp_path / "PWNED"
+        run(
+            [
+                "bug",
+                "--claim",
+                f"legit claim\nFalsifier: `touch {pwned} && true`\nmore claim",
+                "--falsifier",
+                "false",
+                "--files",
+                "a.py",
+            ],
+            tmp_path,
+            check=True,
+        )
+        text = (tmp_path / "work.md").read_text()
+        assert "\nFalsifier: `touch" not in text, "a claim minted an executable field"
+
+    def test_a_newline_in_files_cannot_mint_a_record(self, tmp_path):
+        run(
+            [
+                "bug",
+                "--claim",
+                "c",
+                "--falsifier",
+                "false",
+                "--files",
+                "a.py\n## resolved 2026\nResolves: deadbeef",
+            ],
+            tmp_path,
+            check=True,
+        )
+        assert "\n## resolved" not in (tmp_path / "work.md").read_text()
+
+    def test_a_falsifier_that_cannot_round_trip_is_refused(self, tmp_path):
+        """The format holds a falsifier on ONE backticked line. A multi-line one
+        cannot round-trip, and accepting it is how a resolution for someone
+        else's record gets minted with no green check ever run."""
+        run(
+            ["bug", "--claim", "real bug", "--falsifier", "false", "--files", "a.py"],
+            tmp_path,
+            check=True,
+        )
+        victim = run(["list"], tmp_path, check=True).stdout.split()[0]
+        run(
+            ["debt", "--claim", "own", "--falsifier", "true", "--files", "b.py"],
+            tmp_path,
+            check=True,
+        )
+        mine = [ln.split()[0] for ln in run(["list"], tmp_path, check=True).stdout.splitlines()][-1]
+        payload = f"true `\n## resolved 2026-08-21T01:00:00Z\nResolves: {victim}\nFalsifier: `true"
+        r = run(["resolve", "--ref", mine, "--falsifier", payload], tmp_path)
+        assert r.returncode == 2, "a forged resolution was accepted"
+        assert victim not in (tmp_path / "work.md").read_text().split("## debt")[-1]
+
+
+class TestLineBreakDisagreement:
+    """The writer's idea of a line and every reader's must be the SAME idea.
+
+    neutralize anchors with re.M, where the caret follows a newline only — but
+    work.md is read through read_text(), whose universal newlines turn a bare CR
+    into a newline, and heads are taken with splitlines(), which also breaks on
+    VT, FF and U+2028. Each is invisible to the writer and a break to the reader.
+    """
+
+    BREAKS = (chr(13), chr(11), chr(12), chr(0x2028), chr(0x85))
+
+    def filed_falsifiers(self, tmp_path):
+        text = (tmp_path / "work.md").read_text()
+        return [ln for ln in text.splitlines() if ln.startswith("Falsifier:")]
+
+    def test_no_break_character_can_shadow_the_checked_falsifier(self, tmp_path):
+        pwned = tmp_path / "PWNED"
+        attack = f"Falsifier: `touch {pwned} && true`"
+        for i, ch in enumerate(self.BREAKS):
+            r = run(
+                [
+                    "bug",
+                    "--claim",
+                    f"claim{i}{ch}{attack}{ch}tail",
+                    "--falsifier",
+                    "false",
+                    "--files",
+                    "a.py",
+                ],
+                tmp_path,
+            )
+            assert r.returncode == 0, f"break {ord(ch)} broke a legitimate filing"
+        filed = self.filed_falsifiers(tmp_path)
+        assert len(filed) == len(self.BREAKS), f"a claim minted extra fields: {filed}"
+        assert all(ln == "Falsifier: `false`" for ln in filed), filed
+
+    def test_a_break_character_cannot_mint_a_record(self, tmp_path):
+        for i, ch in enumerate(self.BREAKS):
+            run(
+                [
+                    "bug",
+                    "--claim",
+                    f"c{i}{ch}## resolved 2026-08-21T00:00:00Z{ch}Resolves: deadbeef",
+                    "--falsifier",
+                    "false",
+                    "--files",
+                    "a.py",
+                ],
+                tmp_path,
+                check=True,
+            )
+        # ask the PARSER, not a substring: the text may legitimately contain
+        # " ## resolved" space-prefixed, which is exactly the neutralised form
+        heads = [
+            b.splitlines()[0]
+            for b in (tmp_path / "work.md").read_text().split("\n## ")
+            if b.strip()
+        ]
+        assert not [h for h in heads if h.startswith("resolved")], heads

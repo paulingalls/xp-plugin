@@ -25,4 +25,4 @@ Story ACs must be executed by a test named in the story's Verify.
 - Size budgets are acceptance criteria (DESIGN.md §9): Python ≤5,000 lines
   (spawn ≤2,000 · close ≤800 · hooks+adapters ≤1,000 · misc ≤1,200), skill prose
   ≤3,000 words, agent prose ≤2,500 words, tests ≤2× code lines.
-- Worktree bootstrap: none needed (stdlib only, no install step).
+- **Worktree bootstrap**: none needed (stdlib only, no install step).

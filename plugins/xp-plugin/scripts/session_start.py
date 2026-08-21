@@ -6,6 +6,7 @@ silence on any unexpected state: a broken hook must never break a session.
 """
 
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -15,6 +16,7 @@ from work import data_root
 
 PLUGIN_ROOT = Path(__file__).parent.parent
 OUTPUT_CAP = 12_000  # chars ≈ 3k tokens, the lead-profile budget (DESIGN §8)
+ENTRY_CAP = 240  # per work.md entry in the recovery block; see recovery_block
 
 
 def git(*args: str) -> str:
@@ -43,6 +45,71 @@ def digest_with_staleness() -> str:
     return text
 
 
+CLOSE_CAP = 400  # the whole close detail; see _close_detail
+ROUND_CAP = 100  # per round within it
+
+
+def _close_detail(record: dict) -> str:
+    """Both record shapes, bounded.
+
+    closes.jsonl is append-only, so story-008's verdicts[] records outlive the
+    mechanism that wrote them; a reader that knows only rounds[] degrades this
+    whole layer to "(unreadable log)". Bounded because more review rounds must
+    never mean fewer constraints reaching the lead — this is the section that
+    evicted constraints.md once already.
+    """
+    rounds = record.get("rounds")
+    if rounds is None:
+        return _fit(record.get("verdicts") or ["(no verdict recorded)"])
+    shown = []
+    for i, r in enumerate(rounds, 1):
+        items = ", ".join([*r.get("fixed", []), *r.get("blocking", []), *r.get("noted", [])])
+        if len(items) > ROUND_CAP:
+            items = items[:ROUND_CAP] + "…"
+        shown.append(f"round {i}: {items or 'clean'}")
+    return _fit(shown)
+
+
+def _fit(parts: list) -> str:
+    """Joined and bounded — dropping the OLDEST parts, never the newest.
+
+    A head-truncating cap loses the last round, which is the one that gated the
+    merge: the only round land ever reads for blocking findings.
+    """
+    kept, dropped = list(parts), 0
+    while len(" · ".join(kept)) > CLOSE_CAP and len(kept) > 1:
+        kept.pop(0)
+        dropped += 1
+    detail = " · ".join(kept)
+    if len(detail) > CLOSE_CAP:
+        detail = detail[:CLOSE_CAP] + "…"
+    return f"(+{dropped} earlier elided) {detail}" if dropped else detail
+
+
+def last_close() -> str:
+    """The most recent close, from close.py's append-only log.
+
+    Written here rather than left to session.md because the story list below
+    filters [done] out, so what was just finished appeared only in the digest —
+    the layer that goes stale, and whose author is a hand-step (Milestone 1
+    allows none). Facts only: close.py is deterministic Python and may not
+    summarize (constraints #7); the narrative digest stays LLM-written.
+    """
+    path = data_root() / "closes.jsonl"
+    if not path.exists():
+        return ""
+    lines = [ln for ln in path.read_text(errors="replace").splitlines() if ln.strip()]
+    if not lines:
+        return ""
+    record = json.loads(lines[-1])
+    verdicts = _close_detail(record)
+    return (
+        f"last close: {record['story']} — {record.get('title', '')}"
+        f" at {str(record.get('merge_sha', ''))[:8]} on {record.get('closed_at', '?')}"
+        f"\n  {verdicts}"
+    )
+
+
 def recovery_block(root: Path) -> str:
     """Computed fresh from always-current sources — the layer that can't go stale."""
     stories = [
@@ -55,13 +122,26 @@ def recovery_block(root: Path) -> str:
     for i, ln in enumerate(lines):
         if ln.startswith("## "):
             body = lines[i + 1] if i + 1 < len(lines) else ""
+            # BOUNDED: a work.md entry is one paragraph, so its "first line" is
+            # the whole entry. Three long notes were ~6,000 chars and pushed
+            # constraints.md off the end of the budget entirely — filing records
+            # silently evicted the rules that govern filing them.
+            if len(body) > ENTRY_CAP:
+                body = body[:ENTRY_CAP] + f"… (+{len(body) - ENTRY_CAP} chars, see work.md)"
             entries.append(f"{ln}\n  {body}")
     work_heads = entries[-3:]
     dirty = git("status", "--porcelain")
+    try:
+        closed = last_close()
+    except Exception:
+        # a corrupt log must cost its own line, not the whole recovery layer:
+        # build_all try/excepts per BUILDER, and this is one builder
+        closed = "last close: (unreadable log)"
     return "\n".join(
         [
             f"branch: {git('rev-parse', '--abbrev-ref', 'HEAD')}",
             f"dirty files: {len(dirty.splitlines()) if dirty else 0}",
+            *([closed] if closed else []),
             "stories:",
             *stories,
             "recent work.md entries:",
@@ -70,9 +150,29 @@ def recovery_block(root: Path) -> str:
     )
 
 
-def banner(root: Path) -> str:
+def plugin_version() -> str:
     manifest = read(PLUGIN_ROOT / ".claude-plugin" / "plugin.json")
-    version = json.loads(manifest).get("version", "unknown") if manifest else "unknown"
+    return json.loads(manifest).get("version", "unknown") if manifest else "unknown"
+
+
+def teammate_marker() -> str:
+    """The non-lead profile: one POSITIVE line, never silence.
+
+    Silence would be indistinguishable from this hook crashing — main() degrades
+    to exit 0 on anything — so a silent gate could never be told apart from a
+    gate that never ran (constraints.md #2). The teammate's rules are already
+    inlined in its prompt by spawn.py; re-injecting the lead profile on top is
+    duplicate tokens against the DESIGN §8 budget, which is the whole reason
+    this gate exists.
+    """
+    return (
+        f"xp-plugin {plugin_version()} · teammate session · your card, VALUES and "
+        "constraints are in your prompt · you never close, never merge"
+    )
+
+
+def banner(root: Path) -> str:
+    version = plugin_version()
     hooks = "lefthook" if (root / "lefthook.yml").exists() else ""
     hooks = hooks or (".githooks" if (root / ".githooks").is_dir() else "none detected")
     constraints_lines = len(read(root / ".xp" / "constraints.md").splitlines())
@@ -95,16 +195,24 @@ def main() -> int:
     markers = data_root() / "markers"
     markers.mkdir(parents=True, exist_ok=True)
     (markers / f"{session}.alive").touch()
+    # Role gates the PROFILE only, never the gates: stop_gate and bash_status
+    # stay live for a teammate, which is the agent actually running the tests.
+    if os.environ.get("XP_ROLE", "lead") != "lead":
+        print(teammate_marker())
+        return 0
     # freshest layers first: the cap truncates the tail, so static prose goes last
     plugin_builders = [
         lambda: banner(root),
         lambda: read(PLUGIN_ROOT / "VALUES.md"),
         lambda: read(PLUGIN_ROOT / "PROCESS.md"),
     ]
+    # constraints BEFORE the digest: the cap truncates the tail, and the rules
+    # outrank the narrative. A digest is recreatable from git and work.md; a
+    # silently-absent constraint is a rule the lead never knew it was breaking.
     repo_builders = [
         lambda: recovery_block(root),
-        lambda: digest_with_staleness(),
         lambda: read(root / ".xp" / "constraints.md"),
+        lambda: digest_with_staleness(),
     ]
 
     def build_all(builders):  # one bad file degrades one section, never all
