@@ -705,8 +705,25 @@ batch keeps reporting green, which is constraint 11's failure arriving through
 the back door. The story must re-point that resolution deliberately, and
 `trunk_motion_DURING` (a teammate pushing DURING the review window) is a
 different case that STAYS.
-Size: close.py 486 of the 500 hard cap; component 1044 of 1250; density 19.84% of
-20.00% — about five comment lines plugin-wide. Before this story: 1044 + 014's
+LANDED BEFORE THIS STORY, and it changes the ground: the 5d7388fc + 37c0fb4e fix
+moved the trunk-held check into the preflight, hoisted a `os.chdir(held)` above
+BOTH merge arms, and put `git worktree remove` immediately before the branch
+delete. THREE CONSEQUENCES FOR THIS CARD. (1) The trial-merge in F4 runs in the
+tree holding trunk, not the story tree, and the story worktree still exists at
+that point — deliberately, because the trial needs it. (2) `trunk_worktree` no
+longer lives in close.py; it is `bookkeep.held_trunk_tree`, returning
+(path, error). (3) The at-risk list grows by the six tests that fix added, all in
+TestFixingReviewer: they assert the worktree survives every refusal, so a rule
+that lands on motion must keep that true.
+MEASURED THERE, AND IT DISPOSES HALF OF f7dfec27: the merge-conflict abort is
+UNREACHABLE in local mode — any conflict requires trunk motion, the motion guard
+at close.py:296 fires first, and re-reviewing to clear it requires merging trunk
+in, which resolves the conflict. F4's trial-merge is what would make that path
+reachable again, so this story owns the decision rather than story-011.
+Size: close.py 489 of the 500 hard cap — FOURTEEN lines, and the extraction to
+scripts/close/coverage.py is now mandatory rather than named; component 1281 of
+1300 after a 50-line move from spawn priced to that fix's need; density 19.52% of
+20.00%. Before this story: 1044 + 014's
 125-165 + 011's 60-80 = 1229-1289 against 1250. The extraction is NAMED: the
 coverage and motion guards move together into scripts/close/coverage.py — that path
 deliberately, because ratchet.component_for matches any path part, so scripts/close/

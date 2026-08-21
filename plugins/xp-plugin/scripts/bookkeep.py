@@ -121,18 +121,57 @@ def log_close(story_id: str, card: str, rounds: list[dict], merge_sha: str) -> N
 
 
 def delete_story_branch(branch: str) -> list[str]:
-    """Delete the story branch, LOCAL FIRST — so `-d`'s merged check still has the
-    upstream ref to check against.
+    """Delete the story branch, REMOTE FIRST. Local-first was the bug (37c0fb4e):
+    `-d` compares against the upstream ref when one exists, so a reviewer's
+    commits — which never get pushed to the story branch — make it refuse
+    "not fully merged" on a branch already merged to HEAD, and the emitted
+    remediation cannot succeed either. With the remote gone `-d` falls back to
+    the HEAD check and still refuses for a genuinely unmerged branch.
 
     Idempotent both sides: `gh pr merge --delete-branch` may have removed either,
     and reporting a done step as outstanding prints a remediation that fails on
     re-run. ls-remote, not a tracking ref: `git fetch` without --prune leaves
     stale ones.
     """
-    local_exists = git("rev-parse", "--verify", "-q", f"refs/heads/{branch}").returncode == 0
-    if local_exists and git("branch", "-d", branch).returncode != 0:
-        return [f"git branch -d {branch}"]
     on_origin = git("ls-remote", "--exit-code", "--heads", "origin", branch).returncode == 0
     if on_origin and git("push", "origin", "--delete", branch).returncode != 0:
         return [f"git push origin --delete {branch}"]
+    local_exists = git("rev-parse", "--verify", "-q", f"refs/heads/{branch}").returncode == 0
+    if local_exists and git("branch", "-d", branch).returncode != 0:
+        return [f"git branch -d {branch}"]
+    return []
+
+
+def held_trunk_tree(trunk: str) -> tuple[str, str]:
+    """(path of ANOTHER worktree holding <trunk>, error). spawn.py's DEFAULT is the
+    lead's tree holding trunk and the story in a worktree, so this is the normal
+    case. Structural and cheap, which is why cmd_land asks BEFORE Verify (5d7388fc):
+    reaching it after the tier spent ~2 minutes to learn a `git worktree list` fact.
+    """
+    path = ""
+    for ln in git("worktree", "list", "--porcelain").stdout.splitlines():
+        if ln.startswith("worktree "):
+            path = ln[9:]
+        elif ln == f"branch refs/heads/{trunk}":
+            if Path(path).resolve() == Path.cwd().resolve():
+                return "", ""
+            if git("-C", path, "status", "--porcelain").stdout.strip():
+                return "", (
+                    f"refused: {trunk} is checked out at {path}, which is dirty —"
+                    " the merge lands there, so clean it first"
+                )
+            return path, ""
+    return "", ""
+
+
+def remove_story_worktree(tree: str) -> list[str]:
+    """Only `git branch -d` needs the worktree gone — MEASURED, the merge itself
+    succeeds while the branch is checked out elsewhere. So this runs immediately
+    before the delete, not before the merge: every refusal above names a next
+    action the lead takes in that tree, and a Verify leaving an untracked
+    artifact turns an early removal into a post-test refusal (5d7388fc's shape).
+    Failure here is a hand-step after a landed merge, never a refusal.
+    """
+    if git("worktree", "remove", tree).returncode != 0:
+        return [f"git worktree remove {tree}"]
     return []

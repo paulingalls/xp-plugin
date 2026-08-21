@@ -65,11 +65,24 @@ def test_real_repo_within_budget_exits_zero_and_prints_table():
     assert sum(int(n) for n in printed) == shipped, result.stdout
 
 
+def _budgets():
+    """ratchet's own constants — so moving a cap under constraint 1 does not red a
+    test that was only ever asserting the OVERAGE arithmetic."""
+    sys.path.insert(0, str(RATCHET.parent))
+    try:
+        import ratchet
+
+        return ratchet
+    finally:
+        sys.path.remove(str(RATCHET.parent))
+
+
 def test_extracted_subpackage_counts_against_its_component(tmp_path):
     """Constraint 8 hard-caps a file at 500 lines, so a component's growth path is
     close.py -> close/. Scanning one directory level certified a tree with 3,000
     lines of close sitting one directory down (measured: exit 0)."""
-    files = {"scripts/setup.py": "x = 1\n", "scripts/close/big.py": "x = 1\n" * 1300}
+    over = _budgets().CLOSE + 50  # derived, never a literal: a cap move must not red this
+    files = {"scripts/setup.py": "x = 1\n", "scripts/close/big.py": "x = 1\n" * over}
     root = build_plugin_tree(tmp_path, files)  # setup.py so the empty-tree refusal cannot mask it
     result = run_ratchet(root)
     assert result.returncode != 0, result.stdout
@@ -111,13 +124,13 @@ def test_python_outside_scripts_counts_against_its_component(tmp_path):
 
 
 def test_fixture_over_spawn_budget_reds_naming_budget_and_overage(tmp_path):
-    padded = "x = 1\n" * 2100
-    root = build_plugin_tree(tmp_path, {"scripts/spawn.py": padded})
+    cap = _budgets().SPAWN
+    root = build_plugin_tree(tmp_path, {"scripts/spawn.py": "x = 1\n" * (cap + 100)})
     result = run_ratchet(root)
     assert result.returncode != 0, result.stdout
     (violation,) = violation_lines(result.stdout)
     assert "spawn" in violation, violation
-    assert "cap 2000" in violation, violation
+    assert f"cap {cap}" in violation, violation
     assert "over by 100" in violation, violation
 
 

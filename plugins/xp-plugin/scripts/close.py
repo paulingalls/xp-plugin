@@ -26,7 +26,9 @@ sys.path.insert(0, str(Path(__file__).parent))
 from bookkeep import (
     delete_story_branch,
     delete_story_markers,
+    held_trunk_tree,
     log_close,
+    remove_story_worktree,
     render_land_preview,
     render_merge_body,
     render_noted,
@@ -117,17 +119,6 @@ def origin_trunk_sha(trunk: str) -> str | None:
     git("fetch", "-q", "origin", trunk, check=False)
     r = git("rev-parse", "--verify", "-q", f"refs/remotes/origin/{trunk}", check=False)
     return r.stdout.strip() if r.returncode == 0 else None
-
-
-def trunk_worktree(trunk: str) -> str:
-    """Path of the worktree holding <trunk>, or "" if no tree has it checked out."""
-    path = ""
-    for ln in git("worktree", "list", "--porcelain").stdout.splitlines():
-        if ln.startswith("worktree "):
-            path = ln[9:]
-        elif ln == f"branch refs/heads/{trunk}":
-            return path
-    return ""
 
 
 def marker_path(story_id: str) -> Path:
@@ -298,6 +289,13 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
             " what was reviewed; run review again to re-baseline"
         )
 
+    # Structural, and checked HERE rather than beside the merge (5d7388fc): it is a
+    # `git worktree list` compare, so paying ~2min of Verify and tier to reach it was
+    # pure waste. spawn.py's DEFAULT puts trunk in the lead's tree and the story in a
+    # worktree, so `held` is the normal case, not the exception.
+    held, err = held_trunk_tree(trunk)
+    if err:
+        return fail(err)
     plan = Path(".xp/plan.md").read_text()
     try:
         card, _ = story_card(plan, story_id)
@@ -342,6 +340,14 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
         print(reviewer_work, end="")
         print(f"full diff: {review.diff_path(review.report_path(story_id, len(rounds)))}")
 
+    # Everything above reads the STORY tree — its plan.md, its Verify, its tier, the
+    # reviewer's range. Everything below writes the tree that holds trunk. Both arms
+    # need it: pr_sync's `git checkout -q trunk` collides identically, and it runs
+    # AFTER `gh pr merge`, so there it lands as an exit-3 with the PR already merged.
+    # A worktree shares refs with its clone, so the motion guards above stay true here.
+    story_tree = str(Path.cwd())
+    if held:
+        os.chdir(held)
     if merge_mode == "pr":
         import shutil
 
@@ -354,17 +360,8 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
             if r.returncode != 0:
                 return fail(f"{c[0]} failed: {r.stderr.strip()}")
     else:
-        # git refuses to check out a branch held by another worktree (exit 128), and
-        # that is spawn.py's DEFAULT arrangement — the lead's tree holds trunk, the
-        # story lives in a worktree. Refuse with the next action rather than dying
-        # on an unchecked CalledProcessError, which is what landing story-010 did.
-        if (held := trunk_worktree(trunk)) and Path(held).resolve() != Path.cwd().resolve():
-            return fail(
-                f"refused: {trunk} is checked out at {held}, so this tree cannot merge into"
-                f" it. Land from there: remove this worktree (`git worktree remove {Path.cwd()}`),"
-                f" `git switch {branch}` in {held}, and re-run land"
-            )
-        git("checkout", trunk)
+        if not held:
+            git("checkout", trunk)
         merged = git("merge", "--no-ff", branch, "-m", message, check=False)
         if merged.returncode != 0:
             git("merge", "--abort", check=False)
@@ -406,6 +403,8 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
         for c in pr_bookkeep:
             if subprocess.run(c, capture_output=True, text=True).returncode != 0:
                 failed.append(" ".join(c))
+    if held:
+        failed += remove_story_worktree(story_tree)
     failed += delete_story_branch(branch)
     if not orphaning:
         # Record unless merge_sha is about to be orphaned. Every failure EXCEPT a

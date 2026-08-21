@@ -1564,24 +1564,109 @@ class TestFixingReviewer:
         r = close(repo, env, "review")
         assert r.returncode == 2 and ".xp" in r.stderr
 
-    def test_land_from_a_worktree_does_not_traceback(self, tmp_path):
-        """spawn.py's DEFAULT is a worktree, and the lead's tree holds the
-        integration target — so `git checkout trunk` inside the story worktree
-        exits 128 ("already checked out") and cmd_land dies with an uncaught
-        CalledProcessError. Measured landing story-010: the whole default teammate
-        path could never reach a merge. A refusal naming the fix is the floor."""
-        repo, env, g = make_repo(tmp_path)
+    def _worktree_land_setup(self, tmp_path, verify="true"):
+        """spawn.py's DEFAULT arrangement: the lead's tree holds the integration
+        target, the story branch lives in a worktree. Returns (repo, env, g,
+        tree, branch). `verify` is set BEFORE the review — editing the card after
+        it moves HEAD past the reviewed head and the coverage guard refuses."""
+        repo, env, g = make_repo(tmp_path, verify=verify)
         self.fixing_stub(tmp_path)
         assert close(repo, env, "review").returncode == 0
         tree = tmp_path / "wt"
         branch = g("rev-parse", "--abbrev-ref", "HEAD").stdout.strip()
-        # the lead's tree holds trunk; the story branch lives in the worktree —
-        # spawn.py's default arrangement, which is the whole point
         g("checkout", "-q", "main")
         g("worktree", "add", str(tree), branch)
+        return repo, env, g, tree, branch
+
+    def test_land_from_a_worktree_merges_and_removes_the_worktree(self, tmp_path):
+        """37c0fb4e. Replaces test_land_from_a_worktree_does_not_traceback, which
+        asserted `returncode in (0, 2)` and was green under the bug AND the fix.
+        MEASURED: `git merge --no-ff` into trunk succeeds while the story branch
+        is checked out in a worktree, so landing never needed a teardown first —
+        only `git branch -d` does."""
+        repo, env, _g, tree, branch = self._worktree_land_setup(tmp_path)
         r = close(tree, env, "land", "--merge-mode", "local")
         assert "Traceback" not in r.stderr, r.stderr
-        assert r.returncode in (0, 2), r.stderr
+        assert "refused" not in r.stderr, r.stderr
+        assert r.returncode == 0, r.stderr
+        assert not tree.exists(), "the worktree survived a completed land"
+        head = subprocess.run(
+            ["git", "log", "-1", "--pretty=%s"], cwd=repo, env=env, capture_output=True, text=True
+        ).stdout
+        assert branch in head, head
+        assert "[done]" in (repo / ".xp" / "plan.md").read_text()
+
+    def test_a_dirty_tree_holding_trunk_is_refused_before_verify_runs(self, tmp_path):
+        """5d7388fc — the ORDERING claim, re-pointed. Its filed falsifier named
+        the trunk-held refusal, which the fix above deletes; the property that
+        survives is that a structural precondition costing milliseconds is
+        checked before ~2 minutes of tests. The sentinel is what discriminates:
+        move this guard back below Verify and the sentinel appears."""
+        sentinel = tmp_path / "verify-ran"
+        repo, env, _g, tree, _b = self._worktree_land_setup(tmp_path, verify=f"touch {sentinel}")
+        (repo / "dirt.txt").write_text("uncommitted\n")
+        r = close(tree, env, "land", "--merge-mode", "local")
+        assert r.returncode == 2 and "dirty" in r.stderr, r.stderr
+        assert not sentinel.exists(), "ran the tests before a milliseconds-cheap precondition"
+        assert tree.exists(), "a refusal tore down the worktree"
+
+    def test_a_completed_land_runs_verify(self, tmp_path):
+        """Sentinel ABSENCE alone also passes an implementation that deleted
+        Verify, so the happy path pins its presence (story-014's AC 6 shape)."""
+        sentinel = tmp_path / "verify-ran"
+        _repo, env, _g, tree, _b = self._worktree_land_setup(tmp_path, verify=f"touch {sentinel}")
+        assert close(tree, env, "land", "--merge-mode", "local").returncode == 0
+        assert sentinel.exists()
+
+    def test_land_from_the_tree_holding_trunk_removes_no_worktree(self, tmp_path):
+        """Without this the fix can pass by only ever handling the worktree case.
+        'Unchanged' spelled out: the merge lands in cwd, the card flips, and the
+        unrelated worktree is still standing."""
+        repo, env, g = make_repo(tmp_path)
+        self.fixing_stub(tmp_path)
+        assert close(repo, env, "review").returncode == 0
+        bystander = tmp_path / "other-wt"
+        g("worktree", "add", "-b", "unrelated", str(bystander), "main")
+        assert close(repo, env, "land", "--merge-mode", "local").returncode == 0
+        assert "[done]" in (repo / ".xp" / "plan.md").read_text()
+        assert bystander.exists(), "land removed a worktree it does not own"
+
+    def test_a_refused_land_leaves_the_worktree_standing(self, tmp_path):
+        """Every refusal names a next action the lead takes IN the story tree, so
+        no refusal may tear it down first. Trunk motion is the reachable refusal
+        that lands closest to the merge: FOUND HERE, the conflict abort below it
+        is unreachable in local mode, because any conflict needs trunk motion and
+        this guard fires first — evidence for f7dfec27, filed, not acted on."""
+        repo, env, g, tree, _b = self._worktree_land_setup(tmp_path)
+        g("checkout", "-q", "main")
+        (repo / "src" / "thing.py").write_text("A = 99\n")
+        g("commit", "-qam", "trunk moves after the review")
+        r = close(tree, env, "land", "--merge-mode", "local")
+        assert r.returncode == 2 and "moved since review" in r.stderr, r.stderr
+        assert tree.exists(), "a refusal destroyed the tree its remediation names"
+        on = subprocess.run(
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+            cwd=repo,
+            env=env,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+        assert on == "main", f"left the tree holding trunk on {on}"
+
+    def test_dry_run_removes_no_worktree_and_leaves_the_branch(self, tmp_path):
+        repo, env, _g, tree, branch = self._worktree_land_setup(tmp_path)
+        assert close(tree, env, "land", "--merge-mode", "local", "--dry-run").returncode == 0
+        assert tree.exists()
+        assert (
+            subprocess.run(
+                ["git", "rev-parse", "--verify", "-q", f"refs/heads/{branch}"],
+                cwd=repo,
+                env=env,
+                capture_output=True,
+                text=True,
+            ).returncode
+            == 0
+        )
 
     def test_a_reviewer_may_fix_an_xp_file_the_story_itself_edits(self, tmp_path):
         """The refusal message says "the plan or the rules"; the check was the whole

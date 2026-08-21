@@ -38,8 +38,12 @@ yourself doing by hand is a defect in the pipeline — file it.
    you were shown, or while the recorded round does not cover this tree — naming the
    review command each time, so running it twice gives the same answer. Otherwise it
    runs the story's Verify and the story tier, merges under every round labelled by
-   its number, flips the card to `[done]`, pushes the integration branch, deletes the
-   story branch (local first, then origin), and logs the close. A red Verify aborts
+   its number, flips the card to `[done]`, pushes the integration branch, removes the
+   story worktree, deletes the story branch (origin first, then local — `-d` checks
+   against the upstream ref, and the reviewer's commits never reach it), and logs the
+   close. Run it from the story worktree: land merges in whichever tree holds the
+   integration branch, so YOUR SHELL IS LEFT IN A DELETED DIRECTORY — cd out after.
+   A red Verify aborts
    before the merge.
 5. **Write the session digest** (≤30 lines: intent, surprises, next step). You are
    its sole writer — the pipeline records the facts of the close, never the
