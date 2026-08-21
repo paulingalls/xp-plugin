@@ -1442,6 +1442,33 @@ class TestShippedProseMatchesTheMechanism:
         assert "DOES NOT EXIST" in story, "the lead will hunt for a delta review"
         assert "never spawns" in story, "land's one hard guarantee"
 
+    def test_every_shipped_script_is_reachable_from_the_plugin(self):
+        """ratchet.py sat in scripts/ for a sprint measuring OUR budgets against
+        OUR module names: nothing in the plugin invoked it, the shipped lefthook
+        template never ran it, and in a consuming repo it could only exit 2
+        ("MEASURED NOTHING"). Dev tooling shipped to every install.
+
+        IMPORT-OR-INVOKE, not a mention: ratchet was named once inside the plugin,
+        in a spawn.py comment, so a grep for the word would have certified it.
+        """
+        scripts = sorted((PLUGIN / "scripts").glob("*.py"))
+        assert len(scripts) > 5, "glob found nothing — a green here would certify"
+        corpus = {
+            p: p.read_text()
+            for p in PLUGIN.rglob("*")
+            if p.is_file() and p.suffix in (".py", ".md", ".json", ".yml", ".sh")
+        }
+        for script in scripts:
+            name = script.stem
+            forms = (f"import {name}", f"from {name} import", f"scripts/{name}.py")
+            reachable = any(
+                any(f in text for f in forms) for path, text in corpus.items() if path != script
+            )
+            assert reachable, (
+                f"{name}.py is shipped but nothing in the plugin imports or invokes it —"
+                " dev tooling belongs in tests/scripts/, not in every consumer's install"
+            )
+
     def test_the_charter_names_the_report_path(self):
         assert "REPORT_PATH" in (PLUGIN / "agents" / "story-reviewer.md").read_text()
 

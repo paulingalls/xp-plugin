@@ -26,9 +26,9 @@ def bare_repo(tmp_path, with_fake_lefthook=False):
     return repo, env
 
 
-def run_setup(repo, env):
+def run_setup(repo, env, *args):
     return subprocess.run(
-        [sys.executable, str(SCRIPTS / "setup.py")],
+        [sys.executable, str(SCRIPTS / "setup.py"), *args],
         cwd=repo,
         env=env,
         capture_output=True,
@@ -37,6 +37,18 @@ def run_setup(repo, env):
 
 
 class TestScaffold:
+    def test_help_explains_rather_than_scaffolding(self, tmp_path):
+        """setup.py parsed no args, so an agent orienting with --help SCAFFOLDED
+        the repo instead of being told what the command does. Corrupting, not
+        loud: it creates state nobody asked for and then reports success. The
+        fixture is a BARE repo — in this one, .xp/ already exists and the refusal
+        masks the bug entirely."""
+        repo, env = bare_repo(tmp_path)
+        r = run_setup(repo, env, "--help")
+        assert r.returncode == 0, r.stderr
+        assert not (repo / ".xp").exists(), "--help scaffolded the repo"
+        assert "scaffold" in r.stdout.lower(), r.stdout
+
     def test_bare_repo_gets_seeded_xp(self, tmp_path, monkeypatch):
         repo, env = bare_repo(tmp_path)
         r = run_setup(repo, env)

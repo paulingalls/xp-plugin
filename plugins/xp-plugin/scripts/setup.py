@@ -6,6 +6,7 @@ routing (core.hooksPath, .githooks/, any lefthook config) is left untouched —
 rewiring someone's hooks is an overwrite of behavior.
 """
 
+import argparse
 import shutil
 import stat
 import subprocess
@@ -80,6 +81,7 @@ def scaffold_wall() -> str:
 
 
 def main() -> int:
+    argparse.ArgumentParser(description=__doc__).parse_args()  # --help must not scaffold
     if not chdir_repo_root():
         return fail("refused: not inside a git repository")
     if Path(".xp").exists():

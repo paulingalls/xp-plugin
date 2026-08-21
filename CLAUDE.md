@@ -29,8 +29,19 @@ instead.
 
 ## Size discipline
 
-Budgets and rationale live in DESIGN.md §9; `ratchet.py` measures the Python ones
-live at pre-push (the prose budgets are still read-and-judge) — run it and read
-the table, never a cached number. Every added rule displaces one. When in doubt:
+Budgets and rationale live in DESIGN.md §9; `tests/scripts/ratchet.py` measures the
+Python ones live at pre-push (the prose budgets are still read-and-judge) — run it
+and read the table, never a cached number. It measures the SHIPPED plugin, so it
+lives outside it: nothing under `plugins/xp-plugin/` may exist for our benefit
+rather than a consuming project's. Every added rule displaces one. When in doubt:
 VALUES.md, conflicts resolve Honesty > Courage > Simplicity > Feedback >
 Communication.
+
+## Authoring skills (ours, not a consuming project's)
+
+A SKILL driving a script says what to run, what you own, and how to respond to
+results. Mechanism lives in the code and remediation in the refusal text, so
+describing either ships a second copy that only drifts. Negative space — what
+deliberately does not exist — is the one description that earns its words.
+This only works if the script speaks: every refusal names its next action, and
+every CLI answers `--help` without doing anything.

@@ -17,10 +17,6 @@ One page. The values (VALUES.md) cover what this page doesn't.
    Comments: restates the code → delete · explains WHAT → rename it · a checkable
    claim → write the test · narrates history → delete, git holds it. Keep only the
    why, an external constraint, a rejected design.
-   A SKILL driving a script says what to run, what you own, and how to respond to
-   results. Mechanism lives in the code and remediation in the refusal text, so
-   describing either ships a second copy that only drifts. Negative space — what
-   deliberately does not exist — is the one description that earns its words.
 3. **Story close**: run the `/story-close` checklist — it spawns the **story-reviewer**
    on the cumulative diff plus anything you filed in work.md, stops for your
    fix-or-ask call, runs the story's Verify commands, records every review round in
@@ -36,8 +32,7 @@ One page. The values (VALUES.md) cover what this page doesn't.
    Uncertain? One delta ping beats a wrong self-call. What ENDS a round is the
    finding bar, not a count: a finding earns another round only if its failure mode
    is silent or corrupting (false green, corrupted record, unreviewed merge). Loud
-   and patch-scale → fix it now if that is minutes, else file it. A round cap was
-   tried and retired — nothing counted it, and it gave the human no way to act.
+   and patch-scale → fix it now if that is minutes, else file it.
 4. **Sprint close** (release: sprint — the default): stories integrated on the
    sprint branch throughout; the batch PRs to main when it is RELEASABLE —
    usually now (keep sprints small), else carried to the plan boundary; prefer
@@ -65,12 +60,12 @@ One page. The values (VALUES.md) cover what this page doesn't.
   the latent problem materialised. One that greens BECAUSE the flaw is present is
   inverted, and aborts the sprint close on the day someone fixes it.
 - **resolve** — substitutes a falsifier that must be green NOW; the batch runs the
-  replacement, so a wrong resolution reds later and the record reopens. Records are
-  named by id (`work.py list`), never by timestamp: 48 appends in one second share one.
+  replacement, so a wrong resolution reds later and the record reopens. Records are named by id
+  (`work.py list`), never by timestamp — appends can share a second.
 - **note** — decisions (choice + because, naming which value won and which lost)
   and discoveries. Triaged at SPRINT close: promoted to constraints.md, or archived.
-  A directive the next story must FOLLOW goes on that story's CARD, which close.py
-  reads and spawn inlines into the teammate; the note keeps the evidence.
+  A directive the next story must FOLLOW goes on that story's CARD; the note keeps
+  the evidence.
 
 Telemetry (test/lint failures) is never recorded — the gate re-measures next run.
 

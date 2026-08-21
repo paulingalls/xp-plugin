@@ -26,4 +26,4 @@ pre-push:
     full-tests:
       run: sh -c 'pytest -q -n auto; s=$?; [ $s -eq 5 ] && exit 0; exit $s'
     ratchet:
-      run: python3 plugins/xp-plugin/scripts/ratchet.py
+      run: python3 tests/scripts/ratchet.py

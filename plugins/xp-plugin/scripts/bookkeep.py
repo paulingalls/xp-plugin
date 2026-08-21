@@ -121,17 +121,11 @@ def log_close(story_id: str, card: str, rounds: list[dict], merge_sha: str) -> N
 
 
 def delete_story_branch(branch: str) -> list[str]:
-    """Delete the story branch, REMOTE FIRST. Local-first was the bug (37c0fb4e):
-    `-d` compares against the upstream ref when one exists, so a reviewer's
-    commits — which never get pushed to the story branch — make it refuse
-    "not fully merged" on a branch already merged to HEAD, and the emitted
-    remediation cannot succeed either. With the remote gone `-d` falls back to
-    the HEAD check and still refuses for a genuinely unmerged branch.
-
-    Idempotent both sides: `gh pr merge --delete-branch` may have removed either,
-    and reporting a done step as outstanding prints a remediation that fails on
-    re-run. ls-remote, not a tracking ref: `git fetch` without --prune leaves
-    stale ones.
+    """Delete the story branch, REMOTE FIRST (37c0fb4e): `-d` compares against the
+    upstream ref when one exists, so the reviewer's commits — never pushed to the
+    story branch — made it refuse a branch already merged to HEAD. With the remote
+    gone it falls back to the HEAD check and still refuses a genuinely unmerged one.
+    ls-remote, not a tracking ref: `git fetch` without --prune leaves stale ones.
     """
     on_origin = git("ls-remote", "--exit-code", "--heads", "origin", branch).returncode == 0
     if on_origin and git("push", "origin", "--delete", branch).returncode != 0:
@@ -143,11 +137,9 @@ def delete_story_branch(branch: str) -> list[str]:
 
 
 def held_trunk_tree(trunk: str) -> tuple[str, str]:
-    """(path of ANOTHER worktree holding <trunk>, error). spawn.py's DEFAULT is the
-    lead's tree holding trunk and the story in a worktree, so this is the normal
-    case. Structural and cheap, which is why cmd_land asks BEFORE Verify (5d7388fc):
-    reaching it after the tier spent ~2 minutes to learn a `git worktree list` fact.
-    """
+    """(path of ANOTHER worktree holding <trunk>, error). Cheap and structural, so
+    cmd_land asks BEFORE Verify — reaching it only after the tier had spent ~2 min
+    to learn a `git worktree list` fact was 5d7388fc."""
     path = ""
     for ln in git("worktree", "list", "--porcelain").stdout.splitlines():
         if ln.startswith("worktree "):
@@ -165,13 +157,9 @@ def held_trunk_tree(trunk: str) -> tuple[str, str]:
 
 
 def remove_story_worktree(tree: str) -> list[str]:
-    """Only `git branch -d` needs the worktree gone — MEASURED, the merge itself
-    succeeds while the branch is checked out elsewhere. So this runs immediately
-    before the delete, not before the merge: every refusal above names a next
-    action the lead takes in that tree, and a Verify leaving an untracked
-    artifact turns an early removal into a post-test refusal (5d7388fc's shape).
-    Failure here is a hand-step after a landed merge, never a refusal.
-    """
+    """Only `git branch -d` needs the worktree gone — MEASURED, the merge succeeds
+    while the branch is checked out elsewhere. So it runs just before the delete:
+    every refusal above names a next action the lead takes in that tree."""
     if git("worktree", "remove", tree).returncode != 0:
         return [f"git worktree remove {tree}"]
     return []

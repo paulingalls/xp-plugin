@@ -7,7 +7,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).parent.parent
 PLUGIN_ROOT = REPO_ROOT / "plugins" / "xp-plugin"
-RATCHET = PLUGIN_ROOT / "scripts" / "ratchet.py"
+RATCHET = REPO_ROOT / "tests" / "scripts" / "ratchet.py"
 CLAUDE_MD = REPO_ROOT / "CLAUDE.md"
 SYSTEM_MD = REPO_ROOT / ".xp" / "system.md"
 LEFTHOOK = REPO_ROOT / "lefthook.yml"

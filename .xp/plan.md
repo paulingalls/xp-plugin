@@ -432,7 +432,7 @@ CLAUDE.md and .xp/system.md, so deleting them REDS it: this story must `work.py
 resolve` it with a replacement covering the stronger claim, or it wedges the
 sprint's own close (found at plan review; it was a trap of my own making).
 Size: ratchet.py lands in misc, measured 366 of 900.
-Files: plugins/xp-plugin/scripts/ratchet.py, lefthook.yml, tests/test_ratchet.py,
+Files: tests/scripts/ratchet.py, lefthook.yml, tests/test_ratchet.py,
 CLAUDE.md, .xp/system.md, docs/DESIGN.md
 AC:
 - Given the repo within budgets, When ratchet.py runs, Then exit 0 printing the per-component MEASURED/cap table — a live number on every push, because the sprint-002 SIZE BREACH was an agent estimating against a stale one and a pointer does not fix that
