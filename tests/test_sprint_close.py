@@ -72,6 +72,21 @@ class TestMembership:
         assert r.returncode == 0, r.stderr
         assert "story-099" not in r.stdout
 
+    def test_sprint_2_does_not_swallow_sprint_20(self, tmp_path):
+        """Membership was a PREFIX match, so sprint 2 claimed sprint 20's cards:
+        closing 2 would refuse forever on a story that is not its own, and a
+        double-digit sprint would silently close two sprints as one."""
+        repo, env, _g = make_repo(
+            tmp_path,
+            plan=PLAN.replace(
+                "### Sprint 3",
+                "### Sprint 20\n#### story-900 — not this sprint   [in-progress]\n\n### Sprint 3",
+            ),
+        )
+        r = sprint(repo, env, "start")
+        assert r.returncode == 0, r.stderr
+        assert "story-900" not in r.stdout + r.stderr
+
     def test_an_unfinished_story_in_THIS_sprint_refuses(self, tmp_path):
         repo, env, _g = make_repo(
             tmp_path,
@@ -106,6 +121,30 @@ class TestFalsifierBatch:
         assert r.returncode == 2, r.stdout
         assert "latent" in r.stderr or "latent" in r.stdout
         assert "## bug " in (tmp_path / "data" / "work.md").read_text()
+
+    def test_re_running_against_an_unfixed_red_files_one_bug_not_one_per_run(self, tmp_path):
+        """The red path is the one that actually gets re-run — you fix, then run
+        again. Each run appended a fresh duplicate, and every duplicate is itself
+        a live record needing its own resolution, so the debris self-perpetuates."""
+        repo, env, _g = make_repo(tmp_path)
+        flag = tmp_path / "flag"
+        flag.write_text("ok")
+        work(
+            repo,
+            env,
+            "debt",
+            "--claim",
+            "latent",
+            "--falsifier",
+            f"test -f {flag}",
+            "--files",
+            "a.py",
+        )
+        flag.unlink()
+        for _ in range(3):
+            assert sprint(repo, env, "start").returncode == 2
+        filed = (tmp_path / "data" / "work.md").read_text().count("## bug ")
+        assert filed == 1, f"three runs filed {filed} bugs for one unfixed red"
 
     def test_a_resolved_record_runs_the_RESOLUTION_falsifier_not_nothing(self, tmp_path):
         """A resolution that was wrong must red later and reopen the record."""
@@ -228,6 +267,33 @@ class TestLandAndPostMerge:
         g("merge", "-q", "--no-ff", "sprint-002", "-m", "release")
         assert sprint(repo, env, "post-merge").returncode == 0
         assert "sprint_branch:" not in (repo / ".xp" / "config.yml").read_text()
+
+    def test_post_merge_on_the_unmerged_sprint_branch_refuses(self, tmp_path):
+        """The leg exists to cut the tag on the sha that SHIPPED. Nothing made
+        that true: it tagged whatever HEAD was, so running it without checking
+        out trunk named an unreviewed sprint-branch commit as the release."""
+        repo, env, g = make_repo(tmp_path)
+        g("tag", "v0.2.1")
+        (repo / "unreviewed.py").write_text("# never went through the PR\n")
+        g("add", "-A")
+        g("commit", "-qm", "unmerged work")
+        r = sprint(repo, env, "post-merge")
+        assert r.returncode == 2, "tagged a release on an unmerged branch"
+        assert "v0.3.0" not in g("tag").stdout.split()
+        assert "sprint_branch:" in (repo / ".xp" / "config.yml").read_text()
+
+    def test_post_merge_on_trunk_without_the_merge_refuses(self, tmp_path):
+        """On trunk, but the sprint branch never landed: the tag would name a
+        commit that contains none of the sprint."""
+        repo, env, g = make_repo(tmp_path)
+        g("tag", "v0.2.1")
+        (repo / "unreviewed.py").write_text("# never went through the PR\n")
+        g("add", "-A")
+        g("commit", "-qm", "unmerged work")
+        g("checkout", "-q", "main")
+        r = sprint(repo, env, "post-merge")
+        assert r.returncode == 2, "tagged a release that contains none of the sprint"
+        assert "v0.3.0" not in g("tag").stdout.split()
 
     def test_an_existing_tag_refuses_before_anything_moves(self, tmp_path):
         repo, env, g = make_repo(tmp_path)

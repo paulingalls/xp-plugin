@@ -12,7 +12,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
-from close import config_flat, fail, git
+from close import config_flat, default_branch, fail, git
 from work import append, data_root, entries, falsifier_is_green
 
 PLUGIN_ROOT = Path(__file__).parent.parent
@@ -24,11 +24,12 @@ def sprint_stories(plan: str, sprint_id: str) -> list[str]:
 
     Membership is an ARGUMENT, never "every non-done card in plan.md": the next
     sprint's stories are [ready] right now, so that reading refuses forever.
+    The id must END here — a prefix match makes sprint 2 own sprint 20's cards.
     """
-    out, inside = [], False
+    out, inside, head = [], False, f"### Sprint {sprint_id}"
     for ln in plan.splitlines():
         if ln.startswith("### "):
-            inside = ln.startswith(f"### Sprint {sprint_id}")
+            inside = ln.startswith(head) and not ln[len(head) : len(head) + 1].isdigit()
         elif inside and ln.startswith("#### "):
             out.append(ln)
     return out
@@ -84,18 +85,23 @@ def cmd_start(sprint_id: str) -> int:
             return fail(f"refused: full tier red: {tier}")
 
     root = data_root()
-    for eid, head, falsifier in corpus(root):
+    batch = corpus(root)
+    # the red path is the re-run path, so re-file only what is not already a bug
+    known = {f for _e, h, f in batch if h.startswith("bug ")}
+    for eid, head, falsifier in batch:
         if not falsifier_is_green(falsifier):
-            append(
-                root,
-                f"## bug {_stamp()}\nClaim: a falsifier in the sprint-close batch RED"
-                f" for record {eid} ({head}). A debt or archived falsifier asserts the"
-                " system is still OK, so red means the latent problem materialised.\n"
-                f"Falsifier: `{falsifier}`\nFiles: unknown\n\n",
-            )
+            if falsifier not in known:
+                append(
+                    root,
+                    f"## bug {_stamp()}\nClaim: a falsifier in the sprint-close batch RED"
+                    f" for record {eid} ({head}). A debt or archived falsifier asserts the"
+                    " system is still OK, so red means the latent problem materialised.\n"
+                    f"Falsifier: `{falsifier}`\nFiles: unknown\n\n",
+                )
+            filed = "already filed as a bug" if falsifier in known else "Re-filed as a bug"
             return fail(
                 f"refused: batch falsifier RED for {eid} ({head}):\n  {falsifier}\n"
-                "Re-filed as a bug. Fix it, then run start again"
+                f"{filed}. Fix it, then run start again"
             )
 
     notes = [t for _eid, t in entries(root) if t.startswith("## note ")]
@@ -166,6 +172,19 @@ def cmd_post_merge(sprint_id: str) -> int:
     A tag cut at PR-open names a commit that is not the release: the review
     commits the PR exists to produce land after it, and a fetched tag never moves.
     """
+    if (head := git("rev-parse", "--abbrev-ref", "HEAD").stdout.strip()) != (
+        trunk := default_branch()
+    ):
+        return fail(f"refused: on {head}, not {trunk} — the release tag names the MERGED sha")
+    sprint_branch = config_flat("sprint_branch")
+    if (
+        sprint_branch
+        and git("merge-base", "--is-ancestor", sprint_branch, "HEAD", check=False).returncode != 0
+    ):
+        return fail(
+            f"refused: {sprint_branch} is not merged into {trunk} — tagging here would"
+            " name a commit containing none of the sprint. Merge the release PR first"
+        )
     version = _next_version()
     if git("rev-parse", "--verify", "-q", f"refs/tags/{version}", check=False).returncode == 0:
         return fail(f"refused: tag {version} already exists — nothing was changed")
