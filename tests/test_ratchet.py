@@ -30,7 +30,9 @@ def build_scripts_tree(tmp_path, files):
     scripts_dir = tmp_path / "plugins" / "xp-plugin" / "scripts"
     scripts_dir.mkdir(parents=True)
     for name, content in files.items():
-        (scripts_dir / name).write_text(content)
+        path = scripts_dir / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(content)
     return tmp_path
 
 
@@ -43,10 +45,33 @@ def violation_lines(stdout):
 
 
 def test_real_repo_within_budget_exits_zero_and_prints_table():
+    """The four printed numbers must ACCOUNT for every shipped line — asserting
+    only that the labels appear passes against a table of caps, of zeros, or of
+    the cached constant the story exists to replace."""
     result = run_ratchet()
     assert result.returncode == 0, result.stdout + result.stderr
     for label in ("spawn", "close", "hooks", "misc"):
         assert label in result.stdout.lower(), result.stdout
+    shipped = sum(
+        len(p.read_text().splitlines())
+        for p in RATCHET.parent.rglob("*.py")
+        if "__pycache__" not in p.parts
+    )
+    printed = re.findall(r"^(?:spawn|close|hooks|misc)\s+(\d+)\s", result.stdout, re.M)
+    assert sum(int(n) for n in printed) == shipped, result.stdout
+
+
+def test_extracted_subpackage_counts_against_its_component(tmp_path):
+    """Constraint 8 hard-caps a file at 500 lines, so a component's growth path is
+    close.py -> close/. Scanning one directory level certified a tree with 3,000
+    lines of close sitting one directory down (measured: exit 0)."""
+    files = {"setup.py": "x = 1\n", "close/big.py": "x = 1\n" * 1300}
+    root = build_scripts_tree(tmp_path, files)  # setup.py so the empty-tree refusal cannot mask it
+    result = run_ratchet(root)
+    assert result.returncode != 0, result.stdout
+    (violation,) = violation_lines(result.stdout)
+    assert "close" in violation, violation
+    assert "over by 50" in violation, violation
 
 
 def test_fixture_over_spawn_budget_reds_naming_budget_and_overage(tmp_path):
@@ -67,7 +92,7 @@ def test_fixture_dense_comments_reds_naming_density_and_file(tmp_path):
     assert result.returncode != 0, result.stdout
     (violation,) = violation_lines(result.stdout)
     assert "DENSITY EXCEEDED" in violation, violation
-    assert "90.0%" in violation, violation
+    assert "90.00%" in violation, violation
     assert "chatty.py" in violation, violation
 
 

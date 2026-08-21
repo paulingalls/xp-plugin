@@ -21,9 +21,9 @@ HOOKS = 1000
 MISC = 750
 TOTAL = 5000
 
-CLOSE_FILES = {"close.py", "review.py", "bookkeep.py", "sprint_close.py"}
-HOOKS_FILES = {"session_start.py", "stop_gate.py", "bash_status.py"}
-SPAWN_FILES = {"spawn.py"}
+CLOSE_NAMES = {"close", "review", "bookkeep", "sprint_close"}
+HOOKS_NAMES = {"session_start", "stop_gate", "bash_status"}
+SPAWN_NAMES = {"spawn"}
 
 DENSITY_THRESHOLD = 0.20
 
@@ -36,12 +36,15 @@ def scripts_dir(root):
     return root / "plugins" / "xp-plugin" / "scripts"
 
 
-def component_for(name):
-    if name in SPAWN_FILES:
+def component_for(rel):
+    """Every path part, not just the basename: constraint 8 caps a file at 500
+    lines, so close.py -> close/ is the sanctioned growth path."""
+    names = {part.removesuffix(".py") for part in rel.parts}
+    if names & SPAWN_NAMES:
         return "spawn"
-    if name in CLOSE_FILES:
+    if names & CLOSE_NAMES:
         return "close"
-    if name in HOOKS_FILES:
+    if names & HOOKS_NAMES:
         return "hooks"
     return "misc"
 
@@ -78,7 +81,7 @@ def comment_and_docstring_lines(path):
 
 def measure(root):
     d = scripts_dir(root)
-    paths = sorted(d.glob("*.py"))
+    paths = sorted(p for p in d.rglob("*.py") if "__pycache__" not in p.parts)
     if not paths:
         raise NoScriptsFound(d)
 
@@ -89,7 +92,7 @@ def measure(root):
 
     for path in paths:
         n = count_lines(path)
-        totals[component_for(path.name)] += n
+        totals[component_for(path.relative_to(d))] += n
         total_lines += n
 
         commented = comment_and_docstring_lines(path)
@@ -124,8 +127,8 @@ def report(root):
     )
     if density > DENSITY_THRESHOLD and worst_path is not None:
         violations.append(
-            f"DENSITY EXCEEDED: comments+docstrings {density:.1%} of shipped Python, "
-            f"cap {DENSITY_THRESHOLD:.1%}, worst file {worst_path}"
+            f"DENSITY EXCEEDED: comments+docstrings {density:.2%} of shipped Python, "
+            f"cap {DENSITY_THRESHOLD:.2%}, worst file {worst_path}"
         )
 
     return "\n".join(lines), violations
