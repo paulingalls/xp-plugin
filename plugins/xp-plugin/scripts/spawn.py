@@ -373,10 +373,15 @@ def cmd_spawn(story_id: str, override: str, dry_run: bool, in_place: bool = Fals
 
 
 def tree_state(tree: Path) -> tuple[str, str]:
-    """(HEAD, porcelain) — the baseline the completion guard measures against."""
+    """(HEAD, porcelain) — the guard's baseline. Raises rather than passing
+    stdout through: a FAILED git returns empty output, which reads as an empty
+    porcelain and a HEAD unequal to the flip's — clean and committed, the one
+    wrong answer the guard can give."""
 
     def out(*args: str) -> str:
         r = subprocess.run(["git", *args], cwd=tree, capture_output=True, text=True)
+        if r.returncode != 0:
+            raise OSError(f"git {args[0]} failed in {tree}: {(r.stderr or r.stdout).strip()}")
         return r.stdout.strip()
 
     return out("rev-parse", "HEAD"), out("status", "--porcelain")
@@ -392,11 +397,14 @@ def unclean_teammate_result(tree: Path, handed_over: tuple[str, str]) -> str:
     teammate with whatever the bootstrap command dirtied before it started.
     """
     flip_head, handed_dirty = handed_over
-    head, dirty = tree_state(tree)
     recovery = (
         f" Recover by committing by hand in {tree}, or by"
         f" `git worktree remove {tree}` and re-spawning."
     )
+    try:
+        head, dirty = tree_state(tree)
+    except OSError as e:
+        return f"refused: the story is unverified — {e}.{recovery}"
     if left := sorted(set(dirty.splitlines()) - set(handed_dirty.splitlines())):
         return "refused: the teammate left work uncommitted in {}:\n{}\n{}".format(
             tree, "\n".join(left), recovery

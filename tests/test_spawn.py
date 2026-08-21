@@ -65,7 +65,9 @@ def make_repo(tmp_path, status="ready", executor="(default)", trunk="main"):
     return repo, env, g
 
 
-def stub_claude(tmp_path, commit=True, emit_result=True, write_file=False, add_all=True):
+def stub_claude(
+    tmp_path, commit=True, emit_result=True, write_file=False, add_all=True, break_git=False
+):
     """A fake `claude` that records argv, env and stdin, then (by default)
     commits its own "work" and emits a stream-json terminal result object —
     the shape of a clean, successful teammate run. The other three knobs
@@ -95,6 +97,8 @@ def stub_claude(tmp_path, commit=True, emit_result=True, write_file=False, add_a
         if add_all:
             body.append("subprocess.run(['git', 'add', '-A'])")
         body.append("subprocess.run(['git', 'commit', '--allow-empty', '-qm', 'teammate work'])")
+    if break_git:
+        body.append("open('.git', 'w').write('not a gitdir pointer')")
     if emit_result:
         body.append(
             "print(json.dumps({'type': 'result', 'num_turns': 3, 'duration_ms': 1200,"
@@ -787,6 +791,17 @@ class TestTeammateCompletion:
         assert (
             tmp_path / "data" / "worktrees" / "story-042" / "vendored-by-bootstrap.txt"
         ).exists()
+
+    def test_a_tree_git_cannot_read_is_refused_rather_than_certified(self, tmp_path):
+        """Reading only stdout makes a FAILED git indistinguishable from a clean
+        one: empty porcelain reads as "nothing uncommitted" and an empty HEAD
+        never equals the flip's, so both halves pass and the spawn reports a
+        finished story it never actually looked at."""
+        repo, env, _g = make_repo(tmp_path)
+        stub_claude(tmp_path, break_git=True)
+        r = spawn(repo, env, "story-042")
+        assert r.returncode == 2, r.stdout
+        assert "worktree remove" in r.stderr
 
     def test_a_clean_committed_run_is_accepted(self, tmp_path):
         repo, env, _g = make_repo(tmp_path)
