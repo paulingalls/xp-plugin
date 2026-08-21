@@ -291,6 +291,13 @@ class TestLandAndPostMerge:
             == ""
         ), "a preview created a tag"
 
+    def test_land_refuses_to_advertise_a_version_it_cannot_compute(self, tmp_path):
+        """The PR title names the release; guessing there is the same lie."""
+        repo, env, g = make_repo(tmp_path)
+        g("tag", "release-2024")
+        r = sprint(repo, env, "land", "--dry-run")
+        assert r.returncode == 2 and "release-2024" in r.stderr
+
     def test_land_refuses_without_gh_before_anything_moves(self, tmp_path):
         repo, env, _g = make_repo(tmp_path)
         r = sprint(repo, env, "land")

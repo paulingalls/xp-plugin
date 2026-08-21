@@ -129,11 +129,17 @@ def _next_version() -> str:
     return f"v{m.group(1)}.{int(m.group(2)) + 1}.0"
 
 
+def _refuse_unbumpable() -> int:
+    latest = git("describe", "--tags", "--abbrev=0", check=False).stdout.strip()
+    return fail(f"refused: latest tag {latest!r} is not vMAJOR.MINOR — cannot bump it")
+
+
 def cmd_land(sprint_id: str, dry_run: bool) -> int:
     import shutil
 
     branch = git("rev-parse", "--abbrev-ref", "HEAD").stdout.strip()
-    version = _next_version() or "?"
+    if not (version := _next_version()):
+        return _refuse_unbumpable()
     cmds = [
         ["git", "push", "-u", "origin", branch],
         ["gh", "pr", "create", "--title", f"release {version}", "--body", f"Sprint {sprint_id}"],
@@ -177,8 +183,7 @@ def cmd_post_merge(sprint_id: str) -> int:
             " name a commit containing none of the sprint. Merge the release PR first"
         )
     if not (version := _next_version()):
-        latest = git("describe", "--tags", "--abbrev=0", check=False).stdout.strip()
-        return fail(f"refused: latest tag {latest!r} is not vMAJOR.MINOR — cannot bump it")
+        return _refuse_unbumpable()
     if git("rev-parse", "--verify", "-q", f"refs/tags/{version}", check=False).returncode == 0:
         return fail(f"refused: tag {version} already exists — nothing was changed")
     config = Path(".xp/config.yml")
