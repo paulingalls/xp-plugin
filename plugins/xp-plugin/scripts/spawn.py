@@ -19,6 +19,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 # close must import back FUNCTION-LOCALLY: a module-level edge cycles
 # (close -> spawn -> close) and fails before fail/git exist (story-008).
 from close import fail, git, integration_target, story_card
+from teammate_tee import run_teammate
 from work import card_title, chdir_repo_root, config_block_value, data_root, slugify, user_ns
 
 PLUGIN_ROOT = Path(__file__).parent.parent
@@ -174,12 +175,16 @@ def _read_shipped(path: Path) -> str:
 def claude_argv(model: str, effort: str, output_format: str = "json") -> list[str]:
     """The single owner of flag spellings — story-008 launches a reviewer through it.
 
-    `json` means a spawn prints nothing until the teammate finishes; `stream-json`
-    is the streaming spelling, and rendering it is DESIGN §9's first sacrificial
-    feature. Parameterized so 008's programmatic reviewer keeps a one-object parse.
+    `json` means a spawn prints nothing until the teammate finishes: the
+    reviewer's one-object parse (review.py) keeps this. `stream-json` is the
+    teammate's streaming spelling, and the installed binary REQUIRES `--verbose`
+    alongside it — measured against the real refusal at story-017's plan review,
+    not assumed.
     """
     argv = ["claude", "-p", "--plugin-dir", str(PLUGIN_ROOT), *PERMISSION_ARGV]
     argv += ["--output-format", output_format, "--model", model]
+    if output_format == "stream-json":
+        argv.append("--verbose")
     return argv + (["--effort", effort] if effort else [])
 
 
@@ -309,7 +314,7 @@ def cmd_spawn(story_id: str, override: str, dry_run: bool, in_place: bool = Fals
     _harness, model, effort = resolve_role("executor", card, override)
     branch = story_branch(card, story_id)
     tree = worktree_path(story_id)
-    argv = claude_argv(model, effort)
+    argv = claude_argv(model, effort, "stream-json")
     prompt = build_prompt(teammate_sections(card))
     report, warning = profile_report(card, prompt)
     print(report)
@@ -353,7 +358,37 @@ def cmd_spawn(story_id: str, override: str, dry_run: bool, in_place: bool = Fals
             f" story only after it is written. Worktree left at {tree}"
         )
     print(f"{branch} at {tree} (off {trunk})")
-    return run_agent(argv, tree, prompt).returncode
+    flip_head = subprocess.run(
+        ["git", "rev-parse", "HEAD"], cwd=tree, capture_output=True, text=True
+    ).stdout.strip()
+    rc = run_teammate(argv, tree, prompt, story_id, data_root())
+    if rc != 0:
+        return rc
+    if err := unclean_teammate_result(tree, flip_head):
+        return fail(err)
+    return 0
+
+
+def unclean_teammate_result(tree: Path, flip_head: str) -> str:
+    """ "" when the teammate left a clean, committed story behind; otherwise the
+    refusal, naming both recoveries. `flip_head` is HEAD right after the flip
+    commit, not `trunk..HEAD` — the flip itself is a commit on the branch, so
+    that range can never reach zero and would be vacuous (constraints.md #11)."""
+    recovery = (
+        f" Recover by committing by hand in {tree}, or by"
+        f" `git worktree remove {tree}` and re-spawning."
+    )
+    dirty = subprocess.run(
+        ["git", "status", "--porcelain"], cwd=tree, capture_output=True, text=True
+    ).stdout.strip()
+    if dirty:
+        return f"refused: the teammate left {tree} dirty:\n{dirty}\n{recovery}"
+    head = subprocess.run(
+        ["git", "rev-parse", "HEAD"], cwd=tree, capture_output=True, text=True
+    ).stdout.strip()
+    if head == flip_head:
+        return f"refused: the teammate made no commits of its own in {tree}.{recovery}"
+    return ""
 
 
 def main() -> int:

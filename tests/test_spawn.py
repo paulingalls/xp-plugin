@@ -65,18 +65,39 @@ def make_repo(tmp_path, status="ready", executor="(default)", trunk="main"):
     return repo, env, g
 
 
-def stub_claude(tmp_path):
-    """A fake `claude` that records argv, env and stdin — the launch contract is
-    otherwise unpinned, and a teammate that cannot edit exits 0 with prose."""
+def stub_claude(tmp_path, commit=True, emit_result=True, write_file=False):
+    """A fake `claude` that records argv, env and stdin, then (by default)
+    commits its own "work" and emits a stream-json terminal result object —
+    the shape of a clean, successful teammate run. The other three knobs
+    produce the shapes TestTeammateCompletion's guard must catch:
+    `write_file` alone leaves an UNCOMMITTED file (dirty tree); `commit=False,
+    write_file=False` leaves the tree clean but with NO commit of its own —
+    the two injections the completion guard's AC calls for.
+    """
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir(exist_ok=True)
     rec = tmp_path / "launch.json"
-    (bin_dir / "claude").write_text(
-        "#!/usr/bin/env python3\n"
-        "import json, os, sys\n"
-        f"json.dump({{'argv': sys.argv[1:], 'env': dict(os.environ),"
-        f" 'stdin': sys.stdin.read()}}, open({str(rec)!r}, 'w'))\n"
-    )
+    body = [
+        "#!/usr/bin/env python3",
+        "import json, os, subprocess, sys",
+        "argv = sys.argv[1:]",
+        "stdin = sys.stdin.read()",
+        f"json.dump({{'argv': argv, 'env': dict(os.environ), 'stdin': stdin}},"
+        f" open({str(rec)!r}, 'w'))",
+    ]
+    if write_file:
+        body.append("open('teammate-left-this-uncommitted.txt', 'w').write('oops')")
+    if commit:
+        # add -A, not --allow-empty alone: a real teammate's "done" commit
+        # picks up whatever it left in the tree, bootstrap byproducts included
+        body.append("subprocess.run(['git', 'add', '-A'])")
+        body.append("subprocess.run(['git', 'commit', '--allow-empty', '-qm', 'teammate work'])")
+    if emit_result:
+        body.append(
+            "print(json.dumps({'type': 'result', 'num_turns': 3, 'duration_ms': 1200,"
+            " 'total_cost_usd': 0.05, 'is_error': False}))"
+        )
+    (bin_dir / "claude").write_text("\n".join(body) + "\n")
     (bin_dir / "claude").chmod(0o755)
     return rec
 
@@ -111,7 +132,10 @@ class TestLaunchContract:
         # and no allow-list: measured to restrict nothing under bypass, so
         # shipping one would certify a bound that does not exist
         assert "--allowedTools" not in argv
-        assert argv[argv.index("--output-format") + 1] == "json"
+        # stream-json (not json) so the lead can see it live; the installed
+        # binary REQUIRES --verbose alongside stream-json or it refuses to launch
+        assert argv[argv.index("--output-format") + 1] == "stream-json"
+        assert "--verbose" in argv
 
     def test_prompt_arrives_on_stdin_not_argv(self, tmp_path):
         repo, env, _g = make_repo(tmp_path)
@@ -464,11 +488,21 @@ class TestAgentWallClock:
             )
 
     def test_the_teammate_launch_is_not(self, monkeypatch, tmp_path):
-        import spawn
+        """Bounding cmd_spawn's launch call site kills a running story and
+        abandons its worktree, so the teammate no longer runs through
+        run_agent (that path is reviewer-only) — it runs through
+        teammate_tee.run_teammate, which this asserts is unbounded."""
+        from teammate_tee import run_teammate
 
         monkeypatch.setenv("XP_AGENT_TIMEOUT", "1")
-        proc = spawn.run_agent(["/bin/sh", "-c", "sleep 3"], tmp_path, "", capture=True)
-        assert proc.returncode == 0, "a teammate story legitimately outruns any wall clock"
+        rc = run_teammate(
+            ["/bin/sh", "-c", 'sleep 3; echo \'{"type": "result", "is_error": false}\''],
+            tmp_path,
+            "",
+            "story-042",
+            tmp_path / "data",
+        )
+        assert rc == 0, "a teammate story legitimately outruns any wall clock"
 
 
 def test_spawn_reaches_the_integration_target_only_through_close():
@@ -490,6 +524,195 @@ class TestConfigRoleParsing:
         r = spawn(repo, env, "story-042", "--dry-run")
         assert r.returncode == 0, r.stderr
         assert "--model opus" in r.stdout, r.stdout
+
+
+class TestLiveTee:
+    """teammate_tee.tee_stream is a pure function — no subprocess involved —
+    so the pipe-blocking / deadlock behaviour it must have is trivial to
+    fault-inject (constraints.md #2)."""
+
+    def test_every_line_is_logged_verbatim(self):
+        from teammate_tee import tee_stream
+
+        lines = [
+            '{"type": "system", "subtype": "init"}\n',
+            "not json at all\n",
+            '{"type": "result", "is_error": false, "num_turns": 1}\n',
+        ]
+        logged = []
+        result = tee_stream(lines, logged.append, lambda _l: None)
+        assert logged == lines
+        assert result == {"type": "result", "is_error": False, "num_turns": 1}
+
+    def test_unparseable_lines_are_skipped_not_erroring(self):
+        from teammate_tee import tee_stream
+
+        lines = ["garbage\n", '{"type": "result", "is_error": false}\n']
+        result = tee_stream(lines, lambda _l: None, lambda _l: None)
+        assert result == {"type": "result", "is_error": False}
+
+    def test_a_stream_with_no_terminal_result_returns_none(self):
+        """The ONLY error condition: everything else in this file is tolerated."""
+        from teammate_tee import tee_stream
+
+        result = tee_stream(['{"type": "system"}\n'], lambda _l: None, lambda _l: None)
+        assert result is None
+
+    def test_a_log_write_failure_warns_but_does_not_stop_draining(self):
+        """Fault-inject: a writer that reds on its second call. Every line must
+        still reach it and the run must complete — ceasing to drain deadlocks a
+        healthy child writing to a full pipe."""
+        from teammate_tee import tee_stream
+
+        lines = [f'{{"type": "system", "subtype": "{i}"}}\n' for i in range(4)]
+        seen = []
+
+        def flaky_write(line):
+            seen.append(line)
+            if len(seen) == 2:
+                raise OSError("disk full")
+
+        out = []
+        result = tee_stream(lines, flaky_write, out.append)
+        assert seen == lines  # every line still reached the writer
+        assert any("warning" in o for o in out)  # the loop warned
+        assert sum(o.startswith("[system]") for o in out) == 4  # the run completed
+        assert result is None  # no result object in this fixture — consistent, not asserted-away
+
+
+def stub_claude_requiring_verbose(tmp_path):
+    """Mimics the REAL refusal measured at story-017's plan review: the
+    installed `claude` binary exits 1 on `--output-format stream-json` without
+    `--verbose`. `stub_claude` above accepts any argv, so only a stub shaped
+    like this one can catch a regression back to the old, unshippable argv."""
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir(exist_ok=True)
+    path = bin_dir / "claude-real-refusal"
+    path.write_text(
+        "#!/usr/bin/env python3\n"
+        "import sys\n"
+        "argv = sys.argv[1:]\n"
+        "if ('--output-format' in argv and argv[argv.index('--output-format') + 1] =="
+        " 'stream-json' and '--verbose' not in argv):\n"
+        "    print('error: --output-format stream-json requires --verbose', file=sys.stderr)\n"
+        "    sys.exit(1)\n"
+        'print(\'{"type": "result", "is_error": false, "num_turns": 1}\')\n'
+    )
+    path.chmod(0o755)
+    return path
+
+
+class TestStreamJsonRequiresVerbose:
+    def test_stream_json_without_verbose_reds_against_the_real_refusal(self, tmp_path):
+        claude = stub_claude_requiring_verbose(tmp_path)
+        r = subprocess.run(
+            [str(claude), "--output-format", "stream-json"], capture_output=True, text=True
+        )
+        assert r.returncode == 1 and "verbose" in r.stderr
+
+    def test_the_teammates_actual_argv_greens_against_the_same_stub(self, tmp_path):
+        from spawn import claude_argv
+
+        claude = stub_claude_requiring_verbose(tmp_path)
+        argv = claude_argv("sonnet", "medium", "stream-json")[1:]  # drop the "claude" argv[0]
+        r = subprocess.run([str(claude), *argv], capture_output=True, text=True)
+        assert r.returncode == 0, r.stderr
+
+    def test_review_py_still_passes_json_untouched(self):
+        """review.py's own argv is explicit ("json"), so this story must not
+        have touched it into carrying --verbose it never asked for."""
+        from spawn import claude_argv
+
+        assert "--verbose" not in claude_argv("opus", "", "json")
+
+
+class TestLiveLogDuringARun:
+    def test_the_log_holds_lines_emitted_before_a_mid_stream_kill(self, tmp_path):
+        from teammate_tee import log_path, run_teammate
+
+        script = tmp_path / "flaky.py"
+        script.write_text(
+            "import json, os, signal, sys, time\n"
+            "print(json.dumps({'type': 'system', 'subtype': 'init'}))\n"
+            "sys.stdout.flush()\n"
+            "time.sleep(0.1)\n"
+            "os.kill(os.getpid(), signal.SIGKILL)\n"
+        )
+        rc = run_teammate(
+            [sys.executable, str(script)], tmp_path, "", "story-kill", tmp_path / "data"
+        )
+        assert rc != 0  # killed mid-stream: no terminal result object survived
+        log = log_path(tmp_path / "data", "story-kill").read_text()
+        assert '"subtype": "init"' in log  # what it emitted before dying is on disk
+
+
+class TestTeammateCompletion:
+    """Given a completed teammate, spawn refuses unless the worktree is CLEAN
+    and carries at least one commit of its own — a process exiting 0 is not
+    the same claim as a story being done."""
+
+    def test_a_dirty_tree_is_refused_naming_both_recoveries(self, tmp_path):
+        repo, env, _g = make_repo(tmp_path)
+        stub_claude(tmp_path, commit=False, write_file=True)  # leaves a stray, uncommitted file
+        r = spawn(repo, env, "story-042")
+        assert r.returncode == 2
+        assert "dirty" in r.stderr.lower() or "uncommitted" in r.stderr.lower()
+        assert "commit" in r.stderr.lower() and "worktree remove" in r.stderr
+
+    def test_no_commits_of_its_own_is_refused_naming_both_recoveries(self, tmp_path):
+        repo, env, _g = make_repo(tmp_path)
+        stub_claude(tmp_path, commit=False)  # clean tree, but nothing committed
+        r = spawn(repo, env, "story-042")
+        assert r.returncode == 2
+        assert "no commits" in r.stderr.lower()
+        assert "commit" in r.stderr.lower() and "worktree remove" in r.stderr
+
+    def test_the_flip_commit_itself_does_not_count_as_the_teammates_work(self, tmp_path):
+        """`trunk..HEAD` includes the [in-progress] flip and can never be zero —
+        the vacuous spelling constraints.md #11 forbids. The guard must compare
+        against HEAD-after-the-flip, not the trunk, or this test cannot red."""
+        repo, env, _g = make_repo(tmp_path)
+        stub_claude(tmp_path, commit=False)
+        r = spawn(repo, env, "story-042")
+        assert r.returncode == 2 and "no commits" in r.stderr.lower()
+
+    def test_a_clean_committed_run_is_accepted(self, tmp_path):
+        repo, env, _g = make_repo(tmp_path)
+        stub_claude(tmp_path)  # default: commits and emits a result
+        r = spawn(repo, env, "story-042")
+        assert r.returncode == 0, r.stderr
+
+
+class TestClosingLineAndLog:
+    def test_the_closing_line_is_printed_from_the_result_object(self, tmp_path):
+        repo, env, _g = make_repo(tmp_path)
+        stub_claude(tmp_path)
+        r = spawn(repo, env, "story-042")
+        assert r.returncode == 0, r.stderr
+        assert "3 turns" in r.stdout and "$0.05" in r.stdout and "1.2s" in r.stdout
+
+    def test_the_log_is_project_scoped_and_appends_under_a_header_on_respawn(self, tmp_path):
+        repo, env, _g = make_repo(tmp_path)
+        stub_claude(tmp_path)
+        assert spawn(repo, env, "story-042").returncode == 0
+        log = tmp_path / "data" / "logs" / "story-042.log"
+        assert log.exists()
+        first = log.read_text()
+        assert "===== spawn story-042 " in first
+
+        # a re-spawn after removing the first worktree appends, not truncates
+        tree = tmp_path / "data" / "worktrees" / "story-042"
+        subprocess.run(
+            ["git", "worktree", "remove", "--force", str(tree)],
+            cwd=repo,
+            env=env,
+            check=True,
+        )
+        subprocess.run(["git", "branch", "-D", "ada/story-042-demo-story"], cwd=repo, env=env)
+        assert spawn(repo, env, "story-042").returncode == 0
+        second = log.read_text()
+        assert second.startswith(first)
+        assert second.count("===== spawn story-042 ") == 2
 
 
 class TestFirstSpawnInAScaffoldedRepo:
