@@ -304,43 +304,66 @@ Verify: pytest -q tests/test_close.py tests/test_spawn.py
 Close review: deep
 Executor: (default)
 #### story-009 — sprint-close pipeline   [ready]
-Context: Automates Sprint 1's hand-run close. Lives in its OWN module,
-scripts/sprint_close.py, behind a ~2-line `close.py sprint` dispatch — close.py
-is 474 of its 500 file cap, and the §9 close component is 821 of the 1,100 it
-was raised to at sprint-002, so this story has ~280 lines of component headroom
-and the prose bar (≤20%) applies. `sprint start`: full tier + archive.md
-falsifier batch (a red re-files as bug and aborts) + work.md note consumption
-(each note: promote to constraints/system via the retro diff, or archive) +
-emits the retro skeleton and triage list FOR THE HUMAN.
-RECORDS HAVE NO RESOLUTION VERB, and this story is where that lands or the
-falsifier batch is born broken. Measured now: the full_sha bug (work.md
-17:23:06Z) was FIXED by story-012a, but work.md is append-only and nothing can
-say so, and its falsifier greps for an identifier the fix renamed — so the
-batch would report a fixed bug as unfixed on its first run, and every run
-after, forever. Two defects meeting: a record lifecycle with no way to close a
-record, and a falsifier coupled to an identifier rather than to its claim
-(three instances this sprint). The batch cannot be written until a record can
-be resolved.
-BOOTSTRAP, stated so the close reviewer does not flag it as circular: this
-story closes the sprint it was built in, the same shape as story-005 closing
-itself. `sprint land`: after
-human triage/retro, opens the release PR with version bump + tag; the
-sprint_branch key is retired only ON MERGE, never at PR-open (a stalled PR
-with a dead key is the v0.2.0 defect mirrored — plan review). Not-releasable →
-branch carries, key stays. Boundary: the broad review and LLM security review
-stay LLM-present steps named in the sprint-close skill checklist — a hook/
-script cannot absorb them (constraint 7).
-Files: plugins/xp-plugin/scripts/sprint_close.py, plugins/xp-plugin/scripts/close.py (dispatch only), plugins/xp-plugin/scripts/work.py (the resolution verb), tests/test_sprint_close.py, tests/test_work.py
+Context: Automates Sprint 1's hand-run close, in its OWN module,
+scripts/sprint_close.py, behind a ~2-line `close.py sprint` dispatch. close.py is
+474/500 and the §9 close component is 821 of the 1,100 it was raised to, so this
+story has ~279 lines of headroom and the ≤20% prose bar applies (shipped-wide is
+17.0%; close.py's 11% is the style that fits, bookkeep's 25.6% is not).
+`close.py sprint <id> start` — MEMBERSHIP IS AN ARGUMENT, never derived from
+sprint_branch (that key may not survive this story): a sprint's stories are the
+`####` cards between `### Sprint <id>` and the next `###`. Runs the full tier, the
+falsifier batch, note consumption, and EMITS the retro skeleton, the triage list
+and the digest PROMPT for the human — it never writes the digest itself
+(constraint 7 reserves summarizing for LLM-present moments; close.py's story leg
+already ends by telling the lead to write it).
+RECORDS NEED AN ID AND A RESOLUTION, and both are measured, not assumed. MEASURED
+by plan review: 48 concurrent appends through the CLI produced 48 IDENTICAL `##
+kind ISO` headings, and the live work.md already has 6 colliding heading values,
+one shared by three entries. So a timestamp is not a name and "resolve the record
+at 03:41:29Z" silences three records, two of them live. The id is
+sha256(entry text)[:8], minted inside the lock the append already holds — stable
+by construction because the file is append-only, and derivable for all 53 legacy
+entries, which can never be backfilled.
+RESOLUTION IS A SUBSTITUTED FALSIFIER, NOT A DELETION. A resolution that merely
+marks a record done is an unchecked assertion: one command silences a live bug
+forever, and the batch is the only thing that ever re-reads a filed bug. Instead a
+resolution CARRIES a replacement falsifier that must be GREEN NOW (the same
+enforcement point work.py already uses for the bug/debt asymmetry), and the batch
+RUNS it rather than skipping the record. A resolution that was wrong therefore
+REDS LATER and the record reopens. This also lands the diagnosis that motivated
+the story: the full_sha bug's falsifier greps an identifier its fix renamed, so
+`resolve` refuses it until a behavioural falsifier is supplied — which is exactly
+what should happen, and is the third identifier-coupled falsifier this sprint.
+CORPUS IS BOTH (Paul's call, and a DESIGN §4 amendment this story writes):
+unresolved bug/debt falsifiers in work.md AND archive.md's dropped-debt ones. §4
+said work.md records have no lifecycle; that is what the resolution verb changes.
+POLARITY, and it is a live landmine: a debt/archived falsifier asserts THE SYSTEM
+IS STILL OK — red means the latent problem materialised. The 04:56:26Z debt is
+INVERTED (green because the flaw is present, red once the sprint_branch key is
+removed), so the first live batch would abort this very sprint close and re-file
+the fix as a bug. It needs a human disposition before the batch first runs, and
+the polarity sentence belongs in PROCESS.md where the filer reads it.
+BOOTSTRAP: this story closes the sprint it was built in, like story-005 closing
+itself. Cut per plan review, to Sprint 3: constraints promotion with caps.
+Files: plugins/xp-plugin/scripts/sprint_close.py, plugins/xp-plugin/scripts/close.py (dispatch only),
+plugins/xp-plugin/scripts/work.py (ids + resolve), plugins/xp-plugin/skills/sprint-close/SKILL.md,
+plugins/xp-plugin/templates/retro.md, plugins/xp-plugin/PROCESS.md, docs/DESIGN.md,
+tests/test_sprint_close.py, tests/test_work.py
 AC:
-- Given a filed bug whose fix has landed, When it is resolved through the append CLI, Then the falsifier batch SKIPS it and the resolution is itself an appended record — never an edit, because work.md is append-only and a mutable record is the project-global marker constraint 10 forbids
-- Given a resolution that names no prior record, or names one already resolved, Then the CLI refuses — a resolution verb that can be applied to nothing is a way to silence a live bug
-- Given all sprint stories done, When sprint start runs, Then full tier + unresolved archived falsifiers execute (a red aborts, re-filed as bug) and every work.md note is emitted for promote-or-archive triage alongside the retro skeleton
-- Given human inputs, When sprint land runs, Then the release PR opens with the bump+tag and the digest is written — and the sprint_branch key survives until the PR is MERGED
-- Given a merged release PR, When the post-merge step runs, Then the key is retired
-- Given a not-releasable call, Then no PR opens and the key survives
-- Given a constraint is promoted, Then the append path enforces a per-item AND total char cap and REFUSES over it — constraints_cap counts line-items, not size (10 items = 2,090 chars here), and the predecessor's json bounded size by validating at write, not by being json
-- Given any size refusal, Then the message names the cap, the current value, and the next ACTION (which item to retire), and the line that blew is the line that reds — story-007's budget test sent the reader to trim TEAMMATE.md for a defect that was a new agent
-Verify: pytest -q tests/test_sprint_close.py
+- Given two records appended in the same second, Then each carries a distinct content-derived id, and the id of every one of the 53 legacy entries is derivable without backfilling the file (fault-inject with concurrent writers, as the plan review did — 48 appends, 48 ids)
+- Given a resolution whose replacement falsifier reds now, Then the CLI REFUSES; given one that greens, Then it is appended as a record naming the resolved id — never an edit, because an edited record is the mutable state constraint 10 forbids
+- Given a resolution ref matching zero or more than one entry, Then it refuses — one rule covering the typo, the stale id and the duplicate-body tie
+- Given a resolved record, When the batch runs, Then it executes THE RESOLUTION'S falsifier, not nothing — so a wrong resolution reds later and the record reopens (fault-inject: resolve, then break the fix, assert the batch reds)
+- Given a red falsifier anywhere in the corpus (work.md unresolved bug/debt, or archive.md), When sprint start runs, Then it ABORTS and re-files the red as a bug — with the red constructed in a fixture, never observed
+- Given sprint start on any sprint, Then membership comes from the `### Sprint <id>` heading argument, and stories in other sprints are ignored — the naive "no story in plan.md is non-done" reading refuses forever, because Sprint 3 is [ready] right now
+- Given sprint start completes, Then NOTHING under the data root changed except appended bytes to work.md — asserted structurally (old bytes are an exact prefix of new; no other file differs), so the property survives every future addition to the leg
+- Given sprint start runs twice, Then the second run is a no-op beyond its own appends — the first live run WILL be re-run
+- Given sprint land --dry-run, Then it prints the exact command list the real path executes, read from the same lists (bookkeep.render_land_preview's precedent: a preview that drifts certifies a plan nobody runs)
+- Given the release PR is MERGED, When the post-merge leg runs, Then the version bump and the tag are cut on the MERGED TRUNK SHA and the sprint_branch key is retired — both in one leg, because a tag cut at PR-open names a commit that is not the release, and the review commits the PR exists to produce land after it
+- Given a tag that already exists, or no `gh` on PATH, Then the leg REFUSES before anything moves
+- Given the version source, Then it is the latest git tag (`git describe --tags --abbrev=0`), not xp-plugin's own plugin.json, which is meaningless in a consuming project
+- Given the shipped prose, Then skills/sprint-close/SKILL.md names the broad review and the LLM security review as human steps, and PROCESS.md carries both the record lifecycle (id, resolution) and the polarity sentence — asserted as a red test, not a coherence pin
+Verify: pytest -q tests/test_sprint_close.py tests/test_work.py
 Close review: deep
 Executor: (default)
 
@@ -352,6 +375,19 @@ Sprint 2 is at its cap of 6 with 012a/012b; these two are what the split displac
 Also deferred here from the story-012 candidate note (17:03:25Z): a CONFIGURABLE
 reviewer (`--reviewer` override) — the seam the codex adapter needs. Its two
 siblings landed: durable in 012a, bounded in 012b.
+
+#### story-013 — constraints promotion with caps   [ready]
+Context: CUT from story-009 at its plan review — a work.py subcommand sharing
+nothing with sprint_close.py but a call site, and the only piece of the sprint
+close whose absence does not block one (a human hand-edits constraints.md at the
+retro, which is what sprint-001 did). Depends on story-009's record ids.
+Files: plugins/xp-plugin/scripts/work.py, tests/test_work.py
+AC:
+- Given a constraint is promoted, Then the append path enforces a per-item AND total char cap and REFUSES over it — constraints_cap counts line-items, not size (10 items = 2,090 chars here), and the predecessor's json bounded size by validating at write, not by being json
+- Given any size refusal, Then the message names the cap, the current value, and the next ACTION (which item to retire), and the line that blew is the line that reds — story-007's budget test sent the reader to trim TEAMMATE.md for a defect that was a new agent
+Verify: pytest -q tests/test_work.py
+Close review: standard
+Executor: (default)
 
 #### story-010 — size-ratchet CI   [ready]
 Context: DESIGN §9's budgets become enforced acceptance criteria: shipped py
