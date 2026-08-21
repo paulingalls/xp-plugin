@@ -381,7 +381,7 @@ TO SPRINT 4 with the `--reviewer` override, which is that adapter's seam and not
 a standalone want. Sprint-002 closed by finding defects in the close machinery
 ITSELF — an unbounded re-review, and three resolutions of which two, then three,
 did not cover their claims. A second harness on top of that buys blast radius,
-not product. FIVE stories against a cap of 6, and the smallness is deliberate:
+not product. SIX stories against a cap of 6, and the smallness is deliberate:
 two are `Close review: deep`, one breaches a file cap on day one, and Sprint 4
 reopens the same files.
 ADDED MID-SPRINT (Paul's call — the human schedules, agents record): story-017,
@@ -587,6 +587,47 @@ AC:
 - Given a teammate that ends with a dirty tree or with ZERO commits on its branch, When the spawn finishes, Then it exits NONZERO naming what is uncommitted — the check belongs in the thing doing the work (constraint 5), not in close.py's preflight, which today refuses only after the teammate has reported success and exited. Fault-inject with a stub that writes a file and exits 0
 - Given TEAMMATE.md, Then ONE rule replaces the two bullets that contradict each other (Paul): YOU ARE NOT FINISHED UNTIL EVERY CHANGE IS COMMITTED. The wall gates commits on green, so "all committed" already implies "all green" — one requirement carries both, and nothing needs reconciling. "Watch it fail" goes: it asks for a state this wall makes uncommittable, and diagnosticity is what the reviewer can actually check (note 11e799b9)
 - Given review.py, Then it is UNCHANGED — it parses one object and already has durability in REPORT_PATH. The fence is the AC: widening this to the reviewer is how a two-file story becomes four
+Verify: pytest -q tests/test_spawn.py
+Close review: standard
+Executor: (default)
+
+#### story-018 — a card that was never plan-reviewed cannot spawn   [planned]
+Context: MEASURED TWICE IN ONE DAY, both caught by Paul rather than by anything in
+the process (notes ec72dd8b, b6335017). story-017 was added mid-sprint, after the
+sprint plan's two review rounds, and spawned with no plan review at all — and
+nothing distinguished it from a card that had survived one. plan.md carries
+[ready]/[in-progress]/[done] and no reviewed bit; spawn does not ask. The lever is
+spawn, because spawn is the thing DOING the work (constraint 5), and a state token
+is deterministic, so nothing in the gate has to judge anything (constraint 7).
+ONE NEW STATE, NOT TWO: `[ready]` already means "cleared to start", which is
+exactly what spawn reads, so the plan review's transition is `[planned]` →
+`[ready]` and a separate `[plan-reviewed]` would be a second name for what
+`[ready]` already says. Grandfathering is honest rather than convenient: every
+card in this repo is `[ready]` and every one was reviewed at the sprint plan —
+except story-017, whose late review is running as this card is written.
+NO PLAN FILE, though the option was on the table: the card IS the plan. A separate
+plan document is a second copy that goes stale, and story-014 demonstrated the
+working pattern — draft it, review it, FOLD IT INTO THE CARD, discard the draft.
+NO DIGEST COVERAGE, deliberately, and against the precedent of story-level land:
+addressing review findings IS editing the card (story-014's was rewritten after
+its review), so a coverage check would red on the normal workflow, and separating
+"edited to address findings" from "edited materially" is judgment, which
+constraint 7 forbids in a deterministic gate. This gate catches NEVER REVIEWED,
+which is the failure that was measured, and nothing more. Stated so the next
+reader does not read the omission as an oversight.
+NOT FIXED BY THIS, and it is the sibling miss: nothing still tracks a directive
+spanning several stories, which is how the stream-json port lost its third part.
+Different absence, still open, deliberately not widened into here.
+Size: spawn.py measures 376 of 2,000 and story-017 is spending in the same file —
+this story runs AFTER it and re-measures rather than estimating against a stale
+number, the mistake story-014's card made about the close component.
+Files: plugins/xp-plugin/scripts/spawn.py, plugins/xp-plugin/templates/plan.md,
+plugins/xp-plugin/PROCESS.md, tests/test_spawn.py
+AC:
+- Given a card marked `[planned]`, When spawn runs, Then it REFUSES, naming the missing plan review and the transition that clears it — fault-inject: the same fixture card at `[ready]` must launch, or the test proves only that spawn can refuse something
+- Given a card whose status token is unrecognised, When spawn runs, Then it REFUSES rather than defaulting to launch — an unknown token must never read as permission, and a typo is the likely real case
+- Given close.py and sprint_close.py, Then they are UNCHANGED: `[in-progress]` still gates the close and `[done]` still gates the sprint close. The fence is the AC, because a four-state change invites touching every state machine that reads plan.md
+- Given PROCESS.md and templates/plan.md, Then they name the four states and which transition the plan review performs, displacing equal prose (constraint 1)
 Verify: pytest -q tests/test_spawn.py
 Close review: standard
 Executor: (default)
