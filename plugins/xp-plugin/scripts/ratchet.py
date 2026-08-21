@@ -12,9 +12,9 @@ import tokenize
 from pathlib import Path
 
 SPAWN = 2000
-CLOSE = 1100
+CLOSE = 1250
 HOOKS = 1000
-MISC = 900
+MISC = 750
 TOTAL = 5000
 
 CLOSE_FILES = {"close.py", "review.py", "bookkeep.py", "sprint_close.py"}
