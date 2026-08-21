@@ -24,7 +24,6 @@ LIST_CAP = 20
 # No tool deny-list: it never bounded a reviewer that had Bash, so `git commit`
 # was always reachable. AUTHORSHIP is the real bound — any commit in the range the
 # reviewer did not sign means unreviewed work is riding along.
-PROTECTED_XP = (".xp/plan.md", ".xp/constraints.md", ".xp/config.yml")
 
 REVIEWER_NAME = "xp story-reviewer"
 REVIEWER_EMAIL = "story-reviewer@xp.local"
@@ -145,7 +144,9 @@ def abort_text(reviewed_head: str, why: str) -> str:
     )
 
 
-def check_reviewer_motion(reviewed_head: str, marker: Path, digest_before: str) -> str:
+def check_reviewer_motion(
+    reviewed_head: str, marker: Path, digest_before: str, card: str = ""
+) -> str:
     """The complete refusal text, or "" if the reviewer behaved.
 
     The dirty-tree case never says WHO left the files — a guard that blames the
@@ -180,12 +181,19 @@ def check_reviewer_motion(reviewed_head: str, marker: Path, digest_before: str) 
             " work no reviewer read would ride the merge:\n  " + "\n  ".join(strays)
         )
     touched = git("diff", "--name-only", rng).stdout.splitlines()
-    # THE PLAN AND THE RULES, not the whole directory: a story whose card names an
-    # .xp/ file in Files (story-010's names system.md) could otherwise never pass
-    # its own review leg — measured, it wedged that story with nine fixes ungated.
-    if bad := [f for f in touched if f in PROTECTED_XP]:
+    # SCOPE, not a deny-list: a whole-directory ban wedged story-010, whose card
+    # named system.md; a three-path deny-list left system.md writable by the agent
+    # under review, and spawn EXECUTES its `Worktree bootstrap:` line via shell.
+    declared = {
+        f.strip()
+        for ln in card.splitlines()
+        if ln.startswith("Files:")
+        for f in ln.removeprefix("Files:").split(",")
+    }
+    if bad := [f for f in touched if f.startswith(".xp/") and f not in declared]:
         return refuse(
-            f"the reviewer changed {', '.join(bad)} — it may fix code, never the plan or the rules"
+            f"the reviewer changed {', '.join(bad)} — it may fix code, and only the"
+            " .xp/ files this story's Files line already names"
         )
     return ""
 

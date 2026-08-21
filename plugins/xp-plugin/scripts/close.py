@@ -214,7 +214,7 @@ def cmd_review(story_id: str, dry_run: bool = False) -> int:
     # BEFORE any refusal below: a report the pipeline rejects still cost a full
     # review, and its findings exist nowhere else.
     print(result)
-    motion = review.check_reviewer_motion(head, marker, digest_before)
+    motion = review.check_reviewer_motion(head, marker, digest_before, card)
     if motion:
         return fail(motion)
     report, err = review.read_report(path)
@@ -345,10 +345,9 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
         print(reviewer_work, end="")
         print(f"full diff: {review.diff_path(review.report_path(story_id, len(rounds)))}")
 
-    # `gh pr create|merge` take no --head: gh derives the head branch from the
-    # CURRENT BRANCH of the cwd repo, so it must run in the STORY tree. The chdir
-    # to the trunk tree happens per-arm below, after gh and before pr_sync, which
-    # is the first thing that actually needs trunk checked out.
+    # `gh pr create|merge` take no --head: gh reads the head branch off the cwd
+    # repo, so it must run in the STORY tree. The chdir happens per-arm below,
+    # after gh and before pr_sync — the first step that needs trunk checked out.
     story_tree = str(Path.cwd())
     if merge_mode == "pr":
         import shutil
@@ -364,10 +363,7 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
         if held:
             os.chdir(held)
     else:
-        if held:
-            os.chdir(held)
-        else:
-            git("checkout", trunk)
+        os.chdir(held) if held else git("checkout", trunk)
         merged = git("merge", "--no-ff", branch, "-m", message, check=False)
         if merged.returncode != 0:
             git("merge", "--abort", check=False)

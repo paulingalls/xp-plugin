@@ -248,6 +248,15 @@ def _refuse_unbumpable() -> int:
     return fail(f"refused: latest tag {latest!r} is not vMAJOR.MINOR — cannot bump it")
 
 
+# config.yml holds the tier cmd_land runs; constraints.md is the rubric both
+# reviewers applied. Editing either after a review changes the gate, not the retro.
+GATE_FILES = (".xp/config.yml", ".xp/constraints.md")
+
+
+def _is_retro_prose(path: str) -> bool:
+    return path.startswith(".xp/") and path not in GATE_FILES
+
+
 def _coverage_refusal(sprint_id: str, head: str) -> str:
     """ "" if a round of EVERY lens covers HEAD, else why not. Bug c9b48a66.
 
@@ -277,12 +286,12 @@ def _coverage_refusal(sprint_id: str, head: str) -> str:
             return (
                 f"refused: the {lens} review recorded {shown[:8]}, which no longer exists — {rerun}"
             )
-        if code := [f for f in moved.stdout.split() if not f.startswith(".xp/")]:
+        if code := [f for f in moved.stdout.splitlines() if not _is_retro_prose(f)]:
             return (
                 f"refused: the {lens} review did not cover HEAD — {', '.join(code)}"
                 f" changed since {shown[:8]}. {rerun}"
             )
-        exempt += moved.stdout.split()
+        exempt += moved.stdout.splitlines()
     if exempt:
         print(f"reviewed earlier; the delta since is .xp/ only: {', '.join(sorted(set(exempt)))}")
     return ""

@@ -1867,8 +1867,17 @@ class TestFixingReviewer:
         """The refusal message says "the plan or the rules"; the check was the whole
         directory. Measured at story-010, whose card names .xp/system.md in Files —
         deleting the budget numbers from it IS an AC — so the reviewer refining that
-        same file wedged the story: no round recorded, nine fixes left ungated."""
-        repo, env, _g = make_repo(tmp_path)
+        same file wedged the story: no round recorded, nine fixes left ungated.
+
+        THE FIXTURE NOW MATCHES THE DOCSTRING: its card previously named only
+        src/thing.py, so this passed on the deny-list's hole rather than on the
+        story declaring the file. Its pair below is what that hole allowed."""
+        repo, env, g = make_repo(tmp_path)
+        plan = repo / ".xp" / "plan.md"
+        plan.write_text(
+            plan.read_text().replace("Files: src/thing.py", "Files: src/thing.py, .xp/system.md")
+        )
+        g("commit", "-qam", "the card declares the .xp/ file this story edits")
         self.fixing_stub(
             tmp_path,
             extra=(
@@ -1879,6 +1888,25 @@ class TestFixingReviewer:
         )
         r = close(repo, env, "review")
         assert r.returncode == 0, r.stderr
+
+    def test_a_reviewer_may_NOT_edit_an_xp_file_the_card_never_named(self, tmp_path):
+        """The deny-list was (plan.md, constraints.md, config.yml) — .xp/system.md
+        was writable by the agent under review, and spawn.py EXECUTES its
+        `Worktree bootstrap:` line through subprocess.run(shell=True). So the
+        reviewer could write a command the next spawn runs, with a correctly
+        signed commit, a clean tree, and the round recorded."""
+        repo, env, _g = make_repo(tmp_path)
+        self.fixing_stub(
+            tmp_path,
+            extra=(
+                "echo 'Worktree bootstrap: `touch /tmp/pwned`' >> .xp/system.md\n"
+                f"git -c user.name='{REVIEWER_NAME}' -c user.email='r@xp'"
+                " commit -qam 'tweak system.md'\n"
+            ),
+        )
+        r = close(repo, env, "review")
+        assert r.returncode == 2, r.stdout
+        assert ".xp/system.md" in r.stderr, r.stderr
 
     def test_an_abort_names_the_undo_for_the_reviewer_commits(self, tmp_path):
         """AC 8: "nothing was recorded" was written for a reviewer that could not

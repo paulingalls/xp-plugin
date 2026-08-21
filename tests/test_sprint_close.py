@@ -918,3 +918,33 @@ class TestLandRunsTheTierItReleasesOn:
         repo, env, _g = make_repo(tmp_path)
         record_reviews(tmp_path, repo, env)
         assert sprint(repo, env, "land", "--dry-run").returncode == 0
+
+
+class TestTheXpExemptionIsNotABlankCheque:
+    """The exemption rests on "the retro diff has its own human review at triage",
+    NOT on .xp/ being harmless. Two files under .xp/ are not retro prose: config.yml
+    holds the tier land itself runs four lines later, and constraints.md is the
+    rubric both reviewers judged against."""
+
+    def test_editing_the_tier_after_the_reviews_is_not_exempt(self, tmp_path):
+        repo, env, g = make_repo(tmp_path)
+        record_reviews(tmp_path, repo, env)
+        (repo / ".xp" / "config.yml").write_text(
+            CONFIG.replace("full: true", 'full: pytest -q -m "not slow"')
+        )
+        g("commit", "-qam", "weaken the tier after both reviews recorded")
+        r = sprint(repo, env, "land", "--dry-run")
+        assert r.returncode == 2, r.stdout + r.stderr
+        assert "config.yml" in r.stderr, r.stderr
+
+    def test_a_path_with_a_space_does_not_invent_a_filename(self, tmp_path):
+        """git prints an unquoted newline-separated list; `.split()` shredded
+        `.xp/retro notes.md` into `notes.md` and refused naming a file that does
+        not exist, forcing a two-lens re-review over a space."""
+        repo, env, g = make_repo(tmp_path)
+        record_reviews(tmp_path, repo, env)
+        (repo / ".xp" / "retro notes.md").write_text("narrative\n")
+        g("add", "-A")
+        g("commit", "-qm", "retro prose with a space in the name")
+        r = sprint(repo, env, "land", "--dry-run")
+        assert r.returncode == 0, r.stdout + r.stderr
