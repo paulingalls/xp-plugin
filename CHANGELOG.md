@@ -1,5 +1,46 @@
 # Changelog
 
+## v0.4.0 — 2026-08-21 · Sprint 3: the close runs itself
+
+The sprint close stopped being hand-composed. That is the release.
+
+- **`close.py sprint <id> review --lens broad|security`** marshals the sprint's
+  reviews the way the story close already marshalled its one: same bundle, same
+  `{fixed, blocking, noted}` shape, and a MODE SWITCH — findings handed in bound
+  the next round to validating them, none means run the full pass. Sprint-002
+  hand-composed both prompts and then re-reviewed four fix-commits with nothing
+  to bound the pass. **Sprint land refuses** unless both lenses cover HEAD with
+  no blocking findings; a release PR over unreviewed commits was bug c9b48a66,
+  measured on a real release.
+- **`ratchet.py` measures the size budgets at pre-push** — per-component lines
+  and comment density against DESIGN §9, on a live number rather than a
+  remembered one. It caught a density breach the day it shipped. It measures the
+  SHIPPED plugin, so it lives outside it: nothing under `plugins/xp-plugin/`
+  exists for our benefit rather than a consuming project's, and a test now
+  refuses any shipped script nothing imports or invokes.
+- **`land` finishes the job from a worktree.** It preflights whether another
+  tree holds the integration branch, merges there, then removes the worktree and
+  deletes the branch remote-first — `-d` compares against the upstream ref, so
+  local-first refused a branch already merged to HEAD and printed a remediation
+  that could not work. The structural check moved above the test run: landing
+  used to spend ~2 minutes of tests to reach a `git worktree list` comparison.
+- **`work.py archive`** gives a triage decision somewhere to live. Sprint 1
+  genuinely triaged and the decision was indistinguishable from an untriaged
+  note, so the emission only ever grew — 75 records at this close, 53 predating
+  the sprint. Now 3. Bugs are refused: a bug's falsifier reds now, so archiving
+  one hides a live defect.
+- **A teammate's transcript is durable and live** (`~/.xp/data/<id>/logs/`), and
+  the spawn refuses a handback that leaves work uncommitted or makes no commits
+  of its own.
+- **Prose that describes a mechanism is gone from the skills.** A SKILL says what
+  to run, what you own, and how to respond; mechanism lives in the code and
+  remediation in the refusal text. Both close skills shrank by ~40%.
+
+Constraints 11 and 13: a falsifier names a test by NODE ID (a `pytest -k`
+matching nothing exits 5, so it is red only for lack of a name and greens against
+any later test given it), and a claim about existing code is CHECKED before it is
+written down.
+
 ## v0.3.0 — 2026-08-20 · Sprint 2: the process runs itself
 
 The reviewer stopped reporting and started **fixing**. That is the release.
