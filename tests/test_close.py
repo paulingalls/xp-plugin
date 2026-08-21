@@ -1493,8 +1493,8 @@ class TestShippedProseMatchesTheMechanism:
 
     def test_the_walk_fixture_names_no_cut_and_no_control(self):
         """Bug 271de3bd, whose falsifier selects this test BY NAME. This header IS
-        the prompt both walk arms receive, so the
-        arms are comparable only while it is byte-identical between them — and it
+        the prompt both walk arms receive, so the arms are comparable only while
+        it is byte-identical between them — and it
         once named 013 and 015 as the cuts and 010 as the negative control, which
         let either arm answer by reading. A list of banned phrases could not hold
         that: "two of these three were dropped by planning; the last was kept as
@@ -1517,12 +1517,24 @@ class TestShippedProseMatchesTheMechanism:
         sprint — a session scratchpad under /private/tmp for one, `.xp/reviews/`
         for another. One location, asserted in both places it lives so neither can
         drift without reding — the pattern
-        test_every_stopping_rule_copy_states_the_split_arithmetic already uses."""
+        test_every_stopping_rule_copy_states_the_split_arithmetic already uses.
+
+        The ROUND clause is pinned with it because one name for a file written
+        once per round destroys the earlier round on write, and plan review does
+        run in rounds: story-014's two rounds are both on disk, and story-016's
+        own card credits its round-2 review. review.py already round-scopes the
+        story reviewer's report; nothing did the same here. Both copies are held
+        to the same LITERAL: "round-scoped" alone greened here off DESIGN's
+        unrelated sentence about that report (fault-injected, constraint 2).
+        """
         location = "<data-root>/plans/<story-id>.md"
         charter = (PLUGIN / "agents" / "plan-reviewer.md").read_text()
         design = (Path(__file__).parent.parent / "docs" / "DESIGN.md").read_text()
         assert location in charter, "plan-reviewer.md dropped the location"
         assert location in design, "DESIGN.md dropped the location"
+        rounds = "<story-id>.round-N.md"
+        assert rounds in charter, "the charter lost the round rule"
+        assert rounds in design, "DESIGN.md lost the round rule"
 
 
 REVIEWER_NAME = "xp story-reviewer"

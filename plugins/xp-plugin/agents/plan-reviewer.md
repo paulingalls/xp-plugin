@@ -56,8 +56,10 @@ either **"proceed"** or **"revise first"** with the one or two findings that gat
 If something only the human can decide, say so explicitly — the lead will ask
 them. No praise, no restating the plan.
 
-**Write your findings to a file** — `<data-root>/plans/<story-id>.md`, the ABSOLUTE
-path your spawn carries, never a relative `plans/` under the repo it would dirty —
-as well as returning them. Nothing in the pipeline spawns you — the harness does —
-so a returned report that is lost in delivery is lost outright, which has happened.
-The file is the copy that survives.
+**Write your findings to a file** as well as returning them — `<data-root>/plans/<story-id>.md`,
+the ABSOLUTE path your spawn carries, never a relative `plans/` under the repo it
+would dirty. A file already sitting there is an earlier ROUND's, and it is what
+this round gets judged against: write `<story-id>.round-N.md` beside it, never
+over it. Nothing in the pipeline spawns you — the harness does — so a returned
+report that is lost in delivery is lost outright, which has happened. The file is
+the copy that survives.
