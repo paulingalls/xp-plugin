@@ -568,14 +568,27 @@ NO WATCHDOG, deliberately: spawn.py's own comment argues a teammate legitimately
 outruns any wall clock, and cmd_spawn's call site has no except, so a bound there
 kills a running story and abandons its worktree. That reasoning stands. Liveness
 is what lets a HUMAN see a hang, which is the property actually wanted.
+WIDENED at story-010's handback (Paul: "we need to work on teammate.md if it
+isn't running things right"), because the same leg owns both halves: the teammate
+reported SUCCESS with an uncommitted tree and spawn exited 0 (note 68780848), and
+the contract it was handed cannot be satisfied as written — the pre-commit wall
+runs the fast tier, so a RED TEST IS UNCOMMITTABLE, while TEAMMATE.md asks for
+"watch it fail" and "small commits" two bullets apart and never reconciles them
+(note 11e799b9, Paul's correction of my first reading). The teammate did the
+sensible thing with a contradictory contract. What it still owes is GREEN commits
+— a test-and-implementation pair per AC is committable — and a handback that is
+not called success while the tree is dirty.
 Size: spawn.py measures 376 of the 2,000 spawn budget; the close component is
 untouched, which is why this can be added without disturbing story-014's squeeze.
-Files: plugins/xp-plugin/scripts/spawn.py, tests/test_spawn.py
+Files: plugins/xp-plugin/scripts/spawn.py, plugins/xp-plugin/TEAMMATE.md,
+tests/test_spawn.py
 AC:
 - Given a teammate launch, Then argv carries `--output-format stream-json` and the leg parses the final result object off the stream — fault-inject with a stub emitting a multi-line stream: the parsed result must equal what the single-object `json` path yielded, and a stream carrying NO result object must be an error rather than a silent empty success
 - Given a running teammate, Then every line read is written to BOTH stdout and a project-scoped log, flushed per line — construct it: kill the child mid-stream and assert the log holds the lines emitted before the kill (capture_output holds everything in a pipe and loses ALL of it on kill, measured twice at story-008)
 - Given a re-spawn after a failed run, Then the log APPENDS under a `===== spawn <story> <iso-ts> =====` header — after a hang, the forensic record of the hang is the thing you need, and truncating it is the one unrecoverable move
 - Given a log that cannot be opened, or a write that fails mid-stream, Then the spawn warns and KEEPS DRAINING the child's stdout — best-effort, never load-bearing: ceasing to drain deadlocks a healthy child on a full pipe
+- Given a teammate that ends with a dirty tree or with ZERO commits on its branch, When the spawn finishes, Then it exits NONZERO naming what is uncommitted — the check belongs in the thing doing the work (constraint 5), not in close.py's preflight, which today refuses only after the teammate has reported success and exited. Fault-inject with a stub that writes a file and exits 0
+- Given TEAMMATE.md, Then it states the rule the wall actually permits: red is never committable here, so commit at GREEN points, one test-and-implementation pair per AC, and say in the handback which tests were watched failing. The contradiction is deleted rather than annotated (constraint 1: the reconciliation displaces the two bullets it replaces)
 - Given review.py, Then it is UNCHANGED — it parses one object and already has durability in REPORT_PATH. The fence is the AC: widening this to the reviewer is how a two-file story becomes four
 Verify: pytest -q tests/test_spawn.py
 Close review: standard
