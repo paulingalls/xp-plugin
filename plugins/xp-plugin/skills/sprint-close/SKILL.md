@@ -13,9 +13,8 @@ script cannot absorb them (constraint 7).
    and set `sprint_branch: sprint-00N` in `.xp/config.yml`. Step 5 retires the key,
    so every sprint needs this again.
 1. **`close.py sprint <id> start`** — appends only; re-running it is a no-op.
-   A red falsifier ABORTS the close and is re-filed as a bug: a debt or archived
-   falsifier asserts the system is still OK, so red means the latent problem
-   materialised.
+   A red falsifier ABORTS the close and is re-filed as a bug (PROCESS.md carries
+   the polarity contract).
 2. **Note triage, then the retro — YOURS, and they come FIRST.**
    Each note is promoted to constraints.md/system.md via the retro diff, or
    archived. A learning that changes nothing executable is not recorded, and every
@@ -26,12 +25,12 @@ script cannot absorb them (constraint 7).
    and a retro that promotes into DESIGN.md or PROCESS.md is code motion — run it
    last and you must review again, which invalidates what you just wrote.
 3. **The two reviews**, which the pipeline marshals — you do not compose them:
-   - `close.py sprint <id> review --lens broad` — the cumulative diff as ONE
-     change, at a different altitude from the stories you already reviewed.
-   - `close.py sprint <id> review --lens security` — secrets, injection surfaces,
-     anything the sprint made reachable that was not before.
+   - `close.py sprint <id> review --lens broad` — the sprint as ONE change.
+   - `close.py sprint <id> review --lens security` — what it made reachable.
    Fix what they block, then re-run the lens that blocked.
 4. **`close.py sprint <id> land`** opens the release PR. Not releasable? Don't run
    it — the branch carries, the key stays.
-5. **`close.py sprint <id> post-merge`**, AFTER the PR merges — it retires the
-   `sprint_branch` key step 0 sets.
+5. **`close.py sprint <id> post-merge`**, AFTER the PR merges — it tags and
+   retires the `sprint_branch` key step 0 sets. Your release artifacts are yours:
+   bump and changelog at step 2, because anything outside `.xp/` landing after
+   step 3 invalidates the reviews that permit land.

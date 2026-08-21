@@ -303,9 +303,7 @@ def cmd_land(sprint_id: str, dry_run: bool) -> int:
     if dry_run:
         for c in cmds:
             print(" ".join(c))
-        print(
-            f"(then: close.py sprint {sprint_id} post-merge — bump, tag {version}, retire the key)"
-        )
+        print(f"(then: close.py sprint {sprint_id} post-merge — tag {version}, retire the key)")
         return 0
     if not shutil.which("gh"):
         return fail(

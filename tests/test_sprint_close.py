@@ -867,3 +867,18 @@ class TestTriageEmissionShrinks:
         after = sprint(repo, env, "start").stdout
         assert "ARCHIVE-ME-SENTINEL" not in after, "archived note still queued for triage"
         assert "KEEP-ME-SENTINEL" in after, "filtered an unarchived note too"
+
+
+class TestLandPromisesOnlyWhatPostMergeDoes:
+    def test_land_does_not_promise_a_manifest_bump(self):
+        """Bug 732b2610. land printed "post-merge — bump, tag, retire the key" and
+        post_merge only tags and strips sprint_branch. Three releases bumped the
+        manifest by hand while the message claimed the pipeline owned it.
+
+        The fix is the message, not the missing bump: a version scheme belongs to
+        the consuming project, and post-merge runs AFTER the PR merges — which is
+        exactly where a bump must not happen, since the manifest is not .xp/-exempt
+        and land's coverage guard would have been invalidated by it."""
+        src = (PLUGIN / "scripts" / "sprint_close.py").read_text()
+        promise = src[src.index("post-merge —") : src.index("post-merge —") + 60]
+        assert "bump" not in promise, promise
