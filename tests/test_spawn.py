@@ -627,6 +627,74 @@ class TestStreamJsonRequiresVerbose:
 
 
 class TestLiveLogDuringARun:
+    def test_the_log_is_readable_while_the_teammate_is_still_running(self, tmp_path):
+        """LIVE, the property the mid-stream-kill case below cannot reach: that
+        one reads the log only after run_teammate returns, by which point the
+        `with open(...)` has closed and flushed it — it greens with the per-line
+        flush deleted. This one reads the log from a second thread while the
+        child is still alive and blocked, so only a flushed write can satisfy it.
+        """
+        import threading
+        import time
+
+        from teammate_tee import log_path, run_teammate
+
+        script = tmp_path / "slow.py"
+        sentinel = tmp_path / "go"
+        script.write_text(
+            "import json, sys, time, pathlib\n"
+            "print(json.dumps({'type': 'system', 'subtype': 'init'}))\n"
+            "sys.stdout.flush()\n"
+            f"while not pathlib.Path({str(sentinel)!r}).exists(): time.sleep(0.01)\n"
+            "print(json.dumps({'type': 'result', 'is_error': False, 'num_turns': 1}))\n"
+        )
+        run = threading.Thread(
+            target=run_teammate,
+            args=([sys.executable, str(script)], tmp_path, "", "story-live", tmp_path / "data"),
+            kwargs={"out": lambda _l: None},
+        )
+        run.start()
+        log = log_path(tmp_path / "data", "story-live")
+        mid = ""
+        deadline = time.monotonic() + 2
+        while time.monotonic() < deadline and '"subtype": "init"' not in mid:
+            mid = log.read_text() if log.exists() else ""
+            time.sleep(0.02)
+        sentinel.write_text("go")
+        run.join(30)
+        assert '"subtype": "init"' in mid, (
+            "the teammate's first line was not on disk while it was still running"
+            f" — the log is not live. Log held: {mid!r}"
+        )
+
+    def test_a_child_that_dies_before_reading_the_prompt_reports_only_the_diagnosis(
+        self, tmp_path, monkeypatch
+    ):
+        """`subprocess.run(input=...)` swallowed the broken pipe; the hand-rolled
+        feeder thread this story replaced it with does not, and an unhandled
+        exception in a thread prints a twelve-line traceback the lead reads
+        BEFORE the one line that says what went wrong. Constructed with a prompt
+        past the pipe buffer so the EPIPE is certain rather than a race — the
+        real 4k prompt hits the same write whenever the child loses it."""
+        import threading
+
+        from teammate_tee import run_teammate
+
+        died = []
+        monkeypatch.setattr(threading, "excepthook", lambda arg: died.append(arg.exc_type))
+        script = tmp_path / "refuse.py"
+        script.write_text("import sys\nsys.exit(1)\n")  # never reads stdin
+        rc = run_teammate(
+            [sys.executable, str(script)],
+            tmp_path,
+            "x" * (1 << 20),
+            "story-epipe",
+            tmp_path / "data",
+            out=lambda _l: None,
+        )
+        assert rc == 1
+        assert died == [], f"the feeder thread died unhandled: {died}"
+
     def test_the_log_holds_lines_emitted_before_a_mid_stream_kill(self, tmp_path):
         from teammate_tee import log_path, run_teammate
 

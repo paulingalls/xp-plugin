@@ -6,6 +6,7 @@ Extracted from spawn.py at story-017 (the split ../xp-agents made for the same
 reason): the loop plus its parsing pushed spawn.py over the per-file cap.
 """
 
+import contextlib
 import json
 import os
 import subprocess
@@ -84,11 +85,17 @@ def closing_line(story_id: str, result: dict) -> str:
 
 
 def _feed_stdin(proc: subprocess.Popen, prompt: str) -> None:
+    """A child that dies before consuming the prompt breaks this pipe. That is
+    not news — the missing result object already says it — and an unhandled
+    exception in a thread prints a traceback the lead reads ahead of the real
+    diagnosis, which `subprocess.run(input=...)` never did.
+    """
     assert proc.stdin is not None
-    try:
-        proc.stdin.write(prompt)
-    finally:
-        proc.stdin.close()
+    with contextlib.suppress(BrokenPipeError):
+        try:
+            proc.stdin.write(prompt)
+        finally:
+            proc.stdin.close()
 
 
 def run_teammate(
@@ -119,15 +126,13 @@ def run_teammate(
     feeder = threading.Thread(target=_feed_stdin, args=(proc, prompt))
     feeder.start()
     assert proc.stdout is not None
-    path = log_path(data_root, story_id)
-    header = spawn_header(story_id, datetime.now(timezone.utc).isoformat(timespec="seconds"))
-    with open(path, "a") as log:
-        log.write(header)
+    with open(log_path(data_root, story_id), "a") as log:
 
         def log_write(line: str) -> None:
             log.write(line)
             log.flush()
 
+        log_write(spawn_header(story_id, datetime.now(timezone.utc).isoformat(timespec="seconds")))
         result = tee_stream(proc.stdout, log_write, out)
     feeder.join()
     proc.wait()
