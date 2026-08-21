@@ -1,6 +1,7 @@
 """story-002: close.py story-close pipeline. Verify: pytest -q tests/test_close.py"""
 
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -1487,35 +1488,35 @@ class TestShippedProseMatchesTheMechanism:
         charter = (PLUGIN / "agents" / "plan-reviewer.md").read_text()
         section = charter.split("## Checks, in order of payoff")[1]
         section = section.split("## Close-review depth")[0]
-        numbered = [
-            line
-            for line in section.splitlines()
-            if len(line.strip()) > 2 and line.strip()[0].isdigit() and line.strip()[1:3] == ". "
-        ]
+        numbered = [line for line in section.splitlines() if re.match(r"\d+\. ", line)]
         assert len(numbered) == 5, f"expected 5 checks, found {len(numbered)}"
 
     def test_the_walk_fixture_names_no_cut_and_no_control(self):
-        """Bug 271de3bd. The fixture header IS the prompt each arm receives, and
-        it named 013 and 015 as the cuts and 010 as the negative control — so both
-        arms would cut correctly by reading, and the pre-registered differential
-        could not be observed. The control only works while nobody knows which of
-        the three it is. Asserted on the PROSE outside the cards, because the
-        cards themselves legitimately quote planning history."""
+        """Bug 271de3bd, whose falsifier selects this test BY NAME. This header IS
+        the prompt both walk arms receive, so the
+        arms are comparable only while it is byte-identical between them — and it
+        once named 013 and 015 as the cuts and 010 as the negative control, which
+        let either arm answer by reading. A list of banned phrases could not hold
+        that: "two of these three were dropped by planning; the last was kept as
+        carded" is a complete answer key and passes every one of them. Pinning the
+        literal makes any edit to the experiment's prompt deliberate. The cards
+        below it are NOT pinned — they legitimately quote planning history."""
         fixture = (Path(__file__).parent / "fixtures" / "overdesigned_plan.md").read_text()
-        header = fixture.split("#### ")[0]
-        for tell in ("negative control", "actual cut", "should survive", "trigger-happy"):
-            assert tell not in header.lower(), f"the fixture header leaks '{tell}'"
-
-    def test_the_plan_reviewer_charter_names_the_durable_report_location(self):
-        """AC6: "say where" let two reviewers pick two different places this
-        sprint — a session scratchpad under /private/tmp for one, `.xp/reviews/`
-        for another. One location, named in the charter."""
-        charter = (PLUGIN / "agents" / "plan-reviewer.md").read_text()
-        assert "<data-root>/plans/<story-id>.md" in charter
+        assert fixture.split("#### ")[0] == (
+            "# Plan slice under review — three candidate stories\n"
+            "\n"
+            "Review these three story cards as a plan reviewer would: the sprint they belong\n"
+            "to has a cap of 6 and currently holds three other stories. The project is a\n"
+            "lightweight XP process plugin for coding agents; its constraints and system\n"
+            "context are in the files handed to you alongside this one.\n"
+            "\n"
+        )
 
     def test_the_plan_review_location_is_pinned_in_both_copies(self):
-        """Same fact, asserted positively in both places it lives, so one can't
-        drift without the other reding — the pattern
+        """AC5: "say where" let two reviewers pick two different places this
+        sprint — a session scratchpad under /private/tmp for one, `.xp/reviews/`
+        for another. One location, asserted in both places it lives so neither can
+        drift without reding — the pattern
         test_every_stopping_rule_copy_states_the_split_arithmetic already uses."""
         location = "<data-root>/plans/<story-id>.md"
         charter = (PLUGIN / "agents" / "plan-reviewer.md").read_text()
