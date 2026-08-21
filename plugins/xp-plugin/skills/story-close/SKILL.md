@@ -1,8 +1,7 @@
 ---
 name: story-close
 description: >-
-  Close the current story: pipeline-spawned review, Verify, merge, digest. Two
-  commands with one judgment gap between them.
+  Close the current story: spawned review, Verify, merge, digest.
 ---
 
 # Story Close
