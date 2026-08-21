@@ -194,6 +194,18 @@ class TestResolution:
         assert after.startswith(before), "an edited record is the mutable state #10 forbids"
         assert ref in after[len(before) :]
 
+    def test_only_a_bug_or_debt_can_be_resolved(self, tmp_path):
+        """Resolving a note or a resolution reported success with a fresh id and
+        did nothing: the batch only ever substitutes for a bug or a debt. An exit
+        0 that asserts a resolution none of the machinery will honour is the
+        record lying about itself."""
+        run(["note", "just a discovery"], tmp_path, check=True)
+        note = run(["list"], tmp_path, check=True).stdout.split()[0]
+        r = run(["resolve", "--ref", note, "--falsifier", "true"], tmp_path)
+        assert r.returncode == 2, "a note reported itself resolved"
+        assert "note" in r.stderr
+        assert "resolved" not in (tmp_path / "work.md").read_text()
+
     def test_a_ref_matching_zero_or_many_entries_is_refused(self, tmp_path):
         self.filed_bug(tmp_path)
         assert (

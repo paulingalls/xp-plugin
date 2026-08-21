@@ -137,10 +137,19 @@ class TestFalsifierBatch:
             "a.py",
         )
         flag.unlink()
+        root = tmp_path / "data"
+        before = snapshot(root)
         r = sprint(repo, env, "start")
         assert r.returncode == 2, r.stdout
         assert "latent" in r.stderr or "latent" in r.stdout
-        assert "## bug " in (tmp_path / "data" / "work.md").read_text()
+        after = snapshot(root)
+        assert "## bug " in after[Path("work.md")].decode()
+        # the append branch of the read-only property, which the green path
+        # cannot reach: this is the only leg that writes anything at all
+        assert after[Path("work.md")].startswith(before[Path("work.md")]), "work.md was rewritten"
+        assert {k: v for k, v in after.items() if k != Path("work.md")} == {
+            k: v for k, v in before.items() if k != Path("work.md")
+        }
 
     def test_re_running_against_an_unfixed_red_files_one_bug_not_one_per_run(self, tmp_path):
         """The red path is the one that actually gets re-run — you fix, then run
@@ -335,6 +344,15 @@ class TestLandAndPostMerge:
         r = sprint(repo, env, "post-merge")
         assert r.returncode == 2, "tagged a release that contains none of the sprint"
         assert "v0.3.0" not in g("tag").stdout.split()
+
+    def test_post_merge_without_a_config_refuses_rather_than_tracebacks(self, tmp_path):
+        repo, env, g = make_repo(tmp_path)
+        g("tag", "v0.2.1")
+        g("checkout", "-q", "main")
+        g("merge", "-q", "--no-ff", "sprint-002", "-m", "release")
+        (repo / ".xp" / "config.yml").unlink()
+        r = sprint(repo, env, "post-merge")
+        assert r.returncode == 2 and "Traceback" not in r.stderr, r.stderr
 
     def test_an_existing_tag_refuses_before_anything_moves(self, tmp_path):
         repo, env, g = make_repo(tmp_path)

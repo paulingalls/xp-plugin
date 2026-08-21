@@ -177,6 +177,8 @@ def cmd_post_merge(sprint_id: str) -> int:
     if git("rev-parse", "--verify", "-q", f"refs/tags/{version}", check=False).returncode == 0:
         return fail(f"refused: tag {version} already exists — nothing was changed")
     config = Path(".xp/config.yml")
+    if not config.exists():
+        return fail("refused: no .xp/config.yml here — is this an xp-managed repo?")
     kept = [
         ln
         for ln in config.read_text().splitlines(keepends=True)

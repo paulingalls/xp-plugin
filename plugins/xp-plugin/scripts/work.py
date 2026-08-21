@@ -162,6 +162,15 @@ def resolve(root: Path, args: argparse.Namespace) -> int:
             file=sys.stderr,
         )
         return 2
+    kind = matches[0][1].split(" ", 2)[1]
+    if kind not in ("bug", "debt"):
+        print(
+            f"refused: {args.ref} is a {kind} — only a bug or a debt carries the"
+            " falsifier a resolution substitutes for, so resolving anything else"
+            " asserts a change no batch will ever honour.",
+            file=sys.stderr,
+        )
+        return 2
     if not falsifier_is_green(args.falsifier):
         print(
             f"refused: the replacement falsifier reds ({args.falsifier!r}) — a"
