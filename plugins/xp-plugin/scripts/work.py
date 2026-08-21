@@ -29,8 +29,13 @@ def neutralize(text: str) -> str:
     substitutes another record's falsifier, and the batch EXECUTES the first
     `Falsifier:` line in a block. So a field forged through any free-text argument
     silences a live bug with the green check never having run.
+
+    Breaks are CANONICALISED first, because the writer and every reader must mean
+    the same thing by "line". re.M anchors on \n alone, while read_text() turns a
+    bare CR into one and splitlines() also breaks on VT, FF, NEL and U+2028 — so a
+    character invisible here is a line break downstream, and the guard misses it.
     """
-    return STRUCTURAL.sub(r" \1", text)
+    return STRUCTURAL.sub(r" \1", "\n".join(text.splitlines()))
 
 
 def chdir_repo_root() -> bool:
@@ -151,7 +156,7 @@ def entry(kind: str, args: argparse.Namespace) -> str:
 
 
 def _single_line(value: str, field: str) -> bool:
-    if "\n" in value or "`" in value:
+    if len(value.splitlines()) > 1 or "`" in value:
         print(
             f"refused: --{field} must be one line and must not contain a backtick —"
             " the record format holds it inside backticks on a single line, so"

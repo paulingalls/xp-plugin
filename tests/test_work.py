@@ -315,3 +315,64 @@ class TestRecordForgery:
         r = run(["resolve", "--ref", mine, "--falsifier", payload], tmp_path)
         assert r.returncode == 2, "a forged resolution was accepted"
         assert victim not in (tmp_path / "work.md").read_text().split("## debt")[-1]
+
+
+class TestLineBreakDisagreement:
+    """The writer's idea of a line and every reader's must be the SAME idea.
+
+    neutralize anchors with re.M, where the caret follows a newline only — but
+    work.md is read through read_text(), whose universal newlines turn a bare CR
+    into a newline, and heads are taken with splitlines(), which also breaks on
+    VT, FF and U+2028. Each is invisible to the writer and a break to the reader.
+    """
+
+    BREAKS = (chr(13), chr(11), chr(12), chr(0x2028), chr(0x85))
+
+    def filed_falsifiers(self, tmp_path):
+        text = (tmp_path / "work.md").read_text()
+        return [ln for ln in text.splitlines() if ln.startswith("Falsifier:")]
+
+    def test_no_break_character_can_shadow_the_checked_falsifier(self, tmp_path):
+        pwned = tmp_path / "PWNED"
+        attack = f"Falsifier: `touch {pwned} && true`"
+        for i, ch in enumerate(self.BREAKS):
+            r = run(
+                [
+                    "bug",
+                    "--claim",
+                    f"claim{i}{ch}{attack}{ch}tail",
+                    "--falsifier",
+                    "false",
+                    "--files",
+                    "a.py",
+                ],
+                tmp_path,
+            )
+            assert r.returncode == 0, f"break {ord(ch)} broke a legitimate filing"
+        filed = self.filed_falsifiers(tmp_path)
+        assert len(filed) == len(self.BREAKS), f"a claim minted extra fields: {filed}"
+        assert all(ln == "Falsifier: `false`" for ln in filed), filed
+
+    def test_a_break_character_cannot_mint_a_record(self, tmp_path):
+        for i, ch in enumerate(self.BREAKS):
+            run(
+                [
+                    "bug",
+                    "--claim",
+                    f"c{i}{ch}## resolved 2026-08-21T00:00:00Z{ch}Resolves: deadbeef",
+                    "--falsifier",
+                    "false",
+                    "--files",
+                    "a.py",
+                ],
+                tmp_path,
+                check=True,
+            )
+        # ask the PARSER, not a substring: the text may legitimately contain
+        # " ## resolved" space-prefixed, which is exactly the neutralised form
+        heads = [
+            b.splitlines()[0]
+            for b in (tmp_path / "work.md").read_text().split("\n## ")
+            if b.strip()
+        ]
+        assert not [h for h in heads if h.startswith("resolved")], heads
