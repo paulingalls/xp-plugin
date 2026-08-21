@@ -535,7 +535,7 @@ Verify: pytest -q tests/test_close.py
 Close review: deep
 Executor: (default)
 
-#### story-016 — the plan reviewer's duty to say no   [ready]
+#### story-016 — the plan reviewer's duty to say no   [in-progress]
 Context: Paul, at this sprint's planning: the simplicity challenge came from HIM,
 not from the review. THE OBVIOUS DIAGNOSIS IS WRONG, and the round-2 review caught
 it by reading the file I had not: plan-reviewer.md:52-54 ALREADY says "you have
