@@ -99,11 +99,30 @@ def user_ns() -> str:
     return "user"
 
 
-def append(root: Path, block: str) -> None:
+def append(root: Path, block: str) -> str:
     root.mkdir(parents=True, exist_ok=True)
     with open(root / "work.md", "a") as f:
         fcntl.flock(f, fcntl.LOCK_EX)
         f.write(block)
+    return entry_id(block)
+
+
+def entry_id(text: str) -> str:
+    """A record's name, DERIVED from its text rather than stored in it.
+
+    The heading is an ISO second and that is not a name: 48 concurrent appends
+    produce 48 identical headings. Deriving it means the 53 entries filed before
+    ids existed have one too, which an append-only file can never be given by
+    backfilling.
+    """
+    return hashlib.sha256(text.strip().encode()).hexdigest()[:8]
+
+
+def entries(root: Path) -> list[tuple[str, str]]:
+    """(id, text) per record, in file order."""
+    text = (root / "work.md").read_text() if (root / "work.md").exists() else ""
+    blocks = re.split(r"^(?=## )", text, flags=re.M)
+    return [(entry_id(b), b) for b in blocks if b.strip()]
 
 
 def falsifier_is_green(command: str) -> bool:
@@ -120,6 +139,39 @@ def entry(kind: str, args: argparse.Namespace) -> str:
     )
 
 
+def resolve(root: Path, args: argparse.Namespace) -> int:
+    """Resolve a record by SUBSTITUTING a falsifier, never by deleting one.
+
+    Marking a record done is an unchecked assertion, and one command would
+    silence a live bug forever. The replacement must be green now and the batch
+    runs it, so a wrong resolution reds later and the record reopens.
+    """
+    matches = [(eid, text) for eid, text in entries(root) if eid == args.ref]
+    if len(matches) != 1:
+        print(
+            f"refused: --ref {args.ref!r} matches {len(matches)} records — a ref that"
+            " names none is a typo, one that names several silences the others.",
+            file=sys.stderr,
+        )
+        return 2
+    if not falsifier_is_green(args.falsifier):
+        print(
+            f"refused: the replacement falsifier reds ({args.falsifier!r}) — a"
+            " resolution asserts the claim no longer holds, so its falsifier must be"
+            " green NOW. If it reds, the record is not resolved.",
+            file=sys.stderr,
+        )
+        return 2
+    ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    print(
+        append(
+            root,
+            f"## resolved {ts}\nResolves: {args.ref}\nFalsifier: `{args.falsifier}`\n\n",
+        )
+    )
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest="kind", required=True)
@@ -129,9 +181,20 @@ def main() -> int:
         p.add_argument("--falsifier", required=True, help="shell command; red = exit nonzero")
         p.add_argument("--files", required=True, help="comma-separated paths")
     sub.add_parser("note").add_argument("text")
+    sub.add_parser("list")
+    r = sub.add_parser("resolve")
+    r.add_argument("--ref", required=True, help="record id from `list`")
+    r.add_argument("--falsifier", required=True, help="replacement; must be GREEN now")
     args = parser.parse_args()
 
     root = data_root()
+    if args.kind == "list":
+        for eid, text in entries(root):
+            head = text.splitlines()
+            print(f"{eid} {head[0][3:]} — {(head[1] if len(head) > 1 else '')[:60]}")
+        return 0
+    if args.kind == "resolve":
+        return resolve(root, args)
     if args.kind == "note":
         text = args.text
         if len(text) > NOTE_CAP:
@@ -139,7 +202,7 @@ def main() -> int:
             text = f"{text[:NOTE_CAP]} [truncated: {dropped} chars dropped]"
             print(f"note truncated: {dropped} chars over NOTE_CAP={NOTE_CAP}", file=sys.stderr)
         ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-        append(root, f"## note {ts}\n{neutralize(text)}\n\n")
+        print(append(root, f"## note {ts}\n{neutralize(text)}\n\n"))
         return 0
 
     green = falsifier_is_green(args.falsifier)  # outside the lock: may be slow
@@ -156,7 +219,7 @@ def main() -> int:
             file=sys.stderr,
         )
         return 2
-    append(root, entry(args.kind, args))
+    print(append(root, entry(args.kind, args)))
     return 0
 
 
