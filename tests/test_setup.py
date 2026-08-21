@@ -1,5 +1,6 @@
 """story-006: /xp-setup scaffold. Verify: pytest -q tests/test_setup.py"""
 
+import re
 import stat
 import subprocess
 import sys
@@ -216,3 +217,42 @@ class TestCloseReviewFindings:
             ["sh", ".githooks/pre-commit"], cwd=repo, env=env, capture_output=True, text=True
         )
         assert r.returncode == 0 and "config" in (r.stdout + r.stderr)
+
+
+class TestDogfoodMatchesTheScaffold:
+    """We hand-built .xp/ at Sprint 0 and never run xp-setup on ourselves, so
+    what we dogfood can drift from what we ship and nothing would say so. The
+    stale-marketplace-build bug is the same class: we tested a thing we were not
+    running. These pin the SHAPE the code parses, never the content — a project's
+    tiers, constraints and stories are legitimately its own.
+    """
+
+    REPO = Path(__file__).parent.parent
+    OURS = REPO / ".xp"
+    SHIPPED = REPO / "plugins" / "xp-plugin" / "templates"
+
+    def keys(self, path):
+        return {ln.split(":")[0] for ln in path.read_text().splitlines() if re.match(r"^\w+:", ln)}
+
+    def test_our_config_carries_every_key_the_scaffold_ships(self):
+        missing = self.keys(self.SHIPPED / "config.yml") - self.keys(self.OURS / "config.yml")
+        assert not missing, f"we never exercise the shipped keys: {missing}"
+
+    def test_the_scaffold_ships_no_key_we_invented_without_seeding(self):
+        """The reverse drift: a key we rely on that a scaffolded repo never gets.
+        sprint_branch is seeded COMMENTED, so it counts as shipped."""
+        shipped = self.SHIPPED / "config.yml"
+        text = shipped.read_text()
+        extra = {k for k in self.keys(self.OURS / "config.yml") - self.keys(shipped)}
+        for key in sorted(extra):
+            assert f"# {key}:" in text, f"we use {key!r} and the scaffold never mentions it"
+
+    def test_both_plans_parse_with_the_parser_sprint_close_uses(self):
+        sys.path.insert(0, str(self.REPO / "plugins" / "xp-plugin" / "scripts"))
+        from sprint_close import sprint_stories
+
+        assert sprint_stories((self.OURS / "plan.md").read_text(), "2"), "our plan lost its shape"
+        assert sprint_stories((self.SHIPPED / "plan.md").read_text(), "1"), (
+            "a scaffolded repo cannot run a sprint close: the seeded plan has no"
+            " `### Sprint N` section for sprint_stories to find"
+        )
