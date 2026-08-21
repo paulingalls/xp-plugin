@@ -24,6 +24,8 @@ LIST_CAP = 20
 # No tool deny-list: it never bounded a reviewer that had Bash, so `git commit`
 # was always reachable. AUTHORSHIP is the real bound — any commit in the range the
 # reviewer did not sign means unreviewed work is riding along.
+PROTECTED_XP = (".xp/plan.md", ".xp/constraints.md", ".xp/config.yml")
+
 REVIEWER_NAME = "xp story-reviewer"
 REVIEWER_EMAIL = "story-reviewer@xp.local"
 
@@ -147,8 +149,13 @@ def check_reviewer_motion(reviewed_head: str, marker: Path, digest_before: str) 
             " work no reviewer read would ride the merge:\n  " + "\n  ".join(strays)
         )
     touched = git("diff", "--name-only", rng).stdout.splitlines()
-    if any(f.startswith(".xp/") for f in touched):
-        return refuse("the reviewer changed .xp/ — it may fix code, never the plan or the rules")
+    # THE PLAN AND THE RULES, not the whole directory: a story whose card names an
+    # .xp/ file in Files (story-010's names system.md) could otherwise never pass
+    # its own review leg — measured, it wedged that story with nine fixes ungated.
+    if bad := [f for f in touched if f in PROTECTED_XP]:
+        return refuse(
+            f"the reviewer changed {', '.join(bad)} — it may fix code, never the plan or the rules"
+        )
     return ""
 
 
