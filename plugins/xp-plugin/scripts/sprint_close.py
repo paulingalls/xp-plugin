@@ -215,7 +215,14 @@ def cmd_start(sprint_id: str) -> int:
         if subprocess.run(tier, shell=True).returncode != 0:
             return fail(f"refused: full tier red: {tier}")
 
-    notes = [t for _eid, t in entries(root) if t.startswith("## note ")]
+    disposed = {
+        m.group(1)
+        for _eid, text in entries(root)
+        if (m := re.search(r"^(?:Archives|Resolves): (\w+)$", text, re.M))
+    }
+    notes = [
+        text for eid, text in entries(root) if text.startswith("## note ") and eid not in disposed
+    ]
     print(f"\n{len(members)} stories, {len(notes)} notes to triage. Each note: promote to")
     print("constraints.md/system.md via the retro diff, or archive it.\n")
     for text in notes:

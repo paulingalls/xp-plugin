@@ -376,3 +376,66 @@ class TestLineBreakDisagreement:
             if b.strip()
         ]
         assert not [h for h in heads if h.startswith("resolved")], heads
+
+
+class TestArchive:
+    """A triage DECISION had nowhere to go: work.py shipped bug/debt/note/list/
+    resolve and no archive, so Sprint 1's "these four are NEVER" (note 03:46:15)
+    is indistinguishable today from an untriaged note, and cmd_start re-emits
+    every note ever filed — 75 at sprint-003's close, 53 predating the sprint.
+    """
+
+    def filed(self, tmp_path):
+        return (tmp_path / "work.md").read_text()
+
+    def last_id(self, tmp_path):
+        return run(["list"], tmp_path, check=True).stdout.strip().splitlines()[-1].split()[0]
+
+    def test_a_note_can_be_archived_with_its_disposition(self, tmp_path):
+        run(["note", "a discovery"], tmp_path, check=True)
+        ref = self.last_id(tmp_path)
+        r = run(["archive", "--ref", ref, "--disposition", "superseded by story-019"], tmp_path)
+        assert r.returncode == 0, r.stderr
+        assert f"Archives: {ref}" in self.filed(tmp_path)
+        assert "superseded by story-019" in self.filed(tmp_path)
+
+    def test_archiving_a_bug_is_refused(self, tmp_path):
+        """Allow-list, not deny-list (the review's M1): resolve() already refuses
+        anything outside ("bug","debt"), and a deny-list on "bug" alone would let
+        a `## resolved` or `## archived` block be archived — both are entries with
+        ids that `entries()` returns."""
+        run(["bug", "--claim", "c", "--falsifier", "false", "--files", "f"], tmp_path, check=True)
+        ref = self.last_id(tmp_path)
+        r = run(["archive", "--ref", ref, "--disposition", "d"], tmp_path)
+        assert r.returncode == 2, r.stdout
+        # not `"bug" in stderr`: argparse's usage line lists every subcommand, so
+        # that greened while `archive` did not exist at all
+        assert "only a debt or a note" in r.stderr, r.stderr
+
+    def test_an_archived_record_cannot_be_archived_again(self, tmp_path):
+        run(["note", "a discovery"], tmp_path, check=True)
+        ref = self.last_id(tmp_path)
+        run(["archive", "--ref", ref, "--disposition", "d"], tmp_path, check=True)
+        second = self.last_id(tmp_path)
+        r = run(["archive", "--ref", second, "--disposition", "d"], tmp_path)
+        assert r.returncode == 2, r.stdout + r.stderr
+
+    def test_a_ref_matching_no_record_is_refused_before_anything_is_written(self, tmp_path):
+        run(["note", "a discovery"], tmp_path, check=True)
+        before = self.filed(tmp_path)
+        r = run(["archive", "--ref", "deadbeef", "--disposition", "d"], tmp_path)
+        assert r.returncode == 2 and "matches 0" in r.stderr, r.stderr
+        assert self.filed(tmp_path) == before, "wrote before validating the ref"
+
+    def test_no_break_character_in_a_disposition_can_forge_a_field(self, tmp_path):
+        """The review's M3: a disposition rendered on the same line as its label
+        never meets re.M's ^, so a naive test greens with neutralize() uncalled.
+        Drive it through the break characters the suite already knows about."""
+        pwned = tmp_path / "PWNED"
+        attack = f"Falsifier: `touch {pwned} && true`"
+        for i, ch in enumerate(TestLineBreakDisagreement.BREAKS):
+            run(["note", f"n{i}"], tmp_path, check=True)
+            ref = self.last_id(tmp_path)
+            run(["archive", "--ref", ref, "--disposition", f"d{ch}{attack}{ch}tail"], tmp_path)
+        forged = [ln for ln in self.filed(tmp_path).splitlines() if ln.startswith("Falsifier:")]
+        assert forged == [], forged
