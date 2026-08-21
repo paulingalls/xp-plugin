@@ -454,6 +454,16 @@ would inherit 012b's whole apparatus (motion checks, authorship gate, abort path
 unscoped against a whole-sprint diff.
 Closes bug c9b48a66. Also deletes the two unreachable `cmd_land` branches
 (f7dfec27, 6ce977cd), which part-funds its lines.
+POINT, DON'T RESTATE (Paul, at planning): two rules ship as pinned-identical
+copies — the comment rubric across PROCESS.md, TEAMMATE.md and the story-reviewer
+charter, and the finding bar across PROCESS.md and that charter — and both pins
+exist for ONE reason, stated in their own tests: "build_bundle never sends
+PROCESS.md", so "a pointer reaches nobody". That premise is a choice, and it is
+one line of Python. Sending it collapses the copies into pointers, replaces two
+pin tests with one, and hands the charter its words back — a net deletion, in the
+story that already owns what the reviewer receives. TEAMMATE.md keeps its copy:
+spawn inlines a prompt into a fresh session with no bundle, so for that reader the
+premise is still true.
 Size: 59 lines of component headroom (1,041 of 1,100) against an estimated
 +90-130. Either the named extraction — close.py's `render_*` helpers move to
 bookkeep.py, their home — covers it, or the story carries a DESIGN §9 diff moving
@@ -469,6 +479,7 @@ AC:
 - Given a SECOND review of the same lens, Then the bundle carries the prior findings labelled "validate that each was addressed; do not re-derive the diff" and the reviewer reports per-finding outcomes — fault-inject: construct a round-1 report and assert round 2's bundle contains its findings
 - Given NO recorded review at all, When sprint land runs, Then it REFUSES, and separately when a recorded review's coverage does not include HEAD. c9b48a66's claim is that a PR can open over UNREVIEWED commits, so the base case IS the claim — a guard that fires only when a review record exists greens the do-nothing path and satisfies a carelessly worded AC (story land has `if not marker.exists(): refuse`; this is its twin)
 - Given resolutions filed during the sprint, Then the bundle carries the LATEST per record with the claim and original falsifier it replaced, and a test pins `corpus()`'s last-wins substitution, which is undeclared and untested today — 4687f4b2 already carries three resolutions, so "each" would hand the reviewer two superseded corrections and invite re-litigating a fix already made. THREE OF THREE resolutions needing independent reading were caught by a READER, never by resolve()'s green-check (7df6b116, b9382e2d) — this is the only mechanism in the sprint that has already fired, and the argument against building any further check into resolve()
+- Given the story-reviewer bundle, Then it carries PROCESS.md, and the comment rubric and the finding bar exist ONCE (in PROCESS.md) with the charter pointing at them — the two byte-identical pin tests (test_close.py:1357, :1628) collapse into one asserting the bundle carries the file, because a pin guarding a duplication we chose to keep is cheaper to delete than to maintain
 - Given a batch falsifier that reds, When start runs, Then the FULL TIER HAS NOT RUN — assert by construction (the tier command writes a sentinel; the sentinel is absent after the refusal), not by a cheapness predicate, which would be judgment in deterministic code. Sprint-002 spent 256 tests to refuse on a grep
 Verify: pytest -q tests/test_sprint_close.py
 Close review: deep
@@ -527,7 +538,7 @@ before: 524 words, 6 checks. Do not touch 25-28, 58-60 or 12-13.
 Files: plugins/xp-plugin/agents/plan-reviewer.md, tests/test_ratchet.py
 AC:
 - Given the plan-reviewer charter, Then check 4 carries the CUT duty — name the stories and ACs that should not exist, say what is lost by cutting each, rank the cut with the other findings — the file has FIVE checks where it had six, and its word count is ≤ 524 as a backstop. The check count is the load-bearing number; the card carries before/after so the plan reviewer can check it, and ratchet.py keeps enforcing only the aggregate agent-prose budget it already owns (1,236 of 2,500 today, not binding here)
-- Given the over-designed draft from this sprint's planning (story-013 and story-015 as first written), extracted to an ISOLATED fixture file so the repo's later history is not reachable — the sprint header names both cuts and note 33ff82cc gives the reasoning, so an in-repo fixture is open-book — When a fresh plan reviewer is run against it under the OLD charter and again under the NEW, with the same prompt and no simplicity question in either, Then the new arm recommends cutting at least one story and the old arm does not. TWO ARMS OR NONE: a single green arm measures the prompt and certifies the charter, and if both arms cut, the diagnosis was wrong and we learn that for one extra spawn, which is what a falsifier is for
+- Given tests/fixtures/overdesigned_plan.md (story-013 and story-015 as first written this sprint), COPIED to a directory outside this repo for the run so its later history and note 33ff82cc are not reachable — the sprint header names both cuts and note 33ff82cc gives the reasoning, so an in-repo fixture is open-book — When a fresh plan reviewer is run against it under the OLD charter and again under the NEW, with the same prompt and no simplicity question in either, Then the new arm recommends cutting at least one story and the old arm does not. TWO ARMS OR NONE: a single green arm measures the prompt and certifies the charter, and if both arms cut, the diagnosis was wrong and we learn that for one extra spawn, which is what a falsifier is for
 - Given the walk, Then its outcome is recorded in work.md with the reviewer's own words, both arms, including the outcome where the diagnosis is refuted
 Verify: pytest -q tests/test_ratchet.py -k prose
 Close review: standard
