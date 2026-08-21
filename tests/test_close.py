@@ -1355,21 +1355,28 @@ class TestShippedProseMatchesTheMechanism:
             assert "VERDICT" not in head, f"{path.name} still ships the deleted gate"
 
     def test_the_comment_rubric_is_identical_in_every_shipped_copy(self):
-        """It must reach whoever writes code: the lead (PROCESS.md, injected each
-        session), the teammate (TEAMMATE.md, inlined by spawn) and the reviewer
-        (the charter, inlined by build_bundle). None of them receives the others,
-        so a pointer reaches nobody and three copies drift."""
+        """TWO copies now, not three. The reviewer's copy existed for one stated
+        reason — "build_bundle never sends PROCESS.md" — which was one line of
+        Python, not a fact, so story-014 sent it and the charter POINTS.
+
+        TEAMMATE.md keeps its copy: spawn inlines it into a fresh session with no
+        bundle, so for THAT reader the premise still holds.
+        """
         rubric = (
             "Comments: restates the code → delete · explains WHAT → rename it ·"
             " a checkable claim → write the test · narrates history → delete, git"
             " holds it. Keep only the why, an external constraint, a rejected design."
         )
-        for path in (
-            PLUGIN / "PROCESS.md",
-            PLUGIN / "TEAMMATE.md",
-            PLUGIN / "agents" / "story-reviewer.md",
-        ):
+        for path in (PLUGIN / "PROCESS.md", PLUGIN / "TEAMMATE.md"):
             assert rubric in prose(path), f"{path.name} has drifted from the rubric"
+
+    def test_the_story_bundle_carries_PROCESS_md(self, tmp_path):
+        """What replaces the two pins. Both charters point at PROCESS.md now, so a
+        bundle without it hands the reviewer a pointer to nothing."""
+        repo, env, _g = make_repo(tmp_path)
+        assert close(repo, env, "review").returncode == 0
+        bundle = launches(tmp_path)[0]["stdin"]
+        assert "Polarity" in bundle and "(missing" not in bundle
 
     def test_every_stopping_rule_copy_states_the_split_arithmetic(self):
         """land refuses unless the last round covers HEAD, so "close without
@@ -1391,6 +1398,26 @@ class TestShippedProseMatchesTheMechanism:
             assert "confirming round" in text, f"{path.name} still promises"
             assert "inside the round that found" in text, f"{path.name}: reviewer half"
             assert "past what the review covered" in text, f"{path.name}: lead half"
+
+    def test_the_sprint_close_skill_runs_the_reviews_rather_than_composing_them(self):
+        """Step 2 used to tell a human to do a broad review and a security review.
+        Both prompts were then hand-composed at sprint-002's close, and when four
+        fix-commits needed re-checking there were no prior findings to bound the
+        pass — an unbounded re-review (note bae0b87b)."""
+        skill = prose(PLUGIN / "skills" / "sprint-close" / "SKILL.md")
+        for lens in ("broad", "security"):
+            assert f"review --lens {lens}" in skill, f"the {lens} review is still hand-composed"
+
+    def test_the_sprint_close_skill_orders_the_retro_BEFORE_the_reviews(self):
+        """Measured against the last real close: sprint-002's retro commit touched
+        CHANGELOG.md, docs/DESIGN.md, PROCESS.md and story-close/SKILL.md — five of
+        six paths outside .xp/, so land's exemption does not cover it. Retro last
+        means reviewing again, which invalidates the retro just written. The order
+        is the fix, and it also puts the retro diff under the review DESIGN §6
+        already says it deserves."""
+        skill = prose(PLUGIN / "skills" / "sprint-close" / "SKILL.md")
+        assert skill.index("Note triage") < skill.index("review --lens broad")
+        assert "BEFORE the reviews" in skill
 
     def test_the_charter_names_the_report_path(self):
         assert "REPORT_PATH" in (PLUGIN / "agents" / "story-reviewer.md").read_text()
@@ -1661,9 +1688,15 @@ class TestCharterBar:
             assert token in charter
         assert "heredoc" not in charter, "Write is allowed now; the heredoc route is stale"
 
-    def test_the_charters_finding_bar_is_byte_identical_to_the_process_one(self):
-        """build_bundle never sends PROCESS.md, so the bar must be COPIED — which
-        makes it a rule with two implementations unless they are pinned equal."""
+    def test_both_charters_point_at_the_finding_bar_rather_than_copying_it(self):
+        """Replaces the byte-identical pin story-014 deleted. That pin existed
+        because "build_bundle never sends PROCESS.md" — one line of Python, not a
+        fact. Asserting the bar appears ONCE in PROCESS.md would be false as
+        written: PROCESS.md states it twice, at story close and at sprint close.
+        """
         bar = "silent or corrupting (false green, corrupted record, unreviewed merge)"
         assert bar in (PLUGIN / "PROCESS.md").read_text()
-        assert bar in (PLUGIN / "agents" / "story-reviewer.md").read_text()
+        for name in ("story-reviewer", "sprint-reviewer"):
+            charter = (PLUGIN / "agents" / f"{name}.md").read_text()
+            assert bar not in charter, f"{name} still ships a second copy of the bar"
+            assert "PROCESS" in charter, f"{name} dropped the copy without pointing"

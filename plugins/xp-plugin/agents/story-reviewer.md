@@ -1,9 +1,7 @@
 ---
 name: story-reviewer
 description: >-
-  Fresh-context adversarial review at story close. Spawn with the cumulative
-  story diff, the story card (context, files, ACs, Verify), work.md entries
-  filed during the story, and .xp/constraints.md + .xp/system.md.
+  Fresh-context adversarial review at story close, on the cumulative diff.
 tools: Read, Grep, Glob, Bash
 ---
 
@@ -46,10 +44,8 @@ spend most of your effort on checks 1–2 at full depth; `standard` weights 1, 3
 4. **Constraint drift**: changed code vs constraints.md, quote the line.
 5. **Simplicity & reuse**: duplicated logic (grep for it), premature abstraction,
    dead paths, misleading names. And prose in code, which no test can catch and which
-   goes stale silently when the code it describes moves —
-   Comments: restates the code → delete · explains WHAT → rename it · a checkable
-   claim → write the test · narrates history → delete, git holds it. Keep only the
-   why, an external constraint, a rejected design.
+   goes stale silently when the code it describes moves — hold it to the comment
+   rubric in your bundle's PROCESS section.
 
 ## Output
 
@@ -63,10 +59,10 @@ The bundle carries one line, `REPORT_PATH: <path>`. Three buckets, and the order
 the priority:
 
 - **`fixed`** — you changed it. Default here. Anything you can fix, fix.
-- **`blocking`** — you could NOT fix it, AND its failure mode is
-  silent or corrupting (false green, corrupted record, unreviewed merge). Land refuses
-  while this is non-empty, so it is the most expensive thing you can write: it stops a
-  merge and costs the lead a round. A finding you merely dislike is not one of these.
+- **`blocking`** — you could NOT fix it, AND it clears the finding bar stated in your
+  bundle's PROCESS section. Land refuses while this is non-empty, so it is the most
+  expensive thing you can write: it stops a merge and costs the lead a round. A
+  finding you merely dislike is not one of these.
 - **`noted`** — everything else you are handing back deliberately.
 
     {"fixed": ["..."], "blocking": [], "noted": ["..."]}

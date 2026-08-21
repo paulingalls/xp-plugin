@@ -445,7 +445,7 @@ Verify: pytest -q tests/test_ratchet.py
 Close review: standard
 Executor: (default)
 
-#### story-014 — the sprint close marshals its reviews   [ready]
+#### story-014 — the sprint close marshals its reviews   [done]
 Context: SYMMETRY, not new machinery. The story close marshals its one review —
 close.py builds a bundle, spawns the reviewer, receives {fixed,blocking,noted},
 and carries EARLIER ROUNDS so a later round validates instead of re-deriving

@@ -148,6 +148,7 @@ def build_bundle(card: str, base: str, report: Path, prior: str = "") -> str:
         ("Earlier rounds of THIS story", prior or "none — you are round 1"),
         ("Cumulative diff", git("diff", f"{base}..HEAD").stdout),
         ("work.md entries filed during the story", work_entries_since(base_epoch) or "none"),
+        ("PROCESS", _read_first(str(review.PLUGIN_ROOT / "PROCESS.md"))),
         ("VALUES", _read_first(str(Path(__file__).parent.parent / "VALUES.md"))),
         ("Constraints", _read_first(".xp/constraints.md")),
         ("System context", _read_first(".xp/system.md")),
@@ -278,9 +279,7 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
             f" {str(state.get('review_base'))[:8]}, today's merge base is {base[:8]}."
             f" Run `close.py story {story_id} review`"
         )
-    rounds = state.get("rounds") or []
-    if not rounds:
-        return fail(f"refused: no recorded review round for {story_id} — run review first")
+    rounds = state["rounds"]
     blocking = rounds[-1]["blocking"]
     if blocking:
         return fail(
@@ -443,7 +442,10 @@ def main() -> int:
     sub = p.add_subparsers(dest="kind", required=True)
     sp = sub.add_parser("sprint")
     sp.add_argument("sprint_id")
-    sp.add_argument("action", choices=["start", "land", "post-merge"])
+    sp.add_argument("action", choices=["start", "review", "land", "post-merge"])
+    # no choices=[...]: sprint_close.LENSES is the one copy, and close.py cannot
+    # import it at module scope — sprint_close imports from here
+    sp.add_argument("--lens", default="")
     sp.add_argument("--dry-run", action="store_true")
     s = sub.add_parser("story")
     s.add_argument("story_id")
@@ -473,6 +475,8 @@ def main() -> int:
 
         if a.action == "start":
             return sprint_close.cmd_start(a.sprint_id)
+        if a.action == "review":
+            return sprint_close.cmd_review(a.sprint_id, a.lens, a.dry_run)
         if a.action == "land":
             return sprint_close.cmd_land(a.sprint_id, a.dry_run)
         return sprint_close.cmd_post_merge(a.sprint_id)

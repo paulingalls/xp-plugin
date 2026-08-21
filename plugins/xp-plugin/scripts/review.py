@@ -30,15 +30,16 @@ REVIEWER_NAME = "xp story-reviewer"
 REVIEWER_EMAIL = "story-reviewer@xp.local"
 
 
-def charter() -> str:
-    """agents/story-reviewer.md, frontmatter stripped.
+def charter(name: str = "story-reviewer") -> str:
+    """agents/<name>.md, frontmatter stripped.
 
     It runs as a top-level headless session, not a subagent, so the harness never
-    loads the agent file: inlining is the mechanism, the path is the fallback.
+    loads the agent file: inlining is the mechanism, the path is the fallback —
+    and it is why the file's `tools:` line bounds nothing at all here.
     """
     from spawn import _read_shipped
 
-    text = _read_shipped(PLUGIN_ROOT / "agents" / "story-reviewer.md")
+    text = _read_shipped(PLUGIN_ROOT / "agents" / f"{name}.md")
     if text.startswith("---"):
         parts = text.split("---", 2)
         if len(parts) == 3:
@@ -55,6 +56,36 @@ def report_path(story_id: str, round_n: int) -> Path:
     d = data_root() / "reports"
     d.mkdir(parents=True, exist_ok=True)
     return d / f"{story_id}.round-{round_n}.json"
+
+
+def sprint_report_path(sprint_id: str, lens: str, round_n: int) -> Path:
+    """Its own DIRECTORY, not a prefix: story ids are free text, so any separator
+    a sprint key uses is one a story can spell (constraints.md #10)."""
+    from work import data_root
+
+    d = data_root() / "reports" / "sprint"
+    d.mkdir(parents=True, exist_ok=True)
+    return d / f"{sprint_id}.{lens}.round-{round_n}.json"
+
+
+def check_report_only(shown_head: str, marker: Path, digest_before: str) -> str:
+    """Refusal text, or "" if the reviewer only reported. NOT check_reviewer_motion,
+    which PERMITS commits the reviewer authored: this leg permits no motion."""
+    from close import git
+
+    if git("rev-parse", "HEAD").stdout.strip() != shown_head:
+        why = "HEAD moved during the review — this leg is report-only"
+    elif dirty := git("status", "--porcelain").stdout.strip():
+        why = "the tree is dirty at the end of the review; uncommitted:\n  " + dirty
+    elif marker_digest(marker) != digest_before:
+        why = (
+            f"the close marker changed during the review ({marker}) — it is what land"
+            " reads for rounds and blocking findings, it is outside the repo, no diff"
+            " shows it, and a review may not move its own gate"
+        )
+    else:
+        return ""
+    return abort_text(shown_head, why)
 
 
 def _cap(items: list, path: Path) -> list:
@@ -190,7 +221,9 @@ def write_reviewer_diff(report: Path, reviewed_head: str) -> Path | None:
     return diff
 
 
-def run(prompt: str, cwd: Path, dry_run: bool = False) -> tuple[str, str]:
+def run(
+    prompt: str, cwd: Path, dry_run: bool = False, name: str = "story-reviewer"
+) -> tuple[str, str]:
     """Launch the reviewer. Returns (result_text, error) — never raises on a
     reviewer that crashes, prints prose, or is missing from PATH.
 
@@ -206,7 +239,7 @@ def run(prompt: str, cwd: Path, dry_run: bool = False) -> tuple[str, str]:
         return "", ""
     # capture + --output-format json means total silence for the whole run;
     # without this line a multi-minute review is indistinguishable from a hang.
-    print(f"spawning story-reviewer ({model}) — no output until it finishes", file=sys.stderr)
+    print(f"spawning {name} ({model}) — no output until it finishes", file=sys.stderr)
     try:
         proc = run_agent(argv, cwd, prompt, role="reviewer", capture=True)
     except OSError as e:  # claude absent from PATH
