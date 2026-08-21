@@ -23,7 +23,7 @@ TOTAL = 5000
 
 CLOSE_NAMES = {"close", "review", "bookkeep", "sprint_close"}
 HOOKS_NAMES = {"hooks", "session_start", "stop_gate", "bash_status"}
-SPAWN_NAMES = {"spawn"}
+SPAWN_NAMES = {"spawn", "teammate_tee"}
 
 DENSITY_THRESHOLD = 0.20
 

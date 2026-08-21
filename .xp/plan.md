@@ -556,7 +556,7 @@ Verify: pytest -q tests/test_close.py -k plan_reviewer_charter  (NOT `-k prose`,
 Close review: standard
 Executor: (default)
 
-#### story-017 — the teammate spawn is live and durable   [ready]
+#### story-017 — the teammate spawn is live and durable   [done]
 Context: A RECOVERED DIRECTIVE (notes 1de5317c, 452cf7a9, b6335017). At story-008's
 close Paul directed that full `claude -p` output be captured, porting ../xp-agents'
 `run_with_tee`. It had three properties — DURABLE, BOUNDED, LIVE. story-012a landed

@@ -78,6 +78,20 @@ def test_extracted_subpackage_counts_against_its_component(tmp_path):
     assert "over by 50" in violation, violation
 
 
+def test_the_spawn_leg_extracted_to_a_leaf_still_counts_against_spawn(tmp_path):
+    """Constraint 8's other growth path: a component too big for one file sheds a
+    LEAF module, not a subpackage — story-017 cut spawn.py's tee loop out to
+    scripts/teammate_tee.py. Charging that to misc understates the component it
+    was cut from and spends a budget it does not belong to."""
+    files = {"scripts/spawn.py": "x = 1\n", "scripts/teammate_tee.py": "x = 1\n" * 800}
+    root = build_plugin_tree(tmp_path, files)
+    result = run_ratchet(root)
+    rows = dict(ln.split()[:2] for ln in result.stdout.splitlines()[1:5])
+    assert rows["spawn"] == "801", result.stdout
+    assert rows["misc"] == "0", result.stdout
+    assert result.returncode == 0, result.stdout  # 801 fits spawn's 2,000; 800 blows misc's 750
+
+
 def test_python_outside_scripts_counts_against_its_component(tmp_path):
     """The budget is the shipped plugin's Python, not one directory of it. The
     Codex adapter and the per-harness hooks land beside scripts/, and a scan
