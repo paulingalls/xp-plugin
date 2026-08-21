@@ -376,6 +376,33 @@ Also deferred here from the story-012 candidate note (17:03:25Z): a CONFIGURABLE
 reviewer (`--reviewer` override) — the seam the codex adapter needs. Its two
 siblings landed: durable in 012a, bounded in 012b.
 
+#### story-014 — the sprint close marshals its reviews   [ready]
+Context: SYMMETRY, not new machinery. The story close marshals its one review —
+close.py builds a bundle, spawns the reviewer, receives {fixed,blocking,noted},
+and carries EARLIER ROUNDS so a later round validates instead of re-deriving
+(story-012b AC 9). The sprint close marshals nothing: sprint_close.py contains
+the word "review" once, in a docstring, and the skill only tells a human to run
+a broad review and a security review. Measured at sprint-002's close: both
+prompts were hand-composed, and when four fix-commits needed re-checking there
+were no prior findings to bound the pass — an unbounded re-review, the exact
+loop the process exists to avoid. From ../xp-agents (xp-code-reviewer.md:18-19,
+note bae0b87b): the bounding mechanism is a MODE SWITCH — findings handed in →
+validate each and move on; none handed in → run the full pass. We already have
+it at story level under a different name.
+Depends on story-009. Also closes the sprint-level half of bug c9b48a66: with
+the reviews marshalled, sprint land can require that a recorded broad review
+covers HEAD, which is what story-level land already requires.
+Files: plugins/xp-plugin/scripts/sprint_close.py, plugins/xp-plugin/scripts/review.py,
+plugins/xp-plugin/skills/sprint-close/SKILL.md, tests/test_sprint_close.py
+AC:
+- Given sprint start, When the broad review runs, Then the pipeline spawns it with a bundle (cumulative diff main...HEAD, constraints, system, the sprint's stories) and records its {fixed,blocking,noted} report — the lead composes no prompt
+- Given a second broad review after fixes, Then the bundle carries the PRIOR findings labelled "validate that each was addressed; do not re-derive the diff", and the reviewer reports per-finding outcomes rather than a fresh sweep (fault-inject: the second bundle must contain round 1's findings)
+- Given a recorded broad review whose coverage does not include HEAD, When sprint land runs, Then it REFUSES — the sprint-level twin of the guard story-012a gave land, and the reason bug c9b48a66 exists
+- Given the security review, Then it is marshalled the same way and its report is recorded beside the broad one — a report that lives only in stdout is lost, which happened three times in one session
+Verify: pytest -q tests/test_sprint_close.py
+Close review: deep
+Executor: (default)
+
 #### story-013 — constraints promotion with caps   [ready]
 Context: CUT from story-009 at its plan review — a work.py subcommand sharing
 nothing with sprint_close.py but a call site, and the only piece of the sprint
