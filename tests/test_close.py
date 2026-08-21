@@ -1470,6 +1470,26 @@ class TestShippedProseMatchesTheMechanism:
                 " dev tooling belongs in tests/scripts/, not in every consumer's install"
             )
 
+    def test_a_verify_line_that_is_not_runnable_is_refused_before_the_review(self, tmp_path):
+        """Bug 3e2ad94b. verify_commands returns everything after "Verify:", so a
+        line with rationale appended reached /bin/sh at LAND — after a reviewer had
+        been spent — and died on an unbalanced quote. story-016's card cleared TWO
+        plan-review rounds that way. The refusal belongs in _preflight, which both
+        legs call, so it costs a refusal instead of a review: assert NOTHING was
+        spawned, which is the half that makes it cheaper rather than merely louder.
+
+        BOUND, stated: shlex catches an UNBALANCED QUOTE — the apostrophe in
+        "story-010's" is what actually killed /bin/sh. Prose whose quotes happen to
+        balance still parses and still runs garbage. This closes the measured
+        failure, not the general class."""
+        repo, env, _g = make_repo(
+            tmp_path, verify="pytest -q -k x — `-k prose` selected story-010's test"
+        )
+        r = close(repo, env, "review")
+        assert r.returncode == 2, r.stdout + r.stderr
+        assert "Verify" in r.stderr, r.stderr
+        assert launches(tmp_path) == [], "spent a reviewer on an unrunnable Verify"
+
     def test_the_charter_names_the_report_path(self):
         assert "REPORT_PATH" in (PLUGIN / "agents" / "story-reviewer.md").read_text()
 

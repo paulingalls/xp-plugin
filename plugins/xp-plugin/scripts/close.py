@@ -18,6 +18,7 @@ one is forgeable, and Sprint 1 forged one.
 import argparse
 import json
 import os
+import shlex
 import subprocess
 import sys
 from pathlib import Path
@@ -159,6 +160,10 @@ def _preflight(story_id: str, action: str) -> tuple[str, str, str]:
         return "", "", f"refused: {e.args[0]}"
     if status != "in-progress":
         return "", "", f"refused: {story_id} is [{status}], {action} requires [in-progress]"
+    try:  # 3e2ad94b: an annotated Verify line reached /bin/sh at LAND, post-review
+        shlex.split(verify_commands(card))
+    except ValueError as e:
+        return "", "", f"refused: {story_id}'s Verify: line is not runnable ({e})"
     trunk = integration_target()
     branch = git("rev-parse", "--abbrev-ref", "HEAD").stdout.strip()
     if branch in (trunk, default_branch()):
