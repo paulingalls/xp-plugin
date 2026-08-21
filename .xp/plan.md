@@ -444,51 +444,48 @@ and carries EARLIER ROUNDS so a later round validates instead of re-deriving
 "review" once, in a docstring. Measured at sprint-002's close: both prompts were
 hand-composed, and when four fix-commits needed re-checking there were no prior
 findings to bound the pass — an unbounded re-review, the loop this process exists
-to avoid. The bounding mechanism is a MODE SWITCH (../xp-agents
-xp-code-reviewer.md:18-19, note bae0b87b): findings handed in → validate each;
-none handed in → run the full pass. We have it at story level already.
+to avoid. The bounding mechanism is a MODE SWITCH (note bae0b87b): findings handed
+in → validate each; none handed in → run the full pass.
 A SEPARATE `review` LEG, not inside `start`: story-009's shipped contract is that
-`start` is read-and-emit and idempotent ("run twice → the second is a no-op
-beyond its own appends"), and a spawning, tree-touching `start` breaks it. This
-is DESIGN §6's split-review-from-commit at sprint level, the same split 012a made
-at story level. ONE LEG, TWO LENSES (`--lens broad|security`): same bundle, same
-report shape: two pipelines and a charter that does not exist yet is machinery.
-The property worth keeping is that the report is RECORDED — three were lost to
-stdout in one session. The sprint reviewer is REPORT-ONLY; a fixing reviewer here
-would inherit 012b's whole apparatus (motion checks, authorship gate, abort path)
-unscoped against a whole-sprint diff.
-Closes bug c9b48a66. Also deletes the two unreachable `cmd_land` branches
-(f7dfec27, 6ce977cd), which part-funds its lines.
-POINT, DON'T RESTATE (Paul, at planning): two rules ship as pinned-identical
-copies — the comment rubric across PROCESS.md, TEAMMATE.md and the story-reviewer
-charter, and the finding bar across PROCESS.md and that charter — and both pins
-exist for ONE reason, stated in their own tests: "build_bundle never sends
-PROCESS.md", so "a pointer reaches nobody". That premise is a choice, and it is
-one line of Python. Sending it collapses the copies into pointers, replaces two
-pin tests with one, and hands the charter its words back — a net deletion, in the
-story that already owns what the reviewer receives. TEAMMATE.md keeps its copy:
-spawn inlines a prompt into a fresh session with no bundle, so for that reader the
-premise is still true.
-Size: 59 lines of component headroom (1,041 of 1,100) against an estimated
-+90-130. Either the named extraction — close.py's `render_*` helpers move to
-bookkeep.py, their home — covers it, or the story carries a DESIGN §9 diff moving
-100 from misc (366 of 900); story-010's sum assertion makes that zero-sum, and
-constraint 1 says it moves by reviewed diff, never by discovery at the keyboard.
+`start` is read-and-emit and idempotent, and a spawning, tree-touching `start`
+breaks it. ONE LEG, TWO LENSES (`--lens broad|security`): same bundle, same report
+shape. The sprint reviewer is REPORT-ONLY — and that is a MECHANISM here, not a
+charter claim (see AC 2), because the plan-review found the claim unenforced.
+Closes c9b48a66, whose own falsifier is the identifier grep constraint 11 forbids
+and which THIS SPRINT'S CLOSE WILL RUN: the story must `work.py resolve` it with
+AC 4's land-refusal test, the same trap story-010 carried for c2d7ffdf.
+POINT, DON'T RESTATE (Paul): the comment rubric and the finding bar ship as pinned
+copies for one stated reason — "build_bundle never sends PROCESS.md" — which is
+one line of Python, not a fact. TEAMMATE.md keeps its copy: spawn inlines into a
+fresh session with no bundle, so for that reader the premise holds.
+Size: component measures 1,041 and story-010 moves 150 from misc, so the cap is
+1,250 with story-011 (+60-80) still to come. Plan-reviewed estimate +125-165, NOT
+the +90-130 I first wrote: the enumeration omitted the land guards (~15-20) and
+the resolutions section cannot reuse corpus(), which discards the original
+falsifier at substitution (~15-20). Also deletes cmd_land's dominated `if not
+rounds` branch (f7dfec27); the merge-conflict abort STAYS until story-011's plan
+re-checks it, because that deletion and its gates are one decision.
 Files: plugins/xp-plugin/scripts/sprint_close.py, plugins/xp-plugin/scripts/review.py,
 plugins/xp-plugin/scripts/close.py, plugins/xp-plugin/scripts/bookkeep.py,
-plugins/xp-plugin/scripts/work.py, plugins/xp-plugin/skills/sprint-close/SKILL.md,
-docs/DESIGN.md, tests/test_sprint_close.py
+plugins/xp-plugin/scripts/work.py, plugins/xp-plugin/agents/sprint-reviewer.md,
+plugins/xp-plugin/agents/story-reviewer.md, plugins/xp-plugin/skills/sprint-close/SKILL.md,
+docs/DESIGN.md, tests/test_sprint_close.py, tests/test_close.py
 AC:
-- Given `close.py sprint <id> review --lens broad`, Then it spawns the reviewer with a bundle (cumulative diff main...HEAD, constraints, system, the sprint's stories) and records the {fixed,blocking,noted} report under a key that cannot collide with a story's report file
-- Given `--lens security`, Then the same leg, bundle and report shape are used with the security lens, and its report is recorded beside the broad one
-- Given a SECOND review of the same lens, Then the bundle carries the prior findings labelled "validate that each was addressed; do not re-derive the diff" and the reviewer reports per-finding outcomes — fault-inject: construct a round-1 report and assert round 2's bundle contains its findings
-- Given NO recorded review at all, When sprint land runs, Then it REFUSES, and separately when a recorded review's coverage does not include HEAD. c9b48a66's claim is that a PR can open over UNREVIEWED commits, so the base case IS the claim — a guard that fires only when a review record exists greens the do-nothing path and satisfies a carelessly worded AC (story land has `if not marker.exists(): refuse`; this is its twin)
-- Given resolutions filed during the sprint, Then the bundle carries the LATEST per record with the claim and original falsifier it replaced, and a test pins `corpus()`'s last-wins substitution, which is undeclared and untested today — 4687f4b2 already carries three resolutions, so "each" would hand the reviewer two superseded corrections and invite re-litigating a fix already made. THREE OF THREE resolutions needing independent reading were caught by a READER, never by resolve()'s green-check (7df6b116, b9382e2d) — this is the only mechanism in the sprint that has already fired, and the argument against building any further check into resolve()
-- Given the story-reviewer bundle, Then it carries PROCESS.md, and the comment rubric and the finding bar exist ONCE (in PROCESS.md) with the charter pointing at them — the two byte-identical pin tests (test_close.py:1357, :1628) collapse into one asserting the bundle carries the file, because a pin guarding a duplication we chose to keep is cheaper to delete than to maintain
-- Given a batch falsifier that reds, When start runs, Then the FULL TIER HAS NOT RUN — assert by construction (the tier command writes a sentinel; the sentinel is absent after the refusal), not by a cheapness predicate, which would be judgment in deterministic code. Sprint-002 spent 256 tests to refuse on a grep
-Verify: pytest -q tests/test_sprint_close.py
+- Given `close.py sprint <id> review --lens broad`, Then it spawns with a bundle (cumulative diff against `integration_target()` — never a hardcoded "main", which passes vacuously in a fixture and breaks a `master` consumer — constraints, system, the sprint's story cards) and records the report under a key a story cannot shadow. Fault-inject BOTH keys: construct a story literally named "sprint-3.broad" and assert its report path AND its marker path differ from the sprint's. The marker is the file land reads for rounds and blocking[]; scoping the report and not the marker hands the gate the collision the report just refused (constraint 10)
+- Given a sprint reviewer that COMMITS, When the leg finishes, Then it REFUSES via `review.abort_text` and records nothing — capture head BEFORE the launch and record `shown_sha` as that head, not as post-run HEAD. close.cmd_review records post-run deliberately because motion checks bound what could have moved; copying that ordering into a leg WITHOUT them makes anything the reviewer commits count as reviewed and ride the release PR. Fault-inject with a stub that commits — a stub that never commits certifies nothing
+- Given a SECOND review of the same lens, Then the bundle carries the prior findings labelled "validate that each was addressed; do not re-derive the diff" — read from the MARKER state, which is where close.py keeps rounds; reading `reports/` off disk would be a second source of truth. Construct the marker, not the report file
+- Given NO recorded review at all, When sprint land runs, Then it REFUSES — the base case IS c9b48a66's claim, and a guard that fires only when a record exists greens the do-nothing path. Also refuses when the recorded review does not cover HEAD, EXCEPT where the whole delta is under .xp/ (Paul's call): retro, digest and plan-status commits always land after the reviews, so a strict rule forces a fresh broad AND security review at every close — the afbd01a3 wedge, where completing the close invalidates the review that permits it. Code motion is never exempt
+- Given resolutions filed during the sprint, Then the bundle carries the LATEST per record with the claim and ORIGINAL falsifier it replaced, and `## resolved` blocks are FILTERED OUT of the raw work.md section — they are work.md entries, so shipping both hands the reviewer every superseded correction verbatim and invites the re-litigation the dedup exists to prevent. Three of three resolutions needing independent reading were caught by a READER, never by resolve()'s green-check (7df6b116, b9382e2d, 997c0c63)
+- Given a batch falsifier that reds, When start runs, Then the full tier HAS NOT RUN — the tier command writes a sentinel; assert its ABSENCE after the refusal AND its presence after a green batch, because absence alone also passes an implementation that deleted the tier
+- Given the story-reviewer bundle, Then it carries PROCESS.md and the charter points at it. The two pins are NOT two-into-one: narrow test_close.py:1357 to PROCESS ↔ TEAMMATE (whose copy stays), DELETE :1628, and add a test that the bundle carries the file. PROCESS.md itself states the finding bar twice, so "exists once" is false as written
+- Given skills/sprint-close/SKILL.md, Then step 2 no longer tells a human to hand-compose the two reviews this story automates, asserted by the shipped-prose class in test_close.py — and the story is WALKED before close: `close.py sprint 3 review --lens broad --dry-run` in this repo, output read (constraint 12, bitten twice)
+Verify: pytest -q tests/test_sprint_close.py tests/test_close.py
 Close review: deep
-Executor: (default)
+Executor: claude/opus — the plan review's call and mine: a cross-module signature
+change (report_path, marker_path), a marker-scoping subtlety, a motion guard that
+must be added rather than reused, and a budget ledger. story-010 showed
+sonnet/medium handling a five-file story well, but that story added one new module
+and changed no shared signature.
 
 #### story-011 — free mode (card-less close)   [ready]
 Context: `close.py free start <slug>` cuts <user>/free-YYYY-MM-DD-<slug> off the
@@ -588,7 +585,7 @@ AC:
 - Given a re-spawn after a failed run, Then the log APPENDS under a `===== spawn <story> <iso-ts> =====` header — after a hang, the forensic record of the hang is the thing you need, and truncating it is the one unrecoverable move
 - Given a log that cannot be opened, or a write that fails mid-stream, Then the spawn warns and KEEPS DRAINING the child's stdout — best-effort, never load-bearing: ceasing to drain deadlocks a healthy child on a full pipe
 - Given a teammate that ends with a dirty tree or with ZERO commits on its branch, When the spawn finishes, Then it exits NONZERO naming what is uncommitted — the check belongs in the thing doing the work (constraint 5), not in close.py's preflight, which today refuses only after the teammate has reported success and exited. Fault-inject with a stub that writes a file and exits 0
-- Given TEAMMATE.md, Then it states the rule the wall actually permits: red is never committable here, so commit at GREEN points, one test-and-implementation pair per AC, and say in the handback which tests were watched failing. The contradiction is deleted rather than annotated (constraint 1: the reconciliation displaces the two bullets it replaces)
+- Given TEAMMATE.md, Then ONE rule replaces the two bullets that contradict each other (Paul): YOU ARE NOT FINISHED UNTIL EVERY CHANGE IS COMMITTED. The wall gates commits on green, so "all committed" already implies "all green" — one requirement carries both, and nothing needs reconciling. "Watch it fail" goes: it asks for a state this wall makes uncommittable, and diagnosticity is what the reviewer can actually check (note 11e799b9)
 - Given review.py, Then it is UNCHANGED — it parses one object and already has durability in REPORT_PATH. The fence is the AC: widening this to the reviewer is how a two-file story becomes four
 Verify: pytest -q tests/test_spawn.py
 Close review: standard
