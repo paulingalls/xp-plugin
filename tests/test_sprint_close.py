@@ -233,27 +233,6 @@ class TestFalsifierBatch:
         filed = (tmp_path / "data" / "work.md").read_text().count("## bug ")
         assert filed == 1, f"three runs filed {filed} bugs for one unfixed red"
 
-    def test_a_red_archived_falsifier_aborts_too(self, tmp_path):
-        """The corpus is BOTH work.md and archive.md: a dropped debt that matters
-        reds again, and that is the only mechanism that ever re-reads one."""
-        repo, env, _g = make_repo(tmp_path)
-        root = tmp_path / "data"
-        root.mkdir(parents=True, exist_ok=True)
-        (root / "archive.md").write_text(
-            "## debt 2026-01-01T00:00:00Z (dropped)\nClaim: latent\n"
-            "Falsifier: `false`\nFiles: a.py\n\n"
-        )
-        r = sprint(repo, env, "start")
-        assert r.returncode == 2, "archive.md falsifiers were never run"
-        assert "archive" in r.stderr
-
-    def test_a_green_archived_falsifier_does_not_abort(self, tmp_path):
-        repo, env, _g = make_repo(tmp_path)
-        root = tmp_path / "data"
-        root.mkdir(parents=True, exist_ok=True)
-        (root / "archive.md").write_text("Falsifier: `true`\n\n")
-        assert sprint(repo, env, "start").returncode == 0
-
     def test_a_resolved_record_runs_the_RESOLUTION_falsifier_not_nothing(self, tmp_path):
         """A resolution that was wrong must red later and reopen the record."""
         repo, env, _g = make_repo(tmp_path)

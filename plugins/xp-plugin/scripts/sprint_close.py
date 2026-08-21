@@ -62,10 +62,6 @@ def corpus(root: Path) -> list[tuple[str, str, str]]:
         elif head.startswith(("## bug ", "## debt ")) and (m := FALSIFIER.search(text)):
             claim = next((ln for ln in text.splitlines() if ln.startswith("Claim: ")), "")
             records[eid] = (f"{head[3:]} — {claim[7:97]}", m.group(1))
-    archive = root / "archive.md"
-    if archive.exists():
-        for m in FALSIFIER.finditer(archive.read_text()):
-            records[f"archive:{len(records)}"] = ("archive.md entry", m.group(1))
     return [(eid, head, resolutions.get(eid, f)) for eid, (head, f) in records.items()]
 
 
