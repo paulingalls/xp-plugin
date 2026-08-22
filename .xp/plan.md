@@ -720,34 +720,44 @@ Full proposed DESIGN §3/§4 diff drafted at <data-root>/plans/design-diff-plan-
 REVISED AT THE FIRST SPAWN'S ESCALATION (notes dfb039dc, 953538b5; round-1 plan
 review at <data-root>/reports/story-019-plan-review.md — round 2 VALIDATES the
 revised plan against those findings rather than re-deriving). THE MECHANISM
-LANDS IN work.py (plan_path, the stale message, edit_plan under the flock the
-file already uses): data_root() lives there and every affected script imports
+LANDS IN work.py (plan_path, the stale message, edit_plan under a flock, as
+work.md already does): data_root() lives there and every affected script imports
 it. TWO CONFIRMED FINDINGS THE IMPLEMENTATION OWNS: (1) close.py:387-389 stages
 the [done] flip at FUNCTION scope, and pr_bookkeep's commit has nothing but
 that staging — so the naive move makes every PR-mode close exit nonzero after
 a successful merge; the pr arm is redesigned with the move, and
 tests/test_close_findings.py:107 pins the old behaviour and moves with it.
 (2) Once the plan leaves the repo, review.check_reviewer_motion's git-diff
-scope stops covering it and the plan is per-clone-SHARED — lane A's fixing
-reviewer could rewrite lane B's cards with no diff showing it. The plan file
-joins the DIGEST dict check_report_only already takes, the markers' own
-mechanism.
+scope stops covering it, so a fixing reviewer can rewrite the plan it is being
+reviewed under with no diff showing it. It joins the DIGEST check, the markers'
+own mechanism — but SCOPED TO THE STORY'S OWN CARD, not the whole file:
+digesting a now-SHARED plan makes a project-global mutable gate (constraint 10),
+so lane B's spawn flip would refuse lane A's review, blaming the reviewer for
+another actor's write and reinstating the serialisation the SIDE EFFECT above
+celebrates removing. NARROWED per note 1bcb794f (plan round 3, R3-1): the
+cross-lane case — lane A's reviewer rewriting lane B's card — is therefore NOT
+closed by mechanism and stays exactly as open as before this story; no digest
+can close it without re-creating the constraint-10 defect. It rests on
+agents/story-reviewer.md:14 plus the partial cover lane B's own next review
+digest gives, and DESIGN §4 carries it as a fifth cost.
 Files: docs/DESIGN.md, plugins/xp-plugin/scripts/{close,spawn,sprint_close,setup,session_start}.py,
 plugins/xp-plugin/scripts/{work,bash_status,stop_gate,bookkeep,review}.py,
 plugins/xp-plugin/templates/plan.md, plugins/xp-plugin/agents/plan-reviewer.md,
 plugins/xp-plugin/skills/xp-setup/SKILL.md, plugins/xp-plugin/PROCESS.md,
-tests/test_work.py, tests/test_setup.py, tests/test_close.py, tests/test_close_land.py,
-tests/test_close_findings.py, tests/test_close_fixing_reviewer.py, tests/test_spawn.py,
-tests/test_sprint_close.py, tests/test_session_start.py, tests/test_stop_gate.py
+tests/test_work.py, tests/test_work_plan.py, tests/test_setup.py, tests/test_close.py,
+tests/test_close_land.py, tests/test_close_findings.py, tests/test_close_fixing_reviewer.py,
+tests/test_close_review.py, tests/test_spawn.py, tests/test_spawn_run.py,
+tests/test_sprint_close.py, tests/test_session_start.py, tests/test_stop_gate.py,
+tests/close_helpers.py, tests/spawn_helpers.py, tests/sprint_helpers.py
 AC:
 - Given two clones of one repo, When each writes a plan, Then neither sees the other's — fault-inject by constructing two repos with distinct git-common-dirs and asserting distinct plan paths, not by asserting the path format
 - Given a worktree of a clone, Then it reads its CLONE's plan, not a per-worktree copy — the teammate must see the card the lead wrote
 - Given `xp-setup` on a bare repo, Then the plan is scaffolded into the state root and `.xp/` holds only config, constraints and system
 - Given a missing state-root plan AND a stale `.xp/plan.md` beside it, Then the EXISTING missing-plan refusal names the migration — a message in one error path, not a new guard in every tool (NARROWED per dfb039dc, Paul's call: a missing state-root plan already refuses loudly, and the stale-plan population is this repo for one commit)
-- Given DESIGN §3 and §4, Then the layout and the three stated costs move with the code
-- Given two TOOL-MEDIATED writers to the state-root plan (spawn's flip and close's flip), When both run concurrently, Then both changes survive — edit_plan under the flock work.py already uses, fault-injected with concurrent writers. NARROWED per dfb039dc (Paul's call, the 33ff82cc steer): the lead's Edit-tool edit takes no lock, so lead-vs-lane stays last-writer-wins — DESIGN §4 states that residual and its practice (don't hand-edit the plan while a lane is landing); the all-edits-through-a-CLI mitigation was considered and rejected
+- Given DESIGN §3 and §4, Then the layout and the stated costs move with the code — FIVE, not three: the card's original (1)(2)(3), plus (4) the card becomes LIVE, read from a shared mutable file instead of pinned by the story branch, so a mid-story card edit silently changes what land runs and what the reviewer was shown (the bad half of the SIDE EFFECT above), plus (5) the cross-lane reviewer residual of finding (2)
+- Given two TOOL-MEDIATED writers to the state-root plan (spawn's flip and close's flip), When both run concurrently, Then both changes survive — edit_plan under a flock on a SIBLING lockfile (rename swaps the inode, so flocking plan.md itself would leave a second process locking a ghost), fault-injected with concurrent writers. NARROWED per dfb039dc (Paul's call, the 33ff82cc steer): the lead's Edit-tool edit takes no lock, so lead-vs-lane stays last-writer-wins — DESIGN §4 states that residual and its practice (don't hand-edit the plan while a lane is landing); the all-edits-through-a-CLI mitigation was considered and rejected
 - Given THIS repo, When the story closes, Then its own .xp/plan.md has been migrated into the state root by a lead-run walk and every tool reads it there — the dogfood migration is acceptance, not a hand-step someone remembers — and the xp-setup walk runs end to end on ONE legacy clone (constraint 12), which is the sprint goal made checkable
-Verify: pytest -q tests/test_setup.py tests/test_work.py tests/test_close.py tests/test_close_land.py tests/test_close_findings.py tests/test_spawn.py tests/test_sprint_close.py tests/test_session_start.py
+Verify: pytest -q tests/test_setup.py tests/test_work.py tests/test_work_plan.py tests/test_close.py tests/test_close_land.py tests/test_close_findings.py tests/test_spawn.py tests/test_sprint_close.py tests/test_session_start.py
 Close review: deep
 Executor: claude/opus/medium
 
