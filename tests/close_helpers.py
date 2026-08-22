@@ -138,3 +138,42 @@ def prose(path: Path) -> str:
     """File text with whitespace collapsed. A prose pin that breaks when a
     paragraph is rewrapped tests the line breaks, not the rule."""
     return " ".join(path.read_text().split())
+
+
+def free_repo(tmp_path):
+    """make_repo, plus what a RELEASE needs: an origin, a gh recorder, a semver
+    tag to bump off, and a full tier. HEAD is left on main — free start's own
+    precondition, which make_repo does not leave."""
+    repo, env, g = make_repo(tmp_path)
+    origin = tmp_path / "origin.git"
+    subprocess.run(["git", "init", "-q", "--bare", str(origin)], check=True, env=env)
+    g("remote", "add", "origin", str(origin))
+    g("checkout", "-q", "main")
+    (repo / ".xp" / "config.yml").write_text(CONFIG + "  full: true\n")
+    g("add", "-A")
+    g("commit", "-qm", "full tier")
+    g("tag", "v0.2.0")
+    g("push", "-q", "-u", "origin", "main")
+    gh = tmp_path / "bin" / "gh"
+    gh.write_text(
+        "#!/usr/bin/env python3\n"
+        "import json, sys\n"
+        f"open({str(tmp_path / 'gh.jsonl')!r}, 'a').write(json.dumps(sys.argv[1:]) + '\\n')\n"
+    )
+    gh.chmod(0o755)
+    return repo, env, g
+
+
+def gh_calls(tmp_path):
+    rec = tmp_path / "gh.jsonl"
+    return [json.loads(ln) for ln in rec.read_text().splitlines()] if rec.exists() else []
+
+
+def free(repo, env, slug, *args):
+    return subprocess.run(
+        [sys.executable, str(CLOSE), "free", slug, *args],
+        cwd=repo,
+        env=env,
+        capture_output=True,
+        text=True,
+    )

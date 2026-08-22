@@ -131,9 +131,9 @@ def origin_trunk_sha(trunk: str) -> str | None:
 
 
 def marker_path(story_id: str) -> Path:
-    d = data_root() / "markers"
-    d.mkdir(parents=True, exist_ok=True)
-    return d / f"{story_id}.close.json"
+    p = data_root() / "markers" / f"{story_id}.close.json"
+    p.parent.mkdir(parents=True, exist_ok=True)
+    return p
 
 
 def build_bundle(card: str, base: str, report: Path, prior: str = "") -> str:
@@ -144,8 +144,8 @@ def build_bundle(card: str, base: str, report: Path, prior: str = "") -> str:
         ("Your charter", review.charter()),
         # One greppable line: the charter explains the shape, this is the address.
         ("Your report", f"REPORT_PATH: {report}"),
-        ("Story card", card),
-        ("Earlier rounds of THIS story", prior or "none — you are round 1"),
+        ("Story card", card or "none — this is a free branch; judge the diff itself"),
+        ("Earlier rounds of THIS review", prior or "none — you are round 1"),
         ("Cumulative diff", git("diff", f"{base}..HEAD").stdout),
         ("work.md entries filed during the story", work_entries_since(base_epoch) or "none"),
         ("PROCESS", _read_first(str(review.PLUGIN_ROOT / "PROCESS.md"))),
@@ -156,24 +156,25 @@ def build_bundle(card: str, base: str, report: Path, prior: str = "") -> str:
     return "".join(f"## {title}\n\n{body}\n\n" for title, body in sections)
 
 
-def _preflight(story_id: str, action: str) -> tuple[str, str, str]:
-    """(card, trunk, error) — the checks both legs share."""
+def _preflight(story_id: str, action: str, free: bool = False) -> tuple[str, str, str]:
+    """(card, trunk, error) — the checks every review leg shares."""
     if git("status", "--porcelain").stdout.strip():
         return "", "", "refused: working tree is dirty — commit or stash first"
-    if not plan_path().exists():
-        why = stale_plan() or f"no plan at {plan_path()} — is this an xp-managed repo?"
-        return "", "", f"refused: {why}"
-    try:
-        card, status = story_card(plan_path().read_text(), story_id)
-    except KeyError as e:
-        return "", "", f"refused: {e.args[0]}"
-    if status != "in-progress":
-        return "", "", f"refused: {story_id} is [{status}], {action} requires [in-progress]"
-    try:  # 3e2ad94b: an annotated Verify line reached /bin/sh at LAND, post-review
-        shlex.split(verify_commands(card))
-    except ValueError as e:
-        return "", "", f"refused: {story_id}'s Verify: line is not runnable ({e})"
-    trunk = integration_target()
+    card, trunk = "", default_branch() if free else integration_target()
+    if not free:
+        if not plan_path().exists():
+            why = stale_plan() or f"no plan at {plan_path()} — is this an xp-managed repo?"
+            return "", "", f"refused: {why}"
+        try:
+            card, status = story_card(plan_path().read_text(), story_id)
+        except KeyError as e:
+            return "", "", f"refused: {e.args[0]}"
+        if status != "in-progress":
+            return "", "", f"refused: {story_id} is [{status}], {action} requires [in-progress]"
+        try:  # 3e2ad94b: an annotated Verify line reached /bin/sh at LAND, post-review
+            shlex.split(verify_commands(card))
+        except ValueError as e:
+            return "", "", f"refused: {story_id}'s Verify: line is not runnable ({e})"
     branch = git("rev-parse", "--abbrev-ref", "HEAD").stdout.strip()
     if branch in (trunk, default_branch()):
         return (
@@ -185,10 +186,10 @@ def _preflight(story_id: str, action: str) -> tuple[str, str, str]:
     return card, trunk, ""
 
 
-def cmd_review(story_id: str, dry_run: bool = False) -> int:
+def cmd_review(story_id: str, dry_run: bool = False, free: bool = False) -> int:
     import review
 
-    card, trunk, err = _preflight(story_id, "review")
+    card, trunk, err = _preflight(story_id, "review", free)
     if err:
         return fail(err)
     marker = marker_path(story_id)
@@ -254,27 +255,9 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
         )
     head = git("rev-parse", "HEAD").stdout.strip()
     base = git("merge-base", f"refs/heads/{trunk}", "HEAD").stdout.strip()
-    if state.get("review_base") != base:
-        return fail(
-            f"refused: the recorded round did not cover this tree — it was based on"
-            f" {str(state.get('review_base'))[:8]}, today's merge base is {base[:8]}."
-            f" Run `close.py story {story_id} review`"
-        )
-    shown = state.get("shown_sha", head)
-    if git("merge-base", "--is-ancestor", shown, "HEAD", check=False).returncode:
-        return fail(
-            f"refused: HEAD does not contain {shown[:8]}, the tree you were shown —"
-            " the reviewer's commits are not in what would merge, so the recorded"
-            f" round describes no tree. Run `close.py story {story_id} review`"
-        )
+    if err := overlap.land_refusal(state, f"story {story_id}", base):
+        return fail(err)
     rounds = state["rounds"]
-    blocking = rounds[-1]["blocking"]
-    if blocking:
-        return fail(
-            "refused: the last review round left blocking findings:\n  "
-            + "\n  ".join(blocking)
-            + "\nFix them (or review again once fixed) — a flag cannot clear these"
-        )
     ref = overlap.merge_source(trunk, merge_mode)
     if files := overlap.overlapping(ref, base):
         return fail(overlap.collision(ref, files))
@@ -322,20 +305,12 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
             end="",
         )
         return 0
-    if red := overlap.gates(ref, verify, tier, pending):
+    if red := overlap.gates(ref, verify, "story", pending):
         return fail(red)
 
     # Assent is given by RUNNING land, so what it rests on must be readable HERE —
     # not only in a review leg whose stdout may be long gone.
-    reviewer_work = review.reviewer_range(state.get("reviewed_head", head), shown)
-    if reviewer_work:
-        print("the reviewer changed this tree — you are merging its work:")
-        print(reviewer_work, end="")
-        print(f"full diff: {review.diff_path(review.report_path(story_id, len(rounds)))}")
-    lead_work = review.reviewer_range(shown, head)
-    if lead_work:
-        print("you committed after the review you were shown — merging unreviewed:")
-        print(lead_work, end="")
+    review.disclose(state, head, review.diff_path(review.report_path(story_id, len(rounds))))
 
     # `gh pr create|merge` take no --head: gh reads the head branch off the cwd
     # repo, so it must run in the STORY tree. The chdir happens per-arm below,
@@ -421,6 +396,10 @@ def main() -> int:
     sp.add_argument("sprint_id")
     sp.add_argument("action", choices=["start", "review", "land", "post-merge"])
     sp.add_argument("--dry-run", action="store_true")
+    f = sub.add_parser("free")
+    f.add_argument("slug")
+    f.add_argument("action", choices=["start", "review", "land"])
+    f.add_argument("--dry-run", action="store_true")
     s = sub.add_parser("story")
     s.add_argument("story_id")
     s.add_argument("action", choices=["review", "land"])
@@ -444,6 +423,11 @@ def main() -> int:
         )
     if not chdir_repo_root():
         return fail("refused: not inside a git repository")
+    if a.kind == "free":
+        sys.path.insert(0, str(Path(__file__).parent / "close"))
+        import free
+
+        return free.cmd(a.slug, a.action, a.dry_run)
     if a.kind == "sprint":
         import sprint_close
 
