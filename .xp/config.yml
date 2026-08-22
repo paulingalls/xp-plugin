@@ -9,7 +9,7 @@ roles:                 # harness/model[/effort]; lead overrides per story in pla
   lead: claude/opus
   executor: claude/opus/medium  # Sprint-4 retro, Paul: fewer turns beat cheaper turns, judged over 8 runs
   reviewer: codex/gpt-5.6-sol/high  # flipped by Paul post-v0.5.1: DESIGN 8's cross-harness diversity, live; argv probed on 0.149.0
-  plan-reviewer: codex/gpt-5.6-sol/high  # the executor is claude: the plan gets read by the other harness before any code exists
+  plan-reviewer: claude/opus/medium  # nested codex-in-codex denied by the sandbox (app-server IPC, note 138eabf0); nested claude is the walk-proven arm — and claude planning-reviews a codex author IS the diversity pattern
 
 tests:
   fast: pytest -q -n auto -m "not slow"     # pre-commit
