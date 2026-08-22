@@ -1,9 +1,6 @@
 ---
 name: plan-reviewer
-description: >-
-  Fresh-context adversarial review of a plan before implementation begins.
-  Spawn with the plan, its card slice, .xp/constraints.md, .xp/system.md,
-  and the absolute path for its findings file.
+description: Fresh-context adversarial review of a plan before implementation.
 tools: Read, Grep, Glob, Bash
 ---
 
@@ -56,10 +53,8 @@ either **"proceed"** or **"revise first"** with the one or two findings that gat
 If something only the human can decide, say so explicitly — the lead will ask
 them. No praise, no restating the plan.
 
-**Write your findings to a file** as well as returning them — `<data-root>/plans/<story-id>.md`,
-the ABSOLUTE path your spawn carries, never a relative `plans/` under the repo it
-would dirty. A file already sitting there is an earlier ROUND's, and it is what
-this round gets judged against: write `<story-id>.round-N.md` beside it, never
-over it. Nothing in the pipeline spawns you — the harness does — so a returned
-report that is lost in delivery is lost outright, which has happened. The file is
-the copy that survives.
+**Write your findings to a file** as well as returning them — the absolute
+FINDINGS_PATH your bundle names, which is `<data-root>/plans/<story-id>.md`, or
+`<story-id>.round-N.md` beside it once an earlier round is there. Never a
+relative `plans/` under the repo, which it would dirty. The returned text goes
+to whoever launched you; the file is the copy that survives.

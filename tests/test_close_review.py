@@ -20,6 +20,7 @@ from close_helpers import (  # noqa: F401
     make_repo,
     marker,
     marker_file,
+    mint_ready,
     prose,
     stub_reviewer,
 )
@@ -441,3 +442,29 @@ class TestCodexReviewerLeg:
         r = close(repo, env, "review")
         assert r.returncode == 2 and "Traceback" not in r.stderr, r.stderr
         assert "codex" in r.stderr and "install" in r.stderr.lower(), r.stderr
+
+
+class TestTheCardsReviewerLine:
+    """story-026: the config's reviewer is global, so it cannot say "author codex,
+    review claude" on one story and the inverse on the next. The card line is the
+    `Executor:` line's twin, and the round path and parse are unchanged."""
+
+    def test_the_card_line_beats_the_config_default(self, tmp_path):
+        repo, env, g = make_repo(tmp_path)
+        (repo / ".xp" / "config.yml").write_text(
+            "roles:\n  reviewer: codex/gpt-5.6-terra/high\ntests:\n  story: true\n"
+        )
+        g("add", "-A")
+        g("commit", "-qm", "reviewer role is codex")
+        plan = tmp_path / "data" / "plan.md"
+        plan.write_text(
+            plan.read_text().replace("Verify: true", "Verify: true\nReviewer: claude/opus")
+        )
+        mint_ready(repo, env)
+        # nothing named codex is on PATH: config's default would refuse loudly
+        # rather than pass this by accident
+        r = close(repo, env, "review")
+        assert r.returncode == 0, r.stdout + r.stderr
+        (launch,) = launches(tmp_path)
+        assert launch["argv"][launch["argv"].index("--model") + 1] == "opus"
+        assert marker(tmp_path)["rounds"] == [CLEAN]
