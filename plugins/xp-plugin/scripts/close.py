@@ -270,9 +270,14 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
     if not plan_path().exists():
         return fail(f"refused: {stale_plan() or f'no plan at {plan_path()}'}")
     try:
-        card, _ = story_card(plan_path().read_text(), story_id)
+        card, status = story_card(plan_path().read_text(), story_id)
     except KeyError as e:
         return fail(f"refused: {e.args[0]}")
+    # cmd_review's _preflight has always checked this; land did not, and its [done]
+    # flip below matches nothing from any other status — so land merged and then
+    # left the card reading whatever it read before, silently.
+    if status != "in-progress":
+        return fail(f"refused: {story_id} is [{status}], land requires [in-progress]")
     # The plan-review credential, unread since spawn: the plan left the repo, so no
     # diff shows a card edit, and the `Verify:` line below is SHELL-EXECUTED.
     if drift := ready.drift(story_id, card):
@@ -351,7 +356,8 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
                 failed.append(" ".join(c))
         merge_sha = git("rev-parse", f"refs/remotes/origin/{trunk}").stdout.strip()
     # locked: a sibling lane may be flipping its own card right now
-    edit_plan(lambda text: _flip_status(text, story_id))
+    if not edit_plan(lambda text: _flip_status(text, story_id)):
+        failed.append(f"flip {story_id} to [done] in {plan_path()}")
     if merge_mode == "local":
         merge_sha = git("rev-parse", "HEAD").stdout.strip()
         if bool(git("remote", check=False).stdout.strip()) and (

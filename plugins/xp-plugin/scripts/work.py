@@ -82,8 +82,8 @@ def stale_plan() -> str:
     )
 
 
-def edit_plan(mutate) -> None:
-    """Read-modify-write the clone's plan under a lock.
+def edit_plan(mutate) -> bool:
+    """Read-modify-write the clone's plan under a lock; True when it changed.
 
     The read is INSIDE the lock: the current writers read-mutate-write unlocked,
     and a read outside means the loser writes a plan that never saw the winner's
@@ -106,8 +106,9 @@ def edit_plan(mutate) -> None:
         fcntl.flock(handle, fcntl.LOCK_EX)
         text = path.read_text() if path.exists() else ""
         tmp = path.with_name(path.name + ".tmp")
-        tmp.write_text(mutate(text))
+        tmp.write_text(edited := mutate(text))
         tmp.replace(path)
+    return edited != text
 
 
 def config_block_value(block: str, key: str) -> str:

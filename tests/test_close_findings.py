@@ -22,6 +22,7 @@ from close_helpers import (  # noqa: F401
     ready_marker,
     stub_reviewer,
 )
+from work import flip_status
 
 
 class TestStoryReviewFindings:
@@ -355,3 +356,47 @@ class TestTheCardIsAGateNoDiffShows:
         assert close(repo, env, "land").returncode == 2
         mint_ready(repo, env)
         assert close(repo, env, "land").returncode == 0, "the named recovery does not clear it"
+
+
+class TestTheCardEndsUpSayingDone:
+    """The [done] flip is how every other reader learns the story is finished —
+    the Stop gate keys on [in-progress], the recovery block lists it, and the
+    sprint close refuses to start while any member is not [done]. `flip_status`
+    rewrites a TRAILING bracket and returns the text UNCHANGED when it matches
+    nothing, and cmd_land neither checked the status first (as cmd_review's
+    _preflight always has) nor looked at what the flip did — so the merge landed,
+    the close was logged, the branch was deleted, and the card still said
+    [in-progress]. Silent, and it corrupts the only record of what is done.
+    """
+
+    def test_land_refuses_a_card_that_is_not_in_progress(self, tmp_path):
+        """The cause: at any other status the flip below matches nothing."""
+        repo, env, g = make_repo(tmp_path)
+        assert close(repo, env, "review").returncode == 0
+        plan = tmp_path / "data" / "plan.md"
+        plan.write_text(flip_status(plan.read_text(), "story-042", "in-progress", "done"))
+        r = close(repo, env, "land")
+        assert r.returncode == 2 and "[done]" in r.stderr, r.stderr
+        assert "Review round" not in g("log", "main", "--format=%B").stdout, "it merged anyway"
+
+    def test_a_flip_that_matched_nothing_is_reported_not_swallowed(self, tmp_path):
+        """The residual no preflight can cover: the card's OWN Verify: line runs
+        in the window between that check and the flip, and land cannot refuse
+        after a merge has landed — so it names the hand-step and exits nonzero.
+        Constructed through Verify because that is the one hook inside the window."""
+        rewrite = "printf '#### story-042 — demo story   [done]\\n' > \"$XP_DATA/plan.md\""
+        repo, env, g = make_repo(tmp_path, verify=rewrite)
+        assert close(repo, env, "review").returncode == 0
+        r = close(repo, env, "land")
+        assert "Review round" in g("log", "main", "-1", "--format=%B").stdout, "the merge is the"
+        assert r.returncode == 3, r.stdout + r.stderr
+        assert "flip story-042 to [done]" in r.stderr, r.stderr
+
+    def test_a_flip_that_took_is_not_reported_as_a_hand_step(self, tmp_path):
+        """The pair: crying wolf on every clean close teaches the lead to skip the
+        line on the run where it is real."""
+        repo, env, _g = make_repo(tmp_path)
+        assert close(repo, env, "review").returncode == 0
+        r = close(repo, env, "land")
+        assert r.returncode == 0, r.stderr
+        assert "[done]" in (tmp_path / "data" / "plan.md").read_text()
