@@ -292,6 +292,24 @@ class TestCodexSessionStart:
         self.codex_run(repo, tmp_path, {"session_id": "bare-id"})
         assert (tmp_path / "xp" / "markers" / "bare-id.alive").exists()
 
+    def test_codex_payload_refreshes_the_plugin_pointer(self, tmp_path):
+        repo, _g = xp_repo(tmp_path)
+        path = tmp_path / "xp" / "env.json"
+        path.write_text(json.dumps({"plugin_root": "/gone", "plugin_version": "0.0.1"}))
+
+        self.codex_run(
+            repo,
+            tmp_path,
+            {"session_id": "codex", "hook_event_name": "SessionStart", "source": "startup"},
+        )
+
+        recorded = json.loads(path.read_text())
+        manifest = json.loads((HOOK.parent.parent / ".claude-plugin" / "plugin.json").read_text())
+        assert recorded == {
+            "plugin_root": str(HOOK.parent.parent),
+            "plugin_version": manifest["version"],
+        }
+
 
 class TestOneHooksFileServesBothHarnesses:
     """AC1: codex loads hooks/hooks.json by its own default discovery, and an event
@@ -377,3 +395,4 @@ class TestEnvRefresh:
         r = run_hook(repo, tmp_path)
         assert r.returncode == 0
         assert "CONSTRAINT-SENTINEL" in r.stdout, r.stdout or r.stderr
+        assert not list((tmp_path / "xp").glob("env.json.*.tmp"))

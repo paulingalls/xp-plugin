@@ -7,6 +7,7 @@ lead's scripts, a hook outside a spawn — starts here: it can derive the data r
 from git alone, and everything else it needs is recorded in it.
 """
 
+import contextlib
 import hashlib
 import json
 import os
@@ -36,7 +37,10 @@ def plugin_version(root: Path) -> str:
         manifest = json.loads((root / ".claude-plugin" / "plugin.json").read_text())
     except (OSError, ValueError):
         return "unknown"
-    return manifest.get("version", "unknown")
+    if not isinstance(manifest, dict):
+        return "unknown"
+    version = manifest.get("version")
+    return version if isinstance(version, str) and version else "unknown"
 
 
 def write_env(root: Path, version: str) -> None:
@@ -54,8 +58,13 @@ def write_env(root: Path, version: str) -> None:
     # Per-writer temp name: a lead session and a spawned teammate's SessionStart
     # share one data root, and one temp name turns last-writer-wins into a torn file.
     tmp = path.with_name(f"{path.name}.{os.getpid()}.tmp")
-    tmp.write_text(json.dumps(current, indent=2, sort_keys=True) + "\n")
-    tmp.replace(path)
+    try:
+        tmp.write_text(json.dumps(current, indent=2, sort_keys=True) + "\n")
+        tmp.replace(path)
+    except Exception:
+        with contextlib.suppress(OSError):
+            tmp.unlink()
+        raise
 
 
 REFRESH = (
@@ -90,7 +99,10 @@ def plugin_root() -> Path:
             f" SessionStart refreshes it. Run the installed plugin's scripts/setup.py in"
             f" this repo, or {REFRESH}."
         )
-    root = Path(recorded["plugin_root"])
+    raw_root = recorded["plugin_root"]
+    if not isinstance(raw_root, str):
+        _refuse_env(f"{path} records invalid plugin_root {raw_root!r} — {REFRESH}.")
+    root = Path(raw_root)
     if not root.is_dir():
         _refuse_env(f"{path} records plugin_root {root}, and it is gone — {REFRESH}.")
     found = plugin_version(root)

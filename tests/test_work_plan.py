@@ -369,6 +369,13 @@ class TestPluginRootHelper:
         assert r.returncode != 0, "a directory with no manifest resolved as a plugin"
         assert "plugin.json" in r.stderr, r.stderr
 
+    def test_a_manifest_without_a_string_version_refuses(self, tmp_path):
+        install = self.fake_plugin(tmp_path / "install", version=7)
+        self.seed(tmp_path / "data", install, version=7)
+        r = work_env(tmp_path, tmp_path, tmp_path / "data")
+        assert r.returncode != 0, "a non-string manifest version resolved as an install"
+        assert "plugin.json" in r.stderr and "SessionStart" in r.stderr, r.stderr
+
     def refusal_without(self, tmp_path, contents):
         data = tmp_path / "data"
         data.mkdir(parents=True, exist_ok=True)
@@ -384,6 +391,13 @@ class TestPluginRootHelper:
 
     def test_an_env_without_the_key_refuses_the_same_way(self, tmp_path):
         assert "setup.py" in self.refusal_without(tmp_path, "{}")
+
+    def test_a_non_path_root_refuses_without_a_traceback(self, tmp_path):
+        why = self.refusal_without(
+            tmp_path, json.dumps({"plugin_root": 7, "plugin_version": "1.0.0"})
+        )
+        assert "env.json" in why and "7" in why and "SessionStart" in why, why
+        assert "Traceback" not in why, why
 
     def test_the_pre_migration_and_stale_refusals_are_not_one_message(self, tmp_path):
         """One message for two states is no message — the reader is told to run

@@ -323,3 +323,15 @@ class TestEnvFile:
         assert recorded["plugin_root"] == str(SCRIPTS.parent)
         assert recorded["plugin_version"] == manifest["version"]
         assert str(found[0]) in r.stdout, "the summary never says where it landed"
+
+    def test_setup_preserves_existing_non_plugin_keys(self, tmp_path):
+        repo, env = bare_repo(tmp_path)
+        data = tmp_path / "state"
+        data.mkdir()
+        env["XP_DATA"] = str(data)
+        (data / "env.json").write_text(json.dumps({"consumer": {"keep": True}}))
+
+        r = run_setup(repo, env)
+
+        assert r.returncode == 0, r.stderr
+        assert json.loads((data / "env.json").read_text())["consumer"] == {"keep": True}
