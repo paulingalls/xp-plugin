@@ -14,11 +14,9 @@ from work import data_root
 
 PLUGIN_ROOT = Path(__file__).parent.parent.parent
 
-# Bypass is REQUIRED, measured not assumed: acceptEdits denies `git add`/`git
-# commit`, so weaker modes lose the teammate's work. No --allowedTools: an
-# allow-list under bypass restricts nothing. The teammate is therefore UNBOUNDED
-# in its throwaway worktree — declared, not believed; self-closing is close.py's
-# refusal to make (story-008), not a tool-deny.
+# Bypass is REQUIRED, measured: acceptEdits denies `git add`/`git commit`, and an
+# --allowedTools list under bypass restricts nothing. The teammate is UNBOUNDED in
+# its throwaway worktree; self-closing is close.py's refusal (story-008), not a deny.
 PERMISSION_ARGV = ["--dangerously-skip-permissions"]
 
 HARNESS_INSTALL = {
@@ -54,6 +52,11 @@ def codex_argv(model: str, effort: str) -> list[str]:
     6193855e probed the spike's git-common-dir widening unnecessary on 0.147.0.
     `-` reads the prompt from stdin, keeping ~2k tokens out of `ps`."""
     argv = ["codex", "exec", "--disable", "unified_exec"]
+    # Our gates ride the ENVIRONMENT — XP_ROLE bars a self-close, GIT_AUTHOR_* signs
+    # the reviewer's commits — and codex hands its shell only what
+    # `shell_environment_policy.inherit` (core|all|none) allows, a ~/.codex/config.toml
+    # key. Unpinned, someone else's config decides whether our gates arrive at all.
+    argv += ["-c", "shell_environment_policy.inherit=all"]
     argv += ["--sandbox", "workspace-write", "--add-dir", str(data_root())]
     argv += ["-m", model]
     if effort:  # never -e: codex has no such flag, and a wrong spelling dies on contact

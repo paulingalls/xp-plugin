@@ -214,7 +214,10 @@ def stub_codex(tmp_path, commit=True, write_file=False, report=None, prose=("thi
         "def die(m):",
         "    print('error: ' + m, file=sys.stderr); sys.exit(2)",
         "if argv[:1] != ['exec']: die('unrecognized subcommand')",
-        "for flag in ('-e', '--plugin-dir', '--output-format', '--verbose', '-p'):",
+        # NOT -p: `codex exec -p` is --profile, and a stub that refuses what the real
+        # binary accepts teaches the next author a bound that is not there. The claude
+        # spellings below are the fusion this catches.
+        "for flag in ('-e', '--plugin-dir', '--output-format', '--verbose'):",
         "    if flag in argv: die('unexpected argument ' + flag)",
         "pairs = list(zip(argv, argv[1:]))",
         "if ('--disable', 'unified_exec') not in pairs:",

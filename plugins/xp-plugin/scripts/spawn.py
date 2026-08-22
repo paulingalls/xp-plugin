@@ -309,10 +309,6 @@ def cmd_spawn(story_id: str, override: str, dry_run: bool, in_place: bool = Fals
             return 0
         return cmd_in_place(story_id, card)
     harness, model, effort = resolve_role("executor", card, override)
-    # BEFORE the worktree is cut: a missing binary must not cost the lead a tree
-    # and a branch to unwind.
-    if gone := missing_harness(harness):
-        return fail("refused: " + gone)
     branch = story_branch(card, story_id)
     tree = worktree_path(story_id)
     argv = agent_argv(harness, model, effort, "stream-json")
@@ -325,6 +321,11 @@ def cmd_spawn(story_id: str, override: str, dry_run: bool, in_place: bool = Fals
         print(" ".join(argv))
         print(prompt)
         return 0
+    # AFTER --dry-run, like review.run: inspecting the argv a harness would take is
+    # exactly what a lead does before installing it. BEFORE the worktree, though — a
+    # missing binary must not cost a tree and a branch to unwind.
+    if gone := missing_harness(harness):
+        return fail("refused: " + gone)
     # The worktree is cut from a COMMIT, so anything uncommitted — including the
     # scaffold itself on a fresh repo — is simply absent from the teammate's tree.
     # Without this the first spawn after xp-setup tracebacks on a missing plan.md

@@ -2,7 +2,6 @@
 Verify: pytest -q tests/test_spawn.py"""
 
 import json
-import os
 import subprocess
 from itertools import pairwise
 from pathlib import Path
@@ -332,6 +331,10 @@ class TestCodexExecutor:
             ("--disable", "unified_exec"),
             ("--sandbox", "workspace-write"),
             ("--add-dir", str(tmp_path / "data")),
+            # XP_ROLE (self-close bar) and GIT_AUTHOR_* (the reviewer's signature)
+            # reach codex's shell only under this policy, and ~/.codex/config.toml
+            # owns it — unpinned, the gates arrive or not by someone else's file
+            ("-c", "shell_environment_policy.inherit=all"),
         ]:
             assert pair in pairs, f"{pair} missing from {argv}"
         assert "-e" not in argv, "codex has no -e; the effort rides -c (spike-falsified)"
@@ -343,21 +346,28 @@ class TestCodexExecutor:
         argv = self.argv(tmp_path, executor="codex/gpt-5.6-terra")
         assert not [a for a in argv if a.startswith("model_reasoning_effort")], argv
 
-    def test_the_stub_reds_when_the_gate_flag_is_deleted(self, tmp_path):
+    def test_the_stub_reds_when_the_gate_flag_is_deleted(self, tmp_path, monkeypatch):
         """Constraint 2: a stub that cannot red against its target defect
         certifies. Strip the flag from the REAL builder's output and run the
         real stub on it — the pair is what the spawn ships."""
         import spawn as spawn_mod
 
-        os.environ["XP_DATA"] = str(tmp_path / "data")
+        # monkeypatch, not os.environ[...]: this test runs IN-PROCESS, and a bare
+        # assignment leaves every later data_root() in this worker pointed at a
+        # tmp_path pytest has already deleted
+        monkeypatch.setenv("XP_DATA", str(tmp_path / "data"))
         argv = spawn_mod.codex_argv("gpt-5.6-terra", "medium")
         stub_codex(tmp_path)
         stripped = [a for a in argv if a not in ("--disable", "unified_exec")]
         r = subprocess.run(
+            # cwd matters even on the arm that must die early: with the guard
+            # mutated away, the stub reaches its `git commit` and commits wherever
+            # it stands — the repo under review, if that is the cwd
             [str(tmp_path / "bin" / "codex"), *stripped[1:]],
             input="",
             capture_output=True,
             text=True,
+            cwd=tmp_path,
         )
         assert r.returncode != 0 and "unified_exec" in r.stderr, r.stderr
         intact = subprocess.run(
@@ -377,6 +387,15 @@ class TestCodexExecutor:
         assert not (tmp_path / "data" / "worktrees" / "story-042").exists()
         branches = in_tree(repo, env, "branch", "--format=%(refname:short)")
         assert "story-042" not in branches, branches
+
+    def test_dry_run_still_prints_the_argv_with_nothing_installed(self, tmp_path):
+        """Reading the argv a harness WOULD take is what a lead does before
+        installing it — review.run already exempts its dry run, and one rule with
+        two implementations is this repo's most-filed defect class."""
+        repo, env, _g = make_repo(tmp_path, executor="codex/gpt-5.6-terra/medium")
+        r = spawn(repo, env, "story-042", "--dry-run")
+        assert r.returncode == 0, r.stderr
+        assert "--disable unified_exec" in r.stdout, r.stdout[:400]
 
     def test_a_dirty_codex_teammate_hits_the_shared_completion_guard(self, tmp_path):
         repo, env, _g = make_repo(tmp_path, executor="codex/gpt-5.6-terra/medium")

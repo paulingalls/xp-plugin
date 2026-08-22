@@ -127,7 +127,7 @@ def run_teammate(
     err: OutWrite = lambda s: print(s, file=sys.stderr),
 ) -> int:
     """Launch the teammate, stream its output live. No timeout: a teammate
-    legitimately outruns any wall clock (spawn.py's PERMISSION_ARGV comment).
+    legitimately outruns any wall clock (spawn.run_agent's timeout comment).
 
     stdin is fed on its own thread — the prompt can exceed the pipe buffer,
     and writing it inline before reading stdout would deadlock a child that

@@ -293,13 +293,10 @@ def run(
 
 
 def result_text(harness: str, proc: subprocess.CompletedProcess) -> tuple[str, str]:
-    """(what to show the lead, error) — the only place the harnesses differ here;
-    downstream reads the report JSON, so no caller can tell them apart.
-
-    Codex gets no envelope parse: `-o` exists on 0.147.0 but is unmeasured, and
-    this text is only printed. stderr is the fallback because which channel
-    carries codex's final message is exactly what is unmeasured.
-    """
+    """(what to show the lead, error) — the only harness divergence here; downstream
+    reads the report JSON. Codex gets no envelope parse: `-o` exists on 0.147.0 but is
+    unmeasured, and this text is only printed; stderr is the fallback because which
+    channel carries codex's final message is exactly what is unmeasured."""
     if harness != "claude":
         return (proc.stdout.strip() or proc.stderr.strip()), ""
     try:
