@@ -16,6 +16,14 @@ invoke pytest, and this is one file.
 """
 
 import os
+import sys
+from pathlib import Path
 
 for _var in ("GIT_DIR", "GIT_WORK_TREE", "GIT_COMMON_DIR", "GIT_INDEX_FILE"):
     os.environ.pop(_var, None)
+
+# The scripts dir, seeded ONCE for every test file: after the sprint-004 split,
+# `from spawn import …` worked only when a sibling file had already seeded the
+# path — 14 tests red under `pytest tests/test_spawn_run.py` alone (story-019
+# close review, noted[]), invisible because every Verify line ran a seeder too.
+sys.path.insert(0, str(Path(__file__).parent.parent / "plugins" / "xp-plugin" / "scripts"))
