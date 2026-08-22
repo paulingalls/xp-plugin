@@ -268,6 +268,39 @@ class TestReportOnlyIsAMechanism:
         r = sprint(repo, env, "review", "--lens", "broad")
         assert r.returncode == 2 and "marker" in r.stderr
 
+    def _plan_rewriting_stub(self, tmp_path, old, new):
+        committing_stub(
+            tmp_path,
+            "p = os.environ['XP_DATA'] + '/plan.md'\n"
+            # read BEFORE opening for write: `open(p,'w')` truncates as its own
+            # expression, so the one-liner spelling wipes the plan and every arm
+            # refuses, red and green alike
+            "t = open(p).read()\n"
+            f"open(p, 'w').write(t.replace({old!r}, {new!r}))\n",
+        )
+
+    def test_a_reviewer_that_rewrites_a_card_of_THIS_sprint_is_refused(self, tmp_path):
+        """story-019 took the plan out of the repo, so the tree stays clean and
+        HEAD stays put while a reviewer rewrites the cards it is reporting on —
+        every check above passes and the release ships against a plan nobody read.
+        The cards digest is what remains, and until this test nothing exercised
+        it: `if False and sprint_cards(...) != cards` passed all 365."""
+        repo, env, _g = make_repo(tmp_path)
+        self._plan_rewriting_stub(tmp_path, "story-042 — done thing", "story-042 — REWRITTEN")
+        r = sprint(repo, env, "review", "--lens", "broad")
+        assert r.returncode == 2 and "cards changed" in r.stderr
+        assert not marker_path(tmp_path, "broad").exists(), "recorded a round it refused"
+
+    def test_a_reviewer_is_NOT_refused_over_ANOTHER_sprints_card(self, tmp_path):
+        """The green twin, and the reason the digest is sprint-scoped: the plan is
+        one shared file now, so digesting the whole of it would let any lane's flip
+        refuse an unrelated release review — the project-global mutable gate
+        constraint 10 forbids. story-099 is [ready] in Sprint 3, not this one."""
+        repo, env, _g = make_repo(tmp_path)
+        self._plan_rewriting_stub(tmp_path, "story-099 — not this sprint", "story-099 — MOVED")
+        r = sprint(repo, env, "review", "--lens", "broad")
+        assert r.returncode == 0, r.stderr + r.stdout
+
 
 class TestSprintCharter:
     def test_the_sprint_charter_is_a_delta_not_a_second_charter(self):
