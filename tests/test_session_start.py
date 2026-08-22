@@ -466,4 +466,6 @@ class TestSkillsCarryNoPreload:
         assert skills, "no shipped skills found — the check would be vacuous"
         for skill in skills:
             for line in skill.read_text().splitlines():
-                assert not line.lstrip().startswith("!"), f"{skill.parent.name}: {line}"
+                # the TOKEN, not the line start: `Current state: !`git status`` is the
+                # ordinary spelling and expands exactly as a leading one does
+                assert "!`" not in line, f"{skill.parent.name}: {line}"
