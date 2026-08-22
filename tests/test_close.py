@@ -388,3 +388,18 @@ class TestOverlapNotMotion:
         assert r.returncode == 2, r.stdout
         assert "src/thing.py" in r.stderr
         assert "[done]" not in (tmp_path / "data" / "plan.md").read_text()
+
+    def test_dropping_the_reviewers_commits_is_not_reported_as_merging_them(self, tmp_path):
+        """The other half of what the deleted HEAD==shown_sha refusal guaranteed. It
+        is not only that HEAD may move AHEAD: a lead who rejects the fixes takes the
+        `git reset --hard` review.py itself offers, and then land printed the dropped
+        commits under "you are merging its work" while merging none of them."""
+        repo, env, g = make_repo(tmp_path)
+        self.fixing_reviewer(tmp_path)
+        pre = g("rev-parse", "HEAD").stdout.strip()
+        assert close(repo, env, "review").returncode == 0
+        g("reset", "-q", "--hard", pre)
+        r = close(repo, env, "land")
+        assert r.returncode == 2, r.stdout
+        assert "REVIEWER-FIX" not in r.stdout, "land claimed to merge commits it dropped"
+        assert "[done]" not in (tmp_path / "data" / "plan.md").read_text()

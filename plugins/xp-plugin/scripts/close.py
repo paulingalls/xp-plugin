@@ -260,6 +260,13 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
             f" {str(state.get('review_base'))[:8]}, today's merge base is {base[:8]}."
             f" Run `close.py story {story_id} review`"
         )
+    shown = state.get("shown_sha", head)
+    if git("merge-base", "--is-ancestor", shown, "HEAD", check=False).returncode:
+        return fail(
+            f"refused: HEAD does not contain {shown[:8]}, the tree you were shown —"
+            " the reviewer's commits are not in what would merge, so the recorded"
+            f" round describes no tree. Run `close.py story {story_id} review`"
+        )
     rounds = state["rounds"]
     blocking = rounds[-1]["blocking"]
     if blocking:
@@ -320,7 +327,6 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
 
     # Assent is given by RUNNING land, so what it rests on must be readable HERE —
     # not only in a review leg whose stdout may be long gone.
-    shown = state.get("shown_sha", head)
     reviewer_work = review.reviewer_range(state.get("reviewed_head", head), shown)
     if reviewer_work:
         print("the reviewer changed this tree — you are merging its work:")
