@@ -58,36 +58,14 @@ def report_path(story_id: str, round_n: int) -> Path:
     return d / f"{story_id}.round-{round_n}.json"
 
 
-def sprint_report_path(sprint_id: str, lens: str, round_n: int) -> Path:
+def sprint_report_path(sprint_id: str, stage: str, round_n: int) -> Path:
     """Its own DIRECTORY, not a prefix: story ids are free text, so any separator
     a sprint key uses is one a story can spell (constraints.md #10)."""
     from work import data_root
 
     d = data_root() / "reports" / "sprint"
     d.mkdir(parents=True, exist_ok=True)
-    return d / f"{sprint_id}.{lens}.round-{round_n}.json"
-
-
-def check_report_only(shown_head: str, markers: dict[Path, str]) -> str:
-    """Refusal text, or "" if the reviewer only reported. NOT check_reviewer_motion,
-    which PERMITS commits the reviewer authored: this leg permits no motion.
-    `markers`: every path land reads as a gate, with its pre-launch digest —
-    rewriting a SIBLING lens's marker moves the release gate too."""
-    from close import git
-
-    if git("rev-parse", "HEAD").stdout.strip() != shown_head:
-        why = "HEAD moved during the review — this leg is report-only"
-    elif dirty := git("status", "--porcelain").stdout.strip():
-        why = "the tree is dirty at the end of the review; uncommitted:\n  " + dirty
-    elif changed := [str(p) for p, d in markers.items() if marker_digest(p) != d]:
-        why = (
-            f"a review marker changed during the review ({', '.join(changed)}) — markers"
-            " are what land reads for rounds and blocking findings, they live outside"
-            " the repo where no diff shows them, and a review may not move its own gate"
-        )
-    else:
-        return ""
-    return abort_text(shown_head, why)
+    return d / f"{sprint_id}.{stage}.round-{round_n}.json"
 
 
 def _cap(items: list, path: Path) -> list:

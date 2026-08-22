@@ -212,17 +212,18 @@ class TestModeSwitch:
         assert "run the full pass yourself" not in bundle, "handed findings AND told to re-derive"
 
 
-class TestReportOnlyIsAMechanism:
-    """AC 2. The card calls report-only a MECHANISM, not a charter claim, because
-    the plan review found the claim unenforced. The agent file's `tools:` line
-    bounds nothing here: review.run launches a TOP-LEVEL claude session that never
-    loads the agent file — which is why charter() inlines it."""
+class TestMotionIsBoundedByAMechanism:
+    """story-014's AC 2, surviving story-022's reversal: report-only is gone — the
+    fixer commits — so what the leg still refuses is motion nobody signed for. The
+    agent file's `tools:` line bounds nothing here: review.run launches a TOP-LEVEL
+    claude session that never loads the agent file, which is why charter() inlines
+    it, and why authorship rather than a tool list is the bound."""
 
     def test_a_reviewer_that_COMMITS_is_refused_and_records_nothing(self, tmp_path):
         """This is ALSO where the pre-launch head capture is pinned. A stub that
         never commits cannot tell a pre-launch head from a post-run one, so the
         test that asserted the ordering directly was vacuous and was deleted in
-        round 1; deleting check_report_only's head compare reds THIS test."""
+        round 1; the undo sha in the refusal is what reds when it regresses."""
         repo, env, _g = make_repo(tmp_path)
         committing_stub(
             tmp_path,
