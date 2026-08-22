@@ -123,6 +123,9 @@ class TestReviewed:
         assert "[done]" in (tmp_path / "data" / "plan.md").read_text()
 
     def test_conflicting_main_aborts_back_to_reviewing(self, tmp_path):
+        """A conflict is a same-file property, so a conflicting trunk is an OVERLAP
+        by construction and the overlap refusal is what fires — the reason land can
+        stop refusing on motion without letting conflicts through silently."""
         repo, env, g = make_repo(tmp_path)
         close(repo, env, "review")
         g("checkout", "-q", "main")
@@ -130,11 +133,10 @@ class TestReviewed:
         g("add", "-A")
         g("commit", "-qm", "conflicting")
         g("checkout", "-q", "story-042-branch")
-        # land refuses on the trunk motion, and review sends the lead to merge trunk
-        # in — which is where the conflict now surfaces: on the story branch, in the
-        # lead's own working tree, before any review is spent on it
-        assert close(repo, env, "land").returncode == 2
-        assert "git merge main" in close(repo, env, "review").stderr
+        r = close(repo, env, "land")
+        assert r.returncode == 2 and "src/thing.py" in r.stderr
+        # its own remediation is where the conflict surfaces: on the story branch, in
+        # the lead's working tree, before any review is spent on it
         assert g("merge", "main").returncode != 0
         g("merge", "--abort")
         assert "[done]" not in (tmp_path / "data" / "plan.md").read_text()
@@ -234,18 +236,6 @@ class TestSecondReviewRound:
         assert "#### story-043 — sibling lane   [done]" in merged  # the sibling edit survives
         assert "#### story-042 — demo story   [done]" in merged
 
-    def test_main_motion_after_start_refused(self, tmp_path):
-        repo, env, g = make_repo(tmp_path)
-        close(repo, env, "review")
-        g("checkout", "-q", "main")
-        (repo / "unrelated.txt").write_text("x\n")
-        g("add", "-A")
-        g("commit", "-qm", "main moved")
-        g("checkout", "-q", "story-042-branch")
-        r = close(repo, env, "land")
-        assert r.returncode == 2 and "main" in (r.stderr + r.stdout)
-        assert "[done]" not in (tmp_path / "data" / "plan.md").read_text()
-
     def test_local_dry_run_performs_no_mutation(self, tmp_path):
         repo, env, g = make_repo(tmp_path)
         close(repo, env, "review")
@@ -278,55 +268,158 @@ class TestSecondReviewRound:
         assert r.returncode == 0, r.stderr
         assert "Review round 1" in g("log", "master", "-1", "--format=%B").stdout
 
-    def test_pr_mode_detects_origin_trunk_motion(self, tmp_path):
-        repo, env, g = make_repo(tmp_path)
-        origin = tmp_path / "origin.git"
-        subprocess.run(["git", "init", "-q", "--bare", str(origin)], env=env, check=True)
-        g("remote", "add", "origin", str(origin))
-        g("push", "-q", "origin", "main", "story-042-branch")
-        close(repo, env, "review")
-        # origin/main moves while local main stays put (the pr-mode workflow shape)
-        g("checkout", "-q", "main")
-        (repo / "unrelated.txt").write_text("x\n")
-        g("add", "-A")
-        g("commit", "-qm", "landed on origin")
-        old = g("rev-parse", "HEAD~1").stdout.strip()
-        g("push", "-q", "origin", "main")
-        g("reset", "-q", "--hard", "HEAD~1")
-        # stale tracking ref: only a real fetch can observe the motion
-        g("update-ref", "refs/remotes/origin/main", old)
-        g("checkout", "-q", "story-042-branch")
-        r = subprocess.run(
-            [
-                sys.executable,
-                str(CLOSE),
-                "story",
-                "story-042",
-                "land",
-                "--merge-mode",
-                "pr",
-                "--dry-run",
-            ],
-            cwd=repo,
-            env=env,
-            capture_output=True,
-            text=True,
-        )
-        assert r.returncode == 2 and "moved" in r.stderr
 
-    def test_local_trunk_motion_with_remote_present_refused(self, tmp_path):
-        repo, env, g = make_repo(tmp_path)
-        origin = tmp_path / "origin.git"
-        subprocess.run(["git", "init", "-q", "--bare", str(origin)], env=env, check=True)
-        g("remote", "add", "origin", str(origin))
-        g("push", "-q", "origin", "main", "story-042-branch")
-        close(repo, env, "review")
-        # commit lands on LOCAL main only; origin/main stays put (local-mode workflow)
+class TestOverlapNotMotion:
+    """story-018: a review covers the STORY's own changes. Trunk motion costs a
+    round only where the two diffs touch the same files — which is also the only
+    detector we have for the standing practice that parallel stories are
+    file-disjoint (DESIGN §11's collision check was never built)."""
+
+    def trunk_lands(self, repo, g, *files):
         g("checkout", "-q", "main")
-        (repo / "unrelated.txt").write_text("x\n")
+        for path in files:
+            (repo / path).write_text("LANDED_BY_ANOTHER_STORY = 1\n")
         g("add", "-A")
-        g("commit", "-qm", "local main moved")
+        g("commit", "-qm", "another story landed on trunk")
+        g("checkout", "-q", "story-042-branch")
+
+    def fixing_reviewer(self, tmp_path):
+        (tmp_path / "bin" / "claude").write_text(
+            "#!/bin/sh\n"
+            "p=$(sed -n 's/^REPORT_PATH: //p')\n"
+            'printf \'{"fixed": [], "blocking": [], "noted": []}\' > "$p"\n'
+            "echo 'x = 1' >> src/thing.py\n"
+            "git -c user.name='xp story-reviewer' -c user.email='r@xp'"
+            " commit -qam 'REVIEWER-FIX'\n"
+            'printf \'{"result": "fixed one thing"}\'\n'
+        )
+        (tmp_path / "bin" / "claude").chmod(0o755)
+
+    def test_disjoint_trunk_motion_lands_without_a_new_round(self, tmp_path):
+        repo, env, g = make_repo(tmp_path)
+        assert close(repo, env, "review").returncode == 0
+        self.trunk_lands(repo, g, "unrelated.py")
+        r = close(repo, env, "land")
+        assert r.returncode == 0, r.stderr
+        assert len(launches(tmp_path)) == 1, "disjoint motion bought a second round"
+        assert "[done]" in (tmp_path / "data" / "plan.md").read_text()
+
+    def test_overlapping_trunk_motion_refuses_naming_every_overlapping_file(self, tmp_path):
+        repo, env, g = make_repo(tmp_path)
+        (repo / "src" / "shared.py").write_text("C = 2\n")
+        g("add", "-A")
+        g("commit", "-qm", "the story touches a second file")
+        assert close(repo, env, "review").returncode == 0
+        # one disjoint file alongside the two overlapping ones: a refusal that
+        # names the whole trunk delta is not a collision detector
+        self.trunk_lands(repo, g, "src/thing.py", "src/shared.py", "unrelated.py")
+        r = close(repo, env, "land")
+        assert r.returncode == 2, r.stdout
+        assert "src/thing.py" in r.stderr and "src/shared.py" in r.stderr
+        assert "unrelated.py" not in r.stderr, "the disjoint file was named as a collision"
+        assert "[done]" not in (tmp_path / "data" / "plan.md").read_text()
+
+    def test_the_merged_tree_is_EXECUTED_when_trunk_is_ahead(self, tmp_path):
+        """The half the old motion refusal paid for without naming: it forced
+        `git merge <trunk>` onto the story branch, so Verify and the tier ran on an
+        integrated tree. Under overlap-not-motion nothing would — story-014's own
+        shape (A changes a signature, B adds a call site elsewhere) merges clean,
+        breaks the product, and no review reliably sees a call-graph break.
+
+        The trunk file is DISJOINT on purpose: with an overlapping one the collision
+        refusal fires first and this test greens with the trial merge deleted.
+        """
+        repo, env, g = make_repo(tmp_path, verify="! ls probe.py")
+        assert close(repo, env, "review").returncode == 0
+        tip = g("rev-parse", "HEAD").stdout.strip()
+        self.trunk_lands(repo, g, "probe.py")
+        r = close(repo, env, "land")
+        assert r.returncode == 2, r.stdout
+        assert "merged with refs/heads/main" in r.stderr, r.stderr
+        assert "[done]" not in (tmp_path / "data" / "plan.md").read_text()
+        assert g("status", "--porcelain").stdout == "", "the trial merge was left staged"
+        assert g("rev-parse", "HEAD").stdout.strip() == tip, "the trial merge committed"
+
+    def test_a_reviewer_range_and_a_lead_range_are_never_one_range(self, tmp_path):
+        """655208fe: land printed reviewed_head..HEAD under the reviewer's name. Once
+        a lead commit may follow the review, that attributes the lead's own work to
+        the reviewer and names a round diff that was never written."""
+        repo, env, g = make_repo(tmp_path)
+        self.fixing_reviewer(tmp_path)
+        assert close(repo, env, "review").returncode == 0
+        (repo / "src" / "thing.py").write_text("A = 4\n")
+        g("add", "-A")
+        g("commit", "-qm", "LEAD-FIX-AFTER-REVIEW")
+        r = close(repo, env, "land")
+        assert r.returncode == 0, r.stderr
+        reviewer_part, _, lead_part = r.stdout.partition("merging unreviewed")
+        assert lead_part, "the lead's commits were not presented at all"
+        assert "REVIEWER-FIX" in reviewer_part and "LEAD-FIX-AFTER-REVIEW" in lead_part
+        assert "LEAD-FIX-AFTER-REVIEW" not in reviewer_part, (
+            "the lead's commit read as the reviewer's"
+        )
+
+    def test_a_rename_of_a_file_trunk_also_edits_is_an_overlap(self, tmp_path):
+        """`git diff --name-only` detects renames and prints only the NEW path, so a
+        story that renames the module another story is editing read as DISJOINT. The
+        trial merge is no backstop: ort follows the rename and merges it clean and
+        silent — two stories sharing a file domain, which is the one thing this
+        refusal exists to see."""
+        repo, env, g = make_repo(tmp_path)
+        (repo / "src" / "thing.py").write_text("A = 1\nB = 1\nC = 1\nD = 1\nE = 1\nF = 1\n")
+        g("add", "-A")
+        g("commit", "-qm", "a file wide enough for two stories to edit different lines")
+        g("checkout", "-q", "main")
+        g("merge", "-q", "--ff-only", "story-042-branch")
+        g("checkout", "-q", "story-042-branch")
+        g("mv", "src/thing.py", "src/renamed.py")
+        renamed = repo / "src" / "renamed.py"
+        renamed.write_text(renamed.read_text().replace("A = 1", "A = 2"))
+        g("add", "-A")
+        g("commit", "-qm", "the story renames the module it owns")
+        assert close(repo, env, "review").returncode == 0
+        thing = repo / "src" / "thing.py"
+        g("checkout", "-q", "main")
+        thing.write_text(thing.read_text().replace("F = 1", "F = 99"))
+        g("add", "-A")
+        g("commit", "-qm", "another story edits the same module, under its old name")
         g("checkout", "-q", "story-042-branch")
         r = close(repo, env, "land")
-        assert r.returncode == 2 and "moved" in r.stderr
+        assert r.returncode == 2, r.stdout
+        assert "src/thing.py" in r.stderr
+        assert "[done]" not in (tmp_path / "data" / "plan.md").read_text()
+
+    def test_a_trial_merge_that_conflicts_refuses_and_leaves_the_tree_clean(self, tmp_path):
+        """f7dfec27's other half: with land no longer refusing on motion, the trial
+        merge is what makes a conflict abort reachable at all. A file/directory
+        collision is the shape overlap cannot pair up — the names differ."""
+        repo, env, g = make_repo(tmp_path)
+        (repo / "probe").write_text("the story adds a FILE\n")
+        g("add", "-A")
+        g("commit", "-qm", "the story adds a file named probe")
+        assert close(repo, env, "review").returncode == 0
+        g("checkout", "-q", "main")
+        (repo / "probe").mkdir()
+        (repo / "probe" / "x.py").write_text("x = 1\n")
+        g("add", "-A")
+        g("commit", "-qm", "another story adds a DIRECTORY named probe")
+        g("checkout", "-q", "story-042-branch")
+        r = close(repo, env, "land")
+        assert r.returncode == 2 and "conflicts" in r.stderr, r.stderr
+        assert g("status", "--porcelain").stdout == "", "a refused trial merge stayed staged"
+        assert "[done]" not in (tmp_path / "data" / "plan.md").read_text()
+
+    def test_dropping_the_reviewers_commits_is_not_reported_as_merging_them(self, tmp_path):
+        """The other half of what the deleted HEAD==shown_sha refusal guaranteed. It
+        is not only that HEAD may move AHEAD: a lead who rejects the fixes takes the
+        `git reset --hard` review.py itself offers, and then land printed the dropped
+        commits under "you are merging its work" while merging none of them."""
+        repo, env, g = make_repo(tmp_path)
+        self.fixing_reviewer(tmp_path)
+        pre = g("rev-parse", "HEAD").stdout.strip()
+        assert close(repo, env, "review").returncode == 0
+        g("reset", "-q", "--hard", pre)
+        r = close(repo, env, "land")
+        assert r.returncode == 2, r.stdout
+        assert "REVIEWER-FIX" not in r.stdout, "land claimed to merge commits it dropped"
         assert "[done]" not in (tmp_path / "data" / "plan.md").read_text()

@@ -87,7 +87,11 @@ class TestStoryReviewFindings:
         g("push", "-q", "-u", "origin", "main")
         gh = tmp_path / "bin" / "gh"
         gh.write_text(
-            '#!/bin/sh\ncase "$*" in *"pr merge"*) git push -q origin HEAD:main ;; esac\n'
+            "#!/bin/sh\n"
+            'case "$*" in *"pr merge"*)\n'
+            "  git fetch -q origin main && git merge -q --no-edit FETCH_HEAD &&"
+            " git push -q origin HEAD:main ;;\n"
+            "esac\n"
         )
         gh.chmod(0o755)
         close(repo, env, "review")
@@ -107,30 +111,6 @@ class TestStoryReviewFindings:
 
 class TestStoryReviewFindings012a:
     """Blocking findings from story-012a's own close review."""
-
-    def test_pr_mode_review_refuses_on_ORIGIN_trunk_motion(self, tmp_path):
-        """B1: the new guard read the LOCAL trunk ref only. pr mode — the argparse
-        default — integrates against origin, which the local ref never tracks, so a
-        bare re-review still cleared land's origin guard with the reviewer seeing
-        nothing new. The exact twin AC 4 claims to close, on the other axis."""
-        repo, env, g = make_repo(tmp_path)
-        origin = tmp_path / "origin.git"
-        subprocess.run(["git", "init", "-q", "--bare", str(origin)], env=env, check=True)
-        g("remote", "add", "origin", str(origin))
-        g("push", "-q", "origin", "main", "story-042-branch")
-        close(repo, env, "review")
-        g("checkout", "-q", "main")
-        (repo / "unrelated.txt").write_text("x\n")
-        g("add", "-A")
-        g("commit", "-qm", "landed on origin")
-        old = g("rev-parse", "HEAD~1").stdout.strip()
-        g("push", "-q", "origin", "main")
-        g("reset", "-q", "--hard", "HEAD~1")
-        g("update-ref", "refs/remotes/origin/main", old)
-        g("checkout", "-q", "story-042-branch")
-        r = close(repo, env, "review")
-        assert r.returncode == 2, "a bare re-review re-baselined the origin guard"
-        assert "git merge" in r.stderr
 
     def test_the_newest_round_survives_the_close_detail_bound(self, tmp_path):
         """B3: the cap kept the HEAD of the joined string, so one long early round
@@ -160,6 +140,90 @@ class TestStoryReviewFindings012a:
         assert len(detail) <= session_start.ROUND_CAP + 40, "the per-round bound is gone"
 
 
+class TestOverlapReadsTheRefTheModeMerges:
+    """c1e586bc, carried onto story-018's rule: pr mode integrates on origin and
+    local mode integrates the local trunk, so a guard reading the OTHER mode's ref
+    is inert. One test per ref, each a disjoint/overlapping PAIR — the refusal has
+    to be the file set, not the fact of a ref existing.
+
+    story-012a's B1 (the review leg refusing on ORIGIN motion) is deliberately gone:
+    motion no longer costs a round, so the per-ref claim it carried lives here.
+    """
+
+    def remote_repo(self, tmp_path):
+        repo, env, g = make_repo(tmp_path)
+        origin = tmp_path / "origin.git"
+        subprocess.run(["git", "init", "-q", "--bare", str(origin)], env=env, check=True)
+        g("remote", "add", "origin", str(origin))
+        g("push", "-q", "origin", "main", "story-042-branch")
+        assert close(repo, env, "review").returncode == 0
+        return repo, env, g
+
+    def lands_on_origin_only(self, repo, g, path):
+        """A commit that reached ORIGIN while the local ref stayed put, with a STALE
+        tracking ref: only a real fetch can see it, which is the fault injection for
+        the fetch inside merge_source."""
+        g("checkout", "-q", "main")
+        (repo / path).write_text("LANDED_BY_ANOTHER_STORY = 1\n")
+        g("add", "-A")
+        g("commit", "-qm", "landed on origin")
+        old = g("rev-parse", "HEAD~1").stdout.strip()
+        g("push", "-q", "origin", "main")
+        g("reset", "-q", "--hard", "HEAD~1")
+        g("update-ref", "refs/remotes/origin/main", old)
+        g("checkout", "-q", "story-042-branch")
+
+    def pr_land(self, repo, env):
+        return subprocess.run(
+            [sys.executable, str(CLOSE), "story", "story-042", "land", "--merge-mode", "pr"],
+            cwd=repo,
+            env=env,
+            capture_output=True,
+            text=True,
+        )
+
+    def test_pr_mode_overlap_is_computed_on_the_FETCHED_origin_ref(self, tmp_path):
+        repo, env, g = self.remote_repo(tmp_path)
+        gh = tmp_path / "bin" / "gh"
+        gh.write_text(
+            "#!/bin/sh\n"
+            'case "$*" in *"pr merge"*)\n'
+            "  git fetch -q origin main && git merge -q --no-edit FETCH_HEAD &&"
+            " git push -q origin HEAD:main ;;\n"
+            "esac\n"
+        )
+        gh.chmod(0o755)
+        self.lands_on_origin_only(repo, g, "unrelated.py")
+        assert self.pr_land(repo, env).returncode == 0, "disjoint origin motion bought a round"
+
+        repo, env, g = self.remote_repo(tmp_path / "overlapping")
+        self.lands_on_origin_only(repo, g, "src/thing.py")
+        r = self.pr_land(repo, env)
+        assert r.returncode == 2 and "src/thing.py" in r.stderr
+        assert "origin/main" in r.stderr, "the refusal named the ref pr mode does not merge"
+
+    def test_local_mode_overlap_is_computed_on_the_LOCAL_ref_with_a_remote_present(self, tmp_path):
+        """The remote EXISTS and never moves: the whole of c1e586bc was a guard that
+        read origin here and therefore saw nothing."""
+        repo, env, g = self.remote_repo(tmp_path)
+        self.trunk_lands(repo, g, "unrelated.py")
+        assert close(repo, env, "land").returncode == 0, "disjoint local motion bought a round"
+
+        repo, env, g = self.remote_repo(tmp_path / "overlapping")
+        self.trunk_lands(repo, g, "src/thing.py")
+        r = close(repo, env, "land")
+        assert r.returncode == 2 and "src/thing.py" in r.stderr
+        assert "origin/" not in r.stderr, "local mode guarded a ref it does not merge"
+        assert "[done]" not in (tmp_path / "overlapping" / "data" / "plan.md").read_text()
+
+    def trunk_lands(self, repo, g, path):
+        g("checkout", "-q", "main")
+        (repo / path).write_text("LANDED_BY_ANOTHER_STORY = 1\n")
+        g("add", "-A")
+        g("commit", "-qm", "local main moved")
+        g("checkout", "-q", "story-042-branch")
+
+
 class TestRoundThreeFindings:
     """Blocking findings from story-012a's third close-review round."""
 
@@ -181,7 +245,8 @@ class TestRoundThreeFindings:
         (bin_dir / "claude").chmod(0o755)
         assert close(repo, env, "review").returncode == 0
         r = close(repo, env, "land")
-        assert r.returncode == 2 and "moved" in r.stderr, "unreviewed trunk commits merged"
+        # the mid-review commit carries the STORY's tree, so it overlaps by construction
+        assert r.returncode == 2 and "src/thing.py" in r.stderr, "unreviewed trunk merged"
 
     def test_dry_run_review_does_not_delete_a_planted_report(self, tmp_path):
         """B3: the unlink ran before the dry-run return, so a preview destroyed the

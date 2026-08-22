@@ -65,12 +65,14 @@ def render_sprint_prior(rounds: list[dict]) -> str:
 
 
 def render_land_preview(
-    verify: str, tier: str, merge_mode: str, branch: str, trunk: str, pr_steps: tuple
+    verify: str, tier: str, merge_mode: str, branch: str, trunk: str, pr_steps: tuple, pending: bool
 ) -> str:
     """What land WOULD do. A preview that drifts from the real steps certifies a
     plan nobody runs, so both arms read the command lists cmd_land executes.
     """
     out = [f"would run: {verify}"] + ([f"would run: {tier}"] if tier else [])
+    if pending:
+        out.append(f"...on a trial merge with {trunk} — staged, then aborted either way")
     if merge_mode == "pr":
         pr_cmds, pr_sync, pr_bookkeep = pr_steps
         out += [" ".join(c) for c in pr_cmds + pr_sync]

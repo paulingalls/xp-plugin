@@ -295,16 +295,18 @@ class TestFixingReviewer:
 
     def test_a_refused_land_leaves_the_worktree_standing(self, tmp_path):
         """Every refusal names a next action the lead takes IN the story tree, so
-        no refusal may tear it down first. Trunk motion is the reachable refusal
-        that lands closest to the merge: FOUND HERE, the conflict abort below it
-        is unreachable in local mode, because any conflict needs trunk motion and
-        this guard fires first — evidence for f7dfec27, filed, not acted on."""
+        no refusal may tear it down first. The OVERLAP refusal is the one that lands
+        closest to the merge. f7dfec27, re-measured under story-018's rule: the real
+        merge's conflict abort is still shielded, because a content conflict is a
+        same-file property and this refusal fires on that same property first — but
+        the TRIAL merge's is reachable, since rename-vs-modify conflicts on file
+        names the overlap set does not pair up."""
         repo, env, g, tree, _b = self._worktree_land_setup(tmp_path)
         g("checkout", "-q", "main")
         (repo / "src" / "thing.py").write_text("A = 99\n")
         g("commit", "-qam", "trunk moves after the review")
         r = close(tree, env, "land", "--merge-mode", "local")
-        assert r.returncode == 2 and "moved since review" in r.stderr, r.stderr
+        assert r.returncode == 2 and "src/thing.py" in r.stderr, r.stderr
         assert tree.exists(), "a refusal destroyed the tree its remediation names"
         on = subprocess.run(
             ["git", "rev-parse", "--abbrev-ref", "HEAD"],

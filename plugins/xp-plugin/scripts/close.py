@@ -191,21 +191,6 @@ def cmd_review(story_id: str, dry_run: bool = False) -> int:
     card, trunk, err = _preflight(story_id, "review")
     if err:
         return fail(err)
-    # merge-base does NOT move when trunk advances, so a bare re-review re-baselines
-    # this guard while the reviewer sees nothing new. BOTH refs: land guards whichever
-    # one its mode integrates — local mode the local trunk, pr mode origin's.
-    tips = (
-        (trunk, git("rev-parse", f"refs/heads/{trunk}").stdout.strip()),
-        (f"origin/{trunk}", origin_trunk_sha(trunk)),
-    )
-    for label, tip in tips:
-        if tip and git("merge-base", "--is-ancestor", tip, "HEAD", check=False).returncode:
-            return fail(
-                f"refused: {label} has moved ahead of this branch's fork point."
-                f" Run `git merge {label}` here first — that moves the merge base, so"
-                " the review covers what land would actually merge. Re-running review"
-                " without it buys no coverage"
-            )
     marker = marker_path(story_id)
     state = json.loads(marker.read_text()) if marker.exists() else {}
     path = review.report_path(story_id, len(state.get("rounds", [])) + 1)
@@ -237,10 +222,6 @@ def cmd_review(story_id: str, dry_run: bool = False) -> int:
     # AFTER the leg: the reviewer's own fixes are part of what the lead is shown.
     state["shown_sha"] = git("rev-parse", "HEAD").stdout.strip()
     state["review_base"] = base
-    # the tips READ BEFORE the launch: a teammate pushing during the review window
-    # would otherwise be recorded as the reviewed state, and land would compare
-    # equal and merge what no reviewer saw.
-    state["trunk_sha"], state["origin_trunk_sha"] = tips[0][1], tips[1][1]
     marker.write_text(json.dumps(state))
     return 0
 
@@ -256,6 +237,9 @@ def _read_first(*candidates: str) -> str:
 def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
     import review
 
+    sys.path.insert(0, str(Path(__file__).parent / "close"))
+    import coverage
+
     if git("status", "--porcelain").stdout.strip():
         return fail("refused: working tree is dirty — Verify must judge the tree that merges")
     marker = marker_path(story_id)
@@ -269,20 +253,19 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
             " the PR to main happens at sprint close"
         )
     head = git("rev-parse", "HEAD").stdout.strip()
-    # land NEVER spawns: a merge command that reviews owns the tree for minutes,
-    # is never idempotent, and makes rounds something inflicted rather than chosen.
-    if head != state.get("shown_sha"):
-        return fail(
-            f"refused: HEAD moved since the review you were shown"
-            f" ({str(state.get('shown_sha'))[:8]}..{head[:8]})."
-            f" Run `close.py story {story_id} review`, then land again"
-        )
     base = git("merge-base", f"refs/heads/{trunk}", "HEAD").stdout.strip()
     if state.get("review_base") != base:
         return fail(
             f"refused: the recorded round did not cover this tree — it was based on"
             f" {str(state.get('review_base'))[:8]}, today's merge base is {base[:8]}."
             f" Run `close.py story {story_id} review`"
+        )
+    shown = state.get("shown_sha", head)
+    if git("merge-base", "--is-ancestor", shown, "HEAD", check=False).returncode:
+        return fail(
+            f"refused: HEAD does not contain {shown[:8]}, the tree you were shown —"
+            " the reviewer's commits are not in what would merge, so the recorded"
+            f" round describes no tree. Run `close.py story {story_id} review`"
         )
     rounds = state["rounds"]
     blocking = rounds[-1]["blocking"]
@@ -292,16 +275,10 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
             + "\n  ".join(blocking)
             + "\nFix them (or review again once fixed) — a flag cannot clear these"
         )
-    moved = (
-        origin_trunk_sha(trunk) != state.get("origin_trunk_sha")
-        if merge_mode == "pr"
-        else git("rev-parse", f"refs/heads/{trunk}").stdout.strip() != state.get("trunk_sha")
-    )
-    if moved:
-        return fail(
-            f"refused: {trunk} moved since review — the merged tree would differ from"
-            " what was reviewed; run review again to re-baseline"
-        )
+    ref = coverage.merge_source(trunk, merge_mode)
+    if files := coverage.overlapping(ref, base):
+        return fail(coverage.collision(ref, files))
+    pending = coverage.unmerged(ref)
 
     # Structural, and checked HERE rather than beside the merge (5d7388fc): it is a
     # `git worktree list` compare, so paying ~2min of Verify and tier to reach it was
@@ -340,20 +317,25 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
     pr_bookkeep = [["git", "push", "origin", trunk]]
     pr_steps = (pr_cmds, pr_sync, pr_bookkeep)
     if dry_run:  # pure preview: nothing runs, nothing changes, marker survives
-        print(render_land_preview(verify, tier, merge_mode, branch, trunk, pr_steps), end="")
+        print(
+            render_land_preview(verify, tier, merge_mode, branch, trunk, pr_steps, pending),
+            end="",
+        )
         return 0
-    if subprocess.run(verify, shell=True).returncode != 0:
-        return fail(f"refused: story Verify red: {verify}")
-    if tier and subprocess.run(tier, shell=True).returncode != 0:
-        return fail(f"refused: story test tier red: {tier}")
+    if red := coverage.gates(ref, verify, tier, pending):
+        return fail(red)
 
     # Assent is given by RUNNING land, so what it rests on must be readable HERE —
     # not only in a review leg whose stdout may be long gone.
-    reviewer_work = review.reviewer_range(state.get("reviewed_head", head))
+    reviewer_work = review.reviewer_range(state.get("reviewed_head", head), shown)
     if reviewer_work:
         print("the reviewer changed this tree — you are merging its work:")
         print(reviewer_work, end="")
         print(f"full diff: {review.diff_path(review.report_path(story_id, len(rounds)))}")
+    lead_work = review.reviewer_range(shown, head)
+    if lead_work:
+        print("you committed after the review you were shown — merging unreviewed:")
+        print(lead_work, end="")
 
     # `gh pr create|merge` take no --head: gh reads the head branch off the cwd
     # repo, so it must run in the STORY tree. The chdir happens per-arm below,
