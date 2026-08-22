@@ -389,6 +389,26 @@ class TestOverlapNotMotion:
         assert "src/thing.py" in r.stderr
         assert "[done]" not in (tmp_path / "data" / "plan.md").read_text()
 
+    def test_a_trial_merge_that_conflicts_refuses_and_leaves_the_tree_clean(self, tmp_path):
+        """f7dfec27's other half: with land no longer refusing on motion, the trial
+        merge is what makes a conflict abort reachable at all. A file/directory
+        collision is the shape overlap cannot pair up — the names differ."""
+        repo, env, g = make_repo(tmp_path)
+        (repo / "probe").write_text("the story adds a FILE\n")
+        g("add", "-A")
+        g("commit", "-qm", "the story adds a file named probe")
+        assert close(repo, env, "review").returncode == 0
+        g("checkout", "-q", "main")
+        (repo / "probe").mkdir()
+        (repo / "probe" / "x.py").write_text("x = 1\n")
+        g("add", "-A")
+        g("commit", "-qm", "another story adds a DIRECTORY named probe")
+        g("checkout", "-q", "story-042-branch")
+        r = close(repo, env, "land")
+        assert r.returncode == 2 and "conflicts" in r.stderr, r.stderr
+        assert g("status", "--porcelain").stdout == "", "a refused trial merge stayed staged"
+        assert "[done]" not in (tmp_path / "data" / "plan.md").read_text()
+
     def test_dropping_the_reviewers_commits_is_not_reported_as_merging_them(self, tmp_path):
         """The other half of what the deleted HEAD==shown_sha refusal guaranteed. It
         is not only that HEAD may move AHEAD: a lead who rejects the fixes takes the
