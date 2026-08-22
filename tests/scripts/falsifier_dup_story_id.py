@@ -14,7 +14,7 @@ PLAN = (
 )
 try:
     story_card(PLAN, "story-001")
-except Exception:
-    sys.exit(0)
+except KeyError:  # the refusal, not any exception: a bare Exception greens on an
+    sys.exit(0)  # unrelated crash and archives as evidence the guard still holds
 print("duplicate story id accepted silently", file=sys.stderr)
 sys.exit(1)

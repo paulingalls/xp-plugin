@@ -4,6 +4,7 @@ Verify: pytest -q tests/test_close.py"""
 import subprocess
 import sys
 
+import pytest
 from close_helpers import (  # noqa: F401
     CARD,
     CLOSE,
@@ -432,11 +433,11 @@ class TestDuplicateStoryIds:
     shipped as story-001, a user's first real card collided, and the readers
     disagreed in silence — story_card returned the first card while flip_status
     rewrote the last bracket, so spawn ran one card's Executor and flipped the
-    other. One guard in story_card covers every reader; the skeleton is now
-    story-000 so the natural first id no longer collides."""
+    other. One guard in story_card covers every reader that acts on a card BODY
+    (the heading-only scans double an id visibly; they cannot pick a wrong card);
+    the skeleton is story-000 now so the natural first id no longer collides."""
 
     def test_a_duplicated_id_refuses_instead_of_picking_a_card(self):
-        import pytest
         from close import story_card
 
         plan = (
@@ -454,4 +455,11 @@ class TestDuplicateStoryIds:
         assert "story-10" not in card
 
     def test_the_template_skeleton_cannot_collide_with_the_natural_first_id(self):
-        assert "#### story-001" not in (PLUGIN / "templates" / "plan.md").read_text()
+        """Constructed against the real parser, not grepped: `"#### story-001" not
+        in template` reds on a skeleton named story-0010, which collides with
+        nothing (measured)."""
+        from close import story_card
+
+        seeded = (PLUGIN / "templates" / "plan.md").read_text()
+        card, status = story_card(seeded + "#### story-001 — first real   [planned]\n", "story-001")
+        assert status == "planned" and "story-000" not in card
