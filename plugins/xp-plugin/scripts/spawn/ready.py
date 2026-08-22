@@ -19,6 +19,7 @@ from work import (
     card_lines,
     chdir_repo_root,
     edit_plan,
+    flip_status,
     plan_path,
     ready_marker_path,
     stale_plan,
@@ -81,14 +82,7 @@ def mint(story_id: str) -> int:
     marker = ready_marker_path(story_id)
     marker.parent.mkdir(parents=True, exist_ok=True)
     marker.write_text(json.dumps({"digest": digest, "card": card}, ensure_ascii=False))
-    edit_plan(
-        lambda text: "".join(
-            ln.replace("[planned]", "[ready]")
-            if ln.startswith(f"#### {story_id} ") and "[planned]" in ln
-            else ln
-            for ln in text.splitlines(keepends=True)
-        )
-    )
+    edit_plan(lambda text: flip_status(text, story_id, "planned", "ready"))
     print(f"{story_id} [planned] -> [ready], digest {digest} — edit the card and spawn refuses")
     return 0
 

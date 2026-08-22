@@ -401,3 +401,15 @@ class TestReadyCredential:
         r = spawn(repo, env, "ready", "story-999")
         assert r.returncode == 2 and "story-999" in r.stderr
         assert not (tmp_path / "data" / "markers").exists()
+
+    def test_a_title_containing_the_status_text_survives_the_mint(self, tmp_path):
+        """The flip must rewrite the TRAILING bracket only. A bare str.replace
+        rewrites the title too, and then the digest minted before the flip no
+        longer matches the card, so the mint's own edit reads as the lead's."""
+        repo, env, _g = make_repo(tmp_path, status="planned")
+        stub_claude(tmp_path)
+        self.edit_card(tmp_path, "demo story", "what [planned] really means")
+        self.mint(repo, env)
+        plan = tmp_path / "data" / "plan.md"
+        assert "#### story-042 — what [planned] really means   [ready]" in plan.read_text()
+        assert spawn(repo, env, "story-042").returncode == 0

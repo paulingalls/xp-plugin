@@ -162,6 +162,22 @@ def card_digest(card: str) -> str:
     return hashlib.sha256("\n".join(card_lines(card)).encode()).hexdigest()[:16]
 
 
+def flip_status(text: str, story_id: str, frm: str, to: str) -> str:
+    """Rewrite the card's TRAILING status bracket only.
+
+    A bare str.replace over the heading rewrites a TITLE carrying the same text
+    (measured at story-023's own spawn), and here that also breaks the digest
+    minted a line earlier — the leg's own edit then reads as the lead's.
+    """
+    out = []
+    for ln in text.splitlines(keepends=True):
+        head, sep, tail = ln.rstrip().rpartition(f"[{frm}]")
+        if sep and not tail and ln.startswith(f"#### {story_id} "):
+            ln = f"{head}[{to}]" + ln[len(ln.rstrip()) :]
+        out.append(ln)
+    return "".join(out)
+
+
 def ready_marker_path(story_id: str) -> Path:
     """Story-scoped (constraint 10). No mkdir: a refused mint writes nothing."""
     return data_root() / "markers" / f"{story_id}.ready.json"
