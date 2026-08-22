@@ -241,19 +241,15 @@ class TestSprintCloseFindings:
         assert r.returncode == 2 and "gh" in r.stderr and "Traceback" not in r.stderr
 
     def test_missing_plan_md_refused_cleanly(self, tmp_path):
-        repo, env, g = make_repo(tmp_path)
+        repo, env, _g = make_repo(tmp_path)
         (tmp_path / "data" / "plan.md").unlink()
-        g("add", "-A")
-        g("commit", "-qm", "no plan")
         r = close(repo, env, "review")
         assert r.returncode == 2 and "plan.md" in r.stderr and "Traceback" not in r.stderr
 
     def test_bracketless_story_header_refused_cleanly(self, tmp_path):
-        repo, env, g = make_repo(tmp_path)
+        repo, env, _g = make_repo(tmp_path)
         plan = tmp_path / "data" / "plan.md"
         plan.write_text(plan.read_text().replace("   [in-progress]", ""))
-        g("add", "-A")
-        g("commit", "-qm", "malformed header")
         r = close(repo, env, "review")
         assert r.returncode == 2 and "Traceback" not in r.stderr
 

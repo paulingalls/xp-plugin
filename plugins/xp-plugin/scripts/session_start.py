@@ -208,7 +208,7 @@ def main() -> int:
     # outrank the narrative. A digest is recreatable from git and work.md; a
     # silently-absent constraint is a rule the lead never knew it was breaking.
     repo_builders = [
-        lambda: recovery_block(),
+        recovery_block,
         lambda: read(root / ".xp" / "constraints.md"),
         lambda: digest_with_staleness(),
     ]

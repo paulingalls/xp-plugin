@@ -339,12 +339,11 @@ class TestFixingReviewer:
         THE FIXTURE NOW MATCHES THE DOCSTRING: its card previously named only
         src/thing.py, so this passed on the deny-list's hole rather than on the
         story declaring the file. Its pair below is what that hole allowed."""
-        repo, env, g = make_repo(tmp_path)
+        repo, env, _g = make_repo(tmp_path)
         plan = tmp_path / "data" / "plan.md"
         plan.write_text(
             plan.read_text().replace("Files: src/thing.py", "Files: src/thing.py, .xp/system.md")
         )
-        g("commit", "-qam", "the card declares the .xp/ file this story edits")
         self.fixing_stub(
             tmp_path,
             extra=(
@@ -362,14 +361,13 @@ class TestFixingReviewer:
         line was refused and the round not recorded — story-010's symptom back
         again, and the single-line fixture above cannot see it (bug 8d0a74c6,
         spec corrected in note 7e20e96b)."""
-        repo, env, g = make_repo(tmp_path)
+        repo, env, _g = make_repo(tmp_path)
         plan = tmp_path / "data" / "plan.md"
         plan.write_text(
             plan.read_text().replace(
                 "Files: src/thing.py\n", "Files: src/thing.py,\n.xp/system.md\n"
             )
         )
-        g("commit", "-qam", "the card declares the .xp/ file on a continuation line")
         self.fixing_stub(
             tmp_path,
             extra=(

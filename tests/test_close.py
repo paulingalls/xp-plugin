@@ -264,11 +264,9 @@ class TestSecondReviewRound:
         assert r.returncode == 2 and "main" in r.stderr
 
     def test_missing_verify_line_refused(self, tmp_path):
-        repo, env, g = make_repo(tmp_path)
+        repo, env, _g = make_repo(tmp_path)
         plan = tmp_path / "data" / "plan.md"
         plan.write_text(plan.read_text().replace("Verify: true\n", ""))
-        g("add", "-A")
-        g("commit", "-qm", "drop verify line")
         close(repo, env, "review")
         r = close(repo, env, "land")
         assert r.returncode == 2 and "verify" in r.stderr.lower()
