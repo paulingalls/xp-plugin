@@ -167,6 +167,60 @@ class TestLandRunsTheTierItReleasesOn:
         assert sprint(repo, env, "land", "--dry-run").returncode == 0
 
 
+class TestTheTierJudgesTheTreeThatSHIPS:
+    """The release is this branch MERGED into the default branch, and cmd_land
+    performs no merge — it ran the tier on the unmerged sprint branch under the
+    text "full tier red on the tree you are releasing". So anything the default
+    branch gained since the fork (a free release, a hotfix, another stream's
+    merge) was never executed together with the sprint, and the PR opened green.
+    The story leg has built the merged tree since story-018; this one had not.
+    """
+
+    def trunk_gains(self, repo, g, path="probe.py"):
+        """A file DISJOINT from the sprint's own, so the merge is clean and only
+        EXECUTING it can see the interaction — a conflict would refuse anyway."""
+        g("checkout", "-q", "main")
+        (repo / path).write_text("LANDED_ON_TRUNK = 1\n")
+        g("add", "-A")
+        g("commit", "-qm", "a free release landed on main")
+        g("checkout", "-q", "sprint-002")
+
+    def test_a_tier_green_here_and_red_on_the_merge_refuses(self, tmp_path):
+        repo, env, g = make_repo(
+            tmp_path, config=CONFIG.replace("full: true", "full: ! ls probe.py")
+        )
+        record_reviews(tmp_path, repo, env)
+        self.trunk_gains(repo, g)
+        # NOT --dry-run: a preview runs nothing. The fixture PATH has no gh, so the
+        # MESSAGE is the discriminator — under the defect the tier passes here and
+        # land refuses on the missing binary instead.
+        r = sprint(repo, env, "land")
+        assert r.returncode == 2, r.stdout + r.stderr
+        assert "tier red" in r.stderr and "merged with" in r.stderr, r.stderr
+        assert g("status", "--porcelain").stdout == "", "the trial merge was left staged"
+
+    def test_the_same_tier_with_trunk_unmoved_still_reaches_the_release(self, tmp_path):
+        """The control: without it an implementation that always reds passes above
+        and no sprint ever ships."""
+        repo, env, _g = make_repo(
+            tmp_path, config=CONFIG.replace("full: true", "full: ! ls probe.py")
+        )
+        record_reviews(tmp_path, repo, env)
+        r = sprint(repo, env, "land")
+        assert r.returncode == 2 and "gh" in r.stderr, r.stderr
+        assert "tier" not in r.stderr, r.stderr
+
+    def test_the_preview_names_the_trial_merge_land_would_run(self, tmp_path):
+        """A preview that omits the whole release suite on a tree it never
+        mentions certifies a plan nobody runs (bookkeep.render_land_preview)."""
+        repo, env, g = make_repo(tmp_path)
+        record_reviews(tmp_path, repo, env)
+        self.trunk_gains(repo, g)
+        r = sprint(repo, env, "land", "--dry-run")
+        assert r.returncode == 0, r.stderr
+        assert "trial merge" in r.stdout, r.stdout
+
+
 class TestTheXpExemptionIsNotABlankCheque:
     """The exemption rests on "the retro diff has its own human review at triage",
     NOT on .xp/ being harmless. Two files under .xp/ are not retro prose: config.yml

@@ -397,22 +397,27 @@ def cmd_land(sprint_id: str, dry_run: bool) -> int:
         ["git", "push", "-u", "origin", branch],
         ["gh", "pr", "create", "--title", f"release {version}", "--body", f"Sprint {sprint_id}"],
     ]
+    ref = overlap.merge_source(default_branch(), "pr")
+    pending = overlap.unmerged(ref)
     if dry_run:
         for c in cmds:
             print(" ".join(c))
         print(f"(then: close.py sprint {sprint_id} post-merge — tag {version}, retire the key)")
         full = config_block_value("tests", "full") or "none configured"
         print(f"(and first: the full tier — {full})")
+        if pending:
+            print(f"...on a trial merge with {ref} — staged, then aborted either way")
         return 0
 
     # start's tier is stale by construction: SKILL.md puts triage, the retro and the
     # release artifacts BETWEEN it and here, so the tree that ships is never the one
-    # that was measured (sprint-003: four commits, one of them this file). BELOW the
-    # dry-run return because a preview runs nothing, and ABOVE the gh check so a red
-    # tier is what you are told about, not a missing binary.
-    tier = config_block_value("tests", "full")
-    if tier and subprocess.run(tier, shell=True).returncode != 0:
-        return fail(f"refused: full tier red on the tree you are releasing: {tier}")
+    # that was measured (sprint-003: four commits, one of them this file). And what
+    # ships is this branch MERGED into the default branch, which no leg here builds —
+    # so the tier judges a trial merge, through the story leg's own gates(). BELOW
+    # the dry-run return because a preview runs nothing, and ABOVE the gh check so a
+    # red tier is what you are told about, not a missing binary.
+    if red := overlap.gates(ref, "", "full", pending):
+        return fail(red)
     # Assent is given by RUNNING land, where close.cmd_land's rationale applies
     state = json.loads(sprint_marker(sprint_id).read_text())
     shown, rounds = state.get("shown_sha", ""), len(state.get("rounds", []))
