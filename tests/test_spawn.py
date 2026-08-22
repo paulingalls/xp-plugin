@@ -2,7 +2,9 @@
 Verify: pytest -q tests/test_spawn.py"""
 
 import json
+import re
 import subprocess
+import sys
 from pathlib import Path
 
 from spawn_helpers import (  # noqa: F401
@@ -417,6 +419,19 @@ class TestReadyCredential:
         plan = tmp_path / "data" / "plan.md"
         assert "#### story-042 — what [planned] really means   [ready]" in plan.read_text()
         assert spawn(repo, env, "story-042").returncode == 0
+
+    def test_the_leg_PROCESS_md_sends_the_lead_to_exists(self):
+        """PROCESS.md is injected into every lead session, so it is what a lead
+        believes; nothing bound it to the leg it names. WALKED, not grepped: the
+        name is read out of the prose and run, so a renamed subcommand reds here
+        instead of at the lead's next plan review (constraints 11, 12)."""
+        process = (SPAWN.parent.parent / "PROCESS.md").read_text()
+        named = re.search(r"`spawn\.py (\w+) <story-id>`", process)
+        assert named, "PROCESS.md no longer names the leg that clears a card"
+        r = subprocess.run(
+            [sys.executable, str(SPAWN), named[1], "--help"], capture_output=True, text=True
+        )
+        assert f"usage: spawn.py {named[1]}" in r.stdout, r.stdout + r.stderr
 
     def test_minting_one_card_leaves_its_siblings_brackets_alone(self, tmp_path):
         """The flip is story-scoped, and the plan is shared. Rewriting every
