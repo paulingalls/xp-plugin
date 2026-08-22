@@ -624,21 +624,42 @@ possible, and parallel story execution working INSIDE this sprint. That puts
 story-019 first (multi-clone is blocked on nothing else), story-018 second (it is
 the de-serializer, and every later story runs under the rule it lands), and Codex
 back on the schedule. SIX stories against a cap of 6.
-RUNNING ORDER AND LANES: bug batch (below) → 019 → 018, each solo — they touch
-everything and close.py respectively. After 018 lands, two lanes run in parallel
-under the file-disjointness practice whose detector 018 itself builds: spawn lane
-023 → 021 → 025; close lane 022.
+RUNNING ORDER AND LANES: bug batch and the TEST SPLIT (below) → 019 → 018, each
+solo — they touch everything and close.py respectively. After 018 lands, two
+lanes run in parallel under the file-disjointness practice whose detector 018
+itself builds: spawn lane 023 → 021 → 025; close lane 022. THE SEAM RULE that
+makes the lanes disjoint (plan review F1): review.py belongs to the SPAWN lane —
+story-021 lands its runner changes and 022 consumes them, putting its own guard
+motion in sprint_close.py — and 022's Files list names exact test files, never
+a glob. docs/DESIGN.md stays the ONE shared file: each card edits its own
+section, the overlap detector will still name it when both lanes moved it, and
+the price — one merge-trunk-plus-round on the later land — is accepted here
+rather than discovered there.
 SIX FILED BUGS ARE FIXED AT OPEN, before any spawn, by the lead, red test first —
 bugs, not stories (PROCESS: fix immediately): f0fc1bb8 (.xp/system.md
 sprint-exempt while spawn shell-executes it — gates the first spawn), 93a5717b (a
 lens can erase another lens's marker — gates the next sprint review), d225cff4
 (archived blocks unfiltered from the bundle), 8d0a74c6 (Files: parse reads one
-physical line), 9ad0180b (story_card bleeds the next section), 166285e6
-(DESIGN.md:79 corrupted row). Every falsifier test name is already in the record.
-SIZE for the batch: close is 1300/1300 and density 19.83%/20.00%, so the batch
-lands ~net-zero in the close component — offsets from stale prose in the files it
-touches; if that is not enough, the named source is a spawn→close rebalance
-(spawn 567/1950), constraint 1's displacement rule, Paul's call at plan review.
+physical line — the record's FIX sentence is shell-corrupted; the repaired spec
+is note 7e20e96b, cited so an executor reads the correction, not the eaten
+claim — plan review F6), 9ad0180b (story_card bleeds the next section),
+166285e6 (DESIGN.md:79 corrupted row). Every falsifier test name is in the record.
+SIZE: the plan review (F3) found three consumers claiming one unnumbered
+rebalance against close at exactly 1300/1300, and the batch's first commit
+proved it at the wall. Paul sized ONE move at open: 150 spawn→close (caps now
+1800/1450), recorded in DESIGN §9, sum test green. LANDED: all six bugs fixed
+red-first at open (f6ee1c4, a7ef6f1, 32946a2).
+TESTS ARE PRODUCTION CODE (Paul, at open — the sprint's second recovered rule):
+constraint 8 never exempted tests and the seed even said so; we read it as
+shipped-only and grew test_close.py to 2,059 lines. Amended in constraint 8 and
+the seed (funded by retiring the seed's duplicate 'Name things well' item), and
+ratchet now measures the per-file cap over the plugin AND tests/, with three
+grandfather pins (2059/1011/863) that may only fall and red as stale once their
+files split under the cap. THE SPLIT ITSELF is lead work BEFORE the first spawn
+— it touches every test file every story edits, so deferring it serializes the
+sprint — and every filed falsifier naming a moved node id is re-resolved
+(work.py resolve, green-now) as it moves; this sprint's Verify: lines update in
+the same commit.
 CODEX REINSTATED (Paul, reversing three slips): "we have broken things too many
 times" — a second harness is the diversity mechanism DESIGN §8 names, CRITICAL
 both as a spawn harness (story-021) and natively as a lead (story-025). The spike
@@ -697,7 +718,9 @@ AC:
 - Given `xp-setup` on a bare repo, Then the plan is scaffolded into the state root and `.xp/` holds only config, constraints and system
 - Given a repo whose `.xp/plan.md` still exists (every project scaffolded before this), Then the tools REFUSE with a message naming the move rather than silently reading an empty plan — a silent empty plan is a sprint close that reports no stories
 - Given DESIGN §3 and §4, Then the layout and the three stated costs move with the code
-Verify: pytest -q tests/test_setup.py tests/test_close.py tests/test_spawn.py tests/test_sprint_close.py
+- Given two concurrent writers to the state-root plan (a lane's status flip and the lead's edit), When both complete, Then both changes survive — the flock work.py already uses, fault-injected with concurrent writers, because git's serialization of plan writes is gone the day the plan leaves the repo (plan review F5)
+- Given THIS repo, When the story closes, Then its own .xp/plan.md has been migrated into the state root by a lead-run walk and every tool reads it there — the dogfood migration is acceptance, not a hand-step someone remembers — and the xp-setup walk runs end to end on ONE legacy clone (constraint 12), which is the sprint goal made checkable
+Verify: pytest -q tests/test_setup.py tests/test_close.py tests/test_spawn.py tests/test_sprint_close.py tests/test_session_start.py
 Close review: deep
 Executor: claude/opus/medium
 
@@ -802,7 +825,11 @@ Size: close.py 489 of the 500 hard cap — FOURTEEN lines, and the extraction to
 scripts/close/coverage.py is now mandatory rather than named; component 1281 of
 1300 after a 50-line move from spawn priced to that fix's need; density 19.52% of
 20.00%. Before this story: 1044 + 014's
-125-165 + 011's 60-80 = 1229-1289 against 1250. The extraction is NAMED: the
+125-165 + 011's 60-80 = 1229-1289 against 1250.
+RE-MEASURED AT SPRINT-4 OPEN, after the rebalance and the bug batch: close.py
+491/500, component 1309/1450, density 19.91/20.00 — the paragraph above is the
+history, the plan step prices against live ratchet, and the coverage.py
+extraction may no longer be mandatory. The extraction is NAMED: the
 coverage and motion guards move together into scripts/close/coverage.py — that path
 deliberately, because ratchet.component_for matches any path part, so scripts/close/
 counts against CLOSE (its sanctioned growth path) while a top-level
@@ -867,8 +894,8 @@ AC:
 - Given a card reviewed and then EDITED below its heading, When spawn runs, Then it REFUSES naming the drift — construct the edit, do not grep for a bracket. The pair matters: the same card unedited must spawn
 - Given the credential, Then it covers the whole card block, not the heading line: every failure this sprint was a change to ACs, Files or Context with the heading untouched
 - Given DESIGN.md:43/125/147, Then they describe what exists — a marker and a PreToolUse block are documented today and neither is built
-- Given a card at [planned], Then whatever writes [ready] is a mechanism, not a hand-edit, or the digest is a credential a human still mints by typing
-Verify: pytest -q tests/test_spawn.py
+- Given a card at [planned], Then the [ready] flip and the digest are minted by ONE lead-run leg, `spawn.py ready <story-id>` — spawn is the component with headroom and the credential's reader lives there (plan review F8) — never a hand-edit, or the digest is a credential a human still mints by typing
+Verify: pytest -q tests/test_spawn.py tests/test_close.py
 Close review: deep
 Executor: claude/opus/medium
 
@@ -906,18 +933,29 @@ harness-blind: the reviewer writes {fixed,blocking,noted} JSON to the round path
 under data_root()/reports/, which sits OUTSIDE the workspace — the spawn must
 carry `--add-dir` for the data root, and the spike measured flock and atomic
 rename working there.
+SANDBOX IS PER-CONTRACT, and the commit contract names its widening (plan
+review F2): an executor must COMMIT, `.git` is read-only under workspace-write,
+and in a worktree the real gitdir lives under the main clone's
+.git/worktrees/ — so the widening is `--add-dir` of the resolved
+git-common-dir, asserted in the argv AND proven by the walk below landing a
+real commit; without that, every real run ends in the no-commits refusal and
+the suite ships green over stubs (story-017's measured failure, again). THE
+REVIEWER DEFAULT DOES NOT FLIP THIS SPRINT: the story-leg contract is a FIXING
+reviewer (012b) and flipping config to a harness whose commit support this very
+story is still proving would degrade every close — the mechanism ships
+role-agnostic, the config flip is a later, separate decision.
 Size: spawn 567 of 1,950 — the component with real headroom, and the codex leg
 lands in SPAWN by path (ratchet.component_for matches path parts; DESIGN §9
 notes the adapter has no component of its own).
 Files: plugins/xp-plugin/scripts/spawn.py, plugins/xp-plugin/scripts/review.py,
-plugins/xp-plugin/scripts/teammate_tee.py, .xp/config.yml, docs/DESIGN.md,
+plugins/xp-plugin/scripts/teammate_tee.py, docs/DESIGN.md,
 tests/test_spawn.py, tests/test_close.py
 AC:
-- Given Executor: codex/gpt-5.6-terra/medium, When spawn --dry-run runs, Then the printed argv carries `-m gpt-5.6-terra`, `-c model_reasoning_effort=medium`, `--disable unified_exec`, `--sandbox workspace-write`, and `--add-dir <data-root>` — fault-inject with a stub codex that REJECTS an argv missing `--disable unified_exec`, so deleting the flag reds a test rather than shipping a gate bypass
+- Given Executor: codex/gpt-5.6-terra/medium, When spawn --dry-run runs, Then the printed argv carries `-m gpt-5.6-terra`, `-c model_reasoning_effort=medium`, `--disable unified_exec`, `--sandbox workspace-write`, `--add-dir <data-root>` AND `--add-dir <git-common-dir>` (the commit widening — a worktree's real gitdir lives outside it) — fault-inject with a stub codex that REJECTS an argv missing `--disable unified_exec`, so deleting the flag reds a test rather than shipping a gate bypass
 - Given a reviewer role of codex/<model>/<effort>, When the review leg runs, Then the reviewer is launched through the same runner, its report is read from the SAME round path with the SAME parse, and no caller of review.py can tell which harness wrote it — fault-inject with a stub that writes a valid report via shell
 - Given codex absent from PATH, When spawn resolves a codex executor, Then it REFUSES naming the harness and the install route, before any worktree is cut
 - Given a codex teammate that ends with a dirty tree or no commits of its own, Then the SAME nonzero contract as the claude leg fires from SHARED code, not a per-harness copy — the rule fixed in one of two implementations is this repo's most-filed defect class
-- Given the live binary (lead-run walk, recorded in the story digest), Then `codex exec` with the exact assembled argv completes a trivial prompt in a scratch repo and writes a file under the added dir — constraint 12, bitten twice; a green suite over stubs does not discharge this
+- Given the live binary (lead-run walk, recorded in the story digest), Then `codex exec` with the exact assembled argv completes a trivial prompt in a scratch repo, writes a file under the added dir, AND LANDS A COMMIT in a worktree of it — the argv's whole point; a walk that only writes a file certifies a teammate that cannot finish (constraint 12, bitten twice; a green suite over stubs does not discharge this)
 - Given DESIGN §5's codex table, Then every row this story relies on carries a re-verified-on-0.147.0 mark or a corrected value — a snapshot trusted silently is the drift the spike doc warns about
 - Given the teammate stream, Then codex output tees to the same append-only log contract as story-017's claude leg (header per spawn, flush per line, log-write failure keeps consuming) — reusing teammate_tee, not duplicating it
 Verify: pytest -q tests/test_spawn.py tests/test_close.py
@@ -927,25 +965,33 @@ Executor: claude/opus/medium
 
 #### story-025 — codex is a native lead (hooks + injection)   [planned]
 Context: The other half of Paul's call: a human RUNNING codex as their agent gets
-the process, not just the prompt. WHAT THE SPIKE ESTABLISHED (0.146.0, every row
-re-verified by 021 or here): plugin-bundled hooks RUN under codex and
-${CLAUDE_PLUGIN_ROOT} expands; an explicit manifest `hooks` field REPLACES
-default discovery rather than merging — omitting it makes codex load the CLAUDE
-hooks file; unknown event names are silently ignored (a per-harness file is
-tidy, not mandatory); `stop_hook_active` is present and functional but flips on
-NO FIXED FIRING COUNT — which stop_gate.py already honors by design (story-004
-carded exactly that); SessionStart carries `source` and injection WORKS there (a
-uuid4 minted in-hook came back byte-identical); tool_name normalises edits to
-`apply_patch` and every shell path to `Bash` — bash_status keys on Bash, so the
-telemetry leg carries over, but any Edit/Write matcher is a dead name on codex;
-a FAILED tool call fires PreToolUse and then NOTHING (no PostToolUse, no
-failure event), so no codex leg may pair Pre/Post or key failure on a post-hook;
-untrusted hooks are skipped SILENTLY (headless trust is
-`--dangerously-bypass-hook-trust`, interactive is a /hooks review per content
-hash re-reviewed after every update — install docs must say so); the plugin
-cache is version-keyed and a run without a manifest bump silently executes the
-PREVIOUS cached copy — bump → reinstall is one atomic sequence, and the walk
-below must not report "the hook did not fire" over a stale cache.
+the process, not just the prompt. ONE HOOKS FILE, deliberately (plan review F7
+— what test demands two?): codex with NO manifest hooks field loads
+./hooks/hooks.json, the very file claude discovers, and unknown event names are
+silently ignored — so the shipped hooks.json serves BOTH harnesses and no
+second registration exists to drift. A codex-specific file is demanded only by
+a MEASURED divergence, and the one live candidate is TIMEOUT UNITS: every entry
+carries `timeout: 10`, the spike saw a 3s clamp on SessionEnd with
+seconds-vs-ms unresolved, and the walk below distinguishes them BEFORE this
+ships — if codex reads milliseconds, that fact (not tidiness) forces the split
+file, recorded in DESIGN.
+WHAT THE SPIKE ESTABLISHED (0.146.0, every row re-verified by 021 or here):
+plugin-bundled hooks RUN under codex and ${CLAUDE_PLUGIN_ROOT} expands;
+`stop_hook_active` is present and functional but flips on NO FIXED FIRING COUNT
+— which stop_gate.py already honors by design (story-004 carded exactly that);
+SessionStart carries `source` and injection WORKS there (a uuid4 minted in-hook
+came back byte-identical); tool_name normalises edits to `apply_patch` and
+every shell path to `Bash` — bash_status keys on Bash, so the telemetry leg
+carries over, but any Edit/Write matcher is a dead name on codex; a FAILED tool
+call fires PreToolUse and then NOTHING (no PostToolUse, no failure event) —
+hooks.json's PostToolUseFailure registration is claude-only and codex ignores
+it silently, which is fine and said in DESIGN rather than assumed; untrusted
+hooks are skipped SILENTLY (headless trust is `--dangerously-bypass-hook-trust`,
+interactive is a /hooks review per content hash re-reviewed after every update —
+install docs must say so); the plugin cache is version-keyed and a run without a
+manifest bump silently executes the PREVIOUS cached copy — bump → reinstall is
+one atomic sequence, and the walk below must not report "the hook did not fire"
+over a stale cache.
 SKILLS NEED NOTHING: codex delivers a skill locator, not the body, and never
 expands `!` preloads — and our authoring rule already bans load-bearing preloads
 (the SKILL says what to run; the script speaks). A structural test pins that no
@@ -961,17 +1007,16 @@ The walk (lead-run, constraint 12): install user-scope from this repo's
 marketplace, `codex exec` one trivial gated task, read the injected block and
 the stop-gate bypass in the transcript, record both in the story digest.
 Size: hooks component 417 of 1,000 — the adapter's budgeted home (DESIGN §9).
-Files: plugins/xp-plugin/hooks/hooks.codex.json, plugins/xp-plugin/.claude-plugin/plugin.json,
-plugins/xp-plugin/scripts/session_start.py, plugins/xp-plugin/scripts/stop_gate.py,
-plugins/xp-plugin/scripts/bash_status.py, docs/DESIGN.md, tests/test_session_start.py,
-tests/test_stop_gate.py
+Files: plugins/xp-plugin/hooks/hooks.json, plugins/xp-plugin/scripts/session_start.py,
+plugins/xp-plugin/scripts/stop_gate.py, plugins/xp-plugin/scripts/bash_status.py,
+docs/DESIGN.md, tests/test_session_start.py, tests/test_stop_gate.py
 AC:
-- Given the codex manifest, Then it names hooks.codex.json explicitly (the REPLACES fact), and hooks.codex.json registers SessionStart, UserPromptSubmit, PreToolUse, PostToolUse and Stop with the SAME scripts hooks.json runs — one mechanism, two registrations; a structural test asserts script-set equality so the files cannot drift apart
+- Given the shipped plugin, Then NO codex manifest hooks field and NO hooks.codex.json exist — one hooks.json serves both harnesses via codex's default discovery — asserted structurally, so a per-harness file cannot appear without this test moving alongside a measured divergence recorded in DESIGN
 - Given a SessionStart payload shaped like codex's (source present, no session env exported), When session_start runs, Then the injection renders and the liveness touchfile lands keyed on the PAYLOAD's session_id, not an env var codex never exports — fault-inject with a payload carrying session_id only
 - Given a Stop payload whose stop_hook_active flipped on the second firing rather than the first, Then the gate behaves identically — the existing no-block-count property, asserted against the codex flip pattern the spike measured (False/False/True)
 - Given an apply_patch PreToolUse payload, Then bash_status ignores it without error (patch text is not a command — parsing it as one is the spike's named consequence), and a shell_command payload records status exactly as Bash does
 - Given every shipped SKILL.md, Then none carries a `!` preload line — structural, so the codex delivery constraint holds by construction
-- Given hooks.codex.json, Then it carries NO timeout field, and the test asserting that names the unresolved units as the reason
+- Given the walk, Then the timeout-units question is MEASURED (a hook with a deliberate delay under codex): seconds → the shared file stands as is; milliseconds → the split file is created carrying that fact into DESIGN and this AC's test updated to pin it
 - Given the lead-run walk, Then acceptance is Paul reading the recorded transcript excerpts: injection arrived, the stop gate released on stop_hook_active, the cache version matched the bumped manifest — agent-observed behavior has no other harness
 Verify: pytest -q tests/test_session_start.py tests/test_stop_gate.py
 Close review: deep — a silently-unenforced session is this story's whole failure
@@ -1003,6 +1048,23 @@ holding a validated-as-fixed blocking[] could be refreshed only by re-spawning
 the lens. Under this story the fixer clears findings inside the round that
 found them and the final pass is blockers-only, so a confirmed fix never needs
 a third confirming spawn.
+REVISED AT SPRINT-4 PLANNING (plan review F1/F9 + Paul's call): SECURITY IS AN
+ANGLE, NOT A LENS. The two-lens machinery — story-014's deliberate design —
+collapses to ONE review: N blind finder angles over the whole release diff,
+security among them, then batched verification, the fixer, and the
+blockers-only closing pass; land reads ONE marker family. This knowingly
+reverses story-014's two-lens split and retires the `--lens` surface, and
+DESIGN §6 says so in this story's diff. START WITH THREE ANGLES
+(state/lifecycle, test vacuity, security pitfalls): the library grows
+additively at zero mechanism cost, so breadth is bought back angle by angle
+with evidence rather than shipped on day one. AT-RISK TESTS, named because
+this sprint's own bug batch just built two of them: the per-lens gate tests
+(TestTheSprintGatesAreNotHalfFixed, the all-marker digests, _coverage_refusal's
+lens loop) MIGRATE to the single-marker shape, never delete — each carries a
+filed bug's falsifier (f0fc1bb8, 93a5717b) and each is re-pointed via work.py
+resolve inside this story. THE SEAM RULE (F1): this story's guard motion lands
+in sprint_close.py; review.py is NOT in its Files — story-021 lands the shared
+runner changes this story consumes.
 THE BAR IS TWO BARS, and conflating them is why the report was long (Paul's call
 at the close). CONFIDENCE stays generous — PLAUSIBLE is the default, refuters
 decide, and the four findings that mattered were ones a finder was least sure of
@@ -1013,22 +1075,22 @@ work only if its failure mode is SILENT or CORRUPTING, and the angles never
 carried it. Checked against the close: every finding the lead acted on was silent;
 the bar would have roughly halved the report and kept all of them.
 Size: xp-agents' code_review.js is 479 lines and this is NOT a port of it. Target
-a fraction: the angles ship as prose (`.md`, project-neutral by construction —
-state/lifecycle, test vacuity, line scan, removed behavior, cross-file, language
-pitfalls, cleanup) and the control flow is the small part. Price it at the plan
-step against a close component sitting at 1,300 of 1,300 — a rebalance from spawn
-(567 of 1,950) is the named source and it is Paul's call, not the story's.
-Files: plugins/xp-plugin/workflows/*, plugins/xp-plugin/scripts/*_angle_*.md,
-plugins/xp-plugin/scripts/sprint_close.py, plugins/xp-plugin/scripts/review.py,
-plugins/xp-plugin/skills/sprint-close/SKILL.md, docs/DESIGN.md, tests/*
+a fraction: the angles ship as prose (`.md`, project-neutral by construction)
+and the control flow is the small part. Priced at the plan step against close
+at 1,309 of 1,450 — the sprint-open rebalance (150 spawn→close, Paul's call)
+already happened, so a further escalation here needs new evidence, not a
+pointer at spawn.
+Files: plugins/xp-plugin/scripts/sprint_close.py, plugins/xp-plugin/scripts/angles/*.md,
+plugins/xp-plugin/agents/sprint-reviewer.md, plugins/xp-plugin/skills/sprint-close/SKILL.md,
+docs/DESIGN.md, tests/test_sprint_close.py, tests/test_review.py
 AC:
-- Given the broad lens, Then it runs N BLIND finders — each reading only its own angle file, each over the WHOLE diff, never a slice — and a finder that did not read its angle is detectable, because a mis-rendered path otherwise yields a generalist pass that looks exactly like a working one. Fault-inject the path
+- Given the review leg, Then it runs N BLIND finders — each reading only its own angle file, each over the WHOLE diff, never a slice — and a finder that did not read its angle is detectable, because a mis-rendered path otherwise yields a generalist pass that looks exactly like a working one. Fault-inject the path
 - Given a finder, Then its instructions carry PROCESS.md's finding bar as the CONSEQUENCE test (silent or corrupting earns a finding; loud and self-healing never does) while leaving CONFIDENCE generous. Assert both halves are present: a prompt carrying only one is the conflation this story exists to fix
 - Given candidates, Then verification is BATCHED — one agent judging several, not one per location — and the batch count is bounded by a config key, not by the candidate count. Assert the agent count does not scale 1:1 with candidates, which is the 22-to-kill-3 shape measured at sprint-003
 - Given surviving findings, Then a FIXER applies them in the tree, exactly as the story reviewer does — measured at sprint-002: a reporting reviewer took 4 rounds and 11 blocking findings and never converged, a fixing one took 1 round with 7 fixed and 0 blocking. The lead reads its diff; running land is how the lead accepts it
 - Given the fixer has run, Then ONE final pass looks for BLOCKERS ONLY and passes otherwise (Paul's design). A blocker returns to the lead to deal with; anything else is not the closing pass's business. Fault-inject with a planted blocker AND with a clean tree — a pass that cannot fail certifies
 - Given the fixer commits, Then sprint land's coverage check must not be invalidated by the reviewer's OWN fixes — the afbd01a3 wedge. The story leg already solves this: reviewer commits sit INSIDE the reviewed range, gated by authorship (check_reviewer_motion). The sprint leg compares a bare shown_sha and must gain the same authorship-aware range. THIS REVERSES story-014's check_report_only, which was a deliberate mechanism three commits before this card; reverse it knowingly and say so in DESIGN
-- Given the security lens, Then it uses the same machinery with its own angles. It stays: whether a security finding exists is the CONSUMING PROJECT's answer, not ours — a Node app with sessions has the surface this repo does not
+- Given the security ANGLE, Then it runs blind over the same diff with the same report shape as every other angle, and its prose stays project-neutral — whether a security finding exists is the CONSUMING PROJECT's answer, not ours; a Node app with sessions has the surface this repo does not
 Verify: pytest -q tests/test_sprint_close.py tests/test_review.py
 Close review: deep — it is the gate on every release, and a review that passes
 wrongly is silent by definition.
