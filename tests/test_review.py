@@ -14,6 +14,7 @@ from pathlib import Path
 
 from sprint_helpers import (
     CONFIG,
+    PLAN,
     PLUGIN,
     bundles,
     committing_stub,
@@ -229,6 +230,44 @@ class TestTheFixerFixes:
         line = next((ln for ln in r.stdout.splitlines() if "full diff" in ln), "")
         assert line, r.stdout
         assert "FIX" in Path(line.rsplit(": ", 1)[1].strip()).read_text()
+
+    def test_LAND_shows_the_lead_the_commits_it_is_merging(self, tmp_path):
+        """Assent is given by RUNNING land, and SKILL.md says so — but the review
+        leg's stdout is long gone by then, and `reviewed_head` was written into the
+        marker with no reader at all. The story leg re-prints the range here; this
+        one printed nothing, so a reviewer's fixes merged unseen."""
+        repo, env, _g = make_repo(tmp_path)
+        staged_stub(
+            tmp_path,
+            find=CANDIDATES,
+            verify=SURVIVES,
+            commits=[("fix", "echo FIXED_BY_THE_REVIEWER = 1 >> src.py && git commit -qam fix")],
+        )
+        assert sprint(repo, env, "review").returncode == 0
+        land = sprint(repo, env, "land")  # not --dry-run: a preview runs nothing
+        assert "you are merging its work" in land.stdout, land.stdout
+        assert "fix" in land.stdout and "full diff:" in land.stdout, land.stdout
+
+    def test_LAND_names_a_GATE_file_the_fixer_rewrote(self, tmp_path):
+        """The scope rule lets the fixer edit any `.xp/` path a sprint card's Files
+        line declares, and a card DOES declare `.xp/system.md`, whose `Worktree
+        bootstrap:` line spawn shell-executes. shown_sha is recorded AFTER the
+        fixer, so land's own GATE_FILES check compares an empty range and never
+        sees it. Loud is the least this can be."""
+        plan = PLAN.replace(
+            "#### story-042 — done thing   [done]",
+            "#### story-042 — done thing   [done]\nFiles: src.py, .xp/system.md",
+        )
+        repo, env, _g = make_repo(tmp_path, plan=plan)
+        staged_stub(
+            tmp_path,
+            find=CANDIDATES,
+            verify=SURVIVES,
+            commits=[("fix", "echo boot: x >> .xp/system.md && git commit -qam fix")],
+        )
+        assert sprint(repo, env, "review").returncode == 0
+        land = sprint(repo, env, "land")
+        assert "gate file" in land.stdout and ".xp/system.md" in land.stdout, land.stdout
 
 
 class TestTheGateIsNotHalfFixed:

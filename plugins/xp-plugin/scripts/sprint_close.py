@@ -386,6 +386,8 @@ def _coverage_refusal(sprint_id: str, head: str) -> str:
 def cmd_land(sprint_id: str, dry_run: bool) -> int:
     import shutil
 
+    import review
+
     if refusal := _coverage_refusal(sprint_id, git("rev-parse", "HEAD").stdout.strip()):
         return fail(refusal)
     branch = git("rev-parse", "--abbrev-ref", "HEAD").stdout.strip()
@@ -411,6 +413,19 @@ def cmd_land(sprint_id: str, dry_run: bool) -> int:
     tier = config_block_value("tests", "full")
     if tier and subprocess.run(tier, shell=True).returncode != 0:
         return fail(f"refused: full tier red on the tree you are releasing: {tier}")
+    # Assent is given by RUNNING land, where close.cmd_land's rationale applies
+    state = json.loads(sprint_marker(sprint_id).read_text())
+    shown, rounds = state.get("shown_sha", ""), len(state.get("rounds", []))
+    rng = f"{state.get('reviewed_head', shown)}..{shown}"
+    if work := review.reviewer_range(state.get("reviewed_head", shown), shown):
+        print("the reviewer changed this tree — you are merging its work:")
+        print(work, end="")
+        print(f"full diff: {review.diff_path(review.sprint_report_path(sprint_id, 'fix', rounds))}")
+    if gates := [f for f in git("diff", "--name-only", rng).stdout.splitlines() if f in GATE_FILES]:
+        print(f"among them a gate file, which no later check re-reads: {', '.join(gates)}")
+    if stale := review.reviewer_range(shown, git("rev-parse", "HEAD").stdout.strip()):
+        print("reviewer commits from a round that never recorded — nothing covers these:")
+        print(stale, end="")
     if not shutil.which("gh"):
         return fail(
             "refused: pr mode needs the gh CLI on PATH — install it, or open the PR by hand"
