@@ -1,0 +1,346 @@
+"""The review leg against sprint integration, trunk motion and self-close.
+Split from test_close.py at sprint-004 open."""
+
+import subprocess
+import sys
+
+from close_helpers import (  # noqa: F401
+    CARD,
+    CLEAN,
+    CLOSE,
+    CONFIG,
+    PLUGIN,
+    REVIEWER_NAME,
+    WORK,
+    close,
+    close_bare,
+    launches,
+    make_repo,
+    marker,
+    marker_file,
+    prose,
+    stub_reviewer,
+)
+
+
+class TestSprintIntegration:
+    """story-005: release: sprint — stories integrate on the sprint branch."""
+
+    def sprint_repo(self, tmp_path):
+        repo, env, g = make_repo(tmp_path)
+        (repo / ".xp" / "config.yml").write_text(
+            "release: sprint\nsprint_branch: sprint-001\n" + CONFIG
+        )
+        g("checkout", "-q", "main")
+        g("add", "-A")
+        g("commit", "-qm", "sprint config")
+        # real mid-sprint shape: sprint-001 has DIVERGED from main before the story
+        g("checkout", "-qb", "sprint-001")
+        (repo / "sprint-work.txt").write_text("earlier story landed here\n")
+        g("add", "-A")
+        g("commit", "-qm", "earlier sprint story")
+        # story branches off the sprint branch, not main
+        g("branch", "-D", "story-042-branch")
+        g("checkout", "-qb", "story-042-branch")
+        (repo / "src" / "thing.py").write_text("A = 2\n")
+        g("add", "-A")
+        g("commit", "-qm", "story work")
+        return repo, env, g
+
+    def test_close_merges_into_sprint_branch_not_main(self, tmp_path):
+        repo, env, g = self.sprint_repo(tmp_path)
+        r = close(repo, env, "review")
+        # bundle diff is story-only: already-landed sprint work must not appear (B1)
+        assert "earlier story landed here" not in r.stdout
+        r = close(repo, env, "land")
+        assert r.returncode == 0, r.stderr
+        assert "Review round 1" in g("log", "sprint-001", "-1", "--format=%B").stdout
+        assert "[done]" in g("show", "sprint-001:.xp/plan.md").stdout
+        assert "Review round" not in g("log", "main", "--format=%B").stdout  # main untouched
+
+    def test_sprint_release_without_branch_key_falls_back_to_default(self, tmp_path):
+        repo, env, g = make_repo(tmp_path)
+        (repo / ".xp" / "config.yml").write_text("release: sprint\n" + CONFIG)
+        g("add", "-A")
+        g("commit", "-qm", "sprint release, no branch yet")
+        close(repo, env, "review")
+        r = close(repo, env, "land")
+        assert r.returncode == 0, r.stderr
+        assert "Review round 1" in g("log", "main", "-1", "--format=%B").stdout
+
+    def test_story_release_ignores_sprint_branch_key(self, tmp_path):
+        repo, env, g = make_repo(tmp_path)
+        (repo / ".xp" / "config.yml").write_text(
+            "release: story\nsprint_branch: sprint-001\n" + CONFIG
+        )
+        g("branch", "sprint-001", "main")
+        g("add", "-A")
+        g("commit", "-qm", "story release")
+        close(repo, env, "review")
+        r = close(repo, env, "land")
+        assert r.returncode == 0, r.stderr
+        assert "Review round 1" in g("log", "main", "-1", "--format=%B").stdout
+
+    def test_guards_watch_sprint_branch_not_main(self, tmp_path):
+        repo, env, g = self.sprint_repo(tmp_path)
+        close(repo, env, "review")
+        g("checkout", "-q", "sprint-001")
+        (repo / "sprint-file.txt").write_text("x\n")
+        g("add", "-A")
+        g("commit", "-qm", "sprint branch moved")
+        g("checkout", "-q", "story-042-branch")
+        r = close(repo, env, "land")
+        assert r.returncode == 2 and "moved" in r.stderr
+
+    def test_main_motion_does_not_block_sprint_close(self, tmp_path):
+        repo, env, g = self.sprint_repo(tmp_path)
+        close(repo, env, "review")
+        g("checkout", "-q", "main")
+        (repo / "main-file.txt").write_text("x\n")
+        g("add", "-A")
+        g("commit", "-qm", "main moved — sprint close's concern, not ours")
+        g("checkout", "-q", "story-042-branch")
+        r = close(repo, env, "land")
+        assert r.returncode == 0, r.stderr
+
+    def test_the_documented_invocation_works_on_a_sprint_branch(self, tmp_path):
+        """Broad review B2: `merge-mode` appears in NO shipped prose, and the
+        documented `close.py story <id> land` defaulted to pr — which cmd_land
+        refuses whenever the integration target is not the default branch. So the
+        invocation the skill tells a consuming project to run was the one that
+        refuses. The mode is derived now."""
+        repo, env, g = self.sprint_repo(tmp_path)
+        stub_reviewer(tmp_path, report=CLEAN)
+        assert close_bare(repo, env, "review").returncode == 0
+        r = close_bare(repo, env, "land")
+        assert r.returncode == 0, r.stderr
+        assert "Review round 1" in g("log", "sprint-001", "-1", "--format=%B").stdout
+
+    def test_pr_mode_with_sprint_target_refused(self, tmp_path):
+        repo, env, _g = self.sprint_repo(tmp_path)
+        close(repo, env, "review")
+        r = subprocess.run(
+            [
+                sys.executable,
+                str(CLOSE),
+                "story",
+                "story-042",
+                "land",
+                "--merge-mode",
+                "pr",
+            ],
+            cwd=repo,
+            env=env,
+            capture_output=True,
+            text=True,
+        )
+        assert r.returncode == 2 and "local" in r.stderr
+
+    def test_start_from_default_branch_still_refused(self, tmp_path):
+        repo, env, g = self.sprint_repo(tmp_path)
+        g("checkout", "-q", "main")
+        r = close(repo, env, "review")
+        assert r.returncode == 2
+
+    def test_configured_sprint_branch_missing_refused(self, tmp_path):
+        repo, env, g = make_repo(tmp_path)
+        (repo / ".xp" / "config.yml").write_text(
+            "release: sprint\nsprint_branch: sprint-001\n" + CONFIG
+        )
+        g("add", "-A")
+        g("commit", "-qm", "config names a branch that does not exist")
+        r = close(repo, env, "review")
+        assert r.returncode == 2 and "sprint-001" in r.stderr  # fail-safe, never fall back to main
+
+    def test_tag_named_like_sprint_branch_cannot_freeze_the_guard(self, tmp_path):
+        repo, env, g = self.sprint_repo(tmp_path)
+        g("tag", "sprint-001", "main")  # refs/tags wins plain rev-parse; guard must not care
+        close(repo, env, "review")
+        g("checkout", "-q", "sprint-001")
+        (repo / "sprint-file.txt").write_text("x\n")
+        g("add", "-A")
+        g("commit", "-qm", "sprint branch moved")
+        g("checkout", "-q", "story-042-branch")
+        r = close(repo, env, "land")
+        assert r.returncode == 2 and "moved" in r.stderr
+
+    def test_pr_refusal_precedes_moved_check(self, tmp_path):
+        repo, env, g = self.sprint_repo(tmp_path)
+        origin = tmp_path / "origin.git"
+        subprocess.run(["git", "init", "-q", "--bare", str(origin)], env=env, check=True)
+        g("remote", "add", "origin", str(origin))
+        g("push", "-q", "origin", "sprint-001")
+        close(repo, env, "review")
+        g("checkout", "-q", "sprint-001")
+        (repo / "sprint-file.txt").write_text("x\n")
+        g("add", "-A")
+        g("commit", "-qm", "moved")
+        g("push", "-q", "origin", "sprint-001")  # origin's sprint branch moves too
+        g("checkout", "-q", "story-042-branch")
+        r = subprocess.run(
+            [
+                sys.executable,
+                str(CLOSE),
+                "story",
+                "story-042",
+                "land",
+                "--merge-mode",
+                "pr",
+            ],
+            cwd=repo,
+            env=env,
+            capture_output=True,
+            text=True,
+        )
+        assert r.returncode == 2 and "local" in r.stderr and "moved" not in r.stderr
+
+
+class TestSprintCloseFindings:
+    """sprint-001 broad review: consumer-facing correctness before release."""
+
+    def test_start_works_from_repo_subdirectory(self, tmp_path):
+        repo, env, _g = make_repo(tmp_path)
+        sub = repo / "src"
+        r = subprocess.run(
+            [sys.executable, str(CLOSE), "story", "story-042", "review", "--merge-mode", "local"],
+            cwd=sub,
+            env=env,
+            capture_output=True,
+            text=True,
+        )
+        assert r.returncode == 0 and "demo story" in launches(tmp_path)[0]["stdin"]
+
+    def test_bundle_values_come_from_plugin_root(self, tmp_path):
+        repo, env, _g = make_repo(tmp_path)
+        (repo / "VALUES.md").unlink()  # consumer repos have no VALUES.md of their own
+        subprocess.run(["git", "add", "-A"], cwd=repo, env=env, capture_output=True)
+        subprocess.run(["git", "commit", "-qm", "x"], cwd=repo, env=env, capture_output=True)
+        r = close(repo, env, "review")
+        assert r.returncode == 0
+        bundle = launches(tmp_path)[0]["stdin"]
+        assert "Communication" in bundle and "(missing" not in bundle
+
+    def test_missing_gh_refused_before_any_push(self, tmp_path):
+        repo, env, _g = make_repo(tmp_path)
+        close(repo, env, "review")
+        r = subprocess.run(
+            [
+                sys.executable,
+                str(CLOSE),
+                "story",
+                "story-042",
+                "land",
+                "--merge-mode",
+                "pr",
+            ],
+            cwd=repo,
+            env={**env, "PATH": "/usr/bin:/bin"},  # no gh on PATH
+            capture_output=True,
+            text=True,
+        )
+        assert r.returncode == 2 and "gh" in r.stderr and "Traceback" not in r.stderr
+
+    def test_missing_plan_md_refused_cleanly(self, tmp_path):
+        repo, env, g = make_repo(tmp_path)
+        (repo / ".xp" / "plan.md").unlink()
+        g("add", "-A")
+        g("commit", "-qm", "no plan")
+        r = close(repo, env, "review")
+        assert r.returncode == 2 and "plan.md" in r.stderr and "Traceback" not in r.stderr
+
+    def test_bracketless_story_header_refused_cleanly(self, tmp_path):
+        repo, env, g = make_repo(tmp_path)
+        plan = repo / ".xp" / "plan.md"
+        plan.write_text(plan.read_text().replace("   [in-progress]", ""))
+        g("add", "-A")
+        g("commit", "-qm", "malformed header")
+        r = close(repo, env, "review")
+        assert r.returncode == 2 and "Traceback" not in r.stderr
+
+
+class TestReviewLeg:
+    """The pipeline spawns the reviewer itself and records its structured report."""
+
+    def test_review_launches_the_reviewer_with_the_bundle_inlined(self, tmp_path):
+        repo, env, _g = make_repo(tmp_path)
+        r = close(repo, env, "review")
+        assert r.returncode == 0, r.stderr
+        (launch,) = launches(tmp_path)
+        argv = launch["argv"]
+        assert "--plugin-dir" in argv and "-p" in argv
+        assert argv[argv.index("--model") + 1] == "opus"
+        assert argv[argv.index("--output-format") + 1] == "json"
+        prompt = launch["stdin"]
+        assert "fault-inject" in prompt.lower()  # the charter, inlined
+        assert "demo story" in prompt  # the card
+        assert "-A = 1" in prompt and "+A = 2" in prompt  # the cumulative diff
+        assert "CONSTRAINT-SENTINEL" in prompt and "SYSTEM-SENTINEL" in prompt
+
+    def test_the_spawned_reviewer_is_not_a_lead_and_cannot_close(self, tmp_path):
+        """N10: the only thing pinning the reviewer's role otherwise lives in
+        test_spawn.py, which this story's Verify does not run."""
+        repo, env, _g = make_repo(tmp_path)
+        close(repo, env, "review")
+        (launch,) = launches(tmp_path)
+        assert launch["env"]["XP_ROLE"] == "reviewer"
+
+    def test_reviewer_crash_refuses_cleanly_surfacing_its_stderr(self, tmp_path):
+        repo, env, _g = make_repo(tmp_path)
+        stub_reviewer(tmp_path, raw="not json at all", exit_code=1)
+        r = close(repo, env, "review")
+        assert r.returncode == 2 and "Traceback" not in r.stderr
+
+    def test_reviewer_non_json_output_refuses_cleanly(self, tmp_path):
+        repo, env, _g = make_repo(tmp_path)
+        stub_reviewer(tmp_path, raw="not json at all", exit_code=0)
+        r = close(repo, env, "review")
+        assert r.returncode == 2 and "Traceback" not in r.stderr
+
+    def test_dry_run_review_launches_nothing(self, tmp_path):
+        """N4: --dry-run is on the shared parser; silently spawning a real opus
+        session on a dry run is an expensive surprise."""
+        repo, env, _g = make_repo(tmp_path)
+        r = close(repo, env, "review", "--dry-run")
+        assert r.returncode == 0 and launches(tmp_path) == []
+
+
+class TestTrunkMotionGuards:
+    """story-012a: trunk motion is refused at REVIEW, on both the local and the
+    origin ref, because merge-base does not move when trunk advances."""
+
+    def test_a_bare_re_review_cannot_clear_the_trunk_guard(self, tmp_path):
+        """Re-running review after trunk motion used to re-baseline the guard while
+        the reviewer saw nothing new: merge-base does not move when trunk advances.
+        The refusal must hold, and `git merge <trunk>` must be what clears it —
+        a guard whose remediation does not work is a wall."""
+        repo, env, g = make_repo(tmp_path)
+        close(repo, env, "review")
+        g("checkout", "-q", "main")
+        (repo / "other.txt").write_text("someone else landed a story\n")
+        g("add", "-A")
+        g("commit", "-qm", "trunk moved")
+        g("checkout", "-q", "story-042-branch")
+        assert close(repo, env, "land").returncode == 2
+        bare = close(repo, env, "review")
+        assert bare.returncode == 2 and "git merge main" in bare.stderr
+        g("merge", "-q", "main", "-m", "merge trunk")
+        assert close(repo, env, "review").returncode == 0
+        r = close(repo, env, "land")
+        assert r.returncode == 0, r.stderr
+        assert "someone else landed a story" in (repo / "other.txt").read_text()
+
+
+class TestSelfCloseRefusal:
+    """story-008 AC 6: the hard property behind TEAMMATE.md's declaration."""
+
+    def test_non_lead_roles_are_refused(self, tmp_path):
+        """N3: parametrized, or this fault-injects the AC and not the widening."""
+        for role in ("teammate", "reviewer", "sprint-close", ""):
+            repo, env, _g = make_repo(tmp_path / f"r-{role or 'empty'}")
+            r = close(repo, {**env, "XP_ROLE": role}, "review")
+            assert r.returncode == 2, f"XP_ROLE={role!r} was allowed to close"
+            assert "close" in r.stderr.lower()
+
+    def test_the_lead_passes_the_same_guard(self, tmp_path):
+        repo, env, _g = make_repo(tmp_path)
+        assert close(repo, {**env, "XP_ROLE": "lead"}, "review").returncode == 0

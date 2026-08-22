@@ -29,14 +29,11 @@ DENSITY_THRESHOLD = 0.20
 
 # Tests are production code (constraint 8, amended at sprint-004 open): the
 # 500-line hard cap binds tests/ exactly as it binds the shipped plugin.
-# Pins are the CURRENT sizes of the files caught over — they may only FALL,
-# and a pin whose file is back under the cap reds until it is deleted.
+# Pins are the CURRENT sizes of files caught over — they may only FALL, and a
+# pin whose file is back under the cap reds until it is deleted. Empty since
+# the sprint-004 split; the mechanism stays for the next file caught over.
 FILE_CAP = 500
-GRANDFATHER = {
-    "tests/test_close.py": 2059,
-    "tests/test_sprint_close.py": 1011,
-    "tests/test_spawn.py": 863,
-}
+GRANDFATHER = {}
 
 
 class NoScriptsFound(Exception):

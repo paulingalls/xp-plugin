@@ -867,7 +867,7 @@ AC:
 - Given HEAD moved past shown_sha (lead commits after the recorded review), When land runs, Then it PRINTS the shown_sha..HEAD delta and MERGES — and the pair: a commit in reviewed_head..shown_sha not authored by the reviewer still REFUSES at the review leg, because check_reviewer_motion is a tree property and stays hard (fault-inject both arms)
 - Given reviewer fix commits AND a later lead commit, When land renders the reviewer's work, Then reviewed_head..shown_sha is presented as the reviewer's and shown_sha..HEAD as the lead's — never one range labelled reviewer (the 655208fe misattribution; fault-inject with a lead-authored commit after the review)
 - Given DESIGN §6, Then it states overlap-not-motion AND report-not-refuse for post-review HEAD motion, because the doc moves with the code or they disagree
-Verify: pytest -q tests/test_close.py
+Verify: pytest -q tests/test_close.py tests/test_close_review.py tests/test_close_land.py tests/test_close_findings.py tests/test_close_fixing_reviewer.py tests/test_close_prose.py
 Close review: deep
 Executor: claude/opus/medium
 
@@ -965,7 +965,7 @@ AC:
 - Given the live binary (lead-run walk, recorded in the story digest), Then `codex exec` with the exact assembled argv completes a trivial prompt in a scratch repo, writes a file under the added dir, AND LANDS A COMMIT in a worktree of it — the argv's whole point; a walk that only writes a file certifies a teammate that cannot finish (constraint 12, bitten twice; a green suite over stubs does not discharge this)
 - Given DESIGN §5's codex table, Then every row this story relies on carries a re-verified-on-0.147.0 mark or a corrected value — a snapshot trusted silently is the drift the spike doc warns about
 - Given the teammate stream, Then codex output tees to the same append-only log contract as story-017's claude leg (header per spawn, flush per line, log-write failure keeps consuming) — reusing teammate_tee, not duplicating it
-Verify: pytest -q tests/test_spawn.py tests/test_close.py
+Verify: pytest -q tests/test_spawn.py tests/test_spawn_run.py tests/test_close_review.py
 Close review: deep — a second harness under the same gates; every divergence
 between the two legs is a silent hole in one of them.
 Executor: claude/opus/medium
@@ -1095,7 +1095,7 @@ AC:
 - Given the fixer has run, Then ONE final pass looks for BLOCKERS ONLY and passes otherwise (Paul's design). A blocker returns to the lead to deal with; anything else is not the closing pass's business. Fault-inject with a planted blocker AND with a clean tree — a pass that cannot fail certifies
 - Given the fixer commits, Then sprint land's coverage check must not be invalidated by the reviewer's OWN fixes — the afbd01a3 wedge. The story leg already solves this: reviewer commits sit INSIDE the reviewed range, gated by authorship (check_reviewer_motion). The sprint leg compares a bare shown_sha and must gain the same authorship-aware range. THIS REVERSES story-014's check_report_only, which was a deliberate mechanism three commits before this card; reverse it knowingly and say so in DESIGN
 - Given the security ANGLE, Then it runs blind over the same diff with the same report shape as every other angle, and its prose stays project-neutral — whether a security finding exists is the CONSUMING PROJECT's answer, not ours; a Node app with sessions has the surface this repo does not
-Verify: pytest -q tests/test_sprint_close.py tests/test_review.py
+Verify: pytest -q tests/test_sprint_close.py tests/test_sprint_review.py tests/test_sprint_land.py tests/test_review.py
 Close review: deep — it is the gate on every release, and a review that passes
 wrongly is silent by definition.
 Executor: claude/opus/medium
@@ -1125,6 +1125,6 @@ AC:
 - Given free land with a pipeline-received report, Then the PR to main carries the patch bump
 - Given free land with no report, Then it refuses
 - Given a reviewed head that is no longer an ancestor of HEAD, When land runs, Then it REFUSES — fault-inject by rewriting history in a fixture, never by asserting the merge-base call is present
-Verify: pytest -q tests/test_close.py
+Verify: pytest -q tests/test_close.py tests/test_close_review.py tests/test_close_land.py tests/test_close_findings.py tests/test_close_fixing_reviewer.py tests/test_close_prose.py
 Close review: deep
 Executor: (default)
