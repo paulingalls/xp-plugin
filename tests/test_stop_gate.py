@@ -25,7 +25,8 @@ def repo_with_story(tmp_path, verify="pytest -q tests/test_x.py"):
     g("init", "-q", "-b", "main")
     g("config", "user.email", "t@t")
     g("config", "user.name", "t")
-    (repo / ".xp" / "plan.md").write_text(
+    (tmp_path / "xp").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "xp" / "plan.md").write_text(
         f"# plan\n#### story-042 — demo   [in-progress]\nVerify: {verify}\n"
     )
     (repo / "f.py").write_text("A = 1\n")
@@ -130,7 +131,7 @@ class TestBashStatus:
 
     def test_matches_any_in_progress_story_with_per_verify_markers(self, tmp_path):
         repo, _g = repo_with_story(tmp_path)
-        plan = repo / ".xp" / "plan.md"
+        plan = tmp_path / "xp" / "plan.md"
         plan.write_text(
             plan.read_text() + "#### story-043 — other   [in-progress]\nVerify: bun test x\n"
         )
@@ -156,7 +157,7 @@ class TestStopGate:
 
     def test_any_red_blocks_despite_other_green(self, tmp_path):
         repo, _g = repo_with_story(tmp_path)
-        plan = repo / ".xp" / "plan.md"
+        plan = tmp_path / "xp" / "plan.md"
         plan.write_text(
             plan.read_text() + "#### story-043 — other   [in-progress]\nVerify: bun test x\n"
         )
@@ -166,15 +167,21 @@ class TestStopGate:
         assert json.loads(r.stdout)["decision"] == "block"
 
     def test_stop_hook_active_never_blocks(self, tmp_path):
+        """Over the codex flip pattern too: 0.147.0 was measured flipping on the
+        SECOND firing, and the card carries a three-firing sighting — the gate must
+        release on the flag alone, never on a count of its own blocks.
+        """
         repo, _g = repo_with_story(tmp_path)
         self._red(repo, tmp_path)
-        r = run_script("stop_gate.py", self.stop_payload(active=True), repo, tmp_path)
-        assert r.returncode == 0 and "block" not in r.stdout
+        for active in (False, False, True):
+            r = run_script("stop_gate.py", self.stop_payload(active=active), repo, tmp_path)
+            assert r.returncode == 0
+            assert ("block" in r.stdout) is not active
 
     def test_red_for_no_longer_in_progress_story_does_not_block(self, tmp_path):
         repo, _g = repo_with_story(tmp_path)
         self._red(repo, tmp_path)
-        plan = repo / ".xp" / "plan.md"
+        plan = tmp_path / "xp" / "plan.md"
         plan.write_text(plan.read_text().replace("[in-progress]", "[done]"))
         r = run_script("stop_gate.py", self.stop_payload(), repo, tmp_path)
         assert "block" not in r.stdout  # deferral via plan status is honest and works
@@ -192,7 +199,7 @@ class TestStopGate:
         # and the message could only reach the user, not the lead
         repo, g = repo_with_story(tmp_path)
         old = g("rev-parse", "--short", "HEAD").stdout.strip()
-        (tmp_path / "xp").mkdir()
+        (tmp_path / "xp").mkdir(exist_ok=True)
         (tmp_path / "xp" / "session.md").write_text(f"# Session digest — written x at {old}\n")
         (repo / "f.py").write_text("A = 2\n")
         g("add", "-A")
@@ -226,7 +233,7 @@ class TestSprintCloseFindings:
     def test_gate_works_from_repo_subdirectory(self, tmp_path):
         repo, _g = repo_with_story(tmp_path)
         sub = repo / "src"
-        sub.mkdir()
+        sub.mkdir(exist_ok=True)
         p = failure_payload("pytest -q tests/test_x.py")
         subprocess.run(
             [sys.executable, str(SCRIPTS / "bash_status.py")],
@@ -267,7 +274,7 @@ class TestStoryScopedMarkers:
 
     def two_stories(self, tmp_path, verify_a, verify_b):
         repo, _g = repo_with_story(tmp_path, verify=verify_a)
-        plan = repo / ".xp" / "plan.md"
+        plan = tmp_path / "xp" / "plan.md"
         plan.write_text(
             plan.read_text() + f"#### story-043 — other   [in-progress]\nVerify: {verify_b}\n"
         )
@@ -296,3 +303,115 @@ class TestStoryScopedMarkers:
         run_script("bash_status.py", success_payload("bun test x"), repo, tmp_path)
         by_story = {m["story"]: m["red"] for m in markers(tmp_path)}
         assert by_story == {"story-042": True, "story-043": False}
+
+
+def codex_post_payload(command, output="", session="sess-1"):
+    """Captured from a live codex-cli 0.147.0 session: tool_response is the merged
+    output STRING and NO field carries the exit status — `false` returned "" and
+    `sh -c 'echo out; echo err 1>&2; exit 3'` returned "err\nout\n". The binary's own
+    post-tool-use.command.input schema sets additionalProperties:false, so the absence
+    is exhaustive, not a sampling artifact.
+    """
+    return {
+        "session_id": session,
+        "turn_id": "turn-1",
+        "cwd": ".",
+        "hook_event_name": "PostToolUse",
+        "model": "gpt-5.6-terra",
+        "permission_mode": "bypassPermissions",
+        "tool_name": "Bash",
+        "tool_input": {"command": command},
+        "tool_response": output,
+        "tool_use_id": "exec-1",
+    }
+
+
+class TestCodexPayloads:
+    """story-025: codex fires PostToolUse for FAILED commands too (the card said it
+    fired nothing), so an unproven success must write nothing at all."""
+
+    def test_codex_post_tool_use_writes_no_marker(self, tmp_path):
+        repo, _g = repo_with_story(tmp_path)
+        codex = codex_post_payload("pytest -q tests/test_x.py")
+        run_script("bash_status.py", codex, repo, tmp_path)
+        assert markers(tmp_path) == []
+
+    def test_codex_post_tool_use_never_erases_a_red(self, tmp_path):
+        """The defect with teeth: a red verify re-run under codex greened its own
+        marker and released the gate silently."""
+        repo, _g = repo_with_story(tmp_path)
+        verify = "pytest -q tests/test_x.py"
+        run_script("bash_status.py", failure_payload(verify), repo, tmp_path)
+        run_script("bash_status.py", codex_post_payload(verify), repo, tmp_path)
+        r = run_script("stop_gate.py", self_payload(), repo, tmp_path)
+        assert json.loads(r.stdout)["decision"] == "block"
+
+    def test_a_codex_session_never_inherits_another_sessions_red(self, tmp_path):
+        """Why DESIGN calls the Codex Stop gate INERT rather than quiet: markers are
+        session-scoped (constraint 10) and no Codex session ever writes one, so a red
+        a Claude session planted on the same story is not reachable from here.
+        """
+        repo, _g = repo_with_story(tmp_path)
+        verify = "pytest -q tests/test_x.py"
+        run_script("bash_status.py", failure_payload(verify, session="claude-sess"), repo, tmp_path)
+        r = run_script("stop_gate.py", self_payload(session="codex-sess"), repo, tmp_path)
+        assert r.stdout == ""
+
+    def test_apply_patch_pre_tool_use_is_ignored(self, tmp_path):
+        """codex normalises every edit to apply_patch; its patch text is not a command."""
+        repo, _g = repo_with_story(tmp_path)
+        payload = codex_post_payload("")
+        payload.update(
+            hook_event_name="PreToolUse",
+            tool_name="apply_patch",
+            tool_input={"patch": "*** Begin Patch\npytest -q tests/test_x.py\n*** End Patch"},
+        )
+        del payload["tool_response"]
+        r = run_script("bash_status.py", payload, repo, tmp_path)
+        assert r.returncode == 0 and r.stderr == "" and markers(tmp_path) == []
+
+
+class TestACrashIsNotAPass:
+    """A hook that dies must still not break the session — but it may not die in
+    SILENCE. The blanket `except (Exception, SystemExit): sys.exit(0)` made rc 0
+    and empty stderr hold for ANY crash, so every 'the hook ignores this payload'
+    assertion in this file passed against a hook that raised on it (measured: 16
+    of these 24 tests, this class's own arm included).
+    """
+
+    def crashing(self, tmp_path, name):
+        """The real script with a raise spliced into main — the defect it must
+        survive is an exception, so nothing weaker constructs the condition."""
+        broken = tmp_path / name
+        text = (SCRIPTS / name).read_text()
+        marker = "def main() -> int:\n"
+        assert marker in text, name
+        broken.write_text(text.replace(marker, marker + '    raise ValueError("boom")\n', 1))
+        return broken  # its siblings resolve off PYTHONPATH below, not off its new home
+
+    def run(self, tmp_path, name, payload):
+        return subprocess.run(
+            [sys.executable, str(self.crashing(tmp_path, name))],
+            input=json.dumps(payload),
+            env={
+                "PATH": "/usr/bin:/bin",
+                "HOME": str(tmp_path),
+                "XP_DATA": str(tmp_path / "xp"),
+                "CLAUDE_PLUGIN_ROOT": str(SCRIPTS.parent),
+                "PYTHONPATH": str(SCRIPTS),
+            },
+            cwd=tmp_path,
+            capture_output=True,
+            text=True,
+        )
+
+    def test_every_hook_survives_a_crash_and_says_so(self, tmp_path):
+        repo, _g = repo_with_story(tmp_path)
+        for name, payload in (
+            ("bash_status.py", success_payload("pytest -q tests/test_x.py")),
+            ("stop_gate.py", {"session_id": "s", "hook_event_name": "Stop"}),
+            ("session_start.py", {"session_id": "s", "hook_event_name": "SessionStart"}),
+        ):
+            r = self.run(repo, name, payload)
+            assert r.returncode == 0, f"{name} broke the session: {r.stderr}"
+            assert "ValueError" in r.stderr, f"{name} died in silence"

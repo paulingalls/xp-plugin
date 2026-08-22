@@ -5,10 +5,12 @@ One page. The values (VALUES.md) cover what this page doesn't.
 ## The loop
 
 1. **Plan** (any multi-file change): draft the plan, then spawn the **plan-reviewer**
-   (fresh context — it owes your plan nothing). A card starts `[planned]` and the
-   review is what clears it to `[ready]`, which is the only state spawn accepts —
-   so address the findings before implementation code. It checks TDD ordering,
-   artifact coherence, constraint conflicts, and sprint size.
+   (fresh context — it owes your plan nothing). It checks TDD ordering, artifact
+   coherence, constraint conflicts, and sprint size. A card starts `[planned]`;
+   address the findings, then `spawn.py ready <story-id>` flips it to `[ready]`
+   and records a digest of the card. Spawn recomputes it, so a card edited
+   afterwards refuses with the diff — the bracket is display, the digest is the
+   credential. It binds the text you reviewed; it cannot know you reviewed it.
 2. **Story**: red → green → refactor, small commits. Done = ACs verified against
    the running system at its surface (the story loop), not "tests green" (the
    commit loop) — two loops, two clocks. Git hooks are the wall: lint,
@@ -26,7 +28,8 @@ One page. The values (VALUES.md) cover what this page doesn't.
    **Review stopping rule** (diminishing returns): one full review always. A
    REVIEWER fix costs nothing extra — it is inside the round that found it, and your
    read of its diff is the judgment. A LEAD fix moves HEAD past what the review
-   covered, so it costs one confirming round; that is why fix batches are batches.
+   covered, so it costs one confirming round — land REPORTS that delta now rather
+   than refusing, so this half is yours to honour; fix batches are batches.
    Faithful means SCOPE-IDENTICAL — generalizing a prescription is a deviation, and
    deviations, new uncovered behavior and conflict resolutions are owed a real round.
    Uncertain? One delta ping beats a wrong self-call. What ENDS a round is the
@@ -40,10 +43,10 @@ One page. The values (VALUES.md) cover what this page doesn't.
    falsifiers batch-run + full tier + note triage + retro (one-page narrative + a
    proposed diff to constraints/config — a learning that changes nothing executable
    isn't recorded; the narrative is PRESENTED to the human at close, never just
-   filed), then `review --lens broad|security` LAST, or the retro invalidates the
-   review that permits it. Debt triage with the
-   human, under the **finding bar**: a finding earns work only if its failure mode is
-   silent or corrupting (false green, corrupted record, unreviewed merge). Loud +
+   filed), then `review` LAST, or the retro invalidates the review that permits
+   it. Debt triage with the human, under the **finding bar**: a finding earns work
+   only if its failure mode is silent or corrupting (false green, corrupted
+   record, unreviewed merge). Loud +
    patch-scale → fix now only if minutes. Loud + self-healing → NEVER — everything
    here is built fail-loud, so a never that later matters returns as an
    evidence-bearing red. Never is a decision, not a backlog: schedule under budget
@@ -71,6 +74,6 @@ Telemetry (test/lint failures) is never recorded — the gate re-measures next r
 
 ## Session continuity
 
-`plan.md` story states + git + work.md are the memory. Write the ≤30-line session
+The plan's story states + git + work.md are the memory. Write the ≤30-line session
 digest at story/sprint close only. On start: trust the digest, verify against the
 artifacts — artifacts win.

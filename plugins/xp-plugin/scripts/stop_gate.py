@@ -10,6 +10,7 @@ is handled once, correctly, at SessionStart.
 import json
 import subprocess
 import sys
+import traceback
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
@@ -53,7 +54,7 @@ def main() -> int:
                     "decision": "block",
                     "reason": (
                         f"story Verify last ran red: {red} — fix it, or mark its story"
-                        " done/deferred in .xp/plan.md if the red is accepted"
+                        " done/deferred in the plan if the red is accepted"
                     ),
                 }
             )
@@ -64,6 +65,8 @@ def main() -> int:
 
 if __name__ == "__main__":
     try:
-        sys.exit(main())
-    except (Exception, SystemExit):
-        sys.exit(0)
+        rc = main()
+    except Exception:  # advisory: never break a session — but never in silence,
+        traceback.print_exc(file=sys.stderr)  # or a dead hook reads as a passing one
+        rc = 0
+    sys.exit(rc)

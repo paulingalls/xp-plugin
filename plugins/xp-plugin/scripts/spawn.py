@@ -5,7 +5,8 @@ The piece neither harness provides. The teammate profile is INLINED into the
 prompt (DESIGN §8) — paths are a fallback, never the mechanism — and the plugin
 itself rides in on --plugin-dir, because a worktree `claude -p` session applies
 no project-scoped marketplace enablement and would otherwise load no hooks,
-agents or skills.
+agents or skills. Codex has no --plugin-dir at all, which is why the inlined
+profile is the mechanism and not a convenience (DESIGN §3).
 """
 
 import argparse
@@ -16,23 +17,31 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
+sys.path.insert(0, str(Path(__file__).parent / "spawn"))
 # close must import back FUNCTION-LOCALLY: a module-level edge cycles
 # (close -> spawn -> close) and fails before fail/git exist (story-008).
 from close import fail, git, integration_target, story_card
+from harness import (
+    HARNESS_INSTALL,
+    agent_argv,
+    claude_argv,  # noqa: F401  — re-exported: story-017's argv tests import it here
+    codex_argv,  # noqa: F401
+    missing_harness,
+)
 from teammate_tee import run_teammate
-from work import card_title, chdir_repo_root, config_block_value, data_root, slugify, user_ns
+from work import (
+    card_title,
+    chdir_repo_root,
+    config_block_value,
+    data_root,
+    edit_plan,
+    plan_path,
+    slugify,
+    stale_plan,
+    user_ns,
+)
 
 PLUGIN_ROOT = Path(__file__).parent.parent
-
-# Bypass is REQUIRED, measured not assumed: acceptEdits denies `git add`/`git
-# commit`, so weaker modes yield a teammate that writes code and silently loses
-# it. No --allowedTools: an allow-list under bypass restricts nothing, and
-# shipping one would certify a bound that does not exist (the pinning assert
-# lives in the tests; the full measurement table is the work.md note).
-# THE TEAMMATE IS THEREFORE UNBOUNDED in its throwaway worktree — declared, not
-# believed. Self-closing is close.py's refusal to make (story-008), not a
-# tool-deny: Bash can invoke close.py directly.
-PERMISSION_ARGV = ["--dangerously-skip-permissions"]
 
 # Tokens (chars//4). The cap covers prose WE ship — VALUES, TEAMMATE.md, the
 # seed constraints file and always-on component metadata — because ownership is
@@ -123,8 +132,10 @@ def resolve_role(role: str, card: str = "", override: str = "") -> tuple[str, st
             fail(f"refused: cannot resolve {role} from {spec!r} — want harness/model[/effort]")
         )
     harness, model, effort = parts[0], parts[1], parts[2] if len(parts) > 2 else ""
-    if harness != "claude":
-        raise SystemExit(fail(f"refused: harness {harness!r} — the codex leg is Sprint 3"))
+    if harness not in HARNESS_INSTALL:
+        raise SystemExit(
+            fail(f"refused: harness {harness!r} — we ship {', '.join(HARNESS_INSTALL)}")
+        )
     return harness, model, effort
 
 
@@ -172,22 +183,6 @@ def _read_shipped(path: Path) -> str:
     return path.read_text()
 
 
-def claude_argv(model: str, effort: str, output_format: str = "json") -> list[str]:
-    """The single owner of flag spellings — story-008 launches a reviewer through it.
-
-    `json` means a spawn prints nothing until the teammate finishes: the
-    reviewer's one-object parse (review.py) keeps this. `stream-json` is the
-    teammate's streaming spelling, and the installed binary REQUIRES `--verbose`
-    alongside it — measured against the real refusal at story-017's plan review,
-    not assumed.
-    """
-    argv = ["claude", "-p", "--plugin-dir", str(PLUGIN_ROOT), *PERMISSION_ARGV]
-    argv += ["--output-format", output_format, "--model", model]
-    if output_format == "stream-json":
-        argv.append("--verbose")
-    return argv + (["--effort", effort] if effort else [])
-
-
 def run_agent(
     argv: list[str],
     cwd: Path,
@@ -231,33 +226,34 @@ def worktree_path(story_id: str) -> Path:
     return data_root() / "worktrees" / story_id
 
 
-def flip_to_in_progress(tree: Path, story_id: str) -> str:
-    """Flip [ready] -> [in-progress] INSIDE the worktree, as the branch's first commit.
-
-    Milestone 1 allows no hand-step besides the two judgment points, and
-    close.py refuses a story that is not [in-progress] — a refusal that would
-    otherwise land only AFTER the teammate has done the whole story. Flipping
-    here (not in the lead's tree) keeps spawn out of cross-tree mutation: the
-    lead reads [ready] until the merge, and the flip shows up in the cumulative
-    diff the reviewer reads.
-
-    Returns the git error, or "" on success. A worktree shares .git/hooks with
-    the common dir, so this commit runs the project's pre-commit wall and CAN
-    fail; swallowing that launches a teammate onto a branch still reading
-    [ready], and close.py's refusal then lands after the whole story is written.
+def flip_to_in_progress(story_id: str) -> None:
+    """close.py refuses a story that is not [in-progress], and without this that
+    refusal lands only AFTER the teammate has written the whole story. No longer a
+    commit on the story branch: the plan is per-clone, so nothing stages and the
+    lead sees [in-progress] at once.
     """
-    plan = tree / ".xp" / "plan.md"
-    out = []
-    for ln in plan.read_text().splitlines(keepends=True):
-        if ln.startswith(f"#### {story_id} ") and "[ready]" in ln:
-            ln = ln.replace("[ready]", "[in-progress]")
-        out.append(ln)
-    plan.write_text("".join(out))
-    for args in (["add", ".xp/plan.md"], ["commit", "-qm", f"{story_id} in-progress"]):
-        r = subprocess.run(["git", *args], cwd=tree, capture_output=True, text=True)
-        if r.returncode != 0:
-            return (r.stderr or r.stdout).strip() or f"git {args[0]} failed"
-    return ""
+    edit_plan(lambda text: flip_map(text, story_id))
+
+
+def flip_map(text: str, story_id: str) -> str:
+    from work import flip_status
+
+    return flip_status(text, story_id, "ready", "in-progress")
+
+
+def not_ready_hint(status: str, story_id: str) -> str:
+    if status == "in-progress":
+        return (
+            "An earlier spawn already flipped it, and since the plan is per-clone the"
+            f" flip lives in {plan_path()} — not on the story branch, so removing the"
+            " worktree and deleting the branch no longer undo it. To start this story"
+            " over, put its heading back to [ready] there."
+        )
+    return (
+        "A card starts [planned]; the plan review and then `spawn.py ready"
+        f" {story_id}` are what clear it — twice in sprint-003 a card reached a teammate"
+        " with no review, and only a human caught it"
+    )
 
 
 def cmd_in_place(story_id: str, card: str) -> int:
@@ -280,12 +276,7 @@ def cmd_in_place(story_id: str, card: str) -> int:
     made = git("checkout", "-q", "-b", branch, trunk, check=False)
     if made.returncode != 0:
         return fail(f"git checkout -b failed: {made.stderr.strip()}")
-    if err := flip_to_in_progress(Path.cwd(), story_id):
-        return fail(
-            f"refused: the status flip did not commit ({err}) — you are on {branch}"
-            f" with .xp/plan.md staged. Commit it, or `git checkout {trunk} &&"
-            f" git branch -D {branch}` and retry."
-        )
+    flip_to_in_progress(story_id)
     print(f"{branch} off {trunk} — in place, nothing launched; you are the executor")
     return 0
 
@@ -295,18 +286,20 @@ def story_branch(card: str, story_id: str) -> str:
 
 
 def cmd_spawn(story_id: str, override: str, dry_run: bool, in_place: bool = False) -> int:
-    if not Path(".xp/plan.md").exists():
-        return fail("refused: no .xp/plan.md here — is this an xp-managed repo?")
+    if not plan_path().exists():
+        return fail(
+            "refused: "
+            + (stale_plan() or f"no plan at {plan_path()} — is this an xp-managed repo?")
+        )
     try:
-        card, status = story_card(Path(".xp/plan.md").read_text(), story_id)
+        card, status = story_card(plan_path().read_text(), story_id)
     except KeyError as e:
         return fail(f"refused: {e.args[0]}")
     if status != "ready":
-        return fail(
-            f"refused: {story_id} is [{status}], spawn requires [ready]. A card starts"
-            " [planned]; the plan review is what clears it — twice in sprint-003 a card"
-            " reached a teammate with no review, and only a human caught it"
-        )
+        hint = not_ready_hint(status, story_id)
+        return fail(f"refused: {story_id} is [{status}], spawn requires [ready]. {hint}")
+    if drift := ready().drift(story_id, card):
+        return fail(drift)
     if in_place:
         if dry_run:
             print(
@@ -315,10 +308,10 @@ def cmd_spawn(story_id: str, override: str, dry_run: bool, in_place: bool = Fals
             )
             return 0
         return cmd_in_place(story_id, card)
-    _harness, model, effort = resolve_role("executor", card, override)
+    harness, model, effort = resolve_role("executor", card, override)
     branch = story_branch(card, story_id)
     tree = worktree_path(story_id)
-    argv = claude_argv(model, effort, "stream-json")
+    argv = agent_argv(harness, model, effort, "stream-json")
     prompt = build_prompt(teammate_sections(card))
     report, warning = profile_report(card, prompt)
     print(report)
@@ -328,6 +321,11 @@ def cmd_spawn(story_id: str, override: str, dry_run: bool, in_place: bool = Fals
         print(" ".join(argv))
         print(prompt)
         return 0
+    # AFTER --dry-run, like review.run: inspecting the argv a harness would take is
+    # exactly what a lead does before installing it. BEFORE the worktree, though — a
+    # missing binary must not cost a tree and a branch to unwind.
+    if gone := missing_harness(harness):
+        return fail("refused: " + gone)
     # The worktree is cut from a COMMIT, so anything uncommitted — including the
     # scaffold itself on a fresh repo — is simply absent from the teammate's tree.
     # Without this the first spawn after xp-setup tracebacks on a missing plan.md
@@ -355,19 +353,14 @@ def cmd_spawn(story_id: str, override: str, dry_run: bool, in_place: bool = Fals
                 f"refused: worktree bootstrap failed ({command!r}) — not launching"
                 f" a teammate into a broken tree. Worktree left at {tree}"
             )
-    if err := flip_to_in_progress(tree, story_id):
-        return fail(
-            f"refused: the status flip did not commit ({err}) — not launching a teammate"
-            f" onto a branch whose plan.md still reads [ready]; close.py would refuse the"
-            f" story only after it is written. Worktree left at {tree}"
-        )
+    flip_to_in_progress(story_id)
     print(f"{branch} at {tree} (off {trunk})")
     handed_over = tree_state(tree)
-    rc = run_teammate(argv, tree, prompt, story_id, data_root())
+    rc = run_teammate(argv, tree, prompt, story_id, data_root(), harness)
     # NOT `if rc: return rc` — a teammate that crashed is the likeliest one to
     # have left work uncommitted, so skipping the guard there withholds the
     # refusal exactly when it is worth most.
-    if err := unclean_teammate_result(tree, handed_over):
+    if err := unclean_teammate_result(tree, handed_over, story_id):
         return fail(err)
     return rc
 
@@ -387,19 +380,18 @@ def tree_state(tree: Path) -> tuple[str, str]:
     return out("rev-parse", "HEAD"), out("status", "--porcelain")
 
 
-def unclean_teammate_result(tree: Path, handed_over: tuple[str, str]) -> str:
+def unclean_teammate_result(tree: Path, handed_over: tuple[str, str], story_id: str) -> str:
     """ "" when the teammate left a clean, committed story behind; otherwise the
     refusal, naming both recoveries.
 
-    Both halves measure against the tree AS HANDED OVER. `trunk..HEAD` is the
-    vacuous spelling — the flip is itself a commit, so that range never reaches
-    zero (constraints.md #11) — and raw porcelain the false one: it charges the
-    teammate with whatever the bootstrap command dirtied before it started.
+    Both halves measure against the tree AS HANDED OVER: raw porcelain would charge
+    the teammate with whatever the bootstrap command dirtied before it started.
     """
     flip_head, handed_dirty = handed_over
     recovery = (
         f" Recover by committing by hand in {tree}, or by"
-        f" `git worktree remove {tree}` and re-spawning."
+        f" `git worktree remove {tree}`, putting {story_id}'s heading back to [ready]"
+        f" in {plan_path()}, and re-spawning."
     )
     try:
         head, dirty = tree_state(tree)
@@ -414,8 +406,23 @@ def unclean_teammate_result(tree: Path, handed_over: tuple[str, str]) -> str:
     return ""
 
 
+def ready():
+    """The credential leg, in its own leaf module under the 500-line cap
+    (constraint 8). Still function-local: only `main` and one refusal reach it,
+    and a module-level edge would import it on every hook that touches spawn."""
+    import ready as module
+
+    return module
+
+
 def main() -> int:
-    p = argparse.ArgumentParser(description=__doc__)
+    if sys.argv[1:2] == ["ready"]:
+        return ready().main(sys.argv[2:])
+    p = argparse.ArgumentParser(
+        description=__doc__,
+        epilog="ready <story-id>: after the plan review, mint the card's digest and"
+        " flip [planned] -> [ready]. Editing the card afterwards refuses the spawn.",
+    )
     p.add_argument("story_id")
     p.add_argument("executor", nargs="?", default="", help="harness/model[/effort] override")
     p.add_argument("--dry-run", action="store_true")

@@ -13,13 +13,19 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
+sys.path.insert(0, str(Path(__file__).parent / "close"))
+import overlap
+import stages
 from close import config_flat, default_branch, fail, git, story_card
+from review import REVIEWER_NAME
 from work import (
     append,
     config_block_value,
     data_root,
     entries,
     falsifier_is_green,
+    plan_path,
+    stale_plan,
     stamp,
     work_entries_since,
 )
@@ -27,7 +33,6 @@ from work import (
 PLUGIN_ROOT = Path(__file__).parent.parent
 FALSIFIER = re.compile(r"^Falsifier: `(.+)`$", re.M)
 RESOLVES = re.compile(r"^Resolves: (\w+)$", re.M)
-LENSES = ("broad", "security")
 
 
 def sprint_stories(plan: str, sprint_id: str) -> list[str]:
@@ -69,19 +74,21 @@ def sprint_cards(plan: str, sprint_id: str) -> str:
     return "\n".join(story_card(plan, ln.split()[1])[0] for ln in sprint_stories(plan, sprint_id))
 
 
-def sprint_marker(sprint_id: str, lens: str) -> Path:
+def sprint_marker(sprint_id: str) -> Path:
     d = data_root() / "markers" / "sprint"
     d.mkdir(parents=True, exist_ok=True)
-    return d / f"{sprint_id}.{lens}.json"
+    return d / f"{sprint_id}.json"
 
 
 def _sprint_records(root: Path, since_epoch: int) -> tuple[str, str]:
-    """(resolutions, the raw work.md section minus its `## resolved` blocks) from
-    ONE split. corpus() cannot serve the first: substitution is exactly where it
-    discards the original falsifier a reader needs to judge the swap."""
+    """(resolutions, the raw work.md section minus `## resolved`/`## archived`
+    blocks) from ONE split. corpus() cannot serve the first: substitution is
+    exactly where it discards the original falsifier a reader needs to judge."""
     originals = {e: t for e, t in entries(root) if t.startswith(("## bug ", "## debt "))}
     latest, kept = {}, []
     for block in re.split(r"^(?=## )", work_entries_since(since_epoch), flags=re.M):
+        if block.startswith("## archived "):
+            continue
         if not block.startswith("## resolved "):
             kept.append(block)
         elif (ref := RESOLVES.search(block)) and (new := FALSIFIER.search(block)):
@@ -98,41 +105,45 @@ def _sprint_records(root: Path, since_epoch: int) -> tuple[str, str]:
     return "\n".join(out) or "none", "\n".join(kept).strip() or "none"
 
 
-def build_sprint_bundle(sprint_id: str, lens: str, cards: str, base: str, report: Path) -> str:
-    import review
-    from bookkeep import render_sprint_prior
-    from close import _read_first
+def build_sprint_bundle(
+    sprint_id: str, cards: str, base: str, report: Path, charter: str, extra: list
+) -> str:
+    """Built once per LEG, at launch: the closing pass must diff the tree the
+    fixer left, and a bundle composed up front would hand it the pre-fix one."""
+    from close import _read
 
-    state = json.loads(p.read_text()) if (p := sprint_marker(sprint_id, lens)).exists() else {}
     resolutions, work_md = _sprint_records(
         data_root(), int(git("show", "-s", "--format=%ct", base).stdout.strip())
     )
     sections = [
-        (f"Your charter, for the {lens} lens", review.charter("sprint-reviewer")),
+        ("Your charter", charter),
         ("Your report", f"REPORT_PATH: {report}"),
+        *extra,
         (f"The stories in sprint {sprint_id}", cards),
-        ("Findings from earlier rounds of THIS lens", render_sprint_prior(state.get("rounds", []))),
         ("Cumulative sprint diff", git("diff", f"{base}..HEAD").stdout),
         ("Resolutions filed during the sprint", resolutions),
         ("work.md entries filed during the sprint", work_md),
-        ("PROCESS", _read_first(str(PLUGIN_ROOT / "PROCESS.md"))),
-        ("VALUES", _read_first(str(PLUGIN_ROOT / "VALUES.md"))),
-        ("Constraints", _read_first(".xp/constraints.md")),
-        ("System context", _read_first(".xp/system.md")),
+        ("PROCESS", _read(str(PLUGIN_ROOT / "PROCESS.md"))),
+        ("VALUES", _read(str(PLUGIN_ROOT / "VALUES.md"))),
+        ("Constraints", _read(".xp/constraints.md")),
+        ("System context", _read(".xp/system.md")),
     ]
     return "".join(f"## {title}\n\n{body}\n\n" for title, body in sections)
 
 
-def cmd_review(sprint_id: str, lens: str, dry_run: bool) -> int:
+def cmd_review(sprint_id: str, dry_run: bool) -> int:
+    """One review, four stages: N blind finders, batched verifiers, one fixer,
+    one blockers-only closing pass. The recorded round is the fixer's report
+    plus whatever the closing pass still blocks on."""
     import review
+    from bookkeep import render_sprint_prior
 
-    if lens not in LENSES:
-        return fail(f"refused: --lens must be one of {', '.join(LENSES)}, not {lens!r}")
     if git("status", "--porcelain").stdout.strip():
         return fail("refused: working tree is dirty — commit or stash first")
-    plan = Path(".xp/plan.md")
+    plan = plan_path()
     if not plan.exists():
-        return fail("refused: no .xp/plan.md here — is this an xp-managed repo?")
+        why = stale_plan() or f"no plan at {plan} — is this an xp-managed repo?"
+        return fail(f"refused: {why}")
     trunk = default_branch()
     if (branch := git("rev-parse", "--abbrev-ref", "HEAD").stdout.strip()) == trunk:
         return fail(
@@ -140,44 +151,107 @@ def cmd_review(sprint_id: str, lens: str, dry_run: bool) -> int:
             " against the default branch would be empty and certify nothing"
         )
     if not (cards := sprint_cards(plan.read_text(), sprint_id)):
-        return fail(f"refused: no `### Sprint {sprint_id}` section in .xp/plan.md")
+        return fail(f"refused: no `### Sprint {sprint_id}` section in {plan}")
+    found, err = stages.angles()
+    if err:
+        return fail(err)
+    cap, err = stages.batch_cap()
+    if err:
+        return fail(err)
+    charters, err = stages.charters()
+    if err:
+        return fail(err)
 
-    marker = sprint_marker(sprint_id, lens)
+    marker = sprint_marker(sprint_id)
     state = json.loads(marker.read_text()) if marker.exists() else {}
-    path = review.sprint_report_path(sprint_id, lens, len(state.get("rounds", [])) + 1)
-    if not dry_run:  # a preview must not delete the findings of a refused round
-        path.unlink(missing_ok=True)
-    # BOTH before the launch: the reviewer may not move the tree, and recording a
-    # post-run head would make anything it moved count as reviewed.
+    round_n = len(state.get("rounds", [])) + 1
+    # BOTH before the launch: recording a post-run head would make anything the
+    # stages moved count as reviewed by the stage that moved it.
     head = git("rev-parse", "HEAD").stdout.strip()
     base = git("merge-base", f"refs/heads/{trunk}", "HEAD").stdout.strip()
     digest_before = review.marker_digest(marker)
-    bundle = build_sprint_bundle(sprint_id, lens, cards, base, path)
-    result, err = review.run(bundle, Path.cwd(), dry_run, name="sprint-reviewer")
+
+    def leg(stage: str, key: str, extra: list) -> tuple[dict, str]:
+        path = review.sprint_report_path(sprint_id, key, round_n)
+        if not dry_run:  # a preview must not delete the findings of a refused round
+            path.unlink(missing_ok=True)
+        bundle = build_sprint_bundle(sprint_id, cards, base, path, charters[stage], extra)
+        result, err = review.run(bundle, Path.cwd(), dry_run, name=f"sprint {key}")
+        if dry_run or err:  # an EMPTY report, not a shapeless one: a preview walks
+            empty = {k: [] for k in review.REPORT_KEYS}
+            return empty, review.abort_text(head, err) if err else ""
+        print(result)  # before any refusal: the findings exist nowhere else yet
+        report, err = review.read_report(path)
+        return report, review.abort_text(head, err) if err else ""
+
+    prior = [("Findings from earlier rounds", render_sprint_prior(state.get("rounds", [])))]
+    candidates = []
+    for slug, prose in found:
+        report, err = leg("finder", f"find-{slug}", [("Your angle", prose), *prior])
+        if err:
+            return fail(err)
+        candidates += report["blocking"]
     if dry_run:
+        print("(then: batched verification, the fixer, and the blockers-only closing pass)")
         return 0
+
+    survivors = []
+    for n, batch in enumerate(stages.batches(candidates, cap), 1):
+        judged = [("The candidates you are judging", "\n".join(f"- {c}" for c in batch))]
+        report, err = leg("verifier", f"verify-{n}", judged)
+        if err:
+            return fail(err)
+        survivors += report["blocking"]
+    print(f"{len(candidates)} candidates, {len(survivors)} survived refutation")
+
+    fixed = {"fixed": [], "blocking": [], "noted": []}
+    if survivors:
+        told = [("The findings you must fix", "\n".join(f"- {s}" for s in survivors))]
+        fixed, err = leg("fixer", "fix", told)
+        if err:
+            return fail(err)
+    closing, err = leg("closer", "close", [("What the fixer reported", json.dumps(fixed))])
     if err:
-        return fail(review.abort_text(head, err))
-    print(result)  # before any refusal: the findings exist nowhere else yet
-    if motion := review.check_report_only(head, marker, digest_before):
+        return fail(err)
+
+    if motion := review.check_reviewer_motion(head, marker, digest_before, cards):
         return fail(motion)
-    report, err = review.read_report(path)
-    if err:
-        return fail(review.abort_text(head, err))
-    state.setdefault("rounds", []).append(report)
-    state["shown_sha"] = head
+    # No diff covers the plan now. Cross-lane BY CONSTRUCTION here, safe only
+    # because a sprint review runs when every member is [done]: a mid-sprint run
+    # would refuse and blame itself for a lane's flip.
+    if sprint_cards(plan.read_text(), sprint_id) != cards:
+        return fail(
+            review.abort_text(head, f"sprint {sprint_id}'s cards changed during the review")
+        )
+    # Refuted candidates are recorded nowhere: the filter is the point, and a
+    # report that carries what the verifiers killed is the long one Paul cut.
+    round_ = {
+        "fixed": fixed["fixed"],
+        "blocking": fixed["blocking"] + closing["blocking"],
+        "noted": fixed["noted"],
+    }
+    state.setdefault("rounds", []).append(round_)
+    state["reviewed_head"] = head
+    state["shown_sha"] = git("rev-parse", "HEAD").stdout.strip()
     marker.write_text(json.dumps(state))
-    print(f"{lens} round {len(state['rounds'])} recorded at {head[:8]}")
+    fix_report = review.sprint_report_path(sprint_id, "fix", round_n)
+    if diff := review.write_reviewer_diff(fix_report, head):
+        print(f"the reviewer changed the tree. Its commits and full diff: {diff}")
+    print(
+        f"round {round_n} recorded at {state['shown_sha'][:8]}:"
+        f" {len(round_['fixed'])} fixed, {len(round_['blocking'])} blocking"
+    )
     return 0
 
 
 def cmd_start(sprint_id: str) -> int:
-    plan = Path(".xp/plan.md")
+    plan = plan_path()
     if not plan.exists():
-        return fail("refused: no .xp/plan.md here — is this an xp-managed repo?")
+        why = stale_plan() or f"no plan at {plan} — is this an xp-managed repo?"
+        return fail(f"refused: {why}")
     members = sprint_stories(plan.read_text(), sprint_id)
     if not members:
-        return fail(f"refused: no `### Sprint {sprint_id}` section in .xp/plan.md")
+        return fail(f"refused: no `### Sprint {sprint_id}` section in {plan}")
     if unfinished := [m for m in members if "[done]" not in m]:
         return fail(
             "refused: sprint "
@@ -232,67 +306,79 @@ def cmd_start(sprint_id: str) -> int:
     return 0
 
 
-def _next_version() -> str:
-    """Minor bump off the latest TAG — a sprint release is a minor. The tag is the
-    source of truth: a plugin.json path is meaningless in a consuming project,
+def next_version(part: str = "minor", ref: str = "HEAD") -> str:
+    """Bump the latest TAG REACHABLE FROM `ref` — the tree that will be the release,
+    which for a branch cut before the last release is not HEAD.
+    The tag is the source of truth: a plugin.json path is meaningless in a consuming project,
     which is also why the scheme is checked: theirs is the input we don't pick.
     Returns "" when the latest tag is not semver, so the caller refuses."""
-    latest = git("describe", "--tags", "--abbrev=0", check=False).stdout.strip() or "v0.0.0"
+    latest = git("describe", "--tags", "--abbrev=0", ref, check=False).stdout.strip() or "v0.0.0"
     if not (m := re.fullmatch(r"v?(\d+)\.(\d+)(\..*)?", latest)):
         return ""
-    return f"v{m.group(1)}.{int(m.group(2)) + 1}.0"
+    if part != "patch":
+        return f"v{m.group(1)}.{int(m.group(2)) + 1}.0"
+    patch = re.match(r"\.(\d+)", m.group(3) or "")
+    return f"v{m.group(1)}.{m.group(2)}.{int(patch.group(1)) + 1 if patch else 1}"
 
 
-def _refuse_unbumpable() -> int:
-    latest = git("describe", "--tags", "--abbrev=0", check=False).stdout.strip()
+def refuse_unbumpable(ref: str = "HEAD") -> int:
+    latest = git("describe", "--tags", "--abbrev=0", ref, check=False).stdout.strip()
     return fail(f"refused: latest tag {latest!r} is not vMAJOR.MINOR — cannot bump it")
 
 
-# config.yml holds the tier cmd_land runs; constraints.md is the rubric both
-# reviewers applied. Editing either after a review changes the gate, not the retro.
-GATE_FILES = (".xp/config.yml", ".xp/constraints.md")
-
-
 def _is_retro_prose(path: str) -> bool:
-    return path.startswith(".xp/") and path not in GATE_FILES
+    return path.startswith(".xp/") and path not in overlap.GATE_FILES
 
 
 def _coverage_refusal(sprint_id: str, head: str) -> str:
-    """ "" if a round of EVERY lens covers HEAD, else why not. Bug c9b48a66.
+    """ "" if a recorded round covers HEAD, else why not. Bug c9b48a66.
 
     HEAD coverage only — deliberately no "trunk moved since the review" clause:
     that is trunk motion, a different guard's business, and copying it here from
     close.cmd_land is the wrong half of the symmetry.
     """
-    exempt = []
-    for lens in LENSES:
-        marker = sprint_marker(sprint_id, lens)
-        state = json.loads(marker.read_text()) if marker.exists() else {}
-        rerun = f"run `close.py sprint {sprint_id} review --lens {lens}`"
-        if not (rounds := state.get("rounds") or []):
-            return f"refused: no recorded {lens} review for sprint {sprint_id} — {rerun}"
-        if blocking := rounds[-1]["blocking"]:
-            return (
-                f"refused: the last {lens} round left blocking findings:\n  "
-                + "\n  ".join(blocking)
-                + "\nFix them, then review again — a flag cannot clear these"
-            )
-        if (shown := str(state.get("shown_sha"))) == head:
-            continue
-        # check=False: a rebased, reset or gc'd sha must refuse, never raise
-        # CalledProcessError from inside the gate that guards the release
-        moved = git("diff", "--name-only", shown, head, check=False)
-        if moved.returncode != 0:
-            return (
-                f"refused: the {lens} review recorded {shown[:8]}, which no longer exists — {rerun}"
-            )
-        if code := [f for f in moved.stdout.splitlines() if not _is_retro_prose(f)]:
-            return (
-                f"refused: the {lens} review did not cover HEAD — {', '.join(code)}"
-                f" changed since {shown[:8]}. {rerun}"
-            )
-        exempt += moved.stdout.splitlines()
-    if exempt:
+    marker = sprint_marker(sprint_id)
+    state = json.loads(marker.read_text()) if marker.exists() else {}
+    rerun = f"run `close.py sprint {sprint_id} review`"
+    if not (rounds := state.get("rounds") or []):
+        return f"refused: no recorded review for sprint {sprint_id} — {rerun}"
+    if blocking := rounds[-1]["blocking"]:
+        return (
+            "refused: the last round left blocking findings:\n  "
+            + "\n  ".join(blocking)
+            + "\nFix them, then review again — a flag cannot clear these"
+        )
+    if (shown := str(state.get("shown_sha"))) == head:
+        return ""
+    # check=False: a rebased, reset or gc'd sha must refuse, never raise
+    # CalledProcessError from inside the gate that guards the release
+    moved = git("diff", "--name-only", shown, head, check=False)
+    if moved.returncode != 0:
+        return f"refused: the review recorded {shown[:8]}, which no longer exists — {rerun}"
+    # BEFORE the authorship branch: an empty range reads there as "no strays"
+    if git("merge-base", "--is-ancestor", shown, head, check=False).returncode:
+        return (
+            f"refused: HEAD does not contain {shown[:8]}, the tree the round covered"
+            f" — the recorded round describes no tree that exists. {rerun}"
+        )
+    # AUTHORSHIP, the story leg's rule: the review leg's fixer commits inside the
+    # range its round covers, so a bare sha compare refuses the release over the
+    # fixes the review exists to produce. Never over a GATE_FILE, whatever signed
+    # it — review-time motion permits any `.xp/` path a sprint card declares.
+    strays = [
+        ln
+        for ln in git("log", "--format=%h|%an|%s", f"{shown}..{head}").stdout.splitlines()
+        if ln.split("|")[1] != REVIEWER_NAME
+    ]
+    if not strays and not any(f in overlap.GATE_FILES for f in moved.stdout.splitlines()):
+        print(f"the delta since {shown[:8]} is the reviewer's own fixes")
+        return ""
+    if code := [f for f in moved.stdout.splitlines() if not _is_retro_prose(f)]:
+        return (
+            f"refused: the review did not cover HEAD — {', '.join(code)}"
+            f" changed since {shown[:8]}. {rerun}"
+        )
+    if exempt := moved.stdout.splitlines():
         print(f"reviewed earlier; the delta since is .xp/ only: {', '.join(sorted(set(exempt)))}")
     return ""
 
@@ -300,31 +386,58 @@ def _coverage_refusal(sprint_id: str, head: str) -> str:
 def cmd_land(sprint_id: str, dry_run: bool) -> int:
     import shutil
 
+    import review
+
     if refusal := _coverage_refusal(sprint_id, git("rev-parse", "HEAD").stdout.strip()):
         return fail(refusal)
     branch = git("rev-parse", "--abbrev-ref", "HEAD").stdout.strip()
-    if not (version := _next_version()):
-        return _refuse_unbumpable()
+    if not (version := next_version()):
+        return refuse_unbumpable()
     cmds = [
         ["git", "push", "-u", "origin", branch],
         ["gh", "pr", "create", "--title", f"release {version}", "--body", f"Sprint {sprint_id}"],
     ]
+    ref = overlap.merge_source(default_branch(), "pr")
+    pending = overlap.unmerged(ref)
     if dry_run:
         for c in cmds:
             print(" ".join(c))
         print(f"(then: close.py sprint {sprint_id} post-merge — tag {version}, retire the key)")
         full = config_block_value("tests", "full") or "none configured"
         print(f"(and first: the full tier — {full})")
+        if pending:
+            print(f"...on a trial merge with {ref} — staged, then aborted either way")
         return 0
 
+    if dirty := git("status", "--porcelain").stdout.strip():
+        return fail(
+            "refused: the working tree is dirty — the tier must judge the tree"
+            " that ships, and these files are not in it:\n  " + dirty
+        )
     # start's tier is stale by construction: SKILL.md puts triage, the retro and the
     # release artifacts BETWEEN it and here, so the tree that ships is never the one
-    # that was measured (sprint-003: four commits, one of them this file). BELOW the
-    # dry-run return because a preview runs nothing, and ABOVE the gh check so a red
-    # tier is what you are told about, not a missing binary.
-    tier = config_block_value("tests", "full")
-    if tier and subprocess.run(tier, shell=True).returncode != 0:
-        return fail(f"refused: full tier red on the tree you are releasing: {tier}")
+    # that was measured (sprint-003: four commits, one of them this file). And what
+    # ships is this branch MERGED into the default branch, which no leg here builds —
+    # so the tier judges a trial merge, through the story leg's own gates(). BELOW
+    # the dry-run return because a preview runs nothing, and ABOVE the gh check so a
+    # red tier is what you are told about, not a missing binary.
+    if red := overlap.gates(ref, "", "full", pending):
+        return fail(red)
+    # Assent is given by RUNNING land, where close.cmd_land's rationale applies
+    state = json.loads(sprint_marker(sprint_id).read_text())
+    shown, rounds = state.get("shown_sha", ""), len(state.get("rounds", []))
+    rng = f"{state.get('reviewed_head', shown)}..{shown}"
+    if work := review.reviewer_range(state.get("reviewed_head", shown), shown):
+        print("the reviewer changed this tree — you are merging its work:")
+        print(work, end="")
+        print(f"full diff: {review.diff_path(review.sprint_report_path(sprint_id, 'fix', rounds))}")
+    if gates := [
+        f for f in git("diff", "--name-only", rng).stdout.splitlines() if f in overlap.GATE_FILES
+    ]:
+        print(f"among them a gate file, which no later check re-reads: {', '.join(gates)}")
+    if stale := review.reviewer_range(shown, git("rev-parse", "HEAD").stdout.strip()):
+        print("reviewer commits from a round that never recorded — nothing covers these:")
+        print(stale, end="")
     if not shutil.which("gh"):
         return fail(
             "refused: pr mode needs the gh CLI on PATH — install it, or open the PR by hand"
@@ -356,8 +469,8 @@ def cmd_post_merge(sprint_id: str) -> int:
             f"refused: {sprint_branch} is not merged into {trunk} — tagging here would"
             " name a commit containing none of the sprint. Merge the release PR first"
         )
-    if not (version := _next_version()):
-        return _refuse_unbumpable()
+    if not (version := next_version()):
+        return refuse_unbumpable()
     if git("rev-parse", "--verify", "-q", f"refs/tags/{version}", check=False).returncode == 0:
         return fail(f"refused: tag {version} already exists — nothing was changed")
     config = Path(".xp/config.yml")

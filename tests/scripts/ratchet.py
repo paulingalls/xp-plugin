@@ -15,8 +15,8 @@ import sys
 import tokenize
 from pathlib import Path
 
-SPAWN = 1950
-CLOSE = 1300
+SPAWN = 1510
+CLOSE = 1740
 HOOKS = 1000
 MISC = 750
 TOTAL = 5000
@@ -26,6 +26,14 @@ HOOKS_NAMES = {"hooks", "session_start", "stop_gate", "bash_status"}
 SPAWN_NAMES = {"spawn", "teammate_tee"}
 
 DENSITY_THRESHOLD = 0.20
+
+# Tests are production code (constraint 8, amended at sprint-004 open): the
+# 500-line hard cap binds tests/ exactly as it binds the shipped plugin.
+# Pins are the CURRENT sizes of files caught over — they may only FALL, and a
+# pin whose file is back under the cap reds until it is deleted. Empty since
+# the sprint-004 split; the mechanism stays for the next file caught over.
+FILE_CAP = 500
+GRANDFATHER = {}
 
 
 class NoScriptsFound(Exception):
@@ -103,11 +111,25 @@ def measure(root):
             worst = (ratio, path)
 
     density = total_commented / total_lines if total_lines else 0
-    return totals, density, worst
+
+    tests_dir = root / "tests"
+    test_paths = sorted(p for p in tests_dir.rglob("*.py") if "__pycache__" not in p.parts)
+    if not test_paths:
+        raise NoScriptsFound(tests_dir)  # constraint 8 binds tests; zero of them is not a pass
+    file_findings = []
+    for path in paths + test_paths:
+        rel = path.relative_to(root).as_posix()
+        n = count_lines(path)
+        cap = GRANDFATHER.get(rel, FILE_CAP)
+        if n > cap:
+            file_findings.append(("over", rel, n, cap))
+        elif rel in GRANDFATHER and n <= FILE_CAP:
+            file_findings.append(("stale", rel, n, cap))
+    return totals, density, worst, file_findings
 
 
 def report(root):
-    totals, density, worst = measure(root)
+    totals, density, worst, file_findings = measure(root)
     budgets = {"spawn": SPAWN, "close": CLOSE, "hooks": HOOKS, "misc": MISC}
     lines = ["component   measured   cap"]
     violations = []
@@ -118,6 +140,9 @@ def report(root):
         if measured > cap:
             violations.append(
                 f"BUDGET EXCEEDED: {name} measured {measured}, cap {cap}, over by {measured - cap}"
+                "\n  fix by displacing equal weight in this component; or move budget"
+                " between components (here + DESIGN §9, zero-sum, the human's call);"
+                " or cut a §9 sacrificial feature — never a gate, never a test"
             )
 
     worst_path = worst[1]
@@ -128,7 +153,23 @@ def report(root):
         violations.append(
             f"DENSITY EXCEEDED: comments+docstrings {density:.2%} of shipped Python, "
             f"cap {DENSITY_THRESHOLD:.2%}, worst file {worst_path}"
+            "\n  before deleting words: a comment carrying a checkable claim becomes a"
+            " test (it leaves the ratio and rots loudly); one explaining WHAT becomes a"
+            " rename; one restating the code just goes. Keep the why (constraint 9)"
         )
+
+    for kind, rel, n, cap in file_findings:
+        if kind == "over":
+            violations.append(
+                f"FILE CAP EXCEEDED: {rel} measured {n}, cap {cap}, over by {n - cap}"
+                "\n  over-cap means extract, not scroll (constraint 8): shed a cohesive"
+                " leaf module — component_for charges close/ and spawn leaf files to"
+                " their component — and never delete tests to fit"
+            )
+        else:
+            violations.append(
+                f"GRANDFATHER STALE: {rel} measures {n} <= {FILE_CAP} — delete its pin"
+            )
 
     return "\n".join(lines), violations
 

@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """Bash-outcome telemetry for the Stop gate — the one sanctioned exception (DESIGN §4).
 
-Payload shapes are from LIVE captures, not docs: a failing Bash command fires
-PostToolUseFailure with a top-level `error: "Exit code N\\n..."` and no
-tool_response; a PostToolUse(Bash) event itself implies success (its
-tool_response has no exit_code). Registered under BOTH events.
+Payload shapes are from LIVE captures, not docs. Claude routes a failing Bash
+command to PostToolUseFailure (`error: "Exit code N\\n..."`), so a PostToolUse
+carrying its {stdout,stderr,...} dict PROVES success. Codex 0.147.0 fires
+PostToolUse for failures too and no field of that payload carries the outcome —
+so green is written only where it is PROVEN, never inferred from an event.
 
 Matching: the command must contain a shell segment that STARTS WITH an
 in-progress story's config-known Verify string — a mention (commit message,
@@ -16,19 +17,19 @@ shipped a pair — and a verify-keyed marker cannot tell whose status it holds.
 import json
 import re
 import sys
+import traceback
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 from close import story_card, verify_commands
-from work import chdir_repo_root, data_root
+from work import chdir_repo_root, data_root, plan_path
 
 
 def in_progress_stories() -> list[tuple[str, str]]:
     """(story_id, verify) for every [in-progress] story that declares a Verify."""
-    plan_path = Path(".xp/plan.md")
-    if not plan_path.exists():
+    if not (path := plan_path()).exists():
         return []
-    plan = plan_path.read_text(errors="replace")
+    plan = path.read_text(errors="replace")
     stories = []
     for ln in plan.splitlines():
         if ln.startswith("#### ") and "[in-progress]" in ln:
@@ -81,6 +82,8 @@ def main() -> int:
             return 0  # permission denial / interruption — not a test outcome
         red = True
     elif event == "PostToolUse":
+        if not isinstance(data.get("tool_response"), dict):
+            return 0
         red = False  # the command succeeded; entailment for the verify checked below
     else:
         return 0
@@ -97,6 +100,8 @@ def main() -> int:
 
 if __name__ == "__main__":
     try:
-        sys.exit(main())
-    except (Exception, SystemExit):
-        sys.exit(0)
+        rc = main()
+    except Exception:  # advisory: never break a session — but never in silence,
+        traceback.print_exc(file=sys.stderr)  # or a dead hook reads as a passing one
+        rc = 0
+    sys.exit(rc)

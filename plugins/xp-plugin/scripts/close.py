@@ -35,7 +35,15 @@ from bookkeep import (
     render_noted,
     render_prior_rounds,
 )
-from work import chdir_repo_root, config_block_value, data_root, work_entries_since
+from work import (
+    chdir_repo_root,
+    config_block_value,
+    data_root,
+    edit_plan,
+    plan_path,
+    stale_plan,
+    work_entries_since,
+)
 
 
 def fail(msg: str) -> "int":
@@ -52,12 +60,12 @@ def story_card(plan: str, story_id: str) -> tuple[str, str]:
     lines = plan.splitlines(keepends=True)
     start = next((i for i, ln in enumerate(lines) if ln.startswith(f"#### {story_id} ")), None)
     if start is None:
-        raise KeyError(f"{story_id} not found in .xp/plan.md")
+        raise KeyError(f"{story_id} not found in the plan")
     rest = range(start + 1, len(lines))
-    end = next((i for i in rest if lines[i].startswith("#### ")), len(lines))
+    end = next((i for i in rest if lines[i].startswith(("# ", "## ", "### ", "#### "))), len(lines))
     card = "".join(lines[start:end])
     if "[" not in lines[start]:
-        raise KeyError(f"{story_id} header has no [status] bracket in .xp/plan.md")
+        raise KeyError(f"{story_id} header has no [status] bracket in the plan")
     status = lines[start].rsplit("[", 1)[1].rstrip().rstrip("]")
     return card, status
 
@@ -123,9 +131,9 @@ def origin_trunk_sha(trunk: str) -> str | None:
 
 
 def marker_path(story_id: str) -> Path:
-    d = data_root() / "markers"
-    d.mkdir(parents=True, exist_ok=True)
-    return d / f"{story_id}.close.json"
+    p = data_root() / "markers" / f"{story_id}.close.json"
+    p.parent.mkdir(parents=True, exist_ok=True)
+    return p
 
 
 def build_bundle(card: str, base: str, report: Path, prior: str = "") -> str:
@@ -136,35 +144,37 @@ def build_bundle(card: str, base: str, report: Path, prior: str = "") -> str:
         ("Your charter", review.charter()),
         # One greppable line: the charter explains the shape, this is the address.
         ("Your report", f"REPORT_PATH: {report}"),
-        ("Story card", card),
-        ("Earlier rounds of THIS story", prior or "none — you are round 1"),
+        ("Story card", card or "none — this is a free branch; judge the diff itself"),
+        ("Earlier rounds of THIS review", prior or "none — you are round 1"),
         ("Cumulative diff", git("diff", f"{base}..HEAD").stdout),
         ("work.md entries filed during the story", work_entries_since(base_epoch) or "none"),
-        ("PROCESS", _read_first(str(review.PLUGIN_ROOT / "PROCESS.md"))),
-        ("VALUES", _read_first(str(Path(__file__).parent.parent / "VALUES.md"))),
-        ("Constraints", _read_first(".xp/constraints.md")),
-        ("System context", _read_first(".xp/system.md")),
+        ("PROCESS", _read(str(review.PLUGIN_ROOT / "PROCESS.md"))),
+        ("VALUES", _read(str(Path(__file__).parent.parent / "VALUES.md"))),
+        ("Constraints", _read(".xp/constraints.md")),
+        ("System context", _read(".xp/system.md")),
     ]
     return "".join(f"## {title}\n\n{body}\n\n" for title, body in sections)
 
 
-def _preflight(story_id: str, action: str) -> tuple[str, str, str]:
-    """(card, trunk, error) — the checks both legs share."""
+def _preflight(story_id: str, action: str, free: bool = False) -> tuple[str, str, str]:
+    """(card, trunk, error) — the checks every review leg shares."""
     if git("status", "--porcelain").stdout.strip():
         return "", "", "refused: working tree is dirty — commit or stash first"
-    if not Path(".xp/plan.md").exists():
-        return "", "", "refused: no .xp/plan.md here — is this an xp-managed repo?"
-    try:
-        card, status = story_card(Path(".xp/plan.md").read_text(), story_id)
-    except KeyError as e:
-        return "", "", f"refused: {e.args[0]}"
-    if status != "in-progress":
-        return "", "", f"refused: {story_id} is [{status}], {action} requires [in-progress]"
-    try:  # 3e2ad94b: an annotated Verify line reached /bin/sh at LAND, post-review
-        shlex.split(verify_commands(card))
-    except ValueError as e:
-        return "", "", f"refused: {story_id}'s Verify: line is not runnable ({e})"
-    trunk = integration_target()
+    card, trunk = "", default_branch() if free else integration_target()
+    if not free:
+        if not plan_path().exists():
+            why = stale_plan() or f"no plan at {plan_path()} — is this an xp-managed repo?"
+            return "", "", f"refused: {why}"
+        try:
+            card, status = story_card(plan_path().read_text(), story_id)
+        except KeyError as e:
+            return "", "", f"refused: {e.args[0]}"
+        if status != "in-progress":
+            return "", "", f"refused: {story_id} is [{status}], {action} requires [in-progress]"
+        try:  # 3e2ad94b: an annotated Verify line reached /bin/sh at LAND, post-review
+            shlex.split(verify_commands(card))
+        except ValueError as e:
+            return "", "", f"refused: {story_id}'s Verify: line is not runnable ({e})"
     branch = git("rev-parse", "--abbrev-ref", "HEAD").stdout.strip()
     if branch in (trunk, default_branch()):
         return (
@@ -176,27 +186,12 @@ def _preflight(story_id: str, action: str) -> tuple[str, str, str]:
     return card, trunk, ""
 
 
-def cmd_review(story_id: str, dry_run: bool = False) -> int:
+def cmd_review(story_id: str, dry_run: bool = False, free: bool = False) -> int:
     import review
 
-    card, trunk, err = _preflight(story_id, "review")
+    card, trunk, err = _preflight(story_id, "review", free)
     if err:
         return fail(err)
-    # merge-base does NOT move when trunk advances, so a bare re-review re-baselines
-    # this guard while the reviewer sees nothing new. BOTH refs: land guards whichever
-    # one its mode integrates — local mode the local trunk, pr mode origin's.
-    tips = (
-        (trunk, git("rev-parse", f"refs/heads/{trunk}").stdout.strip()),
-        (f"origin/{trunk}", origin_trunk_sha(trunk)),
-    )
-    for label, tip in tips:
-        if tip and git("merge-base", "--is-ancestor", tip, "HEAD", check=False).returncode:
-            return fail(
-                f"refused: {label} has moved ahead of this branch's fork point."
-                f" Run `git merge {label}` here first — that moves the merge base, so"
-                " the review covers what land would actually merge. Re-running review"
-                " without it buys no coverage"
-            )
     marker = marker_path(story_id)
     state = json.loads(marker.read_text()) if marker.exists() else {}
     path = review.report_path(story_id, len(state.get("rounds", [])) + 1)
@@ -214,7 +209,7 @@ def cmd_review(story_id: str, dry_run: bool = False) -> int:
     # BEFORE any refusal below: a report the pipeline rejects still cost a full
     # review, and its findings exist nowhere else.
     print(result)
-    motion = review.check_reviewer_motion(head, marker, digest_before, card)
+    motion = review.check_reviewer_motion(head, marker, digest_before, card, story_id)
     if motion:
         return fail(motion)
     report, err = review.read_report(path)
@@ -228,23 +223,19 @@ def cmd_review(story_id: str, dry_run: bool = False) -> int:
     # AFTER the leg: the reviewer's own fixes are part of what the lead is shown.
     state["shown_sha"] = git("rev-parse", "HEAD").stdout.strip()
     state["review_base"] = base
-    # the tips READ BEFORE the launch: a teammate pushing during the review window
-    # would otherwise be recorded as the reviewed state, and land would compare
-    # equal and merge what no reviewer saw.
-    state["trunk_sha"], state["origin_trunk_sha"] = tips[0][1], tips[1][1]
     marker.write_text(json.dumps(state))
     return 0
 
 
-def _read_first(*candidates: str) -> str:
-    for c in candidates:
-        p = Path(c)
-        if p.exists():
-            return p.read_text()
-    return f"(missing: {candidates[0]})"
+def _read(path: str) -> str:
+    p = Path(path)
+    return p.read_text() if p.exists() else f"(missing: {path})"
 
 
 def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
+    sys.path[:0] = [str(Path(__file__).parent / d) for d in ("close", "spawn")]
+    import overlap
+    import ready
     import review
 
     if git("status", "--porcelain").stdout.strip():
@@ -260,39 +251,14 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
             " the PR to main happens at sprint close"
         )
     head = git("rev-parse", "HEAD").stdout.strip()
-    # land NEVER spawns: a merge command that reviews owns the tree for minutes,
-    # is never idempotent, and makes rounds something inflicted rather than chosen.
-    if head != state.get("shown_sha"):
-        return fail(
-            f"refused: HEAD moved since the review you were shown"
-            f" ({str(state.get('shown_sha'))[:8]}..{head[:8]})."
-            f" Run `close.py story {story_id} review`, then land again"
-        )
     base = git("merge-base", f"refs/heads/{trunk}", "HEAD").stdout.strip()
-    if state.get("review_base") != base:
-        return fail(
-            f"refused: the recorded round did not cover this tree — it was based on"
-            f" {str(state.get('review_base'))[:8]}, today's merge base is {base[:8]}."
-            f" Run `close.py story {story_id} review`"
-        )
+    if err := overlap.land_refusal(state, f"story {story_id}", base):
+        return fail(err)
     rounds = state["rounds"]
-    blocking = rounds[-1]["blocking"]
-    if blocking:
-        return fail(
-            "refused: the last review round left blocking findings:\n  "
-            + "\n  ".join(blocking)
-            + "\nFix them (or review again once fixed) — a flag cannot clear these"
-        )
-    moved = (
-        origin_trunk_sha(trunk) != state.get("origin_trunk_sha")
-        if merge_mode == "pr"
-        else git("rev-parse", f"refs/heads/{trunk}").stdout.strip() != state.get("trunk_sha")
-    )
-    if moved:
-        return fail(
-            f"refused: {trunk} moved since review — the merged tree would differ from"
-            " what was reviewed; run review again to re-baseline"
-        )
+    ref = overlap.merge_source(trunk, merge_mode)
+    if files := overlap.overlapping(ref, base):
+        return fail(overlap.collision(ref, files))
+    pending = overlap.unmerged(ref)
 
     # Structural, and checked HERE rather than beside the merge (5d7388fc): it is a
     # `git worktree list` compare, so paying ~2min of Verify and tier to reach it was
@@ -301,11 +267,21 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
     held, err = held_trunk_tree(trunk)
     if err:
         return fail(err)
-    plan = Path(".xp/plan.md").read_text()
+    if not plan_path().exists():
+        return fail(f"refused: {stale_plan() or f'no plan at {plan_path()}'}")
     try:
-        card, _ = story_card(plan, story_id)
+        card, status = story_card(plan_path().read_text(), story_id)
     except KeyError as e:
         return fail(f"refused: {e.args[0]}")
+    # cmd_review's _preflight has always checked this; land did not, and its [done]
+    # flip below matches nothing from any other status — so land merged and then
+    # left the card reading whatever it read before, silently.
+    if status != "in-progress":
+        return fail(f"refused: {story_id} is [{status}], land requires [in-progress]")
+    # The plan-review credential, unread since spawn: the plan left the repo, so no
+    # diff shows a card edit, and the `Verify:` line below is SHELL-EXECUTED.
+    if drift := ready.drift(story_id, card):
+        return fail(drift)
     verify = verify_commands(card)
     if not verify:
         return fail(f"refused: {story_id} has no Verify: line — an unverifiable story cannot close")
@@ -324,26 +300,22 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
         ["git", "checkout", "-q", trunk],
         ["git", "merge", "--ff-only", f"origin/{trunk}"],
     ]
-    pr_bookkeep = [
-        ["git", "commit", "-qm", f"{story_id} done"],
-        ["git", "push", "origin", trunk],
-    ]
+    # the push stays: pr_sync's --ff-only is a no-op when local trunk is AHEAD,
+    # so without it a lead's trunk commits never reach origin
+    pr_bookkeep = [["git", "push", "origin", trunk]]
     pr_steps = (pr_cmds, pr_sync, pr_bookkeep)
     if dry_run:  # pure preview: nothing runs, nothing changes, marker survives
-        print(render_land_preview(verify, tier, merge_mode, branch, trunk, pr_steps), end="")
+        print(
+            render_land_preview(verify, tier, merge_mode, branch, trunk, pr_steps, pending),
+            end="",
+        )
         return 0
-    if subprocess.run(verify, shell=True).returncode != 0:
-        return fail(f"refused: story Verify red: {verify}")
-    if tier and subprocess.run(tier, shell=True).returncode != 0:
-        return fail(f"refused: story test tier red: {tier}")
+    if red := overlap.gates(ref, verify, "story", pending):
+        return fail(red)
 
     # Assent is given by RUNNING land, so what it rests on must be readable HERE —
     # not only in a review leg whose stdout may be long gone.
-    reviewer_work = review.reviewer_range(state.get("reviewed_head", head))
-    if reviewer_work:
-        print("the reviewer changed this tree — you are merging its work:")
-        print(reviewer_work, end="")
-        print(f"full diff: {review.diff_path(review.report_path(story_id, len(rounds)))}")
+    review.disclose(state, head, review.diff_path(review.report_path(story_id, len(rounds))))
 
     # `gh pr create|merge` take no --head: gh reads the head branch off the cwd
     # repo, so it must run in the STORY tree. The chdir happens per-arm below,
@@ -378,24 +350,15 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
     print(render_noted(rounds), end="")
 
     failed = []
-    orphaning = False  # only a failed amend leaves merge_sha on no ref
     if merge_mode == "pr":
         for c in pr_sync:
             if subprocess.run(c, capture_output=True, text=True).returncode != 0:
                 failed.append(" ".join(c))
         merge_sha = git("rev-parse", f"refs/remotes/origin/{trunk}").stdout.strip()
-    merged_plan = Path(".xp/plan.md").read_text()  # POST-merge: keeps trunk-side changes
-    Path(".xp/plan.md").write_text(_flip_status(merged_plan, story_id))
-    git("add", ".xp/plan.md")
+    # locked: a sibling lane may be flipping its own card right now
+    if not edit_plan(lambda text: _flip_status(text, story_id)):
+        failed.append(f"flip {story_id} to [done] in {plan_path()}")
     if merge_mode == "local":
-        # check=False: the amend re-runs the commit wall on a tree that just
-        # gained a merge, so it CAN fail — and raising there left the merge
-        # landed with the flip abandoned.
-        orphaning = git("commit", "--amend", "--no-edit", "-q", check=False).returncode != 0
-        if orphaning:
-            failed.append("git commit --amend --no-edit  (merge landed WITHOUT the [done] flip)")
-        # merge_sha AFTER the amend: the pre-amend commit is on no ref and stops
-        # resolving at gc, so a record holding it points at nothing.
         merge_sha = git("rev-parse", "HEAD").stdout.strip()
         if bool(git("remote", check=False).stdout.strip()) and (
             git("push", "origin", trunk, check=False).returncode != 0
@@ -408,13 +371,10 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
     if held:
         failed += remove_story_worktree(story_tree)
     failed += delete_story_branch(branch)
-    if not orphaning:
-        # Record unless merge_sha is about to be orphaned. Every failure EXCEPT a
-        # failed amend leaves it valid and on a ref, and by here the card reads
-        # [done] — withholding the record then makes the close unrecordable.
-        delete_story_markers(story_id)
-        log_close(story_id, card, rounds, merge_sha)
-        marker.unlink()
+    # merge_sha is the merge commit, always on a ref now that no amend rewrites it
+    delete_story_markers(story_id)
+    log_close(story_id, card, rounds, merge_sha)
+    marker.unlink()
     if failed:
         # The merge HAS landed, so this is not a refusal (2) — but exiting 0
         # would make a hand-step invisible, which M1's done-when forbids.
@@ -430,12 +390,9 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
 
 
 def _flip_status(plan: str, story_id: str) -> str:
-    out = []
-    for ln in plan.splitlines(keepends=True):
-        if ln.startswith(f"#### {story_id} ") and "[in-progress]" in ln:
-            ln = ln.replace("[in-progress]", "[done]")
-        out.append(ln)
-    return "".join(out)
+    from work import flip_status
+
+    return flip_status(plan, story_id, "in-progress", "done")
 
 
 def main() -> int:
@@ -444,10 +401,11 @@ def main() -> int:
     sp = sub.add_parser("sprint")
     sp.add_argument("sprint_id")
     sp.add_argument("action", choices=["start", "review", "land", "post-merge"])
-    # no choices=[...]: sprint_close.LENSES is the one copy, and close.py cannot
-    # import it at module scope — sprint_close imports from here
-    sp.add_argument("--lens", default="")
     sp.add_argument("--dry-run", action="store_true")
+    f = sub.add_parser("free")
+    f.add_argument("slug")
+    f.add_argument("action", choices=["start", "review", "land"])
+    f.add_argument("--dry-run", action="store_true")
     s = sub.add_parser("story")
     s.add_argument("story_id")
     s.add_argument("action", choices=["review", "land"])
@@ -471,13 +429,22 @@ def main() -> int:
         )
     if not chdir_repo_root():
         return fail("refused: not inside a git repository")
+    if a.kind == "free":
+        sys.path.insert(0, str(Path(__file__).parent / "close"))
+        import free
+
+        if a.action == "start":
+            return free.cmd_start(a.slug)
+        if a.action == "review":
+            return free.cmd_review(a.slug, a.dry_run)
+        return free.cmd_land(a.slug, a.dry_run)
     if a.kind == "sprint":
         import sprint_close
 
         if a.action == "start":
             return sprint_close.cmd_start(a.sprint_id)
         if a.action == "review":
-            return sprint_close.cmd_review(a.sprint_id, a.lens, a.dry_run)
+            return sprint_close.cmd_review(a.sprint_id, a.dry_run)
         if a.action == "land":
             return sprint_close.cmd_land(a.sprint_id, a.dry_run)
         return sprint_close.cmd_post_merge(a.sprint_id)

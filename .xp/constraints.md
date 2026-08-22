@@ -19,8 +19,11 @@ adding over the cap requires retiring one (the plan reviewer enforces).
 6. **Telemetry is never a record.** Test/lint failures are re-measured, not filed.
 7. **Judgment only at LLM-present moments.** Hooks are deterministic Python; nothing
    in a hook may require summarizing, deciding, or interpreting.
-8. **Small files: target 300 lines, hard cap 500.** Large files eat agent context
-   on every read; over-cap means extract, not scroll.
+8. **Small files: target 300 lines, hard cap 500 — tests included.** Tests are
+   production code: the cap and the comment rubric bind tests/ exactly as they
+   bind shipped code (if a test is not worth production discipline it is not
+   worth writing). Large files eat agent context on every read; over-cap means
+   extract, not scroll.
 9. **Comments exist only for what neither a test nor a name can carry** — the why,
    an external constraint, a rejected design. Restates the code → delete. Narrates
    history → delete (git holds it). Checkable claim → convert to a test, where it

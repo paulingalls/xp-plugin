@@ -45,3 +45,11 @@ describing either ships a second copy that only drifts. Negative space — what
 deliberately does not exist — is the one description that earns its words.
 This only works if the script speaks: every refusal names its next action, and
 every CLI answers `--help` without doing anything.
+
+## Mid-sprint cap moves (this repo's convention, learned at Sprint 4)
+
+A rebalance edit (ratchet.py + DESIGN §9) lands on trunk BEFORE any review
+round it must cover and AFTER any land in flight — the wall runs the tree's
+own ratchet, so an in-flight branch blocked by old caps applies the identical
+edit in its own tree (twin edits merge clean). Measured: notes 86575dfa,
+story-023's second round.

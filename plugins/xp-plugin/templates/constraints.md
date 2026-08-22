@@ -5,15 +5,15 @@ the cap requires retiring one. Reviewers enforce these — cite the item.
 
 1. **Fault-inject every guard.** A check that cannot red against its target
    defect is vacuous and worse than no check — it certifies.
-2. **Small files: target 300 lines, hard cap 500.** Large files eat agent
-   context on every read; over-cap means extract, not scroll.
+2. **Small files: target 300 lines, hard cap 500 — tests included** (item 6 is
+   not just a review bar). Large files eat agent context on every read;
+   over-cap means extract, not scroll.
 3. **Comments exist only for what neither a test nor a name can carry** — the
    why, an external constraint, a rejected design. Restates the code → delete.
    Narrates history → delete (git holds it). Checkable claim → make it a test.
 4. **Fail fast, fail loud** — raise instead of returning None/empty when
    something is wrong; no fallback that masks a defect.
-5. **Name things well** — a comment explaining WHAT is a renaming opportunity.
-6. **Test at boundaries** — validate at system edges (input, APIs, I/O); trust
+5. **Test at boundaries** — validate at system edges (input, APIs, I/O); trust
    internal logic.
-7. **Tests are production code** — same review bar, never skipped for
+6. **Tests are production code** — same review bar, never skipped for
    test-only changes.

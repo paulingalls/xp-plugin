@@ -6,6 +6,7 @@ only seam, and close.py runs against the 500-line hard cap (constraints.md #8).
 """
 
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -52,39 +53,19 @@ def report_path(story_id: str, round_n: int) -> Path:
     would certify a round that produced nothing. The caller unlinks first."""
     from work import data_root
 
-    d = data_root() / "reports"
-    d.mkdir(parents=True, exist_ok=True)
-    return d / f"{story_id}.round-{round_n}.json"
+    p = data_root() / "reports" / f"{story_id}.round-{round_n}.json"
+    p.parent.mkdir(parents=True, exist_ok=True)
+    return p
 
 
-def sprint_report_path(sprint_id: str, lens: str, round_n: int) -> Path:
+def sprint_report_path(sprint_id: str, stage: str, round_n: int) -> Path:
     """Its own DIRECTORY, not a prefix: story ids are free text, so any separator
     a sprint key uses is one a story can spell (constraints.md #10)."""
     from work import data_root
 
     d = data_root() / "reports" / "sprint"
     d.mkdir(parents=True, exist_ok=True)
-    return d / f"{sprint_id}.{lens}.round-{round_n}.json"
-
-
-def check_report_only(shown_head: str, marker: Path, digest_before: str) -> str:
-    """Refusal text, or "" if the reviewer only reported. NOT check_reviewer_motion,
-    which PERMITS commits the reviewer authored: this leg permits no motion."""
-    from close import git
-
-    if git("rev-parse", "HEAD").stdout.strip() != shown_head:
-        why = "HEAD moved during the review — this leg is report-only"
-    elif dirty := git("status", "--porcelain").stdout.strip():
-        why = "the tree is dirty at the end of the review; uncommitted:\n  " + dirty
-    elif marker_digest(marker) != digest_before:
-        why = (
-            f"the close marker changed during the review ({marker}) — it is what land"
-            " reads for rounds and blocking findings, it is outside the repo, no diff"
-            " shows it, and a review may not move its own gate"
-        )
-    else:
-        return ""
-    return abort_text(shown_head, why)
+    return d / f"{sprint_id}.{stage}.round-{round_n}.json"
 
 
 def _cap(items: list, path: Path) -> list:
@@ -145,7 +126,7 @@ def abort_text(reviewed_head: str, why: str) -> str:
 
 
 def check_reviewer_motion(
-    reviewed_head: str, marker: Path, digest_before: str, card: str = ""
+    reviewed_head: str, marker: Path, digest_before: str, card: str = "", story_id: str = ""
 ) -> str:
     """The complete refusal text, or "" if the reviewer behaved.
 
@@ -169,6 +150,24 @@ def check_reviewer_motion(
             " land reads for blocking findings, it is outside the repo, and no diff"
             " shows it — a review may not move its own gate"
         )
+    # `git diff` below cannot see the plan any more. Scoped to this story's OWN
+    # card, never the whole file: it is shared, so a whole-file digest would let a
+    # sibling lane's flip refuse THIS review (constraint 10). Cross-lane rewrites
+    # stay uncaught by mechanism — note 1bcb794f.
+    if story_id and card_now(story_id) != card:
+        return refuse(
+            f"{story_id}'s own card changed during the review. The plan lives outside"
+            " the repo, so no diff shows it, and a review may not rewrite the card it"
+            " is being reviewed under"
+        )
+    # Ancestry-BLIND, and every check below reads that range: a reviewer that RESET
+    # past reviewed_head leaves only its own commits in it, so authorship passes over
+    # the lead's deleted work — and shown_sha is read too late to see it (012b N2).
+    if git("merge-base", "--is-ancestor", reviewed_head, "HEAD", check=False).returncode:
+        return refuse(
+            "HEAD no longer contains the tree you were shown — the review REWROTE"
+            " history, so commits it was handed are not in what would merge"
+        )
     rng = f"{reviewed_head}..HEAD"
     strays = [
         ln
@@ -184,12 +183,14 @@ def check_reviewer_motion(
     # SCOPE, not a deny-list: a whole-directory ban wedged story-010, whose card
     # named system.md; a three-path deny-list left system.md writable by the agent
     # under review, and spawn EXECUTES its `Worktree bootstrap:` line via shell.
-    declared = {
-        f.strip()
-        for ln in card.splitlines()
-        if ln.startswith("Files:")
-        for f in ln.removeprefix("Files:").split(",")
-    }
+    declared, in_files = set(), False
+    for ln in card.splitlines():
+        if ln.startswith("Files:"):
+            in_files, ln = True, ln.removeprefix("Files:")
+        elif in_files and re.match(r"[A-Za-z][A-Za-z ]*:", ln):
+            in_files = False
+        if in_files:
+            declared |= {f.strip() for f in ln.split(",") if f.strip()}
     if bad := [f for f in touched if f.startswith(".xp/") and f not in declared]:
         return refuse(
             f"the reviewer changed {', '.join(bad)} — it may fix code, and only the"
@@ -198,16 +199,42 @@ def check_reviewer_motion(
     return ""
 
 
-def reviewer_range(reviewed_head: str) -> str:
-    """`git log` + `--stat` over what the reviewer committed, or "" if it committed
-    nothing. The lead reads this to accept the fixes; land re-prints it because
+def card_now(story_id: str) -> str:
+    """The story's card as the plan holds it now, or "" if unreadable."""
+    from close import story_card
+    from work import plan_path
+
+    try:
+        return story_card(plan_path().read_text(), story_id)[0]
+    except (KeyError, OSError):
+        return ""
+
+
+def reviewer_range(start: str, end: str) -> str:
+    """`git log` + `--stat` over one range, or "" if it is empty. TWO ranges now:
+    HEAD may move past the review, so a single reviewed_head..HEAD would put the
+    lead's own commits under the reviewer's name. land re-prints both because
     assent is given by RUNNING land, not by having read an earlier command."""
     from close import git
 
-    if git("rev-parse", "HEAD").stdout.strip() == reviewed_head:
+    if start == end:
         return ""
-    rng = f"{reviewed_head}..HEAD"
+    rng = f"{start}..{end}"
     return git("log", "--format=%h %an %s", rng).stdout + git("diff", "--stat", rng).stdout
+
+
+def disclose(state: dict, head: str, diff: Path | None = None) -> None:
+    """Both ranges the lead assents to by RUNNING land. Printing only one of them
+    puts the lead's own commits under the reviewer's name."""
+    shown = state.get("shown_sha", head)
+    if work := reviewer_range(state.get("reviewed_head", head), shown):
+        print("the reviewer changed this tree — you are merging its work:")
+        print(work, end="")
+        if diff:
+            print(f"full diff: {diff}")
+    if late := reviewer_range(shown, head):
+        print("you committed after the review you were shown — merging unreviewed:")
+        print(late, end="")
 
 
 def diff_path(report: Path) -> Path:
@@ -221,7 +248,7 @@ def write_reviewer_diff(report: Path, reviewed_head: str) -> Path | None:
     the only place the assent artifact lived."""
     from close import git
 
-    summary = reviewer_range(reviewed_head)
+    summary = reviewer_range(reviewed_head, git("rev-parse", "HEAD").stdout.strip())
     if not summary:
         return None
     diff = diff_path(report)
@@ -237,14 +264,16 @@ def run(
 
     Function-local imports: spawn -> close -> review would close a cycle.
     """
-    from spawn import claude_argv, resolve_role, run_agent
+    from spawn import agent_argv, missing_harness, resolve_role, run_agent
 
-    _harness, model, effort = resolve_role("reviewer")
-    argv = claude_argv(model, effort, "json")
+    harness, model, effort = resolve_role("reviewer")
+    argv = agent_argv(harness, model, effort, "json")
     if dry_run:
         print("would launch: " + " ".join(argv))
         print(prompt)
         return "", ""
+    if missing := missing_harness(harness):
+        return "", missing
     # capture + --output-format json means total silence for the whole run;
     # without this line a multi-minute review is indistinguishable from a hang.
     print(f"spawning {name} ({model}) — no output until it finishes", file=sys.stderr)
@@ -260,6 +289,16 @@ def run(
     if proc.returncode != 0:
         detail = (proc.stderr or proc.stdout or "").strip()[:500]
         return "", f"reviewer exited {proc.returncode}: {detail}"
+    return result_text(harness, proc)
+
+
+def result_text(harness: str, proc: subprocess.CompletedProcess) -> tuple[str, str]:
+    """(what to show the lead, error) — the only harness divergence here; downstream
+    reads the report JSON. Codex gets no envelope parse: `-o` exists on 0.147.0 but is
+    unmeasured, and this text is only printed; stderr is the fallback because which
+    channel carries codex's final message is exactly what is unmeasured."""
+    if harness != "claude":
+        return (proc.stdout.strip() or proc.stderr.strip()), ""
     try:
         return json.loads(proc.stdout)["result"], ""
     except (ValueError, KeyError, TypeError):

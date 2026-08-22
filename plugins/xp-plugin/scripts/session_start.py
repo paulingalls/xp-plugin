@@ -9,10 +9,11 @@ import json
 import os
 import subprocess
 import sys
+import traceback
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
-from work import data_root
+from work import data_root, plan_path
 
 PLUGIN_ROOT = Path(__file__).parent.parent
 OUTPUT_CAP = 12_000  # chars ≈ 3k tokens, the lead-profile budget (DESIGN §8)
@@ -110,12 +111,10 @@ def last_close() -> str:
     )
 
 
-def recovery_block(root: Path) -> str:
+def recovery_block() -> str:
     """Computed fresh from always-current sources — the layer that can't go stale."""
     stories = [
-        ln
-        for ln in read(root / ".xp" / "plan.md").splitlines()
-        if ln.startswith("#### ") and "[done]" not in ln
+        ln for ln in read(plan_path()).splitlines() if ln.startswith("#### ") and "[done]" not in ln
     ]
     lines = read(data_root() / "work.md").splitlines()
     entries = []  # heading + its claim/body line: content, not just timestamps
@@ -210,7 +209,7 @@ def main() -> int:
     # outrank the narrative. A digest is recreatable from git and work.md; a
     # silently-absent constraint is a rule the lead never knew it was breaking.
     repo_builders = [
-        lambda: recovery_block(root),
+        recovery_block,
         lambda: read(root / ".xp" / "constraints.md"),
         lambda: digest_with_staleness(),
     ]
@@ -241,6 +240,8 @@ def main() -> int:
 
 if __name__ == "__main__":
     try:
-        sys.exit(main())
-    except (Exception, SystemExit):
-        sys.exit(0)  # degrade to silence (SystemExit included), never break a session
+        rc = main()
+    except Exception:  # advisory: never break a session — but never in silence,
+        traceback.print_exc(file=sys.stderr)  # or a dead hook reads as a passing one
+        rc = 0
+    sys.exit(rc)
