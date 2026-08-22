@@ -140,7 +140,7 @@ def prose(path: Path) -> str:
     return " ".join(path.read_text().split())
 
 
-def free_repo(tmp_path, slug="fix-typo"):
+def free_repo(tmp_path):
     """make_repo, plus what a RELEASE needs: an origin, a gh recorder, a semver
     tag to bump off, and a full tier. HEAD is left on main — free start's own
     precondition, which make_repo does not leave."""

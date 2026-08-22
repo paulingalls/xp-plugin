@@ -32,7 +32,7 @@ def commit_on_free(repo, g, text="B = 1\n", path="src/free.py", msg="free work")
 
 def reviewed(tmp_path, slug="fix-typo"):
     """A free branch with one commit and one clean recorded round."""
-    repo, env, g = free_repo(tmp_path, slug)
+    repo, env, g = free_repo(tmp_path)
     assert free(repo, env, slug, "start").returncode == 0
     commit_on_free(repo, g)
     r = free(repo, env, slug, "review")
@@ -160,6 +160,19 @@ class TestFreeLand:
         (repo / "src" / "thing.py").write_text("A = 99\n")
         r = free(repo, env, "fix-typo", "land")
         assert r.returncode == 2 and "dirty" in r.stderr
+
+    def test_a_branch_cut_yesterday_still_lands_today(self, tmp_path):
+        """The key is read off HEAD, never recomputed from today's date: a free
+        close that spans midnight would otherwise lose the round it recorded."""
+        repo, env, g = free_repo(tmp_path)
+        assert free(repo, env, "fix-typo", "start").returncode == 0
+        yesterday = (datetime.date.today() - datetime.timedelta(days=1)).isoformat()
+        g("branch", "-m", f"t/free-{yesterday}-fix-typo")
+        commit_on_free(repo, g)
+        assert free(repo, env, "fix-typo", "review").returncode == 0
+        r = free(repo, env, "fix-typo", "land")
+        assert r.returncode == 0, r.stderr + r.stdout
+        assert [c for c in gh_calls(tmp_path) if c[:2] == ["pr", "create"]]
 
     def test_land_reports_a_lead_commit_the_round_never_covered(self, tmp_path):
         repo, env, g = reviewed(tmp_path)

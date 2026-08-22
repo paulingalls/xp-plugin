@@ -89,7 +89,7 @@ def collision(ref: str, files: list[str]) -> str:
 def run_checks(verify: str, tier: str, where: str = "") -> str:
     for label, cmd in (("Verify", verify), ("test tier", tier)):
         if cmd and subprocess.run(cmd, shell=True).returncode != 0:
-            return f"refused: story {label} red{where}: {cmd}"
+            return f"refused: {label} red{where}: {cmd}"
     return ""
 
 
