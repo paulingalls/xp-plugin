@@ -76,6 +76,30 @@ class TestLaunchContract:
         assert spawn(repo, env, "story-042").returncode == 0
         assert json.loads(rec.read_text())["env"].get("XP_ROLE") == "teammate"
 
+    def test_codex_executor_launch_gets_network_for_its_nested_review(self, tmp_path):
+        repo, env, _g = make_repo(tmp_path, executor="codex/gpt-5.6-terra/high")
+        rec = stub_codex(tmp_path, network=True)
+        r = spawn(repo, env, "story-042")
+        assert r.returncode == 0, r.stderr
+        argv = json.loads(rec.read_text())["argv"]
+        assert "sandbox_workspace_write.network_access=true" in argv
+
+    def test_plan_reviewer_role_has_a_wall_clock(self, tmp_path, monkeypatch):
+        from spawn import run_agent
+
+        monkeypatch.setenv("XP_AGENT_TIMEOUT", "0.01")
+        try:
+            run_agent(
+                ["/bin/sh", "-c", "sleep 1"],
+                tmp_path,
+                "",
+                role="plan-reviewer",
+                capture=True,
+            )
+        except subprocess.TimeoutExpired:
+            return
+        raise AssertionError("the plan-reviewer role ran without a wall clock")
+
 
 def reset_to_ready(tmp_path):
     """The flip is no longer branch-local, so a second spawn of one story refuses on
@@ -370,6 +394,21 @@ class TestCommonDirWidening:
         widening = common_dir_widening(wt)
         assert widening[:1] == ["--add-dir"]
         assert (main / ".git").resolve() == __import__("pathlib").Path(widening[1]).resolve()
+
+    def test_run_agent_applies_the_widening_to_the_launched_argv(self, tmp_path, monkeypatch):
+        from spawn import agent_argv, run_agent
+
+        main, wt = self._repo_with_worktree(tmp_path)
+        rec = stub_codex(tmp_path, commit=False)
+        monkeypatch.setenv("PATH", f"{tmp_path / 'bin'}:/usr/bin:/bin")
+        monkeypatch.setenv("XP_DATA", str(tmp_path / "data"))
+        argv = agent_argv("codex", "m", "", "json", "plan-reviewer")
+        proc = run_agent(argv, wt, "", role="plan-reviewer", capture=True)
+        assert proc.returncode == 0, proc.stderr
+        launched = json.loads(rec.read_text())["argv"]
+        adds = [launched[i + 1] for i, arg in enumerate(launched) if arg == "--add-dir"]
+        assert len(adds) == 2, launched
+        assert str((main / ".git").resolve()) in adds
 
     def test_a_main_checkout_stays_unwidened(self, tmp_path):
         from spawn import common_dir_widening

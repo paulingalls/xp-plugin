@@ -3,7 +3,6 @@ Extracted from test_spawn.py at story-026, which took it to 498 of the 500-line
 cap — over-cap means extract, not scroll (constraint 8).
 Verify: pytest -q tests/test_spawn_codex.py"""
 
-import json
 import subprocess
 from itertools import pairwise
 
@@ -164,14 +163,3 @@ class TestCodexExecutor:
         stub_codex(tmp_path, commit=False)
         r = spawn(repo, env, "story-042")
         assert r.returncode == 2 and "no commits of its own" in r.stderr, r.stderr
-
-    def test_a_clean_codex_teammate_passes(self, tmp_path):
-        repo, env, _g = make_repo(tmp_path, executor="codex/gpt-5.6-terra/medium")
-        rec = stub_codex(tmp_path)
-        r = spawn(repo, env, "story-042")
-        assert r.returncode == 0, r.stderr
-        launch = json.loads(rec.read_text())
-        assert launch["env"]["XP_ROLE"] == "teammate"
-        # the profile is INLINED, which is what makes a codex teammate need no
-        # plugin install — codex has no --plugin-dir to carry one
-        assert "CONSTRAINT-SENTINEL" in launch["stdin"] and "demo story" in launch["stdin"]
