@@ -7,8 +7,8 @@ constraints_cap: 15    # constraints.md line-items; add-over-cap requires a reti
 
 roles:                 # harness/model[/effort]; lead overrides per story in plan.md
   lead: claude/opus
-  executor: claude/sonnet/medium
-  reviewer: claude/opus     # cross-harness (codex) once the adapter ships
+  executor: claude/opus/medium  # Sprint-4 retro, Paul: fewer turns beat cheaper turns, judged over 8 runs
+  reviewer: claude/opus     # codex adapter shipped (story-021); flipping this is a deliberate decision not yet taken
 
 tests:
   fast: pytest -q -n auto -m "not slow"     # pre-commit
