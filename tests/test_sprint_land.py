@@ -167,6 +167,22 @@ class TestLandRunsTheTierItReleasesOn:
         assert sprint(repo, env, "land", "--dry-run").returncode == 0
 
 
+class TestLandRefusesOnADirtyTree:
+    """Sprint-4 closing pass, the round's one blocker: sprint land was the one
+    land leg of three with no dirty-tree refusal, so an UNCOMMITTED file decided
+    the tier's verdict about a tree the PR does not contain (measured both arms
+    on the real leg). The story and free legs refuse this at close.py:241 and
+    free.py:80; the green arm is pinned by test_land_proceeds_on_a_green_tier."""
+
+    def test_an_uncommitted_file_refuses_before_the_tier(self, tmp_path):
+        repo, env, _g = make_repo(tmp_path)
+        record_reviews(tmp_path, repo, env)
+        (repo / "uncommitted.py").write_text("x = 1\n")
+        r = sprint(repo, env, "land")
+        assert r.returncode == 2, r.stdout + r.stderr
+        assert "dirty" in r.stderr.lower(), r.stderr
+
+
 class TestTheTierJudgesTheTreeThatSHIPS:
     """The release is this branch MERGED into the default branch, and cmd_land
     performs no merge — it ran the tier on the unmerged sprint branch under the

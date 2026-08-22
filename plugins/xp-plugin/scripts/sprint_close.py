@@ -409,6 +409,11 @@ def cmd_land(sprint_id: str, dry_run: bool) -> int:
             print(f"...on a trial merge with {ref} — staged, then aborted either way")
         return 0
 
+    if dirty := git("status", "--porcelain").stdout.strip():
+        return fail(
+            "refused: the working tree is dirty — the tier must judge the tree"
+            " that ships, and these files are not in it:\n  " + dirty
+        )
     # start's tier is stale by construction: SKILL.md puts triage, the retro and the
     # release artifacts BETWEEN it and here, so the tree that ships is never the one
     # that was measured (sprint-003: four commits, one of them this file). And what
