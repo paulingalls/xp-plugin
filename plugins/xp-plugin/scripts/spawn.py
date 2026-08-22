@@ -257,6 +257,20 @@ def flip_to_in_progress(story_id: str) -> None:
     )
 
 
+def not_ready_hint(status: str) -> str:
+    if status == "in-progress":
+        return (
+            "An earlier spawn already flipped it, and since the plan is per-clone the"
+            f" flip lives in {plan_path()} — not on the story branch, so removing the"
+            " worktree and deleting the branch no longer undo it. To start this story"
+            " over, put its heading back to [ready] there."
+        )
+    return (
+        "A card starts [planned]; the plan review is what clears it — twice in"
+        " sprint-003 a card reached a teammate with no review, and only a human caught it"
+    )
+
+
 def cmd_in_place(story_id: str, card: str) -> int:
     """Create the story branch in the CURRENT tree and stop — no worktree, no launch.
 
@@ -298,9 +312,7 @@ def cmd_spawn(story_id: str, override: str, dry_run: bool, in_place: bool = Fals
         return fail(f"refused: {e.args[0]}")
     if status != "ready":
         return fail(
-            f"refused: {story_id} is [{status}], spawn requires [ready]. A card starts"
-            " [planned]; the plan review is what clears it — twice in sprint-003 a card"
-            " reached a teammate with no review, and only a human caught it"
+            f"refused: {story_id} is [{status}], spawn requires [ready]. {not_ready_hint(status)}"
         )
     if in_place:
         if dry_run:
@@ -357,7 +369,7 @@ def cmd_spawn(story_id: str, override: str, dry_run: bool, in_place: bool = Fals
     # NOT `if rc: return rc` — a teammate that crashed is the likeliest one to
     # have left work uncommitted, so skipping the guard there withholds the
     # refusal exactly when it is worth most.
-    if err := unclean_teammate_result(tree, handed_over):
+    if err := unclean_teammate_result(tree, handed_over, story_id):
         return fail(err)
     return rc
 
@@ -377,19 +389,18 @@ def tree_state(tree: Path) -> tuple[str, str]:
     return out("rev-parse", "HEAD"), out("status", "--porcelain")
 
 
-def unclean_teammate_result(tree: Path, handed_over: tuple[str, str]) -> str:
+def unclean_teammate_result(tree: Path, handed_over: tuple[str, str], story_id: str) -> str:
     """ "" when the teammate left a clean, committed story behind; otherwise the
     refusal, naming both recoveries.
 
     Both halves measure against the tree AS HANDED OVER: raw porcelain would charge
-    the teammate with whatever the bootstrap command dirtied before it started, and
-    `head == flip_head` is now the ONLY workable spelling — the flip stopped being a
-    commit when the plan left the repo, so the branch has zero commits at handover.
+    the teammate with whatever the bootstrap command dirtied before it started.
     """
     flip_head, handed_dirty = handed_over
     recovery = (
         f" Recover by committing by hand in {tree}, or by"
-        f" `git worktree remove {tree}` and re-spawning."
+        f" `git worktree remove {tree}`, putting {story_id}'s heading back to [ready]"
+        f" in {plan_path()}, and re-spawning."
     )
     try:
         head, dirty = tree_state(tree)

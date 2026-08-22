@@ -303,16 +303,45 @@ class TestTeammateCompletion:
         assert "commit" in r.stderr.lower() and "worktree remove" in r.stderr
 
     def test_no_commits_of_its_own_is_refused_naming_both_recoveries(self, tmp_path):
-        """Also the flip-commit case: the tree here holds exactly one commit,
-        the [in-progress] flip, so `trunk..HEAD` counts 1 and the vacuous
-        spelling constraints.md #11 forbids greens. Only comparing against
-        HEAD-after-the-flip lets this red."""
+        """`trunk..HEAD` is still the vacuous spelling constraints.md #11 forbids,
+        for a second reason since story-019: the flip is no longer a commit, so
+        that range counts the teammate's own work and greens on the very run this
+        must red. Only HEAD-after-the-flip lets it red."""
         repo, env, _g = make_repo(tmp_path)
         stub_claude(tmp_path, commit=False)  # clean tree, but nothing committed
         r = spawn(repo, env, "story-042")
         assert r.returncode == 2
         assert "no commits" in r.stderr.lower()
         assert "commit" in r.stderr.lower() and "worktree remove" in r.stderr
+
+    def test_the_printed_recovery_actually_lets_the_story_be_re_spawned(self, tmp_path):
+        """A guard whose remediation does not work is a wall. Before story-019 the
+        [in-progress] flip was a commit on the story branch, so `git branch -D`
+        undid it and "re-spawning" worked as printed. The flip now lives in the
+        clone's shared plan, which the branch delete does not touch — so the
+        printed recovery dead-ends on spawn's own [in-progress] refusal, and BOTH
+        refusals have to name the flip-back for the lead to get out.
+
+        The middle arm is the point: it executes the old prescription exactly and
+        shows it is not enough, so this cannot pass by re-spawning for free."""
+        repo, env, _g = make_repo(tmp_path)
+        stub_claude(tmp_path, commit=False)
+        plan = tmp_path / "data" / "plan.md"
+        refused = spawn(repo, env, "story-042")
+        assert refused.returncode == 2
+        assert str(plan) in refused.stderr and "[ready]" in refused.stderr
+
+        tree = tmp_path / "data" / "worktrees" / "story-042"
+        remove = ["worktree", "remove", "--force", str(tree)]
+        for args in (remove, ["branch", "-D", "ada/story-042-demo-story"]):
+            subprocess.run(["git", *args], cwd=repo, env=env, check=True)
+        blocked = spawn(repo, env, "story-042")
+        assert blocked.returncode == 2 and "[in-progress]" in blocked.stderr
+        assert str(plan) in blocked.stderr and "[ready]" in blocked.stderr
+
+        plan.write_text(plan.read_text().replace("[in-progress]", "[ready]"))
+        stub_claude(tmp_path)  # this time the teammate commits
+        assert spawn(repo, env, "story-042").returncode == 0
 
     def test_a_crashed_teammate_that_left_work_behind_still_names_it(self, tmp_path):
         """The likeliest way a run "ends with a dirty tree" is that it never
