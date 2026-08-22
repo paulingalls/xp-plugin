@@ -408,9 +408,8 @@ def unclean_teammate_result(tree: Path, handed_over: tuple[str, str], story_id: 
 
 def ready():
     """The credential leg, in its own leaf module under the 500-line cap
-    (constraint 8). Imported function-locally, the way close.py reaches
-    close/overlap.py: the subdirectory is not on the path at module scope."""
-    sys.path.insert(0, str(Path(__file__).parent / "spawn"))
+    (constraint 8). Still function-local: only `main` and one refusal reach it,
+    and a module-level edge would import it on every hook that touches spawn."""
     import ready as module
 
     return module
