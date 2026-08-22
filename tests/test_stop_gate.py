@@ -167,10 +167,16 @@ class TestStopGate:
         assert json.loads(r.stdout)["decision"] == "block"
 
     def test_stop_hook_active_never_blocks(self, tmp_path):
+        """Over the codex flip pattern too: 0.147.0 was measured flipping on the
+        SECOND firing, and the card carries a three-firing sighting — the gate must
+        release on the flag alone, never on a count of its own blocks.
+        """
         repo, _g = repo_with_story(tmp_path)
         self._red(repo, tmp_path)
-        r = run_script("stop_gate.py", self.stop_payload(active=True), repo, tmp_path)
-        assert r.returncode == 0 and "block" not in r.stdout
+        for active in (False, False, True):
+            r = run_script("stop_gate.py", self.stop_payload(active=active), repo, tmp_path)
+            assert r.returncode == 0
+            assert ("block" in r.stdout) is not active
 
     def test_red_for_no_longer_in_progress_story_does_not_block(self, tmp_path):
         repo, _g = repo_with_story(tmp_path)
@@ -297,3 +303,58 @@ class TestStoryScopedMarkers:
         run_script("bash_status.py", success_payload("bun test x"), repo, tmp_path)
         by_story = {m["story"]: m["red"] for m in markers(tmp_path)}
         assert by_story == {"story-042": True, "story-043": False}
+
+
+def codex_post_payload(command, output="", session="sess-1"):
+    """Captured from a live codex-cli 0.147.0 session: tool_response is the merged
+    output STRING and NO field carries the exit status — `false` returned "" and
+    `sh -c 'echo out; echo err 1>&2; exit 3'` returned "err\nout\n". The binary's own
+    post-tool-use.command.input schema sets additionalProperties:false, so the absence
+    is exhaustive, not a sampling artifact.
+    """
+    return {
+        "session_id": session,
+        "turn_id": "turn-1",
+        "cwd": ".",
+        "hook_event_name": "PostToolUse",
+        "model": "gpt-5.6-terra",
+        "permission_mode": "bypassPermissions",
+        "tool_name": "Bash",
+        "tool_input": {"command": command},
+        "tool_response": output,
+        "tool_use_id": "exec-1",
+    }
+
+
+class TestCodexPayloads:
+    """story-025: codex fires PostToolUse for FAILED commands too (the card said it
+    fired nothing), so an unproven success must write nothing at all."""
+
+    def test_codex_post_tool_use_writes_no_marker(self, tmp_path):
+        repo, _g = repo_with_story(tmp_path)
+        codex = codex_post_payload("pytest -q tests/test_x.py")
+        run_script("bash_status.py", codex, repo, tmp_path)
+        assert markers(tmp_path) == []
+
+    def test_codex_post_tool_use_never_erases_a_red(self, tmp_path):
+        """The defect with teeth: a red verify re-run under codex greened its own
+        marker and released the gate silently."""
+        repo, _g = repo_with_story(tmp_path)
+        verify = "pytest -q tests/test_x.py"
+        run_script("bash_status.py", failure_payload(verify), repo, tmp_path)
+        run_script("bash_status.py", codex_post_payload(verify), repo, tmp_path)
+        r = run_script("stop_gate.py", self_payload(), repo, tmp_path)
+        assert json.loads(r.stdout)["decision"] == "block"
+
+    def test_apply_patch_pre_tool_use_is_ignored(self, tmp_path):
+        """codex normalises every edit to apply_patch; its patch text is not a command."""
+        repo, _g = repo_with_story(tmp_path)
+        payload = codex_post_payload("")
+        payload.update(
+            hook_event_name="PreToolUse",
+            tool_name="apply_patch",
+            tool_input={"patch": "*** Begin Patch\npytest -q tests/test_x.py\n*** End Patch"},
+        )
+        del payload["tool_response"]
+        r = run_script("bash_status.py", payload, repo, tmp_path)
+        assert r.returncode == 0 and r.stderr == "" and markers(tmp_path) == []

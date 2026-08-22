@@ -1,5 +1,5 @@
 {
-  "description": "xp-plugin lane-keeping: state injection at session start (advisory gates land in later stories)",
+  "description": "xp-plugin lane-keeping, ONE file for both harnesses: Claude reads it from the manifest, Codex from its own hooks/hooks.json discovery. PostToolUseFailure is Claude-only and Codex ignores unknown event names without dropping the rest (measured, codex-cli 0.147.0).",
   "hooks": {
     "SessionStart": [
       {
