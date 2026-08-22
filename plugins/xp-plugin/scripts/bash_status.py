@@ -25,9 +25,9 @@ from work import chdir_repo_root, data_root, plan_path
 
 def in_progress_stories() -> list[tuple[str, str]]:
     """(story_id, verify) for every [in-progress] story that declares a Verify."""
-    if not plan_path().exists():
+    if not (path := plan_path()).exists():
         return []
-    plan = plan_path().read_text(errors="replace")
+    plan = path.read_text(errors="replace")
     stories = []
     for ln in plan.splitlines():
         if ln.startswith("#### ") and "[in-progress]" in ln:

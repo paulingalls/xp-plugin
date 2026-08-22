@@ -86,14 +86,14 @@ def edit_plan(mutate) -> None:
     edit. Two lanes flipping two cards is the normal case, not the rare one.
 
     temp+rename so an interrupted write leaves the PREVIOUS plan whole: the plan is
-    no longer git-versioned (§4 cost 1), so a torn one is unrecoverable. Defense in
+    no longer git-versioned (DESIGN §3b cost 1), so a torn one is unrecoverable. Defense in
     depth and NOT a tested property — measured, rename and in-place are
     indistinguishable to a reader here, so a test telling them apart would certify
     (note 12d7fcea). It forces the lock onto a SIBLING file: rename swaps the
     inode, so flocking plan.md would leave the next writer locking a ghost.
 
     Serialises OUR writers only — the lead's Edit tool takes no lock, so
-    lead-vs-lane stays last-writer-wins (DESIGN §4).
+    lead-vs-lane stays last-writer-wins (DESIGN §3b cost 5).
     """
     path = plan_path()
     lock = data_root() / "locks" / "plan.lock"
