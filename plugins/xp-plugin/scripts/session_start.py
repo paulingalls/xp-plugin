@@ -5,6 +5,7 @@ Deterministic assembly only — no judgment (constraints.md #7). Degrades to
 silence on any unexpected state: a broken hook must never break a session.
 """
 
+import contextlib
 import json
 import os
 import subprocess
@@ -13,6 +14,7 @@ import traceback
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
+from env import plugin_version, write_env
 from work import data_root, plan_path
 
 PLUGIN_ROOT = Path(__file__).parent.parent
@@ -149,11 +151,6 @@ def recovery_block() -> str:
     )
 
 
-def plugin_version() -> str:
-    manifest = read(PLUGIN_ROOT / ".claude-plugin" / "plugin.json")
-    return json.loads(manifest).get("version", "unknown") if manifest else "unknown"
-
-
 def teammate_marker() -> str:
     """The non-lead profile: one POSITIVE line, never silence.
 
@@ -165,13 +162,13 @@ def teammate_marker() -> str:
     this gate exists.
     """
     return (
-        f"xp-plugin {plugin_version()} · teammate session · your card, VALUES and "
+        f"xp-plugin {plugin_version(PLUGIN_ROOT)} · teammate session · your card, VALUES and "
         "constraints are in your prompt · you never close, never merge"
     )
 
 
 def banner(root: Path) -> str:
-    version = plugin_version()
+    version = plugin_version(PLUGIN_ROOT)
     hooks = "lefthook" if (root / "lefthook.yml").exists() else ""
     hooks = hooks or (".githooks" if (root / ".githooks").is_dir() else "none detected")
     constraints_lines = len(read(root / ".xp" / "constraints.md").splitlines())
@@ -194,6 +191,10 @@ def main() -> int:
     markers = data_root() / "markers"
     markers.mkdir(parents=True, exist_ok=True)
     (markers / f"{session}.alive").touch()
+    # Keep this failure local: the module-level advisory handler preserves exit 0
+    # but would suppress the whole profile along with the failed pointer refresh.
+    with contextlib.suppress(Exception):
+        write_env(PLUGIN_ROOT, plugin_version(PLUGIN_ROOT))
     # Role gates the PROFILE only, never the gates: stop_gate and bash_status
     # stay live for a teammate, which is the agent actually running the tests.
     if os.environ.get("XP_ROLE", "lead") != "lead":

@@ -40,11 +40,31 @@ repo/                              (in-repo: durable, git-versioned, PR-reviewab
 ├── plan.md                        execution plan: milestones + current sprint stories — PER CLONE
 ├── session.md                     lead's continuity digest (sole writer: the lead's close flow)
 ├── work.md                        open bugs/debts/notes — all writes via the flock'd append CLI, never direct edits
+├── env.json                       machine facts for processes the plugin never spawned: the installed
+│                                  plugin root + the version that recorded it (setup seeds, SessionStart refreshes)
 ├── markers/                       ALWAYS scoped: <story-id>.ready.json (the reviewed card's digest),
 │                                  <story-id>.close.json, <session>.test-status — a project-global
 │                                  marker is a design error
 └── locks/
 ```
+
+**env.json, and why the read refuses.** A codex-native lead's scripts, and any hook
+outside a spawn, have no `${CLAUDE_PLUGIN_ROOT}` and no `Path(__file__)` inside the
+plugin — but they can derive the data root from git alone, so that is where the
+installed plugin root goes. Project-scoped, never global: two projects may pin two
+plugin versions. `setup.py` seeds it; `session_start.py` refreshes it every session, on
+both harnesses and both roles. The refresh is load-bearing rather than belt-and-braces:
+the codex cache is version-keyed (`~/.codex/plugins/cache/xp-plugin/xp-plugin/<version>`),
+so every release moves the path and staleness is the EXPECTED state. The reader
+(`env.plugin_root()`, `work.py env`) therefore refuses loudly instead of guessing —
+naming the file, the recorded value and the refresh route — and checks the manifest and
+the recorded version, because `is_dir()` alone passes on a cache that KEEPS old version
+directories. One case is out of its reach and is bounded by the refresh instead: a kept
+old directory whose manifest still matches the recorded version is self-consistent. The
+version line is also the skew signal — two harnesses can hold two installs, and the last
+SessionStart wins the pointer. **`spawn.py` is deliberately NOT a consumer**: spawn runs
+FROM the plugin and knows `Path(__file__)`, so reading the pointer for tidiness would put
+a refusable lookup in front of the one path that never needs one.
 
 Two harness adapters over one shared core:
 
