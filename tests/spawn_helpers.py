@@ -190,7 +190,9 @@ def _total(stdout):
     raise AssertionError(f"no profile line in: {stdout[:200]}")
 
 
-def stub_codex(tmp_path, commit=True, write_file=False, report=None, prose=("thinking", "done")):
+def stub_codex(
+    tmp_path, commit=True, write_file=False, report=None, prose=("thinking", "done"), network=None
+):
     """A fake `codex` that REJECTS what the real binary rejects.
 
     story-017's measured loss, inherited verbatim by story-021's card: stub_claude
@@ -199,6 +201,12 @@ def stub_codex(tmp_path, commit=True, write_file=False, report=None, prose=("thi
     fault injection the AC names, so deleting the flag reds a test instead of
     shipping a PreToolUse bypass — and on the claude spellings, which is what
     stops the two legs' argv from silently fusing.
+
+    `network`: the sandbox posture this leg must have — True for the EXECUTOR,
+    which has to nest a headless plan review and dies on DNS without it (curl
+    EXIT=6, measured 0.149.0), False for a reviewer leg, which must not be
+    widened to buy it. None asserts nothing. Both directions die here rather
+    than in an argv assertion, so the check reds against a real launch.
 
     `report`: the reviewer shape. Its dict is written to the bundle's REPORT_PATH
     THROUGH `sh -c`, per the AC — the report lives outside the workspace, so the
@@ -222,6 +230,12 @@ def stub_codex(tmp_path, commit=True, write_file=False, report=None, prose=("thi
         "pairs = list(zip(argv, argv[1:]))",
         "if ('--disable', 'unified_exec') not in pairs:",
         "    die('unified_exec is enabled: write_stdin would bypass every gate')",
+        "net = ('-c', 'sandbox_workspace_write.network_access=true') in pairs",
+        f"want = {network!r}",
+        "if want is True and not net:",
+        "    die('no network_access: a nested harness dies on DNS')",
+        "if want is False and net:",
+        "    die('network_access on a leg that never nests a harness')",
         "stdin = sys.stdin.read()",
         f"json.dump({{'argv': argv, 'env': dict(os.environ), 'stdin': stdin}},"
         f" open({str(rec)!r}, 'w'))",

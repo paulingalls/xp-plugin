@@ -406,7 +406,9 @@ class TestCodexReviewerLeg:
 
     def codex_repo(self, tmp_path, **kw):
         repo, env, g = make_repo(tmp_path)
-        rec = stub_codex(tmp_path, commit=False, report=CLEAN, **kw)
+        # network=False is the other half of story-026's AC: the flag that lets an
+        # executor nest a plan review must not widen the leg that nests nothing.
+        rec = stub_codex(tmp_path, commit=False, report=CLEAN, network=False, **kw)
         (repo / ".xp" / "config.yml").write_text(
             "roles:\n  reviewer: codex/gpt-5.6-terra/high\ntests:\n  story: true\n"
         )

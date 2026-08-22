@@ -210,9 +210,8 @@ def run_agent(
     if role.endswith("reviewer"):
         timeout = float(os.environ.get("XP_AGENT_TIMEOUT", 3600))
     # The STORY reviewer alone: this name is the credential close.py and
-    # sprint_close.py gate the merge on, in every clone, forever, and the plan
-    # reviewer never earns it. EMAIL too: with the name alone, every email-keyed
-    # tool still reports the lead.
+    # sprint_close.py gate the merge on, and the plan reviewer never earns it.
+    # EMAIL too: with the name alone, every email-keyed tool reports the lead.
     if role == "reviewer":
         from review import REVIEWER_EMAIL, REVIEWER_NAME
 
@@ -316,7 +315,7 @@ def cmd_spawn(story_id: str, override: str, dry_run: bool, in_place: bool = Fals
     harness, model, effort = resolve_role("executor", card, override)
     branch = story_branch(card, story_id)
     tree = worktree_path(story_id)
-    argv = agent_argv(harness, model, effort, "stream-json")
+    argv = agent_argv(harness, model, effort, "stream-json", "executor")
     prompt = build_prompt(teammate_sections(card))
     report, warning = profile_report(card, prompt)
     print(report)
