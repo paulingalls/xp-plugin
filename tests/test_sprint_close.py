@@ -11,6 +11,7 @@ from sprint_helpers import (  # noqa: F401
     CONFIG,
     PLAN,
     PLUGIN,
+    SPRINT_ID,
     WORK,
     WORK_SECTION,
     committing_stub,
@@ -259,17 +260,9 @@ class TestLandCoverage:
         repo, env, _g = make_repo(tmp_path)
         r = sprint(repo, env, "land", "--dry-run")
         assert r.returncode == 2, "a release PR opened with no review recorded anywhere"
-        assert "review --lens" in r.stderr, "the refusal names no way out"
+        assert f"sprint {SPRINT_ID} review" in r.stderr, "the refusal names no way out"
 
-    def test_land_refuses_when_only_one_lens_was_reviewed(self, tmp_path):
-        """PROCESS.md §4 and the skill both mandate the two reviews, so a one-lens
-        gate certifies a close the process forbids."""
-        repo, env, _g = make_repo(tmp_path)
-        record_reviews(tmp_path, repo, env, lenses=("broad",))
-        r = sprint(repo, env, "land", "--dry-run")
-        assert r.returncode == 2 and "security" in r.stderr
-
-    def test_land_proceeds_once_both_lenses_cover_head(self, tmp_path):
+    def test_land_proceeds_once_a_round_covers_head(self, tmp_path):
         repo, env, _g = make_repo(tmp_path)
         record_reviews(tmp_path, repo, env)
         r = sprint(repo, env, "land", "--dry-run")
@@ -343,7 +336,7 @@ class TestLandCoverage:
         CalledProcessError inside the release gate."""
         repo, env, _g = make_repo(tmp_path)
         record_reviews(tmp_path, repo, env)
-        path = marker_path(tmp_path, "broad")
+        path = marker_path(tmp_path)
         state = json.loads(path.read_text())
         state["shown_sha"] = "0" * 40
         path.write_text(json.dumps(state))
@@ -367,9 +360,8 @@ class TestLandPromisesOnlyWhatPostMergeDoes:
 
 
 class TestTheSprintGatesAreNotHalfFixed:
-    """Two sprint-003 security-lens findings, one seam: story-014 copied a
-    single-marker, two-file story guard in front of a two-marker, three-file
-    sprint gate."""
+    """A sprint-003 security-lens finding, one seam: story-014 copied a
+    two-file story guard in front of a three-file sprint gate."""
 
     def test_system_md_is_not_exempt_because_spawn_shell_executes_it(self, tmp_path):
         """4dfd01b hardened the STORY guard against this exact file and said why;
@@ -384,31 +376,6 @@ class TestTheSprintGatesAreNotHalfFixed:
         assert r.returncode == 2, r.stdout + r.stderr
         assert "system.md" in r.stderr, r.stderr
 
-    def test_a_lens_cannot_rewrite_another_lenss_marker(self, tmp_path):
-        """check_report_only digested only the running lens's marker while land
-        reads BOTH as release gates: a stub broad reviewer emptied the security
-        lens's blocking[] and the broad leg recorded its round at rc 0
-        (bug 93a5717b, confirmed end-to-end by the sprint-003 security lens)."""
-        repo, env, _g = make_repo(tmp_path)
-        other = marker_path(tmp_path, "security")
-        other.parent.mkdir(parents=True, exist_ok=True)
-        other.write_text(
-            json.dumps(
-                {
-                    "rounds": [{"fixed": [], "blocking": ["hardcoded credential"], "noted": []}],
-                    "shown_sha": "x",
-                }
-            )
-        )
-        erased = json.dumps(
-            {"rounds": [{"fixed": [], "blocking": [], "noted": []}], "shown_sha": "x"}
-        )
-        committing_stub(tmp_path, f"open({str(other)!r}, 'w').write({erased!r})\n")
-        r = sprint(repo, env, "review", "--lens", "broad")
-        assert r.returncode == 2, r.stdout + r.stderr
-        assert "marker" in r.stderr, r.stderr
-        assert not marker_path(tmp_path, "broad").exists(), "recorded a round it refused"
-
 
 class TestBundleDedup:
     def test_archived_blocks_are_filtered_from_the_raw_work_md_section(self, tmp_path):
@@ -421,7 +388,7 @@ class TestBundleDedup:
         ref = work(repo, env, "list").stdout.split()[0]
         assert work(repo, env, "archive", "--ref", ref, "--disposition", "dropped").returncode == 0
         work(repo, env, "note", "A-PLAIN-NOTE")
-        assert sprint(repo, env, "review", "--lens", "broad").returncode == 0
+        assert sprint(repo, env, "review").returncode == 0
         raw = section(launches(tmp_path)[0]["stdin"], WORK_SECTION, "PROCESS")
         assert "A-PLAIN-NOTE" in raw, "the raw section lost the entries it exists to carry"
         assert "## archived " not in raw

@@ -34,6 +34,8 @@ CONFIG = (
 
 WORK_SECTION = "work.md entries filed during the sprint"
 
+SPRINT_ID = "2"
+
 
 def make_repo(tmp_path, plan=PLAN, config=CONFIG):
     repo = tmp_path / "repo"
@@ -67,7 +69,7 @@ def make_repo(tmp_path, plan=PLAN, config=CONFIG):
     return repo, env, g
 
 
-def sprint(repo, env, *args, sprint_id="2"):
+def sprint(repo, env, *args, sprint_id=SPRINT_ID):
     return subprocess.run(
         [sys.executable, str(CLOSE), "sprint", sprint_id, *args],
         cwd=repo,
@@ -83,18 +85,17 @@ def head(repo, env):
     ).stdout.strip()
 
 
-def marker_path(tmp_path, lens, sprint_id="2"):
-    return tmp_path / "data" / "markers" / "sprint" / f"{sprint_id}.{lens}.json"
+def marker_path(tmp_path, sprint_id=SPRINT_ID):
+    return tmp_path / "data" / "markers" / "sprint" / f"{sprint_id}.json"
 
 
-def record_reviews(tmp_path, repo, env, blocking=(), lenses=("broad", "security")):
+def record_reviews(tmp_path, repo, env, blocking=(), shown=None):
     """CONSTRUCT the state a real review leaves, so land's guard is exercised
-    against markers rather than against the absence of them."""
-    for lens in lenses:
-        path = marker_path(tmp_path, lens)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        round_ = {"fixed": [], "blocking": list(blocking), "noted": []}
-        path.write_text(json.dumps({"rounds": [round_], "shown_sha": head(repo, env)}))
+    against a marker rather than against the absence of one."""
+    path = marker_path(tmp_path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    round_ = {"fixed": [], "blocking": list(blocking), "noted": []}
+    path.write_text(json.dumps({"rounds": [round_], "shown_sha": shown or head(repo, env)}))
 
 
 def work(repo, env, *args):

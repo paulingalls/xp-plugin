@@ -29,7 +29,6 @@ from work import (
 PLUGIN_ROOT = Path(__file__).parent.parent
 FALSIFIER = re.compile(r"^Falsifier: `(.+)`$", re.M)
 RESOLVES = re.compile(r"^Resolves: (\w+)$", re.M)
-LENSES = ("broad", "security")
 
 
 def sprint_stories(plan: str, sprint_id: str) -> list[str]:
@@ -71,10 +70,10 @@ def sprint_cards(plan: str, sprint_id: str) -> str:
     return "\n".join(story_card(plan, ln.split()[1])[0] for ln in sprint_stories(plan, sprint_id))
 
 
-def sprint_marker(sprint_id: str, lens: str) -> Path:
+def sprint_marker(sprint_id: str) -> Path:
     d = data_root() / "markers" / "sprint"
     d.mkdir(parents=True, exist_ok=True)
-    return d / f"{sprint_id}.{lens}.json"
+    return d / f"{sprint_id}.json"
 
 
 def _sprint_records(root: Path, since_epoch: int) -> tuple[str, str]:
@@ -102,20 +101,20 @@ def _sprint_records(root: Path, since_epoch: int) -> tuple[str, str]:
     return "\n".join(out) or "none", "\n".join(kept).strip() or "none"
 
 
-def build_sprint_bundle(sprint_id: str, lens: str, cards: str, base: str, report: Path) -> str:
+def build_sprint_bundle(sprint_id: str, cards: str, base: str, report: Path) -> str:
     import review
     from bookkeep import render_sprint_prior
     from close import _read_first
 
-    state = json.loads(p.read_text()) if (p := sprint_marker(sprint_id, lens)).exists() else {}
+    state = json.loads(p.read_text()) if (p := sprint_marker(sprint_id)).exists() else {}
     resolutions, work_md = _sprint_records(
         data_root(), int(git("show", "-s", "--format=%ct", base).stdout.strip())
     )
     sections = [
-        (f"Your charter, for the {lens} lens", review.charter("sprint-reviewer")),
+        ("Your charter", review.charter("sprint-reviewer")),
         ("Your report", f"REPORT_PATH: {report}"),
         (f"The stories in sprint {sprint_id}", cards),
-        ("Findings from earlier rounds of THIS lens", render_sprint_prior(state.get("rounds", []))),
+        ("Findings from earlier rounds", render_sprint_prior(state.get("rounds", []))),
         ("Cumulative sprint diff", git("diff", f"{base}..HEAD").stdout),
         ("Resolutions filed during the sprint", resolutions),
         ("work.md entries filed during the sprint", work_md),
@@ -127,11 +126,9 @@ def build_sprint_bundle(sprint_id: str, lens: str, cards: str, base: str, report
     return "".join(f"## {title}\n\n{body}\n\n" for title, body in sections)
 
 
-def cmd_review(sprint_id: str, lens: str, dry_run: bool) -> int:
+def cmd_review(sprint_id: str, dry_run: bool) -> int:
     import review
 
-    if lens not in LENSES:
-        return fail(f"refused: --lens must be one of {', '.join(LENSES)}, not {lens!r}")
     if git("status", "--porcelain").stdout.strip():
         return fail("refused: working tree is dirty — commit or stash first")
     plan = plan_path()
@@ -147,18 +144,17 @@ def cmd_review(sprint_id: str, lens: str, dry_run: bool) -> int:
     if not (cards := sprint_cards(plan.read_text(), sprint_id)):
         return fail(f"refused: no `### Sprint {sprint_id}` section in {plan}")
 
-    marker = sprint_marker(sprint_id, lens)
+    marker = sprint_marker(sprint_id)
     state = json.loads(marker.read_text()) if marker.exists() else {}
-    path = review.sprint_report_path(sprint_id, lens, len(state.get("rounds", [])) + 1)
+    path = review.sprint_report_path(sprint_id, "review", len(state.get("rounds", [])) + 1)
     if not dry_run:  # a preview must not delete the findings of a refused round
         path.unlink(missing_ok=True)
     # BOTH before the launch: the reviewer may not move the tree, and recording a
-    # post-run head would make anything it moved count as reviewed. EVERY lens's
-    # marker is digested: land reads them all as release gates.
+    # post-run head would make anything it moved count as reviewed.
     head = git("rev-parse", "HEAD").stdout.strip()
     base = git("merge-base", f"refs/heads/{trunk}", "HEAD").stdout.strip()
-    digests = {(m := sprint_marker(sprint_id, x)): review.marker_digest(m) for x in LENSES}
-    bundle = build_sprint_bundle(sprint_id, lens, cards, base, path)
+    digests = {marker: review.marker_digest(marker)}
+    bundle = build_sprint_bundle(sprint_id, cards, base, path)
     result, err = review.run(bundle, Path.cwd(), dry_run, name="sprint-reviewer")
     if dry_run:
         return 0
@@ -168,7 +164,7 @@ def cmd_review(sprint_id: str, lens: str, dry_run: bool) -> int:
     if motion := review.check_report_only(head, digests):
         return fail(motion)
     # No diff covers the plan now. Cross-lane BY CONSTRUCTION here, safe only
-    # because a sprint review runs when every member is [done]: a mid-sprint lens
+    # because a sprint review runs when every member is [done]: a mid-sprint run
     # would refuse and blame itself for a lane's flip.
     if sprint_cards(plan.read_text(), sprint_id) != cards:
         return fail(
@@ -180,7 +176,7 @@ def cmd_review(sprint_id: str, lens: str, dry_run: bool) -> int:
     state.setdefault("rounds", []).append(report)
     state["shown_sha"] = head
     marker.write_text(json.dumps(state))
-    print(f"{lens} round {len(state['rounds'])} recorded at {head[:8]}")
+    print(f"round {len(state['rounds'])} recorded at {head[:8]}")
     return 0
 
 
@@ -273,41 +269,36 @@ def _is_retro_prose(path: str) -> bool:
 
 
 def _coverage_refusal(sprint_id: str, head: str) -> str:
-    """ "" if a round of EVERY lens covers HEAD, else why not. Bug c9b48a66.
+    """ "" if a recorded round covers HEAD, else why not. Bug c9b48a66.
 
     HEAD coverage only — deliberately no "trunk moved since the review" clause:
     that is trunk motion, a different guard's business, and copying it here from
     close.cmd_land is the wrong half of the symmetry.
     """
-    exempt = []
-    for lens in LENSES:
-        marker = sprint_marker(sprint_id, lens)
-        state = json.loads(marker.read_text()) if marker.exists() else {}
-        rerun = f"run `close.py sprint {sprint_id} review --lens {lens}`"
-        if not (rounds := state.get("rounds") or []):
-            return f"refused: no recorded {lens} review for sprint {sprint_id} — {rerun}"
-        if blocking := rounds[-1]["blocking"]:
-            return (
-                f"refused: the last {lens} round left blocking findings:\n  "
-                + "\n  ".join(blocking)
-                + "\nFix them, then review again — a flag cannot clear these"
-            )
-        if (shown := str(state.get("shown_sha"))) == head:
-            continue
-        # check=False: a rebased, reset or gc'd sha must refuse, never raise
-        # CalledProcessError from inside the gate that guards the release
-        moved = git("diff", "--name-only", shown, head, check=False)
-        if moved.returncode != 0:
-            return (
-                f"refused: the {lens} review recorded {shown[:8]}, which no longer exists — {rerun}"
-            )
-        if code := [f for f in moved.stdout.splitlines() if not _is_retro_prose(f)]:
-            return (
-                f"refused: the {lens} review did not cover HEAD — {', '.join(code)}"
-                f" changed since {shown[:8]}. {rerun}"
-            )
-        exempt += moved.stdout.splitlines()
-    if exempt:
+    marker = sprint_marker(sprint_id)
+    state = json.loads(marker.read_text()) if marker.exists() else {}
+    rerun = f"run `close.py sprint {sprint_id} review`"
+    if not (rounds := state.get("rounds") or []):
+        return f"refused: no recorded review for sprint {sprint_id} — {rerun}"
+    if blocking := rounds[-1]["blocking"]:
+        return (
+            "refused: the last round left blocking findings:\n  "
+            + "\n  ".join(blocking)
+            + "\nFix them, then review again — a flag cannot clear these"
+        )
+    if (shown := str(state.get("shown_sha"))) == head:
+        return ""
+    # check=False: a rebased, reset or gc'd sha must refuse, never raise
+    # CalledProcessError from inside the gate that guards the release
+    moved = git("diff", "--name-only", shown, head, check=False)
+    if moved.returncode != 0:
+        return f"refused: the review recorded {shown[:8]}, which no longer exists — {rerun}"
+    if code := [f for f in moved.stdout.splitlines() if not _is_retro_prose(f)]:
+        return (
+            f"refused: the review did not cover HEAD — {', '.join(code)}"
+            f" changed since {shown[:8]}. {rerun}"
+        )
+    if exempt := moved.stdout.splitlines():
         print(f"reviewed earlier; the delta since is .xp/ only: {', '.join(sorted(set(exempt)))}")
     return ""
 
