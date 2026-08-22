@@ -397,6 +397,18 @@ class TestCodexExecutor:
         assert r.returncode == 0, r.stderr
         assert "--disable unified_exec" in r.stdout, r.stdout[:400]
 
+    def test_every_shipped_harness_has_its_own_argv_and_stream(self):
+        """Three registries, two files: HARNESS_INSTALL admits a harness, agent_argv
+        builds for it, STREAMS parses it. agent_argv FALLS THROUGH to claude, so a
+        third harness admitted without a builder launches the wrong binary silently;
+        a missing STREAMS row crashes after the worktree is cut and the card flipped."""
+        from spawn import HARNESS_INSTALL, agent_argv
+        from teammate_tee import STREAMS
+
+        assert set(STREAMS) == set(HARNESS_INSTALL)
+        for harness in HARNESS_INSTALL:
+            assert agent_argv(harness, "m", "high", "json")[0] == harness
+
     def test_a_dirty_codex_teammate_hits_the_shared_completion_guard(self, tmp_path):
         repo, env, _g = make_repo(tmp_path, executor="codex/gpt-5.6-terra/medium")
         stub_codex(tmp_path, commit=False, write_file=True)
