@@ -278,3 +278,23 @@ class TestCardDigest:
         assert self.digest(self.CARD.replace("Files: a.py", "Files: a.py   ")) == self.digest(
             self.CARD
         )
+
+
+class TestOneFlipRule:
+    """Bug f009389a: three spellings of 'rewrite the status bracket' — mint's
+    was fixed at story-023's review; spawn's and close's still rewrote a TITLE
+    carrying the status text (measured live: story-023's own heading)."""
+
+    def test_spawns_flip_leaves_a_title_containing_ready_alone(self):
+        from spawn import flip_map
+
+        plan = "#### story-x — [ready] is a credential   [ready]\n"
+        out = flip_map(plan, "story-x")
+        assert out == "#### story-x — [ready] is a credential   [in-progress]\n", out
+
+    def test_lands_flip_leaves_a_title_containing_in_progress_alone(self):
+        from close import _flip_status
+
+        plan = "#### story-x — the [in-progress] dance   [in-progress]\n"
+        out = _flip_status(plan, "story-x")
+        assert out == "#### story-x — the [in-progress] dance   [done]\n", out

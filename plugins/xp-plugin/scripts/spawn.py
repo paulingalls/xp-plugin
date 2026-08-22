@@ -247,14 +247,13 @@ def flip_to_in_progress(story_id: str) -> None:
     commit on the story branch: the plan is per-clone, so nothing stages and the
     lead sees [in-progress] at once.
     """
-    edit_plan(
-        lambda text: "".join(
-            ln.replace("[ready]", "[in-progress]")
-            if ln.startswith(f"#### {story_id} ") and "[ready]" in ln
-            else ln
-            for ln in text.splitlines(keepends=True)
-        )
-    )
+    edit_plan(lambda text: flip_map(text, story_id))
+
+
+def flip_map(text: str, story_id: str) -> str:
+    from work import flip_status
+
+    return flip_status(text, story_id, "ready", "in-progress")
 
 
 def not_ready_hint(status: str, story_id: str) -> str:
