@@ -7,7 +7,7 @@ constraints_cap: 15    # constraints.md line-items; add-over-cap requires a reti
 roles:                 # harness/model[/effort]; lead overrides per story in plan.md
   lead: claude/opus
   executor: claude/opus/medium  # Sprint-4 retro, Paul: fewer turns beat cheaper turns, judged over 8 runs
-  reviewer: claude/opus     # codex adapter shipped (story-021); flipping this is a deliberate decision not yet taken
+  reviewer: codex/gpt-5.6-sol/high  # flipped by Paul post-v0.5.1: DESIGN 8's cross-harness diversity, live; argv probed on 0.149.0
 
 tests:
   fast: pytest -q -n auto -m "not slow"     # pre-commit
