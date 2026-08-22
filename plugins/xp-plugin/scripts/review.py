@@ -6,6 +6,7 @@ only seam, and close.py runs against the 500-line hard cap (constraints.md #8).
 """
 
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -186,12 +187,14 @@ def check_reviewer_motion(
     # SCOPE, not a deny-list: a whole-directory ban wedged story-010, whose card
     # named system.md; a three-path deny-list left system.md writable by the agent
     # under review, and spawn EXECUTES its `Worktree bootstrap:` line via shell.
-    declared = {
-        f.strip()
-        for ln in card.splitlines()
-        if ln.startswith("Files:")
-        for f in ln.removeprefix("Files:").split(",")
-    }
+    declared, in_files = set(), False
+    for ln in card.splitlines():
+        if ln.startswith("Files:"):
+            in_files, ln = True, ln.removeprefix("Files:")
+        elif in_files and re.match(r"[A-Za-z][A-Za-z ]*:", ln):
+            in_files = False
+        if in_files:
+            declared |= {f.strip() for f in ln.split(",") if f.strip()}
     if bad := [f for f in touched if f.startswith(".xp/") and f not in declared]:
         return refuse(
             f"the reviewer changed {', '.join(bad)} — it may fix code, and only the"

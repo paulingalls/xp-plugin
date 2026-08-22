@@ -54,7 +54,7 @@ def story_card(plan: str, story_id: str) -> tuple[str, str]:
     if start is None:
         raise KeyError(f"{story_id} not found in .xp/plan.md")
     rest = range(start + 1, len(lines))
-    end = next((i for i in rest if lines[i].startswith("#### ")), len(lines))
+    end = next((i for i in rest if lines[i].startswith(("# ", "## ", "### ", "#### "))), len(lines))
     card = "".join(lines[start:end])
     if "[" not in lines[start]:
         raise KeyError(f"{story_id} header has no [status] bracket in .xp/plan.md")

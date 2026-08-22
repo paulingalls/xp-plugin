@@ -133,6 +133,20 @@ class TestStart:
         r = close(repo, env, "review")
         assert r.returncode == 2 and "in-progress" in r.stderr
 
+    def test_a_card_ends_at_the_next_heading_of_any_level(self):
+        """A card followed by a `### Sprint N` heading swallowed that sprint's
+        whole preamble — story-017's card carried 55 lines of Sprint 4 planning
+        prose, inlined at spawn as 'the whole scope' and charged against the
+        teammate budget (bug 9ad0180b)."""
+        sys.path.insert(0, str(CLOSE.parent))
+        from close import story_card
+
+        plan = CARD.format(status="ready", verify="true") + "\n### Sprint 2\nNEXT-SPRINT-PREAMBLE\n"
+        card, status = story_card(plan, "story-042")
+        assert status == "ready"
+        assert "Verify: true" in card
+        assert "NEXT-SPRINT-PREAMBLE" not in card, "the card swallowed the next section"
+
     def test_the_story_bundle_diffs_against_the_INTEGRATION_TARGET(self, tmp_path):
         """Bug 66272ab4: /story-close bundled `main...HEAD`, so under
         `release: sprint` every earlier story already integrated on the sprint
@@ -1382,6 +1396,16 @@ class TestShippedProseMatchesTheMechanism:
             head = path.read_text().split("import argparse")[0]
             assert "VERDICT" not in head, f"{path.name} still ships the deleted gate"
 
+    def test_the_record_lifecycle_row_is_not_corrupted(self):
+        """A string-replace deletion left a stray backtick and a truncated clause
+        in the authority row for what the sprint-close batch runs. A PARITY check
+        on the row, not a grep for the mangled text: a different corruption still
+        reds, a reworded but balanced row still greens (bug 166285e6)."""
+        design = (PLUGIN.parent.parent / "docs" / "DESIGN.md").read_text()
+        row = next(ln for ln in design.splitlines() if ln.startswith("| **resolved** |"))
+        assert row.count("**") % 2 == 0, f"unbalanced bold span: {row}"
+        assert row.count("`") % 2 == 0, f"unbalanced backtick span: {row}"
+
     def test_the_comment_rubric_is_identical_in_every_shipped_copy(self):
         """TWO copies now, not three. The reviewer's copy existed for one stated
         reason — "build_bundle never sends PROCESS.md" — which was one line of
@@ -1884,6 +1908,31 @@ class TestFixingReviewer:
                 "echo '- run ratchet.py' >> .xp/system.md\n"
                 f"git -c user.name='{REVIEWER_NAME}' -c user.email='r@xp'"
                 " commit -qam 'point system.md at the command'\n"
+            ),
+        )
+        r = close(repo, env, "review")
+        assert r.returncode == 0, r.stderr
+
+    def test_a_reviewer_may_fix_an_xp_file_declared_on_a_wrapped_Files_line(self, tmp_path):
+        """Every real card wraps its Files list; the parse read one physical
+        line, so a reviewer editing a file the card declares on a continuation
+        line was refused and the round not recorded — story-010's symptom back
+        again, and the single-line fixture above cannot see it (bug 8d0a74c6,
+        spec corrected in note 7e20e96b)."""
+        repo, env, g = make_repo(tmp_path)
+        plan = repo / ".xp" / "plan.md"
+        plan.write_text(
+            plan.read_text().replace(
+                "Files: src/thing.py\n", "Files: src/thing.py,\n.xp/system.md\n"
+            )
+        )
+        g("commit", "-qam", "the card declares the .xp/ file on a continuation line")
+        self.fixing_stub(
+            tmp_path,
+            extra=(
+                "echo '- run ratchet.py' >> .xp/system.md\n"
+                f"git -c user.name='{REVIEWER_NAME}' -c user.email='r@xp'"
+                " commit -qam 'fix the declared file'\n"
             ),
         )
         r = close(repo, env, "review")

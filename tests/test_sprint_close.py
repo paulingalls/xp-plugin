@@ -992,3 +992,20 @@ class TestTheSprintGatesAreNotHalfFixed:
         assert r.returncode == 2, r.stdout + r.stderr
         assert "marker" in r.stderr, r.stderr
         assert not marker_path(tmp_path, "broad").exists(), "recorded a round it refused"
+
+
+class TestBundleDedup:
+    def test_archived_blocks_are_filtered_from_the_raw_work_md_section(self, tmp_path):
+        """The archive verb landed hours after story-014's `## resolved` filter
+        and reopened the same hole: 74 of a real bundle's 107 blocks — 27% of its
+        chars — were `Archives: <id>` stanzas whose referenced records predate
+        the sprint window and are not in the bundle at all (bug d225cff4)."""
+        repo, env, _g = make_repo(tmp_path)
+        work(repo, env, "debt", "--claim", "latent", "--falsifier", "true", "--files", "a.py")
+        ref = work(repo, env, "list").stdout.split()[0]
+        assert work(repo, env, "archive", "--ref", ref, "--disposition", "dropped").returncode == 0
+        work(repo, env, "note", "A-PLAIN-NOTE")
+        assert sprint(repo, env, "review", "--lens", "broad").returncode == 0
+        raw = section(launches(tmp_path)[0]["stdin"], WORK_SECTION, "PROCESS")
+        assert "A-PLAIN-NOTE" in raw, "the raw section lost the entries it exists to carry"
+        assert "## archived " not in raw

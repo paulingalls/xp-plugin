@@ -76,12 +76,14 @@ def sprint_marker(sprint_id: str, lens: str) -> Path:
 
 
 def _sprint_records(root: Path, since_epoch: int) -> tuple[str, str]:
-    """(resolutions, the raw work.md section minus its `## resolved` blocks) from
-    ONE split. corpus() cannot serve the first: substitution is exactly where it
-    discards the original falsifier a reader needs to judge the swap."""
+    """(resolutions, the raw work.md section minus `## resolved`/`## archived`
+    blocks) from ONE split. corpus() cannot serve the first: substitution is
+    exactly where it discards the original falsifier a reader needs to judge."""
     originals = {e: t for e, t in entries(root) if t.startswith(("## bug ", "## debt "))}
     latest, kept = {}, []
     for block in re.split(r"^(?=## )", work_entries_since(since_epoch), flags=re.M):
+        if block.startswith("## archived "):
+            continue
         if not block.startswith("## resolved "):
             kept.append(block)
         elif (ref := RESOLVES.search(block)) and (new := FALSIFIER.search(block)):
