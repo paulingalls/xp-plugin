@@ -257,7 +257,7 @@ def flip_to_in_progress(story_id: str) -> None:
     )
 
 
-def not_ready_hint(status: str) -> str:
+def not_ready_hint(status: str, story_id: str) -> str:
     if status == "in-progress":
         return (
             "An earlier spawn already flipped it, and since the plan is per-clone the"
@@ -266,8 +266,9 @@ def not_ready_hint(status: str) -> str:
             " over, put its heading back to [ready] there."
         )
     return (
-        "A card starts [planned]; the plan review is what clears it — twice in"
-        " sprint-003 a card reached a teammate with no review, and only a human caught it"
+        "A card starts [planned]; the plan review and then `spawn.py ready"
+        f" {story_id}` are what clear it — twice in sprint-003 a card reached a teammate"
+        " with no review, and only a human caught it"
     )
 
 
@@ -311,9 +312,8 @@ def cmd_spawn(story_id: str, override: str, dry_run: bool, in_place: bool = Fals
     except KeyError as e:
         return fail(f"refused: {e.args[0]}")
     if status != "ready":
-        return fail(
-            f"refused: {story_id} is [{status}], spawn requires [ready]. {not_ready_hint(status)}"
-        )
+        hint = not_ready_hint(status, story_id)
+        return fail(f"refused: {story_id} is [{status}], spawn requires [ready]. {hint}")
     if drift := ready().drift(story_id, card):
         return fail(drift)
     if in_place:

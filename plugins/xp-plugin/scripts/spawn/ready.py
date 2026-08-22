@@ -37,14 +37,22 @@ def drift(story_id: str, card: str) -> str:
     if not marker.exists():
         return (
             f"refused: {story_id} reads [ready] but nothing minted it — the bracket was"
-            " typed, not earned. After the plan review, clear the card with"
-            f" `spawn.py ready {story_id}`, which records the card the reviewer saw."
+            " typed, not earned. After the plan review, put the heading back to [planned]"
+            f" and run `spawn.py ready {story_id}`, which records the card the reviewer saw."
         )
-    minted = json.loads(marker.read_text())
-    if minted["digest"] == card_digest(card):
+    try:
+        minted = json.loads(marker.read_text())
+        reviewed, digest = minted["card"], minted["digest"]
+    except (OSError, ValueError, KeyError):
+        return (
+            f"refused: {marker} is unreadable, so nothing vouches for {story_id} — an"
+            " interrupted mint leaves half of it. Put the heading back to [planned] and"
+            f" re-run `spawn.py ready {story_id}`."
+        )
+    if digest == card_digest(card):
         return ""
     diff = difflib.unified_diff(
-        card_lines(minted["card"]),
+        card_lines(reviewed),
         card_lines(card),
         "reviewed",
         "now",

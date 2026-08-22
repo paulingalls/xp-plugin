@@ -413,3 +413,39 @@ class TestReadyCredential:
         plan = tmp_path / "data" / "plan.md"
         assert "#### story-042 — what [planned] really means   [ready]" in plan.read_text()
         assert spawn(repo, env, "story-042").returncode == 0
+
+    def test_an_unreadable_marker_refuses_instead_of_crashing(self, tmp_path):
+        """A torn write leaves half a marker; json.loads on it is a traceback, and
+        a traceback names no next action."""
+        repo, env, _g = make_repo(tmp_path, status="planned")
+        stub_claude(tmp_path)
+        self.mint(repo, env)
+        marker = self.marker(tmp_path)
+        marker.write_text(marker.read_text()[:40])
+        r = spawn(repo, env, "story-042")
+        assert r.returncode == 2, r.stdout
+        assert "Traceback" not in r.stderr, r.stderr
+        assert "spawn.py ready story-042" in r.stderr, r.stderr
+        assert not (tmp_path / "data" / "worktrees").exists()
+
+    def test_a_planned_card_is_told_which_leg_clears_it(self, tmp_path):
+        """The one refusal a lead meets holding an unreviewed card. Before the
+        digest the plan review cleared it; now only this leg does."""
+        repo, env, _g = make_repo(tmp_path, status="planned")
+        r = spawn(repo, env, "story-042")
+        assert r.returncode == 2 and "spawn.py ready story-042" in r.stderr, r.stderr
+
+    def test_a_ready_card_minted_by_no_one_is_told_the_whole_route(self, tmp_path):
+        """Every card already [ready] when this lands, and every forged bracket.
+        The route is WALKED here (constraint 12): naming `spawn.py ready` alone
+        sends the lead to a leg that refuses a card which is not [planned]."""
+        repo, env, _g = make_repo(tmp_path, status="ready")
+        stub_claude(tmp_path)
+        self.marker(tmp_path).unlink()
+        r = spawn(repo, env, "story-042")
+        assert r.returncode == 2, r.stdout
+        assert "[planned]" in r.stderr and "spawn.py ready story-042" in r.stderr, r.stderr
+        plan = tmp_path / "data" / "plan.md"
+        plan.write_text(plan.read_text().replace("[ready]", "[planned]"))
+        self.mint(repo, env)
+        assert spawn(repo, env, "story-042").returncode == 0

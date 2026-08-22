@@ -140,14 +140,10 @@ def card_title(card: str) -> str:
 
 def card_lines(card: str) -> list[str]:
     """The card as the credential sees it: the whole block, minus what moves for
-    reasons that are not drift.
+    reasons that are not drift — TestCardDigest holds which, and why.
 
-    The status bracket goes because spawn flips it to [in-progress] right after
-    checking, and its own recovery text tells the lead to put it back and
-    re-spawn. Trailing whitespace goes because the LAST card owns the plan to
-    EOF, so appending the next story would otherwise read as an edit to it. What
-    the refusal DIFFS is this same list — a diff of anything else would name
-    lines the digest forgave.
+    What the refusal DIFFS is this same list, so a diff of anything else would
+    name lines the digest forgave.
     """
     lines = [ln.rstrip() for ln in card.splitlines()]
     head = lines[0]

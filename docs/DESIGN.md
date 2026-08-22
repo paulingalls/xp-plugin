@@ -40,7 +40,7 @@ repo/                              (in-repo: durable, git-versioned, PR-reviewab
 ├── plan.md                        execution plan: milestones + current sprint stories — PER CLONE
 ├── session.md                     lead's continuity digest (sole writer: the lead's close flow)
 ├── work.md                        open bugs/debts/notes — all writes via the flock'd append CLI, never direct edits
-├── markers/                       ALWAYS scoped: <story-id>.ready (the reviewed card's digest),
+├── markers/                       ALWAYS scoped: <story-id>.ready.json (the reviewed card's digest),
 │                                  <session>.test-status — a project-global marker is a design error
 └── locks/
 ```
