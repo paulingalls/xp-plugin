@@ -659,7 +659,14 @@ files split under the cap. THE SPLIT ITSELF is lead work BEFORE the first spawn
 — it touches every test file every story edits, so deferring it serializes the
 sprint — and every filed falsifier naming a moved node id is re-resolved
 (work.py resolve, green-now) as it moves; this sprint's Verify: lines update in
-the same commit.
+the same commit. PARTIAL `-k` DRAIN (plan review R2-2): ≥10 corpus falsifiers
+are `-k` expressions that stay green while a split moves a SUBSET of their
+matches — so `pytest --collect-only -q` counts are captured per corpus
+falsifier BEFORE the split and asserted identical AFTER; any delta names a
+falsifier to re-resolve. Proof of the split itself: full suite passes
+UNCHANGED, ratchet green, collect parity. STATED (R2-3): the split edits
+[ready] cards' Verify lines after their review with no digest mechanism yet
+built — accepted because the edits are path-mechanical and pre-spawn.
 CODEX REINSTATED (Paul, reversing three slips): "we have broken things too many
 times" — a second harness is the diversity mechanism DESIGN §8 names, CRITICAL
 both as a spawn harness (story-021) and natively as a lead (story-025). The spike
@@ -679,7 +686,7 @@ EXECUTOR, sprint-wide (Paul at planning): claude/opus/medium on every card — t
 hypothesis is fewer turns beats cheaper turns; judged at the retro against the
 sonnet sprints.
 
-#### story-019 — the execution plan is per-clone   [planned]
+#### story-019 — the execution plan is per-clone   [ready]
 Context: A REAL USER REQUIREMENT, not a cleanup. Paul runs three clones of one repo
 (../legacy, ../legacy2, ../legacy3 — one remote, one `develop`) each driving a
 DIFFERENT workstream under xp-agents, each with its own execution_plan.json and
@@ -724,7 +731,7 @@ Verify: pytest -q tests/test_setup.py tests/test_close.py tests/test_spawn.py te
 Close review: deep
 Executor: claude/opus/medium
 
-#### story-018 — coverage is about overlap, not motion   [planned]
+#### story-018 — coverage is about overlap, not motion   [ready]
 Context: MEASURED THIS SPRINT, three times on one story. The review leg refuses
 when trunk has moved ahead of the fork point, and land refuses when trunk moved
 since the review — so ANY commit on the sprint branch invalidates every in-flight
@@ -864,7 +871,7 @@ Verify: pytest -q tests/test_close.py
 Close review: deep
 Executor: claude/opus/medium
 
-#### story-023 — [ready] is a credential nothing binds to the card   [planned]
+#### story-023 — [ready] is a credential nothing binds to the card   [ready]
 Context: CONFIRMED by sprint-003's multi-angle review. "This card was plan-reviewed"
 is stored as a status bracket on the card's heading — a bit with a reader
 (spawn.py:304) and NO WRITER and NO CLEARER anywhere in scripts/. So editing a
@@ -899,7 +906,7 @@ Verify: pytest -q tests/test_spawn.py tests/test_close.py
 Close review: deep
 Executor: claude/opus/medium
 
-#### story-021 — codex is a spawnable harness (executor + reviewer)   [planned]
+#### story-021 — codex is a spawnable harness (executor + reviewer)   [ready]
 Context: REINSTATED BY PAUL at Sprint-4 planning after three slips. Cross-harness
 diversity is DESIGN §8's stated review preference ("Claude authors → Codex
 reviews"), and config.yml has carried a "once the adapter ships" comment on the
@@ -963,7 +970,7 @@ Close review: deep — a second harness under the same gates; every divergence
 between the two legs is a silent hole in one of them.
 Executor: claude/opus/medium
 
-#### story-025 — codex is a native lead (hooks + injection)   [planned]
+#### story-025 — codex is a native lead (hooks + injection)   [ready]
 Context: The other half of Paul's call: a human RUNNING codex as their agent gets
 the process, not just the prompt. ONE HOOKS FILE, deliberately (plan review F7
 — what test demands two?): codex with NO manifest hooks field loads
@@ -997,17 +1004,14 @@ expands `!` preloads — and our authoring rule already bans load-bearing preloa
 (the SKILL says what to run; the script speaks). A structural test pins that no
 shipped SKILL.md carries a `!` preload line, so the codex constraint holds by
 construction rather than by memory.
-TIMEOUT UNITS ARE UNRESOLVED on codex (3s clamp observed; seconds-vs-ms
-undistinguished): hooks.codex.json ships NO timeout values until one run
-distinguishes them — a deliberate omission, stated here so it is not "fixed"
-into a 1000x bug later.
 HONEST BOUND: gate compliance was observed on ONE model family from prose alone.
 This story ships the surface; it cannot certify how every codex model reads it.
 The walk (lead-run, constraint 12): install user-scope from this repo's
 marketplace, `codex exec` one trivial gated task, read the injected block and
 the stop-gate bypass in the transcript, record both in the story digest.
 Size: hooks component 417 of 1,000 — the adapter's budgeted home (DESIGN §9).
-Files: plugins/xp-plugin/hooks/hooks.json, plugins/xp-plugin/scripts/session_start.py,
+Files: plugins/xp-plugin/hooks/hooks.json, plugins/xp-plugin/.claude-plugin/plugin.json (version
+field only — the walk's bump→reinstall needs it), plugins/xp-plugin/scripts/session_start.py,
 plugins/xp-plugin/scripts/stop_gate.py, plugins/xp-plugin/scripts/bash_status.py,
 docs/DESIGN.md, tests/test_session_start.py, tests/test_stop_gate.py
 AC:
@@ -1023,7 +1027,7 @@ Close review: deep — a silently-unenforced session is this story's whole failu
 mode, and the spike measured codex producing exactly that shape.
 Executor: claude/opus/medium
 
-#### story-022 — the review that finds, judges, fixes, then clears   [planned]
+#### story-022 — the review that finds, judges, fixes, then clears   [ready]
 Context: MEASURED at sprint-003's close by running three reviewers over the SAME
 release diff. The single sprint-reviewer found 1 blocking + 8 noted. A frozen
 iteration of the harness's own reviewer found 5, including the only defect that
