@@ -50,8 +50,16 @@ def make_repo(tmp_path, status="ready", executor="(default)", trunk="main"):
     g("config", "user.name", "Ada L")
     plan = tmp_path / "data" / "plan.md"
     plan.parent.mkdir(parents=True, exist_ok=True)
-    plan.write_text(CARD.format(status=status, executor=executor))
+    plan.write_text(
+        CARD.format(status="planned" if status == "ready" else status, executor=executor)
+    )
     (repo / ".xp" / "config.yml").write_text(CONFIG.format(trunk=trunk))
+    if status == "ready":
+        # MINTED, never typed: a fixture that writes [ready] by hand hands out the
+        # forgery story-023 removed, and every test below it stops walking the real
+        # sequence (constraint 12). The forgery has its own test.
+        minted = spawn(repo, env, "ready", "story-042")
+        assert minted.returncode == 0, minted.stderr
     (repo / ".xp" / "constraints.md").write_text("# Constraints\n1. CONSTRAINT-SENTINEL\n")
     (repo / ".xp" / "system.md").write_text("# System\n- Worktree bootstrap: none needed\n")
     g("add", "-A")
