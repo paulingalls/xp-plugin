@@ -123,8 +123,9 @@ def staged_stub(tmp_path, commits=(), **stages):
     One body for every launch cannot tell a finder from the closing pass, so a
     planted blocker would be reported by every stage at once and the injection
     would pass against a pipeline that never ran the stage it names. Stage keys
-    spell `-` as `_`: `find_security=`, `verify=`, `fix=`, `close=`, and a
-    prefix key answers every stage starting with it. `commits` is
+    spell `-` as `_`: `find_security=`, `verify=`, `fix=`, `close=`, and a key
+    answers every stage whose `-`-separated key it prefixes, so `find=` reaches
+    every angle's finder and not only the one whose slug has no hyphen. `commits` is
     [(stage prefix, shell)] the stub runs after writing its report — a stub that
     never moves the tree cannot exercise the motion gates (constraint 2).
     """
@@ -143,7 +144,8 @@ def staged_stub(tmp_path, commits=(), **stages):
         "key = os.path.basename(m.group(1).strip()).split('.')[1]\n"
         f"table = {json.dumps(table)}\n"
         "clean = {'fixed': [], 'blocking': [], 'noted': []}\n"
-        "report = table.get(key, table.get(key.rsplit('-', 1)[0], clean))\n"
+        "hit = [v for k, v in table.items() if key == k or key.startswith(k + '-')]\n"
+        "report = hit[0] if hit else clean\n"
         "open(m.group(1).strip(), 'w').write(json.dumps(report))\n"
         f"for prefix, cmd in {json.dumps([list(c) for c in commits])}:\n"
         "    if key.startswith(prefix):\n"
