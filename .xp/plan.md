@@ -970,13 +970,14 @@ harness-blind: the reviewer writes {fixed,blocking,noted} JSON to the round path
 under data_root()/reports/, which sits OUTSIDE the workspace — the spawn must
 carry `--add-dir` for the data root, and the spike measured flock and atomic
 rename working there.
-SANDBOX IS PER-CONTRACT, and the commit contract names its widening (plan
-review F2): an executor must COMMIT, `.git` is read-only under workspace-write,
-and in a worktree the real gitdir lives under the main clone's
-.git/worktrees/ — so the widening is `--add-dir` of the resolved
-git-common-dir, asserted in the argv AND proven by the walk below landing a
-real commit; without that, every real run ends in the no-commits refusal and
-the suite ships green over stubs (story-017's measured failure, again). THE
+SANDBOX IS PER-CONTRACT (plan review F2), AND THE WIDENING PREMISE WAS
+FALSIFIED BY A LEAD PROBE (note 6193855e): on 0.147.0 a commit SUCCEEDS under
+plain workspace-write, measured in the worktree case where the real gitdir
+lives outside the workspace — the spike's read-only fact is stale, so NO
+git-common-dir --add-dir rides the argv. The commit contract is held
+empirically instead: the walk below must LAND A COMMIT, which is the gate that
+catches a future codex regressing to the 0.146.0 behaviour; without it the
+suite ships green over stubs (story-017's measured failure, again). THE
 REVIEWER DEFAULT DOES NOT FLIP THIS SPRINT: the story-leg contract is a FIXING
 reviewer (012b) and flipping config to a harness whose commit support this very
 story is still proving would degrade every close — the mechanism ships
@@ -988,7 +989,7 @@ Files: plugins/xp-plugin/scripts/spawn.py, plugins/xp-plugin/scripts/review.py,
 plugins/xp-plugin/scripts/teammate_tee.py, docs/DESIGN.md,
 tests/test_spawn.py, tests/test_close.py
 AC:
-- Given Executor: codex/gpt-5.6-terra/medium, When spawn --dry-run runs, Then the printed argv carries `-m gpt-5.6-terra`, `-c model_reasoning_effort=medium`, `--disable unified_exec`, `--sandbox workspace-write`, `--add-dir <data-root>` AND `--add-dir <git-common-dir>` (the commit widening — a worktree's real gitdir lives outside it) — fault-inject with a stub codex that REJECTS an argv missing `--disable unified_exec`, so deleting the flag reds a test rather than shipping a gate bypass
+- Given Executor: codex/gpt-5.6-terra/medium, When spawn --dry-run runs, Then the printed argv carries `-m gpt-5.6-terra`, `-c model_reasoning_effort=medium`, `--disable unified_exec`, `--sandbox workspace-write` and `--add-dir <data-root>` (no git-common-dir widening — probed unnecessary on 0.147.0, note 6193855e) — fault-inject with a stub codex that REJECTS an argv missing `--disable unified_exec`, so deleting the flag reds a test rather than shipping a gate bypass
 - Given a reviewer role of codex/<model>/<effort>, When the review leg runs, Then the reviewer is launched through the same runner, its report is read from the SAME round path with the SAME parse, and no caller of review.py can tell which harness wrote it — fault-inject with a stub that writes a valid report via shell
 - Given codex absent from PATH, When spawn resolves a codex executor, Then it REFUSES naming the harness and the install route, before any worktree is cut
 - Given a codex teammate that ends with a dirty tree or no commits of its own, Then the SAME nonzero contract as the claude leg fires from SHARED code, not a per-harness copy — the rule fixed in one of two implementations is this repo's most-filed defect class

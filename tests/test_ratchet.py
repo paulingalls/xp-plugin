@@ -283,3 +283,26 @@ def test_no_budget_number_shape_in_the_injected_prose():
     for path in (CLAUDE_MD, SYSTEM_MD, README):
         matches = BUDGET_NUMBER_SHAPE.findall(path.read_text())
         assert not matches, f"{path}: {matches}"
+
+
+def test_every_violation_names_its_remediation_not_just_its_number(tmp_path):
+    """The refusal is where remediation lives (CLAUDE.md's authoring rule): a
+    bare number teaches deleting words to fit, when the constraints already
+    name better moves — a checkable comment becomes a test, a WHAT-comment a
+    rename (9), an over-cap file extracts a leaf (8), a blown budget displaces
+    or moves budget zero-sum (1). One arm per violation kind."""
+    ratchet = _budgets()
+    files = {
+        "scripts/setup.py": "x = 1\n" * 501,  # file cap
+        "scripts/spawn.py": "x = 1\n" * (ratchet.SPAWN + 1),  # budget
+    }
+    out = run_ratchet(build_plugin_tree(tmp_path / "a", files)).stdout
+    assert "extract" in out, "the file-cap refusal never names constraint 8's move"
+    assert "displac" in out, "the budget refusal never names constraint 1's move"
+    # density needs its own tree: a big code file dilutes the ratio under the cap
+    dense = {"scripts/chatty.py": "# c\n" * 90 + "x = 1\n" * 10}
+    out = run_ratchet(build_plugin_tree(tmp_path / "b", dense)).stdout
+    assert "becomes a test" in out and "rename" in out, (
+        "the density refusal never names constraint 9's moves — a checkable"
+        " claim becomes a test, a WHAT-comment a rename"
+    )
