@@ -10,7 +10,7 @@ pytest-xdist (-n auto) as a DEV-ONLY dep — the stdlib-only rule governs shippe
 the plugin *scaffolds* equivalent hooks into consuming projects.
 
 **Layout (target)**:
-- `plugins/xp-plugin/` — the shipped plugin: .claude-plugin/plugin.json, skills/, agents/, hooks/ (per-harness), scripts/; root .claude-plugin/marketplace.json makes the repo a git marketplace
+- `plugins/xp-plugin/` — the shipped plugin: .claude-plugin/plugin.json, skills/, agents/, hooks/ (one file, both harnesses), scripts/; root .claude-plugin/marketplace.json makes the repo a git marketplace
 - `.xp/` — this repo's own instance of the state the plugin manages (we dogfood)
 - `docs/` — audit, design
 - shipped prose (VALUES.md, PROCESS.md) lives in plugins/xp-plugin/; .claude/ symlinks to it for dogfooding
