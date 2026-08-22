@@ -107,8 +107,7 @@ class TestShippedProseMatchesTheMechanism:
         fix-commits needed re-checking there were no prior findings to bound the
         pass — an unbounded re-review (note bae0b87b)."""
         skill = prose(PLUGIN / "skills" / "sprint-close" / "SKILL.md")
-        for lens in ("broad", "security"):
-            assert f"review --lens {lens}" in skill, f"the {lens} review is still hand-composed"
+        assert "close.py sprint <id> review" in skill, "the review is still hand-composed"
 
     def test_the_sprint_close_skill_orders_the_retro_BEFORE_the_reviews(self):
         """Measured against the last real close: sprint-002's retro commit touched
@@ -118,8 +117,8 @@ class TestShippedProseMatchesTheMechanism:
         is the fix, and it also puts the retro diff under the review DESIGN §6
         already says it deserves."""
         skill = prose(PLUGIN / "skills" / "sprint-close" / "SKILL.md")
-        assert skill.index("Note triage") < skill.index("review --lens broad")
-        assert "BEFORE the reviews" in skill
+        assert skill.index("Note triage") < skill.index("close.py sprint <id> review")
+        assert "BEFORE the review" in skill
 
     def test_a_script_driving_skill_does_not_restate_the_mechanism(self):
         """Measured drift, three times in two sprints, caught by a READER every

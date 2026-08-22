@@ -420,9 +420,6 @@ def main() -> int:
     sp = sub.add_parser("sprint")
     sp.add_argument("sprint_id")
     sp.add_argument("action", choices=["start", "review", "land", "post-merge"])
-    # no choices=[...]: sprint_close.LENSES is the one copy, and close.py cannot
-    # import it at module scope — sprint_close imports from here
-    sp.add_argument("--lens", default="")
     sp.add_argument("--dry-run", action="store_true")
     s = sub.add_parser("story")
     s.add_argument("story_id")
@@ -453,7 +450,7 @@ def main() -> int:
         if a.action == "start":
             return sprint_close.cmd_start(a.sprint_id)
         if a.action == "review":
-            return sprint_close.cmd_review(a.sprint_id, a.lens, a.dry_run)
+            return sprint_close.cmd_review(a.sprint_id, a.dry_run)
         if a.action == "land":
             return sprint_close.cmd_land(a.sprint_id, a.dry_run)
         return sprint_close.cmd_post_merge(a.sprint_id)

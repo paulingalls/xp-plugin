@@ -187,7 +187,7 @@ class TestTheXpExemptionIsNotABlankCheque:
     def test_a_path_with_a_space_does_not_invent_a_filename(self, tmp_path):
         """git prints an unquoted newline-separated list; `.split()` shredded
         `.xp/retro notes.md` into `notes.md` and refused naming a file that does
-        not exist, forcing a two-lens re-review over a space."""
+        not exist, forcing a whole re-review over a space."""
         repo, env, g = make_repo(tmp_path)
         record_reviews(tmp_path, repo, env)
         (repo / ".xp" / "retro notes.md").write_text("narrative\n")
