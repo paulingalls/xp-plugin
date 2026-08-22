@@ -335,3 +335,48 @@ class TestEnvFile:
 
         assert r.returncode == 0, r.stderr
         assert json.loads((data / "env.json").read_text())["consumer"] == {"keep": True}
+
+    def test_the_concurrent_writer_that_replaces_last_wins(self, tmp_path):
+        data = tmp_path / "state"
+        data.mkdir()
+        (data / "env.json").write_text(json.dumps({"consumer": "keep"}))
+        writer = """
+import os, sys, time
+from pathlib import Path
+sys.path.insert(0, sys.argv[1])
+from env import write_env
+replace = Path.replace
+def rendezvous(self, target):
+    (Path(os.environ["XP_DATA"]) / f"ready.{os.getpid()}").touch()
+    deadline = time.monotonic() + 10
+    while len(list(Path(os.environ["XP_DATA"]).glob("ready.*"))) < 2:
+        if time.monotonic() > deadline:
+            raise TimeoutError("the other writer never reached replace")
+        time.sleep(0.01)
+    swapped = Path(os.environ["XP_DATA"]) / "first-swapped"
+    if sys.argv[3] == "1.0.0":
+        while not swapped.exists():
+            if time.monotonic() > deadline:
+                raise TimeoutError("the first writer never replaced")
+            time.sleep(0.01)
+        return replace(self, target)
+    result = replace(self, target)
+    swapped.touch()
+    return result
+Path.replace = rendezvous
+write_env(Path(sys.argv[2]), sys.argv[3])
+"""
+        env = {"PATH": "/usr/bin:/bin", "XP_DATA": str(data)}
+        writers = [
+            subprocess.Popen(
+                [sys.executable, "-c", writer, str(SCRIPTS), str(tmp_path / root), version],
+                env=env,
+            )
+            for root, version in (("install-a", "1.0.0"), ("install-b", "2.0.0"))
+        ]
+
+        assert [process.wait(15) for process in writers] == [0, 0]
+        recorded = json.loads((data / "env.json").read_text())
+        assert recorded["consumer"] == "keep"
+        assert recorded["plugin_root"] == str(tmp_path / "install-a")
+        assert recorded["plugin_version"] == "1.0.0"

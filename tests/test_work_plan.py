@@ -19,6 +19,8 @@ from pathlib import Path
 import pytest
 
 SCRIPTS = Path(__file__).parent.parent / "plugins" / "xp-plugin" / "scripts"
+sys.path.insert(0, str(SCRIPTS))
+from env import write_env  # noqa: E402
 
 PLAN = """# Plan
 
@@ -306,7 +308,7 @@ PLUGIN = Path(__file__).parent.parent / "plugins" / "xp-plugin"
 
 
 def work_env(cwd, home, data=None):
-    """`work.py env` — the reader a codex lead's scripts and hooks actually call."""
+    """The shipped `work.py env` validation surface."""
     env = hashing_env(home)
     if data is not None:
         env["XP_DATA"] = str(data)
@@ -349,6 +351,7 @@ class TestPluginRootHelper:
         r = work_env(tmp_path, tmp_path, tmp_path / "data")
         assert r.returncode != 0, "a dead plugin root resolved"
         assert str(install) not in r.stdout, "the dead path was returned anyway"
+        assert "gone" in r.stderr, r.stderr
         for named in (str(env_file), str(install), "SessionStart"):
             assert named in r.stderr, f"the refusal never names {named}:\n{r.stderr}"
 
@@ -369,12 +372,22 @@ class TestPluginRootHelper:
         assert r.returncode != 0, "a directory with no manifest resolved as a plugin"
         assert "plugin.json" in r.stderr, r.stderr
 
-    def test_a_manifest_without_a_string_version_refuses(self, tmp_path):
-        install = self.fake_plugin(tmp_path / "install", version=7)
-        self.seed(tmp_path / "data", install, version=7)
+    def test_a_manifest_without_a_usable_version_refuses(self, tmp_path):
+        for version in (7, ""):
+            install = self.fake_plugin(tmp_path / f"install-{version!r}", version=version)
+            self.seed(tmp_path / f"data-{version!r}", install, version=version)
+            r = work_env(tmp_path, tmp_path, tmp_path / f"data-{version!r}")
+            assert r.returncode != 0, f"manifest version {version!r} resolved as an install"
+            assert "plugin.json" in r.stderr and "SessionStart" in r.stderr, r.stderr
+
+    def test_a_non_object_manifest_refuses_without_a_traceback(self, tmp_path):
+        install = tmp_path / "install"
+        (install / ".claude-plugin").mkdir(parents=True)
+        (install / ".claude-plugin" / "plugin.json").write_text("[]")
+        self.seed(tmp_path / "data", install)
         r = work_env(tmp_path, tmp_path, tmp_path / "data")
-        assert r.returncode != 0, "a non-string manifest version resolved as an install"
-        assert "plugin.json" in r.stderr and "SessionStart" in r.stderr, r.stderr
+        assert r.returncode != 0
+        assert "plugin.json" in r.stderr and "Traceback" not in r.stderr, r.stderr
 
     def refusal_without(self, tmp_path, contents):
         data = tmp_path / "data"
@@ -391,6 +404,11 @@ class TestPluginRootHelper:
 
     def test_an_env_without_the_key_refuses_the_same_way(self, tmp_path):
         assert "setup.py" in self.refusal_without(tmp_path, "{}")
+
+    def test_an_invalid_env_names_the_manual_step_before_refresh(self, tmp_path):
+        for invalid in ('{"consumer": ', '["consumer"]'):
+            why = self.refusal_without(tmp_path, invalid)
+            assert "env.json" in why and "repair or remove" in why and "SessionStart" in why
 
     def test_a_non_path_root_refuses_without_a_traceback(self, tmp_path):
         why = self.refusal_without(
@@ -436,3 +454,19 @@ class TestPluginRootHelper:
         )
         assert after.returncode != 0, "the moved-away install still resolved"
         assert str(install) in after.stderr
+
+    def test_a_failed_replace_cleans_its_temp_file(self, tmp_path, monkeypatch):
+        data = tmp_path / "data"
+        data.mkdir()
+        (data / "env.json").write_text(json.dumps({"consumer": "keep"}))
+        monkeypatch.setenv("XP_DATA", str(data))
+
+        def fail_replace(_self, _target):
+            raise OSError("fault-injected replace failure")
+
+        monkeypatch.setattr(Path, "replace", fail_replace)
+        with pytest.raises(OSError, match="fault-injected"):
+            write_env(tmp_path / "install", "1.0.0")
+
+        assert not list(data.glob("env.json.*.tmp"))
+        assert json.loads((data / "env.json").read_text()) == {"consumer": "keep"}

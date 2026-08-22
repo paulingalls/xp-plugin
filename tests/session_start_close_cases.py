@@ -1,12 +1,11 @@
-"""story-008: the last close in the recovery block. Split from
-test_session_start.py at story-027 (constraint 8's 500-line cap)."""
+"""Shared story-008 cases extracted to keep test_session_start.py below 500 lines."""
 
 import json
 
 from session_start_helpers import run_hook, xp_repo
 
 
-class TestLastClose:
+class LastCloseCases:
     """story-008 AC 8: what was just completed belongs in the FRESH layer.
 
     recovery_block filters [done] out, so a finished story survived only in the

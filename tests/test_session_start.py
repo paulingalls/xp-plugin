@@ -5,7 +5,12 @@ import subprocess
 import sys
 from pathlib import Path
 
+from session_start_close_cases import LastCloseCases
 from session_start_helpers import HOOK, HOOKS_JSON, run_hook, run_hook_as, xp_repo
+
+
+class TestLastClose(LastCloseCases):
+    pass
 
 
 class TestScope:
@@ -386,13 +391,21 @@ class TestEnvRefresh:
         self.assert_current(tmp_path)
 
     def test_a_hook_that_cannot_write_keeps_injecting(self, tmp_path):
-        """017's log contract: telemetry never blocks the session. Fault-injected —
-        env.json is a DIRECTORY, so the rename raises. The module-level handler is
-        not enough: it degrades to exit 0 with NO stdout, trading the whole lead
-        profile for a failed pointer write."""
+        """A pointer-write failure must not trade away the whole lead profile."""
         repo, _g = xp_repo(tmp_path)
         (tmp_path / "xp" / "env.json").mkdir(parents=True)
         r = run_hook(repo, tmp_path)
         assert r.returncode == 0
         assert "CONSTRAINT-SENTINEL" in r.stdout, r.stdout or r.stderr
-        assert not list((tmp_path / "xp").glob("env.json.*.tmp"))
+
+    def test_an_invalid_env_is_not_replaced_and_the_hook_keeps_injecting(self, tmp_path):
+        repo, _g = xp_repo(tmp_path)
+        path = tmp_path / "xp" / "env.json"
+        for invalid in ('{"consumer": ', '["consumer"]'):
+            path.write_text(invalid)
+
+            r = run_hook(repo, tmp_path)
+
+            assert r.returncode == 0
+            assert "CONSTRAINT-SENTINEL" in r.stdout, r.stdout or r.stderr
+            assert path.read_text() == invalid

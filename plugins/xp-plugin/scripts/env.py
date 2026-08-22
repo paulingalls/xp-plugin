@@ -48,11 +48,8 @@ def write_env(root: Path, version: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     try:
         current = json.loads(path.read_text())
-    except (OSError, ValueError):
+    except FileNotFoundError:
         current = {}
-    if not isinstance(current, dict):
-        current = {}
-    # MERGE: a writer owns the two plugin keys and nothing else in the file.
     current["plugin_root"] = str(root)
     current["plugin_version"] = version
     # Per-writer temp name: a lead session and a spawned teammate's SessionStart
@@ -91,9 +88,15 @@ def plugin_root() -> Path:
     path = env_path()
     try:
         recorded = json.loads(path.read_text())
-    except (OSError, ValueError):
+    except FileNotFoundError:
         recorded = {}
-    if not isinstance(recorded, dict) or not recorded.get("plugin_root"):
+    except (OSError, ValueError) as exc:
+        _refuse_env(
+            f"{path} is not a readable env.json ({exc}) — repair or remove it, then {REFRESH}."
+        )
+    if not isinstance(recorded, dict):
+        _refuse_env(f"{path} must contain a JSON object — repair or remove it, then {REFRESH}.")
+    if not recorded.get("plugin_root"):
         _refuse_env(
             f"no plugin root recorded in {path} — setup.py seeds it at scaffold and every"
             f" SessionStart refreshes it. Run the installed plugin's scripts/setup.py in"
