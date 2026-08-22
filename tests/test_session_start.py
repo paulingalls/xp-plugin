@@ -400,3 +400,72 @@ class TestConstraintsSurviveTheBudget:
         )
         out = run_hook(repo, tmp_path).stdout
         assert "LAST-CONSTRAINT-SENTINEL" in out, "an unbounded digest evicted the rules"
+
+
+class TestCodexSessionStart:
+    """story-025: the payload a live codex-cli 0.147.0 SessionStart delivers, verbatim
+    — no session variable reaches the process, and codex runs the hook in the session
+    cwd, which is a repo SUBDIRECTORY whenever the human launched it from one.
+    """
+
+    def codex_run(self, cwd, data_dir, payload):
+        return subprocess.run(
+            [sys.executable, str(HOOK)],
+            input=json.dumps(payload),
+            env={"PATH": "/usr/bin:/bin", "HOME": str(data_dir), "XP_DATA": str(data_dir / "xp")},
+            cwd=cwd,
+            capture_output=True,
+            text=True,
+        )
+
+    def test_codex_payload_injects_and_keys_liveness_on_the_payload(self, tmp_path):
+        repo, _g = xp_repo(tmp_path)
+        sub = repo / "pkg"
+        sub.mkdir()
+        r = self.codex_run(
+            sub,
+            tmp_path,
+            {
+                "session_id": "01a0287c-801c-7651-bf86-d1cb2d4b2284",
+                "transcript_path": "/dev/null",
+                "cwd": str(sub),
+                "hook_event_name": "SessionStart",
+                "model": "gpt-5.6-terra",
+                "permission_mode": "bypassPermissions",
+                "source": "startup",
+            },
+        )
+        assert "CONSTRAINT-SENTINEL" in r.stdout, r.stderr
+        alive = tmp_path / "xp" / "markers" / "01a0287c-801c-7651-bf86-d1cb2d4b2284.alive"
+        assert alive.exists()
+
+    def test_session_id_alone_still_lands_the_touchfile(self, tmp_path):
+        """Fault-injection for the key: an env-keyed touchfile has nothing to read."""
+        repo, _g = xp_repo(tmp_path)
+        self.codex_run(repo, tmp_path, {"session_id": "bare-id"})
+        assert (tmp_path / "xp" / "markers" / "bare-id.alive").exists()
+
+
+class TestOneHooksFileServesBothHarnesses:
+    """AC1: codex loads hooks/hooks.json by its own default discovery, and an event
+    name it does not know leaves the rest of the file running (both measured on
+    0.147.0). A second registration could only drift."""
+
+    def test_no_per_harness_registration_exists(self):
+        plugin = HOOK.parent.parent
+        assert list(plugin.rglob("hooks*.json")) == [HOOKS_JSON]
+        assert list(plugin.rglob(".codex-plugin")) == []
+        assert "hooks" not in json.loads((plugin / ".claude-plugin" / "plugin.json").read_text())
+
+
+class TestSkillsCarryNoPreload:
+    def test_no_shipped_skill_preloads(self):
+        """codex delivers a skill LOCATOR and never expands `!` — so a preload is
+        content that silently vanishes on one harness."""
+        skills = sorted((HOOK.parent.parent / "skills").rglob("SKILL.md"))
+        assert skills, "no shipped skills found — the check would be vacuous"
+        for skill in skills:
+            for line in skill.read_text().splitlines():
+                # the TOKEN, not the line start: `Current state: !`git status`` is the
+                # ordinary spelling and expands exactly as a leading one does
+                assert "!`" not in line, f"{skill.parent.name}: {line}"
