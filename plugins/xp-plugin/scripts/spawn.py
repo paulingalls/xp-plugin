@@ -125,7 +125,7 @@ def resolve_role(role: str, card: str = "", override: str = "") -> tuple[str, st
     Its own block-scan rather than close.config_flat, which matches at column 0
     and cannot see `executor:` indented under `roles:`.
     """
-    spec = override or _card_executor(card) or _config_role(role)
+    spec = override or _card_role(card, role) or _config_role(role)
     parts = [p for p in spec.split("/") if p]
     if len(parts) < 2:
         raise SystemExit(
@@ -139,10 +139,13 @@ def resolve_role(role: str, card: str = "", override: str = "") -> tuple[str, st
     return harness, model, effort
 
 
-def _card_executor(card: str) -> str:
+def _card_role(card: str, role: str) -> str:
+    """`Executor:` for the executor, `Reviewer:` for the reviewer. Keyed to the
+    ROLE, or one card cannot say "author codex, review claude"."""
+    label = f"{role.capitalize()}:"
     for ln in card.splitlines():
-        if ln.startswith("Executor:"):
-            value = ln.removeprefix("Executor:").strip()
+        if ln.startswith(label):
+            value = ln.removeprefix(label).strip()
             return "" if value == "(default)" else value
     return ""
 
@@ -198,17 +201,19 @@ def run_agent(
     two things the branch below turns on.
     """
     env = os.environ | {"XP_ROLE": role}
-    # REVIEWER ONLY. It is the one launch that is both long-running AND writing:
-    # a hung reviewer owns the lead's tree, with edit rights, forever. A teammate
-    # legitimately outruns any wall clock, and cmd_spawn's call site has no except
-    # — bounding it would kill a whole story and abandon its worktree. Read from
-    # the environment because every test drives these as subprocesses.
+    # BOTH reviewer legs: a review is the one launch both long-running AND
+    # writing, and a hung one owns the lead's tree, with edit rights, forever. A
+    # teammate legitimately outruns any wall clock, and cmd_spawn's call site has
+    # no except — bounding it would kill a whole story and abandon its worktree.
+    # Read from the environment because every test drives these as subprocesses.
     timeout = None
-    if role == "reviewer":
+    if role.endswith("reviewer"):
         timeout = float(os.environ.get("XP_AGENT_TIMEOUT", 3600))
-        # Its fixes must be distinguishable from the lead's IN GIT, in every clone,
-        # forever — close.py gates on this, so it is load-bearing, not a label.
-        # EMAIL too: with name alone, every email-keyed tool still reports the lead.
+    # The STORY reviewer alone: this name is the credential close.py and
+    # sprint_close.py gate the merge on, in every clone, forever, and the plan
+    # reviewer never earns it. EMAIL too: with the name alone, every email-keyed
+    # tool still reports the lead.
+    if role == "reviewer":
         from review import REVIEWER_EMAIL, REVIEWER_NAME
 
         env |= {

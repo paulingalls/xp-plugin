@@ -203,6 +203,29 @@ class TestExecutorResolution:
         assert argv[argv.index("--model") + 1] == "opus"
         assert argv[argv.index("--effort") + 1] == "high"
 
+    def test_each_role_reads_its_OWN_card_line(self):
+        """story-026: one card expresses "author codex, review claude" only if the
+        line label follows the role. Before this, resolve_role read `Executor:`
+        whatever role it was asked for, so the close leg's card lookup would have
+        launched the AUTHOR's harness as the reviewer."""
+        from spawn import resolve_role
+
+        card = "Verify: true\nExecutor: codex/gpt-5.6-terra/high\nReviewer: claude/opus\n"
+        assert resolve_role("executor", card) == ("codex", "gpt-5.6-terra", "high")
+        assert resolve_role("reviewer", card) == ("claude", "opus", "")
+
+    def test_a_role_with_no_card_line_falls_through_to_config(self, tmp_path, monkeypatch):
+        """The no-`Reviewer:` case, which every existing close test rides on."""
+        from spawn import resolve_role
+
+        repo, _env, _g = make_repo(tmp_path)
+        monkeypatch.chdir(repo)
+        assert resolve_role("reviewer", "Executor: codex/gpt-5.6-terra/high\n") == (
+            "claude",
+            "opus",
+            "",
+        )
+
     def test_cli_override_beats_the_card(self, tmp_path):
         repo, env, _g = make_repo(tmp_path, executor="claude/opus/high")
         rec = stub_claude(tmp_path)
