@@ -27,6 +27,17 @@ SPAWN_NAMES = {"spawn", "teammate_tee"}
 
 DENSITY_THRESHOLD = 0.20
 
+# Tests are production code (constraint 8, amended at sprint-004 open): the
+# 500-line hard cap binds tests/ exactly as it binds the shipped plugin.
+# Pins are the CURRENT sizes of the files caught over — they may only FALL,
+# and a pin whose file is back under the cap reds until it is deleted.
+FILE_CAP = 500
+GRANDFATHER = {
+    "tests/test_close.py": 2059,
+    "tests/test_sprint_close.py": 1011,
+    "tests/test_spawn.py": 863,
+}
+
 
 class NoScriptsFound(Exception):
     """A measurement of nothing must not read as a pass — it certifies (constraint 2)."""
@@ -103,11 +114,27 @@ def measure(root):
             worst = (ratio, path)
 
     density = total_commented / total_lines if total_lines else 0
-    return totals, density, worst
+
+    tests_dir = root / "tests"
+    test_paths = (
+        sorted(p for p in tests_dir.rglob("*.py") if "__pycache__" not in p.parts)
+        if tests_dir.is_dir()
+        else []
+    )
+    file_findings = []
+    for path in paths + test_paths:
+        rel = path.relative_to(root).as_posix()
+        n = count_lines(path)
+        cap = GRANDFATHER.get(rel, FILE_CAP)
+        if n > cap:
+            file_findings.append(("over", rel, n, cap))
+        elif rel in GRANDFATHER and n <= FILE_CAP:
+            file_findings.append(("stale", rel, n, cap))
+    return totals, density, worst, file_findings
 
 
 def report(root):
-    totals, density, worst = measure(root)
+    totals, density, worst, file_findings = measure(root)
     budgets = {"spawn": SPAWN, "close": CLOSE, "hooks": HOOKS, "misc": MISC}
     lines = ["component   measured   cap"]
     violations = []
@@ -129,6 +156,16 @@ def report(root):
             f"DENSITY EXCEEDED: comments+docstrings {density:.2%} of shipped Python, "
             f"cap {DENSITY_THRESHOLD:.2%}, worst file {worst_path}"
         )
+
+    for kind, rel, n, cap in file_findings:
+        if kind == "over":
+            violations.append(
+                f"FILE CAP EXCEEDED: {rel} measured {n}, cap {cap}, over by {n - cap}"
+            )
+        else:
+            violations.append(
+                f"GRANDFATHER STALE: {rel} measures {n} <= {FILE_CAP} — delete its pin"
+            )
 
     return "\n".join(lines), violations
 

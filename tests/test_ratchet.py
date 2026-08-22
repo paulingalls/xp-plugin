@@ -86,7 +86,7 @@ def test_extracted_subpackage_counts_against_its_component(tmp_path):
     root = build_plugin_tree(tmp_path, files)  # setup.py so the empty-tree refusal cannot mask it
     result = run_ratchet(root)
     assert result.returncode != 0, result.stdout
-    (violation,) = violation_lines(result.stdout)
+    (violation,) = [v for v in violation_lines(result.stdout) if "BUDGET" in v]
     assert "close" in violation, violation
     assert "over by 50" in violation, violation
 
@@ -96,13 +96,13 @@ def test_the_spawn_leg_extracted_to_a_leaf_still_counts_against_spawn(tmp_path):
     LEAF module, not a subpackage — story-017 cut spawn.py's tee loop out to
     scripts/teammate_tee.py. Charging that to misc understates the component it
     was cut from and spends a budget it does not belong to."""
-    files = {"scripts/spawn.py": "x = 1\n", "scripts/teammate_tee.py": "x = 1\n" * 800}
+    files = {"scripts/spawn.py": "x = 1\n" * 401, "scripts/teammate_tee.py": "x = 1\n" * 400}
     root = build_plugin_tree(tmp_path, files)
     result = run_ratchet(root)
     rows = dict(ln.split()[:2] for ln in result.stdout.splitlines()[1:5])
     assert rows["spawn"] == "801", result.stdout
     assert rows["misc"] == "0", result.stdout
-    assert result.returncode == 0, result.stdout  # 801 fits spawn's 2,000; 800 blows misc's 750
+    assert result.returncode == 0, result.stdout  # 801 fits spawn's cap; 800 blows misc's 750
 
 
 def test_python_outside_scripts_counts_against_its_component(tmp_path):
@@ -128,10 +128,71 @@ def test_fixture_over_spawn_budget_reds_naming_budget_and_overage(tmp_path):
     root = build_plugin_tree(tmp_path, {"scripts/spawn.py": "x = 1\n" * (cap + 100)})
     result = run_ratchet(root)
     assert result.returncode != 0, result.stdout
-    (violation,) = violation_lines(result.stdout)
+    (violation,) = [v for v in violation_lines(result.stdout) if "BUDGET" in v]
     assert "spawn" in violation, violation
     assert f"cap {cap}" in violation, violation
     assert "over by 100" in violation, violation
+
+
+def test_a_test_file_over_the_cap_reds_naming_the_file(tmp_path):
+    """Tests are production code (Paul, sprint-004 open): constraint 8's hard cap
+    binds tests/ equally — this repo reached 2,059 lines in one test file with no
+    counter-pressure, because the ratchet measured only the shipped plugin."""
+    root = build_plugin_tree(tmp_path, {"scripts/setup.py": "x = 1\n"})
+    (root / "tests").mkdir()
+    (root / "tests" / "test_big.py").write_text("x = 1\n" * 600)
+    result = run_ratchet(root)
+    assert result.returncode != 0, result.stdout
+    (violation,) = [v for v in violation_lines(result.stdout) if "FILE CAP" in v]
+    assert "test_big.py" in violation, violation
+    assert "over by 100" in violation, violation
+
+
+def test_a_shipped_file_over_the_cap_reds_the_same_way(tmp_path):
+    """One rule, both implementations — asymmetric enforcement is the
+    rule-fixed-in-one-of-two-copies defect this sprint's bug batch closed twice."""
+    root = build_plugin_tree(tmp_path, {"scripts/setup.py": "x = 1\n" * 501})
+    result = run_ratchet(root)
+    assert result.returncode != 0, result.stdout
+    assert any("FILE CAP" in v and "setup.py" in v for v in violation_lines(result.stdout)), (
+        result.stdout
+    )
+
+
+def test_a_grandfathered_file_may_only_shrink(tmp_path):
+    """The pin is the CURRENT size, not a license: growth past it reds even while
+    the file is over the ordinary cap."""
+    ratchet = _budgets()
+    root = build_plugin_tree(tmp_path, {"scripts/setup.py": "x = 1\n"})
+    (root / "tests").mkdir()
+    (root / "tests" / "test_big.py").write_text("x = 1\n" * 601)
+    old = ratchet.GRANDFATHER
+    try:
+        ratchet.GRANDFATHER = {"tests/test_big.py": 600}
+        _table, violations = ratchet.report(root)
+        assert any("FILE CAP" in v and "over by 1" in v for v in violations), violations
+        (root / "tests" / "test_big.py").write_text("x = 1\n" * 600)
+        _table, violations = ratchet.report(root)
+        assert not violations, violations
+    finally:
+        ratchet.GRANDFATHER = old
+
+
+def test_a_stale_grandfather_pin_reds_so_it_is_deleted(tmp_path):
+    """A pin whose file is back under the cap is dead config that would later
+    license regrowth to the pinned size — the ratchet's only-ever-lowers rule,
+    applied to its own exceptions."""
+    ratchet = _budgets()
+    root = build_plugin_tree(tmp_path, {"scripts/setup.py": "x = 1\n"})
+    (root / "tests").mkdir()
+    (root / "tests" / "test_big.py").write_text("x = 1\n" * 100)
+    old = ratchet.GRANDFATHER
+    try:
+        ratchet.GRANDFATHER = {"tests/test_big.py": 600}
+        _table, violations = ratchet.report(root)
+        assert any("STALE" in v and "test_big.py" in v for v in violations), violations
+    finally:
+        ratchet.GRANDFATHER = old
 
 
 def test_fixture_dense_comments_reds_naming_density_and_file(tmp_path):
