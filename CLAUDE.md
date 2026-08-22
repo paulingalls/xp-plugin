@@ -7,8 +7,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 xp-plugin: a lightweight XP process plugin for coding agents (Claude Code + Codex),
 the successor to ../xp-agents. We **dogfood the process while building it** — this
 repo runs under the same artifacts the plugin will ship. docs/AUDIT.md (evidence)
-and docs/DESIGN.md (architecture, decided) are the authorities; don't re-litigate
-settled decisions, propose diffs to them instead.
+and docs/DESIGN.md (architecture, decided, including the size budget in §9) are
+the authorities; don't re-litigate settled decisions, propose diffs to them
+instead.
 
 ## The process, enforced
 
@@ -26,9 +27,21 @@ settled decisions, propose diffs to them instead.
 - Lint: `ruff check --fix . && ruff format .`
 - Hooks: `lefthook install` (once per clone)
 
-## Size discipline (CI-enforced once the ratchet lands)
+## Size discipline
 
-Python ≤5,000 lines (spawn ≤2,000 · close ≤800 · hooks+adapters ≤1,000 · misc
-≤1,200) · skill prose ≤3,000 words · agent prose ≤2,500 words · tests ≤2× code
-lines. Every added rule displaces one. When in doubt: VALUES.md, conflicts resolve
-Honesty > Courage > Simplicity > Feedback > Communication.
+Budgets and rationale live in DESIGN.md §9; `tests/scripts/ratchet.py` measures the
+Python ones live at pre-push (the prose budgets are still read-and-judge) — run it
+and read the table, never a cached number. It measures the SHIPPED plugin, so it
+lives outside it: nothing under `plugins/xp-plugin/` may exist for our benefit
+rather than a consuming project's. Every added rule displaces one. When in doubt:
+VALUES.md, conflicts resolve Honesty > Courage > Simplicity > Feedback >
+Communication.
+
+## Authoring skills (ours, not a consuming project's)
+
+A SKILL driving a script says what to run, what you own, and how to respond to
+results. Mechanism lives in the code and remediation in the refusal text, so
+describing either ships a second copy that only drifts. Negative space — what
+deliberately does not exist — is the one description that earns its words.
+This only works if the script speaks: every refusal names its next action, and
+every CLI answers `--help` without doing anything.

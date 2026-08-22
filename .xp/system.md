@@ -22,7 +22,6 @@ Story ACs must be executed by a test named in the story's Verify.
 **Conventions**:
 - Test tiers: `fast` (pre-commit) / `story` (pre-push, story close) / `full`
   (sprint close). Declared in .xp/config.yml.
-- Size budgets are acceptance criteria (DESIGN.md §9): Python ≤5,000 lines
-  (spawn ≤2,000 · close ≤800 · hooks+adapters ≤1,000 · misc ≤1,200), skill prose
-  ≤3,000 words, agent prose ≤2,500 words, tests ≤2× code lines.
+- Size budgets are acceptance criteria (DESIGN.md §9, rationale and numbers); run
+  `tests/scripts/ratchet.py` for the live table — pre-push runs it too.
 - **Worktree bootstrap**: none needed (stdlib only, no install step).

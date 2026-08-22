@@ -1,6 +1,7 @@
 """story-002: close.py story-close pipeline. Verify: pytest -q tests/test_close.py"""
 
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -131,6 +132,33 @@ class TestStart:
         repo, env, _g = make_repo(tmp_path, status="ready")
         r = close(repo, env, "review")
         assert r.returncode == 2 and "in-progress" in r.stderr
+
+    def test_the_story_bundle_diffs_against_the_INTEGRATION_TARGET(self, tmp_path):
+        """Bug 66272ab4: /story-close bundled `main...HEAD`, so under
+        `release: sprint` every earlier story already integrated on the sprint
+        branch rode into this story's review. Its filed falsifier greps SKILL.md
+        for the absence of a token, which constraint 11 forbids — it greens on a
+        rewording while the defect returns.
+
+        The earlier story lives on the SPRINT BRANCH ONLY, never on main: that is
+        what makes the two bases differ, and a first version of this test put it
+        on both and passed against the injected bug."""
+        repo, env, g = make_repo(tmp_path)
+        g("checkout", "-qb", "sprint-001", "main")
+        (repo / "earlier_story.py").write_text("EARLIER_STORY_SENTINEL = 1\n")
+        (repo / ".xp" / "config.yml").write_text(
+            CONFIG + "\nrelease: sprint\nsprint_branch: sprint-001\n"
+        )
+        g("add", "-A")
+        g("commit", "-qm", "an earlier story, integrated on the sprint branch")
+        g("checkout", "-q", "story-042-branch")
+        g("merge", "-q", "--no-edit", "sprint-001")
+        assert close(repo, env, "review").returncode == 0
+        bundle = launches(tmp_path)[0]["stdin"]
+        assert "EARLIER_STORY_SENTINEL" not in bundle, (
+            "the bundle diffed against the default branch, so an already-integrated"
+            " story rode into this story's review"
+        )
 
     def test_bundle_inlines_rules_diff_card_and_work_entries(self, tmp_path):
         repo, env, _g = make_repo(tmp_path)
@@ -1355,21 +1383,28 @@ class TestShippedProseMatchesTheMechanism:
             assert "VERDICT" not in head, f"{path.name} still ships the deleted gate"
 
     def test_the_comment_rubric_is_identical_in_every_shipped_copy(self):
-        """It must reach whoever writes code: the lead (PROCESS.md, injected each
-        session), the teammate (TEAMMATE.md, inlined by spawn) and the reviewer
-        (the charter, inlined by build_bundle). None of them receives the others,
-        so a pointer reaches nobody and three copies drift."""
+        """TWO copies now, not three. The reviewer's copy existed for one stated
+        reason — "build_bundle never sends PROCESS.md" — which was one line of
+        Python, not a fact, so story-014 sent it and the charter POINTS.
+
+        TEAMMATE.md keeps its copy: spawn inlines it into a fresh session with no
+        bundle, so for THAT reader the premise still holds.
+        """
         rubric = (
             "Comments: restates the code → delete · explains WHAT → rename it ·"
             " a checkable claim → write the test · narrates history → delete, git"
             " holds it. Keep only the why, an external constraint, a rejected design."
         )
-        for path in (
-            PLUGIN / "PROCESS.md",
-            PLUGIN / "TEAMMATE.md",
-            PLUGIN / "agents" / "story-reviewer.md",
-        ):
+        for path in (PLUGIN / "PROCESS.md", PLUGIN / "TEAMMATE.md"):
             assert rubric in prose(path), f"{path.name} has drifted from the rubric"
+
+    def test_the_story_bundle_carries_PROCESS_md(self, tmp_path):
+        """What replaces the two pins. Both charters point at PROCESS.md now, so a
+        bundle without it hands the reviewer a pointer to nothing."""
+        repo, env, _g = make_repo(tmp_path)
+        assert close(repo, env, "review").returncode == 0
+        bundle = launches(tmp_path)[0]["stdin"]
+        assert "Polarity" in bundle and "(missing" not in bundle
 
     def test_every_stopping_rule_copy_states_the_split_arithmetic(self):
         """land refuses unless the last round covers HEAD, so "close without
@@ -1392,6 +1427,96 @@ class TestShippedProseMatchesTheMechanism:
             assert "inside the round that found" in text, f"{path.name}: reviewer half"
             assert "past what the review covered" in text, f"{path.name}: lead half"
 
+    def test_the_sprint_close_skill_runs_the_reviews_rather_than_composing_them(self):
+        """Step 2 used to tell a human to do a broad review and a security review.
+        Both prompts were then hand-composed at sprint-002's close, and when four
+        fix-commits needed re-checking there were no prior findings to bound the
+        pass — an unbounded re-review (note bae0b87b)."""
+        skill = prose(PLUGIN / "skills" / "sprint-close" / "SKILL.md")
+        for lens in ("broad", "security"):
+            assert f"review --lens {lens}" in skill, f"the {lens} review is still hand-composed"
+
+    def test_the_sprint_close_skill_orders_the_retro_BEFORE_the_reviews(self):
+        """Measured against the last real close: sprint-002's retro commit touched
+        CHANGELOG.md, docs/DESIGN.md, PROCESS.md and story-close/SKILL.md — five of
+        six paths outside .xp/, so land's exemption does not cover it. Retro last
+        means reviewing again, which invalidates the retro just written. The order
+        is the fix, and it also puts the retro diff under the review DESIGN §6
+        already says it deserves."""
+        skill = prose(PLUGIN / "skills" / "sprint-close" / "SKILL.md")
+        assert skill.index("Note triage") < skill.index("review --lens broad")
+        assert "BEFORE the reviews" in skill
+
+    def test_a_script_driving_skill_does_not_restate_the_mechanism(self):
+        """Measured drift, three times in two sprints, caught by a READER every
+        time and by no test: sprint-close's step count went stale when the
+        pipeline absorbed two reviews, and story-close described `-d` ordering
+        and a branch precondition that the land fix reversed. Prose describing a
+        mechanism is a second copy of it. The refusals name their own remediation,
+        so the enumerations were duplicating text the lead is handed anyway.
+        Pinned as a WORD BUDGET, not a token grep: a count reds when the
+        enumerations grow back under any wording, which is the failure mode.
+        """
+        for skill, cap in (("story-close", 330), ("sprint-close", 330)):
+            body = prose(PLUGIN / "skills" / skill / "SKILL.md")
+            assert len(body.split()) <= cap, f"{skill} regrew to {len(body.split())} words"
+
+    def test_the_skills_keep_the_negative_space_that_earns_its_words(self):
+        """The counterweight to the cut: what deliberately does NOT exist cannot be
+        read off the code an agent has not read, so it is the one description that
+        stays. Without this pin the word budget above is satisfiable by deleting
+        exactly the sentences that stop an agent hunting for a flag."""
+        story = prose(PLUGIN / "skills" / "story-close" / "SKILL.md")
+        assert "DOES NOT EXIST" in story, "the lead will hunt for a delta review"
+        assert "never spawns" in story, "land's one hard guarantee"
+
+    def test_every_shipped_script_is_reachable_from_the_plugin(self):
+        """ratchet.py sat in scripts/ for a sprint measuring OUR budgets against
+        OUR module names: nothing in the plugin invoked it, the shipped lefthook
+        template never ran it, and in a consuming repo it could only exit 2
+        ("MEASURED NOTHING"). Dev tooling shipped to every install.
+
+        IMPORT-OR-INVOKE, not a mention: ratchet was named once inside the plugin,
+        in a spawn.py comment, so a grep for the word would have certified it.
+        """
+        scripts = sorted((PLUGIN / "scripts").glob("*.py"))
+        assert len(scripts) > 5, "glob found nothing — a green here would certify"
+        corpus = {
+            p: p.read_text()
+            for p in PLUGIN.rglob("*")
+            if p.is_file() and p.suffix in (".py", ".md", ".json", ".yml", ".sh")
+        }
+        for script in scripts:
+            name = script.stem
+            forms = (f"import {name}", f"from {name} import", f"scripts/{name}.py")
+            reachable = any(
+                any(f in text for f in forms) for path, text in corpus.items() if path != script
+            )
+            assert reachable, (
+                f"{name}.py is shipped but nothing in the plugin imports or invokes it —"
+                " dev tooling belongs in tests/scripts/, not in every consumer's install"
+            )
+
+    def test_a_verify_line_that_is_not_runnable_is_refused_before_the_review(self, tmp_path):
+        """Bug 3e2ad94b. verify_commands returns everything after "Verify:", so a
+        line with rationale appended reached /bin/sh at LAND — after a reviewer had
+        been spent — and died on an unbalanced quote. story-016's card cleared TWO
+        plan-review rounds that way. The refusal belongs in _preflight, which both
+        legs call, so it costs a refusal instead of a review: assert NOTHING was
+        spawned, which is the half that makes it cheaper rather than merely louder.
+
+        BOUND, stated: shlex catches an UNBALANCED QUOTE — the apostrophe in
+        "story-010's" is what actually killed /bin/sh. Prose whose quotes happen to
+        balance still parses and still runs garbage. This closes the measured
+        failure, not the general class."""
+        repo, env, _g = make_repo(
+            tmp_path, verify="pytest -q -k x — `-k prose` selected story-010's test"
+        )
+        r = close(repo, env, "review")
+        assert r.returncode == 2, r.stdout + r.stderr
+        assert "Verify" in r.stderr, r.stderr
+        assert launches(tmp_path) == [], "spent a reviewer on an unrunnable Verify"
+
     def test_the_charter_names_the_report_path(self):
         assert "REPORT_PATH" in (PLUGIN / "agents" / "story-reviewer.md").read_text()
 
@@ -1400,6 +1525,63 @@ class TestShippedProseMatchesTheMechanism:
             "write your findings to a file"
             in (PLUGIN / "agents" / "plan-reviewer.md").read_text().lower()
         )
+
+    def test_the_plan_reviewer_charter_has_five_checks(self):
+        """story-016: check 4 absorbs the CUT duty (moved out of Output's
+        standing-to-cut sentence) and the old check 5's "really three stories"
+        clause; check 5's sprint-cap clause folds into check 1. A structural
+        count, not a token grep — it certifies the count only, not that the
+        duty is followed."""
+        charter = (PLUGIN / "agents" / "plan-reviewer.md").read_text()
+        section = charter.split("## Checks, in order of payoff")[1]
+        section = section.split("## Close-review depth")[0]
+        numbered = [line for line in section.splitlines() if re.match(r"\d+\. ", line)]
+        assert len(numbered) == 5, f"expected 5 checks, found {len(numbered)}"
+
+    def test_the_walk_fixture_names_no_cut_and_no_control(self):
+        """Bug 271de3bd, whose falsifier selects this test BY NAME. This header IS
+        the prompt both walk arms receive, so the arms are comparable only while
+        it is byte-identical between them — and it
+        once named 013 and 015 as the cuts and 010 as the negative control, which
+        let either arm answer by reading. A list of banned phrases could not hold
+        that: "two of these three were dropped by planning; the last was kept as
+        carded" is a complete answer key and passes every one of them. Pinning the
+        literal makes any edit to the experiment's prompt deliberate. The cards
+        below it are NOT pinned — they legitimately quote planning history."""
+        fixture = (Path(__file__).parent / "fixtures" / "overdesigned_plan.md").read_text()
+        assert fixture.split("#### ")[0] == (
+            "# Plan slice under review — three candidate stories\n"
+            "\n"
+            "Review these three story cards as a plan reviewer would: the sprint they belong\n"
+            "to has a cap of 6 and currently holds three other stories. The project is a\n"
+            "lightweight XP process plugin for coding agents; its constraints and system\n"
+            "context are in the files handed to you alongside this one.\n"
+            "\n"
+        )
+
+    def test_the_plan_review_location_is_pinned_in_both_copies(self):
+        """AC5: "say where" let two reviewers pick two different places this
+        sprint — a session scratchpad under /private/tmp for one, `.xp/reviews/`
+        for another. One location, asserted in both places it lives so neither can
+        drift without reding — the pattern
+        test_every_stopping_rule_copy_states_the_split_arithmetic already uses.
+
+        The ROUND clause is pinned with it because one name for a file written
+        once per round destroys the earlier round on write, and plan review does
+        run in rounds: story-014's two rounds are both on disk, and story-016's
+        own card credits its round-2 review. review.py already round-scopes the
+        story reviewer's report; nothing did the same here. Both copies are held
+        to the same LITERAL: "round-scoped" alone greened here off DESIGN's
+        unrelated sentence about that report (fault-injected, constraint 2).
+        """
+        location = "<data-root>/plans/<story-id>.md"
+        charter = (PLUGIN / "agents" / "plan-reviewer.md").read_text()
+        design = (Path(__file__).parent.parent / "docs" / "DESIGN.md").read_text()
+        assert location in charter, "plan-reviewer.md dropped the location"
+        assert location in design, "DESIGN.md dropped the location"
+        rounds = "<story-id>.round-N.md"
+        assert rounds in charter, "the charter lost the round rule"
+        assert rounds in design, "DESIGN.md lost the round rule"
 
 
 REVIEWER_NAME = "xp story-reviewer"
@@ -1537,6 +1719,195 @@ class TestFixingReviewer:
         r = close(repo, env, "review")
         assert r.returncode == 2 and ".xp" in r.stderr
 
+    def _worktree_land_setup(self, tmp_path, verify="true"):
+        """spawn.py's DEFAULT arrangement: the lead's tree holds the integration
+        target, the story branch lives in a worktree. Returns (repo, env, g,
+        tree, branch). `verify` is set BEFORE the review — editing the card after
+        it moves HEAD past the reviewed head and the coverage guard refuses."""
+        repo, env, g = make_repo(tmp_path, verify=verify)
+        self.fixing_stub(tmp_path)
+        assert close(repo, env, "review").returncode == 0
+        tree = tmp_path / "wt"
+        branch = g("rev-parse", "--abbrev-ref", "HEAD").stdout.strip()
+        g("checkout", "-q", "main")
+        g("worktree", "add", str(tree), branch)
+        return repo, env, g, tree, branch
+
+    def test_land_from_a_worktree_merges_and_removes_the_worktree(self, tmp_path):
+        """37c0fb4e. Replaces test_land_from_a_worktree_does_not_traceback, which
+        asserted `returncode in (0, 2)` and was green under the bug AND the fix.
+        MEASURED: `git merge --no-ff` into trunk succeeds while the story branch
+        is checked out in a worktree, so landing never needed a teardown first —
+        only `git branch -d` does."""
+        repo, env, _g, tree, branch = self._worktree_land_setup(tmp_path)
+        r = close(tree, env, "land", "--merge-mode", "local")
+        assert "Traceback" not in r.stderr, r.stderr
+        assert "refused" not in r.stderr, r.stderr
+        assert r.returncode == 0, r.stderr
+        assert not tree.exists(), "the worktree survived a completed land"
+        head = subprocess.run(
+            ["git", "log", "-1", "--pretty=%s"], cwd=repo, env=env, capture_output=True, text=True
+        ).stdout
+        assert branch in head, head
+        assert "[done]" in (repo / ".xp" / "plan.md").read_text()
+
+    def test_a_dirty_tree_holding_trunk_is_refused_before_verify_runs(self, tmp_path):
+        """5d7388fc — the ORDERING claim, re-pointed. Its filed falsifier named
+        the trunk-held refusal, which the fix above deletes; the property that
+        survives is that a structural precondition costing milliseconds is
+        checked before ~2 minutes of tests. The sentinel is what discriminates:
+        move this guard back below Verify and the sentinel appears."""
+        sentinel = tmp_path / "verify-ran"
+        repo, env, _g, tree, _b = self._worktree_land_setup(tmp_path, verify=f"touch {sentinel}")
+        (repo / "dirt.txt").write_text("uncommitted\n")
+        r = close(tree, env, "land", "--merge-mode", "local")
+        assert r.returncode == 2 and "dirty" in r.stderr, r.stderr
+        assert not sentinel.exists(), "ran the tests before a milliseconds-cheap precondition"
+        assert tree.exists(), "a refusal tore down the worktree"
+
+    def test_a_completed_land_runs_verify(self, tmp_path):
+        """Sentinel ABSENCE alone also passes an implementation that deleted
+        Verify, so the happy path pins its presence (story-014's AC 6 shape)."""
+        sentinel = tmp_path / "verify-ran"
+        _repo, env, _g, tree, _b = self._worktree_land_setup(tmp_path, verify=f"touch {sentinel}")
+        assert close(tree, env, "land", "--merge-mode", "local").returncode == 0
+        assert sentinel.exists()
+
+    def test_pr_mode_runs_gh_from_the_STORY_tree(self, tmp_path):
+        """`gh pr create` and `gh pr merge` take no --head: gh derives the head
+        branch from the CURRENT BRANCH of the cwd repo. The land fix hoisted
+        os.chdir(held) above both merge arms on a plan review's advice, which put
+        gh in the tree holding trunk — so it would infer `main` and refuse.
+
+        THIS IS THE OUT-OF-THE-BOX PATH: templates/config.yml leaves sprint_branch
+        commented, so integration_target() == default_branch() and close.py:489
+        derives pr mode; spawn's default puts trunk in the lead's tree, so `held`
+        is set. Every consuming project's first land. Untested because every
+        worktree test here passes --merge-mode local and every pr test runs from
+        the non-worktree repo."""
+        _repo, env, g, tree, branch = self._worktree_land_setup(tmp_path)
+        bare = tmp_path / "origin.git"
+        subprocess.run(["git", "init", "-q", "--bare", str(bare)], env=env, check=True)
+        g("remote", "add", "origin", str(bare))
+        gh = tmp_path / "ghbin"
+        gh.mkdir()
+        (gh / "gh").write_text(
+            "#!/bin/sh\n"
+            f'echo "$(git rev-parse --abbrev-ref HEAD)" >> {tmp_path}/gh-branches\n'
+            "exit 0\n"
+        )
+        (gh / "gh").chmod(0o755)
+        env = {**env, "PATH": f"{gh}:{env['PATH']}"}
+        r = subprocess.run(
+            [sys.executable, str(CLOSE), "story", "story-042", "land", "--merge-mode", "pr"],
+            cwd=tree,
+            env=env,
+            capture_output=True,
+            text=True,
+        )
+        log = tmp_path / "gh-branches"
+        seen = log.read_text().split() if log.exists() else []
+        assert seen, f"gh was never invoked: rc={r.returncode} {r.stderr[:300]}"
+        assert all(b == branch for b in seen), (
+            f"gh ran on {seen} but the story branch is {branch} — it would infer the"
+            " wrong head and refuse"
+        )
+
+    def test_land_from_the_tree_holding_trunk_removes_no_worktree(self, tmp_path):
+        """Without this the fix can pass by only ever handling the worktree case.
+        'Unchanged' spelled out: the merge lands in cwd, the card flips, and the
+        unrelated worktree is still standing."""
+        repo, env, g = make_repo(tmp_path)
+        self.fixing_stub(tmp_path)
+        assert close(repo, env, "review").returncode == 0
+        bystander = tmp_path / "other-wt"
+        g("worktree", "add", "-b", "unrelated", str(bystander), "main")
+        assert close(repo, env, "land", "--merge-mode", "local").returncode == 0
+        assert "[done]" in (repo / ".xp" / "plan.md").read_text()
+        assert bystander.exists(), "land removed a worktree it does not own"
+
+    def test_a_refused_land_leaves_the_worktree_standing(self, tmp_path):
+        """Every refusal names a next action the lead takes IN the story tree, so
+        no refusal may tear it down first. Trunk motion is the reachable refusal
+        that lands closest to the merge: FOUND HERE, the conflict abort below it
+        is unreachable in local mode, because any conflict needs trunk motion and
+        this guard fires first — evidence for f7dfec27, filed, not acted on."""
+        repo, env, g, tree, _b = self._worktree_land_setup(tmp_path)
+        g("checkout", "-q", "main")
+        (repo / "src" / "thing.py").write_text("A = 99\n")
+        g("commit", "-qam", "trunk moves after the review")
+        r = close(tree, env, "land", "--merge-mode", "local")
+        assert r.returncode == 2 and "moved since review" in r.stderr, r.stderr
+        assert tree.exists(), "a refusal destroyed the tree its remediation names"
+        on = subprocess.run(
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+            cwd=repo,
+            env=env,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+        assert on == "main", f"left the tree holding trunk on {on}"
+
+    def test_dry_run_removes_no_worktree_and_leaves_the_branch(self, tmp_path):
+        repo, env, _g, tree, branch = self._worktree_land_setup(tmp_path)
+        assert close(tree, env, "land", "--merge-mode", "local", "--dry-run").returncode == 0
+        assert tree.exists()
+        assert (
+            subprocess.run(
+                ["git", "rev-parse", "--verify", "-q", f"refs/heads/{branch}"],
+                cwd=repo,
+                env=env,
+                capture_output=True,
+                text=True,
+            ).returncode
+            == 0
+        )
+
+    def test_a_reviewer_may_fix_an_xp_file_the_story_itself_edits(self, tmp_path):
+        """The refusal message says "the plan or the rules"; the check was the whole
+        directory. Measured at story-010, whose card names .xp/system.md in Files —
+        deleting the budget numbers from it IS an AC — so the reviewer refining that
+        same file wedged the story: no round recorded, nine fixes left ungated.
+
+        THE FIXTURE NOW MATCHES THE DOCSTRING: its card previously named only
+        src/thing.py, so this passed on the deny-list's hole rather than on the
+        story declaring the file. Its pair below is what that hole allowed."""
+        repo, env, g = make_repo(tmp_path)
+        plan = repo / ".xp" / "plan.md"
+        plan.write_text(
+            plan.read_text().replace("Files: src/thing.py", "Files: src/thing.py, .xp/system.md")
+        )
+        g("commit", "-qam", "the card declares the .xp/ file this story edits")
+        self.fixing_stub(
+            tmp_path,
+            extra=(
+                "echo '- run ratchet.py' >> .xp/system.md\n"
+                f"git -c user.name='{REVIEWER_NAME}' -c user.email='r@xp'"
+                " commit -qam 'point system.md at the command'\n"
+            ),
+        )
+        r = close(repo, env, "review")
+        assert r.returncode == 0, r.stderr
+
+    def test_a_reviewer_may_NOT_edit_an_xp_file_the_card_never_named(self, tmp_path):
+        """The deny-list was (plan.md, constraints.md, config.yml) — .xp/system.md
+        was writable by the agent under review, and spawn.py EXECUTES its
+        `Worktree bootstrap:` line through subprocess.run(shell=True). So the
+        reviewer could write a command the next spawn runs, with a correctly
+        signed commit, a clean tree, and the round recorded."""
+        repo, env, _g = make_repo(tmp_path)
+        self.fixing_stub(
+            tmp_path,
+            extra=(
+                "echo 'Worktree bootstrap: `touch /tmp/pwned`' >> .xp/system.md\n"
+                f"git -c user.name='{REVIEWER_NAME}' -c user.email='r@xp'"
+                " commit -qam 'tweak system.md'\n"
+            ),
+        )
+        r = close(repo, env, "review")
+        assert r.returncode == 2, r.stdout
+        assert ".xp/system.md" in r.stderr, r.stderr
+
     def test_an_abort_names_the_undo_for_the_reviewer_commits(self, tmp_path):
         """AC 8: "nothing was recorded" was written for a reviewer that could not
         write. The tree now holds commits from a process refused mid-fix."""
@@ -1625,9 +1996,15 @@ class TestCharterBar:
             assert token in charter
         assert "heredoc" not in charter, "Write is allowed now; the heredoc route is stale"
 
-    def test_the_charters_finding_bar_is_byte_identical_to_the_process_one(self):
-        """build_bundle never sends PROCESS.md, so the bar must be COPIED — which
-        makes it a rule with two implementations unless they are pinned equal."""
+    def test_both_charters_point_at_the_finding_bar_rather_than_copying_it(self):
+        """Replaces the byte-identical pin story-014 deleted. That pin existed
+        because "build_bundle never sends PROCESS.md" — one line of Python, not a
+        fact. Asserting the bar appears ONCE in PROCESS.md would be false as
+        written: PROCESS.md states it twice, at story close and at sprint close.
+        """
         bar = "silent or corrupting (false green, corrupted record, unreviewed merge)"
         assert bar in (PLUGIN / "PROCESS.md").read_text()
-        assert bar in (PLUGIN / "agents" / "story-reviewer.md").read_text()
+        for name in ("story-reviewer", "sprint-reviewer"):
+            charter = (PLUGIN / "agents" / f"{name}.md").read_text()
+            assert bar not in charter, f"{name} still ships a second copy of the bar"
+            assert "PROCESS" in charter, f"{name} dropped the copy without pointing"

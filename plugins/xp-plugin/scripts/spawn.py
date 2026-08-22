@@ -19,6 +19,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 # close must import back FUNCTION-LOCALLY: a module-level edge cycles
 # (close -> spawn -> close) and fails before fail/git exist (story-008).
 from close import fail, git, integration_target, story_card
+from teammate_tee import run_teammate
 from work import card_title, chdir_repo_root, config_block_value, data_root, slugify, user_ns
 
 PLUGIN_ROOT = Path(__file__).parent.parent
@@ -174,12 +175,16 @@ def _read_shipped(path: Path) -> str:
 def claude_argv(model: str, effort: str, output_format: str = "json") -> list[str]:
     """The single owner of flag spellings — story-008 launches a reviewer through it.
 
-    `json` means a spawn prints nothing until the teammate finishes; `stream-json`
-    is the streaming spelling, and rendering it is DESIGN §9's first sacrificial
-    feature. Parameterized so 008's programmatic reviewer keeps a one-object parse.
+    `json` means a spawn prints nothing until the teammate finishes: the
+    reviewer's one-object parse (review.py) keeps this. `stream-json` is the
+    teammate's streaming spelling, and the installed binary REQUIRES `--verbose`
+    alongside it — measured against the real refusal at story-017's plan review,
+    not assumed.
     """
     argv = ["claude", "-p", "--plugin-dir", str(PLUGIN_ROOT), *PERMISSION_ARGV]
     argv += ["--output-format", output_format, "--model", model]
+    if output_format == "stream-json":
+        argv.append("--verbose")
     return argv + (["--effort", effort] if effort else [])
 
 
@@ -187,15 +192,15 @@ def run_agent(
     argv: list[str],
     cwd: Path,
     prompt: str,
-    role: str = "teammate",
-    capture: bool = False,
+    role: str,
+    capture: bool,
 ) -> subprocess.CompletedProcess:
     """Prompt on stdin: it keeps ~2k tokens out of argv and out of `ps`.
 
-    `role` and `capture` default to the teammate launch, so story-007's call
-    sites are unchanged; story-008's reviewer needs role="reviewer" (close.py
-    refuses any non-lead role, so the reviewer it spawns cannot close either)
-    and capture=True (the verdict has to be read, not streamed past).
+    `role` and `capture` carried defaults shaped for the teammate launch until
+    story-017 moved that leg to teammate_tee.run_teammate. Defaulting them now
+    hands a future caller XP_ROLE=teammate and no wall clock by omission — the
+    two things the branch below turns on.
     """
     env = os.environ | {"XP_ROLE": role}
     # REVIEWER ONLY. It is the one launch that is both long-running AND writing:
@@ -297,7 +302,11 @@ def cmd_spawn(story_id: str, override: str, dry_run: bool, in_place: bool = Fals
     except KeyError as e:
         return fail(f"refused: {e.args[0]}")
     if status != "ready":
-        return fail(f"refused: {story_id} is [{status}], spawn requires [ready]")
+        return fail(
+            f"refused: {story_id} is [{status}], spawn requires [ready]. A card starts"
+            " [planned]; the plan review is what clears it — twice in sprint-003 a card"
+            " reached a teammate with no review, and only a human caught it"
+        )
     if in_place:
         if dry_run:
             print(
@@ -309,7 +318,7 @@ def cmd_spawn(story_id: str, override: str, dry_run: bool, in_place: bool = Fals
     _harness, model, effort = resolve_role("executor", card, override)
     branch = story_branch(card, story_id)
     tree = worktree_path(story_id)
-    argv = claude_argv(model, effort)
+    argv = claude_argv(model, effort, "stream-json")
     prompt = build_prompt(teammate_sections(card))
     report, warning = profile_report(card, prompt)
     print(report)
@@ -353,7 +362,56 @@ def cmd_spawn(story_id: str, override: str, dry_run: bool, in_place: bool = Fals
             f" story only after it is written. Worktree left at {tree}"
         )
     print(f"{branch} at {tree} (off {trunk})")
-    return run_agent(argv, tree, prompt).returncode
+    handed_over = tree_state(tree)
+    rc = run_teammate(argv, tree, prompt, story_id, data_root())
+    # NOT `if rc: return rc` — a teammate that crashed is the likeliest one to
+    # have left work uncommitted, so skipping the guard there withholds the
+    # refusal exactly when it is worth most.
+    if err := unclean_teammate_result(tree, handed_over):
+        return fail(err)
+    return rc
+
+
+def tree_state(tree: Path) -> tuple[str, str]:
+    """(HEAD, porcelain) — the guard's baseline. Raises rather than passing
+    stdout through: a FAILED git returns empty output, which reads as an empty
+    porcelain and a HEAD unequal to the flip's — clean and committed, the one
+    wrong answer the guard can give."""
+
+    def out(*args: str) -> str:
+        r = subprocess.run(["git", *args], cwd=tree, capture_output=True, text=True)
+        if r.returncode != 0:
+            raise OSError(f"git {args[0]} failed in {tree}: {(r.stderr or r.stdout).strip()}")
+        return r.stdout.strip()
+
+    return out("rev-parse", "HEAD"), out("status", "--porcelain")
+
+
+def unclean_teammate_result(tree: Path, handed_over: tuple[str, str]) -> str:
+    """ "" when the teammate left a clean, committed story behind; otherwise the
+    refusal, naming both recoveries.
+
+    Both halves measure against the tree AS HANDED OVER. `trunk..HEAD` is the
+    vacuous spelling — the flip is itself a commit, so that range never reaches
+    zero (constraints.md #11) — and raw porcelain the false one: it charges the
+    teammate with whatever the bootstrap command dirtied before it started.
+    """
+    flip_head, handed_dirty = handed_over
+    recovery = (
+        f" Recover by committing by hand in {tree}, or by"
+        f" `git worktree remove {tree}` and re-spawning."
+    )
+    try:
+        head, dirty = tree_state(tree)
+    except OSError as e:
+        return f"refused: the story is unverified — {e}.{recovery}"
+    if left := sorted(set(dirty.splitlines()) - set(handed_dirty.splitlines())):
+        return "refused: the teammate left work uncommitted in {}:\n{}\n{}".format(
+            tree, "\n".join(left), recovery
+        )
+    if head == flip_head:
+        return f"refused: the teammate made no commits of its own in {tree}.{recovery}"
+    return ""
 
 
 def main() -> int:

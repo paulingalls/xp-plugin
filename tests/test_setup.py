@@ -26,9 +26,9 @@ def bare_repo(tmp_path, with_fake_lefthook=False):
     return repo, env
 
 
-def run_setup(repo, env):
+def run_setup(repo, env, *args):
     return subprocess.run(
-        [sys.executable, str(SCRIPTS / "setup.py")],
+        [sys.executable, str(SCRIPTS / "setup.py"), *args],
         cwd=repo,
         env=env,
         capture_output=True,
@@ -37,6 +37,18 @@ def run_setup(repo, env):
 
 
 class TestScaffold:
+    def test_help_explains_rather_than_scaffolding(self, tmp_path):
+        """setup.py parsed no args, so an agent orienting with --help SCAFFOLDED
+        the repo instead of being told what the command does. Corrupting, not
+        loud: it creates state nobody asked for and then reports success. The
+        fixture is a BARE repo — in this one, .xp/ already exists and the refusal
+        masks the bug entirely."""
+        repo, env = bare_repo(tmp_path)
+        r = run_setup(repo, env, "--help")
+        assert r.returncode == 0, r.stderr
+        assert not (repo / ".xp").exists(), "--help scaffolded the repo"
+        assert "scaffold" in r.stdout.lower(), r.stdout
+
     def test_bare_repo_gets_seeded_xp(self, tmp_path, monkeypatch):
         repo, env = bare_repo(tmp_path)
         r = run_setup(repo, env)
@@ -52,7 +64,10 @@ class TestScaffold:
         assert "sprint_cap" in cfg and "debt_budget" in cfg and "constraints_cap" in cfg
         plan = (repo / ".xp" / "plan.md").read_text()
         card, status = story_card(plan, "story-001")  # template parses with the real parser
-        assert status == "ready" and verify_commands(card)
+        # SEEDED [planned], not [ready]: a scaffolded project's first card must not
+        # be spawnable before its plan review. Both sprint-003 misses were forgetting,
+        # and a state nothing defaults to cannot catch forgetting.
+        assert status == "planned" and verify_commands(card)
         assert (repo / ".xp" / "system.md").exists()
 
     def test_existing_xp_refused_untouched(self, tmp_path):

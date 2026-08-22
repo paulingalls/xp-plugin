@@ -5,9 +5,10 @@ One page. The values (VALUES.md) cover what this page doesn't.
 ## The loop
 
 1. **Plan** (any multi-file change): draft the plan, then spawn the **plan-reviewer**
-   (fresh context — it owes your plan nothing). Address its findings before writing
-   implementation code. It checks TDD ordering, artifact coherence, constraint
-   conflicts, and sprint size.
+   (fresh context — it owes your plan nothing). A card starts `[planned]` and the
+   review is what clears it to `[ready]`, which is the only state spawn accepts —
+   so address the findings before implementation code. It checks TDD ordering,
+   artifact coherence, constraint conflicts, and sprint size.
 2. **Story**: red → green → refactor, small commits. Done = ACs verified against
    the running system at its surface (the story loop), not "tests green" (the
    commit loop) — two loops, two clocks. Git hooks are the wall: lint,
@@ -31,15 +32,16 @@ One page. The values (VALUES.md) cover what this page doesn't.
    Uncertain? One delta ping beats a wrong self-call. What ENDS a round is the
    finding bar, not a count: a finding earns another round only if its failure mode
    is silent or corrupting (false green, corrupted record, unreviewed merge). Loud
-   and patch-scale → fix it now if that is minutes, else file it. A round cap was
-   tried and retired — nothing counted it, and it gave the human no way to act.
+   and patch-scale → fix it now if that is minutes, else file it.
 4. **Sprint close** (release: sprint — the default): stories integrated on the
    sprint branch throughout; the batch PRs to main when it is RELEASABLE —
    usually now (keep sprints small), else carried to the plan boundary; prefer
-   flags that dark-launch unready behavior over holding the branch. Full tier + archived falsifiers batch-run + broad review +
-   security review + retro (one-page narrative + a proposed diff to constraints/config
-   — a learning that changes nothing executable isn't recorded; the narrative is
-   PRESENTED to the human at close, never just filed). Debt triage with the
+   flags that dark-launch unready behavior over holding the branch. Archived
+   falsifiers batch-run + full tier + note triage + retro (one-page narrative + a
+   proposed diff to constraints/config — a learning that changes nothing executable
+   isn't recorded; the narrative is PRESENTED to the human at close, never just
+   filed), then `review --lens broad|security` LAST, or the retro invalidates the
+   review that permits it. Debt triage with the
    human, under the **finding bar**: a finding earns work only if its failure mode is
    silent or corrupting (false green, corrupted record, unreviewed merge). Loud +
    patch-scale → fix now only if minutes. Loud + self-healing → NEVER — everything
@@ -58,12 +60,12 @@ One page. The values (VALUES.md) cover what this page doesn't.
   the latent problem materialised. One that greens BECAUSE the flaw is present is
   inverted, and aborts the sprint close on the day someone fixes it.
 - **resolve** — substitutes a falsifier that must be green NOW; the batch runs the
-  replacement, so a wrong resolution reds later and the record reopens. Records are
-  named by id (`work.py list`), never by timestamp: 48 appends in one second share one.
+  replacement, so a wrong resolution reds later and the record reopens. Records are named by id
+  (`work.py list`), never by timestamp — appends can share a second.
 - **note** — decisions (choice + because, naming which value won and which lost)
   and discoveries. Triaged at SPRINT close: promoted to constraints.md, or archived.
-  A directive the next story must FOLLOW goes on that story's CARD, which close.py
-  reads and spawn inlines into the teammate; the note keeps the evidence.
+  A directive the next story must FOLLOW goes on that story's CARD; the note keeps
+  the evidence.
 
 Telemetry (test/lint failures) is never recorded — the gate re-measures next run.
 

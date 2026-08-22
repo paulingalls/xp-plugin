@@ -4,7 +4,7 @@ Reversing one of these makes it a different project. Cap: 15 lines of constraint
 adding over the cap requires retiring one (the plan reviewer enforces).
 
 1. **Every rule must displace one.** New prose, hooks, or checks land only by removing
-   equal weight. The size budgets in system.md are CI-enforced acceptance criteria.
+   equal weight. The size budgets in DESIGN §9 are acceptance criteria, measured by ratchet.py at pre-push.
 2. **Fault-inject every guard.** A check that cannot red against its target defect is
    vacuous and worse than no check — it certifies. This applies to the plugin's own
    gates, tests, and filed falsifiers. (The predecessor's audit: 7 vacuous guards
@@ -30,12 +30,15 @@ adding over the cap requires retiring one (the plan reviewer enforces).
    marker is a design error (measured: marker bleed between parallel stories).
 11. **A falsifier must CONSTRUCT the condition it claims** — never observe ambient
    state, grep for an identifier, or assert a token's presence; and a resolution's
-   replacement must COVER the claim, not merely be green. (Five instances in
-   sprint-002, two of them filed at the sprint close itself: a falsifier coupled to
-   what the code is CALLED reds when someone renames it and greens when the defect
-   returns under a new name.)
+   replacement must COVER the claim, not merely be green, and it names a test by
+   NODE ID — `pytest -k <name>` matching nothing exits 5, so red-at-filing proves
+   only that no test bears the name, and it greens against any later test given
+   that name whatever it asserts. (A falsifier coupled to what the code is CALLED
+   reds when someone renames it and greens when the defect returns under a new
+   name.)
 12. **A path we do not execute is not verified.** We are the only user and our tests
    build their own fixtures, so shipped surfaces go unwalked. Before releasing a
-   surface a consuming project uses, walk it end to end. (Sprint-002: `release:
-   sprint` could not work in any scaffolded repo, the first spawn tracebacked, and
-   the installed build predated half the project. Walking it cost ten minutes.)
+   surface a consuming project uses, walk it end to end. Walking it costs minutes.
+13. **A claim about existing code is CHECKED before it is written down.** A card, a
+   plan or a review that asserts what the code does, without running or reading it,
+   spends a story on a premise. Cheap to check, expensive to inherit.

@@ -55,6 +55,15 @@ def render_prior_rounds(rounds: list[dict]) -> str:
     )
 
 
+def render_sprint_prior(rounds: list[dict]) -> str:
+    """The MODE SWITCH (note bae0b87b): findings handed in bound the pass to
+    validating them, none means re-derive everything. Sprint-002 had neither."""
+    body = render_merge_body(rounds)
+    if not body:
+        return "none — run the full pass yourself"
+    return body + "\n\nvalidate that each was addressed; do not re-derive the diff."
+
+
 def render_land_preview(
     verify: str, tier: str, merge_mode: str, branch: str, trunk: str, pr_steps: tuple
 ) -> str:
@@ -112,18 +121,45 @@ def log_close(story_id: str, card: str, rounds: list[dict], merge_sha: str) -> N
 
 
 def delete_story_branch(branch: str) -> list[str]:
-    """Delete the story branch, LOCAL FIRST — so `-d`'s merged check still has the
-    upstream ref to check against.
-
-    Idempotent both sides: `gh pr merge --delete-branch` may have removed either,
-    and reporting a done step as outstanding prints a remediation that fails on
-    re-run. ls-remote, not a tracking ref: `git fetch` without --prune leaves
-    stale ones.
+    """Delete the story branch, REMOTE FIRST (37c0fb4e): `-d` compares against the
+    upstream ref when one exists, so the reviewer's commits — never pushed to the
+    story branch — made it refuse a branch already merged to HEAD. With the remote
+    gone it falls back to the HEAD check and still refuses a genuinely unmerged one.
+    ls-remote, not a tracking ref: `git fetch` without --prune leaves stale ones.
     """
-    local_exists = git("rev-parse", "--verify", "-q", f"refs/heads/{branch}").returncode == 0
-    if local_exists and git("branch", "-d", branch).returncode != 0:
-        return [f"git branch -d {branch}"]
     on_origin = git("ls-remote", "--exit-code", "--heads", "origin", branch).returncode == 0
     if on_origin and git("push", "origin", "--delete", branch).returncode != 0:
         return [f"git push origin --delete {branch}"]
+    local_exists = git("rev-parse", "--verify", "-q", f"refs/heads/{branch}").returncode == 0
+    if local_exists and git("branch", "-d", branch).returncode != 0:
+        return [f"git branch -d {branch}"]
+    return []
+
+
+def held_trunk_tree(trunk: str) -> tuple[str, str]:
+    """(path of ANOTHER worktree holding <trunk>, error). Cheap and structural, so
+    cmd_land asks BEFORE Verify — reaching it only after the tier had spent ~2 min
+    to learn a `git worktree list` fact was 5d7388fc."""
+    path = ""
+    for ln in git("worktree", "list", "--porcelain").stdout.splitlines():
+        if ln.startswith("worktree "):
+            path = ln[9:]
+        elif ln == f"branch refs/heads/{trunk}":
+            if Path(path).resolve() == Path.cwd().resolve():
+                return "", ""
+            if git("-C", path, "status", "--porcelain").stdout.strip():
+                return "", (
+                    f"refused: {trunk} is checked out at {path}, which is dirty —"
+                    " the merge lands there, so clean it first"
+                )
+            return path, ""
+    return "", ""
+
+
+def remove_story_worktree(tree: str) -> list[str]:
+    """Only `git branch -d` needs the worktree gone — MEASURED, the merge succeeds
+    while the branch is checked out elsewhere. So it runs just before the delete:
+    every refusal above names a next action the lead takes in that tree."""
+    if git("worktree", "remove", tree).returncode != 0:
+        return [f"git worktree remove {tree}"]
     return []

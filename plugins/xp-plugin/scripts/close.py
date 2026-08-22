@@ -18,6 +18,7 @@ one is forgeable, and Sprint 1 forged one.
 import argparse
 import json
 import os
+import shlex
 import subprocess
 import sys
 from pathlib import Path
@@ -26,13 +27,15 @@ sys.path.insert(0, str(Path(__file__).parent))
 from bookkeep import (
     delete_story_branch,
     delete_story_markers,
+    held_trunk_tree,
     log_close,
+    remove_story_worktree,
     render_land_preview,
     render_merge_body,
     render_noted,
     render_prior_rounds,
 )
-from work import chdir_repo_root, config_block_value, data_root
+from work import chdir_repo_root, config_block_value, data_root, work_entries_since
 
 
 def fail(msg: str) -> "int":
@@ -125,31 +128,6 @@ def marker_path(story_id: str) -> Path:
     return d / f"{story_id}.close.json"
 
 
-def work_entries_since(branch_point_epoch: int) -> str:
-    """work.md entries whose header timestamp postdates the branch point."""
-    from datetime import datetime, timezone
-
-    path = data_root() / "work.md"
-    if not path.exists():
-        return ""
-    out, keep = [], False
-    for ln in path.read_text().splitlines():
-        if ln.startswith("## "):
-            ts = ln.rsplit(" ", 1)[1]
-            try:
-                epoch = (
-                    datetime.strptime(ts, "%Y-%m-%dT%H:%M:%SZ")
-                    .replace(tzinfo=timezone.utc)
-                    .timestamp()
-                )
-                keep = epoch >= branch_point_epoch
-            except ValueError:
-                keep = False
-        if keep:
-            out.append(ln)
-    return "\n".join(out)
-
-
 def build_bundle(card: str, base: str, report: Path, prior: str = "") -> str:
     import review  # function-local: spawn -> close -> review would close a cycle
 
@@ -162,6 +140,7 @@ def build_bundle(card: str, base: str, report: Path, prior: str = "") -> str:
         ("Earlier rounds of THIS story", prior or "none — you are round 1"),
         ("Cumulative diff", git("diff", f"{base}..HEAD").stdout),
         ("work.md entries filed during the story", work_entries_since(base_epoch) or "none"),
+        ("PROCESS", _read_first(str(review.PLUGIN_ROOT / "PROCESS.md"))),
         ("VALUES", _read_first(str(Path(__file__).parent.parent / "VALUES.md"))),
         ("Constraints", _read_first(".xp/constraints.md")),
         ("System context", _read_first(".xp/system.md")),
@@ -181,6 +160,10 @@ def _preflight(story_id: str, action: str) -> tuple[str, str, str]:
         return "", "", f"refused: {e.args[0]}"
     if status != "in-progress":
         return "", "", f"refused: {story_id} is [{status}], {action} requires [in-progress]"
+    try:  # 3e2ad94b: an annotated Verify line reached /bin/sh at LAND, post-review
+        shlex.split(verify_commands(card))
+    except ValueError as e:
+        return "", "", f"refused: {story_id}'s Verify: line is not runnable ({e})"
     trunk = integration_target()
     branch = git("rev-parse", "--abbrev-ref", "HEAD").stdout.strip()
     if branch in (trunk, default_branch()):
@@ -231,7 +214,7 @@ def cmd_review(story_id: str, dry_run: bool = False) -> int:
     # BEFORE any refusal below: a report the pipeline rejects still cost a full
     # review, and its findings exist nowhere else.
     print(result)
-    motion = review.check_reviewer_motion(head, marker, digest_before)
+    motion = review.check_reviewer_motion(head, marker, digest_before, card)
     if motion:
         return fail(motion)
     report, err = review.read_report(path)
@@ -292,9 +275,7 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
             f" {str(state.get('review_base'))[:8]}, today's merge base is {base[:8]}."
             f" Run `close.py story {story_id} review`"
         )
-    rounds = state.get("rounds") or []
-    if not rounds:
-        return fail(f"refused: no recorded review round for {story_id} — run review first")
+    rounds = state["rounds"]
     blocking = rounds[-1]["blocking"]
     if blocking:
         return fail(
@@ -313,6 +294,13 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
             " what was reviewed; run review again to re-baseline"
         )
 
+    # Structural, and checked HERE rather than beside the merge (5d7388fc): it is a
+    # `git worktree list` compare, so paying ~2min of Verify and tier to reach it was
+    # pure waste. spawn.py's DEFAULT puts trunk in the lead's tree and the story in a
+    # worktree, so `held` is the normal case, not the exception.
+    held, err = held_trunk_tree(trunk)
+    if err:
+        return fail(err)
     plan = Path(".xp/plan.md").read_text()
     try:
         card, _ = story_card(plan, story_id)
@@ -357,6 +345,10 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
         print(reviewer_work, end="")
         print(f"full diff: {review.diff_path(review.report_path(story_id, len(rounds)))}")
 
+    # `gh pr create|merge` take no --head: gh reads the head branch off the cwd
+    # repo, so it must run in the STORY tree. The chdir happens per-arm below,
+    # after gh and before pr_sync — the first step that needs trunk checked out.
+    story_tree = str(Path.cwd())
     if merge_mode == "pr":
         import shutil
 
@@ -368,8 +360,10 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
             r = subprocess.run(c, capture_output=True, text=True)
             if r.returncode != 0:
                 return fail(f"{c[0]} failed: {r.stderr.strip()}")
+        if held:
+            os.chdir(held)
     else:
-        git("checkout", trunk)
+        os.chdir(held) if held else git("checkout", trunk)
         merged = git("merge", "--no-ff", branch, "-m", message, check=False)
         if merged.returncode != 0:
             git("merge", "--abort", check=False)
@@ -411,6 +405,8 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
         for c in pr_bookkeep:
             if subprocess.run(c, capture_output=True, text=True).returncode != 0:
                 failed.append(" ".join(c))
+    if held:
+        failed += remove_story_worktree(story_tree)
     failed += delete_story_branch(branch)
     if not orphaning:
         # Record unless merge_sha is about to be orphaned. Every failure EXCEPT a
@@ -447,7 +443,10 @@ def main() -> int:
     sub = p.add_subparsers(dest="kind", required=True)
     sp = sub.add_parser("sprint")
     sp.add_argument("sprint_id")
-    sp.add_argument("action", choices=["start", "land", "post-merge"])
+    sp.add_argument("action", choices=["start", "review", "land", "post-merge"])
+    # no choices=[...]: sprint_close.LENSES is the one copy, and close.py cannot
+    # import it at module scope — sprint_close imports from here
+    sp.add_argument("--lens", default="")
     sp.add_argument("--dry-run", action="store_true")
     s = sub.add_parser("story")
     s.add_argument("story_id")
@@ -477,6 +476,8 @@ def main() -> int:
 
         if a.action == "start":
             return sprint_close.cmd_start(a.sprint_id)
+        if a.action == "review":
+            return sprint_close.cmd_review(a.sprint_id, a.lens, a.dry_run)
         if a.action == "land":
             return sprint_close.cmd_land(a.sprint_id, a.dry_run)
         return sprint_close.cmd_post_merge(a.sprint_id)

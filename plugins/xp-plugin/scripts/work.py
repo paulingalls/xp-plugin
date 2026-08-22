@@ -19,7 +19,7 @@ from pathlib import Path
 NOTE_CAP = 2000  # chars; a judgment call, not a derived number
 
 
-STRUCTURAL = re.compile(r"^(## |Claim:|Falsifier:|Resolves:|Files:)", re.M)
+STRUCTURAL = re.compile(r"^(## |Claim:|Falsifier:|Resolves:|Archives:|Files:)", re.M)
 
 
 def neutralize(text: str) -> str:
@@ -210,6 +210,42 @@ def resolve(root: Path, args: argparse.Namespace) -> int:
     return 0
 
 
+def archive(root: Path, args: argparse.Namespace) -> int:
+    """Record a triage DECISION. Without it a decision has nowhere to live, so
+    cmd_start re-emits every note ever filed and the pile only grows.
+
+    The block stays in work.md rather than moving to archive.md: sprint_close's
+    corpus() keys a debt's falsifier off its own `## debt ` heading, so leaving
+    the block where it is keeps archived falsifiers running for zero new lines —
+    and archive.md is read with FALSIFIER.finditer over the WHOLE file, so text
+    landing there would be executed by the batch.
+    """
+    matches = [(eid, text) for eid, text in entries(root) if eid == args.ref]
+    if len(matches) != 1:
+        print(
+            f"refused: --ref {args.ref!r} matches {len(matches)} records — a ref that"
+            " names none is a typo, one that names several silences the others.",
+            file=sys.stderr,
+        )
+        return 2
+    kind = matches[0][1].split(" ", 2)[1]
+    if kind not in ("debt", "note"):
+        print(
+            f"refused: {args.ref} is a {kind} — only a debt or a note is archivable."
+            " A bug's falsifier reds NOW, so archiving one hides a live defect; a"
+            " resolved or archived block is already disposed of.",
+            file=sys.stderr,
+        )
+        return 2
+    print(
+        append(
+            root,
+            f"## archived {stamp()}\nArchives: {args.ref}\n{neutralize(args.disposition)}\n\n",
+        )
+    )
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest="kind", required=True)
@@ -220,6 +256,9 @@ def main() -> int:
         p.add_argument("--files", required=True, help="comma-separated paths")
     sub.add_parser("note").add_argument("text")
     sub.add_parser("list")
+    a = sub.add_parser("archive")
+    a.add_argument("--ref", required=True, help="record id from `list`")
+    a.add_argument("--disposition", required=True, help="why: promoted, superseded, dropped")
     r = sub.add_parser("resolve")
     r.add_argument("--ref", required=True, help="record id from `list`")
     r.add_argument("--falsifier", required=True, help="replacement; must be GREEN now")
@@ -231,6 +270,8 @@ def main() -> int:
             head = text.splitlines()
             print(f"{eid} {head[0][3:]} — {(head[1] if len(head) > 1 else '')[:60]}")
         return 0
+    if args.kind == "archive":
+        return archive(root, args)
     if args.kind == "resolve":
         return resolve(root, args)
     if args.kind == "note":
@@ -264,3 +305,28 @@ def main() -> int:
 
 if __name__ == "__main__":
     sys.exit(main())
+
+
+def work_entries_since(branch_point_epoch: int) -> str:
+    """work.md entries whose header timestamp postdates the branch point."""
+    from datetime import datetime, timezone
+
+    path = data_root() / "work.md"
+    if not path.exists():
+        return ""
+    out, keep = [], False
+    for ln in path.read_text().splitlines():
+        if ln.startswith("## "):
+            ts = ln.rsplit(" ", 1)[1]
+            try:
+                epoch = (
+                    datetime.strptime(ts, "%Y-%m-%dT%H:%M:%SZ")
+                    .replace(tzinfo=timezone.utc)
+                    .timestamp()
+                )
+                keep = epoch >= branch_point_epoch
+            except ValueError:
+                keep = False
+        if keep:
+            out.append(ln)
+    return "\n".join(out)

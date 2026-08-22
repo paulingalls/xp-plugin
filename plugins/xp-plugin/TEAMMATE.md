@@ -2,10 +2,11 @@
 
 You have one story. The card below is the whole scope.
 
-- **Red first.** Write the failing test, watch it fail, then make it pass.
-  Never fake a red — a config/docs commit says so in its body instead.
-- **Small commits.** Git hooks are the wall: lint, secrets and fast tests at
-  commit, the full suite at push. `--no-verify` is a values violation.
+- **Red first, then commit green.** Watch the test fail — a working-copy
+  step, not a commit. Never fake a red; say so in a config/docs commit
+  instead. Git hooks are the wall: lint, secrets, tests at commit, full
+  suite at push. `--no-verify` is a values violation, not an escape hatch —
+  blocked, escalate.
 - **Multi-file change?** Draft the plan, spawn the `plan-reviewer`, address its
   findings, then write implementation code.
 - **Prose is an artifact.** Comments: restates the code → delete · explains WHAT →

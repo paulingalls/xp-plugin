@@ -6,32 +6,31 @@ description: >-
 
 # Sprint Close
 
-`close.py sprint <id>` runs the mechanical steps. Three of them are yours and a
+`close.py sprint <id>` runs the mechanical steps. Two of them are yours and a
 script cannot absorb them (constraint 7).
 
 0. **Open the sprint first** (once, before its stories): `git switch -c sprint-00N`
-   and set `sprint_branch: sprint-00N` in `.xp/config.yml`. Under `release: sprint`
-   this is what makes stories integrate on a branch instead of landing on the default
-   one — post-merge retires the key at the end, so every sprint needs this step.
-1. **`close.py sprint <id> start`** — refuses while any story in THAT sprint is
-   unfinished, runs the full tier, then runs every unresolved falsifier in work.md
-   and archive.md. A red aborts and is re-filed as a bug: a debt or archived
-   falsifier asserts the system is still OK, so red means the latent problem
-   materialised. It then emits the notes for triage, the retro skeleton, and the
-   digest prompt. It mutates nothing but appends, and re-running it is a no-op.
-2. **Your three judgment steps**, in order:
-   - **Note triage** — each note is promoted to constraints.md/system.md via the
-     retro diff, or archived. A learning that changes nothing executable is not
-     recorded, and every promotion must displace something (constraint 1).
-   - **The broad review** — read the sprint's cumulative diff as one change, not as
-     the stories you already reviewed. Different altitude, different findings.
-   - **The LLM security review** — secrets, injection surfaces, anything the
-     sprint made reachable that was not before.
-   Then write the retro narrative and the digest yourself. The pipeline emits
-   facts; the narrative is the part with judgment in it.
-3. **`close.py sprint <id> land`** opens the release PR with the proposed version.
-   Not releasable? Don't run it — the branch carries and the key stays.
-4. **`close.py sprint <id> post-merge`**, AFTER the PR merges: cuts the bump and
-   the tag on the sha that actually shipped, and retires the `sprint_branch` key.
-   Both facts become true in one leg, because a tag cut at PR-open names a commit
-   that is not the release.
+   and set `sprint_branch: sprint-00N` in `.xp/config.yml`. Step 5 retires the key,
+   so every sprint needs this again.
+1. **`close.py sprint <id> start`** — appends only; re-running it is a no-op.
+   A red falsifier ABORTS the close and is re-filed as a bug (PROCESS.md carries
+   the polarity contract).
+2. **Note triage, then the retro — YOURS, and they come FIRST.**
+   Each note is promoted to constraints.md/system.md via the retro diff, or
+   archived. A learning that changes nothing executable is not recorded, and every
+   promotion must displace something (constraint 1). Then write the retro
+   narrative and the digest: the pipeline emits facts, the narrative is the part
+   with judgment in it.
+   BEFORE the reviews, not after. Land refuses when code moved since the review,
+   and a retro that promotes into DESIGN.md or PROCESS.md is code motion — run it
+   last and you must review again, which invalidates what you just wrote.
+3. **The two reviews**, which the pipeline marshals — you do not compose them:
+   - `close.py sprint <id> review --lens broad` — the sprint as ONE change.
+   - `close.py sprint <id> review --lens security` — what it made reachable.
+   Fix what they block, then re-run the lens that blocked.
+4. **`close.py sprint <id> land`** opens the release PR. Not releasable? Don't run
+   it — the branch carries, the key stays.
+5. **`close.py sprint <id> post-merge`**, AFTER the PR merges — it tags and
+   retires the `sprint_branch` key step 0 sets. Your release artifacts are yours:
+   bump and changelog at step 2, because anything outside `.xp/` landing after
+   step 3 invalidates the reviews that permit land.
