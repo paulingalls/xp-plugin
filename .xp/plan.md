@@ -617,13 +617,89 @@ deadlock logic, a subprocess contract, a default path the stub cannot execute, a
 a prose contract every future teammate runs under.
 Executor: (default)
 
-### Sprint 4
-MOVED HERE AT SPRINT 3'S CLOSE, not planned yet — full planning (one plan review
-across all cards, per the draft) happens at Sprint 4 planning. story-018 carried
-because Sprint 3 had no parallel work left for it to enable; story-011 carried
-because close had seven lines of headroom. DESIGN §10's Codex adapter slips a
-THIRD time: that makes it a want rather than scheduled work, and Sprint 4 planning
-decides whether it is ever happening.
+### Sprint 4 — usable elsewhere, parallel here
+PLANNED 2026-08-21 (Paul). THE GOAL, stated because it ordered everything: the
+plugin usable in a NEW project and in Paul's multi-clone repos as fast as
+possible, and parallel story execution working INSIDE this sprint. That puts
+story-019 first (multi-clone is blocked on nothing else), story-018 second (it is
+the de-serializer, and every later story runs under the rule it lands), and Codex
+back on the schedule. SIX stories against a cap of 6.
+RUNNING ORDER AND LANES: bug batch (below) → 019 → 018, each solo — they touch
+everything and close.py respectively. After 018 lands, two lanes run in parallel
+under the file-disjointness practice whose detector 018 itself builds: spawn lane
+023 → 021 → 025; close lane 022.
+SIX FILED BUGS ARE FIXED AT OPEN, before any spawn, by the lead, red test first —
+bugs, not stories (PROCESS: fix immediately): f0fc1bb8 (.xp/system.md
+sprint-exempt while spawn shell-executes it — gates the first spawn), 93a5717b (a
+lens can erase another lens's marker — gates the next sprint review), d225cff4
+(archived blocks unfiltered from the bundle), 8d0a74c6 (Files: parse reads one
+physical line), 9ad0180b (story_card bleeds the next section), 166285e6
+(DESIGN.md:79 corrupted row). Every falsifier test name is already in the record.
+SIZE for the batch: close is 1300/1300 and density 19.83%/20.00%, so the batch
+lands ~net-zero in the close component — offsets from stale prose in the files it
+touches; if that is not enough, the named source is a spawn→close rebalance
+(spawn 567/1950), constraint 1's displacement rule, Paul's call at plan review.
+CODEX REINSTATED (Paul, reversing three slips): "we have broken things too many
+times" — a second harness is the diversity mechanism DESIGN §8 names, CRITICAL
+both as a spawn harness (story-021) and natively as a lead (story-025). The spike
+facts are one version old (0.146.0 measured, 0.147.0 installed): 021 re-verifies
+the load-bearing ones against the live binary rather than trusting the snapshot,
+which is the spike doc's own instruction.
+story-024 IS SUPERSEDED, not done: its card rested on premises its own plan step
+falsified (notes 4a6c9e5b, 655208fe, 5b715b27 — AC 2 was already shipped; the
+sha-freshness family holds two resolution falsifiers plus the integrated tree's
+only execution; ONE refusal of the tallied four was land's fault). The surviving
+remainder — shown_sha reports instead of refusing, the reviewer_range split —
+folds into story-018, which is already rewriting the same guard family in the
+same tests. One story, one review, no second reviewer walking cmd_land.
+story-011 CARRIES a second time — two carries; if Sprint 5 does not schedule it,
+it is a want and must say so.
+EXECUTOR, sprint-wide (Paul at planning): claude/opus/medium on every card — the
+hypothesis is fewer turns beats cheaper turns; judged at the retro against the
+sonnet sprints.
+
+#### story-019 — the execution plan is per-clone   [planned]
+Context: A REAL USER REQUIREMENT, not a cleanup. Paul runs three clones of one repo
+(../legacy, ../legacy2, ../legacy3 — one remote, one `develop`) each driving a
+DIFFERENT workstream under xp-agents, each with its own execution_plan.json and
+sprint.json in its own SMM dir: 'Tip Jar + Store Launch', 'Admin accounts &
+analytics dashboard', 'Mobile mockup-fidelity depth', 'M6 Backlog Paydown'. He wants
+xp-plugin to replace xp-agents there, and today it cannot: `.xp/plan.md` is one
+in-repo file, so three streams would fight over it. The predecessor already drew the
+line this story adopts — SHARED understanding of the system, PER-CLONE execution —
+and Legacy's own CLAUDE.md says so: "this repo is worked in parallel clones".
+NO NEW MECHANISM: `data_root()` hashes the git-common-dir, so three clones already
+have three state roots and every worktree of one clone shares its clone's — which is
+exactly the sharing a spawned teammate needs. The move is a path change.
+WHAT STAYS IN THE REPO, because the split is not "everything moves": constraints.md
+(three streams on one codebase obey the same rules, and a promotion in one binds the
+others), config.yml (tiers, roles, caps), system.md (describes the SYSTEM, not the
+work — xp-agents duplicated it per clone; in-repo is better and it barely churns).
+COSTS, stated so they are decisions and not discoveries: (1) the plan stops being
+git-versioned — measured on this repo, the CHANGELOG carries release narrative and
+docs/retros/ the sprint narrative, but card-level deliberation (why 013 and 015 were
+cut, why 014 moved behind 010, three estimate revisions) lives ONLY in commit
+messages today, so PROCESS's "decisions go in work.md with the value tradeoff named"
+becomes the sole record; (2) a fresh clone starts with no plan, correct for this
+model but xp-setup must scaffold into the state root; (3) sprint membership and the
+release become per-stream, which is coherent here and would not be under one shared
+sprint.
+SIDE EFFECT, deliberately not the justification: it dissolves the plan.md contention
+that serialised sprint-003 — no story diff contains the plan, so no card edit
+invalidates an in-flight review. story-018 should be re-read after this lands; its
+plan.md exemption may become unnecessary.
+Full proposed DESIGN §3/§4 diff drafted at <data-root>/plans/design-diff-plan-per-clone.md.
+Files: docs/DESIGN.md, plugins/xp-plugin/scripts/{close,spawn,sprint_close,setup,session_start}.py,
+plugins/xp-plugin/skills/xp-setup/SKILL.md, plugins/xp-plugin/PROCESS.md, tests/*
+AC:
+- Given two clones of one repo, When each writes a plan, Then neither sees the other's — fault-inject by constructing two repos with distinct git-common-dirs and asserting distinct plan paths, not by asserting the path format
+- Given a worktree of a clone, Then it reads its CLONE's plan, not a per-worktree copy — the teammate must see the card the lead wrote
+- Given `xp-setup` on a bare repo, Then the plan is scaffolded into the state root and `.xp/` holds only config, constraints and system
+- Given a repo whose `.xp/plan.md` still exists (every project scaffolded before this), Then the tools REFUSE with a message naming the move rather than silently reading an empty plan — a silent empty plan is a sprint close that reports no stories
+- Given DESIGN §3 and §4, Then the layout and the three stated costs move with the code
+Verify: pytest -q tests/test_setup.py tests/test_close.py tests/test_spawn.py tests/test_sprint_close.py
+Close review: deep
+Executor: claude/opus/medium
 
 #### story-018 — coverage is about overlap, not motion   [planned]
 Context: MEASURED THIS SPRINT, three times on one story. The review leg refuses
@@ -704,6 +780,24 @@ UNREACHABLE in local mode — any conflict requires trunk motion, the motion gua
 at close.py:296 fires first, and re-reviewing to clear it requires merging trunk
 in, which resolves the conflict. F4's trial-merge is what would make that path
 reachable again, so this story owns the decision rather than story-011.
+REVISED AT SPRINT-4 PLANNING, two ways. (1) RUNS AFTER story-019, so the
+.xp/plan.md exemption above and its card-drift carve-out are DELETED FROM SCOPE
+unwritten: once the plan lives in the state root, no story diff contains it and
+the contention the exemption waved through is gone. Verify at the plan step that
+019 actually landed the move; if it did not, the exemption text stands as
+written. (2) IT ABSORBS story-024's SURVIVING REMAINDER (that card was falsified
+at its own plan step — notes 4a6c9e5b, 655208fe, 5b715b27): the shown_sha
+refusal is the ONE member of the sha-freshness family that is neither a
+resolution falsifier nor load-bearing for integrated-tree execution (measured:
+removing it alone breaks exactly 2 tests, both direct tests of the refusal, no
+falsifier red), and it becomes a REPORT — land prints what moved since the
+review and merges. And review.reviewer_range at close.py:344 relies on
+HEAD == shown_sha, which only that refusal guaranteed: it gains the range split
+(reviewed_head..shown_sha is the reviewer's, shown_sha..HEAD is the lead's) or
+land attributes the lead's commits to the reviewer and names a round diff that
+was never written, the first time HEAD moves. Comments explaining retired
+guards retire with them (density 19.83/20.00 — stripping code while keeping
+its comments pushes density over).
 Size: close.py 489 of the 500 hard cap — FOURTEEN lines, and the extraction to
 scripts/close/coverage.py is now mandatory rather than named; component 1281 of
 1300 after a 50-line move from spawn priced to that fix's need; density 19.52% of
@@ -735,111 +829,13 @@ AC:
 - Given trunk moved with a file set DISJOINT from the story's since the review, When land runs, Then it merges without a new round — fault-inject the pair: the same fixture with one OVERLAPPING file must refuse
 - Given trunk moved touching a file the story also changed, Then land REFUSES naming the overlapping files — the message is the cross-story collision detector DESIGN §11 never built
 - Given the review leg and trunk ahead of the fork point, Then it no longer refuses; the story's diff is computed from its fork point as today
-- Given f1391db4's resolution, Then it is re-resolved against whichever tests survive, with the substitution covering the SAME claim (a merge whose recorded review never covered the story's own changes) — verified by construction, not by the batch going green
-- Given DESIGN §6, Then it states overlap-not-motion, because the doc moves with the code or they disagree
+- Given f1391db4's resolution, Then it is re-resolved against whichever tests survive, with the substitution covering the SAME claim (a merge whose recorded review never covered the story's own changes) — verified by construction, not by the batch going green. c1e586bc's resolution likewise: its replacement falsifier is the trunk-motion test family this story rewrites, and a gutted falsifier reporting green is constraint 11's back door
+- Given HEAD moved past shown_sha (lead commits after the recorded review), When land runs, Then it PRINTS the shown_sha..HEAD delta and MERGES — and the pair: a commit in reviewed_head..shown_sha not authored by the reviewer still REFUSES at the review leg, because check_reviewer_motion is a tree property and stays hard (fault-inject both arms)
+- Given reviewer fix commits AND a later lead commit, When land renders the reviewer's work, Then reviewed_head..shown_sha is presented as the reviewer's and shown_sha..HEAD as the lead's — never one range labelled reviewer (the 655208fe misattribution; fault-inject with a lead-authored commit after the review)
+- Given DESIGN §6, Then it states overlap-not-motion AND report-not-refuse for post-review HEAD motion, because the doc moves with the code or they disagree
 Verify: pytest -q tests/test_close.py
 Close review: deep
-Executor: (default)
-
-#### story-024 — land guards the TREE, not its own bookkeeping   [ready]
-Context: MEASURED at sprint-003's close, which took hours and was overridden twice.
-Land refused FIVE times that day and exactly ONE refusal was about the tree: a red
-falsifier in the batch, which `start` runs, not land. The other four were about
-RECORDED STATE that was stale — trunk checked out in another worktree (land could
-simply do it, and now does), HEAD moved after the lead fixed a typo in a Verify
-line, and twice a marker holding a `blocking[]` that a later round had already
-validated as fixed. In every one of those the tree was correct and the RECORD was
-behind, and the only way to refresh the record was another spawn of a reviewer to
-re-confirm what two reviewers had already confirmed.
-CONSTRAINT 3 IS THE ARGUMENT: a mechanism must be able to tell us something we did
-not already believe. Land never has. Every refusal named something visible — a
-sha, a marker, a checkout — and the unreviewed-merge it claims to prevent has never
-once been attempted, because the process runs the reviews. A gate defending an
-event that has not happened, while blocking merges that were correct, is the trade
-constraint 3 exists to refuse.
-NOT A DELETION (Paul's call, considered and rejected in favour of this): keep what
-is real. Verify and the tier run against the tree that merges and refuse on red —
-that is a property of the tree and it is the half that has never wasted a minute.
-WHAT CHANGES: the sha-freshness family stops REFUSING and starts REPORTING. "HEAD
-moved since the review you were shown" prints what moved and merges. The case it
-defends — an agent slipping a commit into the reviewed range — is already a TREE
-property covered by check_reviewer_motion's authorship gate, which stays hard.
-THE BLOCKING LIST IS THE OTHER HALF, and it is what cost this close: a recorded
-round cannot supersede an earlier round's `blocking[]`, so a fixed finding blocks
-forever until that lens is spawned again. The latest recorded round for a lens
-wins. story-022 carries the fixer that makes this rarer; this card makes it stop
-wedging.
-Size: cmd_land is 185 lines with 15 refusal paths and close.py is 495 of
-constraint 8's 500 — this story REMOVES from both. If it does not come out net
-negative, say so at the plan step rather than adding a component move.
-Files: plugins/xp-plugin/scripts/close.py, plugins/xp-plugin/scripts/sprint_close.py,
-plugins/xp-plugin/skills/story-close/SKILL.md,
-plugins/xp-plugin/skills/sprint-close/SKILL.md, docs/DESIGN.md, tests/test_close.py,
-tests/test_sprint_close.py
-AC:
-- Given HEAD has moved since the recorded review, When land runs, Then it PRINTS what moved and MERGES — fault-inject the pair: the same fixture where a commit in the range was authored by someone other than the reviewer must still REFUSE, because that is check_reviewer_motion's tree property and it stays hard
-- Given a lens whose latest recorded round has `blocking: []`, When an EARLIER round of that lens left blocking findings, Then land proceeds — the latest round wins. Construct two rounds; do not hand-edit a marker
-- Given the story Verify or the tier reds, Then land still REFUSES — this is the half that works and a strip-down that loosened it would be the defect. Both arms
-- Given the strip-down, Then cmd_land is SMALLER: assert its line count and refusal count both fall. A count, not a token grep, and the card carries the before (185 lines, 15 refusals) so the plan reviewer can check it
-- Given both SKILL.md files, Then they no longer describe refusals that are now reports, asserted by the shipped-prose class — and the word budgets stay
-Verify: pytest -q tests/test_close.py tests/test_sprint_close.py
-Close review: deep — it loosens the gate on every merge, and a gate that passes
-wrongly is silent by definition.
-Executor: claude/opus — it removes guards from the most-guarded function in the
-codebase, and the distinction it must hold (tree property vs recorded state) is
-the whole story.
-RUN EARLY, on sprint-003, riding the open v0.4.0 PR (Paul's call at the close).
-
-#### story-022 — the review that finds, judges, fixes, then clears   [planned]
-Context: MEASURED at sprint-003's close by running three reviewers over the SAME
-release diff. The single sprint-reviewer found 1 blocking + 8 noted. A frozen
-iteration of the harness's own reviewer found 5, including the only defect that
-broke the OUT-OF-THE-BOX path. A 28-agent multi-angle pass (ported from xp-agents'
-xp-code-review shape) found FOUR more, all CONFIRMED, all silent: a review
-credential with no writer and no clearer, a deny-list that let the agent under
-review write a file spawn EXECUTES via shell, an exemption that waved through the
-gate's own config, and a failed fetch recording a pre-merge sha then deleting the
-marker. Three shapes, three different capabilities — process context, empirical
-execution, sustained narrow attention — and the third found what the others could
-not because nobody holding a whole diff carries one question across every line.
-WHY WE OWN IT RATHER THAN CALL THE HARNESS'S: `/code-review` is harness-owned and
-has been CHANGED AND REMOVED across versions. A release gate that can vanish under
-a consuming project is not a gate. This is constraint 5's logic at the scale of a
-mechanism: a frozen iteration we control beats a better one we do not.
-THE COST PROBLEM, measured: 1.47M tokens and 28 agents, against 135K for the
-harness pass. TWENTY-TWO refuter agents killed THREE candidates — ~80% of the
-spend bought a 12% filter, because xp-agents runs one refuter per LOCATION and
-locations barely collide.
-THE BAR IS TWO BARS, and conflating them is why the report was long (Paul's call
-at the close). CONFIDENCE stays generous — PLAUSIBLE is the default, refuters
-decide, and the four findings that mattered were ones a finder was least sure of
-at first sight; tightening here is the failure the verdict ladder names, where
-looking rigorous quietly removes what the review exists to surface. CONSEQUENCE
-gets strict AT FIND TIME: PROCESS.md's finding bar already says a finding earns
-work only if its failure mode is SILENT or CORRUPTING, and the angles never
-carried it. Checked against the close: every finding the lead acted on was silent;
-the bar would have roughly halved the report and kept all of them.
-Size: xp-agents' code_review.js is 479 lines and this is NOT a port of it. Target
-a fraction: the angles ship as prose (`.md`, project-neutral by construction —
-state/lifecycle, test vacuity, line scan, removed behavior, cross-file, language
-pitfalls, cleanup) and the control flow is the small part. Price it at the plan
-step against a close component sitting at 1,300 of 1,300 — a rebalance from spawn
-(567 of 1,950) is the named source and it is Paul's call, not the story's.
-Files: plugins/xp-plugin/workflows/*, plugins/xp-plugin/scripts/*_angle_*.md,
-plugins/xp-plugin/scripts/sprint_close.py, plugins/xp-plugin/scripts/review.py,
-plugins/xp-plugin/skills/sprint-close/SKILL.md, docs/DESIGN.md, tests/*
-AC:
-- Given the broad lens, Then it runs N BLIND finders — each reading only its own angle file, each over the WHOLE diff, never a slice — and a finder that did not read its angle is detectable, because a mis-rendered path otherwise yields a generalist pass that looks exactly like a working one. Fault-inject the path
-- Given a finder, Then its instructions carry PROCESS.md's finding bar as the CONSEQUENCE test (silent or corrupting earns a finding; loud and self-healing never does) while leaving CONFIDENCE generous. Assert both halves are present: a prompt carrying only one is the conflation this story exists to fix
-- Given candidates, Then verification is BATCHED — one agent judging several, not one per location — and the batch count is bounded by a config key, not by the candidate count. Assert the agent count does not scale 1:1 with candidates, which is the 22-to-kill-3 shape measured at sprint-003
-- Given surviving findings, Then a FIXER applies them in the tree, exactly as the story reviewer does — measured at sprint-002: a reporting reviewer took 4 rounds and 11 blocking findings and never converged, a fixing one took 1 round with 7 fixed and 0 blocking. The lead reads its diff; running land is how the lead accepts it
-- Given the fixer has run, Then ONE final pass looks for BLOCKERS ONLY and passes otherwise (Paul's design). A blocker returns to the lead to deal with; anything else is not the closing pass's business. Fault-inject with a planted blocker AND with a clean tree — a pass that cannot fail certifies
-- Given the fixer commits, Then sprint land's coverage check must not be invalidated by the reviewer's OWN fixes — the afbd01a3 wedge. The story leg already solves this: reviewer commits sit INSIDE the reviewed range, gated by authorship (check_reviewer_motion). The sprint leg compares a bare shown_sha and must gain the same authorship-aware range. THIS REVERSES story-014's check_report_only, which was a deliberate mechanism three commits before this card; reverse it knowingly and say so in DESIGN
-- Given the security lens, Then it uses the same machinery with its own angles. It stays: whether a security finding exists is the CONSUMING PROJECT's answer, not ours — a Node app with sessions has the surface this repo does not
-Verify: pytest -q tests/test_sprint_close.py tests/test_review.py
-Close review: deep — it is the gate on every release, and a review that passes
-wrongly is silent by definition.
-Executor: claude/opus
+Executor: claude/opus/medium
 
 #### story-023 — [ready] is a credential nothing binds to the card   [planned]
 Context: CONFIRMED by sprint-003's multi-angle review. "This card was plan-reviewed"
@@ -874,7 +870,171 @@ AC:
 - Given a card at [planned], Then whatever writes [ready] is a mechanism, not a hand-edit, or the digest is a credential a human still mints by typing
 Verify: pytest -q tests/test_spawn.py
 Close review: deep
-Executor: (default)
+Executor: claude/opus/medium
+
+#### story-021 — codex is a spawnable harness (executor + reviewer)   [planned]
+Context: REINSTATED BY PAUL at Sprint-4 planning after three slips. Cross-harness
+diversity is DESIGN §8's stated review preference ("Claude authors → Codex
+reviews"), and config.yml has carried a "once the adapter ships" comment on the
+reviewer role since Sprint 0. THE FACTS ARE MEASURED, ONE VERSION OLD:
+../xp-agents/docs/completed/CODEX_SPIKE_FINDINGS.md (codex-cli 0.146.0; installed
+today 0.147.0). The load-bearing ones this story RE-VERIFIES against the live
+binary rather than trusts — the spike doc's own instruction: `--disable
+unified_exec` accepted and swapping in a gated shell_command (its absence lets
+write_stdin bypass every PreToolUse gate — R1, non-negotiable); `codex exec` pins
+approval never (teammate prompts fully pre-answered — already our contract);
+`.git` read-only under `--sandbox workspace-write`, so commits need the
+documented widening; NO `--plugin-dir` equivalent exists.
+WHY THE TEAMMATE LEG IS CHEAP HERE, stated because it is the design paying off:
+spawn INLINES the whole profile (VALUES + TEAMMATE + card + constraints), so a
+codex teammate needs no plugin install to know its job, and the WALL is lefthook
+— harness-independent, enforcement stands with zero codex hooks. WHAT IS
+HONESTLY DEGRADED until story-025: no SessionStart injection, no stop gate, no
+bash_status marker — the teammate's Verify state is invisible to the lead's
+recovery block, and no liveness touchfile is written (today nothing at the wall
+reads it, so nothing refuses; 025 owns making that surface real). Say this in
+DESIGN rather than letting a reader assume parity.
+THE ARGV IS MEASURED, NOT ASSUMED — story-017's lesson, which this card inherits
+verbatim: `stub_claude` accepted any argv and the suite would have shipped a
+spawn that died on contact. The fault-injection stubs here must reject what the
+real binary rejects (no `--disable unified_exec`, unknown flags), and one live
+`codex exec` run against the real binary is a lead-run AC, not a teammate one
+(any AC that spawns belongs to the lead — story-016's measured loss).
+EFFORT SPELLING: codex takes `-m <model>` and `-c model_reasoning_effort=<e>`;
+there is NO `-e` flag (spike falsified it). The report contract is
+harness-blind: the reviewer writes {fixed,blocking,noted} JSON to the round path
+under data_root()/reports/, which sits OUTSIDE the workspace — the spawn must
+carry `--add-dir` for the data root, and the spike measured flock and atomic
+rename working there.
+Size: spawn 567 of 1,950 — the component with real headroom, and the codex leg
+lands in SPAWN by path (ratchet.component_for matches path parts; DESIGN §9
+notes the adapter has no component of its own).
+Files: plugins/xp-plugin/scripts/spawn.py, plugins/xp-plugin/scripts/review.py,
+plugins/xp-plugin/scripts/teammate_tee.py, .xp/config.yml, docs/DESIGN.md,
+tests/test_spawn.py, tests/test_close.py
+AC:
+- Given Executor: codex/gpt-5.6-terra/medium, When spawn --dry-run runs, Then the printed argv carries `-m gpt-5.6-terra`, `-c model_reasoning_effort=medium`, `--disable unified_exec`, `--sandbox workspace-write`, and `--add-dir <data-root>` — fault-inject with a stub codex that REJECTS an argv missing `--disable unified_exec`, so deleting the flag reds a test rather than shipping a gate bypass
+- Given a reviewer role of codex/<model>/<effort>, When the review leg runs, Then the reviewer is launched through the same runner, its report is read from the SAME round path with the SAME parse, and no caller of review.py can tell which harness wrote it — fault-inject with a stub that writes a valid report via shell
+- Given codex absent from PATH, When spawn resolves a codex executor, Then it REFUSES naming the harness and the install route, before any worktree is cut
+- Given a codex teammate that ends with a dirty tree or no commits of its own, Then the SAME nonzero contract as the claude leg fires from SHARED code, not a per-harness copy — the rule fixed in one of two implementations is this repo's most-filed defect class
+- Given the live binary (lead-run walk, recorded in the story digest), Then `codex exec` with the exact assembled argv completes a trivial prompt in a scratch repo and writes a file under the added dir — constraint 12, bitten twice; a green suite over stubs does not discharge this
+- Given DESIGN §5's codex table, Then every row this story relies on carries a re-verified-on-0.147.0 mark or a corrected value — a snapshot trusted silently is the drift the spike doc warns about
+- Given the teammate stream, Then codex output tees to the same append-only log contract as story-017's claude leg (header per spawn, flush per line, log-write failure keeps consuming) — reusing teammate_tee, not duplicating it
+Verify: pytest -q tests/test_spawn.py tests/test_close.py
+Close review: deep — a second harness under the same gates; every divergence
+between the two legs is a silent hole in one of them.
+Executor: claude/opus/medium
+
+#### story-025 — codex is a native lead (hooks + injection)   [planned]
+Context: The other half of Paul's call: a human RUNNING codex as their agent gets
+the process, not just the prompt. WHAT THE SPIKE ESTABLISHED (0.146.0, every row
+re-verified by 021 or here): plugin-bundled hooks RUN under codex and
+${CLAUDE_PLUGIN_ROOT} expands; an explicit manifest `hooks` field REPLACES
+default discovery rather than merging — omitting it makes codex load the CLAUDE
+hooks file; unknown event names are silently ignored (a per-harness file is
+tidy, not mandatory); `stop_hook_active` is present and functional but flips on
+NO FIXED FIRING COUNT — which stop_gate.py already honors by design (story-004
+carded exactly that); SessionStart carries `source` and injection WORKS there (a
+uuid4 minted in-hook came back byte-identical); tool_name normalises edits to
+`apply_patch` and every shell path to `Bash` — bash_status keys on Bash, so the
+telemetry leg carries over, but any Edit/Write matcher is a dead name on codex;
+a FAILED tool call fires PreToolUse and then NOTHING (no PostToolUse, no
+failure event), so no codex leg may pair Pre/Post or key failure on a post-hook;
+untrusted hooks are skipped SILENTLY (headless trust is
+`--dangerously-bypass-hook-trust`, interactive is a /hooks review per content
+hash re-reviewed after every update — install docs must say so); the plugin
+cache is version-keyed and a run without a manifest bump silently executes the
+PREVIOUS cached copy — bump → reinstall is one atomic sequence, and the walk
+below must not report "the hook did not fire" over a stale cache.
+SKILLS NEED NOTHING: codex delivers a skill locator, not the body, and never
+expands `!` preloads — and our authoring rule already bans load-bearing preloads
+(the SKILL says what to run; the script speaks). A structural test pins that no
+shipped SKILL.md carries a `!` preload line, so the codex constraint holds by
+construction rather than by memory.
+TIMEOUT UNITS ARE UNRESOLVED on codex (3s clamp observed; seconds-vs-ms
+undistinguished): hooks.codex.json ships NO timeout values until one run
+distinguishes them — a deliberate omission, stated here so it is not "fixed"
+into a 1000x bug later.
+HONEST BOUND: gate compliance was observed on ONE model family from prose alone.
+This story ships the surface; it cannot certify how every codex model reads it.
+The walk (lead-run, constraint 12): install user-scope from this repo's
+marketplace, `codex exec` one trivial gated task, read the injected block and
+the stop-gate bypass in the transcript, record both in the story digest.
+Size: hooks component 417 of 1,000 — the adapter's budgeted home (DESIGN §9).
+Files: plugins/xp-plugin/hooks/hooks.codex.json, plugins/xp-plugin/.claude-plugin/plugin.json,
+plugins/xp-plugin/scripts/session_start.py, plugins/xp-plugin/scripts/stop_gate.py,
+plugins/xp-plugin/scripts/bash_status.py, docs/DESIGN.md, tests/test_session_start.py,
+tests/test_stop_gate.py
+AC:
+- Given the codex manifest, Then it names hooks.codex.json explicitly (the REPLACES fact), and hooks.codex.json registers SessionStart, UserPromptSubmit, PreToolUse, PostToolUse and Stop with the SAME scripts hooks.json runs — one mechanism, two registrations; a structural test asserts script-set equality so the files cannot drift apart
+- Given a SessionStart payload shaped like codex's (source present, no session env exported), When session_start runs, Then the injection renders and the liveness touchfile lands keyed on the PAYLOAD's session_id, not an env var codex never exports — fault-inject with a payload carrying session_id only
+- Given a Stop payload whose stop_hook_active flipped on the second firing rather than the first, Then the gate behaves identically — the existing no-block-count property, asserted against the codex flip pattern the spike measured (False/False/True)
+- Given an apply_patch PreToolUse payload, Then bash_status ignores it without error (patch text is not a command — parsing it as one is the spike's named consequence), and a shell_command payload records status exactly as Bash does
+- Given every shipped SKILL.md, Then none carries a `!` preload line — structural, so the codex delivery constraint holds by construction
+- Given hooks.codex.json, Then it carries NO timeout field, and the test asserting that names the unresolved units as the reason
+- Given the lead-run walk, Then acceptance is Paul reading the recorded transcript excerpts: injection arrived, the stop gate released on stop_hook_active, the cache version matched the bumped manifest — agent-observed behavior has no other harness
+Verify: pytest -q tests/test_session_start.py tests/test_stop_gate.py
+Close review: deep — a silently-unenforced session is this story's whole failure
+mode, and the spike measured codex producing exactly that shape.
+Executor: claude/opus/medium
+
+#### story-022 — the review that finds, judges, fixes, then clears   [planned]
+Context: MEASURED at sprint-003's close by running three reviewers over the SAME
+release diff. The single sprint-reviewer found 1 blocking + 8 noted. A frozen
+iteration of the harness's own reviewer found 5, including the only defect that
+broke the OUT-OF-THE-BOX path. A 28-agent multi-angle pass (ported from xp-agents'
+xp-code-review shape) found FOUR more, all CONFIRMED, all silent: a review
+credential with no writer and no clearer, a deny-list that let the agent under
+review write a file spawn EXECUTES via shell, an exemption that waved through the
+gate's own config, and a failed fetch recording a pre-merge sha then deleting the
+marker. Three shapes, three different capabilities — process context, empirical
+execution, sustained narrow attention — and the third found what the others could
+not because nobody holding a whole diff carries one question across every line.
+WHY WE OWN IT RATHER THAN CALL THE HARNESS'S: `/code-review` is harness-owned and
+has been CHANGED AND REMOVED across versions. A release gate that can vanish under
+a consuming project is not a gate. This is constraint 5's logic at the scale of a
+mechanism: a frozen iteration we control beats a better one we do not.
+THE COST PROBLEM, measured: 1.47M tokens and 28 agents, against 135K for the
+harness pass. TWENTY-TWO refuter agents killed THREE candidates — ~80% of the
+spend bought a 12% filter, because xp-agents runs one refuter per LOCATION and
+locations barely collide.
+ALSO THE ANSWER TO 7c4fa385's process finding: at sprint-003's close a marker
+holding a validated-as-fixed blocking[] could be refreshed only by re-spawning
+the lens. Under this story the fixer clears findings inside the round that
+found them and the final pass is blockers-only, so a confirmed fix never needs
+a third confirming spawn.
+THE BAR IS TWO BARS, and conflating them is why the report was long (Paul's call
+at the close). CONFIDENCE stays generous — PLAUSIBLE is the default, refuters
+decide, and the four findings that mattered were ones a finder was least sure of
+at first sight; tightening here is the failure the verdict ladder names, where
+looking rigorous quietly removes what the review exists to surface. CONSEQUENCE
+gets strict AT FIND TIME: PROCESS.md's finding bar already says a finding earns
+work only if its failure mode is SILENT or CORRUPTING, and the angles never
+carried it. Checked against the close: every finding the lead acted on was silent;
+the bar would have roughly halved the report and kept all of them.
+Size: xp-agents' code_review.js is 479 lines and this is NOT a port of it. Target
+a fraction: the angles ship as prose (`.md`, project-neutral by construction —
+state/lifecycle, test vacuity, line scan, removed behavior, cross-file, language
+pitfalls, cleanup) and the control flow is the small part. Price it at the plan
+step against a close component sitting at 1,300 of 1,300 — a rebalance from spawn
+(567 of 1,950) is the named source and it is Paul's call, not the story's.
+Files: plugins/xp-plugin/workflows/*, plugins/xp-plugin/scripts/*_angle_*.md,
+plugins/xp-plugin/scripts/sprint_close.py, plugins/xp-plugin/scripts/review.py,
+plugins/xp-plugin/skills/sprint-close/SKILL.md, docs/DESIGN.md, tests/*
+AC:
+- Given the broad lens, Then it runs N BLIND finders — each reading only its own angle file, each over the WHOLE diff, never a slice — and a finder that did not read its angle is detectable, because a mis-rendered path otherwise yields a generalist pass that looks exactly like a working one. Fault-inject the path
+- Given a finder, Then its instructions carry PROCESS.md's finding bar as the CONSEQUENCE test (silent or corrupting earns a finding; loud and self-healing never does) while leaving CONFIDENCE generous. Assert both halves are present: a prompt carrying only one is the conflation this story exists to fix
+- Given candidates, Then verification is BATCHED — one agent judging several, not one per location — and the batch count is bounded by a config key, not by the candidate count. Assert the agent count does not scale 1:1 with candidates, which is the 22-to-kill-3 shape measured at sprint-003
+- Given surviving findings, Then a FIXER applies them in the tree, exactly as the story reviewer does — measured at sprint-002: a reporting reviewer took 4 rounds and 11 blocking findings and never converged, a fixing one took 1 round with 7 fixed and 0 blocking. The lead reads its diff; running land is how the lead accepts it
+- Given the fixer has run, Then ONE final pass looks for BLOCKERS ONLY and passes otherwise (Paul's design). A blocker returns to the lead to deal with; anything else is not the closing pass's business. Fault-inject with a planted blocker AND with a clean tree — a pass that cannot fail certifies
+- Given the fixer commits, Then sprint land's coverage check must not be invalidated by the reviewer's OWN fixes — the afbd01a3 wedge. The story leg already solves this: reviewer commits sit INSIDE the reviewed range, gated by authorship (check_reviewer_motion). The sprint leg compares a bare shown_sha and must gain the same authorship-aware range. THIS REVERSES story-014's check_report_only, which was a deliberate mechanism three commits before this card; reverse it knowingly and say so in DESIGN
+- Given the security lens, Then it uses the same machinery with its own angles. It stays: whether a security finding exists is the CONSUMING PROJECT's answer, not ours — a Node app with sessions has the surface this repo does not
+Verify: pytest -q tests/test_sprint_close.py tests/test_review.py
+Close review: deep — it is the gate on every release, and a review that passes
+wrongly is silent by definition.
+Executor: claude/opus/medium
+
+### Carried — not scheduled
 
 #### story-011 — free mode (card-less close)   [ready]
 Context: `close.py free start <slug>` cuts <user>/free-YYYY-MM-DD-<slug> off the
@@ -900,48 +1060,5 @@ AC:
 - Given free land with no report, Then it refuses
 - Given a reviewed head that is no longer an ancestor of HEAD, When land runs, Then it REFUSES — fault-inject by rewriting history in a fixture, never by asserting the merge-base call is present
 Verify: pytest -q tests/test_close.py
-Close review: deep
-Executor: (default)
-
-#### story-019 — the execution plan is per-clone   [planned]
-Context: A REAL USER REQUIREMENT, not a cleanup. Paul runs three clones of one repo
-(../legacy, ../legacy2, ../legacy3 — one remote, one `develop`) each driving a
-DIFFERENT workstream under xp-agents, each with its own execution_plan.json and
-sprint.json in its own SMM dir: 'Tip Jar + Store Launch', 'Admin accounts &
-analytics dashboard', 'Mobile mockup-fidelity depth', 'M6 Backlog Paydown'. He wants
-xp-plugin to replace xp-agents there, and today it cannot: `.xp/plan.md` is one
-in-repo file, so three streams would fight over it. The predecessor already drew the
-line this story adopts — SHARED understanding of the system, PER-CLONE execution —
-and Legacy's own CLAUDE.md says so: "this repo is worked in parallel clones".
-NO NEW MECHANISM: `data_root()` hashes the git-common-dir, so three clones already
-have three state roots and every worktree of one clone shares its clone's — which is
-exactly the sharing a spawned teammate needs. The move is a path change.
-WHAT STAYS IN THE REPO, because the split is not "everything moves": constraints.md
-(three streams on one codebase obey the same rules, and a promotion in one binds the
-others), config.yml (tiers, roles, caps), system.md (describes the SYSTEM, not the
-work — xp-agents duplicated it per clone; in-repo is better and it barely churns).
-COSTS, stated so they are decisions and not discoveries: (1) the plan stops being
-git-versioned — measured on this repo, the CHANGELOG carries release narrative and
-docs/retros/ the sprint narrative, but card-level deliberation (why 013 and 015 were
-cut, why 014 moved behind 010, three estimate revisions) lives ONLY in commit
-messages today, so PROCESS's "decisions go in work.md with the value tradeoff named"
-becomes the sole record; (2) a fresh clone starts with no plan, correct for this
-model but xp-setup must scaffold into the state root; (3) sprint membership and the
-release become per-stream, which is coherent here and would not be under one shared
-sprint.
-SIDE EFFECT, deliberately not the justification: it dissolves the plan.md contention
-that serialised sprint-003 — no story diff contains the plan, so no card edit
-invalidates an in-flight review. story-018 should be re-read after this lands; its
-plan.md exemption may become unnecessary.
-Full proposed DESIGN §3/§4 diff drafted at <data-root>/plans/design-diff-plan-per-clone.md.
-Files: docs/DESIGN.md, plugins/xp-plugin/scripts/{close,spawn,sprint_close,setup,session_start}.py,
-plugins/xp-plugin/skills/xp-setup/SKILL.md, plugins/xp-plugin/PROCESS.md, tests/*
-AC:
-- Given two clones of one repo, When each writes a plan, Then neither sees the other's — fault-inject by constructing two repos with distinct git-common-dirs and asserting distinct plan paths, not by asserting the path format
-- Given a worktree of a clone, Then it reads its CLONE's plan, not a per-worktree copy — the teammate must see the card the lead wrote
-- Given `xp-setup` on a bare repo, Then the plan is scaffolded into the state root and `.xp/` holds only config, constraints and system
-- Given a repo whose `.xp/plan.md` still exists (every project scaffolded before this), Then the tools REFUSE with a message naming the move rather than silently reading an empty plan — a silent empty plan is a sprint close that reports no stories
-- Given DESIGN §3 and §4, Then the layout and the three stated costs move with the code
-Verify: pytest -q tests/test_setup.py tests/test_close.py tests/test_spawn.py tests/test_sprint_close.py
 Close review: deep
 Executor: (default)
