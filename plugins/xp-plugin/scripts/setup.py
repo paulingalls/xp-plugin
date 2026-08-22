@@ -93,12 +93,20 @@ def main() -> int:
         return fail("refused: .xp/ already exists — setup never overwrites")
     if plan_path().exists():
         return fail(f"refused: a plan already exists at {plan_path()} — setup never overwrites")
+    version = plugin_version(PLUGIN_ROOT)
+    if version == "unknown":
+        return fail(
+            f"refused: {PLUGIN_ROOT / '.claude-plugin' / 'plugin.json'} has no usable version"
+        )
+    try:
+        write_env(PLUGIN_ROOT, version)
+    except Exception as exc:
+        return fail(f"refused: could not seed {env_path()}: {exc}")
     Path(".xp").mkdir()
     for name in ("config.yml", "constraints.md", "system.md"):
         shutil.copy(TEMPLATES / name, Path(".xp") / name)
     plan_path().parent.mkdir(parents=True, exist_ok=True)
     shutil.copy(TEMPLATES / "plan.md", plan_path())
-    write_env(PLUGIN_ROOT, plugin_version(PLUGIN_ROOT))
     wall = scaffold_wall()
     print(
         f".xp/ scaffolded (config, seeded constraints, system)\n"

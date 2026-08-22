@@ -334,7 +334,48 @@ class TestEnvFile:
         r = run_setup(repo, env)
 
         assert r.returncode == 0, r.stderr
-        assert json.loads((data / "env.json").read_text())["consumer"] == {"keep": True}
+        recorded = json.loads((data / "env.json").read_text())
+        manifest = json.loads((SCRIPTS.parent / ".claude-plugin" / "plugin.json").read_text())
+        assert recorded == {
+            "consumer": {"keep": True},
+            "plugin_root": str(SCRIPTS.parent),
+            "plugin_version": manifest["version"],
+        }
+
+    def test_an_invalid_env_refuses_before_scaffolding(self, tmp_path):
+        repo, env = bare_repo(tmp_path)
+        data = tmp_path / "state"
+        data.mkdir()
+        env["XP_DATA"] = str(data)
+        invalid = '{"consumer": '
+        (data / "env.json").write_text(invalid)
+
+        r = run_setup(repo, env)
+
+        assert r.returncode != 0 and "env.json" in r.stderr, r.stderr
+        assert not (repo / ".xp").exists(), "a failed env seed left a partial scaffold"
+        assert not (data / "plan.md").exists(), "a failed env seed left a partial plan"
+        assert (data / "env.json").read_text() == invalid
+
+    def test_an_install_without_a_version_refuses_before_scaffolding(self, tmp_path):
+        install = shutil.copytree(SCRIPTS.parent, tmp_path / "install")
+        (install / ".claude-plugin" / "plugin.json").unlink()
+        repo, env = bare_repo(tmp_path)
+        data = tmp_path / "state"
+        env["XP_DATA"] = str(data)
+
+        r = subprocess.run(
+            [sys.executable, str(install / "scripts" / "setup.py")],
+            cwd=repo,
+            env=env,
+            capture_output=True,
+            text=True,
+        )
+
+        assert r.returncode != 0 and "plugin.json" in r.stderr, r.stderr
+        assert not (repo / ".xp").exists(), "an invalid install scaffolded the repo"
+        assert not (data / "plan.md").exists(), "an invalid install seeded the plan"
+        assert not (data / "env.json").exists(), "an invalid version was recorded"
 
     def test_the_concurrent_writer_that_replaces_last_wins(self, tmp_path):
         data = tmp_path / "state"

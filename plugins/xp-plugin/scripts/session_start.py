@@ -191,9 +191,8 @@ def main() -> int:
     markers = data_root() / "markers"
     markers.mkdir(parents=True, exist_ok=True)
     (markers / f"{session}.alive").touch()
-    # 017's log contract: telemetry never blocks the session. Local, not the
-    # module-level handler — that one exits 0 with NO stdout, trading the whole
-    # lead profile for a failed pointer write.
+    # Keep this failure local: the module-level advisory handler preserves exit 0
+    # but would suppress the whole profile along with the failed pointer refresh.
     with contextlib.suppress(Exception):
         write_env(PLUGIN_ROOT, plugin_version(PLUGIN_ROOT))
     # Role gates the PROFILE only, never the gates: stop_gate and bash_status
