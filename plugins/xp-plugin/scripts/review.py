@@ -53,9 +53,9 @@ def report_path(story_id: str, round_n: int) -> Path:
     would certify a round that produced nothing. The caller unlinks first."""
     from work import data_root
 
-    d = data_root() / "reports"
-    d.mkdir(parents=True, exist_ok=True)
-    return d / f"{story_id}.round-{round_n}.json"
+    p = data_root() / "reports" / f"{story_id}.round-{round_n}.json"
+    p.parent.mkdir(parents=True, exist_ok=True)
+    return p
 
 
 def sprint_report_path(sprint_id: str, stage: str, round_n: int) -> Path:
@@ -213,6 +213,20 @@ def reviewer_range(start: str, end: str) -> str:
         return ""
     rng = f"{start}..{end}"
     return git("log", "--format=%h %an %s", rng).stdout + git("diff", "--stat", rng).stdout
+
+
+def disclose(state: dict, head: str, diff: Path | None = None) -> None:
+    """Both ranges the lead assents to by RUNNING land. Printing only one of them
+    puts the lead's own commits under the reviewer's name."""
+    shown = state.get("shown_sha", head)
+    if work := reviewer_range(state.get("reviewed_head", head), shown):
+        print("the reviewer changed this tree — you are merging its work:")
+        print(work, end="")
+        if diff:
+            print(f"full diff: {diff}")
+    if late := reviewer_range(shown, head):
+        print("you committed after the review you were shown — merging unreviewed:")
+        print(late, end="")
 
 
 def diff_path(report: Path) -> Path:
