@@ -167,6 +167,18 @@ class TestVerificationIsBatched:
         assert sprint(repo, env, "review").returncode == 0
         assert bundles(tmp_path, "verify") == [], "spawned a verifier with nothing to judge"
 
+    def test_only_the_bar_passing_bucket_reaches_a_verifier(self, tmp_path):
+        """The bar is asserted in the PROMPT above; here it has to bite. Both
+        buckets fed forward is the conflation this story exists to fix — a finder
+        that dutifully sorts a loud finding into `noted` sees it verified, fixed
+        and, unfixable, blocking the release the bar says it never earns."""
+        repo, env, _g = make_repo(tmp_path)
+        staged_stub(tmp_path, find=CANDIDATES)
+        assert sprint(repo, env, "review").returncode == 0
+        judged = "\n".join(bundles(tmp_path, "verify"))
+        assert "a silent one" in judged, "the bar-passing candidate never reached a verifier"
+        assert "a loud one" not in judged, "a `noted` finding was carried forward anyway"
+
 
 class TestTheFixerFixes:
     """AC 4. Measured at sprint-002: a REPORTING reviewer took 4 rounds and 11

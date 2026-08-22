@@ -39,8 +39,9 @@ credential nobody clears. Loud and self-healing NEVER earns one, whatever else
 is wrong with it: everything here is built fail-loud, so it returns as an
 evidence-bearing red on the day it matters.
 
-`blocking` — candidates whose consequence is silent or corrupting. `noted` —
-the rest. `fixed` — empty; you change nothing.
+`blocking` — candidates whose consequence is silent or corrupting, and the ONLY
+bucket carried forward. `noted` — below the bar, read by nothing downstream.
+`fixed` — empty; you change nothing.
 
 ## verifier
 

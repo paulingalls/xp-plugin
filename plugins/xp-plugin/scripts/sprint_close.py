@@ -176,8 +176,9 @@ def cmd_review(sprint_id: str, dry_run: bool) -> int:
             path.unlink(missing_ok=True)
         bundle = build_sprint_bundle(sprint_id, cards, base, path, charter, extra)
         result, err = review.run(bundle, Path.cwd(), dry_run, name=f"sprint {key}")
-        if dry_run or err:
-            return {}, review.abort_text(head, err) if err else ""
+        if dry_run or err:  # an EMPTY report, not a shapeless one: a preview walks
+            empty = {k: [] for k in review.REPORT_KEYS}
+            return empty, review.abort_text(head, err) if err else ""
         print(result)  # before any refusal: the findings exist nowhere else yet
         report, err = review.read_report(path)
         return report, review.abort_text(head, err) if err else ""
@@ -188,7 +189,7 @@ def cmd_review(sprint_id: str, dry_run: bool) -> int:
         report, err = leg("finder", f"find-{slug}", [("Your angle", prose), *prior])
         if err:
             return fail(err)
-        candidates += report.get("blocking", []) + report.get("noted", [])
+        candidates += report["blocking"]
     if dry_run:
         print("(then: batched verification, the fixer, and the blockers-only closing pass)")
         return 0
