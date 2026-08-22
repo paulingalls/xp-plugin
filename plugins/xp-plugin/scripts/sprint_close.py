@@ -148,10 +148,11 @@ def cmd_review(sprint_id: str, lens: str, dry_run: bool) -> int:
     if not dry_run:  # a preview must not delete the findings of a refused round
         path.unlink(missing_ok=True)
     # BOTH before the launch: the reviewer may not move the tree, and recording a
-    # post-run head would make anything it moved count as reviewed.
+    # post-run head would make anything it moved count as reviewed. EVERY lens's
+    # marker is digested: land reads them all as release gates.
     head = git("rev-parse", "HEAD").stdout.strip()
     base = git("merge-base", f"refs/heads/{trunk}", "HEAD").stdout.strip()
-    digest_before = review.marker_digest(marker)
+    digests = {(m := sprint_marker(sprint_id, x)): review.marker_digest(m) for x in LENSES}
     bundle = build_sprint_bundle(sprint_id, lens, cards, base, path)
     result, err = review.run(bundle, Path.cwd(), dry_run, name="sprint-reviewer")
     if dry_run:
@@ -159,7 +160,7 @@ def cmd_review(sprint_id: str, lens: str, dry_run: bool) -> int:
     if err:
         return fail(review.abort_text(head, err))
     print(result)  # before any refusal: the findings exist nowhere else yet
-    if motion := review.check_report_only(head, marker, digest_before):
+    if motion := review.check_report_only(head, digests):
         return fail(motion)
     report, err = review.read_report(path)
     if err:
@@ -249,8 +250,9 @@ def _refuse_unbumpable() -> int:
 
 
 # config.yml holds the tier cmd_land runs; constraints.md is the rubric both
-# reviewers applied. Editing either after a review changes the gate, not the retro.
-GATE_FILES = (".xp/config.yml", ".xp/constraints.md")
+# reviewers applied; system.md's `Worktree bootstrap:` line is shell-executed by
+# every spawn. Editing any of them after a review changes the gate, not the retro.
+GATE_FILES = (".xp/config.yml", ".xp/constraints.md", ".xp/system.md")
 
 
 def _is_retro_prose(path: str) -> bool:

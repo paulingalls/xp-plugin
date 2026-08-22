@@ -67,20 +67,22 @@ def sprint_report_path(sprint_id: str, lens: str, round_n: int) -> Path:
     return d / f"{sprint_id}.{lens}.round-{round_n}.json"
 
 
-def check_report_only(shown_head: str, marker: Path, digest_before: str) -> str:
+def check_report_only(shown_head: str, markers: dict[Path, str]) -> str:
     """Refusal text, or "" if the reviewer only reported. NOT check_reviewer_motion,
-    which PERMITS commits the reviewer authored: this leg permits no motion."""
+    which PERMITS commits the reviewer authored: this leg permits no motion.
+    `markers`: every path land reads as a gate, with its pre-launch digest —
+    rewriting a SIBLING lens's marker moves the release gate too."""
     from close import git
 
     if git("rev-parse", "HEAD").stdout.strip() != shown_head:
         why = "HEAD moved during the review — this leg is report-only"
     elif dirty := git("status", "--porcelain").stdout.strip():
         why = "the tree is dirty at the end of the review; uncommitted:\n  " + dirty
-    elif marker_digest(marker) != digest_before:
+    elif changed := [str(p) for p, d in markers.items() if marker_digest(p) != d]:
         why = (
-            f"the close marker changed during the review ({marker}) — it is what land"
-            " reads for rounds and blocking findings, it is outside the repo, no diff"
-            " shows it, and a review may not move its own gate"
+            f"a review marker changed during the review ({', '.join(changed)}) — markers"
+            " are what land reads for rounds and blocking findings, they live outside"
+            " the repo where no diff shows them, and a review may not move its own gate"
         )
     else:
         return ""
