@@ -2,7 +2,9 @@
 Verify: pytest -q tests/test_spawn.py"""
 
 import json
+import os
 import subprocess
+from itertools import pairwise
 from pathlib import Path
 
 from spawn_helpers import (  # noqa: F401
@@ -17,6 +19,7 @@ from spawn_helpers import (  # noqa: F401
     spawn,
     stub_claude,
     stub_claude_requiring_verbose,
+    stub_codex,
     trunk_sha,
 )
 
@@ -185,10 +188,11 @@ class TestRefusals:
         r = spawn(repo, env, "story-042")
         assert r.returncode == 2 and "ready" in r.stderr
 
-    def test_codex_harness_refused_naming_sprint_3(self, tmp_path):
-        repo, env, _g = make_repo(tmp_path, executor="codex/gpt-5/high")
+    def test_unknown_harness_refused_naming_what_we_ship(self, tmp_path):
+        repo, env, _g = make_repo(tmp_path, executor="gemini/pro/high")
         r = spawn(repo, env, "story-042")
-        assert r.returncode == 2 and "Sprint 3" in r.stderr
+        assert r.returncode == 2
+        assert "claude" in r.stderr and "codex" in r.stderr, r.stderr
 
 
 class TestExecutorResolution:
@@ -303,3 +307,96 @@ def test_spawn_reaches_the_integration_target_only_through_close():
     """A filed debt (story-009 retires config.yml sprint_branch) rests on spawn
     never reading the key itself — a comment cannot rot loudly, a test can."""
     assert "sprint_branch" not in SPAWN.read_text()
+
+
+class TestCodexExecutor:
+    """story-021. Every divergence between the two legs is a silent hole in one
+    of them, so these assert the codex leg reaches the SAME shared guards."""
+
+    def argv(self, tmp_path, executor="codex/gpt-5.6-terra/medium"):
+        repo, env, _g = make_repo(tmp_path, executor=executor)
+        stub_codex(tmp_path)
+        r = spawn(repo, env, "story-042", "--dry-run")
+        assert r.returncode == 0, r.stderr
+        for ln in r.stdout.splitlines():
+            if ln.startswith("codex "):
+                return ln.split(" ")
+        raise AssertionError(f"no codex argv in: {r.stdout[:400]}")
+
+    def test_the_assembled_argv(self, tmp_path):
+        argv = self.argv(tmp_path)
+        pairs = list(pairwise(argv))
+        for pair in [
+            ("-m", "gpt-5.6-terra"),
+            ("-c", "model_reasoning_effort=medium"),
+            ("--disable", "unified_exec"),
+            ("--sandbox", "workspace-write"),
+            ("--add-dir", str(tmp_path / "data")),
+        ]:
+            assert pair in pairs, f"{pair} missing from {argv}"
+        assert "-e" not in argv, "codex has no -e; the effort rides -c (spike-falsified)"
+        # exactly one: note 6193855e probed the git-common-dir widening
+        # unnecessary on 0.147.0, and a second --add-dir is that widening returning
+        assert argv.count("--add-dir") == 1, argv
+
+    def test_a_two_part_spec_carries_no_effort(self, tmp_path):
+        argv = self.argv(tmp_path, executor="codex/gpt-5.6-terra")
+        assert not [a for a in argv if a.startswith("model_reasoning_effort")], argv
+
+    def test_the_stub_reds_when_the_gate_flag_is_deleted(self, tmp_path):
+        """Constraint 2: a stub that cannot red against its target defect
+        certifies. Strip the flag from the REAL builder's output and run the
+        real stub on it — the pair is what the spawn ships."""
+        import spawn as spawn_mod
+
+        os.environ["XP_DATA"] = str(tmp_path / "data")
+        argv = spawn_mod.codex_argv("gpt-5.6-terra", "medium")
+        stub_codex(tmp_path)
+        stripped = [a for a in argv if a not in ("--disable", "unified_exec")]
+        r = subprocess.run(
+            [str(tmp_path / "bin" / "codex"), *stripped[1:]],
+            input="",
+            capture_output=True,
+            text=True,
+        )
+        assert r.returncode != 0 and "unified_exec" in r.stderr, r.stderr
+        intact = subprocess.run(
+            [str(tmp_path / "bin" / "codex"), *argv[1:]],
+            input="",
+            capture_output=True,
+            text=True,
+            cwd=tmp_path,
+        )
+        assert intact.returncode == 0, intact.stderr
+
+    def test_absent_from_path_refuses_before_any_worktree_is_cut(self, tmp_path):
+        repo, env, _g = make_repo(tmp_path, executor="codex/gpt-5.6-terra/medium")
+        r = spawn(repo, env, "story-042")  # no stub_codex: nothing named codex on PATH
+        assert r.returncode == 2
+        assert "codex" in r.stderr and "install" in r.stderr.lower(), r.stderr
+        assert not (tmp_path / "data" / "worktrees" / "story-042").exists()
+        branches = in_tree(repo, env, "branch", "--format=%(refname:short)")
+        assert "story-042" not in branches, branches
+
+    def test_a_dirty_codex_teammate_hits_the_shared_completion_guard(self, tmp_path):
+        repo, env, _g = make_repo(tmp_path, executor="codex/gpt-5.6-terra/medium")
+        stub_codex(tmp_path, commit=False, write_file=True)
+        r = spawn(repo, env, "story-042")
+        assert r.returncode == 2 and "uncommitted" in r.stderr, r.stderr
+
+    def test_a_codex_teammate_with_no_commits_hits_the_shared_guard(self, tmp_path):
+        repo, env, _g = make_repo(tmp_path, executor="codex/gpt-5.6-terra/medium")
+        stub_codex(tmp_path, commit=False)
+        r = spawn(repo, env, "story-042")
+        assert r.returncode == 2 and "no commits of its own" in r.stderr, r.stderr
+
+    def test_a_clean_codex_teammate_passes(self, tmp_path):
+        repo, env, _g = make_repo(tmp_path, executor="codex/gpt-5.6-terra/medium")
+        rec = stub_codex(tmp_path)
+        r = spawn(repo, env, "story-042")
+        assert r.returncode == 0, r.stderr
+        launch = json.loads(rec.read_text())
+        assert launch["env"]["XP_ROLE"] == "teammate"
+        # the profile is INLINED, which is what makes a codex teammate need no
+        # plugin install — codex has no --plugin-dir to carry one
+        assert "CONSTRAINT-SENTINEL" in launch["stdin"] and "demo story" in launch["stdin"]

@@ -5,7 +5,8 @@ The piece neither harness provides. The teammate profile is INLINED into the
 prompt (DESIGN §8) — paths are a fallback, never the mechanism — and the plugin
 itself rides in on --plugin-dir, because a worktree `claude -p` session applies
 no project-scoped marketplace enablement and would otherwise load no hooks,
-agents or skills.
+agents or skills. Codex has no --plugin-dir at all, which is why the inlined
+profile is the mechanism and not a convenience (DESIGN §3).
 """
 
 import argparse
@@ -16,9 +17,17 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
+sys.path.insert(0, str(Path(__file__).parent / "spawn"))
 # close must import back FUNCTION-LOCALLY: a module-level edge cycles
 # (close -> spawn -> close) and fails before fail/git exist (story-008).
 from close import fail, git, integration_target, story_card
+from harness import (
+    HARNESS_INSTALL,
+    agent_argv,
+    claude_argv,  # noqa: F401  — re-exported: story-017's argv tests import it here
+    codex_argv,  # noqa: F401
+    missing_harness,
+)
 from teammate_tee import run_teammate
 from work import (
     card_title,
@@ -33,16 +42,6 @@ from work import (
 )
 
 PLUGIN_ROOT = Path(__file__).parent.parent
-
-# Bypass is REQUIRED, measured not assumed: acceptEdits denies `git add`/`git
-# commit`, so weaker modes yield a teammate that writes code and silently loses
-# it. No --allowedTools: an allow-list under bypass restricts nothing, and
-# shipping one would certify a bound that does not exist (the pinning assert
-# lives in the tests; the full measurement table is the work.md note).
-# THE TEAMMATE IS THEREFORE UNBOUNDED in its throwaway worktree — declared, not
-# believed. Self-closing is close.py's refusal to make (story-008), not a
-# tool-deny: Bash can invoke close.py directly.
-PERMISSION_ARGV = ["--dangerously-skip-permissions"]
 
 # Tokens (chars//4). The cap covers prose WE ship — VALUES, TEAMMATE.md, the
 # seed constraints file and always-on component metadata — because ownership is
@@ -133,8 +132,10 @@ def resolve_role(role: str, card: str = "", override: str = "") -> tuple[str, st
             fail(f"refused: cannot resolve {role} from {spec!r} — want harness/model[/effort]")
         )
     harness, model, effort = parts[0], parts[1], parts[2] if len(parts) > 2 else ""
-    if harness != "claude":
-        raise SystemExit(fail(f"refused: harness {harness!r} — the codex leg is Sprint 3"))
+    if harness not in HARNESS_INSTALL:
+        raise SystemExit(
+            fail(f"refused: harness {harness!r} — we ship {', '.join(HARNESS_INSTALL)}")
+        )
     return harness, model, effort
 
 
@@ -180,22 +181,6 @@ def _read_shipped(path: Path) -> str:
     if not path.exists():
         raise SystemExit(fail(f"refused: {path} is missing — the plugin install is broken"))
     return path.read_text()
-
-
-def claude_argv(model: str, effort: str, output_format: str = "json") -> list[str]:
-    """The single owner of flag spellings — story-008 launches a reviewer through it.
-
-    `json` means a spawn prints nothing until the teammate finishes: the
-    reviewer's one-object parse (review.py) keeps this. `stream-json` is the
-    teammate's streaming spelling, and the installed binary REQUIRES `--verbose`
-    alongside it — measured against the real refusal at story-017's plan review,
-    not assumed.
-    """
-    argv = ["claude", "-p", "--plugin-dir", str(PLUGIN_ROOT), *PERMISSION_ARGV]
-    argv += ["--output-format", output_format, "--model", model]
-    if output_format == "stream-json":
-        argv.append("--verbose")
-    return argv + (["--effort", effort] if effort else [])
 
 
 def run_agent(
@@ -323,10 +308,14 @@ def cmd_spawn(story_id: str, override: str, dry_run: bool, in_place: bool = Fals
             )
             return 0
         return cmd_in_place(story_id, card)
-    _harness, model, effort = resolve_role("executor", card, override)
+    harness, model, effort = resolve_role("executor", card, override)
+    # BEFORE the worktree is cut: a missing binary must not cost the lead a tree
+    # and a branch to unwind.
+    if gone := missing_harness(harness):
+        return fail("refused: " + gone)
     branch = story_branch(card, story_id)
     tree = worktree_path(story_id)
-    argv = claude_argv(model, effort, "stream-json")
+    argv = agent_argv(harness, model, effort, "stream-json")
     prompt = build_prompt(teammate_sections(card))
     report, warning = profile_report(card, prompt)
     print(report)
@@ -366,7 +355,7 @@ def cmd_spawn(story_id: str, override: str, dry_run: bool, in_place: bool = Fals
     flip_to_in_progress(story_id)
     print(f"{branch} at {tree} (off {trunk})")
     handed_over = tree_state(tree)
-    rc = run_teammate(argv, tree, prompt, story_id, data_root())
+    rc = run_teammate(argv, tree, prompt, story_id, data_root(), harness)
     # NOT `if rc: return rc` — a teammate that crashed is the likeliest one to
     # have left work uncommitted, so skipping the guard there withholds the
     # refusal exactly when it is worth most.

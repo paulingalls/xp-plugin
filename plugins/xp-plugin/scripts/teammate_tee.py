@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
-"""Tee a teammate's stream-json output: verbatim to a durable log, a compact
-line per event to stdout."""
+"""Tee a teammate's output: verbatim to a durable log, a compact line to stdout.
+
+One drain, two stream shapes — only the per-line parse and whether the stream
+carries a terminal result object differ by harness."""
 
 import contextlib
 import json
@@ -40,10 +42,40 @@ def summarize_event(evt: dict) -> str:
     return f"[{kind}]"
 
 
-def tee_stream(lines: Iterable[str], log_write: LogWrite, out_write: OutWrite) -> dict | None:
+def parse_stream_json(line: str) -> tuple[str | None, dict | None]:
+    """(what to echo, the terminal result object if this line is it). An
+    unparseable line is tolerated — echoed as nothing, not raised."""
+    try:
+        evt = json.loads(line)
+    except ValueError:
+        return None, None
+    if not isinstance(evt, dict):
+        return None, None
+    return summarize_event(evt), (evt if evt.get("type") == "result" else None)
+
+
+def parse_plain(line: str) -> tuple[str | None, dict | None]:
+    """Codex: prose, echoed as-is. `codex exec --json` exists, but its event
+    vocabulary is unmeasured on 0.147.0 and measuring it means spawning codex —
+    a summarizer against a guessed schema is a guess that compiles."""
+    return line, None
+
+
+# (per-line parse, does this harness's stream carry a terminal result object?)
+STREAMS: dict[str, tuple[Callable[[str], tuple[str | None, dict | None]], bool]] = {
+    "claude": (parse_stream_json, True),
+    "codex": (parse_plain, False),
+}
+
+
+def tee_stream(
+    lines: Iterable[str],
+    log_write: LogWrite,
+    out_write: OutWrite,
+    parse: Callable[[str], tuple[str | None, dict | None]] = parse_stream_json,
+) -> dict | None:
     """Drain `lines` fully no matter what `log_write` does — ceasing to drain
-    deadlocks a healthy child writing to a full pipe. An unparseable line is
-    tolerated; a stream carrying no terminal result object is the only error.
+    deadlocks a healthy child writing to a full pipe.
     """
     result = None
     for line in lines:
@@ -54,14 +86,10 @@ def tee_stream(lines: Iterable[str], log_write: LogWrite, out_write: OutWrite) -
         stripped = line.strip()
         if not stripped:
             continue
-        try:
-            evt = json.loads(stripped)
-        except ValueError:
-            continue
-        if not isinstance(evt, dict):
-            continue
-        out_write(summarize_event(evt))
-        if evt.get("type") == "result":
+        echo, evt = parse(stripped)
+        if echo is not None:
+            out_write(echo)
+        if evt is not None:
             result = evt
     return result
 
@@ -94,6 +122,7 @@ def run_teammate(
     prompt: str,
     story_id: str,
     data_root: Path,
+    harness: str = "claude",
     out: OutWrite = print,
     err: OutWrite = lambda s: print(s, file=sys.stderr),
 ) -> int:
@@ -104,6 +133,7 @@ def run_teammate(
     and writing it inline before reading stdout would deadlock a child that
     starts producing output before it has finished reading stdin.
     """
+    parse, carries_result = STREAMS[harness]
     proc = subprocess.Popen(
         argv,
         cwd=cwd,
@@ -123,11 +153,15 @@ def run_teammate(
             log.flush()
 
         log_write(spawn_header(story_id, datetime.now(timezone.utc).isoformat(timespec="seconds")))
-        result = tee_stream(proc.stdout, log_write, out)
+        result = tee_stream(proc.stdout, log_write, out, parse)
     feeder.join()
     proc.wait()
     if result is None:
-        err(f"{story_id}: the teammate's stream never carried a terminal result object")
-        return proc.returncode or 1
+        # Only where the harness promises one. On codex the exit code is the
+        # whole in-band verdict, which is why spawn.py re-checks the TREE.
+        if carries_result:
+            err(f"{story_id}: the teammate's stream never carried a terminal result object")
+            return proc.returncode or 1
+        return proc.returncode
     out(closing_line(story_id, result))
     return proc.returncode

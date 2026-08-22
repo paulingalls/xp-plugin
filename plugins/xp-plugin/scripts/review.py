@@ -264,14 +264,16 @@ def run(
 
     Function-local imports: spawn -> close -> review would close a cycle.
     """
-    from spawn import claude_argv, resolve_role, run_agent
+    from spawn import agent_argv, missing_harness, resolve_role, run_agent
 
-    _harness, model, effort = resolve_role("reviewer")
-    argv = claude_argv(model, effort, "json")
+    harness, model, effort = resolve_role("reviewer")
+    argv = agent_argv(harness, model, effort, "json")
     if dry_run:
         print("would launch: " + " ".join(argv))
         print(prompt)
         return "", ""
+    if missing := missing_harness(harness):
+        return "", missing
     # capture + --output-format json means total silence for the whole run;
     # without this line a multi-minute review is indistinguishable from a hang.
     print(f"spawning {name} ({model}) — no output until it finishes", file=sys.stderr)
@@ -287,6 +289,19 @@ def run(
     if proc.returncode != 0:
         detail = (proc.stderr or proc.stdout or "").strip()[:500]
         return "", f"reviewer exited {proc.returncode}: {detail}"
+    return result_text(harness, proc)
+
+
+def result_text(harness: str, proc: subprocess.CompletedProcess) -> tuple[str, str]:
+    """(what to show the lead, error) — the only place the harnesses differ here;
+    downstream reads the report JSON, so no caller can tell them apart.
+
+    Codex gets no envelope parse: `-o` exists on 0.147.0 but is unmeasured, and
+    this text is only printed. stderr is the fallback because which channel
+    carries codex's final message is exactly what is unmeasured.
+    """
+    if harness != "claude":
+        return (proc.stdout.strip() or proc.stderr.strip()), ""
     try:
         return json.loads(proc.stdout)["result"], ""
     except (ValueError, KeyError, TypeError):

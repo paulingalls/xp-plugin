@@ -1,7 +1,7 @@
 # Design — xp-plugin (working name)
 
 *Successor to xp-agents: same spirit, 80–90% less prose and code, dual-harness (Claude Code + Codex).*
-*Decisions in this doc were worked through with Paul on 2026-08-19 against the evidence in [AUDIT.md](AUDIT.md). The Codex facts come from xp-agents' measured spike (`CODEX_SPIKE_FINDINGS.md`, codex-cli 0.146.0).*
+*Decisions in this doc were worked through with Paul on 2026-08-19 against the evidence in [AUDIT.md](AUDIT.md). The Codex facts come from xp-agents' measured spike (`CODEX_SPIKE_FINDINGS.md`, codex-cli 0.146.0); the rows story-021's spawn leg rests on carry a re-verified-on-0.147.0 mark or a corrected value in §3.*
 
 ---
 
@@ -54,17 +54,18 @@ Two harness adapters over one shared core:
 
 Dual-harness ground rules from the measured spike:
 
-| Codex fact (0.146.0) | Design consequence |
+| Codex fact (0.146.0 spike; rows story-021 relies on re-verified on **0.147.0**) | Design consequence |
 |---|---|
 | Bundled hooks run; `${CLAUDE_PLUGIN_ROOT}` expands; unknown event names silently ignored | One hooks file per harness, tidy not mandatory; explicit `hooks` field in the Codex manifest (it REPLACES, not merges) |
-| `unified_exec`'s `write_stdin` bypasses `PreToolUse` entirely | **`--disable unified_exec` on every Codex spawn** — non-negotiable spawn flag |
-| Headless `codex exec` can never ask the user anything; Plan mode can't write | Teammate prompts must be fully pre-answered (already our contract); lead-side questions ask in chat and record via a CLI leg that requires the answer text |
+| `unified_exec`'s `write_stdin` bypasses `PreToolUse` entirely | **`--disable unified_exec` on every Codex spawn** — non-negotiable spawn flag. **0.147.0: flag PRESENT** (`codex exec --help`), and `spawn.codex_argv` emits it on both legs with a stub that refuses an argv without it. **NOT re-verified: that it still disables rather than being silently ignored** — `--disable X` is documented as `-c features.X=false`, and a renamed feature key would give a green suite over an open gate. Measuring it means spawning codex, so it rides the lead's live walk |
+| Headless `codex exec` can never ask the user anything; Plan mode can't write | Teammate prompts must be fully pre-answered (already our contract); lead-side questions ask in chat and record via a CLI leg that requires the answer text. **Re-verified 0.147.0**: `codex exec --help` exposes no approval flag at all, so there is nothing to pass and nothing to get wrong |
 | A gated model synthesized a hook payload and forged the release marker | CLI-hook markers are **advisory** on every harness; hard enforcement lives in git hooks; markers are lane-keeping, not security |
 | `agent_type` doesn't discriminate on Codex; skills aren't tool calls | No gate may key on agent identity or `PostToolUse:Skill`; gates key on cwd + explicit marker files |
 | Untrusted hooks are skipped silently; version-keyed cache serves stale copies | Liveness detection lives in the layer that can't be skipped: the scaffolded **git pre-commit warns "CLI-gate liveness unknown"** unless the SessionStart hook left a current touchfile. The SessionStart banner (version + live gates) is the friendly path, not the guarantee |
 | `--disable unified_exec` protects spawns only — a user-launched interactive Codex *lead* is not a spawn | Install/preflight writes the disablement into **user-scope Codex config**, not just spawn flags |
 | Codex delivers a skill *locator*, not the body; `!` preloads never expand | Skill bodies must be self-contained prose the model reads itself — no preload commands, nothing load-bearing outside the file |
-| No `--plugin-dir` equivalent for `codex exec`; `.git` read-only under `workspace-write` | Codex teammates require user-scope install; spawn preflight checks it; sandbox needs the documented widening for commits |
+| No `--plugin-dir` equivalent for `codex exec` — **re-verified 0.147.0** (nothing in `exec --help` loads a plugin ad hoc) | A Codex teammate or reviewer needs **no install**, because `spawn` INLINES the whole profile (VALUES + TEAMMATE + card + constraints) and the wall is lefthook, which is harness-independent. User-scope install is required only for what the profile cannot carry — skills, hooks, the SessionStart banner — which is story-025's surface, not a preflight that exists today |
+| ~~`.git` read-only under `workspace-write`, so commits need the documented widening~~ — **FALSIFIED on 0.147.0** (lead probe, note 6193855e): a commit SUCCEEDS under plain `workspace-write` in the worktree case, where the real gitdir lives outside the workspace | **No git-common-dir `--add-dir` rides the argv.** The argv carries exactly one `--add-dir`, for the data root (round reports, teammate logs), which is asserted. The commit contract is held EMPIRICALLY instead: the story-021 walk must land a commit, and `spawn.unclean_teammate_result` refuses a teammate that made none — a codex regressing to 0.146.0's behaviour reds at the wall, not in a stub |
 
 ### 3b. The plan is PER CLONE, and what that costs
 
@@ -205,6 +206,14 @@ The economic shape: **an expensive model orchestrates; cheaper or different mode
 - The **spawn CLI survives largely as-is in role** (worktree creation, clean branch, bootstrap/teardown from `system.md`, plugin preflight) — it's the piece neither harness provides natively. It slims to: `spawn <story-id> [harness/model/effort]`.
 - `config.yml` sets defaults per role — e.g. `lead: claude/opus`, `executor: claude/sonnet/medium`, `reviewer: codex/<model>/high` — and the lead overrides per story in plan.md with one line of stated reasoning. No tier tables, no latching, no executor state machine.
 - Codex spawns always carry `--disable unified_exec` and the documented sandbox flags; Codex teammates must be pre-answered (no user-interaction surface headless) — which the story shape already guarantees (context + files + ACs + verify).
+
+**A Codex teammate is not at parity with a Claude one (story-021 ships the spawn; story-025 owns the rest).** Stated here so a reader does not infer parity from "both harnesses spawn":
+
+- **No CLI-gate surface at all**: no SessionStart injection, no stop gate, no `bash_status` marker. The teammate's Verify state is therefore invisible to the lead's recovery block, and no liveness touchfile is written — today nothing at the wall reads one, so nothing refuses; story-025 owns making that surface real.
+- **The sandbox is asymmetric, and no stub can show it.** A Claude teammate runs unbounded in its throwaway worktree; a Codex one runs under `--sandbox workspace-write` with `--add-dir` for the data root and network off by default. A story needing the network or an out-of-tree write succeeds on one leg and fails on the other.
+- **The stream is thinner.** Codex tees plain text, not `stream-json`: its `--json` event vocabulary is unmeasured on 0.147.0, so there is no terminal-result liveness check and no per-run turns/cost/duration closing line. The exit code is the whole in-band verdict, which is why `spawn` re-checks the *tree* — clean and holding commits of its own — rather than believing any harness's own report.
+- **What is NOT degraded**: the wall (lefthook: lint, secrets, tests at commit, full suite at push), the completion contract, the `{fixed,blocking,noted}` report contract and its round path. Those are shared code, and the codex leg reaches them through the same functions.
+- **The reviewer default does not flip to Codex this sprint.** The mechanism ships role-agnostic; the story leg contracts a *fixing* reviewer (story-012b), and pointing every close at a harness whose commit support story-021 is still proving would degrade every close. The `config.yml` flip is a later, separate decision. Row 65 above — writing the `unified_exec` disablement into user-scope Codex config so an interactive Codex *lead* is covered too — is likewise still open.
 
 ### Context injection profiles
 

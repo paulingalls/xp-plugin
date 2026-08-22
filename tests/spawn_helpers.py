@@ -1,6 +1,7 @@
 """Shared fixtures for the test_spawn family.
 Split at sprint-004 open: tests are production code (constraint 8)."""
 
+import json
 import subprocess
 import sys
 from pathlib import Path
@@ -187,3 +188,57 @@ def _total(stdout):
         if ln.startswith("profile:"):
             return int(ln.split("total ", 1)[1].split(" ", 1)[0])
     raise AssertionError(f"no profile line in: {stdout[:200]}")
+
+
+def stub_codex(tmp_path, commit=True, write_file=False, report=None, prose=("thinking", "done")):
+    """A fake `codex` that REJECTS what the real binary rejects.
+
+    story-017's measured loss, inherited verbatim by story-021's card: stub_claude
+    accepted any argv, so the suite would have shipped a spawn that died on
+    contact. This one exits 2 on an argv missing `--disable unified_exec` — the
+    fault injection the AC names, so deleting the flag reds a test instead of
+    shipping a PreToolUse bypass — and on the claude spellings, which is what
+    stops the two legs' argv from silently fusing.
+
+    `report`: the reviewer shape. Its dict is written to the bundle's REPORT_PATH
+    THROUGH `sh -c`, per the AC — the report lives outside the workspace, so the
+    thing under test is that a shell in the sandbox can reach it.
+    """
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir(exist_ok=True)
+    rec = tmp_path / "launch.json"
+    body = [
+        "#!/usr/bin/env python3",
+        "import json, os, re, subprocess, sys",
+        "argv = sys.argv[1:]",
+        "def die(m):",
+        "    print('error: ' + m, file=sys.stderr); sys.exit(2)",
+        "if argv[:1] != ['exec']: die('unrecognized subcommand')",
+        "for flag in ('-e', '--plugin-dir', '--output-format', '--verbose', '-p'):",
+        "    if flag in argv: die('unexpected argument ' + flag)",
+        "pairs = list(zip(argv, argv[1:]))",
+        "if ('--disable', 'unified_exec') not in pairs:",
+        "    die('unified_exec is enabled: write_stdin would bypass every gate')",
+        "stdin = sys.stdin.read()",
+        f"json.dump({{'argv': argv, 'env': dict(os.environ), 'stdin': stdin}},"
+        f" open({str(rec)!r}, 'w'))",
+    ]
+    if report is not None:
+        body += [
+            "m = re.search(r'^REPORT_PATH: (.+)$', stdin, re.M)",
+            "assert m, 'the bundle named no REPORT_PATH'",
+            f"subprocess.run(['sh', '-c', 'cat > \"$1\"', 'sh', m.group(1).strip()],"
+            f" input={json.dumps(report)!r}, text=True, check=True)",
+        ]
+    if write_file:
+        body.append("open('teammate-left-this-uncommitted.txt', 'w').write('oops')")
+    if commit:
+        body.append("subprocess.run(['git', 'add', '-A'])")
+        body.append("subprocess.run(['git', 'commit', '--allow-empty', '-qm', 'teammate work'])")
+    # PLAIN prose, never JSON: codex's --json event vocabulary is unmeasured on
+    # 0.147.0 and the executor may not spawn codex to measure it, so the leg
+    # streams text and the exit code is the verdict.
+    body += [f"print({line!r})" for line in prose]
+    (bin_dir / "codex").write_text("\n".join(body) + "\n")
+    (bin_dir / "codex").chmod(0o755)
+    return rec
