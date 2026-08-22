@@ -43,7 +43,7 @@ def drift(story_id: str, card: str) -> str:
     try:
         minted = json.loads(marker.read_text())
         reviewed, digest = minted["card"], minted["digest"]
-    except (OSError, ValueError, KeyError):
+    except (OSError, ValueError, KeyError, TypeError):
         return (
             f"refused: {marker} is unreadable, so nothing vouches for {story_id} — an"
             " interrupted mint leaves half of it. Put the heading back to [planned] and"

@@ -374,6 +374,10 @@ class TestReadyCredential:
         r = spawn(repo, env, "story-042")
         assert r.returncode == 2, r.stdout
         assert "ready" in r.stderr and "spawn.py ready story-042" in r.stderr, r.stderr
+        # the ABSENT-marker diagnosis, not the unreadable one: without this the two
+        # arms are interchangeable (a missing file reads as an OSError downstream),
+        # and the lead is sent hunting a corrupt file that was never written
+        assert "nothing minted it" in r.stderr, r.stderr
         assert not (tmp_path / "data" / "worktrees").exists()
 
     def test_ready_mints_the_reviewed_card_and_flips_the_bracket(self, tmp_path):
@@ -414,6 +418,17 @@ class TestReadyCredential:
         assert "#### story-042 — what [planned] really means   [ready]" in plan.read_text()
         assert spawn(repo, env, "story-042").returncode == 0
 
+    def test_minting_one_card_leaves_its_siblings_brackets_alone(self, tmp_path):
+        """The flip is story-scoped, and the plan is shared. Rewriting every
+        trailing [planned] would hand the whole sprint a bracket no mint stands
+        behind — each sibling then refuses at ITS spawn, one lead round each."""
+        repo, env, _g = make_repo(tmp_path, status="planned")
+        plan = tmp_path / "data" / "plan.md"
+        sibling = "\n#### story-043 — sibling   [planned]\nVerify: true\n"
+        plan.write_text(plan.read_text() + sibling)
+        self.mint(repo, env)
+        assert sibling in plan.read_text(), plan.read_text()
+
     def test_an_unreadable_marker_refuses_instead_of_crashing(self, tmp_path):
         """A torn write leaves half a marker; json.loads on it is a traceback, and
         a traceback names no next action."""
@@ -426,7 +441,12 @@ class TestReadyCredential:
         assert r.returncode == 2, r.stdout
         assert "Traceback" not in r.stderr, r.stderr
         assert "spawn.py ready story-042" in r.stderr, r.stderr
+        assert "unreadable" in r.stderr, r.stderr
         assert not (tmp_path / "data" / "worktrees").exists()
+        # and the shape a torn write cannot make but a stray overwrite can: valid
+        # JSON that is not the object, which subscripts to TypeError, not ValueError
+        marker.write_text("null")
+        assert "Traceback" not in spawn(repo, env, "story-042").stderr
 
     def test_a_planned_card_is_told_which_leg_clears_it(self, tmp_path):
         """The one refusal a lead meets holding an unreviewed card. Before the
