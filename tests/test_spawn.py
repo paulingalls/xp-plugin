@@ -347,6 +347,10 @@ class TestCodexExecutor:
         ]:
             assert pair in pairs, f"{pair} missing from {argv}"
         assert "-e" not in argv, "codex has no -e; the effort rides -c (spike-falsified)"
+        # asserting `--sandbox workspace-write` PRESENT bounds nothing on its own:
+        # 0.147.0 ships a documented override that silently voids it, and it is what
+        # a reader reaches for the first time the sandbox denies a write
+        assert "--dangerously-bypass-approvals-and-sandbox" not in argv, argv
         # exactly one: note 6193855e probed the git-common-dir widening
         # unnecessary on 0.147.0, and a second --add-dir is that widening returning
         assert argv.count("--add-dir") == 1, argv
