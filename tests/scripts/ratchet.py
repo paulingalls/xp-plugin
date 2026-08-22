@@ -142,6 +142,9 @@ def report(root):
         if measured > cap:
             violations.append(
                 f"BUDGET EXCEEDED: {name} measured {measured}, cap {cap}, over by {measured - cap}"
+                "\n  fix by displacing equal weight in this component; or move budget"
+                " between components (here + DESIGN §9, zero-sum, the human's call);"
+                " or cut a §9 sacrificial feature — never a gate, never a test"
             )
 
     worst_path = worst[1]
@@ -152,12 +155,18 @@ def report(root):
         violations.append(
             f"DENSITY EXCEEDED: comments+docstrings {density:.2%} of shipped Python, "
             f"cap {DENSITY_THRESHOLD:.2%}, worst file {worst_path}"
+            "\n  before deleting words: a comment carrying a checkable claim becomes a"
+            " test (it leaves the ratio and rots loudly); one explaining WHAT becomes a"
+            " rename; one restating the code just goes. Keep the why (constraint 9)"
         )
 
     for kind, rel, n, cap in file_findings:
         if kind == "over":
             violations.append(
                 f"FILE CAP EXCEEDED: {rel} measured {n}, cap {cap}, over by {n - cap}"
+                "\n  over-cap means extract, not scroll (constraint 8): shed a cohesive"
+                " leaf module — component_for charges close/ and spawn leaf files to"
+                " their component — and never delete tests to fit"
             )
         else:
             violations.append(
