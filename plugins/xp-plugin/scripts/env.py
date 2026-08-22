@@ -58,7 +58,10 @@ def write_env(root: Path, version: str) -> None:
     tmp.replace(path)
 
 
-REFRESH = "start a session on the harness whose install you want — SessionStart rewrites both"
+REFRESH = (
+    "refresh it by starting a session on the harness whose install you want"
+    " — SessionStart rewrites both entries"
+)
 
 
 def _refuse_env(reason: str) -> None:
