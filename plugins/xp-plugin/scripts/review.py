@@ -148,7 +148,7 @@ def abort_text(reviewed_head: str, why: str) -> str:
 
 
 def check_reviewer_motion(
-    reviewed_head: str, marker: Path, digest_before: str, card: str = ""
+    reviewed_head: str, marker: Path, digest_before: str, card: str = "", story_id: str = ""
 ) -> str:
     """The complete refusal text, or "" if the reviewer behaved.
 
@@ -171,6 +171,16 @@ def check_reviewer_motion(
             f"the close marker changed during the review ({marker}). It is the file"
             " land reads for blocking findings, it is outside the repo, and no diff"
             " shows it — a review may not move its own gate"
+        )
+    # `git diff` below cannot see the plan any more. Scoped to this story's OWN
+    # card, never the whole file: it is shared, so a whole-file digest would let a
+    # sibling lane's flip refuse THIS review (constraint 10). Cross-lane rewrites
+    # stay uncaught by mechanism — note 1bcb794f.
+    if story_id and card_now(story_id) != card:
+        return refuse(
+            f"{story_id}'s own card changed during the review. The plan lives outside"
+            " the repo, so no diff shows it, and a review may not rewrite the card it"
+            " is being reviewed under"
         )
     rng = f"{reviewed_head}..HEAD"
     strays = [
@@ -201,6 +211,17 @@ def check_reviewer_motion(
             " .xp/ files this story's Files line already names"
         )
     return ""
+
+
+def card_now(story_id: str) -> str:
+    """The story's card as the plan holds it now, or "" if unreadable."""
+    from close import story_card
+    from work import plan_path
+
+    try:
+        return story_card(plan_path().read_text(), story_id)[0]
+    except (KeyError, OSError):
+        return ""
 
 
 def reviewer_range(reviewed_head: str) -> str:

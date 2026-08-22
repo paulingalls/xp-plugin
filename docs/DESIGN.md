@@ -33,11 +33,11 @@ repo/                              (in-repo: durable, git-versioned, PR-reviewab
 ├── .xp/
 │   ├── config.yml                 harness/model/effort defaults, test tiers, debt budget, sprint cap
 │   ├── system.md                  WHERE: stack, architecture sketch, conventions (short)
-│   ├── constraints.md             the one load-bearing pillar; changes via reviewed diff
-│   └── plan.md                    execution plan: milestones + current sprint stories
+│   └── constraints.md             the one load-bearing pillar; changes via reviewed diff
 └── (git hooks scaffolded via lefthook or .githooks)
 
 ~/.xp/data/<project-id>/           (out-of-repo: runtime, shared across worktrees & harnesses)
+├── plan.md                        execution plan: milestones + current sprint stories — PER CLONE
 ├── session.md                     lead's continuity digest (sole writer: the lead's close flow)
 ├── work.md                        open bugs/debts/notes — all writes via the flock'd append CLI, never direct edits
 ├── markers/                       ALWAYS scoped: <plan-id>.plan-reviewed, <story-id>.close-in-progress,
@@ -64,6 +64,43 @@ Dual-harness ground rules from the measured spike:
 | `--disable unified_exec` protects spawns only — a user-launched interactive Codex *lead* is not a spawn | Install/preflight writes the disablement into **user-scope Codex config**, not just spawn flags |
 | Codex delivers a skill *locator*, not the body; `!` preloads never expand | Skill bodies must be self-contained prose the model reads itself — no preload commands, nothing load-bearing outside the file |
 | No `--plugin-dir` equivalent for `codex exec`; `.git` read-only under `workspace-write` | Codex teammates require user-scope install; spawn preflight checks it; sandbox needs the documented widening for commits |
+
+### 3b. The plan is PER CLONE, and what that costs
+
+`data_root()` hashes the git-common-dir, so three clones of one repo already have
+three state roots and every worktree of one clone shares its clone's — the sharing a
+spawned teammate needs, with no new mechanism. `constraints.md`, `config.yml` and
+`system.md` stay in the repo: three streams on one codebase obey the same rules, a
+constraint promoted in one binds the others, and `system.md` describes the SYSTEM,
+not the work.
+
+Stated as decisions, not discovered later:
+
+1. **The plan stops being git-versioned.** Measured on this repo: the CHANGELOG
+   carries release narrative and `docs/retros/` the sprint narrative, but card-level
+   deliberation — why 013 and 015 were cut, why 014 moved behind 010, three estimate
+   revisions — lives ONLY in commit messages on plan.md. After the move, PROCESS's
+   existing rule is the sole record: decisions go in work.md with the value tradeoff
+   named. That discipline stops being belt-and-braces.
+2. **A fresh clone starts with no plan.** Correct for this model — a new clone is a
+   new stream — but `xp-setup` scaffolds into the state root, and nothing carries a
+   plan between machines.
+3. **Sprint membership and the release become per-stream.** `sprint_stories()` reads
+   one clone's plan, so a release describes THAT stream's sprint. Coherent here; it
+   would not be under a single shared sprint.
+4. **The card becomes LIVE.** `close` reads the card from a shared mutable file
+   instead of from the story branch, which pinned it at spawn. The good half is why
+   plan.md stopped serialising lanes: no card edit invalidates an in-flight review.
+   The bad half is that a lead editing a card mid-story silently changes what land
+   runs and what the reviewer was shown, and no diff records it.
+5. **Two residual write hazards, both practice rather than property.** `edit_plan`
+   serialises the tools' own writers under a flock, but the lead's Edit tool takes no
+   lock — lead-vs-lane is last-writer-wins, so don't hand-edit the plan while a lane
+   is landing. And the reviewer-motion guard digests only the story's OWN card: a
+   whole-plan digest would be the project-global mutable gate §3 forbids, letting a
+   sibling lane's flip refuse an unrelated review. A fixing reviewer rewriting
+   ANOTHER lane's card is therefore uncaught by mechanism, and rests on the
+   story-reviewer charter plus that lane's own next review digest.
 
 ## 4. Records: declarative shapes, no budgets
 
@@ -206,7 +243,7 @@ The 5k-line total is **sub-budgeted now**, because honest arithmetic says the tw
 The product is mostly prose and artifacts, so the MVP is **hand-writing the files the plugin will later scaffold** — the dogfood artifacts become the shipped templates. Enforcement in the MVP comes only from the two layers that need no plugin code: git hooks, and CLAUDE.md (natively injected every session — it stands in for the SessionStart hook until the real one exists).
 
 **Sprint 0 — hand-built, no plugin machinery (~half a day):**
-1. `.xp/` written by hand for this repo: plan.md (the plugin's own first sprint, stories with Verify commands), constraints.md (seeded from the audit: fault-injection norm, every-rule-displaces-one, no bookkeeping mechanisms), system.md, config.yml (pytest fast/full tiers).
+1. `.xp/` written by hand for this repo: the plan (the plugin's own first sprint, stories with Verify commands; in the state root since story-019), constraints.md (seeded from the audit: fault-injection norm, every-rule-displaces-one, no bookkeeping mechanisms), system.md, config.yml (pytest fast/full tiers).
 2. VALUES.md + one-page PROCESS.md, referenced from CLAUDE.md.
 3. The two reviewer agent definitions (plan-reviewer, story-reviewer with the fault-injection charter) — the entire value core, in markdown.
 4. Git hooks via lefthook: pre-commit = lint + fast tests + secrets scan; pre-push = full tests.
@@ -226,4 +263,4 @@ Parallel-teammate machinery deliberately comes last — building the plugin is m
 1. **Codex R-work inherited from the spike**: the sidecar conflict (implicit skill invocation vs `agents/` sidecar ban) — settle at packaging time; verify hook surface on current codex-cli (spike is one version, explicitly a snapshot; assume churn). Liveness detection is now designed (git pre-commit touchfile check, §3/§7) but needs the same re-verification.
 2. **Collision-check value measurement**: instrument the cross-story file check and keep it only if it fires usefully (testimony conflicted; artifacts silent).
 3. **Naming** and repo layout for the marketplace (this repo currently `xp-plugin`).
-4. **Migration**: none planned — projects adopt fresh; `plan.md`/`constraints.md` can be seeded from an existing SMM by hand once, not by tooling.
+4. **Migration**: none planned — projects adopt fresh; the plan and `constraints.md` can be seeded from an existing SMM by hand once, not by tooling. A project scaffolded before story-019 keeps a stale in-repo `.xp/plan.md`; the missing-plan refusal names the move (there is no migration command — one-time work for a population of one).

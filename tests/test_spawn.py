@@ -76,6 +76,13 @@ class TestLaunchContract:
         assert json.loads(rec.read_text())["env"].get("XP_ROLE") == "teammate"
 
 
+def reset_to_ready(tmp_path):
+    """The flip is no longer branch-local, so a second spawn of one story refuses on
+    [in-progress] before it ever reaches the worktree and branch guards below."""
+    plan = tmp_path / "data" / "plan.md"
+    plan.write_text(plan.read_text().replace("[in-progress]", "[ready]"))
+
+
 class TestWorktree:
     def test_worktree_branches_off_the_integration_target_not_head(self, tmp_path):
         """HEAD carries a divergent commit the trunk does not have, so a
@@ -104,6 +111,13 @@ class TestWorktree:
         for k, v in (("user.email", "grace@example.com"), ("user.name", "Grace H")):
             subprocess.run(["git", "config", k, v], cwd=other, env=env2, check=True)
         subprocess.run(["git", "checkout", "-q", "main"], cwd=other, env=env2)
+        # the clone gets its OWN plan -- that is the point of a per-clone plan, and
+        # the git clone no longer carries one
+        plan2 = tmp_path / "data2" / "plan.md"
+        plan2.parent.mkdir(parents=True, exist_ok=True)
+        plan2.write_text(
+            (tmp_path / "data" / "plan.md").read_text().replace("[in-progress]", "[ready]")
+        )
         assert spawn(other, env2, "story-042").returncode == 0
         second = in_tree(
             tmp_path / "data2" / "worktrees" / "story-042", env2, "branch", "--show-current"
@@ -111,16 +125,19 @@ class TestWorktree:
         assert second == "grace/story-042-demo-story"
         assert first != second
 
-    def test_status_flip_is_committed_in_the_worktree(self, tmp_path):
+    def test_the_flip_lands_in_the_clones_plan_and_commits_nothing(self, tmp_path):
+        """Was "the flip is committed in the worktree", where the lead's tree kept
+        reading [ready] until the merge. The plan is per-clone now: the flip is not
+        a commit at all, the lead sees [in-progress] at once, and the story branch
+        starts EMPTY — which is what unclean_teammate_result's head==flip_head
+        check depends on."""
         repo, env, _g = make_repo(tmp_path)
         stub_claude(tmp_path)
         assert spawn(repo, env, "story-042").returncode == 0
         tree = tmp_path / "data" / "worktrees" / "story-042"
-        assert "[in-progress]" in (tree / ".xp" / "plan.md").read_text()
+        assert "[in-progress]" in (tmp_path / "data" / "plan.md").read_text()
         assert in_tree(tree, env, "status", "--porcelain") == ""
-        # the lead's tree still reads [ready]: git is the memory, and the
-        # reviewer sees the flip in the cumulative diff
-        assert "[ready]" in (repo / ".xp" / "plan.md").read_text()
+        assert "in-progress" not in in_tree(tree, env, "log", "--format=%s", "main..HEAD")
 
     def test_dry_run_creates_nothing(self, tmp_path):
         repo, env, _g = make_repo(tmp_path)
@@ -131,33 +148,12 @@ class TestWorktree:
         assert "story-042" not in in_tree(repo, env, "branch", "--list")
 
 
-class TestFlipFailure:
-    """The flip commit runs the project's pre-commit wall. Swallowing its failure
-    launches a teammate onto a branch whose plan.md still reads [ready], and
-    close.py's refusal then lands only after the whole story is written — the
-    exact cost flip_to_in_progress exists to avoid."""
-
-    def test_failed_flip_refuses_and_does_not_launch(self, tmp_path):
-        repo, env, _g = make_repo(tmp_path)
-        rec = stub_claude(tmp_path)
-        block_commits(repo)
-        r = spawn(repo, env, "story-042")
-        assert r.returncode == 2 and "flip" in r.stderr.lower()
-        assert not rec.exists()
-
-    def test_failed_flip_in_place_names_the_recovery(self, tmp_path):
-        repo, env, _g = make_repo(tmp_path)
-        block_commits(repo)
-        r = spawn(repo, env, "story-042", "--in-place")
-        assert r.returncode == 2 and "flip" in r.stderr.lower()
-        assert "branch -D" in r.stderr  # cannot unwind: name the way out
-
-
 class TestRefusals:
     def test_existing_worktree_refused(self, tmp_path):
         repo, env, _g = make_repo(tmp_path)
         stub_claude(tmp_path)
         assert spawn(repo, env, "story-042").returncode == 0
+        reset_to_ready(tmp_path)  # else the [in-progress] guard fires first
         r = spawn(repo, env, "story-042")
         assert r.returncode == 2 and "already" in r.stderr
 
@@ -177,6 +173,7 @@ class TestRefusals:
             env=env,
             check=True,
         )
+        reset_to_ready(tmp_path)  # else the [in-progress] guard fires first
         r = spawn(repo, env, "story-042")
         assert r.returncode == 2 and "branch" in r.stderr
 
@@ -251,7 +248,7 @@ class TestInPlace:
         assert not rec.exists()  # nothing launched: the lead does the work
         assert not (tmp_path / "data" / "worktrees" / "story-042").exists()
         assert in_tree(repo, env, "branch", "--show-current") == "ada/story-042-demo-story"
-        assert "[in-progress]" in (repo / ".xp" / "plan.md").read_text()
+        assert "[in-progress]" in (tmp_path / "data" / "plan.md").read_text()
         assert in_tree(repo, env, "status", "--porcelain") == ""
 
     def test_dry_run_creates_nothing(self, tmp_path):
@@ -263,12 +260,13 @@ class TestInPlace:
         assert r.returncode == 0 and "would create" in r.stdout
         assert in_tree(repo, env, "branch", "--show-current") == "elsewhere"
         assert in_tree(repo, env, "rev-parse", "HEAD") == before
-        assert "[ready]" in (repo / ".xp" / "plan.md").read_text()
+        assert "[ready]" in (tmp_path / "data" / "plan.md").read_text()
 
     def test_existing_branch_refused(self, tmp_path):
         repo, env, _g = make_repo(tmp_path)
         assert spawn(repo, env, "story-042", "--in-place").returncode == 0
         subprocess.run(["git", "checkout", "-q", "main"], cwd=repo, env=env)
+        reset_to_ready(tmp_path)  # else the [in-progress] guard fires first
         r = spawn(repo, env, "story-042", "--in-place")
         assert r.returncode == 2 and "already exists" in r.stderr
         assert in_tree(repo, env, "branch", "--show-current") == "main"

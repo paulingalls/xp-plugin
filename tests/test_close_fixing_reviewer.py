@@ -148,12 +148,43 @@ class TestFixingReviewer:
         self.fixing_stub(
             tmp_path,
             extra=(
-                "echo 'sneaky' >> .xp/plan.md\n"
-                f"git -c user.name='{REVIEWER_NAME}' -c user.email='r@xp' commit -qam 'edit plan'\n"
+                "echo 'sneaky' >> .xp/constraints.md\n"
+                f"git -c user.name='{REVIEWER_NAME}' -c user.email='r@xp'"
+                " commit -qam 'edit rules'\n"
             ),
         )
         r = close(repo, env, "review")
         assert r.returncode == 2 and ".xp" in r.stderr
+
+    def test_a_reviewer_that_rewrites_its_OWN_card_is_refused(self, tmp_path):
+        """story-019: the plan left the repo, so `git diff` stopped covering it and
+        the guard above cannot see this at all. The digest is what remains."""
+        repo, env, _g = make_repo(tmp_path)
+        plan = tmp_path / "data" / "plan.md"
+        self.fixing_stub(
+            tmp_path,
+            extra=f"printf 'sneaky\\n' >> '{plan}'\n",
+        )
+        r = close(repo, env, "review")
+        assert r.returncode == 2, "a fixing reviewer rewrote the card it is reviewed under"
+        assert "plan" in r.stderr.lower()
+
+    def test_a_reviewer_is_NOT_blamed_for_another_lanes_card(self, tmp_path):
+        """The green twin, and the reason the digest is scoped to the story's own
+        card: the plan is shared per-clone now, so a whole-file digest would let
+        lane B's spawn flip refuse lane A's review — the project-global mutable
+        gate constraint 10 forbids, blaming the reviewer for another actor's write."""
+        repo, env, _g = make_repo(tmp_path)
+        plan = tmp_path / "data" / "plan.md"
+        self.fixing_stub(
+            tmp_path,
+            extra=(
+                f"printf '#### story-777 — another lane   [in-progress]\\nVerify: true\\n'"
+                f" >> '{plan}'\n"
+            ),
+        )
+        r = close(repo, env, "review")
+        assert r.returncode == 0, r.stderr + r.stdout
 
     def _worktree_land_setup(self, tmp_path, verify="true"):
         """spawn.py's DEFAULT arrangement: the lead's tree holds the integration
@@ -185,7 +216,7 @@ class TestFixingReviewer:
             ["git", "log", "-1", "--pretty=%s"], cwd=repo, env=env, capture_output=True, text=True
         ).stdout
         assert branch in head, head
-        assert "[done]" in (repo / ".xp" / "plan.md").read_text()
+        assert "[done]" in (tmp_path / "data" / "plan.md").read_text()
 
     def test_a_dirty_tree_holding_trunk_is_refused_before_verify_runs(self, tmp_path):
         """5d7388fc — the ORDERING claim, re-pointed. Its filed falsifier named
@@ -259,7 +290,7 @@ class TestFixingReviewer:
         bystander = tmp_path / "other-wt"
         g("worktree", "add", "-b", "unrelated", str(bystander), "main")
         assert close(repo, env, "land", "--merge-mode", "local").returncode == 0
-        assert "[done]" in (repo / ".xp" / "plan.md").read_text()
+        assert "[done]" in (tmp_path / "data" / "plan.md").read_text()
         assert bystander.exists(), "land removed a worktree it does not own"
 
     def test_a_refused_land_leaves_the_worktree_standing(self, tmp_path):
@@ -308,12 +339,11 @@ class TestFixingReviewer:
         THE FIXTURE NOW MATCHES THE DOCSTRING: its card previously named only
         src/thing.py, so this passed on the deny-list's hole rather than on the
         story declaring the file. Its pair below is what that hole allowed."""
-        repo, env, g = make_repo(tmp_path)
-        plan = repo / ".xp" / "plan.md"
+        repo, env, _g = make_repo(tmp_path)
+        plan = tmp_path / "data" / "plan.md"
         plan.write_text(
             plan.read_text().replace("Files: src/thing.py", "Files: src/thing.py, .xp/system.md")
         )
-        g("commit", "-qam", "the card declares the .xp/ file this story edits")
         self.fixing_stub(
             tmp_path,
             extra=(
@@ -331,14 +361,13 @@ class TestFixingReviewer:
         line was refused and the round not recorded — story-010's symptom back
         again, and the single-line fixture above cannot see it (bug 8d0a74c6,
         spec corrected in note 7e20e96b)."""
-        repo, env, g = make_repo(tmp_path)
-        plan = repo / ".xp" / "plan.md"
+        repo, env, _g = make_repo(tmp_path)
+        plan = tmp_path / "data" / "plan.md"
         plan.write_text(
             plan.read_text().replace(
                 "Files: src/thing.py\n", "Files: src/thing.py,\n.xp/system.md\n"
             )
         )
-        g("commit", "-qam", "the card declares the .xp/ file on a continuation line")
         self.fixing_stub(
             tmp_path,
             extra=(

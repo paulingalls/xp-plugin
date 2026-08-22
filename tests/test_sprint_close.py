@@ -293,24 +293,31 @@ class TestLandCoverage:
 
     def test_land_proceeds_when_the_whole_delta_since_the_review_is_under_xp(self, tmp_path):
         """Paul's call, and it rests on the retro diff having its own human review
-        at triage — NOT on .xp/ being harmless. Retro, digest and plan-status
+        at triage — NOT on .xp/ being harmless. Retro and constraint-promotion
         commits always land after the reviews, so a strict rule forces a fresh
         broad AND security review at every close: the afbd01a3 wedge, where
-        completing the close invalidates the review that permits it."""
+        completing the close invalidates the review that permits it.
+
+        story-019 removed plan-status commits from this list — the plan is
+        per-clone now, so a flip never reaches the diff at all. .xp/plan.md was
+        this exemption's only real subject in OUR layout; every .xp/ file left is
+        a GATE_FILE, so the exemption cannot fire here any more (note af6469a5).
+        It still ships for consuming projects, and a non-gate .xp/ file is what
+        constructs the condition it claims."""
         repo, env, g = make_repo(tmp_path)
         record_reviews(tmp_path, repo, env)
-        (repo / ".xp" / "plan.md").write_text(PLAN + "\n<!-- retro -->\n")
+        (repo / ".xp" / "retro-notes.md").write_text("# retro\n")
         g("add", "-A")
-        g("commit", "-qm", "retro and plan flips")
+        g("commit", "-qm", "retro prose under .xp/")
         r = sprint(repo, env, "land", "--dry-run")
         assert r.returncode == 0, r.stderr
-        assert ".xp/plan.md" in r.stdout, "an exemption nobody is shown is a silent one"
+        assert ".xp/retro-notes.md" in r.stdout, "an exemption nobody is shown is a silent one"
 
     def test_a_code_change_alongside_an_xp_change_is_NOT_exempt(self, tmp_path):
         """Code motion is never exempt; without this the exemption is a hole."""
         repo, env, g = make_repo(tmp_path)
         record_reviews(tmp_path, repo, env)
-        (repo / ".xp" / "plan.md").write_text(PLAN + "\n<!-- retro -->\n")
+        (repo / ".xp" / "retro-notes.md").write_text("# retro\n")
         (repo / "src.py").write_text("A = 1\nSMUGGLED = 3\n")
         g("add", "-A")
         g("commit", "-qm", "retro, and one line of code")

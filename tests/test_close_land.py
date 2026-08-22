@@ -87,7 +87,9 @@ class TestLandBookkeeping:
         assert keep.exists(), "another story's gate state is not this close's business"
 
     def test_close_record_is_appended_and_names_the_real_merge_commit(self, tmp_path):
-        """AC 8 + G6: a sha read before the --amend is on no ref."""
+        """AC 8 + G6. The sha was read before the --amend and so was on no ref;
+        with the amend gone it is the merge commit, and the claim it must name the
+        REAL merge is what outlived the mechanism."""
         repo, env, g = make_repo(tmp_path)
         close(repo, env, "review")
         assert close(repo, env, "land").returncode == 0
@@ -105,12 +107,10 @@ class TestLandBookkeeping:
         repo, env, g = make_repo(tmp_path)
         close(repo, env, "review")
         close(repo, env, "land")
-        plan = repo / ".xp" / "plan.md"
+        plan = tmp_path / "data" / "plan.md"
         plan.write_text(
             plan.read_text() + "#### story-043 — second   [in-progress]\nVerify: true\n"
         )
-        g("add", "-A")
-        g("commit", "-qm", "second story card")
         g("checkout", "-qb", "story-043-branch")
         (repo / "src" / "thing.py").write_text("A = 9\n")
         g("add", "-A")
@@ -128,7 +128,21 @@ class TestLandBookkeeping:
 
 
 class TestLandFailureModes:
-    """Land's failure modes: partial bookkeeping, orphaned amends, pr-mode shas."""
+    """Land's failure modes: partial bookkeeping and pr-mode shas."""
+
+    def test_a_plan_that_vanished_between_review_and_land_refuses_not_tracebacks(self, tmp_path):
+        """`.xp/plan.md` was git-tracked, so land's unguarded read could not miss
+        it while the branch was checked out. story-019 moved the plan out of the
+        repo, where nothing versions it (DESIGN §3b cost 1) — and land re-reads it
+        AFTER the review leg, so an ordinary `rm` between the two legs reached the
+        lead as a FileNotFoundError stack. review's own leg already refuses here;
+        land is the copy that was left behind."""
+        repo, env, _g = make_repo(tmp_path)
+        close(repo, env, "review")
+        (tmp_path / "data" / "plan.md").unlink()
+        r = close(repo, env, "land")
+        assert "Traceback" not in r.stderr, r.stderr
+        assert r.returncode == 2 and "no plan at" in r.stderr
 
     def pr_repo(self, tmp_path):
         repo, env, g = make_repo(tmp_path)
@@ -161,21 +175,6 @@ class TestLandFailureModes:
             capture_output=True,
             text=True,
         )
-
-    def test_a_failing_amend_hook_does_not_traceback_or_lose_the_flip(self, tmp_path):
-        """F1: git() defaults check=True, and the amend re-runs the commit wall
-        on a tree that just gained a merge — a hook failure raised, leaving the
-        merge landed and the plan flip abandoned."""
-        repo, env, _g = make_repo(tmp_path)
-        close(repo, env, "review")
-        hook = repo / ".git" / "hooks" / "pre-commit"
-        hook.write_text("#!/bin/sh\nexit 1\n")
-        hook.chmod(0o755)
-        r = close(repo, env, "land")
-        assert "Traceback" not in r.stderr, r.stderr
-        assert r.returncode != 0, "an abandoned plan flip must not read as success"
-        assert "amend" in (r.stderr + r.stdout).lower()
-        assert "[done]" in (repo / ".xp" / "plan.md").read_text(), "the flip was discarded"
 
     def test_pr_merge_sha_is_the_merge_not_the_story_tip(self, tmp_path):
         """F2: --is-ancestor cannot tell them apart — the story tip is an
@@ -235,18 +234,6 @@ class TestLandFailureModes:
         r = self.land_pr(repo, env)
         assert r.returncode == 0, f"clean close reported incomplete: {r.stderr}"
         assert "incomplete" not in r.stderr
-
-    def test_a_failed_amend_writes_no_close_record(self, tmp_path):
-        """R3F2: the record is the fact layer AC 8 exists for — it must not name
-        a sha that close.py's own printed remediation orphans."""
-        repo, env, _g = make_repo(tmp_path)
-        close(repo, env, "review")
-        hook = repo / ".git" / "hooks" / "pre-commit"
-        hook.write_text("#!/bin/sh\nexit 1\n")
-        hook.chmod(0o755)
-        assert close(repo, env, "land").returncode == 3
-        assert not (tmp_path / "data" / "closes.jsonl").exists(), "recorded an incomplete close"
-        assert (tmp_path / "data" / "markers" / "story-042.close.json").exists()
 
     def test_local_dry_run_previews_the_destructive_steps_too(self, tmp_path):
         """R3F4: F4's rule was applied to the pr arm only, and local is the mode

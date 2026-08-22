@@ -2,7 +2,7 @@
 name: plan-reviewer
 description: >-
   Fresh-context adversarial review of a plan before implementation begins.
-  Spawn with the plan, the .xp/plan.md slice, .xp/constraints.md, .xp/system.md,
+  Spawn with the plan, its card slice, .xp/constraints.md, .xp/system.md,
   and the absolute path for its findings file.
 tools: Read, Grep, Glob, Bash
 ---

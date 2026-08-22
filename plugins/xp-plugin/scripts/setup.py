@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
 """Scaffold a repo for the xp process: .xp/ artifacts + the git-hook wall.
 
-Never overwrites: an existing .xp/ refuses outright, and any pre-existing hook
-routing (core.hooksPath, .githooks/, any lefthook config) is left untouched —
-rewiring someone's hooks is an overwrite of behavior.
+The execution plan is NOT among them — it is per clone, so it scaffolds into the
+state root and three clones of one repo get three plans.
+
+Never overwrites, hooks included: pre-existing routing (core.hooksPath,
+.githooks/, any lefthook config) is left alone — rewiring someone's hooks is an
+overwrite of behavior.
 """
 
 import argparse
@@ -14,7 +17,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
-from work import chdir_repo_root
+from work import chdir_repo_root, plan_path
 
 TEMPLATES = Path(__file__).parent.parent / "templates"
 LEFTHOOK_CONFIGS = [
@@ -86,12 +89,17 @@ def main() -> int:
         return fail("refused: not inside a git repository")
     if Path(".xp").exists():
         return fail("refused: .xp/ already exists — setup never overwrites")
+    if plan_path().exists():
+        return fail(f"refused: a plan already exists at {plan_path()} — setup never overwrites")
     Path(".xp").mkdir()
-    for name in ("config.yml", "constraints.md", "system.md", "plan.md"):
+    for name in ("config.yml", "constraints.md", "system.md"):
         shutil.copy(TEMPLATES / name, Path(".xp") / name)
+    plan_path().parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy(TEMPLATES / "plan.md", plan_path())
     wall = scaffold_wall()
     print(
-        f".xp/ scaffolded (config, seeded constraints, system + plan skeletons)\n{wall}\n"
+        f".xp/ scaffolded (config, seeded constraints, system)\n"
+        f"plan scaffolded at {plan_path()} — PER CLONE, outside the repo\n{wall}\n"
         "Edit next: (1) tests.fast/story/full in .xp/config.yml — the wall reads them"
         " at run time; (2) .xp/system.md; (3) add your linter to the pre-commit hook."
     )

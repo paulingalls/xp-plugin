@@ -20,7 +20,17 @@ sys.path.insert(0, str(Path(__file__).parent))
 # (close -> spawn -> close) and fails before fail/git exist (story-008).
 from close import fail, git, integration_target, story_card
 from teammate_tee import run_teammate
-from work import card_title, chdir_repo_root, config_block_value, data_root, slugify, user_ns
+from work import (
+    card_title,
+    chdir_repo_root,
+    config_block_value,
+    data_root,
+    edit_plan,
+    plan_path,
+    slugify,
+    stale_plan,
+    user_ns,
+)
 
 PLUGIN_ROOT = Path(__file__).parent.parent
 
@@ -231,33 +241,34 @@ def worktree_path(story_id: str) -> Path:
     return data_root() / "worktrees" / story_id
 
 
-def flip_to_in_progress(tree: Path, story_id: str) -> str:
-    """Flip [ready] -> [in-progress] INSIDE the worktree, as the branch's first commit.
-
-    Milestone 1 allows no hand-step besides the two judgment points, and
-    close.py refuses a story that is not [in-progress] — a refusal that would
-    otherwise land only AFTER the teammate has done the whole story. Flipping
-    here (not in the lead's tree) keeps spawn out of cross-tree mutation: the
-    lead reads [ready] until the merge, and the flip shows up in the cumulative
-    diff the reviewer reads.
-
-    Returns the git error, or "" on success. A worktree shares .git/hooks with
-    the common dir, so this commit runs the project's pre-commit wall and CAN
-    fail; swallowing that launches a teammate onto a branch still reading
-    [ready], and close.py's refusal then lands after the whole story is written.
+def flip_to_in_progress(story_id: str) -> None:
+    """close.py refuses a story that is not [in-progress], and without this that
+    refusal lands only AFTER the teammate has written the whole story. No longer a
+    commit on the story branch: the plan is per-clone, so nothing stages and the
+    lead sees [in-progress] at once.
     """
-    plan = tree / ".xp" / "plan.md"
-    out = []
-    for ln in plan.read_text().splitlines(keepends=True):
-        if ln.startswith(f"#### {story_id} ") and "[ready]" in ln:
-            ln = ln.replace("[ready]", "[in-progress]")
-        out.append(ln)
-    plan.write_text("".join(out))
-    for args in (["add", ".xp/plan.md"], ["commit", "-qm", f"{story_id} in-progress"]):
-        r = subprocess.run(["git", *args], cwd=tree, capture_output=True, text=True)
-        if r.returncode != 0:
-            return (r.stderr or r.stdout).strip() or f"git {args[0]} failed"
-    return ""
+    edit_plan(
+        lambda text: "".join(
+            ln.replace("[ready]", "[in-progress]")
+            if ln.startswith(f"#### {story_id} ") and "[ready]" in ln
+            else ln
+            for ln in text.splitlines(keepends=True)
+        )
+    )
+
+
+def not_ready_hint(status: str) -> str:
+    if status == "in-progress":
+        return (
+            "An earlier spawn already flipped it, and since the plan is per-clone the"
+            f" flip lives in {plan_path()} — not on the story branch, so removing the"
+            " worktree and deleting the branch no longer undo it. To start this story"
+            " over, put its heading back to [ready] there."
+        )
+    return (
+        "A card starts [planned]; the plan review is what clears it — twice in"
+        " sprint-003 a card reached a teammate with no review, and only a human caught it"
+    )
 
 
 def cmd_in_place(story_id: str, card: str) -> int:
@@ -280,12 +291,7 @@ def cmd_in_place(story_id: str, card: str) -> int:
     made = git("checkout", "-q", "-b", branch, trunk, check=False)
     if made.returncode != 0:
         return fail(f"git checkout -b failed: {made.stderr.strip()}")
-    if err := flip_to_in_progress(Path.cwd(), story_id):
-        return fail(
-            f"refused: the status flip did not commit ({err}) — you are on {branch}"
-            f" with .xp/plan.md staged. Commit it, or `git checkout {trunk} &&"
-            f" git branch -D {branch}` and retry."
-        )
+    flip_to_in_progress(story_id)
     print(f"{branch} off {trunk} — in place, nothing launched; you are the executor")
     return 0
 
@@ -295,17 +301,18 @@ def story_branch(card: str, story_id: str) -> str:
 
 
 def cmd_spawn(story_id: str, override: str, dry_run: bool, in_place: bool = False) -> int:
-    if not Path(".xp/plan.md").exists():
-        return fail("refused: no .xp/plan.md here — is this an xp-managed repo?")
+    if not plan_path().exists():
+        return fail(
+            "refused: "
+            + (stale_plan() or f"no plan at {plan_path()} — is this an xp-managed repo?")
+        )
     try:
-        card, status = story_card(Path(".xp/plan.md").read_text(), story_id)
+        card, status = story_card(plan_path().read_text(), story_id)
     except KeyError as e:
         return fail(f"refused: {e.args[0]}")
     if status != "ready":
         return fail(
-            f"refused: {story_id} is [{status}], spawn requires [ready]. A card starts"
-            " [planned]; the plan review is what clears it — twice in sprint-003 a card"
-            " reached a teammate with no review, and only a human caught it"
+            f"refused: {story_id} is [{status}], spawn requires [ready]. {not_ready_hint(status)}"
         )
     if in_place:
         if dry_run:
@@ -355,19 +362,14 @@ def cmd_spawn(story_id: str, override: str, dry_run: bool, in_place: bool = Fals
                 f"refused: worktree bootstrap failed ({command!r}) — not launching"
                 f" a teammate into a broken tree. Worktree left at {tree}"
             )
-    if err := flip_to_in_progress(tree, story_id):
-        return fail(
-            f"refused: the status flip did not commit ({err}) — not launching a teammate"
-            f" onto a branch whose plan.md still reads [ready]; close.py would refuse the"
-            f" story only after it is written. Worktree left at {tree}"
-        )
+    flip_to_in_progress(story_id)
     print(f"{branch} at {tree} (off {trunk})")
     handed_over = tree_state(tree)
     rc = run_teammate(argv, tree, prompt, story_id, data_root())
     # NOT `if rc: return rc` — a teammate that crashed is the likeliest one to
     # have left work uncommitted, so skipping the guard there withholds the
     # refusal exactly when it is worth most.
-    if err := unclean_teammate_result(tree, handed_over):
+    if err := unclean_teammate_result(tree, handed_over, story_id):
         return fail(err)
     return rc
 
@@ -387,19 +389,18 @@ def tree_state(tree: Path) -> tuple[str, str]:
     return out("rev-parse", "HEAD"), out("status", "--porcelain")
 
 
-def unclean_teammate_result(tree: Path, handed_over: tuple[str, str]) -> str:
+def unclean_teammate_result(tree: Path, handed_over: tuple[str, str], story_id: str) -> str:
     """ "" when the teammate left a clean, committed story behind; otherwise the
     refusal, naming both recoveries.
 
-    Both halves measure against the tree AS HANDED OVER. `trunk..HEAD` is the
-    vacuous spelling — the flip is itself a commit, so that range never reaches
-    zero (constraints.md #11) — and raw porcelain the false one: it charges the
-    teammate with whatever the bootstrap command dirtied before it started.
+    Both halves measure against the tree AS HANDED OVER: raw porcelain would charge
+    the teammate with whatever the bootstrap command dirtied before it started.
     """
     flip_head, handed_dirty = handed_over
     recovery = (
         f" Recover by committing by hand in {tree}, or by"
-        f" `git worktree remove {tree}` and re-spawning."
+        f" `git worktree remove {tree}`, putting {story_id}'s heading back to [ready]"
+        f" in {plan_path()}, and re-spawning."
     )
     try:
         head, dirty = tree_state(tree)

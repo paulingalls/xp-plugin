@@ -120,7 +120,7 @@ class TestReviewed:
         assert r.returncode == 0, r.stderr
         body = g("log", "main", "-1", "--format=%B").stdout
         assert "Review round 1" in body
-        assert "[done]" in (repo / ".xp" / "plan.md").read_text()
+        assert "[done]" in (tmp_path / "data" / "plan.md").read_text()
 
     def test_conflicting_main_aborts_back_to_reviewing(self, tmp_path):
         repo, env, g = make_repo(tmp_path)
@@ -137,7 +137,7 @@ class TestReviewed:
         assert "git merge main" in close(repo, env, "review").stderr
         assert g("merge", "main").returncode != 0
         g("merge", "--abort")
-        assert "[done]" not in (repo / ".xp" / "plan.md").read_text()
+        assert "[done]" not in (tmp_path / "data" / "plan.md").read_text()
 
     def test_pr_mode_dry_run_pins_gh_args(self, tmp_path):
         repo, env, _g = make_repo(tmp_path)
@@ -171,7 +171,7 @@ class TestReviewed:
         (repo / "fixed.txt").write_text("untracked dirt\n")
         r = close(repo, env, "land")
         assert r.returncode == 2 and "dirty" in r.stderr.lower()
-        assert "[done]" not in (repo / ".xp" / "plan.md").read_text()
+        assert "[done]" not in (tmp_path / "data" / "plan.md").read_text()
 
     def test_story_tier_runs_after_verify(self, tmp_path):
         repo, env, g = make_repo(tmp_path)  # card Verify is green (true)
@@ -181,7 +181,7 @@ class TestReviewed:
         close(repo, env, "review")
         r = close(repo, env, "land")
         assert r.returncode != 0 and "tier" in (r.stderr + r.stdout).lower()
-        assert "[done]" not in (repo / ".xp" / "plan.md").read_text()
+        assert "[done]" not in (tmp_path / "data" / "plan.md").read_text()
 
     def test_land_without_review_refused_cleanly(self, tmp_path):
         repo, env, _g = make_repo(tmp_path)
@@ -205,21 +205,33 @@ class TestReviewed:
 class TestSecondReviewRound:
     """Findings from /code-review on the story-002 diff."""
 
-    def test_post_merge_plan_flip_preserves_main_side_changes(self, tmp_path):
-        repo, env, g = make_repo(tmp_path)
+    def test_the_flip_preserves_a_sibling_lane_edit_made_DURING_land(self, tmp_path):
+        """Was "post-merge flip preserves MAIN-SIDE changes": the flip was written
+        after the merge so trunk's plan edits survived it. Nothing merges the plan
+        now — it is one file shared by every lane — so the surviving claim is that
+        an edit landing DURING land is still there after it.
+
+        The window is what makes this a check. cmd_land snapshots the plan to read
+        the card, then runs Verify and the tier for minutes, then flips; an edit
+        made before land ever starts is already IN that snapshot, so writing the
+        snapshot back would keep it and the test would certify. The sibling write
+        therefore rides the card's own Verify command, which is the one hook that
+        fires inside the window. Fault-injected: `edit_plan(lambda _t:
+        _flip_status(plan, story_id))` — the snapshot written back over merged
+        truth — reds this and nothing else in the suite.
+
+        printf SUBSTITUTES the story id rather than spelling it: the Verify line
+        is itself a line of the plan, so an assertion on a string the command
+        contains verbatim passes whether or not the append ever ran."""
+        sibling = "#### %s — sibling lane   [done]\\nVerify: true\\n"
+        repo, env, _g = make_repo(
+            tmp_path, verify=f"printf '{sibling}' story-043 >> \"$XP_DATA/plan.md\""
+        )
         close(repo, env, "review")
-        g("checkout", "-q", "main")
-        plan = repo / ".xp" / "plan.md"
-        plan.write_text(plan.read_text() + "#### story-043 — other   [done]\nVerify: true\n")
-        g("add", "-A")
-        g("commit", "-qm", "story-043 done on main")
-        g("checkout", "-q", "story-042-branch")
-        g("merge", "-q", "main", "-m", "merge trunk before re-review")
-        close(repo, env, "review")  # re-baseline: the merge is what moves the base
         r = close(repo, env, "land")
         assert r.returncode == 0, r.stderr
-        merged = g("show", "main:.xp/plan.md").stdout
-        assert "#### story-043 — other   [done]" in merged  # main-side change survives
+        merged = (tmp_path / "data" / "plan.md").read_text()
+        assert "#### story-043 — sibling lane   [done]" in merged  # the sibling edit survives
         assert "#### story-042 — demo story   [done]" in merged
 
     def test_main_motion_after_start_refused(self, tmp_path):
@@ -232,14 +244,14 @@ class TestSecondReviewRound:
         g("checkout", "-q", "story-042-branch")
         r = close(repo, env, "land")
         assert r.returncode == 2 and "main" in (r.stderr + r.stdout)
-        assert "[done]" not in (repo / ".xp" / "plan.md").read_text()
+        assert "[done]" not in (tmp_path / "data" / "plan.md").read_text()
 
     def test_local_dry_run_performs_no_mutation(self, tmp_path):
         repo, env, g = make_repo(tmp_path)
         close(repo, env, "review")
         r = close(repo, env, "land", "--dry-run")
         assert r.returncode == 0
-        assert "[done]" not in (repo / ".xp" / "plan.md").read_text()
+        assert "[done]" not in (tmp_path / "data" / "plan.md").read_text()
         assert g("log", "main", "--oneline").stdout.count("\n") == 1  # no merge happened
         r2 = close(repo, env, "land")
         assert r2.returncode == 0, "marker must survive a dry-run"
@@ -252,11 +264,9 @@ class TestSecondReviewRound:
         assert r.returncode == 2 and "main" in r.stderr
 
     def test_missing_verify_line_refused(self, tmp_path):
-        repo, env, g = make_repo(tmp_path)
-        plan = repo / ".xp" / "plan.md"
+        repo, env, _g = make_repo(tmp_path)
+        plan = tmp_path / "data" / "plan.md"
         plan.write_text(plan.read_text().replace("Verify: true\n", ""))
-        g("add", "-A")
-        g("commit", "-qm", "drop verify line")
         close(repo, env, "review")
         r = close(repo, env, "land")
         assert r.returncode == 2 and "verify" in r.stderr.lower()
@@ -319,4 +329,4 @@ class TestSecondReviewRound:
         g("checkout", "-q", "story-042-branch")
         r = close(repo, env, "land")
         assert r.returncode == 2 and "moved" in r.stderr
-        assert "[done]" not in (repo / ".xp" / "plan.md").read_text()
+        assert "[done]" not in (tmp_path / "data" / "plan.md").read_text()

@@ -74,11 +74,11 @@ def render_land_preview(
     if merge_mode == "pr":
         pr_cmds, pr_sync, pr_bookkeep = pr_steps
         out += [" ".join(c) for c in pr_cmds + pr_sync]
-        out.append("(flip .xp/plan.md to [done])")
+        out.append("(flip the plan to [done])")
         out += [" ".join(c) for c in [*pr_bookkeep, ["git", "branch", "-d", branch]]]
     else:
         out.append(f"git merge --no-ff {branch} on {trunk}")
-        out.append("(flip .xp/plan.md to [done], then git commit --amend --no-edit)")
+        out.append("(flip the plan to [done])")
         steps = [["git", "branch", "-d", branch]]
         if git("remote").stdout.strip():  # both pushes are runtime-guarded on a remote
             steps = [

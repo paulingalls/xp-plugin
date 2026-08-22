@@ -31,7 +31,8 @@ def xp_repo(tmp_path):
     g("init", "-q", "-b", "main")
     g("config", "user.email", "t@t")
     g("config", "user.name", "t")
-    (repo / ".xp" / "plan.md").write_text(
+    (tmp_path / "xp").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "xp" / "plan.md").write_text(
         "# plan\n#### story-042 — demo   [in-progress]\nVerify: true\n"
     )
     (repo / ".xp" / "constraints.md").write_text("# Constraints\nCONSTRAINT-SENTINEL\n")
@@ -74,7 +75,7 @@ class TestInjection:
         repo, g = xp_repo(tmp_path)
         head = g("rev-parse", "--short", "HEAD").stdout.strip()
         data = tmp_path / "xp"
-        data.mkdir()
+        data.mkdir(exist_ok=True)
         (data / "session.md").write_text(f"# Session digest — written x at {head}\nDIGEST-BODY\n")
         r = run_hook(repo, tmp_path)
         assert "DIGEST-BODY" in r.stdout and "STALE" not in r.stdout
@@ -83,7 +84,7 @@ class TestInjection:
         repo, g = xp_repo(tmp_path)
         old = g("rev-parse", "--short", "HEAD").stdout.strip()
         data = tmp_path / "xp"
-        data.mkdir()
+        data.mkdir(exist_ok=True)
         (data / "session.md").write_text(f"# Session digest — written x at {old}\nDIGEST-BODY\n")
         (repo / "f.py").write_text("A = 2\n")
         g("add", "-A")
@@ -97,7 +98,7 @@ class TestInjection:
     def test_stampless_digest_reads_stale_unknown(self, tmp_path):
         repo, _g = xp_repo(tmp_path)
         data = tmp_path / "xp"
-        data.mkdir()
+        data.mkdir(exist_ok=True)
         (data / "session.md").write_text("no stamp here\nDIGEST-BODY\n")
         r = run_hook(repo, tmp_path)
         assert "STALE" in r.stdout and "unknown" in r.stdout
@@ -134,7 +135,7 @@ class TestReviewFindings:
     def test_corrupt_session_md_degrades_one_section_not_all(self, tmp_path):
         repo, _g = xp_repo(tmp_path)
         data = tmp_path / "xp"
-        data.mkdir()
+        data.mkdir(exist_ok=True)
         (data / "session.md").write_bytes(b"\xff\xfe garbage \xff")
         r = run_hook(repo, tmp_path, session_id="sess-corrupt")
         assert r.returncode == 0
@@ -188,7 +189,7 @@ class TestTrustBoundary:
 class TestSprintCloseFindings:
     def test_done_stories_excluded_from_recovery_block(self, tmp_path):
         repo, _g = xp_repo(tmp_path)
-        plan = repo / ".xp" / "plan.md"
+        plan = tmp_path / "xp" / "plan.md"
         plan.write_text(plan.read_text() + "#### story-001 — ancient   [done]\nVerify: true\n")
         r = run_hook(repo, tmp_path)
         assert "story-042" in r.stdout and "ancient" not in r.stdout
