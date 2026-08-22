@@ -14,6 +14,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 from close import config_flat, default_branch, fail, git, story_card
+from review import REVIEWER_NAME
 from work import (
     append,
     config_block_value,
@@ -293,6 +294,18 @@ def _coverage_refusal(sprint_id: str, head: str) -> str:
     moved = git("diff", "--name-only", shown, head, check=False)
     if moved.returncode != 0:
         return f"refused: the review recorded {shown[:8]}, which no longer exists — {rerun}"
+    # AUTHORSHIP, the story leg's rule: the review leg's fixer commits inside the
+    # range its round covers, so a bare sha compare refuses the release over the
+    # fixes the review exists to produce. Never over a GATE_FILE, whatever signed
+    # it — review-time motion permits any `.xp/` path a sprint card declares.
+    strays = [
+        ln
+        for ln in git("log", "--format=%h|%an|%s", f"{shown}..{head}").stdout.splitlines()
+        if ln.split("|")[1] != REVIEWER_NAME
+    ]
+    if not strays and not any(f in GATE_FILES for f in moved.stdout.splitlines()):
+        print(f"the delta since {shown[:8]} is the reviewer's own fixes")
+        return ""
     if code := [f for f in moved.stdout.splitlines() if not _is_retro_prose(f)]:
         return (
             f"refused: the review did not cover HEAD — {', '.join(code)}"

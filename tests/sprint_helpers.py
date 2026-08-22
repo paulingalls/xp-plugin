@@ -6,7 +6,12 @@ import subprocess
 import sys
 from pathlib import Path
 
-from close_helpers import launches, stub_reviewer  # noqa: F401
+from close_helpers import (  # noqa: F401
+    REVIEWER_EMAIL,
+    REVIEWER_NAME,
+    launches,
+    stub_reviewer,
+)
 
 CLOSE = Path(__file__).parent.parent / "plugins" / "xp-plugin" / "scripts" / "close.py"
 
@@ -96,6 +101,12 @@ def record_reviews(tmp_path, repo, env, blocking=(), shown=None):
     path.parent.mkdir(parents=True, exist_ok=True)
     round_ = {"fixed": [], "blocking": list(blocking), "noted": []}
     path.write_text(json.dumps({"rounds": [round_], "shown_sha": shown or head(repo, env)}))
+
+
+def commit_as_reviewer(g, message):
+    """A commit git attributes to the reviewer, which is what the coverage and
+    motion gates key on — the label spawn.run_agent puts on every review launch."""
+    g("commit", "-qam", message, f"--author={REVIEWER_NAME} <{REVIEWER_EMAIL}>")
 
 
 def work(repo, env, *args):
