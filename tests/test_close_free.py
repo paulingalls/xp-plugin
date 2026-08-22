@@ -193,6 +193,33 @@ class TestFreeLand:
         assert r.returncode == 0, r.stderr + r.stdout
         assert [c for c in gh_calls(tmp_path) if c[:2] == ["pr", "create"]]
 
+    def test_land_names_the_full_diff_when_the_reviewer_changed_the_tree(self, tmp_path):
+        """Assent is given by RUNNING land, so the artifact it rests on must be
+        addressable HERE — the story leg prints the path, and a stat without one
+        tells the lead work happened but not where to read it."""
+        repo, env, g = free_repo(tmp_path)
+        free(repo, env, "fix-typo", "start")
+        commit_on_free(repo, g)
+        stub = tmp_path / "bin" / "claude"
+        stub.write_text(
+            stub.read_text().replace(
+                "sys.stdout.write",
+                "open('src/fixed.py', 'w').write('F = 1\\n')\n"
+                "import subprocess\n"
+                "subprocess.run(['git', 'add', '-A'])\n"
+                "subprocess.run(['git', '-c', 'user.name=xp story-reviewer',"
+                " '-c', 'user.email=story-reviewer@xp.local', 'commit', '-qm', 'r'])\n"
+                "sys.stdout.write",
+                1,
+            )
+        )
+        assert free(repo, env, "fix-typo", "review").returncode == 0
+        r = free(repo, env, "fix-typo", "land")
+        assert r.returncode == 0, r.stderr
+        assert "the reviewer changed this tree" in r.stdout
+        assert f"full diff: {tmp_path}" in r.stdout, r.stdout
+        assert f"{KEY}.round-1.diff" in r.stdout, r.stdout
+
     def test_land_reports_a_lead_commit_the_round_never_covered(self, tmp_path):
         repo, env, g = reviewed(tmp_path)
         commit_on_free(repo, g, "C = 1\n", "src/late.py", "after the review")

@@ -19,7 +19,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 import overlap
 from bookkeep import render_merge_body, render_noted
 from close import default_branch, fail, git, marker_path
-from review import disclose
+from review import diff_path, disclose, report_path
 from sprint_close import next_version, refuse_unbumpable
 from work import slugify, user_ns
 
@@ -108,7 +108,8 @@ def cmd_land(slug: str, dry_run: bool) -> int:
     # the FULL tier, not the story one: a close targeting main is a release
     if red := overlap.gates(ref, "", "full", overlap.unmerged(ref)):
         return fail(red)
-    disclose(state, git("rev-parse", "HEAD").stdout.strip())
+    head = git("rev-parse", "HEAD").stdout.strip()
+    disclose(state, head, diff_path(report_path(key, len(rounds))))
     if not shutil.which("gh"):
         return fail("refused: free land opens a PR — install the gh CLI, or open it by hand")
     for c in cmds:
