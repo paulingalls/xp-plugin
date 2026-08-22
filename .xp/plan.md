@@ -686,7 +686,7 @@ EXECUTOR, sprint-wide (Paul at planning): claude/opus/medium on every card — t
 hypothesis is fewer turns beats cheaper turns; judged at the retro against the
 sonnet sprints.
 
-#### story-019 — the execution plan is per-clone   [ready]
+#### story-019 — the execution plan is per-clone   [in-progress]
 Context: A REAL USER REQUIREMENT, not a cleanup. Paul runs three clones of one repo
 (../legacy, ../legacy2, ../legacy3 — one remote, one `develop`) each driving a
 DIFFERENT workstream under xp-agents, each with its own execution_plan.json and
