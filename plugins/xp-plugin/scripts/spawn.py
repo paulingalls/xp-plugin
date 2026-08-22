@@ -314,6 +314,8 @@ def cmd_spawn(story_id: str, override: str, dry_run: bool, in_place: bool = Fals
         return fail(
             f"refused: {story_id} is [{status}], spawn requires [ready]. {not_ready_hint(status)}"
         )
+    if drift := ready().drift(story_id, card):
+        return fail(drift)
     if in_place:
         if dry_run:
             print(
@@ -415,8 +417,24 @@ def unclean_teammate_result(tree: Path, handed_over: tuple[str, str], story_id: 
     return ""
 
 
+def ready():
+    """The credential leg, in its own leaf module under the 500-line cap
+    (constraint 8). Imported function-locally, the way close.py reaches
+    close/overlap.py: the subdirectory is not on the path at module scope."""
+    sys.path.insert(0, str(Path(__file__).parent / "spawn"))
+    import ready as module
+
+    return module
+
+
 def main() -> int:
-    p = argparse.ArgumentParser(description=__doc__)
+    if sys.argv[1:2] == ["ready"]:
+        return ready().main(sys.argv[2:])
+    p = argparse.ArgumentParser(
+        description=__doc__,
+        epilog="ready <story-id>: after the plan review, mint the card's digest and"
+        " flip [planned] -> [ready]. Editing the card afterwards refuses the spawn.",
+    )
     p.add_argument("story_id")
     p.add_argument("executor", nargs="?", default="", help="harness/model[/effort] override")
     p.add_argument("--dry-run", action="store_true")

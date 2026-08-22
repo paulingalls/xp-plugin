@@ -138,6 +138,35 @@ def card_title(card: str) -> str:
     return header.split("— ", 1)[1].split(" [")[0].strip() if "— " in header else ""
 
 
+def card_lines(card: str) -> list[str]:
+    """The card as the credential sees it: the whole block, minus what moves for
+    reasons that are not drift.
+
+    The status bracket goes because spawn flips it to [in-progress] right after
+    checking, and its own recovery text tells the lead to put it back and
+    re-spawn. Trailing whitespace goes because the LAST card owns the plan to
+    EOF, so appending the next story would otherwise read as an edit to it. What
+    the refusal DIFFS is this same list — a diff of anything else would name
+    lines the digest forgave.
+    """
+    lines = [ln.rstrip() for ln in card.splitlines()]
+    head = lines[0]
+    if head.endswith("]"):
+        lines[0] = head[: head.rindex("[")].rstrip()
+    while lines and not lines[-1]:
+        lines.pop()
+    return lines
+
+
+def card_digest(card: str) -> str:
+    return hashlib.sha256("\n".join(card_lines(card)).encode()).hexdigest()[:16]
+
+
+def ready_marker_path(story_id: str) -> Path:
+    """Story-scoped (constraint 10). No mkdir: a refused mint writes nothing."""
+    return data_root() / "markers" / f"{story_id}.ready.json"
+
+
 def slugify(s: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", s.lower()).strip("-")[:20].strip("-")
 

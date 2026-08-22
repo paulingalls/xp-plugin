@@ -241,3 +241,40 @@ class TestStaleInRepoPlan:
         assert ran.returncode == 0, f"{command!r} failed: {ran.stderr}"
         assert resolved_plan(repo, tmp_path).read_text().startswith("# Plan")
         assert "pre-move copy" not in self.refusal(repo, tmp_path), "still refusing the same way"
+
+
+class TestCardDigest:
+    """story-023: the credential spawn checks. Covers the whole card, and only
+    the parts a lead can edit — the bracket and trailing whitespace move for
+    reasons that are not drift."""
+
+    CARD = "#### story-042 — demo story   [ready]\nFiles: a.py\nAC:\n- Given X, Then Y\n"
+
+    def digest(self, card):
+        from work import card_digest
+
+        return card_digest(card)
+
+    def test_pinned_so_a_normalization_change_is_visible(self):
+        """Hard-coded, not recomputed: `assert digest(card) == card_digest(card)`
+        holds against any implementation, including a constant."""
+        assert self.digest(self.CARD) == "8107875cb4452bf5"
+
+    def test_one_changed_character_below_the_heading_changes_it(self):
+        assert self.digest(self.CARD.replace("Given X", "Given Z")) != self.digest(self.CARD)
+        assert self.digest(self.CARD.replace("a.py", "b.py")) != self.digest(self.CARD)
+
+    def test_the_status_bracket_is_not_part_of_it(self):
+        """spawn flips [ready] -> [in-progress] right after checking the digest,
+        and its own recovery text tells the lead to put the bracket back and
+        re-spawn. A bracket-sensitive digest refuses that documented path."""
+        for status in ("[in-progress]", "[done]", "[planned]"):
+            assert self.digest(self.CARD.replace("[ready]", status)) == self.digest(self.CARD)
+
+    def test_trailing_whitespace_is_not_drift(self):
+        """The last card in the plan owns the file to EOF (close.story_card), so
+        appending the next story below it would otherwise read as an edit to it."""
+        assert self.digest(self.CARD + "\n\n") == self.digest(self.CARD)
+        assert self.digest(self.CARD.replace("Files: a.py", "Files: a.py   ")) == self.digest(
+            self.CARD
+        )

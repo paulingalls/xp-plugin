@@ -50,7 +50,14 @@ class TestBudget:
         stub_claude(tmp_path)
         before = spawn(repo, env, "story-042", "--dry-run").stdout
         plan = tmp_path / "data" / "plan.md"
-        plan.write_text(plan.read_text().replace("Context: demo.", "Context: " + "x" * 4000))
+        # the lead's whole sequence after changing a cleared card: edit, back to
+        # [planned], re-review, re-mint — an edit alone now refuses the spawn
+        plan.write_text(
+            plan.read_text()
+            .replace("Context: demo.", "Context: " + "x" * 4000)
+            .replace("[ready]", "[planned]")
+        )
+        assert spawn(repo, env, "ready", "story-042").returncode == 0
         after = spawn(repo, env, "story-042", "--dry-run").stdout
         assert _total(before) != _total(after)
         assert _total(after) > _total(before)
@@ -443,8 +450,11 @@ class TestFirstSpawnInAScaffoldedRepo:
         (repo / ".xp" / "system.md").write_text("# System\n- freshly scaffolded\n")
         (tmp_path / "data" / "plan.md").write_text(
             (tmp_path / "data" / "plan.md").read_text()
-            + "\n#### story-777 — fresh   [ready]\nVerify: true\n"
+            + "\n#### story-777 — fresh   [planned]\nVerify: true\n"
         )
+        # cleared through the leg, so the guard under test is still the one that
+        # fires: a hand-typed [ready] refuses at the credential and never reaches it
+        assert spawn(repo, env, "ready", "story-777").returncode == 0
         r = spawn(repo, env, "story-777")
         assert r.returncode == 2, r.stdout
         assert "Traceback" not in r.stderr
