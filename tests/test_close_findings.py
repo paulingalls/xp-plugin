@@ -17,10 +17,11 @@ from close_helpers import (  # noqa: F401
     make_repo,
     marker,
     marker_file,
+    mint_ready,
     prose,
+    ready_marker,
     stub_reviewer,
 )
-from spawn_helpers import SPAWN
 
 
 class TestStoryReviewFindings:
@@ -56,6 +57,7 @@ class TestStoryReviewFindings:
         repo, env, _g = make_repo(tmp_path)
         plan = tmp_path / "data" / "plan.md"
         plan.write_text(plan.read_text().replace("#### story-042 — demo story", "#### story-042"))
+        mint_ready(repo, env)
         close(repo, env, "review")
         assert close(repo, env, "land").returncode == 0
         rec = json.loads((tmp_path / "data" / "closes.jsonl").read_text().splitlines()[-1])
@@ -302,20 +304,9 @@ class TestTheCardIsAGateNoDiffShows:
     """
 
     def minted(self, tmp_path):
-        """The real sequence: make_repo types [in-progress] straight into the
-        plan, so a fixture built that way carries no credential to check."""
-        repo, env, g = make_repo(tmp_path, status="planned")
-        r = subprocess.run(
-            [sys.executable, str(SPAWN), "ready", "story-042"],
-            cwd=repo,
-            env=env,
-            capture_output=True,
-            text=True,
-        )
-        assert r.returncode == 0, r.stderr
-        plan = tmp_path / "data" / "plan.md"
-        plan.write_text(plan.read_text().replace("[ready]", "[in-progress]"))
-        return repo, env, g
+        """The real sequence — which make_repo now walks for every close test,
+        because a fixture that types the bracket carries no credential to check."""
+        return make_repo(tmp_path)
 
     def test_a_verify_line_edited_after_the_review_is_never_executed(self, tmp_path):
         repo, env, _g = self.minted(tmp_path)
@@ -335,3 +326,32 @@ class TestTheCardIsAGateNoDiffShows:
         repo, env, _g = self.minted(tmp_path)
         assert close(repo, env, "review").returncode == 0
         assert close(repo, env, "land").returncode == 0, "the unedited card was refused"
+
+    def test_a_DELETED_credential_does_not_read_as_a_clean_one(self, tmp_path):
+        """The gate is ONE FILE in a directory the teammate and the fixing reviewer
+        both reach, and absence returned "" at land — so `rm` disarmed it in
+        silence and the next Verify: line was shell-executed anyway. Its own
+        migration argument expired: the digest and that tolerance ship in the same
+        release, so no branch predating the credential can ever meet this code."""
+        repo, env, _g = self.minted(tmp_path)
+        assert close(repo, env, "review").returncode == 0
+        ready_marker(tmp_path).unlink()
+        plan = tmp_path / "data" / "plan.md"
+        sentinel = tmp_path / "uncredentialed-ran"
+        plan.write_text(plan.read_text().replace("Verify: true", f"Verify: touch {sentinel}"))
+        r = close(repo, env, "land")
+        assert r.returncode == 2, r.stdout
+        assert not sentinel.exists(), "land shell-executed a line nothing vouched for"
+        assert "nothing minted it" in r.stderr, r.stderr
+        assert "[done]" not in plan.read_text()
+
+    def test_the_refusal_names_a_route_that_actually_re_mints(self, tmp_path):
+        """A guard whose remediation does not work is a wall, and this one refuses
+        a card mid-story: the heading reads [in-progress], while the leg it names
+        mints from [planned]. So the route is WALKED, not asserted (constraint 12)."""
+        repo, env, _g = self.minted(tmp_path)
+        assert close(repo, env, "review").returncode == 0
+        ready_marker(tmp_path).unlink()
+        assert close(repo, env, "land").returncode == 2
+        mint_ready(repo, env)
+        assert close(repo, env, "land").returncode == 0, "the named recovery does not clear it"

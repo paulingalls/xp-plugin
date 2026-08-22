@@ -17,6 +17,7 @@ from close_helpers import (  # noqa: F401
     make_repo,
     marker,
     marker_file,
+    mint_ready,
     prose,
     stub_reviewer,
 )
@@ -257,6 +258,7 @@ class TestSecondReviewRound:
         repo, env, _g = make_repo(tmp_path)
         plan = tmp_path / "data" / "plan.md"
         plan.write_text(plan.read_text().replace("Verify: true\n", ""))
+        mint_ready(repo, env)  # or the credential answers, and "verify" matches its diff
         close(repo, env, "review")
         r = close(repo, env, "land")
         assert r.returncode == 2 and "verify" in r.stderr.lower()

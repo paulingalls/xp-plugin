@@ -275,7 +275,7 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
         return fail(f"refused: {e.args[0]}")
     # The plan-review credential, unread since spawn: the plan left the repo, so no
     # diff shows a card edit, and the `Verify:` line below is SHELL-EXECUTED.
-    if drift := ready.drift(story_id, card, minted_only=True):
+    if drift := ready.drift(story_id, card):
         return fail(drift)
     verify = verify_commands(card)
     if not verify:

@@ -19,6 +19,7 @@ from close_helpers import (  # noqa: F401
     make_repo,
     marker,
     marker_file,
+    mint_ready,
     prose,
     stub_reviewer,
 )
@@ -111,6 +112,7 @@ class TestLandBookkeeping:
         plan.write_text(
             plan.read_text() + "#### story-043 — second   [in-progress]\nVerify: true\n"
         )
+        mint_ready(repo, env, "story-043")
         g("checkout", "-qb", "story-043-branch")
         (repo / "src" / "thing.py").write_text("A = 9\n")
         g("add", "-A")

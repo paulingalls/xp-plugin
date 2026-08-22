@@ -7,7 +7,11 @@ import subprocess
 import sys
 from pathlib import Path
 
+from work import flip_status
+
 CLOSE = Path(__file__).parent.parent / "plugins" / "xp-plugin" / "scripts" / "close.py"
+
+SPAWN = Path(__file__).parent.parent / "plugins" / "xp-plugin" / "scripts" / "spawn.py"
 
 WORK = Path(__file__).parent.parent / "plugins" / "xp-plugin" / "scripts" / "work.py"
 
@@ -81,6 +85,29 @@ def marker_file(tmp_path, story_id="story-042"):
     return tmp_path / "data" / "markers" / f"{story_id}.close.json"
 
 
+def ready_marker(tmp_path, story_id="story-042"):
+    return tmp_path / "data" / "markers" / f"{story_id}.ready.json"
+
+
+def mint_ready(repo, env, story_id="story-042"):
+    """Clear a card through the REAL leg, then flip to [in-progress] as spawn does.
+    Re-run it after a test edits a card it intends to land: an edit that outruns
+    its credential is exactly what land refuses."""
+    plan = Path(env["XP_DATA"]) / "plan.md"
+    for was in ("ready", "in-progress"):
+        plan.write_text(flip_status(plan.read_text(), story_id, was, "planned"))
+    minted = subprocess.run(
+        [sys.executable, str(SPAWN), "ready", story_id],
+        cwd=repo,
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+    assert minted.returncode == 0, minted.stderr
+    plan = Path(env["XP_DATA"]) / "plan.md"
+    plan.write_text(flip_status(plan.read_text(), story_id, "ready", "in-progress"))
+
+
 def make_repo(tmp_path, status="in-progress", verify="true", branch="main"):
     repo = tmp_path / "repo"
     (repo / ".xp").mkdir(parents=True)
@@ -97,10 +124,16 @@ def make_repo(tmp_path, status="in-progress", verify="true", branch="main"):
     g("config", "user.name", "t")
     plan = tmp_path / "data" / "plan.md"
     plan.parent.mkdir(parents=True, exist_ok=True)
-    plan.write_text(CARD.format(status=status, verify=verify))
+    # [planned] first, then MINTED: land re-checks the credential before it
+    # shell-executes the card's Verify: line, so a fixture that types the bracket
+    # walks past the one gate binding that line to the reviewed text.
+    landing = status == "in-progress"
+    plan.write_text(CARD.format(status="planned" if landing else status, verify=verify))
     (repo / ".xp" / "config.yml").write_text(CONFIG)
     (repo / ".xp" / "constraints.md").write_text("# Constraints\n1. CONSTRAINT-SENTINEL\n")
     (repo / ".xp" / "system.md").write_text("# System\nSYSTEM-SENTINEL\n")
+    if landing:
+        mint_ready(repo, env)
     (repo / "VALUES.md").write_text("# XP Values\nVALUES-SENTINEL\n")
     (repo / "src").mkdir()
     (repo / "src" / "thing.py").write_text("A = 1\n")
