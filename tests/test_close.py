@@ -4,6 +4,7 @@ Verify: pytest -q tests/test_close.py"""
 import subprocess
 import sys
 
+import pytest
 from close_helpers import (  # noqa: F401
     CARD,
     CLOSE,
@@ -425,3 +426,40 @@ class TestOverlapNotMotion:
         assert r.returncode == 2, r.stdout
         assert "REVIEWER-FIX" not in r.stdout, "land claimed to merge commits it dropped"
         assert "[done]" not in (tmp_path / "data" / "plan.md").read_text()
+
+
+class TestDuplicateStoryIds:
+    """Bug 6e20a525, found on the fresh-repo setup walk: the scaffold skeleton
+    shipped as story-001, a user's first real card collided, and the readers
+    disagreed in silence — story_card returned the first card while flip_status
+    rewrote the last bracket, so spawn ran one card's Executor and flipped the
+    other. One guard in story_card covers every reader that acts on a card BODY
+    (the heading-only scans double an id visibly; they cannot pick a wrong card);
+    the skeleton is story-000 now so the natural first id no longer collides."""
+
+    def test_a_duplicated_id_refuses_instead_of_picking_a_card(self):
+        from close import story_card
+
+        plan = (
+            "#### story-001 — a   [ready]\nExecutor: x/y\n\n"
+            "#### story-001 — b   [ready]\nExecutor: (default)\n"
+        )
+        with pytest.raises(KeyError, match="more than once"):
+            story_card(plan, "story-001")
+
+    def test_a_prefix_shared_id_is_not_a_duplicate(self):
+        from close import story_card
+
+        plan = "#### story-1 — a   [ready]\nx\n\n#### story-10 — b   [ready]\ny\n"
+        card, _status = story_card(plan, "story-1")
+        assert "story-10" not in card
+
+    def test_the_template_skeleton_cannot_collide_with_the_natural_first_id(self):
+        """Constructed against the real parser, not grepped: `"#### story-001" not
+        in template` reds on a skeleton named story-0010, which collides with
+        nothing (measured)."""
+        from close import story_card
+
+        seeded = (PLUGIN / "templates" / "plan.md").read_text()
+        card, status = story_card(seeded + "#### story-001 — first real   [planned]\n", "story-001")
+        assert status == "planned" and "story-000" not in card

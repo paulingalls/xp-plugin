@@ -61,6 +61,11 @@ def story_card(plan: str, story_id: str) -> tuple[str, str]:
     start = next((i for i, ln in enumerate(lines) if ln.startswith(f"#### {story_id} ")), None)
     if start is None:
         raise KeyError(f"{story_id} not found in the plan")
+    if any(ln.startswith(f"#### {story_id} ") for ln in lines[start + 1 :]):
+        raise KeyError(
+            f"{story_id} appears more than once in the plan — readers pick the first"
+            " card and the status flip rewrites the last, so delete or rename one"
+        )
     rest = range(start + 1, len(lines))
     end = next((i for i in rest if lines[i].startswith(("# ", "## ", "### ", "#### "))), len(lines))
     card = "".join(lines[start:end])
