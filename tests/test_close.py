@@ -283,6 +283,18 @@ class TestOverlapNotMotion:
         g("commit", "-qm", "another story landed on trunk")
         g("checkout", "-q", "story-042-branch")
 
+    def fixing_reviewer(self, tmp_path):
+        (tmp_path / "bin" / "claude").write_text(
+            "#!/bin/sh\n"
+            "p=$(sed -n 's/^REPORT_PATH: //p')\n"
+            'printf \'{"fixed": [], "blocking": [], "noted": []}\' > "$p"\n'
+            "echo 'x = 1' >> src/thing.py\n"
+            "git -c user.name='xp story-reviewer' -c user.email='r@xp'"
+            " commit -qam 'REVIEWER-FIX'\n"
+            'printf \'{"result": "fixed one thing"}\'\n'
+        )
+        (tmp_path / "bin" / "claude").chmod(0o755)
+
     def test_disjoint_trunk_motion_lands_without_a_new_round(self, tmp_path):
         repo, env, g = make_repo(tmp_path)
         assert close(repo, env, "review").returncode == 0
@@ -333,16 +345,7 @@ class TestOverlapNotMotion:
         a lead commit may follow the review, that attributes the lead's own work to
         the reviewer and names a round diff that was never written."""
         repo, env, g = make_repo(tmp_path)
-        (tmp_path / "bin" / "claude").write_text(
-            "#!/bin/sh\n"
-            "p=$(sed -n 's/^REPORT_PATH: //p')\n"
-            'printf \'{"fixed": [], "blocking": [], "noted": []}\' > "$p"\n'
-            "echo 'x = 1' >> src/thing.py\n"
-            "git -c user.name='xp story-reviewer' -c user.email='r@xp'"
-            " commit -qam 'REVIEWER-FIX'\n"
-            'printf \'{"result": "fixed one thing"}\'\n'
-        )
-        (tmp_path / "bin" / "claude").chmod(0o755)
+        self.fixing_reviewer(tmp_path)
         assert close(repo, env, "review").returncode == 0
         (repo / "src" / "thing.py").write_text("A = 4\n")
         g("add", "-A")
@@ -355,3 +358,33 @@ class TestOverlapNotMotion:
         assert "LEAD-FIX-AFTER-REVIEW" not in reviewer_part, (
             "the lead's commit read as the reviewer's"
         )
+
+    def test_a_rename_of_a_file_trunk_also_edits_is_an_overlap(self, tmp_path):
+        """`git diff --name-only` detects renames and prints only the NEW path, so a
+        story that renames the module another story is editing read as DISJOINT. The
+        trial merge is no backstop: ort follows the rename and merges it clean and
+        silent — two stories sharing a file domain, which is the one thing this
+        refusal exists to see."""
+        repo, env, g = make_repo(tmp_path)
+        (repo / "src" / "thing.py").write_text("A = 1\nB = 1\nC = 1\nD = 1\nE = 1\nF = 1\n")
+        g("add", "-A")
+        g("commit", "-qm", "a file wide enough for two stories to edit different lines")
+        g("checkout", "-q", "main")
+        g("merge", "-q", "--ff-only", "story-042-branch")
+        g("checkout", "-q", "story-042-branch")
+        g("mv", "src/thing.py", "src/renamed.py")
+        renamed = repo / "src" / "renamed.py"
+        renamed.write_text(renamed.read_text().replace("A = 1", "A = 2"))
+        g("add", "-A")
+        g("commit", "-qm", "the story renames the module it owns")
+        assert close(repo, env, "review").returncode == 0
+        thing = repo / "src" / "thing.py"
+        g("checkout", "-q", "main")
+        thing.write_text(thing.read_text().replace("F = 1", "F = 99"))
+        g("add", "-A")
+        g("commit", "-qm", "another story edits the same module, under its old name")
+        g("checkout", "-q", "story-042-branch")
+        r = close(repo, env, "land")
+        assert r.returncode == 2, r.stdout
+        assert "src/thing.py" in r.stderr
+        assert "[done]" not in (tmp_path / "data" / "plan.md").read_text()

@@ -23,7 +23,7 @@ def merge_source(trunk: str, merge_mode: str) -> str:
 
 
 def _files(rng: str) -> set[str]:
-    return set(git("diff", "--name-only", rng).stdout.splitlines())
+    return set(git("diff", "--no-renames", "--name-only", rng).stdout.splitlines())
 
 
 def unmerged(ref: str) -> bool:
