@@ -328,3 +328,56 @@ def test_spawn_reaches_the_integration_target_only_through_close():
     """A filed debt (story-009 retires config.yml sprint_branch) rests on spawn
     never reading the key itself — a comment cannot rot loudly, a test can."""
     assert "sprint_branch" not in SPAWN.read_text()
+
+
+class TestCommonDirWidening:
+    """Bug 0c31ac94, measured at the first live codex fixing review: a linked
+    worktree's index lives at <main>/.git/worktrees/<id>/, OUTSIDE the
+    workspace, so the reviewer fixed four files and could not commit one. The
+    021 probe that read the widening as unnecessary ran its scratch repo under
+    /tmp — writable by default in the codex sandbox — a confound, not a fact.
+    The widening is cwd-keyed: a MAIN checkout's .git is inside the workspace
+    and stays unwidened, the narrowest posture that still commits."""
+
+    def _repo_with_worktree(self, tmp_path):
+        import subprocess
+
+        main = tmp_path / "main"
+        main.mkdir()
+        run = lambda *a, cwd=main: subprocess.run(  # noqa: E731
+            a, cwd=cwd, check=True, capture_output=True
+        )
+        run("git", "init", "-q")
+        run(
+            "git",
+            "-c",
+            "user.email=t@t",
+            "-c",
+            "user.name=t",
+            "commit",
+            "-q",
+            "--allow-empty",
+            "-m",
+            "seed",
+        )
+        run("git", "worktree", "add", "-q", str(tmp_path / "wt"))
+        return main, tmp_path / "wt"
+
+    def test_a_linked_worktree_widens_to_the_git_common_dir(self, tmp_path):
+        from spawn import common_dir_widening
+
+        main, wt = self._repo_with_worktree(tmp_path)
+        widening = common_dir_widening(wt)
+        assert widening[:1] == ["--add-dir"]
+        assert (main / ".git").resolve() == __import__("pathlib").Path(widening[1]).resolve()
+
+    def test_a_main_checkout_stays_unwidened(self, tmp_path):
+        from spawn import common_dir_widening
+
+        main, _wt = self._repo_with_worktree(tmp_path)
+        assert common_dir_widening(main) == []
+
+    def test_a_non_repo_cwd_stays_unwidened(self, tmp_path):
+        from spawn import common_dir_widening
+
+        assert common_dir_widening(tmp_path) == []

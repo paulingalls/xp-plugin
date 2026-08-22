@@ -221,9 +221,30 @@ def run_agent(
             "GIT_AUTHOR_EMAIL": REVIEWER_EMAIL,
             "GIT_COMMITTER_EMAIL": REVIEWER_EMAIL,
         }
+    if argv[:2] == ["codex", "exec"] and (widen := common_dir_widening(cwd)):
+        argv = [*argv[:-1], *widen, argv[-1]]  # before the trailing stdin `-`
     return subprocess.run(
         argv, cwd=cwd, input=prompt, text=True, env=env, capture_output=capture, timeout=timeout
     )
+
+
+def common_dir_widening(cwd: Path) -> list[str]:
+    """["--add-dir", <git common dir>] for a LINKED worktree, [] otherwise: its
+    index lives at <main>/.git/worktrees/<id>/, outside workspace-write, so a
+    codex agent there cannot commit (bug 0c31ac94 — the 021 probe read this as
+    unnecessary because its scratch repo sat under /tmp, which the sandbox
+    writes by default). A main checkout's .git is inside the workspace already;
+    widening it would loosen the posture for nothing."""
+    proc = subprocess.run(
+        ["git", "-C", str(cwd), "rev-parse", "--git-common-dir"],
+        capture_output=True,
+        text=True,
+    )
+    if proc.returncode != 0:
+        return []
+    common = Path(proc.stdout.strip())
+    common = common if common.is_absolute() else (cwd / common).resolve()
+    return [] if common.is_relative_to(Path(cwd).resolve()) else ["--add-dir", str(common)]
 
 
 def worktree_path(story_id: str) -> Path:
