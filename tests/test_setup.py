@@ -78,7 +78,7 @@ class TestScaffold:
         assert len(roots) == 1, f"expected one state-root plan, found {roots}"
         plan = roots[0].read_text()
         assert plan == (SHIPPED_TEMPLATES / "plan.md").read_text(), "not the seeded template"
-        card, status = story_card(plan, "story-001")  # template parses with the real parser
+        card, status = story_card(plan, "story-000")  # template parses with the real parser
         # SEEDED [planned], not [ready]: a scaffolded project's first card must not
         # be spawnable before its plan review. Both sprint-003 misses were forgetting,
         # and a state nothing defaults to cannot catch forgetting.

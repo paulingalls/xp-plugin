@@ -23,7 +23,8 @@ instead.
 
 ## Commands
 
-- Test fast tier: `pytest -q -m "not slow"` · full: `pytest -q`
+- Test tiers live in `.xp/config.yml` — run those spellings, they carry `-n auto`
+  (serial pytest is ~6x slower): fast `pytest -q -n auto -m "not slow"` · full `pytest -q -n auto`
 - Lint: `ruff check --fix . && ruff format .`
 - Hooks: `lefthook install` (once per clone)
 

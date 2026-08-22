@@ -425,3 +425,33 @@ class TestOverlapNotMotion:
         assert r.returncode == 2, r.stdout
         assert "REVIEWER-FIX" not in r.stdout, "land claimed to merge commits it dropped"
         assert "[done]" not in (tmp_path / "data" / "plan.md").read_text()
+
+
+class TestDuplicateStoryIds:
+    """Bug 6e20a525, found on the fresh-repo setup walk: the scaffold skeleton
+    shipped as story-001, a user's first real card collided, and the readers
+    disagreed in silence — story_card returned the first card while flip_status
+    rewrote the last bracket, so spawn ran one card's Executor and flipped the
+    other. One guard in story_card covers every reader; the skeleton is now
+    story-000 so the natural first id no longer collides."""
+
+    def test_a_duplicated_id_refuses_instead_of_picking_a_card(self):
+        import pytest
+        from close import story_card
+
+        plan = (
+            "#### story-001 — a   [ready]\nExecutor: x/y\n\n"
+            "#### story-001 — b   [ready]\nExecutor: (default)\n"
+        )
+        with pytest.raises(KeyError, match="more than once"):
+            story_card(plan, "story-001")
+
+    def test_a_prefix_shared_id_is_not_a_duplicate(self):
+        from close import story_card
+
+        plan = "#### story-1 — a   [ready]\nx\n\n#### story-10 — b   [ready]\ny\n"
+        card, _status = story_card(plan, "story-1")
+        assert "story-10" not in card
+
+    def test_the_template_skeleton_cannot_collide_with_the_natural_first_id(self):
+        assert "#### story-001" not in (PLUGIN / "templates" / "plan.md").read_text()

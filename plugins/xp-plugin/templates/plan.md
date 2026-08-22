@@ -6,7 +6,7 @@ Done when: <an EXECUTABLE check — a command that exits 0 when the milestone is
 
 ### Sprint 1
 
-#### story-001 — <title>   [planned]
+#### story-000 — <replace this example card>   [planned]
 Context: <what this story owns, and only this story>
 Files: <the files it will touch>
 AC:
