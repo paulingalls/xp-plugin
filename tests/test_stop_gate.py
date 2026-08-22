@@ -346,6 +346,17 @@ class TestCodexPayloads:
         r = run_script("stop_gate.py", self_payload(), repo, tmp_path)
         assert json.loads(r.stdout)["decision"] == "block"
 
+    def test_a_codex_session_never_inherits_another_sessions_red(self, tmp_path):
+        """Why DESIGN calls the Codex Stop gate INERT rather than quiet: markers are
+        session-scoped (constraint 10) and no Codex session ever writes one, so a red
+        a Claude session planted on the same story is not reachable from here.
+        """
+        repo, _g = repo_with_story(tmp_path)
+        verify = "pytest -q tests/test_x.py"
+        run_script("bash_status.py", failure_payload(verify, session="claude-sess"), repo, tmp_path)
+        r = run_script("stop_gate.py", self_payload(session="codex-sess"), repo, tmp_path)
+        assert r.stdout == ""
+
     def test_apply_patch_pre_tool_use_is_ignored(self, tmp_path):
         """codex normalises every edit to apply_patch; its patch text is not a command."""
         repo, _g = repo_with_story(tmp_path)
