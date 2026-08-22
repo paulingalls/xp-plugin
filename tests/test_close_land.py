@@ -128,7 +128,21 @@ class TestLandBookkeeping:
 
 
 class TestLandFailureModes:
-    """Land's failure modes: partial bookkeeping, orphaned amends, pr-mode shas."""
+    """Land's failure modes: partial bookkeeping and pr-mode shas."""
+
+    def test_a_plan_that_vanished_between_review_and_land_refuses_not_tracebacks(self, tmp_path):
+        """`.xp/plan.md` was git-tracked, so land's unguarded read could not miss
+        it while the branch was checked out. story-019 moved the plan out of the
+        repo, where nothing versions it (DESIGN §3b cost 1) — and land re-reads it
+        AFTER the review leg, so an ordinary `rm` between the two legs reached the
+        lead as a FileNotFoundError stack. review's own leg already refuses here;
+        land is the copy that was left behind."""
+        repo, env, _g = make_repo(tmp_path)
+        close(repo, env, "review")
+        (tmp_path / "data" / "plan.md").unlink()
+        r = close(repo, env, "land")
+        assert "Traceback" not in r.stderr, r.stderr
+        assert r.returncode == 2 and "no plan at" in r.stderr
 
     def pr_repo(self, tmp_path):
         repo, env, g = make_repo(tmp_path)

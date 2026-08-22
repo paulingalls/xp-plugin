@@ -310,6 +310,8 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
     held, err = held_trunk_tree(trunk)
     if err:
         return fail(err)
+    if not plan_path().exists():
+        return fail(f"refused: {stale_plan() or f'no plan at {plan_path()}'}")
     plan = plan_path().read_text()
     try:
         card, _ = story_card(plan, story_id)
