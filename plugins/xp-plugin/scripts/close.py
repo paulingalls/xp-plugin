@@ -238,7 +238,7 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
     import review
 
     sys.path.insert(0, str(Path(__file__).parent / "close"))
-    import coverage
+    import overlap
 
     if git("status", "--porcelain").stdout.strip():
         return fail("refused: working tree is dirty — Verify must judge the tree that merges")
@@ -275,10 +275,10 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
             + "\n  ".join(blocking)
             + "\nFix them (or review again once fixed) — a flag cannot clear these"
         )
-    ref = coverage.merge_source(trunk, merge_mode)
-    if files := coverage.overlapping(ref, base):
-        return fail(coverage.collision(ref, files))
-    pending = coverage.unmerged(ref)
+    ref = overlap.merge_source(trunk, merge_mode)
+    if files := overlap.overlapping(ref, base):
+        return fail(overlap.collision(ref, files))
+    pending = overlap.unmerged(ref)
 
     # Structural, and checked HERE rather than beside the merge (5d7388fc): it is a
     # `git worktree list` compare, so paying ~2min of Verify and tier to reach it was
@@ -322,7 +322,7 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
             end="",
         )
         return 0
-    if red := coverage.gates(ref, verify, tier, pending):
+    if red := overlap.gates(ref, verify, tier, pending):
         return fail(red)
 
     # Assent is given by RUNNING land, so what it rests on must be readable HERE —
