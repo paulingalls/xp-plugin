@@ -216,3 +216,28 @@ class TestStaleInRepoPlan:
         destination = str(resolved_plan(stale, tmp_path))
         assert destination in stale_why and ".xp/plan.md" in stale_why
         assert destination not in bare_why or "migrate" not in bare_why.lower()
+
+    def test_the_printed_migration_command_actually_runs(self, tmp_path):
+        """Asserting the destination APPEARS is a token check (constraint 11): the
+        first spelling printed a bare `mv` into a directory nothing had created,
+        because the state root is only made when a tool first writes a marker or a
+        record there — and a repo scaffolded before the move may have written
+        neither. It failed on precisely the population AC4 exists for. So the
+        command is EXECUTED, on a tracked plan, which is what that population has.
+        """
+        repo = git_init(tmp_path / "stale")
+        (repo / ".xp").mkdir()
+        (repo / ".xp" / "plan.md").write_text("# Plan\n#### story-042 — x   [ready]\n")
+        env = hashing_env(tmp_path)
+        for args in (
+            ["add", "-A"],
+            ["-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "pre-move"],
+        ):
+            subprocess.run(["git", *args], cwd=repo, env=env, check=True)
+        why = self.refusal(repo, tmp_path)
+        command = "\n".join(ln.strip() for ln in why.splitlines() if ln.startswith("  "))
+        assert command, f"the refusal printed no command:\n{why}"
+        ran = subprocess.run(command, shell=True, cwd=repo, env=env, capture_output=True, text=True)
+        assert ran.returncode == 0, f"{command!r} failed: {ran.stderr}"
+        assert resolved_plan(repo, tmp_path).read_text().startswith("# Plan")
+        assert "pre-move copy" not in self.refusal(repo, tmp_path), "still refusing the same way"

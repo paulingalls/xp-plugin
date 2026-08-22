@@ -74,7 +74,11 @@ def stale_plan() -> str:
     return (
         f"the execution plan is per-clone now and lives at {plan_path()}; the"
         " .xp/plan.md beside you is the pre-move copy. Migrate it:\n"
-        f"  mv .xp/plan.md {plan_path()} && git rm --cached .xp/plan.md"
+        # mkdir first: nothing creates the state root until a tool writes a marker
+        # or a record there, and a repo scaffolded before the move may have written
+        # neither — so the bare `mv` fails on the very population this addresses
+        f"  mkdir -p {data_root()} && mv .xp/plan.md {plan_path()}"
+        " && git rm --cached .xp/plan.md"
     )
 
 
