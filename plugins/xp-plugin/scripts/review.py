@@ -257,17 +257,20 @@ def write_reviewer_diff(report: Path, reviewed_head: str) -> Path | None:
 
 
 def run(
-    prompt: str, cwd: Path, dry_run: bool = False, name: str = "story-reviewer"
+    prompt: str, cwd: Path, dry_run: bool = False, name: str = "", card: str = ""
 ) -> tuple[str, str]:
-    """Launch the reviewer. Returns (result_text, error) — never raises on a
-    reviewer that crashes, prints prose, or is missing from PATH.
+    """Launch a reviewer; `name` doubles as the role key, so the two charters are
+    the two roles. Returns (result_text, error) — never raises on a reviewer that
+    crashes, prints prose, or is missing from PATH.
 
     Function-local imports: spawn -> close -> review would close a cycle.
     """
     from spawn import agent_argv, missing_harness, resolve_role, run_agent
 
-    harness, model, effort = resolve_role("reviewer")
-    argv = agent_argv(harness, model, effort, "json")
+    name = name or "story-reviewer"
+    role = name if name == "plan-reviewer" else "reviewer"
+    harness, model, effort = resolve_role(role, card)
+    argv = agent_argv(harness, model, effort, "json", role)
     if dry_run:
         print("would launch: " + " ".join(argv))
         print(prompt)
@@ -278,7 +281,7 @@ def run(
     # without this line a multi-minute review is indistinguishable from a hang.
     print(f"spawning {name} ({model}) — no output until it finishes", file=sys.stderr)
     try:
-        proc = run_agent(argv, cwd, prompt, role="reviewer", capture=True)
+        proc = run_agent(argv, cwd, prompt, role=role, capture=True)
     except OSError as e:  # claude absent from PATH
         return "", f"could not launch the reviewer: {e}"
     except subprocess.TimeoutExpired as e:
