@@ -26,7 +26,8 @@ One page. The values (VALUES.md) cover what this page doesn't.
    **Review stopping rule** (diminishing returns): one full review always. A
    REVIEWER fix costs nothing extra — it is inside the round that found it, and your
    read of its diff is the judgment. A LEAD fix moves HEAD past what the review
-   covered, so it costs one confirming round; that is why fix batches are batches.
+   covered, so it costs one confirming round — land REPORTS that delta now rather
+   than refusing, so this half is yours to honour; fix batches are batches.
    Faithful means SCOPE-IDENTICAL — generalizing a prescription is a deviation, and
    deviations, new uncovered behavior and conflict resolutions are owed a real round.
    Uncertain? One delta ping beats a wrong self-call. What ENDS a round is the

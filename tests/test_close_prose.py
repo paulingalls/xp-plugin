@@ -88,6 +88,19 @@ class TestShippedProseMatchesTheMechanism:
             assert "inside the round that found" in text, f"{path.name}: reviewer half"
             assert "past what the review covered" in text, f"{path.name}: lead half"
 
+    def test_DESIGN_states_overlap_not_motion_and_report_not_refuse(self):
+        """story-018 AC 7. Positive and BOTH halves, in the style of the stopping-rule
+        pin above: the doc moves with the code or they disagree, and a doc that kept
+        only the half that reads like the old rule is the drift this catches."""
+        design = prose(Path(__file__).parent.parent / "docs" / "DESIGN.md")
+        for claim in (
+            "overlap, not motion",
+            "intersect the files the story changed",
+            "trial-merges",
+            "report, not refuse",
+        ):
+            assert claim in design, f"DESIGN §6 no longer states: {claim}"
+
     def test_the_sprint_close_skill_runs_the_reviews_rather_than_composing_them(self):
         """Step 2 used to tell a human to do a broad review and a security review.
         Both prompts were then hand-composed at sprint-002's close, and when four

@@ -15,15 +15,16 @@ yourself doing by hand is a defect in the pipeline — file it.
    finds in your tree and commits. Reading its diff is your judgment point; running
    land is how you accept it.
    DOES NOT EXIST, so do not go looking: a delta review, a flag by which you supply
-   a finding yourself, a round recorded without the reviewer's own report.
-3. **Judgment point** (yours, and the only one): fix blocking findings now; file the
-   noted ones as bug/debt/note per PROCESS.md; ask the human only where you and the
-   reviewer disagree on whether a finding blocks. YOU choose the rounds — running
-   review again is the only thing that starts one. Stopping rule: the REVIEWER's fixes
-   cost no confirming round — they are inside the round that found them, and your read
-   of its diff is the judgment. YOUR fixes move HEAD past what the review covered, so a
-   lead fix batch costs one confirming round. What ends the rounds is the finding
-   bar — silent or corrupting earns another, loud does not — never a count.
+   a finding yourself, a round recorded without the reviewer's own report, a refusal
+   because trunk moved (only files trunk and your story BOTH changed cost a round).
+3. **Judgment point** (yours, and the only one): fix blocking findings; file noted
+   ones per PROCESS.md; ask the human only where you and the reviewer disagree.
+   Stopping rule: the REVIEWER's fixes cost no confirming round — inside the round
+   that found them, and your read of its diff is the judgment. YOUR fixes move HEAD
+   past what the review covered and still cost one confirming round — land REPORTS
+   that delta now rather than refusing, so this half is yours to honour. What ends
+   the rounds is the finding bar — silent or corrupting earns another, loud does
+   not — never a count.
 4. **`close.py story <id> land`** — deterministic, and it never spawns. Run it from
    the story worktree: it merges in whichever tree holds the integration branch, so
    YOUR SHELL IS LEFT IN A DELETED DIRECTORY. Every refusal names its own next

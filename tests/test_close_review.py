@@ -85,12 +85,12 @@ class TestSprintIntegration:
         repo, env, g = self.sprint_repo(tmp_path)
         close(repo, env, "review")
         g("checkout", "-q", "sprint-001")
-        (repo / "sprint-file.txt").write_text("x\n")
+        (repo / "src" / "thing.py").write_text("A = 9\n")
         g("add", "-A")
-        g("commit", "-qm", "sprint branch moved")
+        g("commit", "-qm", "another story landed on the sprint branch")
         g("checkout", "-q", "story-042-branch")
         r = close(repo, env, "land")
-        assert r.returncode == 2 and "moved" in r.stderr
+        assert r.returncode == 2 and "sprint-001" in r.stderr and "src/thing.py" in r.stderr
 
     def test_main_motion_does_not_block_sprint_close(self, tmp_path):
         repo, env, g = self.sprint_repo(tmp_path)
@@ -157,12 +157,12 @@ class TestSprintIntegration:
         g("tag", "sprint-001", "main")  # refs/tags wins plain rev-parse; guard must not care
         close(repo, env, "review")
         g("checkout", "-q", "sprint-001")
-        (repo / "sprint-file.txt").write_text("x\n")
+        (repo / "src" / "thing.py").write_text("A = 9\n")
         g("add", "-A")
-        g("commit", "-qm", "sprint branch moved")
+        g("commit", "-qm", "another story landed on the sprint branch")
         g("checkout", "-q", "story-042-branch")
         r = close(repo, env, "land")
-        assert r.returncode == 2 and "moved" in r.stderr
+        assert r.returncode == 2 and "src/thing.py" in r.stderr
 
     def test_pr_refusal_precedes_moved_check(self, tmp_path):
         repo, env, g = self.sprint_repo(tmp_path)
@@ -172,7 +172,7 @@ class TestSprintIntegration:
         g("push", "-q", "origin", "sprint-001")
         close(repo, env, "review")
         g("checkout", "-q", "sprint-001")
-        (repo / "sprint-file.txt").write_text("x\n")
+        (repo / "src" / "thing.py").write_text("A = 9\n")  # overlapping: the costly check
         g("add", "-A")
         g("commit", "-qm", "moved")
         g("push", "-q", "origin", "sprint-001")  # origin's sprint branch moves too
@@ -192,7 +192,7 @@ class TestSprintIntegration:
             capture_output=True,
             text=True,
         )
-        assert r.returncode == 2 and "local" in r.stderr and "moved" not in r.stderr
+        assert r.returncode == 2 and "local" in r.stderr and "src/thing.py" not in r.stderr
 
 
 class TestSprintCloseFindings:
@@ -304,26 +304,29 @@ class TestTrunkMotionGuards:
     """story-012a: trunk motion is refused at REVIEW, on both the local and the
     origin ref, because merge-base does not move when trunk advances."""
 
-    def test_a_bare_re_review_cannot_clear_the_trunk_guard(self, tmp_path):
-        """Re-running review after trunk motion used to re-baseline the guard while
-        the reviewer saw nothing new: merge-base does not move when trunk advances.
-        The refusal must hold, and `git merge <trunk>` must be what clears it —
-        a guard whose remediation does not work is a wall."""
+    def test_a_bare_re_review_cannot_clear_the_OVERLAP_refusal(self, tmp_path):
+        """Its second claim, which outlived the guard it was written for: a refusal
+        whose remediation does not work is a wall. Re-running review alone must NOT
+        clear it — merge-base does not move when trunk advances, so the reviewer
+        would see nothing new — and `git merge <trunk>` then review must."""
         repo, env, g = make_repo(tmp_path)
         close(repo, env, "review")
         g("checkout", "-q", "main")
-        (repo / "other.txt").write_text("someone else landed a story\n")
+        (repo / "src" / "thing.py").write_text("someone else landed a story here\n")
         g("add", "-A")
-        g("commit", "-qm", "trunk moved")
+        g("commit", "-qm", "trunk moved on the story's own file")
         g("checkout", "-q", "story-042-branch")
         assert close(repo, env, "land").returncode == 2
-        bare = close(repo, env, "review")
-        assert bare.returncode == 2 and "git merge main" in bare.stderr
-        g("merge", "-q", "main", "-m", "merge trunk")
+        assert close(repo, env, "review").returncode == 0, "the review leg is not the wall"
+        assert close(repo, env, "land").returncode == 2, "a bare re-review cleared the overlap"
+        g("merge", "-q", "main", "-m", "merge trunk", check=False)
+        (repo / "src" / "thing.py").write_text("A = 2\nsomeone else landed a story here\n")
+        g("add", "-A")
+        g("commit", "-qm", "resolve")
         assert close(repo, env, "review").returncode == 0
         r = close(repo, env, "land")
         assert r.returncode == 0, r.stderr
-        assert "someone else landed a story" in (repo / "other.txt").read_text()
+        assert "someone else landed a story here" in (repo / "src" / "thing.py").read_text()
 
 
 class TestSelfCloseRefusal:

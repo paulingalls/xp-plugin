@@ -224,15 +224,16 @@ def card_now(story_id: str) -> str:
         return ""
 
 
-def reviewer_range(reviewed_head: str) -> str:
-    """`git log` + `--stat` over what the reviewer committed, or "" if it committed
-    nothing. The lead reads this to accept the fixes; land re-prints it because
+def reviewer_range(start: str, end: str) -> str:
+    """`git log` + `--stat` over one range, or "" if it is empty. TWO ranges now:
+    HEAD may move past the review, so a single reviewed_head..HEAD would put the
+    lead's own commits under the reviewer's name. land re-prints both because
     assent is given by RUNNING land, not by having read an earlier command."""
     from close import git
 
-    if git("rev-parse", "HEAD").stdout.strip() == reviewed_head:
+    if start == end:
         return ""
-    rng = f"{reviewed_head}..HEAD"
+    rng = f"{start}..{end}"
     return git("log", "--format=%h %an %s", rng).stdout + git("diff", "--stat", rng).stdout
 
 
@@ -247,7 +248,7 @@ def write_reviewer_diff(report: Path, reviewed_head: str) -> Path | None:
     the only place the assent artifact lived."""
     from close import git
 
-    summary = reviewer_range(reviewed_head)
+    summary = reviewer_range(reviewed_head, git("rev-parse", "HEAD").stdout.strip())
     if not summary:
         return None
     diff = diff_path(report)

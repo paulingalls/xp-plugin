@@ -246,6 +246,21 @@ class TestLandFailureModes:
         # make_repo has NO remote, and both pushes are runtime-guarded on one —
         # previewing them here is the same overstatement F4 was filed for
         assert "git push origin" not in r.stdout, "previewed pushes that never run"
+        assert "trial merge" not in r.stdout, "previewed a trial merge on an unmoved trunk"
+
+    def test_the_dry_run_preview_names_the_trial_merge_land_would_run(self, tmp_path):
+        """Same rule, the step story-018 added: a preview that omits ~2min of Verify
+        on a merged tree certifies a plan nobody runs."""
+        repo, env, g = make_repo(tmp_path)
+        close(repo, env, "review")
+        g("checkout", "-q", "main")
+        (repo / "unrelated.py").write_text("x = 1\n")
+        g("add", "-A")
+        g("commit", "-qm", "trunk moved, disjoint")
+        g("checkout", "-q", "story-042-branch")
+        r = close(repo, env, "land", "--dry-run")
+        assert r.returncode == 0, r.stderr
+        assert "trial merge with main" in r.stdout, r.stdout
 
 
 class TestFullReviewFindings:
@@ -278,31 +293,38 @@ class TestFullReviewFindings:
 class TestStructuredGate:
     """story-012a: the report replaces the VERDICT line, and land never spawns."""
 
-    def test_land_refuses_on_drift_naming_review_and_spawns_nothing(self, tmp_path):
+    def test_a_lead_commit_after_the_review_is_REPORTED_and_merged(self, tmp_path):
+        """story-018/024: the refusal here bought one round per lead fix and was the
+        one member of the sha-freshness family that is neither a resolution falsifier
+        nor what makes land execute the merged tree. It became a report — the
+        confirming round is now a norm the lead owns, not a wall land builds."""
         repo, env, g = make_repo(tmp_path)
         stub_reviewer(tmp_path, report=CLEAN)
         assert close(repo, env, "review").returncode == 0
         (repo / "src" / "thing.py").write_text("A = 3\n")
         g("add", "-A")
-        g("commit", "-qm", "lead fix after review")
+        g("commit", "-qm", "LEAD-FIX-AFTER-REVIEW")
         r = close(repo, env, "land")
-        assert r.returncode == 2
-        assert "close.py story story-042 review" in r.stderr
+        assert r.returncode == 0, r.stderr
+        assert "LEAD-FIX-AFTER-REVIEW" in r.stdout, "the unreviewed delta was not shown"
+        assert "merging unreviewed" in r.stdout
         assert len(launches(tmp_path)) == 1, "land spawned the reviewer"
 
-    def test_land_on_drift_is_idempotent(self, tmp_path):
+    def test_land_on_overlap_is_idempotent(self, tmp_path):
         repo, env, g = make_repo(tmp_path)
         stub_reviewer(tmp_path, report=CLEAN)
         assert close(repo, env, "review").returncode == 0
-        (repo / "src" / "thing.py").write_text("A = 3\n")
+        g("checkout", "-q", "main")
+        (repo / "src" / "thing.py").write_text("A = 9\n")
         g("add", "-A")
-        g("commit", "-qm", "lead fix after review")
+        g("commit", "-qm", "another story landed on the same file")
+        g("checkout", "-q", "story-042-branch")
         first, second = close(repo, env, "land"), close(repo, env, "land")
         assert first.returncode == second.returncode == 2
         # the SAME refusal twice, not "refuses, then proceeds": land used to review
         # on the first call by construction, so a close cost two invocations minimum
         assert first.stderr == second.stderr
-        assert "close.py story story-042 review" in first.stderr
+        assert "src/thing.py" in first.stderr
         assert len(launches(tmp_path)) == 1
 
     def test_a_second_round_reviews_the_whole_story_diff_not_a_delta(self, tmp_path):
@@ -318,18 +340,22 @@ class TestStructuredGate:
         # the deleted delta path used to earn.
         assert "-A = 1" in launches(tmp_path)[1]["stdin"]
 
-    def test_review_refuses_while_trunk_is_ahead_of_the_merge_base(self, tmp_path):
+    def test_review_no_longer_refuses_while_trunk_is_ahead_of_the_merge_base(self, tmp_path):
+        """story-018 AC 3: this refusal serialised every file-disjoint story on the
+        sprint branch. The review's job is the STORY's diff, computed from the fork
+        point — which it already did, and still does with trunk ahead."""
         repo, env, g = make_repo(tmp_path)
         g("checkout", "-q", "main")
-        (repo / "other.py").write_text("x = 1\n")
+        (repo / "other.py").write_text("TRUNK_ONLY_SENTINEL = 1\n")
         g("add", "-A")
         g("commit", "-qm", "another story landed on trunk")
         g("checkout", "-q", "story-042-branch")
         stub_reviewer(tmp_path, report=CLEAN)
         r = close(repo, env, "review")
-        assert r.returncode == 2, r.stdout
-        assert "merge main" in r.stderr
-        assert launches(tmp_path) == [], "opus was spent on a diff that cannot cover the merge"
+        assert r.returncode == 0, r.stderr
+        bundle = launches(tmp_path)[0]["stdin"]
+        assert "A = 2" in bundle, "the story's own diff went missing"
+        assert "TRUNK_ONLY_SENTINEL" not in bundle, "the bundle is no longer fork-point based"
 
     def test_shown_sha_is_head_at_the_end_of_a_clean_round(self, tmp_path):
         repo, env, g = make_repo(tmp_path)
