@@ -205,20 +205,33 @@ class TestReviewed:
 class TestSecondReviewRound:
     """Findings from /code-review on the story-002 diff."""
 
-    def test_the_flip_preserves_a_concurrent_edit_to_the_shared_plan(self, tmp_path):
+    def test_the_flip_preserves_a_sibling_lane_edit_made_DURING_land(self, tmp_path):
         """Was "post-merge flip preserves MAIN-SIDE changes": the flip was written
         after the merge so trunk's plan edits survived it. Nothing merges the plan
         now — it is one file shared by every lane — so the surviving claim is that
-        an edit landing DURING the story is still there after land. That is what
-        edit_plan's read-inside-the-lock buys."""
-        repo, env, _g = make_repo(tmp_path)
+        an edit landing DURING land is still there after it.
+
+        The window is what makes this a check. cmd_land snapshots the plan to read
+        the card, then runs Verify and the tier for minutes, then flips; an edit
+        made before land ever starts is already IN that snapshot, so writing the
+        snapshot back would keep it and the test would certify. The sibling write
+        therefore rides the card's own Verify command, which is the one hook that
+        fires inside the window. Fault-injected: `edit_plan(lambda _t:
+        _flip_status(plan, story_id))` — the snapshot written back over merged
+        truth — reds this and nothing else in the suite.
+
+        printf SUBSTITUTES the story id rather than spelling it: the Verify line
+        is itself a line of the plan, so an assertion on a string the command
+        contains verbatim passes whether or not the append ever ran."""
+        sibling = "#### %s — sibling lane   [done]\\nVerify: true\\n"
+        repo, env, _g = make_repo(
+            tmp_path, verify=f"printf '{sibling}' story-043 >> \"$XP_DATA/plan.md\""
+        )
         close(repo, env, "review")
-        plan = tmp_path / "data" / "plan.md"
-        plan.write_text(plan.read_text() + "#### story-043 — other   [done]\nVerify: true\n")
         r = close(repo, env, "land")
         assert r.returncode == 0, r.stderr
-        merged = plan.read_text()
-        assert "#### story-043 — other   [done]" in merged  # the sibling edit survives
+        merged = (tmp_path / "data" / "plan.md").read_text()
+        assert "#### story-043 — sibling lane   [done]" in merged  # the sibling edit survives
         assert "#### story-042 — demo story   [done]" in merged
 
     def test_main_motion_after_start_refused(self, tmp_path):
