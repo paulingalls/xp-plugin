@@ -61,6 +61,51 @@ def data_root() -> Path:
     return Path.home() / ".xp" / "data" / project_id
 
 
+def plan_path() -> Path:
+    """The clone's execution plan: shared by its every worktree, by nothing outside."""
+    return data_root() / "plan.md"
+
+
+def stale_plan() -> str:
+    """The migration sentence, or "" — folded into each tool's EXISTING missing-plan
+    refusal rather than added as a guard of its own."""
+    if plan_path().exists() or not Path(".xp/plan.md").exists():
+        return ""
+    return (
+        f"the execution plan is per-clone now and lives at {plan_path()}; the"
+        " .xp/plan.md beside you is the pre-move copy. Migrate it:\n"
+        f"  mv .xp/plan.md {plan_path()} && git rm --cached .xp/plan.md"
+    )
+
+
+def edit_plan(mutate) -> None:
+    """Read-modify-write the clone's plan under a lock.
+
+    The read is INSIDE the lock: the current writers read-mutate-write unlocked,
+    and a read outside means the loser writes a plan that never saw the winner's
+    edit. Two lanes flipping two cards is the normal case, not the rare one.
+
+    temp+rename so an interrupted write leaves the PREVIOUS plan whole: the plan is
+    no longer git-versioned (§4 cost 1), so a torn one is unrecoverable. Defense in
+    depth and NOT a tested property — measured, rename and in-place are
+    indistinguishable to a reader here, so a test telling them apart would certify
+    (note 12d7fcea). It forces the lock onto a SIBLING file: rename swaps the
+    inode, so flocking plan.md would leave the next writer locking a ghost.
+
+    Serialises OUR writers only — the lead's Edit tool takes no lock, so
+    lead-vs-lane stays last-writer-wins (DESIGN §4).
+    """
+    path = plan_path()
+    lock = data_root() / "locks" / "plan.lock"
+    lock.parent.mkdir(parents=True, exist_ok=True)
+    with open(lock, "w") as handle:
+        fcntl.flock(handle, fcntl.LOCK_EX)
+        text = path.read_text() if path.exists() else ""
+        tmp = path.with_name(path.name + ".tmp")
+        tmp.write_text(mutate(text))
+        tmp.replace(path)
+
+
 def config_block_value(block: str, key: str) -> str:
     """`key:` nested under `block:` in the project config.
 

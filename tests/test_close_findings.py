@@ -37,7 +37,7 @@ class TestStoryReviewFindings:
         close(repo, env, "review")
         r = close(repo, env, "land")
         assert r.returncode != 0 and "tier" in (r.stderr + r.stdout).lower()
-        assert "[done]" not in (repo / ".xp" / "plan.md").read_text()
+        assert "[done]" not in (tmp_path / "data" / "plan.md").read_text()
 
     def test_a_reviewer_that_writes_without_committing_is_also_refused(self, tmp_path):
         """G5: the `or dirtied` half was vacuous — Bash is deliberately not
@@ -52,11 +52,9 @@ class TestStoryReviewFindings:
 
     def test_a_dashless_card_header_does_not_poison_the_close_log(self, tmp_path):
         """G6: _log_close reimplemented card_title without its guard."""
-        repo, env, g = make_repo(tmp_path)
-        plan = repo / ".xp" / "plan.md"
+        repo, env, _g = make_repo(tmp_path)
+        plan = tmp_path / "data" / "plan.md"
         plan.write_text(plan.read_text().replace("#### story-042 — demo story", "#### story-042"))
-        g("add", "-A")
-        g("commit", "-qm", "dashless header")
         close(repo, env, "review")
         assert close(repo, env, "land").returncode == 0
         rec = json.loads((tmp_path / "data" / "closes.jsonl").read_text().splitlines()[-1])
@@ -104,7 +102,7 @@ class TestStoryReviewFindings:
         rec = json.loads((tmp_path / "data" / "closes.jsonl").read_text().splitlines()[-1])
         ancestor = g("merge-base", "--is-ancestor", rec["merge_sha"], "origin/main")
         assert ancestor.returncode == 0, "recorded sha is not on trunk"
-        assert "[done]" in g("show", "origin/main:.xp/plan.md").stdout, "trunk never learned"
+        assert "[done]" in (tmp_path / "data" / "plan.md").read_text(), "the flip never landed"
 
 
 class TestStoryReviewFindings012a:

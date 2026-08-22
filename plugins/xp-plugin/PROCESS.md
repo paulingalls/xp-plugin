@@ -71,6 +71,6 @@ Telemetry (test/lint failures) is never recorded — the gate re-measures next r
 
 ## Session continuity
 
-`plan.md` story states + git + work.md are the memory. Write the ≤30-line session
+The plan's story states + git + work.md are the memory. Write the ≤30-line session
 digest at story/sprint close only. On start: trust the digest, verify against the
 artifacts — artifacts win.

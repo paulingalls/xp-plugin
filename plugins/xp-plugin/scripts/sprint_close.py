@@ -20,6 +20,8 @@ from work import (
     data_root,
     entries,
     falsifier_is_green,
+    plan_path,
+    stale_plan,
     stamp,
     work_entries_since,
 )
@@ -132,9 +134,10 @@ def cmd_review(sprint_id: str, lens: str, dry_run: bool) -> int:
         return fail(f"refused: --lens must be one of {', '.join(LENSES)}, not {lens!r}")
     if git("status", "--porcelain").stdout.strip():
         return fail("refused: working tree is dirty — commit or stash first")
-    plan = Path(".xp/plan.md")
+    plan = plan_path()
     if not plan.exists():
-        return fail("refused: no .xp/plan.md here — is this an xp-managed repo?")
+        why = stale_plan() or f"no plan at {plan} — is this an xp-managed repo?"
+        return fail(f"refused: {why}")
     trunk = default_branch()
     if (branch := git("rev-parse", "--abbrev-ref", "HEAD").stdout.strip()) == trunk:
         return fail(
@@ -142,7 +145,7 @@ def cmd_review(sprint_id: str, lens: str, dry_run: bool) -> int:
             " against the default branch would be empty and certify nothing"
         )
     if not (cards := sprint_cards(plan.read_text(), sprint_id)):
-        return fail(f"refused: no `### Sprint {sprint_id}` section in .xp/plan.md")
+        return fail(f"refused: no `### Sprint {sprint_id}` section in {plan}")
 
     marker = sprint_marker(sprint_id, lens)
     state = json.loads(marker.read_text()) if marker.exists() else {}
@@ -164,6 +167,13 @@ def cmd_review(sprint_id: str, lens: str, dry_run: bool) -> int:
     print(result)  # before any refusal: the findings exist nowhere else yet
     if motion := review.check_report_only(head, digests):
         return fail(motion)
+    # No diff covers the plan now. Cross-lane BY CONSTRUCTION here, safe only
+    # because a sprint review runs when every member is [done]: a mid-sprint lens
+    # would refuse and blame itself for a lane's flip.
+    if sprint_cards(plan.read_text(), sprint_id) != cards:
+        return fail(
+            review.abort_text(head, f"sprint {sprint_id}'s cards changed during the review")
+        )
     report, err = review.read_report(path)
     if err:
         return fail(review.abort_text(head, err))
@@ -175,12 +185,13 @@ def cmd_review(sprint_id: str, lens: str, dry_run: bool) -> int:
 
 
 def cmd_start(sprint_id: str) -> int:
-    plan = Path(".xp/plan.md")
+    plan = plan_path()
     if not plan.exists():
-        return fail("refused: no .xp/plan.md here — is this an xp-managed repo?")
+        why = stale_plan() or f"no plan at {plan} — is this an xp-managed repo?"
+        return fail(f"refused: {why}")
     members = sprint_stories(plan.read_text(), sprint_id)
     if not members:
-        return fail(f"refused: no `### Sprint {sprint_id}` section in .xp/plan.md")
+        return fail(f"refused: no `### Sprint {sprint_id}` section in {plan}")
     if unfinished := [m for m in members if "[done]" not in m]:
         return fail(
             "refused: sprint "

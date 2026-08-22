@@ -35,7 +35,15 @@ from bookkeep import (
     render_noted,
     render_prior_rounds,
 )
-from work import chdir_repo_root, config_block_value, data_root, work_entries_since
+from work import (
+    chdir_repo_root,
+    config_block_value,
+    data_root,
+    edit_plan,
+    plan_path,
+    stale_plan,
+    work_entries_since,
+)
 
 
 def fail(msg: str) -> "int":
@@ -52,12 +60,12 @@ def story_card(plan: str, story_id: str) -> tuple[str, str]:
     lines = plan.splitlines(keepends=True)
     start = next((i for i, ln in enumerate(lines) if ln.startswith(f"#### {story_id} ")), None)
     if start is None:
-        raise KeyError(f"{story_id} not found in .xp/plan.md")
+        raise KeyError(f"{story_id} not found in the plan")
     rest = range(start + 1, len(lines))
     end = next((i for i in rest if lines[i].startswith(("# ", "## ", "### ", "#### "))), len(lines))
     card = "".join(lines[start:end])
     if "[" not in lines[start]:
-        raise KeyError(f"{story_id} header has no [status] bracket in .xp/plan.md")
+        raise KeyError(f"{story_id} header has no [status] bracket in the plan")
     status = lines[start].rsplit("[", 1)[1].rstrip().rstrip("]")
     return card, status
 
@@ -152,10 +160,11 @@ def _preflight(story_id: str, action: str) -> tuple[str, str, str]:
     """(card, trunk, error) — the checks both legs share."""
     if git("status", "--porcelain").stdout.strip():
         return "", "", "refused: working tree is dirty — commit or stash first"
-    if not Path(".xp/plan.md").exists():
-        return "", "", "refused: no .xp/plan.md here — is this an xp-managed repo?"
+    if not plan_path().exists():
+        why = stale_plan() or f"no plan at {plan_path()} — is this an xp-managed repo?"
+        return "", "", f"refused: {why}"
     try:
-        card, status = story_card(Path(".xp/plan.md").read_text(), story_id)
+        card, status = story_card(plan_path().read_text(), story_id)
     except KeyError as e:
         return "", "", f"refused: {e.args[0]}"
     if status != "in-progress":
@@ -214,7 +223,7 @@ def cmd_review(story_id: str, dry_run: bool = False) -> int:
     # BEFORE any refusal below: a report the pipeline rejects still cost a full
     # review, and its findings exist nowhere else.
     print(result)
-    motion = review.check_reviewer_motion(head, marker, digest_before, card)
+    motion = review.check_reviewer_motion(head, marker, digest_before, card, story_id)
     if motion:
         return fail(motion)
     report, err = review.read_report(path)
@@ -301,7 +310,7 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
     held, err = held_trunk_tree(trunk)
     if err:
         return fail(err)
-    plan = Path(".xp/plan.md").read_text()
+    plan = plan_path().read_text()
     try:
         card, _ = story_card(plan, story_id)
     except KeyError as e:
@@ -324,10 +333,9 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
         ["git", "checkout", "-q", trunk],
         ["git", "merge", "--ff-only", f"origin/{trunk}"],
     ]
-    pr_bookkeep = [
-        ["git", "commit", "-qm", f"{story_id} done"],
-        ["git", "push", "origin", trunk],
-    ]
+    # the push stays: pr_sync's --ff-only is a no-op when local trunk is AHEAD,
+    # so without it a lead's trunk commits never reach origin
+    pr_bookkeep = [["git", "push", "origin", trunk]]
     pr_steps = (pr_cmds, pr_sync, pr_bookkeep)
     if dry_run:  # pure preview: nothing runs, nothing changes, marker survives
         print(render_land_preview(verify, tier, merge_mode, branch, trunk, pr_steps), end="")
@@ -378,24 +386,14 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
     print(render_noted(rounds), end="")
 
     failed = []
-    orphaning = False  # only a failed amend leaves merge_sha on no ref
     if merge_mode == "pr":
         for c in pr_sync:
             if subprocess.run(c, capture_output=True, text=True).returncode != 0:
                 failed.append(" ".join(c))
         merge_sha = git("rev-parse", f"refs/remotes/origin/{trunk}").stdout.strip()
-    merged_plan = Path(".xp/plan.md").read_text()  # POST-merge: keeps trunk-side changes
-    Path(".xp/plan.md").write_text(_flip_status(merged_plan, story_id))
-    git("add", ".xp/plan.md")
+    # locked: a sibling lane may be flipping its own card right now
+    edit_plan(lambda text: _flip_status(text, story_id))
     if merge_mode == "local":
-        # check=False: the amend re-runs the commit wall on a tree that just
-        # gained a merge, so it CAN fail — and raising there left the merge
-        # landed with the flip abandoned.
-        orphaning = git("commit", "--amend", "--no-edit", "-q", check=False).returncode != 0
-        if orphaning:
-            failed.append("git commit --amend --no-edit  (merge landed WITHOUT the [done] flip)")
-        # merge_sha AFTER the amend: the pre-amend commit is on no ref and stops
-        # resolving at gc, so a record holding it points at nothing.
         merge_sha = git("rev-parse", "HEAD").stdout.strip()
         if bool(git("remote", check=False).stdout.strip()) and (
             git("push", "origin", trunk, check=False).returncode != 0
@@ -408,13 +406,10 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
     if held:
         failed += remove_story_worktree(story_tree)
     failed += delete_story_branch(branch)
-    if not orphaning:
-        # Record unless merge_sha is about to be orphaned. Every failure EXCEPT a
-        # failed amend leaves it valid and on a ref, and by here the card reads
-        # [done] — withholding the record then makes the close unrecordable.
-        delete_story_markers(story_id)
-        log_close(story_id, card, rounds, merge_sha)
-        marker.unlink()
+    # merge_sha is the merge commit, always on a ref now that no amend rewrites it
+    delete_story_markers(story_id)
+    log_close(story_id, card, rounds, merge_sha)
+    marker.unlink()
     if failed:
         # The merge HAS landed, so this is not a refusal (2) — but exiting 0
         # would make a hand-step invisible, which M1's done-when forbids.

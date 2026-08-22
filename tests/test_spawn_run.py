@@ -49,7 +49,7 @@ class TestBudget:
         repo, env, _g = make_repo(tmp_path)
         stub_claude(tmp_path)
         before = spawn(repo, env, "story-042", "--dry-run").stdout
-        plan = repo / ".xp" / "plan.md"
+        plan = tmp_path / "data" / "plan.md"
         plan.write_text(plan.read_text().replace("Context: demo.", "Context: " + "x" * 4000))
         after = spawn(repo, env, "story-042", "--dry-run").stdout
         assert _total(before) != _total(after)
@@ -391,6 +391,8 @@ class TestClosingLineAndLog:
             check=True,
         )
         subprocess.run(["git", "branch", "-D", "ada/story-042-demo-story"], cwd=repo, env=env)
+        plan = tmp_path / "data" / "plan.md"  # the flip is shared now, not branch-local
+        plan.write_text(plan.read_text().replace("[in-progress]", "[ready]"))
         assert spawn(repo, env, "story-042").returncode == 0
         second = log.read_text()
         assert second.startswith(first)
@@ -406,9 +408,12 @@ class TestFirstSpawnInAScaffoldedRepo:
         repo, env, g = make_repo(tmp_path)
         stub_claude(tmp_path)
         g("checkout", "-q", "main")
-        # the literal shipped sequence: scaffold, edit the plan, spawn — uncommitted
-        (repo / ".xp" / "plan.md").write_text(
-            (repo / ".xp" / "plan.md").read_text()
+        # The literal shipped sequence: xp-setup, fill in the plan, spawn. Since
+        # story-019 the plan edit is OUT of the repo and dirties nothing — the
+        # uncommitted artifact is the scaffold itself, which is what setup leaves.
+        (repo / ".xp" / "system.md").write_text("# System\n- freshly scaffolded\n")
+        (tmp_path / "data" / "plan.md").write_text(
+            (tmp_path / "data" / "plan.md").read_text()
             + "\n#### story-777 — fresh   [ready]\nVerify: true\n"
         )
         r = spawn(repo, env, "story-777")

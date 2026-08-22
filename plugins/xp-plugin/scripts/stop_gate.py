@@ -53,7 +53,7 @@ def main() -> int:
                     "decision": "block",
                     "reason": (
                         f"story Verify last ran red: {red} — fix it, or mark its story"
-                        " done/deferred in .xp/plan.md if the red is accepted"
+                        " done/deferred in the plan if the red is accepted"
                     ),
                 }
             )

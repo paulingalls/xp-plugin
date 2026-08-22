@@ -1,6 +1,7 @@
 """story-006: /xp-setup scaffold. Verify: pytest -q tests/test_setup.py"""
 
 import re
+import shutil
 import stat
 import subprocess
 import sys
@@ -10,6 +11,8 @@ SCRIPTS = Path(__file__).parent.parent / "plugins" / "xp-plugin" / "scripts"
 sys.path.insert(0, str(SCRIPTS))
 from close import config_flat, story_card, verify_commands  # noqa: E402
 from work import config_block_value  # noqa: E402
+
+SHIPPED_TEMPLATES = Path(__file__).parent.parent / "plugins" / "xp-plugin" / "templates"
 
 
 def bare_repo(tmp_path, with_fake_lefthook=False):
@@ -62,13 +65,36 @@ class TestScaffold:
         assert "EDIT-ME" in config_block_value("tests", "story")  # tiers are placeholders
         cfg = (repo / ".xp" / "config.yml").read_text()
         assert "sprint_cap" in cfg and "debt_budget" in cfg and "constraints_cap" in cfg
-        plan = (repo / ".xp" / "plan.md").read_text()
+        # AC3: the plan scaffolds into the CLONE's state root, and .xp/ keeps only
+        # what three parallel streams must share. XP_DATA is unset here and
+        # HOME is tmp_path, so data_root() really hashes and nothing touches the
+        # developer's own ~/.xp.
+        assert {f.name for f in (repo / ".xp").iterdir()} == {
+            "config.yml",
+            "constraints.md",
+            "system.md",
+        }
+        roots = list((tmp_path / ".xp" / "data").glob("*/plan.md"))
+        assert len(roots) == 1, f"expected one state-root plan, found {roots}"
+        plan = roots[0].read_text()
+        assert plan == (SHIPPED_TEMPLATES / "plan.md").read_text(), "not the seeded template"
         card, status = story_card(plan, "story-001")  # template parses with the real parser
         # SEEDED [planned], not [ready]: a scaffolded project's first card must not
         # be spawnable before its plan review. Both sprint-003 misses were forgetting,
         # and a state nothing defaults to cannot catch forgetting.
         assert status == "planned" and verify_commands(card)
-        assert (repo / ".xp" / "system.md").exists()
+
+    def test_an_existing_state_root_plan_refuses_and_leaves_no_half_made_xp(self, tmp_path):
+        """F10: the check must sit with the OTHER preflight, before .xp/.mkdir().
+        Below it, a refusal would leave the directory behind — setup's own
+        'never overwrites' promise inverted."""
+        repo, env = bare_repo(tmp_path)
+        first = run_setup(repo, env)
+        assert first.returncode == 0, first.stderr
+        shutil.rmtree(repo / ".xp")
+        second = run_setup(repo, env)
+        assert second.returncode != 0 and "never overwrites" in second.stderr
+        assert not (repo / ".xp").exists(), "a refusal left a half-made .xp/ behind"
 
     def test_existing_xp_refused_untouched(self, tmp_path):
         repo, env = bare_repo(tmp_path)
@@ -262,11 +288,16 @@ class TestDogfoodMatchesTheScaffold:
         for key in sorted(extra):
             assert f"# {key}:" in text, f"we use {key!r} and the scaffold never mentions it"
 
-    def test_both_plans_parse_with_the_parser_sprint_close_uses(self):
+    def test_the_shipped_plan_parses_with_the_parser_sprint_close_uses(self):
+        """Was a PAIR: it also read THIS repo's .xp/plan.md, so our live plan and
+        the template could not drift apart unnoticed. story-019 moved our plan to
+        the state root, which is machine-dependent and ambient — reading it here
+        would be the observed state constraint 11 forbids — so the drift alarm is
+        gone, not moved. AC7's migration walk re-asserts the parse where the live
+        plan is present by construction."""
         sys.path.insert(0, str(self.REPO / "plugins" / "xp-plugin" / "scripts"))
         from sprint_close import sprint_stories
 
-        assert sprint_stories((self.OURS / "plan.md").read_text(), "2"), "our plan lost its shape"
         assert sprint_stories((self.SHIPPED / "plan.md").read_text(), "1"), (
             "a scaffolded repo cannot run a sprint close: the seeded plan has no"
             " `### Sprint N` section for sprint_stories to find"

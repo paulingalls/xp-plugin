@@ -49,7 +49,9 @@ def make_repo(tmp_path, plan=PLAN, config=CONFIG):
     g("init", "-q", "-b", "main")
     g("config", "user.email", "t@t")
     g("config", "user.name", "t")
-    (repo / ".xp" / "plan.md").write_text(plan)
+    state_plan = tmp_path / "data" / "plan.md"
+    state_plan.parent.mkdir(parents=True, exist_ok=True)
+    state_plan.write_text(plan)
     (repo / ".xp" / "config.yml").write_text(config)
     (repo / ".xp" / "constraints.md").write_text("# Constraints\n1. CONSTRAINT-SENTINEL\n")
     (repo / ".xp" / "system.md").write_text("# System\nSYSTEM-SENTINEL\n")

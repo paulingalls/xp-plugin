@@ -55,7 +55,7 @@ class TestSprintIntegration:
         r = close(repo, env, "land")
         assert r.returncode == 0, r.stderr
         assert "Review round 1" in g("log", "sprint-001", "-1", "--format=%B").stdout
-        assert "[done]" in g("show", "sprint-001:.xp/plan.md").stdout
+        assert "[done]" in (tmp_path / "data" / "plan.md").read_text()
         assert "Review round" not in g("log", "main", "--format=%B").stdout  # main untouched
 
     def test_sprint_release_without_branch_key_falls_back_to_default(self, tmp_path):
@@ -242,7 +242,7 @@ class TestSprintCloseFindings:
 
     def test_missing_plan_md_refused_cleanly(self, tmp_path):
         repo, env, g = make_repo(tmp_path)
-        (repo / ".xp" / "plan.md").unlink()
+        (tmp_path / "data" / "plan.md").unlink()
         g("add", "-A")
         g("commit", "-qm", "no plan")
         r = close(repo, env, "review")
@@ -250,7 +250,7 @@ class TestSprintCloseFindings:
 
     def test_bracketless_story_header_refused_cleanly(self, tmp_path):
         repo, env, g = make_repo(tmp_path)
-        plan = repo / ".xp" / "plan.md"
+        plan = tmp_path / "data" / "plan.md"
         plan.write_text(plan.read_text().replace("   [in-progress]", ""))
         g("add", "-A")
         g("commit", "-qm", "malformed header")

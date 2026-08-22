@@ -25,7 +25,8 @@ def repo_with_story(tmp_path, verify="pytest -q tests/test_x.py"):
     g("init", "-q", "-b", "main")
     g("config", "user.email", "t@t")
     g("config", "user.name", "t")
-    (repo / ".xp" / "plan.md").write_text(
+    (tmp_path / "xp").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "xp" / "plan.md").write_text(
         f"# plan\n#### story-042 — demo   [in-progress]\nVerify: {verify}\n"
     )
     (repo / "f.py").write_text("A = 1\n")
@@ -130,7 +131,7 @@ class TestBashStatus:
 
     def test_matches_any_in_progress_story_with_per_verify_markers(self, tmp_path):
         repo, _g = repo_with_story(tmp_path)
-        plan = repo / ".xp" / "plan.md"
+        plan = tmp_path / "xp" / "plan.md"
         plan.write_text(
             plan.read_text() + "#### story-043 — other   [in-progress]\nVerify: bun test x\n"
         )
@@ -156,7 +157,7 @@ class TestStopGate:
 
     def test_any_red_blocks_despite_other_green(self, tmp_path):
         repo, _g = repo_with_story(tmp_path)
-        plan = repo / ".xp" / "plan.md"
+        plan = tmp_path / "xp" / "plan.md"
         plan.write_text(
             plan.read_text() + "#### story-043 — other   [in-progress]\nVerify: bun test x\n"
         )
@@ -174,7 +175,7 @@ class TestStopGate:
     def test_red_for_no_longer_in_progress_story_does_not_block(self, tmp_path):
         repo, _g = repo_with_story(tmp_path)
         self._red(repo, tmp_path)
-        plan = repo / ".xp" / "plan.md"
+        plan = tmp_path / "xp" / "plan.md"
         plan.write_text(plan.read_text().replace("[in-progress]", "[done]"))
         r = run_script("stop_gate.py", self.stop_payload(), repo, tmp_path)
         assert "block" not in r.stdout  # deferral via plan status is honest and works
@@ -192,7 +193,7 @@ class TestStopGate:
         # and the message could only reach the user, not the lead
         repo, g = repo_with_story(tmp_path)
         old = g("rev-parse", "--short", "HEAD").stdout.strip()
-        (tmp_path / "xp").mkdir()
+        (tmp_path / "xp").mkdir(exist_ok=True)
         (tmp_path / "xp" / "session.md").write_text(f"# Session digest — written x at {old}\n")
         (repo / "f.py").write_text("A = 2\n")
         g("add", "-A")
@@ -226,7 +227,7 @@ class TestSprintCloseFindings:
     def test_gate_works_from_repo_subdirectory(self, tmp_path):
         repo, _g = repo_with_story(tmp_path)
         sub = repo / "src"
-        sub.mkdir()
+        sub.mkdir(exist_ok=True)
         p = failure_payload("pytest -q tests/test_x.py")
         subprocess.run(
             [sys.executable, str(SCRIPTS / "bash_status.py")],
@@ -267,7 +268,7 @@ class TestStoryScopedMarkers:
 
     def two_stories(self, tmp_path, verify_a, verify_b):
         repo, _g = repo_with_story(tmp_path, verify=verify_a)
-        plan = repo / ".xp" / "plan.md"
+        plan = tmp_path / "xp" / "plan.md"
         plan.write_text(
             plan.read_text() + f"#### story-043 — other   [in-progress]\nVerify: {verify_b}\n"
         )

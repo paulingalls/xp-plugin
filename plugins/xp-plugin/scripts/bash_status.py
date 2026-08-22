@@ -20,15 +20,14 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 from close import story_card, verify_commands
-from work import chdir_repo_root, data_root
+from work import chdir_repo_root, data_root, plan_path
 
 
 def in_progress_stories() -> list[tuple[str, str]]:
     """(story_id, verify) for every [in-progress] story that declares a Verify."""
-    plan_path = Path(".xp/plan.md")
-    if not plan_path.exists():
+    if not plan_path().exists():
         return []
-    plan = plan_path.read_text(errors="replace")
+    plan = plan_path().read_text(errors="replace")
     stories = []
     for ln in plan.splitlines():
         if ln.startswith("#### ") and "[in-progress]" in ln:

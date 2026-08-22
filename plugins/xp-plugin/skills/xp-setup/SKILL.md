@@ -1,8 +1,9 @@
 ---
 name: xp-setup
 description: >-
-  Scaffold a repo for the xp process: .xp/ artifacts (seeded constraints,
-  config, system + plan skeletons) and the git-hook wall. Never overwrites.
+  Scaffold a repo for the xp process: .xp/ artifacts (constraints, config,
+  system) and the git-hook wall. The plan is NOT in the repo — it is per
+  clone, in the state root. Never overwrites.
 ---
 
 # xp-setup
@@ -21,5 +22,6 @@ description: >-
      own tooling (Playwright, pytest+subprocess, supertest, …) — judgment work,
      not scaffolding
    - a linter in the pre-commit hook
-3. Plan the first milestone in `.xp/plan.md` — the skeleton card shows the
+3. Plan the first milestone in the plan the scaffold wrote — it is PER CLONE,
+   outside the repo, and setup prints its path. The skeleton card shows the
    format; every story needs runnable `Verify:` commands.

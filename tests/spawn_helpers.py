@@ -48,7 +48,9 @@ def make_repo(tmp_path, status="ready", executor="(default)", trunk="main"):
     g("init", "-q", "-b", trunk)
     g("config", "user.email", "ada@example.com")
     g("config", "user.name", "Ada L")
-    (repo / ".xp" / "plan.md").write_text(CARD.format(status=status, executor=executor))
+    plan = tmp_path / "data" / "plan.md"
+    plan.parent.mkdir(parents=True, exist_ok=True)
+    plan.write_text(CARD.format(status=status, executor=executor))
     (repo / ".xp" / "config.yml").write_text(CONFIG.format(trunk=trunk))
     (repo / ".xp" / "constraints.md").write_text("# Constraints\n1. CONSTRAINT-SENTINEL\n")
     (repo / ".xp" / "system.md").write_text("# System\n- Worktree bootstrap: none needed\n")
