@@ -90,8 +90,10 @@ def cmd_land(slug: str, dry_run: bool) -> int:
     ref = overlap.merge_source(trunk, "pr")
     if files := overlap.overlapping(ref, base):
         return fail(overlap.collision(ref, files))
-    if not (version := next_version("patch")):
-        return refuse_unbumpable()
+    # off REF, not HEAD: a sprint that released while this branch was open left its
+    # tag unreachable from here, and the bump would name a version already shipped
+    if not (version := next_version("patch", ref)):
+        return refuse_unbumpable(ref)
     rounds = state["rounds"]
     title, body = f"free {slug} — {version}", render_merge_body(rounds)
     cmds = [

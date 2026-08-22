@@ -306,12 +306,13 @@ def cmd_start(sprint_id: str) -> int:
     return 0
 
 
-def next_version(part: str = "minor") -> str:
-    """Bump the latest TAG: a sprint release is a minor, a free close a patch.
+def next_version(part: str = "minor", ref: str = "HEAD") -> str:
+    """Bump the latest TAG REACHABLE FROM `ref` — the tree that will be the release,
+    which for a branch cut before the last release is not HEAD.
     The tag is the source of truth: a plugin.json path is meaningless in a consuming project,
     which is also why the scheme is checked: theirs is the input we don't pick.
     Returns "" when the latest tag is not semver, so the caller refuses."""
-    latest = git("describe", "--tags", "--abbrev=0", check=False).stdout.strip() or "v0.0.0"
+    latest = git("describe", "--tags", "--abbrev=0", ref, check=False).stdout.strip() or "v0.0.0"
     if not (m := re.fullmatch(r"v?(\d+)\.(\d+)(\..*)?", latest)):
         return ""
     if part != "patch":
@@ -320,8 +321,8 @@ def next_version(part: str = "minor") -> str:
     return f"v{m.group(1)}.{m.group(2)}.{int(patch.group(1)) + 1 if patch else 1}"
 
 
-def refuse_unbumpable() -> int:
-    latest = git("describe", "--tags", "--abbrev=0", check=False).stdout.strip()
+def refuse_unbumpable(ref: str = "HEAD") -> int:
+    latest = git("describe", "--tags", "--abbrev=0", ref, check=False).stdout.strip()
     return fail(f"refused: latest tag {latest!r} is not vMAJOR.MINOR — cannot bump it")
 
 

@@ -161,6 +161,25 @@ class TestFreeLand:
         r = free(repo, env, "fix-typo", "land")
         assert r.returncode == 2 and "dirty" in r.stderr
 
+    def test_the_bump_comes_off_trunk_not_off_this_branch(self, tmp_path):
+        """A sprint released v0.3.0 while this branch was open. Its tag is not
+        REACHABLE from a branch cut before it, so a bump read here re-ships a
+        version already shipped — and the instruction tags v0.2.1 at content
+        that is v0.3.0 plus this fix."""
+        repo, env, g = reviewed(tmp_path)
+        g("checkout", "-q", "main")
+        (repo / "sprint.md").write_text("shipped\n")
+        g("add", "-A")
+        g("commit", "-qm", "sprint 5 released")
+        g("tag", "v0.3.0")
+        g("push", "-q", "origin", "main")
+        g("checkout", "-q", BRANCH)
+        r = free(repo, env, "fix-typo", "land")
+        assert r.returncode == 0, r.stderr + r.stdout
+        create = next(c for c in gh_calls(tmp_path) if c[:2] == ["pr", "create"])
+        assert "v0.3.1" in " ".join(create), create
+        assert "v0.3.1" in r.stdout, r.stdout
+
     def test_a_branch_cut_yesterday_still_lands_today(self, tmp_path):
         """The key is read off HEAD, never recomputed from today's date: a free
         close that spans midnight would otherwise lose the round it recorded."""
