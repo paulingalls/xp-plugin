@@ -369,3 +369,49 @@ class TestCodexPayloads:
         del payload["tool_response"]
         r = run_script("bash_status.py", payload, repo, tmp_path)
         assert r.returncode == 0 and r.stderr == "" and markers(tmp_path) == []
+
+
+class TestACrashIsNotAPass:
+    """A hook that dies must still not break the session — but it may not die in
+    SILENCE. The blanket `except (Exception, SystemExit): sys.exit(0)` made rc 0
+    and empty stderr hold for ANY crash, so every 'the hook ignores this payload'
+    assertion in this file passed against a hook that raised on it (measured: 16
+    of these 24 tests, this class's own arm included).
+    """
+
+    def crashing(self, tmp_path, name):
+        """The real script with a raise spliced into main — the defect it must
+        survive is an exception, so nothing weaker constructs the condition."""
+        broken = tmp_path / name
+        text = (SCRIPTS / name).read_text()
+        marker = "def main() -> int:\n"
+        assert marker in text, name
+        broken.write_text(text.replace(marker, marker + '    raise ValueError("boom")\n', 1))
+        return broken  # its siblings resolve off PYTHONPATH below, not off its new home
+
+    def run(self, tmp_path, name, payload):
+        return subprocess.run(
+            [sys.executable, str(self.crashing(tmp_path, name))],
+            input=json.dumps(payload),
+            env={
+                "PATH": "/usr/bin:/bin",
+                "HOME": str(tmp_path),
+                "XP_DATA": str(tmp_path / "xp"),
+                "CLAUDE_PLUGIN_ROOT": str(SCRIPTS.parent),
+                "PYTHONPATH": str(SCRIPTS),
+            },
+            cwd=tmp_path,
+            capture_output=True,
+            text=True,
+        )
+
+    def test_every_hook_survives_a_crash_and_says_so(self, tmp_path):
+        repo, _g = repo_with_story(tmp_path)
+        for name, payload in (
+            ("bash_status.py", success_payload("pytest -q tests/test_x.py")),
+            ("stop_gate.py", {"session_id": "s", "hook_event_name": "Stop"}),
+            ("session_start.py", {"session_id": "s", "hook_event_name": "SessionStart"}),
+        ):
+            r = self.run(repo, name, payload)
+            assert r.returncode == 0, f"{name} broke the session: {r.stderr}"
+            assert "ValueError" in r.stderr, f"{name} died in silence"

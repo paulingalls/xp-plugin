@@ -9,6 +9,7 @@ import json
 import os
 import subprocess
 import sys
+import traceback
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
@@ -239,6 +240,8 @@ def main() -> int:
 
 if __name__ == "__main__":
     try:
-        sys.exit(main())
-    except (Exception, SystemExit):
-        sys.exit(0)  # degrade to silence (SystemExit included), never break a session
+        rc = main()
+    except Exception:  # advisory: never break a session — but never in silence,
+        traceback.print_exc(file=sys.stderr)  # or a dead hook reads as a passing one
+        rc = 0
+    sys.exit(rc)
