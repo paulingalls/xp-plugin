@@ -27,16 +27,19 @@ def run_ratchet(root=None):
     return subprocess.run(args, capture_output=True, text=True)
 
 
-def build_plugin_tree(tmp_path, files):
+def build_plugin_tree(tmp_path, files, tests=True):
     """Keys are relative to the plugin root, not to scripts/ — the budget covers
     every directory of the shipped plugin and the fixtures have to be able to
-    say so."""
+    say so. `tests=False` builds the tree the ratchet must REFUSE to measure."""
     plugin_dir = tmp_path / "plugins" / "xp-plugin"
     plugin_dir.mkdir(parents=True)
     for name, content in files.items():
         path = plugin_dir / name
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(content)
+    if tests:
+        (tmp_path / "tests").mkdir(parents=True, exist_ok=True)
+        (tmp_path / "tests" / "test_seed.py").write_text("def test_seed():\n    assert True\n")
     return tmp_path
 
 
@@ -139,7 +142,6 @@ def test_a_test_file_over_the_cap_reds_naming_the_file(tmp_path):
     binds tests/ equally — this repo reached 2,059 lines in one test file with no
     counter-pressure, because the ratchet measured only the shipped plugin."""
     root = build_plugin_tree(tmp_path, {"scripts/setup.py": "x = 1\n"})
-    (root / "tests").mkdir()
     (root / "tests" / "test_big.py").write_text("x = 1\n" * 600)
     result = run_ratchet(root)
     assert result.returncode != 0, result.stdout
@@ -164,7 +166,6 @@ def test_a_grandfathered_file_may_only_shrink(tmp_path):
     the file is over the ordinary cap."""
     ratchet = _budgets()
     root = build_plugin_tree(tmp_path, {"scripts/setup.py": "x = 1\n"})
-    (root / "tests").mkdir()
     (root / "tests" / "test_big.py").write_text("x = 1\n" * 601)
     old = ratchet.GRANDFATHER
     try:
@@ -184,7 +185,6 @@ def test_a_stale_grandfather_pin_reds_so_it_is_deleted(tmp_path):
     applied to its own exceptions."""
     ratchet = _budgets()
     root = build_plugin_tree(tmp_path, {"scripts/setup.py": "x = 1\n"})
-    (root / "tests").mkdir()
     (root / "tests" / "test_big.py").write_text("x = 1\n" * 100)
     old = ratchet.GRANDFATHER
     try:
@@ -224,6 +224,28 @@ def test_empty_scripts_tree_refuses_rather_than_certifying(tmp_path):
     result = run_ratchet(root)
     assert result.returncode != 0, result.stdout
     assert "MEASURED NOTHING" in result.stdout, result.stdout
+
+
+def test_a_tree_with_no_TESTS_refuses_rather_than_certifying(tmp_path):
+    """Its twin, and the reason the plugin arm alone was not enough: constraint 8
+    was amended to bind tests/ too, and the test side fell back to an empty list
+    when the directory was absent — so the 500-line cap was enforced over ZERO
+    files, in silence, while the table printed and the wall exited 0. The plugin
+    side raises for exactly this reason ("a measurement of nothing must not read
+    as a pass"); one rule, and it was fixed in one of its two implementations."""
+    root = build_plugin_tree(tmp_path, {"scripts/setup.py": "x = 1\n"}, tests=False)
+    result = run_ratchet(root)
+    assert result.returncode != 0, result.stdout
+    assert "MEASURED NOTHING" in result.stdout, result.stdout
+    assert "tests" in result.stdout, result.stdout
+
+
+def test_an_EMPTY_tests_directory_refuses_too(tmp_path):
+    """A directory check greens here; only counting the files reds. The dir
+    exists in every checkout, so `is_dir()` is the guard that never fires."""
+    root = build_plugin_tree(tmp_path, {"scripts/setup.py": "x = 1\n"}, tests=False)
+    (root / "tests").mkdir()
+    assert run_ratchet(root).returncode != 0
 
 
 def test_design_sub_allocation_matches_ratchet_constants():

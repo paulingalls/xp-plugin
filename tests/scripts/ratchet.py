@@ -113,11 +113,9 @@ def measure(root):
     density = total_commented / total_lines if total_lines else 0
 
     tests_dir = root / "tests"
-    test_paths = (
-        sorted(p for p in tests_dir.rglob("*.py") if "__pycache__" not in p.parts)
-        if tests_dir.is_dir()
-        else []
-    )
+    test_paths = sorted(p for p in tests_dir.rglob("*.py") if "__pycache__" not in p.parts)
+    if not test_paths:
+        raise NoScriptsFound(tests_dir)  # constraint 8 binds tests; zero of them is not a pass
     file_findings = []
     for path in paths + test_paths:
         rel = path.relative_to(root).as_posix()
