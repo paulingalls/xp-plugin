@@ -332,6 +332,57 @@ class TestTrunkMotionGuards:
         assert "someone else landed a story here" in (repo / "src" / "thing.py").read_text()
 
 
+class TestAReviewerMayNotREWRITEWhatItWasGiven:
+    """012b handback N2, carried by story-011 and still open: every motion check
+    is ancestry-BLIND. A reviewer that resets past reviewed_head and re-commits
+    leaves `reviewed_head..HEAD` holding only its own commits, so authorship
+    passes; the tree is clean, `.xp/` is untouched, the marker is intact; and
+    land's own ancestor check reads shown_sha, which was recorded AFTER the
+    reviewer and is therefore an ancestor of its own rewrite by construction.
+    The lead's story commits merge as if reviewed, having been deleted.
+    """
+
+    def rewriting_stub(self, tmp_path):
+        (tmp_path / "bin" / "claude").write_text(
+            "#!/bin/sh\n"
+            "p=$(sed -n 's/^REPORT_PATH: //p')\n"
+            'printf \'{"fixed": [], "blocking": [], "noted": []}\' > "$p"\n'
+            "git reset -q --hard HEAD~1\n"  # the lead's story work, gone
+            "echo 'x = 1' > src/thing.py\n"
+            "git -c user.name='xp story-reviewer' -c user.email='r@xp'"
+            " commit -qam 'reviewer rewrote the branch'\n"
+            'printf \'{"result": "clean"}\'\n'
+        )
+        (tmp_path / "bin" / "claude").chmod(0o755)
+
+    def test_a_reviewer_that_rewrote_history_is_refused_and_records_nothing(self, tmp_path):
+        repo, env, g = make_repo(tmp_path)
+        reviewed = g("rev-parse", "HEAD").stdout.strip()
+        self.rewriting_stub(tmp_path)
+        r = close(repo, env, "review")
+        assert r.returncode == 2, r.stdout
+        assert reviewed[:8] in r.stderr and "reset --hard" in r.stderr, r.stderr
+        assert not marker_file(tmp_path).exists(), "recorded a round over dropped commits"
+        # and the recovery it names actually restores the lead's work
+        g("reset", "-q", "--hard", reviewed)
+        assert "A = 2" in (repo / "src" / "thing.py").read_text()
+
+    def test_a_reviewer_that_only_ADDS_commits_is_still_recorded(self, tmp_path):
+        """The pair: the ordinary fixing reviewer must not trip this."""
+        repo, env, _g = make_repo(tmp_path)
+        (tmp_path / "bin" / "claude").write_text(
+            "#!/bin/sh\n"
+            "p=$(sed -n 's/^REPORT_PATH: //p')\n"
+            'printf \'{"fixed": ["f"], "blocking": [], "noted": []}\' > "$p"\n'
+            "echo 'x = 1' >> src/thing.py\n"
+            "git -c user.name='xp story-reviewer' -c user.email='r@xp' commit -qam 'fix'\n"
+            'printf \'{"result": "fixed"}\'\n'
+        )
+        (tmp_path / "bin" / "claude").chmod(0o755)
+        assert close(repo, env, "review").returncode == 0
+        assert marker(tmp_path)["rounds"][0]["fixed"] == ["f"]
+
+
 class TestSelfCloseRefusal:
     """story-008 AC 6: the hard property behind TEAMMATE.md's declaration."""
 

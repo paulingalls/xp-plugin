@@ -160,6 +160,14 @@ def check_reviewer_motion(
             " the repo, so no diff shows it, and a review may not rewrite the card it"
             " is being reviewed under"
         )
+    # Ancestry-BLIND, and every check below reads that range: a reviewer that RESET
+    # past reviewed_head leaves only its own commits in it, so authorship passes over
+    # the lead's deleted work — and shown_sha is read too late to see it (012b N2).
+    if git("merge-base", "--is-ancestor", reviewed_head, "HEAD", check=False).returncode:
+        return refuse(
+            "HEAD no longer contains the tree you were shown — the review REWROTE"
+            " history, so commits it was handed are not in what would merge"
+        )
     rng = f"{reviewed_head}..HEAD"
     strays = [
         ln
