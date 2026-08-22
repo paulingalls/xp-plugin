@@ -206,7 +206,8 @@ def cmd_review(story_id: str, dry_run: bool = False, free: bool = False) -> int:
     base = git("merge-base", f"refs/heads/{trunk}", "HEAD").stdout.strip()
     digest_before = review.marker_digest(marker)
     prior = render_prior_rounds(state.get("rounds", []))
-    result, err = review.run(build_bundle(card, base, path, prior), Path.cwd(), dry_run)
+    bundle = build_bundle(card, base, path, prior)
+    result, err = review.run(bundle, Path.cwd(), dry_run, card=card)
     if dry_run:
         return 0
     if err:  # crash, timeout, absent binary — it may still have committed first
