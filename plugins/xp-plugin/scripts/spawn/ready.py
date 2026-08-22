@@ -26,7 +26,7 @@ from work import (
 )
 
 
-def drift(story_id: str, card: str) -> str:
+def drift(story_id: str, card: str, minted_only: bool = False) -> str:
     """ "" when this card is the one the plan reviewer saw; otherwise the refusal.
 
     The reviewed TEXT is stored beside its digest so the refusal can show what
@@ -35,10 +35,16 @@ def drift(story_id: str, card: str) -> str:
     """
     marker = ready_marker_path(story_id)
     if not marker.exists():
+        # land re-checks this too, where absence means a branch that predates the
+        # digest rather than a bracket someone typed — spawn is what refuses that.
         return (
-            f"refused: {story_id} reads [ready] but nothing minted it — the bracket was"
-            " typed, not earned. After the plan review, put the heading back to [planned]"
-            f" and run `spawn.py ready {story_id}`, which records the card the reviewer saw."
+            ""
+            if minted_only
+            else (
+                f"refused: {story_id} reads [ready] but nothing minted it — the bracket was"
+                " typed, not earned. After the plan review, put the heading back to [planned]"
+                f" and run `spawn.py ready {story_id}`, which records the card the reviewer saw."
+            )
         )
     try:
         minted = json.loads(marker.read_text())

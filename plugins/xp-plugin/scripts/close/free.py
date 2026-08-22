@@ -118,11 +118,3 @@ def cmd_land(slug: str, dry_run: bool) -> int:
     print(render_noted(rounds), end="")
     print(f"PR open against {trunk}. After it merges: `git tag {version}` there, and push the tag")
     return 0
-
-
-def cmd(slug: str, action: str, dry_run: bool) -> int:
-    if action == "start":
-        return cmd_start(slug)
-    if action == "review":
-        return cmd_review(slug, dry_run)
-    return cmd_land(slug, dry_run)

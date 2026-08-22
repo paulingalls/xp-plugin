@@ -148,10 +148,10 @@ def build_bundle(card: str, base: str, report: Path, prior: str = "") -> str:
         ("Earlier rounds of THIS review", prior or "none — you are round 1"),
         ("Cumulative diff", git("diff", f"{base}..HEAD").stdout),
         ("work.md entries filed during the story", work_entries_since(base_epoch) or "none"),
-        ("PROCESS", _read_first(str(review.PLUGIN_ROOT / "PROCESS.md"))),
-        ("VALUES", _read_first(str(Path(__file__).parent.parent / "VALUES.md"))),
-        ("Constraints", _read_first(".xp/constraints.md")),
-        ("System context", _read_first(".xp/system.md")),
+        ("PROCESS", _read(str(review.PLUGIN_ROOT / "PROCESS.md"))),
+        ("VALUES", _read(str(Path(__file__).parent.parent / "VALUES.md"))),
+        ("Constraints", _read(".xp/constraints.md")),
+        ("System context", _read(".xp/system.md")),
     ]
     return "".join(f"## {title}\n\n{body}\n\n" for title, body in sections)
 
@@ -227,19 +227,16 @@ def cmd_review(story_id: str, dry_run: bool = False, free: bool = False) -> int:
     return 0
 
 
-def _read_first(*candidates: str) -> str:
-    for c in candidates:
-        p = Path(c)
-        if p.exists():
-            return p.read_text()
-    return f"(missing: {candidates[0]})"
+def _read(path: str) -> str:
+    p = Path(path)
+    return p.read_text() if p.exists() else f"(missing: {path})"
 
 
 def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
-    import review
-
-    sys.path.insert(0, str(Path(__file__).parent / "close"))
+    sys.path[:0] = [str(Path(__file__).parent / d) for d in ("close", "spawn")]
     import overlap
+    import ready
+    import review
 
     if git("status", "--porcelain").stdout.strip():
         return fail("refused: working tree is dirty — Verify must judge the tree that merges")
@@ -272,11 +269,14 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
         return fail(err)
     if not plan_path().exists():
         return fail(f"refused: {stale_plan() or f'no plan at {plan_path()}'}")
-    plan = plan_path().read_text()
     try:
-        card, _ = story_card(plan, story_id)
+        card, _ = story_card(plan_path().read_text(), story_id)
     except KeyError as e:
         return fail(f"refused: {e.args[0]}")
+    # The plan-review credential, unread since spawn: the plan left the repo, so no
+    # diff shows a card edit, and the `Verify:` line below is SHELL-EXECUTED.
+    if drift := ready.drift(story_id, card, minted_only=True):
+        return fail(drift)
     verify = verify_commands(card)
     if not verify:
         return fail(f"refused: {story_id} has no Verify: line — an unverifiable story cannot close")
@@ -427,7 +427,11 @@ def main() -> int:
         sys.path.insert(0, str(Path(__file__).parent / "close"))
         import free
 
-        return free.cmd(a.slug, a.action, a.dry_run)
+        if a.action == "start":
+            return free.cmd_start(a.slug)
+        if a.action == "review":
+            return free.cmd_review(a.slug, a.dry_run)
+        return free.cmd_land(a.slug, a.dry_run)
     if a.kind == "sprint":
         import sprint_close
 

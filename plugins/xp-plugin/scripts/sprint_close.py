@@ -110,7 +110,7 @@ def build_sprint_bundle(
 ) -> str:
     """Built once per LEG, at launch: the closing pass must diff the tree the
     fixer left, and a bundle composed up front would hand it the pre-fix one."""
-    from close import _read_first
+    from close import _read
 
     resolutions, work_md = _sprint_records(
         data_root(), int(git("show", "-s", "--format=%ct", base).stdout.strip())
@@ -123,10 +123,10 @@ def build_sprint_bundle(
         ("Cumulative sprint diff", git("diff", f"{base}..HEAD").stdout),
         ("Resolutions filed during the sprint", resolutions),
         ("work.md entries filed during the sprint", work_md),
-        ("PROCESS", _read_first(str(PLUGIN_ROOT / "PROCESS.md"))),
-        ("VALUES", _read_first(str(PLUGIN_ROOT / "VALUES.md"))),
-        ("Constraints", _read_first(".xp/constraints.md")),
-        ("System context", _read_first(".xp/system.md")),
+        ("PROCESS", _read(str(PLUGIN_ROOT / "PROCESS.md"))),
+        ("VALUES", _read(str(PLUGIN_ROOT / "VALUES.md"))),
+        ("Constraints", _read(".xp/constraints.md")),
+        ("System context", _read(".xp/system.md")),
     ]
     return "".join(f"## {title}\n\n{body}\n\n" for title, body in sections)
 
@@ -326,11 +326,8 @@ def refuse_unbumpable(ref: str = "HEAD") -> int:
     return fail(f"refused: latest tag {latest!r} is not vMAJOR.MINOR — cannot bump it")
 
 
-GATE_FILES = overlap.GATE_FILES
-
-
 def _is_retro_prose(path: str) -> bool:
-    return path.startswith(".xp/") and path not in GATE_FILES
+    return path.startswith(".xp/") and path not in overlap.GATE_FILES
 
 
 def _coverage_refusal(sprint_id: str, head: str) -> str:
@@ -373,7 +370,7 @@ def _coverage_refusal(sprint_id: str, head: str) -> str:
         for ln in git("log", "--format=%h|%an|%s", f"{shown}..{head}").stdout.splitlines()
         if ln.split("|")[1] != REVIEWER_NAME
     ]
-    if not strays and not any(f in GATE_FILES for f in moved.stdout.splitlines()):
+    if not strays and not any(f in overlap.GATE_FILES for f in moved.stdout.splitlines()):
         print(f"the delta since {shown[:8]} is the reviewer's own fixes")
         return ""
     if code := [f for f in moved.stdout.splitlines() if not _is_retro_prose(f)]:
@@ -424,7 +421,9 @@ def cmd_land(sprint_id: str, dry_run: bool) -> int:
         print("the reviewer changed this tree — you are merging its work:")
         print(work, end="")
         print(f"full diff: {review.diff_path(review.sprint_report_path(sprint_id, 'fix', rounds))}")
-    if gates := [f for f in git("diff", "--name-only", rng).stdout.splitlines() if f in GATE_FILES]:
+    if gates := [
+        f for f in git("diff", "--name-only", rng).stdout.splitlines() if f in overlap.GATE_FILES
+    ]:
         print(f"among them a gate file, which no later check re-reads: {', '.join(gates)}")
     if stale := review.reviewer_range(shown, git("rev-parse", "HEAD").stdout.strip()):
         print("reviewer commits from a round that never recorded — nothing covers these:")
