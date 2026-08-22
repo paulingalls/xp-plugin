@@ -355,6 +355,12 @@ def _coverage_refusal(sprint_id: str, head: str) -> str:
     moved = git("diff", "--name-only", shown, head, check=False)
     if moved.returncode != 0:
         return f"refused: the review recorded {shown[:8]}, which no longer exists — {rerun}"
+    # BEFORE the authorship branch: an empty range reads there as "no strays"
+    if git("merge-base", "--is-ancestor", shown, head, check=False).returncode:
+        return (
+            f"refused: HEAD does not contain {shown[:8]}, the tree the round covered"
+            f" — the recorded round describes no tree that exists. {rerun}"
+        )
     # AUTHORSHIP, the story leg's rule: the review leg's fixer commits inside the
     # range its round covers, so a bare sha compare refuses the release over the
     # fixes the review exists to produce. Never over a GATE_FILE, whatever signed

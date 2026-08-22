@@ -333,6 +333,22 @@ class TestLandCoverage:
         r = sprint(repo, env, "land", "--dry-run")
         assert r.returncode == 0, r.stdout + r.stderr
 
+    def test_a_HEAD_that_no_longer_CONTAINS_the_reviewed_tree_refuses(self, tmp_path):
+        """The authorship branch above reads an EMPTY commit range as "no strays",
+        and `shown..HEAD` is empty exactly when HEAD dropped what the round covered.
+        So a `reset --hard` after the review released a tree missing the reviewed
+        work, under a printed claim that the delta was the reviewer's own fixes —
+        the story leg refuses this with `--is-ancestor` and this leg did not."""
+        repo, env, g = make_repo(tmp_path)
+        (repo / "src.py").write_text("A = 1\nREVIEWED = 2\n")
+        g("commit", "-qam", "work the round covered")
+        record_reviews(tmp_path, repo, env)
+        shown = head(repo, env)
+        g("reset", "--hard", "-q", "HEAD~1")
+        r = sprint(repo, env, "land", "--dry-run")
+        assert r.returncode == 2, r.stdout + r.stderr
+        assert shown[:8] in r.stderr and "does not contain" in r.stderr, r.stderr
+
     def test_a_reviewer_authored_GATE_FILE_commit_is_still_not_covered(self, tmp_path):
         """The authorship exemption is not a blank cheque either (f0fc1bb8 again,
         one actor over): review-time motion permits any `.xp/` path a sprint card's
