@@ -331,10 +331,19 @@ class TestCodexExecutor:
             ("--disable", "unified_exec"),
             ("--sandbox", "workspace-write"),
             ("--add-dir", str(tmp_path / "data")),
-            # XP_ROLE (self-close bar) and GIT_AUTHOR_* (the reviewer's signature)
-            # reach codex's shell only under this policy, and ~/.codex/config.toml
-            # owns it — unpinned, the gates arrive or not by someone else's file
+            # XP_ROLE (self-close bar — close.py reads an ABSENT value as `lead`)
+            # and GIT_AUTHOR_* (the reviewer's signature) reach codex's shell only
+            # through shell_environment_policy, and ALL THREE of these keys can
+            # strip them: inherit chooses the source set, exclude drops patterns
+            # from it, include_only keeps only patterns. Each is a
+            # ~/.codex/config.toml key, so a consuming developer's file — not the
+            # lead's, which is the only one the story-021 walk measured — decides.
+            # All three measured present on 0.147.0 from codex's own error text
+            # for a bad value; `[]` is each list key's own default, which is why
+            # pinning it is a restoration and not a new policy.
             ("-c", "shell_environment_policy.inherit=all"),
+            ("-c", "shell_environment_policy.exclude=[]"),
+            ("-c", "shell_environment_policy.include_only=[]"),
         ]:
             assert pair in pairs, f"{pair} missing from {argv}"
         assert "-e" not in argv, "codex has no -e; the effort rides -c (spike-falsified)"

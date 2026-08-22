@@ -52,11 +52,13 @@ def codex_argv(model: str, effort: str) -> list[str]:
     6193855e probed the spike's git-common-dir widening unnecessary on 0.147.0.
     `-` reads the prompt from stdin, keeping ~2k tokens out of `ps`."""
     argv = ["codex", "exec", "--disable", "unified_exec"]
-    # Our gates ride the ENVIRONMENT — XP_ROLE bars a self-close, GIT_AUTHOR_* signs
-    # the reviewer's commits — and codex hands its shell only what
-    # `shell_environment_policy.inherit` (core|all|none) allows, a ~/.codex/config.toml
-    # key. Unpinned, someone else's config decides whether our gates arrive at all.
-    argv += ["-c", "shell_environment_policy.inherit=all"]
+    # Our gates ride the ENVIRONMENT (XP_ROLE, GIT_AUTHOR_*), and THREE
+    # ~/.codex/config.toml keys can each strip them on their way to the shell.
+    # Never ignore_default_excludes: its default drops *KEY*/*SECRET*/*TOKEN*,
+    # which no gate of ours is named, and clearing it would hand a sandboxed
+    # agent the lead's secrets to buy nothing.
+    for pin in ("inherit=all", "exclude=[]", "include_only=[]"):
+        argv += ["-c", f"shell_environment_policy.{pin}"]
     argv += ["--sandbox", "workspace-write", "--add-dir", str(data_root())]
     argv += ["-m", model]
     if effort:  # never -e: codex has no such flag, and a wrong spelling dies on contact
