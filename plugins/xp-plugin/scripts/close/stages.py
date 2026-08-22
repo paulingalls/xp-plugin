@@ -13,6 +13,7 @@ from work import config_block_value
 
 ANGLES = Path(__file__).parent.parent / "angles"
 DEFAULT_BATCHES = 2
+STAGES = ("finder", "verifier", "fixer", "closer")
 
 
 def angles() -> tuple[list[tuple[str, str]], str]:
@@ -29,18 +30,23 @@ def angles() -> tuple[list[tuple[str, str]], str]:
     return found, ""
 
 
-def charter(stage: str) -> tuple[str, str]:
-    """(the shared charter plus this stage's section, refusal). Same argument as
-    angles(), one file over: a stage launched without its section is an
-    uninstructed agent whose report the pipeline records all the same."""
+def charters() -> tuple[dict[str, str], str]:
+    """{stage: the shared charter plus its own section}, or a refusal. Hoisted for
+    angles()'s reason and one worse: a stage launched without its section is an
+    uninstructed agent whose report the pipeline records all the same, and reading
+    the CLOSER's section at the closer's launch discovers it missing only after
+    every earlier stage has spent and the fixer has committed."""
     import review
 
     text = review.charter("sprint-reviewer")
     shared, _, rest = text.partition("\n## ")
+    found = {}
     for section in rest.split("\n## "):
-        if section.startswith(f"{stage}\n"):
-            return f"{shared.strip()}\n\n## {section.strip()}", ""
-    return "", f"refused: agents/sprint-reviewer.md has no `## {stage}` section"
+        if (name := section.split("\n", 1)[0].strip()) in STAGES:
+            found[name] = f"{shared.strip()}\n\n## {section.strip()}"
+    if missing := [s for s in STAGES if s not in found]:
+        return {}, f"refused: agents/sprint-reviewer.md has no `## {missing[0]}` section"
+    return found, ""
 
 
 def batches(items: list, cap: int) -> list[list]:

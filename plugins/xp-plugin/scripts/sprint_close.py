@@ -157,6 +157,9 @@ def cmd_review(sprint_id: str, dry_run: bool) -> int:
     cap, err = stages.batch_cap()
     if err:
         return fail(err)
+    charters, err = stages.charters()
+    if err:
+        return fail(err)
 
     marker = sprint_marker(sprint_id)
     state = json.loads(marker.read_text()) if marker.exists() else {}
@@ -168,13 +171,10 @@ def cmd_review(sprint_id: str, dry_run: bool) -> int:
     digest_before = review.marker_digest(marker)
 
     def leg(stage: str, key: str, extra: list) -> tuple[dict, str]:
-        charter, err = stages.charter(stage)
-        if err:
-            return {}, err
         path = review.sprint_report_path(sprint_id, key, round_n)
         if not dry_run:  # a preview must not delete the findings of a refused round
             path.unlink(missing_ok=True)
-        bundle = build_sprint_bundle(sprint_id, cards, base, path, charter, extra)
+        bundle = build_sprint_bundle(sprint_id, cards, base, path, charters[stage], extra)
         result, err = review.run(bundle, Path.cwd(), dry_run, name=f"sprint {key}")
         if dry_run or err:  # an EMPTY report, not a shapeless one: a preview walks
             empty = {k: [] for k in review.REPORT_KEYS}

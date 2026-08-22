@@ -79,6 +79,20 @@ class TestTheFindersAreBlind:
         assert angle_names()[0] in r.stderr, r.stderr
         assert bundles(tmp_path) == [], "spawned a finder over an angle it could not read"
 
+    def test_a_missing_stage_SECTION_refuses_before_anything_is_launched(self, tmp_path):
+        """The angle guard's twin, one file over, and hoisted for a worse reason:
+        read at each stage's own launch, a missing `## closer` is discovered only
+        after the finders, the verifiers and the fixer have spent — and after the
+        fixer has committed, which `fail` alone names no undo for."""
+        repo, env, _g = make_repo(tmp_path)
+        plugin = tmp_path / "plugin-copy"
+        shutil.copytree(PLUGIN, plugin)
+        agent = plugin / "agents" / "sprint-reviewer.md"
+        agent.write_text(agent.read_text().split("\n## closer")[0] + "\n")
+        r = sprint(repo, env, "review", close=plugin / "scripts" / "close.py")
+        assert r.returncode == 2 and "closer" in r.stderr, r.stderr
+        assert bundles(tmp_path) == [], "spent a finder before reading the closer's section"
+
     def test_an_empty_angles_directory_refuses(self, tmp_path):
         repo, env, _g = make_repo(tmp_path)
         plugin = tmp_path / "plugin-copy"
