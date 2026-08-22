@@ -1,5 +1,6 @@
 """story-006: /xp-setup scaffold. Verify: pytest -q tests/test_setup.py"""
 
+import json
 import re
 import shutil
 import stat
@@ -302,3 +303,23 @@ class TestDogfoodMatchesTheScaffold:
             "a scaffolded repo cannot run a sprint close: the seeded plan has no"
             " `### Sprint N` section for sprint_stories to find"
         )
+
+
+class TestEnvFile:
+    """story-027 AC1: the data root records the plugin root that scaffolded it, so
+    a codex lead's scripts — spawned by nothing, holding no ${CLAUDE_PLUGIN_ROOT} —
+    can find the install. In THIS repo the plugin is in-tree and the gap is invisible."""
+
+    def test_setup_seeds_the_env_file_with_its_own_root_and_version(self, tmp_path):
+        """XP_DATA unset, as in the AC3 arm above: data_root() really hashes and the
+        developer's own ~/.xp is never written."""
+        repo, env = bare_repo(tmp_path)
+        r = run_setup(repo, env)
+        assert r.returncode == 0, r.stderr
+        found = list((tmp_path / ".xp" / "data").glob("*/env.json"))
+        assert len(found) == 1, f"expected one state-root env file, found {found}"
+        recorded = json.loads(found[0].read_text())
+        manifest = json.loads((SCRIPTS.parent / ".claude-plugin" / "plugin.json").read_text())
+        assert recorded["plugin_root"] == str(SCRIPTS.parent)
+        assert recorded["plugin_version"] == manifest["version"]
+        assert str(found[0]) in r.stdout, "the summary never says where it landed"
