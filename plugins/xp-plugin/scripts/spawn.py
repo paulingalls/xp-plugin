@@ -247,17 +247,16 @@ def flip_to_in_progress(story_id: str) -> None:
     commit on the story branch: the plan is per-clone, so nothing stages and the
     lead sees [in-progress] at once.
     """
-    edit_plan(
-        lambda text: "".join(
-            ln.replace("[ready]", "[in-progress]")
-            if ln.startswith(f"#### {story_id} ") and "[ready]" in ln
-            else ln
-            for ln in text.splitlines(keepends=True)
-        )
-    )
+    edit_plan(lambda text: flip_map(text, story_id))
 
 
-def not_ready_hint(status: str) -> str:
+def flip_map(text: str, story_id: str) -> str:
+    from work import flip_status
+
+    return flip_status(text, story_id, "ready", "in-progress")
+
+
+def not_ready_hint(status: str, story_id: str) -> str:
     if status == "in-progress":
         return (
             "An earlier spawn already flipped it, and since the plan is per-clone the"
@@ -266,8 +265,9 @@ def not_ready_hint(status: str) -> str:
             " over, put its heading back to [ready] there."
         )
     return (
-        "A card starts [planned]; the plan review is what clears it — twice in"
-        " sprint-003 a card reached a teammate with no review, and only a human caught it"
+        "A card starts [planned]; the plan review and then `spawn.py ready"
+        f" {story_id}` are what clear it — twice in sprint-003 a card reached a teammate"
+        " with no review, and only a human caught it"
     )
 
 
@@ -311,9 +311,10 @@ def cmd_spawn(story_id: str, override: str, dry_run: bool, in_place: bool = Fals
     except KeyError as e:
         return fail(f"refused: {e.args[0]}")
     if status != "ready":
-        return fail(
-            f"refused: {story_id} is [{status}], spawn requires [ready]. {not_ready_hint(status)}"
-        )
+        hint = not_ready_hint(status, story_id)
+        return fail(f"refused: {story_id} is [{status}], spawn requires [ready]. {hint}")
+    if drift := ready().drift(story_id, card):
+        return fail(drift)
     if in_place:
         if dry_run:
             print(
@@ -415,8 +416,24 @@ def unclean_teammate_result(tree: Path, handed_over: tuple[str, str], story_id: 
     return ""
 
 
+def ready():
+    """The credential leg, in its own leaf module under the 500-line cap
+    (constraint 8). Imported function-locally, the way close.py reaches
+    close/overlap.py: the subdirectory is not on the path at module scope."""
+    sys.path.insert(0, str(Path(__file__).parent / "spawn"))
+    import ready as module
+
+    return module
+
+
 def main() -> int:
-    p = argparse.ArgumentParser(description=__doc__)
+    if sys.argv[1:2] == ["ready"]:
+        return ready().main(sys.argv[2:])
+    p = argparse.ArgumentParser(
+        description=__doc__,
+        epilog="ready <story-id>: after the plan review, mint the card's digest and"
+        " flip [planned] -> [ready]. Editing the card afterwards refuses the spawn.",
+    )
     p.add_argument("story_id")
     p.add_argument("executor", nargs="?", default="", help="harness/model[/effort] override")
     p.add_argument("--dry-run", action="store_true")

@@ -409,12 +409,9 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
 
 
 def _flip_status(plan: str, story_id: str) -> str:
-    out = []
-    for ln in plan.splitlines(keepends=True):
-        if ln.startswith(f"#### {story_id} ") and "[in-progress]" in ln:
-            ln = ln.replace("[in-progress]", "[done]")
-        out.append(ln)
-    return "".join(out)
+    from work import flip_status
+
+    return flip_status(plan, story_id, "in-progress", "done")
 
 
 def main() -> int:
