@@ -13,6 +13,8 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
+sys.path.insert(0, str(Path(__file__).parent / "close"))
+import stages
 from close import config_flat, default_branch, fail, git, story_card
 from review import REVIEWER_NAME
 from work import (
@@ -102,20 +104,21 @@ def _sprint_records(root: Path, since_epoch: int) -> tuple[str, str]:
     return "\n".join(out) or "none", "\n".join(kept).strip() or "none"
 
 
-def build_sprint_bundle(sprint_id: str, cards: str, base: str, report: Path) -> str:
-    import review
-    from bookkeep import render_sprint_prior
+def build_sprint_bundle(
+    sprint_id: str, cards: str, base: str, report: Path, charter: str, extra: list
+) -> str:
+    """Built once per LEG, at launch: the closing pass must diff the tree the
+    fixer left, and a bundle composed up front would hand it the pre-fix one."""
     from close import _read_first
 
-    state = json.loads(p.read_text()) if (p := sprint_marker(sprint_id)).exists() else {}
     resolutions, work_md = _sprint_records(
         data_root(), int(git("show", "-s", "--format=%ct", base).stdout.strip())
     )
     sections = [
-        ("Your charter", review.charter("sprint-reviewer")),
+        ("Your charter", charter),
         ("Your report", f"REPORT_PATH: {report}"),
+        *extra,
         (f"The stories in sprint {sprint_id}", cards),
-        ("Findings from earlier rounds", render_sprint_prior(state.get("rounds", []))),
         ("Cumulative sprint diff", git("diff", f"{base}..HEAD").stdout),
         ("Resolutions filed during the sprint", resolutions),
         ("work.md entries filed during the sprint", work_md),
@@ -128,7 +131,11 @@ def build_sprint_bundle(sprint_id: str, cards: str, base: str, report: Path) -> 
 
 
 def cmd_review(sprint_id: str, dry_run: bool) -> int:
+    """One review, four stages: N blind finders, batched verifiers, one fixer,
+    one blockers-only closing pass. The recorded round is the fixer's report
+    plus whatever the closing pass still blocks on."""
     import review
+    from bookkeep import render_sprint_prior
 
     if git("status", "--porcelain").stdout.strip():
         return fail("refused: working tree is dirty — commit or stash first")
@@ -144,25 +151,68 @@ def cmd_review(sprint_id: str, dry_run: bool) -> int:
         )
     if not (cards := sprint_cards(plan.read_text(), sprint_id)):
         return fail(f"refused: no `### Sprint {sprint_id}` section in {plan}")
+    found, err = stages.angles()
+    if err:
+        return fail(err)
+    cap, err = stages.batch_cap()
+    if err:
+        return fail(err)
 
     marker = sprint_marker(sprint_id)
     state = json.loads(marker.read_text()) if marker.exists() else {}
-    path = review.sprint_report_path(sprint_id, "review", len(state.get("rounds", [])) + 1)
-    if not dry_run:  # a preview must not delete the findings of a refused round
-        path.unlink(missing_ok=True)
-    # BOTH before the launch: the reviewer may not move the tree, and recording a
-    # post-run head would make anything it moved count as reviewed.
+    round_n = len(state.get("rounds", [])) + 1
+    # BOTH before the launch: recording a post-run head would make anything the
+    # stages moved count as reviewed by the stage that moved it.
     head = git("rev-parse", "HEAD").stdout.strip()
     base = git("merge-base", f"refs/heads/{trunk}", "HEAD").stdout.strip()
-    digests = {marker: review.marker_digest(marker)}
-    bundle = build_sprint_bundle(sprint_id, cards, base, path)
-    result, err = review.run(bundle, Path.cwd(), dry_run, name="sprint-reviewer")
+    digest_before = review.marker_digest(marker)
+
+    def leg(stage: str, key: str, extra: list) -> tuple[dict, str]:
+        charter, err = stages.charter(stage)
+        if err:
+            return {}, err
+        path = review.sprint_report_path(sprint_id, key, round_n)
+        if not dry_run:  # a preview must not delete the findings of a refused round
+            path.unlink(missing_ok=True)
+        bundle = build_sprint_bundle(sprint_id, cards, base, path, charter, extra)
+        result, err = review.run(bundle, Path.cwd(), dry_run, name=f"sprint {key}")
+        if dry_run or err:
+            return {}, review.abort_text(head, err) if err else ""
+        print(result)  # before any refusal: the findings exist nowhere else yet
+        report, err = review.read_report(path)
+        return report, review.abort_text(head, err) if err else ""
+
+    prior = [("Findings from earlier rounds", render_sprint_prior(state.get("rounds", [])))]
+    candidates = []
+    for slug, prose in found:
+        report, err = leg("finder", f"find-{slug}", [("Your angle", prose), *prior])
+        if err:
+            return fail(err)
+        candidates += report.get("blocking", []) + report.get("noted", [])
     if dry_run:
+        print("(then: batched verification, the fixer, and the blockers-only closing pass)")
         return 0
+
+    survivors = []
+    for n, batch in enumerate(stages.batches(candidates, cap), 1):
+        judged = [("The candidates you are judging", "\n".join(f"- {c}" for c in batch))]
+        report, err = leg("verifier", f"verify-{n}", judged)
+        if err:
+            return fail(err)
+        survivors += report["blocking"]
+    print(f"{len(candidates)} candidates, {len(survivors)} survived refutation")
+
+    fixed = {"fixed": [], "blocking": [], "noted": []}
+    if survivors:
+        told = [("The findings you must fix", "\n".join(f"- {s}" for s in survivors))]
+        fixed, err = leg("fixer", "fix", told)
+        if err:
+            return fail(err)
+    closing, err = leg("closer", "close", [("What the fixer reported", json.dumps(fixed))])
     if err:
-        return fail(review.abort_text(head, err))
-    print(result)  # before any refusal: the findings exist nowhere else yet
-    if motion := review.check_report_only(head, digests):
+        return fail(err)
+
+    if motion := review.check_reviewer_motion(head, marker, digest_before, cards):
         return fail(motion)
     # No diff covers the plan now. Cross-lane BY CONSTRUCTION here, safe only
     # because a sprint review runs when every member is [done]: a mid-sprint run
@@ -171,13 +221,24 @@ def cmd_review(sprint_id: str, dry_run: bool) -> int:
         return fail(
             review.abort_text(head, f"sprint {sprint_id}'s cards changed during the review")
         )
-    report, err = review.read_report(path)
-    if err:
-        return fail(review.abort_text(head, err))
-    state.setdefault("rounds", []).append(report)
-    state["shown_sha"] = head
+    # Refuted candidates are recorded nowhere: the filter is the point, and a
+    # report that carries what the verifiers killed is the long one Paul cut.
+    round_ = {
+        "fixed": fixed["fixed"],
+        "blocking": fixed["blocking"] + closing["blocking"],
+        "noted": fixed["noted"],
+    }
+    state.setdefault("rounds", []).append(round_)
+    state["reviewed_head"] = head
+    state["shown_sha"] = git("rev-parse", "HEAD").stdout.strip()
     marker.write_text(json.dumps(state))
-    print(f"round {len(state['rounds'])} recorded at {head[:8]}")
+    fix_report = review.sprint_report_path(sprint_id, "fix", round_n)
+    if diff := review.write_reviewer_diff(fix_report, head):
+        print(f"the reviewer changed the tree. Its commits and full diff: {diff}")
+    print(
+        f"round {round_n} recorded at {state['shown_sha'][:8]}:"
+        f" {len(round_['fixed'])} fixed, {len(round_['blocking'])} blocking"
+    )
     return 0
 
 

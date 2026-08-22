@@ -2,11 +2,12 @@
 Split at sprint-004 open: tests are production code (constraint 8)."""
 
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
 
-from close_helpers import (  # noqa: F401
+from close_helpers import (
     REVIEWER_EMAIL,
     REVIEWER_NAME,
     launches,
@@ -74,9 +75,11 @@ def make_repo(tmp_path, plan=PLAN, config=CONFIG):
     return repo, env, g
 
 
-def sprint(repo, env, *args, sprint_id=SPRINT_ID):
+def sprint(repo, env, *args, sprint_id=SPRINT_ID, close=CLOSE):
+    """`close` names WHICH close.py runs: the angle injection drives a copy of
+    the plugin, so the refusal is proven on the real reader, not on a stub."""
     return subprocess.run(
-        [sys.executable, str(CLOSE), "sprint", sprint_id, *args],
+        [sys.executable, str(close), "sprint", sprint_id, *args],
         cwd=repo,
         env=env,
         capture_output=True,
@@ -101,6 +104,54 @@ def record_reviews(tmp_path, repo, env, blocking=(), shown=None):
     path.parent.mkdir(parents=True, exist_ok=True)
     round_ = {"fixed": [], "blocking": list(blocking), "noted": []}
     path.write_text(json.dumps({"rounds": [round_], "shown_sha": shown or head(repo, env)}))
+
+
+def stage_key(bundle):
+    """The pipeline stage a launch belongs to, read off the REPORT_PATH its
+    bundle names — the same string the leg passes to sprint_report_path."""
+    m = re.search(r"^REPORT_PATH: (.+)$", bundle, re.M)
+    return Path(m.group(1).strip()).name.split(".")[1] if m else ""
+
+
+def bundles(tmp_path, stage=""):
+    return [b for r in launches(tmp_path) if (b := r["stdin"]) and stage_key(b).startswith(stage)]
+
+
+def staged_stub(tmp_path, commits=(), **stages):
+    """A fake `claude` that answers PER STAGE, keyed off the report path.
+
+    One body for every launch cannot tell a finder from the closing pass, so a
+    planted blocker would be reported by every stage at once and the injection
+    would pass against a pipeline that never ran the stage it names. Stage keys
+    spell `-` as `_`: `find_security=`, `verify=`, `fix=`, `close=`, and a
+    prefix key answers every stage starting with it. `commits` is
+    [(stage prefix, shell)] the stub runs after writing its report — a stub that
+    never moves the tree cannot exercise the motion gates (constraint 2).
+    """
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir(exist_ok=True)
+    rec = tmp_path / "launches.jsonl"
+    table = {k.replace("_", "-"): v for k, v in stages.items()}
+    (bin_dir / "claude").write_text(
+        "#!/usr/bin/env python3\n"
+        "import json, os, re, sys\n"
+        "stdin = sys.stdin.read()\n"
+        f"open({str(rec)!r}, 'a').write(json.dumps({{'argv': sys.argv[1:],"
+        " 'env': dict(os.environ), 'stdin': stdin}) + '\\n')\n"
+        "m = re.search(r'^REPORT_PATH: (.+)$', stdin, re.M)\n"
+        "assert m, 'the bundle named no REPORT_PATH'\n"
+        "key = os.path.basename(m.group(1).strip()).split('.')[1]\n"
+        f"table = {json.dumps(table)}\n"
+        "clean = {'fixed': [], 'blocking': [], 'noted': []}\n"
+        "report = table.get(key, table.get(key.rsplit('-', 1)[0], clean))\n"
+        "open(m.group(1).strip(), 'w').write(json.dumps(report))\n"
+        f"for prefix, cmd in {json.dumps([list(c) for c in commits])}:\n"
+        "    if key.startswith(prefix):\n"
+        "        os.system(cmd)\n"
+        "sys.stdout.write(json.dumps({'result': 'findings above'}))\n"
+    )
+    (bin_dir / "claude").chmod(0o755)
+    return bin_dir
 
 
 def commit_as_reviewer(g, message):

@@ -74,9 +74,11 @@ class TestReviewLeg:
         g("checkout", "-q", "sprint-002")
         assert sprint(repo, env, "review").returncode == 0
         data = tmp_path / "data"
-        written = sorted(p.name for p in (data / "reports").rglob("*.json"))
+        story_reports = sorted(p.name for p in (data / "reports").glob("*.json"))
+        sprint_reports = sorted(p.name for p in (data / "reports" / "sprint").glob("*.json"))
         markers = sorted(p.name for p in (data / "markers").rglob("*.json"))
-        assert len(written) == 2, f"the sprint and the story shared a report key: {written}"
+        assert story_reports == ["sprint-2.round-1.json"], story_reports
+        assert sprint_reports and all(n.startswith("2.") for n in sprint_reports), sprint_reports
         assert len(markers) == 2, f"the sprint and the story shared a marker key: {markers}"
         assert marker_path(tmp_path).exists()
 
@@ -289,20 +291,21 @@ class TestReportOnlyIsAMechanism:
 
 
 class TestSprintCharter:
-    def test_the_sprint_charter_is_a_delta_not_a_second_charter(self):
-        """An opus executor with no bound models this on story-reviewer.md (712
-        words), whose FIRST duty is "YOU FIX WHAT YOU FIND, in the tree you were
-        given" — a fixing charter for a leg whose mechanism refuses any motion."""
+    def test_what_every_stage_shares_is_a_delta_not_a_second_charter(self):
+        """An opus executor with no bound modelled this on story-reviewer.md (712
+        words). Four stages now share ONE preamble, and it is the part every
+        launch pays for — the per-stage sections have their own cap in
+        test_review.py. `report-only` is gone from it deliberately: the fixer
+        commits, and a charter still claiming otherwise contradicts the gate."""
         text = (PLUGIN / "agents" / "sprint-reviewer.md").read_text()
-        body = text.split("---", 2)[2]
-        assert len(body.split()) <= 150, f"{len(body.split())} words: a charter, not a delta"
-        assert "in the tree you were given" not in body, "the fixing duty contradicts this leg"
-        assert "report-only" in body.lower()
-        assert "PROCESS.md" in body, "the bar and the rubric are POINTED at, never restated"
-        # the report SHAPE as the reviewer must write it, not the bucket names in
+        shared = text.split("---", 2)[2].split("\n## ")[0]
+        assert len(shared.split()) <= 150, f"{len(shared.split())} words: a preamble, not a charter"
+        assert "report-only" not in shared.lower(), "the fixer commits; this leg is not report-only"
+        assert "PROCESS.md" in shared, "the bar and the rubric are POINTED at, never restated"
+        # the report SHAPE as the stage must write it, not the bucket names in
         # prose: `noted` reads fine in a sentence that never states the JSON
-        for token in ('"fixed"', '"blocking"', '"noted"', "broad", "security"):
-            assert token in body, f"the charter never names {token}"
+        for token in ('"fixed"', '"blocking"', '"noted"'):
+            assert token in shared, f"the charter never names {token}"
 
     def test_the_new_agent_files_frontmatter_is_funded_not_added(self):
         """Both shipped-prose caps sit at 240/300 and 1197/1200 — one token of

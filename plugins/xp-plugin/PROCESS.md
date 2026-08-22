@@ -41,9 +41,8 @@ One page. The values (VALUES.md) cover what this page doesn't.
    falsifiers batch-run + full tier + note triage + retro (one-page narrative + a
    proposed diff to constraints/config — a learning that changes nothing executable
    isn't recorded; the narrative is PRESENTED to the human at close, never just
-   filed), then `review --lens broad|security` LAST, or the retro invalidates the
-   review that permits it. Debt triage with the
-   human, under the **finding bar**: a finding earns work only if its failure mode is
+   filed), then `review` LAST, or the retro invalidates the review that permits
+   it. Debt triage with the human, under the **finding bar**: a finding earns work only if its failure mode is
    silent or corrupting (false green, corrupted record, unreviewed merge). Loud +
    patch-scale → fix now only if minutes. Loud + self-healing → NEVER — everything
    here is built fail-loud, so a never that later matters returns as an
