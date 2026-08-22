@@ -18,7 +18,7 @@ sys.path.insert(0, str(Path(__file__).parent / "spawn"))
 
 import review
 from close import fail, story_card
-from spawn import _read, _read_shipped
+from spawn import _read, _read_shipped, tree_state
 from work import chdir_repo_root, data_root, plan_path
 
 PLUGIN_ROOT = Path(__file__).parent.parent
@@ -29,7 +29,6 @@ def findings_path(story_id: str) -> Path:
     absolute path: <story-id>.md, then <story-id>.round-N.md beside it. One name
     for a file written once per round destroys the earlier round on write."""
     plans = data_root() / "plans"
-    plans.mkdir(parents=True, exist_ok=True)
     path, n = plans / f"{story_id}.md", 1
     while path.exists():
         n += 1
@@ -38,8 +37,6 @@ def findings_path(story_id: str) -> Path:
 
 
 def card_for(story_id: str) -> str:
-    """ "" when the plan cannot be read: a card is not a precondition for reviewing
-    a plan, and the charter judges coherence between them when both exist."""
     try:
         return story_card(plan_path().read_text(), story_id)[0]
     except (KeyError, OSError):
@@ -59,9 +56,27 @@ def build_bundle(charter: str, plan: str, card: str, out: Path) -> str:
     return "".join(f"## {title}\n\n{body}\n\n" for title, body in sections)
 
 
+def review_state(
+    plan_file: Path,
+) -> tuple[tuple[str, str], bytes | None, bytes | None]:
+    """State a report-only plan reviewer must leave unchanged."""
+
+    def contents(path: Path) -> bytes | None:
+        try:
+            return path.read_bytes()
+        except OSError:
+            return None
+
+    live_plan = plan_path()
+    return tree_state(Path.cwd()), contents(plan_file), contents(live_plan)
+
+
 def cmd_review(story_id: str, plan_file: Path, dry_run: bool) -> int:
-    if not plan_file.exists():
+    if not plan_file.is_file():
         return fail(f"refused: no plan at {plan_file} — draft it to a file first")
+    plan = plan_file.read_text()
+    if not plan.strip():
+        return fail(f"refused: the draft plan at {plan_file} is empty")
     # An empty read would spend a whole review on no rubric and still exit 0 with
     # plausible prose: nothing downstream can tell that from a real round.
     charter = review.charter("plan-reviewer")
@@ -70,15 +85,39 @@ def cmd_review(story_id: str, plan_file: Path, dry_run: bool) -> int:
             f"refused: {PLUGIN_ROOT / 'agents' / 'plan-reviewer.md'} carries no charter"
             " — a review with an empty rubric certifies. Restore the file"
         )
+    card = card_for(story_id)
+    if not card:
+        return fail(f"refused: no {story_id} card in {plan_path()}")
     out = findings_path(story_id)
-    bundle = build_bundle(charter, plan_file.read_text(), card_for(story_id), out)
-    result, err = review.run(bundle, Path.cwd(), dry_run, name="plan-reviewer")
+    if not dry_run:
+        out.parent.mkdir(parents=True, exist_ok=True)
+    bundle = build_bundle(charter, plan, card, out)
+    try:
+        before = review_state(plan_file)
+    except OSError as e:
+        return fail(f"refused: cannot snapshot the repository before review: {e}")
+    _result, err = review.run(bundle, Path.cwd(), dry_run, name="plan-reviewer", card=card)
     if dry_run:
         return 0
+    try:
+        changed = review_state(plan_file) != before
+    except OSError as e:
+        return fail(f"refused: the plan reviewer left the repository unreadable: {e}")
+    if changed:
+        return fail(
+            "refused: the plan reviewer changed the repository, draft, or story plan"
+            " — inspect and restore its changes before continuing"
+        )
     if err:
         return fail(err)
-    print(result)
-    print(f"findings: {out}" if out.exists() else f"no findings file at {out}", file=sys.stderr)
+    try:
+        findings = out.read_text().strip() if out.is_file() else ""
+    except OSError:
+        findings = ""
+    if not findings:
+        return fail(f"refused: the plan reviewer wrote no findings at {out}")
+    print(findings)
+    print(f"findings: {out}", file=sys.stderr)
     return 0
 
 

@@ -191,7 +191,13 @@ def _total(stdout):
 
 
 def stub_codex(
-    tmp_path, commit=True, write_file=False, report=None, prose=("thinking", "done"), network=None
+    tmp_path,
+    commit=True,
+    write_file=False,
+    report=None,
+    prose=("thinking", "done"),
+    network=None,
+    findings=None,
 ):
     """A fake `codex` that REJECTS what the real binary rejects.
 
@@ -246,6 +252,12 @@ def stub_codex(
             "assert m, 'the bundle named no REPORT_PATH'",
             f"subprocess.run(['sh', '-c', 'cat > \"$1\"', 'sh', m.group(1).strip()],"
             f" input={json.dumps(report)!r}, text=True, check=True)",
+        ]
+    if findings is not None:
+        body += [
+            "m = re.search(r'^FINDINGS_PATH: (.+)$', stdin, re.M)",
+            "assert m, 'the bundle named no FINDINGS_PATH'",
+            f"open(m.group(1).strip(), 'w').write({findings!r})",
         ]
     if write_file:
         body.append("open('teammate-left-this-uncommitted.txt', 'w').write('oops')")

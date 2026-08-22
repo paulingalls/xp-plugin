@@ -29,7 +29,7 @@ tests:
 """
 
 
-def stub_planner(tmp_path, findings="ROUND FINDINGS"):
+def stub_planner(tmp_path, findings="ROUND FINDINGS", write_findings=True, motion=""):
     """A fake `claude` that REFUSES a prompt carrying no charter.
 
     The rubric is the whole value of a review: a leg that lost it would still
@@ -50,7 +50,19 @@ def stub_planner(tmp_path, findings="ROUND FINDINGS"):
         "    sys.exit(2)\n"
         "m = re.search(r'^FINDINGS_PATH: (.+)$', stdin, re.M)\n"
         "assert m, 'the bundle named no FINDINGS_PATH'\n"
-        f"open(m.group(1).strip(), 'w').write({findings!r})\n"
+        f"write_findings = {write_findings!r}\n"
+        f"motion = {motion!r}\n"
+        f"open(m.group(1).strip(), 'w').write({findings!r}) if write_findings else None\n"
+        "if motion in ('dirty', 'commit'):\n"
+        "    open('drift.txt', 'a').write('reviewer motion\\n')\n"
+        "if motion == 'draft':\n"
+        f"    open({str(tmp_path / 'draft.md')!r}, 'a').write('reviewer motion\\n')\n"
+        "if motion == 'card':\n"
+        f"    open({str(tmp_path / 'data' / 'plan.md')!r}, 'a').write('reviewer motion\\n')\n"
+        "if motion == 'commit':\n"
+        "    import subprocess\n"
+        "    subprocess.run(['git', 'add', '-A'], check=True)\n"
+        "    subprocess.run(['git', 'commit', '-qm', 'plan reviewer motion'], check=True)\n"
         f"print(json.dumps({{'result': {findings!r}}}))\n"
     )
     (bin_dir / "claude").chmod(0o755)
@@ -125,11 +137,53 @@ class TestTheLaunch:
         assert findings_of(rec).name == "story-042.round-2.md"
         assert first.read_text() == "round one"
 
+    def test_success_without_the_required_findings_file_refuses(self, tmp_path):
+        repo, env, draft = self.repo(tmp_path)
+        rec = stub_planner(tmp_path, write_findings=False)
+        r = plan_review(repo, env, "story-042", str(draft))
+        assert r.returncode == 2 and "no findings" in r.stderr.lower(), r.stderr
+        assert "ROUND FINDINGS" not in r.stdout
+        assert rec.exists(), "the fault injection never reached the reviewer"
+
+    def test_report_only_role_refuses_every_guarded_motion(self, tmp_path):
+        for motion in ("dirty", "commit", "draft", "card"):
+            repo, env, draft = self.repo(tmp_path / motion)
+            stub_planner(tmp_path / motion, motion=motion)
+            before = subprocess.run(
+                ["git", "rev-parse", "HEAD"], cwd=repo, env=env, capture_output=True, text=True
+            ).stdout.strip()
+            r = plan_review(repo, env, "story-042", str(draft))
+            assert r.returncode == 2 and "changed" in r.stderr.lower(), r.stderr
+            if motion == "commit":
+                after = subprocess.run(
+                    ["git", "rev-parse", "HEAD"],
+                    cwd=repo,
+                    env=env,
+                    capture_output=True,
+                    text=True,
+                ).stdout.strip()
+                assert after != before, "the committed-motion injection never happened"
+
     def test_a_missing_plan_file_refuses_without_launching(self, tmp_path):
         repo, env, _draft = self.repo(tmp_path)
         rec = stub_planner(tmp_path)
         r = plan_review(repo, env, "story-042", str(tmp_path / "nope.md"))
         assert r.returncode == 2 and "Traceback" not in r.stderr, r.stderr
+        assert not rec.exists()
+
+    def test_an_empty_plan_refuses_without_launching(self, tmp_path):
+        repo, env, draft = self.repo(tmp_path)
+        draft.write_text("")
+        rec = stub_planner(tmp_path)
+        r = plan_review(repo, env, "story-042", str(draft))
+        assert r.returncode == 2 and "empty" in r.stderr.lower(), r.stderr
+        assert not rec.exists()
+
+    def test_a_missing_story_card_refuses_without_launching(self, tmp_path):
+        repo, env, draft = self.repo(tmp_path)
+        rec = stub_planner(tmp_path)
+        r = plan_review(repo, env, "story-nope", str(draft))
+        assert r.returncode == 2 and "card" in r.stderr.lower(), r.stderr
         assert not rec.exists()
 
     def test_dry_run_launches_nothing_and_prints_the_argv(self, tmp_path):
@@ -139,18 +193,20 @@ class TestTheLaunch:
         assert r.returncode == 0, r.stderr
         assert "--model haiku" in r.stdout and CHARTER_MARK in r.stdout
         assert not rec.exists()
+        assert not (tmp_path / "data" / "plans").exists()
 
     def test_a_codex_plan_reviewer_is_hardened_and_stays_network_off(self, tmp_path):
         """It nests nothing, so it gets no network — the other half of the
         executor's flag, asserted on the leg that must not have it."""
         repo, env, draft = self.repo(tmp_path, spec="codex/gpt-5.6-terra/high")
-        rec = stub_codex(tmp_path, commit=False, network=False)
+        rec = stub_codex(tmp_path, commit=False, network=False, findings="ROUND FINDINGS")
         r = plan_review(repo, env, "story-042", str(draft))
         assert r.returncode == 0, r.stderr
         argv = json.loads(rec.read_text())["argv"]
         assert list(pairwise(argv)).count(("--disable", "unified_exec")) == 1, argv
         assert argv[argv.index("-m") + 1] == "gpt-5.6-terra"
         assert CHARTER_MARK in json.loads(rec.read_text())["stdin"]
+        assert "ROUND FINDINGS" in r.stdout
 
 
 class TestTheProfileCarriesTheInvocation:
