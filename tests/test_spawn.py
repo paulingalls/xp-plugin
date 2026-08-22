@@ -2,9 +2,8 @@
 Verify: pytest -q tests/test_spawn.py"""
 
 import json
-import re
 import subprocess
-import sys
+from itertools import pairwise
 from pathlib import Path
 
 from spawn_helpers import (  # noqa: F401
@@ -19,6 +18,7 @@ from spawn_helpers import (  # noqa: F401
     spawn,
     stub_claude,
     stub_claude_requiring_verbose,
+    stub_codex,
     trunk_sha,
 )
 
@@ -187,10 +187,11 @@ class TestRefusals:
         r = spawn(repo, env, "story-042")
         assert r.returncode == 2 and "ready" in r.stderr
 
-    def test_codex_harness_refused_naming_sprint_3(self, tmp_path):
-        repo, env, _g = make_repo(tmp_path, executor="codex/gpt-5/high")
+    def test_unknown_harness_refused_naming_what_we_ship(self, tmp_path):
+        repo, env, _g = make_repo(tmp_path, executor="gemini/pro/high")
         r = spawn(repo, env, "story-042")
-        assert r.returncode == 2 and "Sprint 3" in r.stderr
+        assert r.returncode == 2
+        assert "claude" in r.stderr and "codex" in r.stderr, r.stderr
 
 
 class TestExecutorResolution:
@@ -307,180 +308,139 @@ def test_spawn_reaches_the_integration_target_only_through_close():
     assert "sprint_branch" not in SPAWN.read_text()
 
 
-class TestReadyCredential:
-    """story-023. [ready] was a bit with a reader and no writer, so a card edited
-    after its plan review kept the credential and a teammate was launched on text
-    no reviewer saw — measured three times in sprint-003."""
+class TestCodexExecutor:
+    """story-021. Every divergence between the two legs is a silent hole in one
+    of them, so these assert the codex leg reaches the SAME shared guards."""
 
-    MARKER = ("data", "markers", "story-042.ready.json")
-
-    def marker(self, tmp_path):
-        return tmp_path.joinpath(*self.MARKER)
-
-    def mint(self, repo, env, story="story-042"):
-        r = spawn(repo, env, "ready", story)
+    def argv(self, tmp_path, executor="codex/gpt-5.6-terra/medium"):
+        repo, env, _g = make_repo(tmp_path, executor=executor)
+        stub_codex(tmp_path)
+        r = spawn(repo, env, "story-042", "--dry-run")
         assert r.returncode == 0, r.stderr
-        return r
+        for ln in r.stdout.splitlines():
+            if ln.startswith("codex "):
+                return ln.split(" ")
+        raise AssertionError(f"no codex argv in: {r.stdout[:400]}")
 
-    def edit_card(self, tmp_path, old, new):
-        """CONSTRUCT the drift in the plan the lead actually edits (constraint 11)."""
-        plan = tmp_path / "data" / "plan.md"
-        text = plan.read_text()
-        assert old in text, f"fixture drifted: {old!r} not in the card"
-        plan.write_text(text.replace(old, new))
+    def test_the_assembled_argv(self, tmp_path):
+        argv = self.argv(tmp_path)
+        pairs = list(pairwise(argv))
+        for pair in [
+            ("-m", "gpt-5.6-terra"),
+            ("-c", "model_reasoning_effort=medium"),
+            ("--disable", "unified_exec"),
+            ("--sandbox", "workspace-write"),
+            ("--add-dir", str(tmp_path / "data")),
+            # XP_ROLE (self-close bar — close.py reads an ABSENT value as `lead`)
+            # and GIT_AUTHOR_* (the reviewer's signature) reach codex's shell only
+            # through shell_environment_policy, and ALL THREE of these keys can
+            # strip them: inherit chooses the source set, exclude drops patterns
+            # from it, include_only keeps only patterns. Each is a
+            # ~/.codex/config.toml key, so a consuming developer's file — not the
+            # lead's, which is the only one the story-021 walk measured — decides.
+            # All three measured present on 0.147.0 from codex's own error text
+            # for a bad value; `[]` is each list key's own default, which is why
+            # pinning it is a restoration and not a new policy.
+            ("-c", "shell_environment_policy.inherit=all"),
+            ("-c", "shell_environment_policy.exclude=[]"),
+            ("-c", "shell_environment_policy.include_only=[]"),
+        ]:
+            assert pair in pairs, f"{pair} missing from {argv}"
+        assert "-e" not in argv, "codex has no -e; the effort rides -c (spike-falsified)"
+        # asserting `--sandbox workspace-write` PRESENT bounds nothing on its own:
+        # 0.147.0 ships a documented override that silently voids it, and it is what
+        # a reader reaches for the first time the sandbox denies a write
+        assert "--dangerously-bypass-approvals-and-sandbox" not in argv, argv
+        # exactly one: note 6193855e probed the git-common-dir widening
+        # unnecessary on 0.147.0, and a second --add-dir is that widening returning
+        assert argv.count("--add-dir") == 1, argv
 
-    def test_an_ac_edited_after_the_mint_refuses_and_names_the_drift(self, tmp_path):
-        repo, env, _g = make_repo(tmp_path, status="planned")
-        stub_claude(tmp_path)
-        self.mint(repo, env)
-        self.edit_card(tmp_path, "- Given X, When Y, Then Z", "- Given P, When Q, Then R")
-        r = spawn(repo, env, "story-042")
-        assert r.returncode == 2, r.stdout
-        assert "Given X, When Y, Then Z" in r.stderr, r.stderr
-        assert "Given P, When Q, Then R" in r.stderr, r.stderr
-        # the bracket moved between mint and spawn and the digest forgave it, so
-        # a diff that names the heading would be reporting drift that is not drift
-        assert "#### story-042" not in r.stderr.replace(" #### story-042", ""), r.stderr
-        assert not (tmp_path / "data" / "worktrees").exists(), "launched on unreviewed text"
-        assert "[in-progress]" not in (tmp_path / "data" / "plan.md").read_text(), "flipped anyway"
+    def test_a_two_part_spec_carries_no_effort(self, tmp_path):
+        argv = self.argv(tmp_path, executor="codex/gpt-5.6-terra")
+        assert not [a for a in argv if a.startswith("model_reasoning_effort")], argv
 
-    def test_the_same_card_unedited_spawns(self, tmp_path):
-        """The pair AC1 demands: a refusal that also fires on the reviewed card
-        is a broken spawn, not a credential."""
-        repo, env, _g = make_repo(tmp_path, status="planned")
-        stub_claude(tmp_path)
-        self.mint(repo, env)
-        assert spawn(repo, env, "story-042").returncode == 0
-        assert (tmp_path / "data" / "worktrees" / "story-042").is_dir()
+    def test_the_stub_reds_when_the_gate_flag_is_deleted(self, tmp_path, monkeypatch):
+        """Constraint 2: a stub that cannot red against its target defect
+        certifies. Strip the flag from the REAL builder's output and run the
+        real stub on it — the pair is what the spawn ships."""
+        import spawn as spawn_mod
 
-    def test_an_edit_below_an_untouched_heading_refuses(self, tmp_path):
-        """AC2: every failure this sprint changed ACs, Files or Context and left
-        the heading — the only thing the old credential lived on — byte-identical."""
-        repo, env, _g = make_repo(tmp_path, status="planned")
-        stub_claude(tmp_path)
-        self.mint(repo, env)
-        heading = "#### story-042 — demo story   [ready]"
-        self.edit_card(tmp_path, "Files: src/thing.py", "Files: src/thing.py, src/other.py")
-        assert heading in (tmp_path / "data" / "plan.md").read_text()
-        r = spawn(repo, env, "story-042")
-        assert r.returncode == 2 and "src/other.py" in r.stderr, r.stderr
-
-    def test_a_hand_typed_ready_is_refused_because_nothing_minted_it(self, tmp_path):
-        """The forgery in its purest form: the bracket typed, no digest behind it.
-        Constructed here rather than inherited from make_repo's default, which
-        mints — otherwise this test would quietly stop testing anything."""
-        repo, env, _g = make_repo(tmp_path, status="planned")
-        stub_claude(tmp_path)
-        plan = tmp_path / "data" / "plan.md"
-        plan.write_text(plan.read_text().replace("[planned]", "[ready]"))
-        r = spawn(repo, env, "story-042")
-        assert r.returncode == 2, r.stdout
-        assert "ready" in r.stderr and "spawn.py ready story-042" in r.stderr, r.stderr
-        # the ABSENT-marker diagnosis, not the unreadable one: without this the two
-        # arms are interchangeable (a missing file reads as an OSError downstream),
-        # and the lead is sent hunting a corrupt file that was never written
-        assert "nothing minted it" in r.stderr, r.stderr
-        assert not (tmp_path / "data" / "worktrees").exists()
-
-    def test_ready_mints_the_reviewed_card_and_flips_the_bracket(self, tmp_path):
-        repo, env, _g = make_repo(tmp_path, status="planned")
-        out = self.mint(repo, env).stdout
-        plan = (tmp_path / "data" / "plan.md").read_text()
-        assert "#### story-042 — demo story   [ready]" in plan
-        marker = json.loads(self.marker(tmp_path).read_text())
-        # the WHOLE block, stored verbatim as read — the bracket it carries is the
-        # pre-flip one, which is exactly why the digest ignores brackets
-        assert marker["card"] == plan.split("### Sprint 1\n", 1)[1].replace("[ready]", "[planned]")
-        assert marker["digest"] in out, "the lead is never shown what was minted"
-
-    def test_ready_refuses_a_card_that_is_not_planned(self, tmp_path):
-        """Re-minting is not a lead's typing decision: an already-[ready] card is
-        the one whose digest a hand-edit would replace."""
-        repo, env, _g = make_repo(tmp_path, status="planned")
-        self.mint(repo, env)
-        again = spawn(repo, env, "ready", "story-042")
-        assert again.returncode == 2, again.stdout
-        assert "[planned]" in again.stderr, again.stderr
-
-    def test_ready_refuses_an_unknown_story_without_writing_a_marker(self, tmp_path):
-        repo, env, _g = make_repo(tmp_path, status="planned")
-        r = spawn(repo, env, "ready", "story-999")
-        assert r.returncode == 2 and "story-999" in r.stderr
-        assert not (tmp_path / "data" / "markers").exists()
-
-    def test_a_title_containing_the_status_text_survives_the_mint(self, tmp_path):
-        """The flip must rewrite the TRAILING bracket only. A bare str.replace
-        rewrites the title too, and then the digest minted before the flip no
-        longer matches the card, so the mint's own edit reads as the lead's."""
-        repo, env, _g = make_repo(tmp_path, status="planned")
-        stub_claude(tmp_path)
-        self.edit_card(tmp_path, "demo story", "what [planned] really means")
-        self.mint(repo, env)
-        plan = tmp_path / "data" / "plan.md"
-        assert "#### story-042 — what [planned] really means   [ready]" in plan.read_text()
-        assert spawn(repo, env, "story-042").returncode == 0
-
-    def test_the_leg_PROCESS_md_sends_the_lead_to_exists(self):
-        """PROCESS.md is injected into every lead session, so it is what a lead
-        believes; nothing bound it to the leg it names. WALKED, not grepped: the
-        name is read out of the prose and run, so a renamed subcommand reds here
-        instead of at the lead's next plan review (constraints 11, 12)."""
-        process = (SPAWN.parent.parent / "PROCESS.md").read_text()
-        named = re.search(r"`spawn\.py (\w+) <story-id>`", process)
-        assert named, "PROCESS.md no longer names the leg that clears a card"
+        # monkeypatch, not os.environ[...]: this test runs IN-PROCESS, and a bare
+        # assignment leaves every later data_root() in this worker pointed at a
+        # tmp_path pytest has already deleted
+        monkeypatch.setenv("XP_DATA", str(tmp_path / "data"))
+        argv = spawn_mod.codex_argv("gpt-5.6-terra", "medium")
+        stub_codex(tmp_path)
+        stripped = [a for a in argv if a not in ("--disable", "unified_exec")]
         r = subprocess.run(
-            [sys.executable, str(SPAWN), named[1], "--help"], capture_output=True, text=True
+            # cwd matters even on the arm that must die early: with the guard
+            # mutated away, the stub reaches its `git commit` and commits wherever
+            # it stands — the repo under review, if that is the cwd
+            [str(tmp_path / "bin" / "codex"), *stripped[1:]],
+            input="",
+            capture_output=True,
+            text=True,
+            cwd=tmp_path,
         )
-        assert f"usage: spawn.py {named[1]}" in r.stdout, r.stdout + r.stderr
+        assert r.returncode != 0 and "unified_exec" in r.stderr, r.stderr
+        intact = subprocess.run(
+            [str(tmp_path / "bin" / "codex"), *argv[1:]],
+            input="",
+            capture_output=True,
+            text=True,
+            cwd=tmp_path,
+        )
+        assert intact.returncode == 0, intact.stderr
 
-    def test_minting_one_card_leaves_its_siblings_brackets_alone(self, tmp_path):
-        """The flip is story-scoped, and the plan is shared. Rewriting every
-        trailing [planned] would hand the whole sprint a bracket no mint stands
-        behind — each sibling then refuses at ITS spawn, one lead round each."""
-        repo, env, _g = make_repo(tmp_path, status="planned")
-        plan = tmp_path / "data" / "plan.md"
-        sibling = "\n#### story-043 — sibling   [planned]\nVerify: true\n"
-        plan.write_text(plan.read_text() + sibling)
-        self.mint(repo, env)
-        assert sibling in plan.read_text(), plan.read_text()
+    def test_absent_from_path_refuses_before_any_worktree_is_cut(self, tmp_path):
+        repo, env, _g = make_repo(tmp_path, executor="codex/gpt-5.6-terra/medium")
+        r = spawn(repo, env, "story-042")  # no stub_codex: nothing named codex on PATH
+        assert r.returncode == 2
+        assert "codex" in r.stderr and "install" in r.stderr.lower(), r.stderr
+        assert not (tmp_path / "data" / "worktrees" / "story-042").exists()
+        branches = in_tree(repo, env, "branch", "--format=%(refname:short)")
+        assert "story-042" not in branches, branches
 
-    def test_an_unreadable_marker_refuses_instead_of_crashing(self, tmp_path):
-        """A torn write leaves half a marker; json.loads on it is a traceback, and
-        a traceback names no next action."""
-        repo, env, _g = make_repo(tmp_path, status="planned")
-        stub_claude(tmp_path)
-        self.mint(repo, env)
-        marker = self.marker(tmp_path)
-        marker.write_text(marker.read_text()[:40])
+    def test_dry_run_still_prints_the_argv_with_nothing_installed(self, tmp_path):
+        """Reading the argv a harness WOULD take is what a lead does before
+        installing it — review.run already exempts its dry run, and one rule with
+        two implementations is this repo's most-filed defect class."""
+        repo, env, _g = make_repo(tmp_path, executor="codex/gpt-5.6-terra/medium")
+        r = spawn(repo, env, "story-042", "--dry-run")
+        assert r.returncode == 0, r.stderr
+        assert "--disable unified_exec" in r.stdout, r.stdout[:400]
+
+    def test_every_shipped_harness_has_its_own_argv_and_stream(self):
+        """Three registries, two files: HARNESS_INSTALL admits a harness, agent_argv
+        builds for it, STREAMS parses it. agent_argv FALLS THROUGH to claude, so a
+        third harness admitted without a builder launches the wrong binary silently;
+        a missing STREAMS row crashes after the worktree is cut and the card flipped."""
+        from spawn import HARNESS_INSTALL, agent_argv
+        from teammate_tee import STREAMS
+
+        assert set(STREAMS) == set(HARNESS_INSTALL)
+        for harness in HARNESS_INSTALL:
+            assert agent_argv(harness, "m", "high", "json")[0] == harness
+
+    def test_a_dirty_codex_teammate_hits_the_shared_completion_guard(self, tmp_path):
+        repo, env, _g = make_repo(tmp_path, executor="codex/gpt-5.6-terra/medium")
+        stub_codex(tmp_path, commit=False, write_file=True)
         r = spawn(repo, env, "story-042")
-        assert r.returncode == 2, r.stdout
-        assert "Traceback" not in r.stderr, r.stderr
-        assert "spawn.py ready story-042" in r.stderr, r.stderr
-        assert "unreadable" in r.stderr, r.stderr
-        assert not (tmp_path / "data" / "worktrees").exists()
-        # and the shape a torn write cannot make but a stray overwrite can: valid
-        # JSON that is not the object, which subscripts to TypeError, not ValueError
-        marker.write_text("null")
-        assert "Traceback" not in spawn(repo, env, "story-042").stderr
+        assert r.returncode == 2 and "uncommitted" in r.stderr, r.stderr
 
-    def test_a_planned_card_is_told_which_leg_clears_it(self, tmp_path):
-        """The one refusal a lead meets holding an unreviewed card. Before the
-        digest the plan review cleared it; now only this leg does."""
-        repo, env, _g = make_repo(tmp_path, status="planned")
+    def test_a_codex_teammate_with_no_commits_hits_the_shared_guard(self, tmp_path):
+        repo, env, _g = make_repo(tmp_path, executor="codex/gpt-5.6-terra/medium")
+        stub_codex(tmp_path, commit=False)
         r = spawn(repo, env, "story-042")
-        assert r.returncode == 2 and "spawn.py ready story-042" in r.stderr, r.stderr
+        assert r.returncode == 2 and "no commits of its own" in r.stderr, r.stderr
 
-    def test_a_ready_card_minted_by_no_one_is_told_the_whole_route(self, tmp_path):
-        """Every card already [ready] when this lands, and every forged bracket.
-        The route is WALKED here (constraint 12): naming `spawn.py ready` alone
-        sends the lead to a leg that refuses a card which is not [planned]."""
-        repo, env, _g = make_repo(tmp_path, status="ready")
-        stub_claude(tmp_path)
-        self.marker(tmp_path).unlink()
+    def test_a_clean_codex_teammate_passes(self, tmp_path):
+        repo, env, _g = make_repo(tmp_path, executor="codex/gpt-5.6-terra/medium")
+        rec = stub_codex(tmp_path)
         r = spawn(repo, env, "story-042")
-        assert r.returncode == 2, r.stdout
-        assert "[planned]" in r.stderr and "spawn.py ready story-042" in r.stderr, r.stderr
-        plan = tmp_path / "data" / "plan.md"
-        plan.write_text(plan.read_text().replace("[ready]", "[planned]"))
-        self.mint(repo, env)
-        assert spawn(repo, env, "story-042").returncode == 0
+        assert r.returncode == 0, r.stderr
+        launch = json.loads(rec.read_text())
+        assert launch["env"]["XP_ROLE"] == "teammate"
+        # the profile is INLINED, which is what makes a codex teammate need no
+        # plugin install — codex has no --plugin-dir to carry one
+        assert "CONSTRAINT-SENTINEL" in launch["stdin"] and "demo story" in launch["stdin"]

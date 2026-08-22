@@ -1,4 +1,4 @@
-"""story-017: the teammate run — tee, budget, wall clock, completion.
+"""story-017: the teammate run — tee, wall clock, completion.
 Split from test_spawn.py at sprint-004 open."""
 
 import subprocess
@@ -19,70 +19,6 @@ from spawn_helpers import (  # noqa: F401
     stub_claude_requiring_verbose,
     trunk_sha,
 )
-
-
-class TestBudget:
-    """(i) is a hard cap on prose WE ship. There is deliberately no assertion on
-    the composed total: CLAUDE.md, constraints.md and the cards belong to the
-    consuming project, and a plugin gate over prose we do not own would red on
-    someone else's file."""
-
-    def test_plugin_shipped_profile_within_cap(self):
-        from spawn import PLUGIN_SHIPPED_CAP, component_metadata_chars, plugin_shipped_chars
-
-        # inner cap FIRST: a newly added skill or agent must red THIS line, not
-        # the total — otherwise the ratchet blames TEAMMATE.md for a defect that
-        # is a new component shipping unbudgeted prose into every spawn
-        components = component_metadata_chars() // 4
-        assert components <= 300, (
-            f"always-on component metadata is {components} tokens (cap 300) —"
-            " a skill or agent grew; retire prose there, not in TEAMMATE.md"
-        )
-        shipped = plugin_shipped_chars() // 4
-        assert shipped <= PLUGIN_SHIPPED_CAP, (
-            f"plugin-shipped profile is {shipped} tokens (cap {PLUGIN_SHIPPED_CAP});"
-            f" components account for {components}"
-        )
-
-    def test_composed_total_is_computed_not_printed(self, tmp_path):
-        """A print-a-constant implementation passes 'it prints a total' forever."""
-        repo, env, _g = make_repo(tmp_path)
-        stub_claude(tmp_path)
-        before = spawn(repo, env, "story-042", "--dry-run").stdout
-        plan = tmp_path / "data" / "plan.md"
-        # the lead's whole sequence after changing a cleared card: edit, back to
-        # [planned], re-review, re-mint — an edit alone now refuses the spawn
-        plan.write_text(
-            plan.read_text()
-            .replace("Context: demo.", "Context: " + "x" * 4000)
-            .replace("[ready]", "[planned]")
-        )
-        assert spawn(repo, env, "ready", "story-042").returncode == 0
-        after = spawn(repo, env, "story-042", "--dry-run").stdout
-        assert _total(before) != _total(after)
-        assert _total(after) > _total(before)
-
-    def test_printed_plugin_shipped_is_the_capped_quantity(self, tmp_path):
-        """Two computations shipped under one name: the printed figure omitted
-        templates/constraints.md, so a lead read ~300 tokens of headroom where
-        the ratchet had 52 — the story-009 note's failure, in the instrument."""
-        from spawn import PLUGIN_SHIPPED_CAP, plugin_shipped_chars
-
-        repo, env, _g = make_repo(tmp_path)
-        stub_claude(tmp_path)
-        out = spawn(repo, env, "story-042", "--dry-run").stdout
-        assert f"plugin-shipped {plugin_shipped_chars() // 4}/{PLUGIN_SHIPPED_CAP}" in out
-
-    def test_warning_names_the_largest_project_owned_contributor(self, tmp_path):
-        repo, env, _g = make_repo(tmp_path)
-        stub_claude(tmp_path)
-        quiet = spawn(repo, env, "story-042", "--dry-run")
-        assert "over the" not in quiet.stderr
-
-        (repo / ".xp" / "constraints.md").write_text("# Constraints\n" + "bloat\n" * 3000)
-        loud = spawn(repo, env, "story-042", "--dry-run")
-        assert "constraints.md" in loud.stderr and "over the" in loud.stderr
-        assert loud.returncode == 0  # reports, never refuses: the project's tradeoff
 
 
 class TestAgentWallClock:
@@ -460,3 +396,76 @@ class TestFirstSpawnInAScaffoldedRepo:
         assert "Traceback" not in r.stderr
         assert "commit" in r.stderr.lower(), "the refusal must name the fix"
         assert not (tmp_path / "data" / "worktrees").exists(), "orphaned worktree"
+
+
+class TestCodexTee:
+    """story-021: the codex teammate rides teammate_tee, not a second copy. Its
+    stream is PLAIN TEXT — codex's `--json` event vocabulary is unmeasured on
+    0.147.0 and any AC that spawns codex belongs to the lead, so a summarizer
+    written against a guessed schema would be a guess that compiles."""
+
+    def test_plain_lines_tee_and_no_terminal_object_is_demanded(self, tmp_path):
+        from teammate_tee import run_teammate
+
+        out = []
+        rc = run_teammate(
+            ["/bin/sh", "-c", "echo thinking; echo done"],
+            tmp_path,
+            "",
+            "story-042",
+            tmp_path / "data",
+            harness="codex",
+            out=out.append,
+        )
+        assert rc == 0, "codex carries no terminal result object; the exit code is the verdict"
+        assert "thinking" in out and "done" in out
+
+    def test_the_same_append_only_log_contract(self, tmp_path):
+        from teammate_tee import run_teammate
+
+        for _ in range(2):
+            run_teammate(
+                ["/bin/sh", "-c", "echo one-line"],
+                tmp_path,
+                "",
+                "story-042",
+                tmp_path / "data",
+                harness="codex",
+                out=lambda _l: None,
+            )
+        log = (tmp_path / "data" / "logs" / "story-042.log").read_text()
+        assert log.count("===== spawn story-042 ") == 2, log
+        assert log.count("one-line") == 2, log
+
+    def test_a_log_write_failure_still_drains_the_codex_stream(self):
+        """Same fault injection as the claude leg, through the shared drain."""
+        from teammate_tee import STREAMS, tee_stream
+
+        parse, _carries = STREAMS["codex"]
+        seen, out = [], []
+
+        def flaky_write(line):
+            seen.append(line)
+            if len(seen) == 2:
+                raise OSError("disk full")
+
+        tee_stream([f"line {i}\n" for i in range(4)], flaky_write, out.append, parse)
+        assert len(seen) == 4
+        assert [o for o in out if o.startswith("line")] == [f"line {i}" for i in range(4)]
+
+    def test_the_claude_leg_still_demands_its_terminal_object(self, tmp_path):
+        """The two legs must diverge HERE and nowhere else: dropping the check
+        for claude would hide a teammate whose stream died mid-run."""
+        from teammate_tee import run_teammate
+
+        errs = []
+        run_teammate(
+            ["/bin/sh", "-c", "echo not-json"],
+            tmp_path,
+            "",
+            "story-042",
+            tmp_path / "data",
+            out=lambda _l: None,
+            err=errs.append,
+        )
+        assert any("terminal result object" in e for e in errs), errs

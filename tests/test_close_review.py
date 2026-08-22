@@ -1,8 +1,10 @@
 """The review leg against sprint integration, trunk motion and self-close.
 Split from test_close.py at sprint-004 open."""
 
+import json
 import subprocess
 import sys
+from itertools import pairwise
 
 from close_helpers import (  # noqa: F401
     CARD,
@@ -21,6 +23,7 @@ from close_helpers import (  # noqa: F401
     prose,
     stub_reviewer,
 )
+from spawn_helpers import stub_codex
 
 
 class TestSprintIntegration:
@@ -343,3 +346,45 @@ class TestSelfCloseRefusal:
     def test_the_lead_passes_the_same_guard(self, tmp_path):
         repo, env, _g = make_repo(tmp_path)
         assert close(repo, {**env, "XP_ROLE": "lead"}, "review").returncode == 0
+
+
+class TestCodexReviewerLeg:
+    """story-021: the reviewer is harness-agnostic. Its report is read from the
+    SAME round path with the SAME parse, so no caller of review.py can tell which
+    harness wrote it — the divergence is the argv and nothing else."""
+
+    def codex_repo(self, tmp_path, **kw):
+        repo, env, g = make_repo(tmp_path)
+        rec = stub_codex(tmp_path, commit=False, report=CLEAN, **kw)
+        (repo / ".xp" / "config.yml").write_text(
+            "roles:\n  reviewer: codex/gpt-5.6-terra/high\ntests:\n  story: true\n"
+        )
+        g("add", "-A")
+        g("commit", "-qm", "reviewer role is codex")
+        return repo, env, rec
+
+    def test_the_round_is_recorded_from_a_codex_written_report(self, tmp_path):
+        repo, env, _rec = self.codex_repo(tmp_path)
+        r = close(repo, env, "review")
+        assert r.returncode == 0, r.stderr + r.stdout
+        rounds = marker(tmp_path)["rounds"]
+        assert rounds == [CLEAN], rounds
+
+    def test_the_reviewer_argv_is_the_hardened_one(self, tmp_path):
+        """Not a second, unhardened spawn path: the gate flag rides both legs."""
+        repo, env, rec = self.codex_repo(tmp_path)
+        assert close(repo, env, "review").returncode == 0
+        launch = json.loads(rec.read_text())
+        argv = launch["argv"]
+        assert list(pairwise(argv)).count(("--disable", "unified_exec")) == 1, argv
+        assert argv[argv.index("-m") + 1] == "gpt-5.6-terra"
+        assert ("-c", "model_reasoning_effort=high") in list(pairwise(argv))
+        assert launch["env"]["XP_ROLE"] == "reviewer"
+        assert "REPORT_PATH:" in launch["stdin"] and "demo story" in launch["stdin"]
+
+    def test_codex_absent_from_path_refuses_without_a_traceback(self, tmp_path):
+        repo, env, _rec = self.codex_repo(tmp_path)
+        (tmp_path / "bin" / "codex").unlink()
+        r = close(repo, env, "review")
+        assert r.returncode == 2 and "Traceback" not in r.stderr, r.stderr
+        assert "codex" in r.stderr and "install" in r.stderr.lower(), r.stderr
