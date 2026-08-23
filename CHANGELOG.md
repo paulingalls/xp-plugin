@@ -4,6 +4,23 @@ Release notes started at v0.6.0; earlier entries are summarized from their
 tag and merge messages. Full detail lives in the merge history and the
 per-sprint review reports.
 
+## v0.6.3 — one implementation of each rule, and room to work in
+
+- **A missing plan reads the same at every leg.** Five commands answer "this
+  clone has no plan", and `close.py story <id> land` had lost half of that
+  answer — the half naming what to check. It is the leg reached last, so the
+  story furthest along got the least help. All five now share one wording, and a
+  test runs every leg against a plan-less clone and compares what they say.
+- **Internal consolidation, no behavior change.** The status flip, the
+  stream-JSON line decode and the record lookup behind `work.py resolve` /
+  `archive` each had more than one implementation; they now have one apiece. A
+  helper nothing called and a per-harness flag that was true for every harness
+  are gone.
+- **Budget re-allocation.** The hook layer was allocated 1,000 lines and
+  measures 416, so 350 moved to the components that are actually growing. The
+  5,000-line total is unchanged — this only corrects a five-sprint-old guess
+  about where those lines would be needed.
+
 ## v0.6.2 — the bootstrap line the template taught was unreadable
 
 - **`Worktree bootstrap:` is read past markdown emphasis.** `templates/system.md`
