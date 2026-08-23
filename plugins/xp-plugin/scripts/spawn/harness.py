@@ -49,8 +49,7 @@ def claude_argv(model: str, effort: str, output_format: str = "json") -> list[st
 def codex_argv(model: str, effort: str, network: bool = False) -> list[str]:
     """`--disable unified_exec` is non-negotiable (DESIGN §3): without it
     `write_stdin` bypasses every PreToolUse gate. One `--add-dir` here; a LINKED
-    worktree gains a second at launch (spawn.common_dir_widening, bug 0c31ac94 —
-    note 6193855e's probe was confounded by /tmp being sandbox-writable).
+    worktree gains a second at launch (spawn.common_dir_widening).
     `-` reads the prompt from stdin, keeping ~2k tokens out of `ps`."""
     argv = ["codex", "exec", "--json", "--disable", "unified_exec"]
     # Our gates ride the ENVIRONMENT (XP_ROLE, GIT_AUTHOR_*), and THREE

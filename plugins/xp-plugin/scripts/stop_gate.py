@@ -8,7 +8,6 @@ is handled once, correctly, at SessionStart.
 """
 
 import json
-import subprocess
 import sys
 import traceback
 from pathlib import Path
@@ -16,11 +15,6 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 from bash_status import in_progress_stories
 from work import chdir_repo_root, data_root
-
-
-def git(*args: str) -> str:
-    r = subprocess.run(["git", *args], capture_output=True, text=True)
-    return r.stdout.strip() if r.returncode == 0 else ""
 
 
 def red_verify_in_play(session: str) -> str | None:

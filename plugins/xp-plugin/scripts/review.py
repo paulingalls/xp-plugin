@@ -1,9 +1,5 @@
 #!/usr/bin/env python3
-"""Spawn the story-reviewer and read its structured report — close.py's review leg.
-
-Extracted from close.py at story-008 rather than left inline: this block is the
-only seam, and close.py runs against the 500-line hard cap (constraints.md #8).
-"""
+"""Spawn the story-reviewer and read its structured report — close.py's review leg."""
 
 import json
 import re

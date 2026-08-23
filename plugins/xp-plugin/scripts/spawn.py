@@ -34,10 +34,10 @@ from work import (
     chdir_repo_root,
     config_block_value,
     data_root,
-    edit_plan,
+    flip_card,
+    missing_plan_refusal,
     plan_path,
     slugify,
-    stale_plan,
     user_ns,
 )
 
@@ -206,10 +206,8 @@ def run_agent(
 ) -> subprocess.CompletedProcess:
     """Prompt on stdin: it keeps ~2k tokens out of argv and out of `ps`.
 
-    `role` carried a default shaped for the teammate launch until story-017 moved
-    that leg to teammate_tee.run_teammate. Defaulting it now hands a future caller
-    XP_ROLE=teammate and no wall clock by omission — the two things the branches
-    below turn on.
+    `role` takes no default: one would hand a caller XP_ROLE=teammate and no wall
+    clock by omission — the two things the branches below turn on.
     """
     env = os.environ | {"XP_ROLE": role}
     # BOTH reviewer legs: a review is the one launch both long-running AND
@@ -242,10 +240,9 @@ def run_agent(
 def common_dir_widening(cwd: Path) -> list[str]:
     """["--add-dir", <git common dir>] for a LINKED worktree, [] otherwise: its
     index lives at <main>/.git/worktrees/<id>/, outside workspace-write, so a
-    codex agent there cannot commit (bug 0c31ac94 — the 021 probe read this as
-    unnecessary because its scratch repo sat under /tmp, which the sandbox
-    writes by default). A main checkout's .git is inside the workspace already;
-    widening it would loosen the posture for nothing."""
+    codex agent there cannot commit (bug 0c31ac94; a /tmp scratch repo hides it,
+    since the sandbox writes /tmp anyway). A main checkout's .git is inside the
+    workspace already; widening it would loosen the posture for nothing."""
     proc = subprocess.run(
         ["git", "-C", str(cwd), "rev-parse", "--git-common-dir"],
         capture_output=True,
@@ -264,17 +261,8 @@ def worktree_path(story_id: str) -> Path:
 
 def flip_to_in_progress(story_id: str) -> None:
     """close.py refuses a story that is not [in-progress], and without this that
-    refusal lands only AFTER the teammate has written the whole story. No longer a
-    commit on the story branch: the plan is per-clone, so nothing stages and the
-    lead sees [in-progress] at once.
-    """
-    edit_plan(lambda text: flip_map(text, story_id))
-
-
-def flip_map(text: str, story_id: str) -> str:
-    from work import flip_status
-
-    return flip_status(text, story_id, "ready", "in-progress")
+    refusal lands only AFTER the teammate has written the whole story."""
+    flip_card(story_id, "ready", "in-progress")
 
 
 def not_ready_hint(status: str, story_id: str) -> str:
@@ -323,10 +311,7 @@ def story_branch(card: str, story_id: str) -> str:
 
 def cmd_spawn(story_id: str, override: str, dry_run: bool, in_place: bool = False) -> int:
     if not plan_path().exists():
-        return fail(
-            "refused: "
-            + (stale_plan() or f"no plan at {plan_path()} — is this an xp-managed repo?")
-        )
+        return fail("refused: " + missing_plan_refusal())
     try:
         card, status = story_card(plan_path().read_text(), story_id)
     except KeyError as e:

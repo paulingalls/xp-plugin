@@ -44,14 +44,19 @@ def summarize_event(evt: dict) -> str:
     return f"[{kind}]"
 
 
-def parse_stream_json(line: str) -> tuple[str | None, dict | None]:
-    """(what to echo, the terminal result object if this line is it). An
-    unparseable line is tolerated — echoed as nothing, not raised."""
+def event(line: str) -> dict | None:
+    """The line as an event object, or None: a stream carries prose and blanks
+    too, and an unparseable line is tolerated — never raised."""
     try:
         evt = json.loads(line)
     except ValueError:
-        return None, None
-    if not isinstance(evt, dict):
+        return None
+    return evt if isinstance(evt, dict) else None
+
+
+def parse_stream_json(line: str) -> tuple[str | None, dict | None]:
+    """(what to echo, the terminal result object if this line is it)."""
+    if (evt := event(line)) is None:
         return None, None
     return summarize_event(evt), (evt if evt.get("type") == "result" else None)
 
@@ -60,11 +65,7 @@ def parse_codex_json(line: str) -> tuple[str | None, dict | None]:
     """`codex exec --json`, measured on 0.149.0. Codex has no result ENVELOPE, so
     the last completed `agent_message` is the terminal value — later ones win, the
     same rule the claude leg applies to its result event."""
-    try:
-        evt = json.loads(line)
-    except ValueError:
-        return None, None
-    if not isinstance(evt, dict):
+    if (evt := event(line)) is None:
         return None, None
     item = evt.get("item") if isinstance(evt.get("item"), dict) else {}
     completed = evt.get("type") == "item.completed"
@@ -72,10 +73,11 @@ def parse_codex_json(line: str) -> tuple[str | None, dict | None]:
     return f"[{evt.get('type', '?')}] {item.get('type', '')}".rstrip(), terminal
 
 
-# (per-line parse, does this harness's stream carry a terminal result object?)
-STREAMS: dict[str, tuple[Callable[[str], tuple[str | None, dict | None]], bool]] = {
-    "claude": (parse_stream_json, True),
-    "codex": (parse_codex_json, True),
+# The per-line parse. Both harnesses' streams carry a terminal result object, so
+# its absence is the loud rc-1 below rather than a per-harness expectation.
+STREAMS: dict[str, Callable[[str], tuple[str | None, dict | None]]] = {
+    "claude": parse_stream_json,
+    "codex": parse_codex_json,
 }
 
 
@@ -131,11 +133,7 @@ def _session_id(harness: str, line: str) -> str:
     """The harness's own id for this run, off the first event that carries one:
     claude stamps `session_id` on every event, codex `thread_id` on
     `thread.started`, which it emits first."""
-    try:
-        evt = json.loads(line)
-    except ValueError:
-        return ""
-    if not isinstance(evt, dict):
+    if (evt := event(line)) is None:
         return ""
     return str(evt.get("session_id" if harness == "claude" else "thread_id") or "")
 
@@ -188,7 +186,7 @@ def run_stream(
     writing it inline before draining stdout would deadlock a child that starts
     producing output before it has finished reading stdin.
     """
-    parse, carries_result = STREAMS[harness]
+    parse = STREAMS[harness]
     if argv[:2] == ["codex", "exec"]:
         # HERE, not at one caller: while the widening lived in run_agent alone the
         # teammate leg launched without it, and the codex teammate that could not
@@ -228,9 +226,7 @@ def run_stream(
         err(f"warning: log open failed ({exc}); continuing without it")
         log = None
     else:
-        # review.py used to announce the launch here; a run that STREAMS needs the
-        # path instead, and naming it in the runner names it for every role.
-        err(f"live log: {path}")
+        err(f"live log: {path}")  # in the runner, so every role's launch names it
     pointed = False
 
     def log_write(line: str) -> None:
@@ -264,7 +260,7 @@ def run_stream(
     if timed_out.is_set():
         raise subprocess.TimeoutExpired(argv, timeout, stderr=str(path))
     rc = proc.returncode
-    if result is None and carries_result:
+    if result is None:
         err(f"{log_id}: stream never carried a terminal result; see {path}")
         rc = rc or 1
     return subprocess.CompletedProcess(

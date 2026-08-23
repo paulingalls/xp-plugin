@@ -123,11 +123,11 @@ def log_close(story_id: str, card: str, rounds: list[dict], merge_sha: str) -> N
 
 
 def delete_story_branch(branch: str) -> list[str]:
-    """Delete the story branch, REMOTE FIRST (37c0fb4e): `-d` compares against the
-    upstream ref when one exists, so the reviewer's commits — never pushed to the
-    story branch — made it refuse a branch already merged to HEAD. With the remote
-    gone it falls back to the HEAD check and still refuses a genuinely unmerged one.
-    ls-remote, not a tracking ref: `git fetch` without --prune leaves stale ones.
+    """Delete the story branch, REMOTE FIRST: `-d` compares against the upstream ref
+    when one exists, so the reviewer's commits — never pushed to the story branch —
+    make it refuse a branch already merged to HEAD. With the remote gone it falls
+    back to the HEAD check and still refuses a genuinely unmerged one. ls-remote,
+    not a tracking ref: `git fetch` without --prune leaves stale ones.
     """
     on_origin = git("ls-remote", "--exit-code", "--heads", "origin", branch).returncode == 0
     if on_origin and git("push", "origin", "--delete", branch).returncode != 0:
@@ -140,8 +140,7 @@ def delete_story_branch(branch: str) -> list[str]:
 
 def held_trunk_tree(trunk: str) -> tuple[str, str]:
     """(path of ANOTHER worktree holding <trunk>, error). Cheap and structural, so
-    cmd_land asks BEFORE Verify — reaching it only after the tier had spent ~2 min
-    to learn a `git worktree list` fact was 5d7388fc."""
+    cmd_land asks BEFORE Verify rather than after ~2 min of tier."""
     path = ""
     for ln in git("worktree", "list", "--porcelain").stdout.splitlines():
         if ln.startswith("worktree "):

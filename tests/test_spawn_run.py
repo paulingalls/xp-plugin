@@ -441,7 +441,7 @@ class TestCodexTee:
         """Same fault injection as the claude leg, through the shared drain."""
         from teammate_tee import STREAMS, tee_stream
 
-        parse, _carries = STREAMS["codex"]
+        parse = STREAMS["codex"]
         seen, out = [], []
 
         def flaky_write(line):

@@ -76,8 +76,8 @@ def overlapping(ref: str, base: str) -> list[str]:
 
 
 def collision(ref: str, files: list[str]) -> str:
-    """DESIGN §11's cross-story collision check, which was never built — so it NAMES
-    the files: the practice it defends is a human one nothing else watches."""
+    """It NAMES the files: the practice it defends (DESIGN §11) is a human one
+    nothing else watches."""
     return (
         f"refused: {ref} changed files this story also changed, and no review covered"
         " the two together:\n  " + "\n  ".join(files) + "\n"
