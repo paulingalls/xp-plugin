@@ -9,8 +9,9 @@ Exception: an undeclared `.xp/` path is a stop.
   instead. Git hooks are the wall: lint, secrets, tests at commit, full
   suite at push. `--no-verify` is a values violation — blocked, escalate.
 - **Multi-file change?** Draft the plan to a file, then review it headlessly:
-  `python3 {PLUGIN_ROOT}/scripts/plan_review.py <story-id> <plan-file>`. Address
-  its findings, then write code.
+  `python3 {PLUGIN_ROOT}/scripts/plan_review.py <story-id> <plan-file>`. It takes
+  minutes and detaches itself — a call cut short loses nothing, run it again to
+  rejoin. No findings, no review: never proceed.
 - **Prose is an artifact.** Comments: restates the code → delete · explains WHAT →
   rename it · a checkable claim → write the test · narrates history → delete, git
   holds it. Keep only the why, an external constraint, a rejected design.

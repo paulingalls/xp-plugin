@@ -83,6 +83,21 @@ def verify_commands(card: str) -> str:
     return ""
 
 
+def verify_refusal(story_id: str, card: str) -> str:
+    """Why this card has no runnable Verify, or "". A LABEL with nothing after it
+    is a different problem from no label, and saying "no Verify: line" about a
+    card that visibly has one sends the author hunting for the wrong thing —
+    they wrote the commands as bullets below it, which is what `AC:` looks like."""
+    if verify_commands(card):
+        return ""
+    if any(ln.startswith("Verify:") for ln in card.splitlines()):
+        return (
+            f"refused: {story_id}'s Verify: line is empty — its commands must be on the"
+            " SAME line as the label (`Verify: pytest -q ...`), not a list below it"
+        )
+    return f"refused: {story_id} has no Verify: line — an unverifiable story cannot close"
+
+
 def config_flat(key: str) -> str:
     """A flat top-level `key: value` from .xp/config.yml."""
     cfg = Path(".xp/config.yml")
@@ -159,7 +174,7 @@ def marker_path(story_id: str) -> Path:
     return p
 
 
-def build_bundle(card: str, base: str, report: Path, prior: str = "") -> str:
+def build_bundle(card: str, base: str, report: Path, prior: str = "", notice: str = "") -> str:
     import review  # function-local: spawn -> close -> review would close a cycle
 
     base_epoch = int(git("show", "-s", "--format=%ct", base).stdout.strip())
@@ -168,6 +183,7 @@ def build_bundle(card: str, base: str, report: Path, prior: str = "") -> str:
         # One greppable line: the charter explains the shape, this is the address.
         ("Your report", f"REPORT_PATH: {report}"),
         ("Story card", card or "none — this is a free branch; judge the diff itself"),
+        *([("Before you start", notice)] if notice else []),
         ("Earlier rounds of THIS review", prior or "none — you are round 1"),
         ("Cumulative diff", git("diff", f"{base}..HEAD").stdout),
         ("work.md entries filed during the story", work_entries_since(base_epoch) or "none"),
@@ -223,7 +239,9 @@ def cmd_review(story_id: str, dry_run: bool = False, free: bool = False) -> int:
     base = git("merge-base", f"refs/heads/{trunk}", "HEAD").stdout.strip()
     digest_before = review.marker_digest(marker)
     prior = render_prior_rounds(state.get("rounds", []))
-    bundle = build_bundle(card, base, path, prior)
+    if notice := review.plan_review_notice(story_id):
+        print("warning: " + notice, file=sys.stderr)
+    bundle = build_bundle(card, base, path, prior, notice)
     result, err = review.run(bundle, Path.cwd(), dry_run, card=card)
     if dry_run:
         return 0
@@ -304,9 +322,9 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
     # diff shows a card edit, and the `Verify:` line below is SHELL-EXECUTED.
     if drift := ready.drift(story_id, card):
         return fail(drift)
+    if refusal := verify_refusal(story_id, card):
+        return fail(refusal)
     verify = verify_commands(card)
-    if not verify:
-        return fail(f"refused: {story_id} has no Verify: line — an unverifiable story cannot close")
     tier = config_block_value("tests", "story")
     branch = git("rev-parse", "--abbrev-ref", "HEAD").stdout.strip()
     verdict = render_merge_body(rounds)

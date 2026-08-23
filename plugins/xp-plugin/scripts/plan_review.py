@@ -10,7 +10,11 @@ Usage: plan_review.py <story-id> <plan-file> [--dry-run]
 """
 
 import argparse
+import json
+import os
+import subprocess
 import sys
+import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
@@ -22,6 +26,8 @@ from spawn import _read, _read_shipped, tree_state
 from work import chdir_repo_root, data_root, plan_path
 
 PLUGIN_ROOT = Path(__file__).parent.parent
+POLL_SECONDS = 3
+LOG_TAIL = 2000
 
 
 def findings_path(story_id: str) -> Path:
@@ -34,6 +40,17 @@ def findings_path(story_id: str) -> Path:
         n += 1
         path = plans / f"{story_id}.round-{n}.md"
     return path
+
+
+def incomplete_marker(story_id: str) -> Path:
+    """Written BEFORE the reviewer launches and removed only on findings.
+
+    Inverted deliberately: the failure that matters kills the process (codex's
+    shell timeout_ms is model-supplied, ~10s by default, and a review runs
+    minutes), and a killed process writes nothing on its way out. So absence of
+    the marker is the success signal, and its presence outlives any death.
+    """
+    return data_root() / "markers" / f"{story_id}.plan-review-incomplete"
 
 
 def card_for(story_id: str) -> str:
@@ -88,14 +105,131 @@ def cmd_review(story_id: str, plan_file: Path, dry_run: bool) -> int:
     card = card_for(story_id)
     if not card:
         return fail(f"refused: no {story_id} card in {plan_path()}")
-    out = findings_path(story_id)
-    if not dry_run:
+    if dry_run:
+        return _run_review(story_id, plan_file, charter, plan, card, findings_path(story_id), True)
+    if running := _running(story_id):
+        out, pid = running
+        print(f"joining the review already running for {story_id} (pid {pid})", file=sys.stderr)
+    else:
+        out = findings_path(story_id)
         out.parent.mkdir(parents=True, exist_ok=True)
-    bundle = build_bundle(charter, plan, card, out)
+        pid, child = _detach(story_id, plan_file, out)
+        return _wait(story_id, out, pid, child)
+    return _wait(story_id, out, pid)
+
+
+def _marker_state(story_id: str) -> dict:
+    try:
+        return json.loads(incomplete_marker(story_id).read_text())
+    except (OSError, ValueError):
+        return {}
+
+
+def _running(story_id: str) -> tuple[Path, int] | None:
+    """(findings path, pid) of a review still going, or None.
+
+    A caller killed mid-wait must JOIN rather than launch a second reviewer: the
+    first one is still writing, and two would race for one findings path.
+    """
+    state = _marker_state(story_id)
+    pid, out = state.get("pid"), state.get("findings")
+    if not (pid and out):
+        return None
+    try:
+        os.kill(int(pid), 0)
+    except (OSError, ValueError):
+        return None
+    return Path(out), int(pid)
+
+
+def _detach(story_id: str, plan_file: Path, out: Path) -> tuple[int, subprocess.Popen]:
+    """Launch the review in its OWN session, so a caller's death is not its own.
+
+    Measured, both harnesses: a codex tool call is killed at a timeout the MODEL
+    chose (~10s by default), and a headless claude run ends when the model yields
+    — either takes a foreground review with it, and a plain background job dies
+    with its parent's group.
+    """
+    log = data_root() / "logs" / f"{story_id}-plan-review.log"
+    log.parent.mkdir(parents=True, exist_ok=True)
+    marker = incomplete_marker(story_id)
+    marker.parent.mkdir(parents=True, exist_ok=True)
+    handle = open(log, "a")  # noqa: SIM115 — owned by the detached child, not by us
+    child = subprocess.Popen(
+        [
+            sys.executable,
+            str(Path(__file__).resolve()),
+            story_id,
+            str(plan_file),
+            "--_review",
+            str(out),
+        ],
+        cwd=Path.cwd(),
+        stdout=handle,
+        stderr=subprocess.STDOUT,
+        stdin=subprocess.DEVNULL,
+        start_new_session=True,
+    )
+    marker.write_text(
+        json.dumps(
+            {"pid": child.pid, "findings": str(out), "log": str(log), "plan": str(plan_file)}
+        )
+    )
+    print(f"plan review running (pid {child.pid}); live log: {log}", file=sys.stderr)
+    return child.pid, child
+
+
+def _wait(story_id: str, out: Path, pid: int, child: subprocess.Popen | None = None) -> int:
+    """Block until the review PROCESS ends, then read its verdict off the marker.
+
+    Not "until findings appear": the reviewer writes them before the motion guards
+    run, so returning on the file would report a review that its own guards went on
+    to refuse. The child clears the marker only when it is satisfied, which makes
+    the marker's absence the success signal for the joiner too — a joiner is not
+    the child's parent and has no exit code to read.
+
+    The caller may be killed in this loop and nothing is lost: the marker holds
+    the pid and the next call joins.
+    """
+    log = _marker_state(story_id).get("log", "(no log)")
+    while not _dead(pid, child):
+        time.sleep(POLL_SECONDS)
+    if incomplete_marker(story_id).exists():
+        # the child's own refusal, not a summary of it: WHY it refused is the whole
+        # value, and the caller cannot read the log of a process it did not start
+        try:
+            tail = Path(log).read_text(errors="replace")[-LOG_TAIL:].strip()
+        except OSError:
+            tail = ""
+        return fail(f"{tail}\n(the plan review ended without a verdict; full output in {log})")
+    print(out.read_text().strip() if out.is_file() else "")
+    print(f"findings: {out}", file=sys.stderr)
+    return 0
+
+
+def _dead(pid: int, child: subprocess.Popen | None) -> bool:
+    """poll() when we are the parent, signal 0 when we are only a joiner.
+
+    os.kill(pid, 0) succeeds against a ZOMBIE, and an unreaped child is exactly
+    what a launched-then-exited reviewer leaves — waiting on that never ends.
+    """
+    if child is not None:
+        return child.poll() is not None
+    try:
+        os.kill(pid, 0)
+    except OSError:
+        return True
+    return False
+
+
+def _run_review(
+    story_id: str, plan_file: Path, charter: str, plan: str, card: str, out: Path, dry_run: bool
+) -> int:
     try:
         before = review_state(plan_file)
     except OSError as e:
         return fail(f"refused: cannot snapshot the repository before review: {e}")
+    bundle = build_bundle(charter, plan, card, out)
     _result, err = review.run(bundle, Path.cwd(), dry_run, name="plan-reviewer", card=card)
     if dry_run:
         return 0
@@ -116,8 +250,8 @@ def cmd_review(story_id: str, plan_file: Path, dry_run: bool) -> int:
         findings = ""
     if not findings:
         return fail(f"refused: the plan reviewer wrote no findings at {out}")
+    incomplete_marker(story_id).unlink(missing_ok=True)  # the child's own verdict
     print(findings)
-    print(f"findings: {out}", file=sys.stderr)
     return 0
 
 
@@ -126,11 +260,19 @@ def main() -> int:
     p.add_argument("story_id")
     p.add_argument("plan_file", help="the draft plan to review")
     p.add_argument("--dry-run", action="store_true")
+    # the detached half re-enters here; not a user surface, hence the name
+    p.add_argument("--_review", default="", help=argparse.SUPPRESS)
     a = p.parse_args()
     # resolved BEFORE the chdir, or a relative path names a different file after it
     plan_file = Path(a.plan_file).resolve()
     if not chdir_repo_root():
         return fail("refused: not inside a git repository")
+    if a._review:
+        charter = review.charter("plan-reviewer")
+        card = card_for(a.story_id)
+        return _run_review(
+            a.story_id, plan_file, charter, plan_file.read_text(), card, Path(a._review), False
+        )
     return cmd_review(a.story_id, plan_file, a.dry_run)
 
 

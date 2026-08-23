@@ -35,6 +35,20 @@ class TestDogfoodMatchesTheScaffold:
         for key in sorted(extra):
             assert f"# {key}:" in text, f"we use {key!r} and the scaffold never mentions it"
 
+    def test_the_shipped_plan_templates_card_passes_the_gate_that_reads_it(self):
+        """b4c3ef33's practice, applied to the third template we parse: the card
+        this project HANDS a new user is fed to the credential leg's own check,
+        not to a fixture restating it.
+
+        The template taught `Verify: EDIT-ME  # the command(s) ...` — plural, with
+        nothing saying the line is load-bearing — and a consuming project wrote its
+        commands as bullets below the label, which parses EMPTY (bug abc052f2).
+        """
+        from close import story_card, verify_refusal
+
+        card = story_card((self.SHIPPED / "plan.md").read_text(), "story-000")[0]
+        assert verify_refusal("story-000", card) == "", card
+
     def test_the_shipped_system_md_label_is_one_spawn_can_read(self):
         """The drift this class exists for, in the file it had no arm for. Every
         bootstrap test writes its OWN unbolded line, so the form the TEMPLATE

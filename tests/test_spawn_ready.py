@@ -32,6 +32,30 @@ class TestReadyCredential:
         assert old in text, f"fixture drifted: {old!r} not in the card"
         plan.write_text(text.replace(old, new))
 
+    def test_a_verify_line_with_its_commands_bulleted_below_refuses_at_the_mint(self, tmp_path):
+        """Field report (Legacy): seven cards were authored as `Verify:` followed by
+        a bulleted list, which is what `AC:` above it looks like — and
+        verify_commands reads only the REMAINDER of the line, so it parsed empty.
+        The refusal arrived at LAND, after the implementation and the review, saying
+        "has no Verify: line" about a card that visibly has one.
+
+        Mint is where it belongs: the credential leg already reads the whole card,
+        and refusing here costs a re-edit instead of a spawn, a story and a round.
+        """
+        repo, env, _g = make_repo(tmp_path, status="planned")
+        stub_claude(tmp_path)
+        plan = tmp_path / "data" / "plan.md"
+        plan.write_text(
+            plan.read_text().replace(
+                "Verify: true",
+                "Verify:\n- `pytest -q tests/test_a.py`\n- `bun test`",
+            )
+        )
+        r = spawn(repo, env, "ready", "story-042")
+        assert r.returncode != 0, r.stdout
+        assert "Verify:" in r.stderr and "same line" in r.stderr.lower(), r.stderr
+        assert not self.marker(tmp_path).exists(), "a refused mint must write nothing"
+
     def test_an_ac_edited_after_the_mint_refuses_and_names_the_drift(self, tmp_path):
         repo, env, _g = make_repo(tmp_path, status="planned")
         stub_claude(tmp_path)
