@@ -198,6 +198,7 @@ class TestHookWall:
         assert r.returncode == 0, r.stderr
         assert "add your linter" not in r.stdout, r.stdout
         assert "tiers at that wall" in r.stdout, r.stdout  # names the real task instead
+        assert ";." not in r.stdout, "the dropped step left a dangling separator"
 
     def test_preexisting_routing_left_untouched(self, tmp_path):
         repo, env = bare_repo(tmp_path)

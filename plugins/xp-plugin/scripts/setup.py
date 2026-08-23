@@ -115,14 +115,14 @@ def main() -> int:
     plan_path().parent.mkdir(parents=True, exist_ok=True)
     shutil.copy(TEMPLATES / "plan.md", plan_path())
     wall, wrote_hook = scaffold_wall()
-    third = " (3) add your linter to the pre-commit hook." if wrote_hook else ""
+    third = "; (3) add your linter to the pre-commit hook." if wrote_hook else ""
     print(
         f".xp/ scaffolded (config, seeded constraints, system)\n"
         f"plan scaffolded at {plan_path()} — PER CLONE, outside the repo\n"
         f"env.json seeded at {env_path()} — where anything NOT spawned from the plugin"
         f" reads its root\n{wall}\n"
         "Edit next: (1) tests.fast/story/full in .xp/config.yml — the wall reads them"
-        f" at run time; (2) .xp/system.md;{third or '.'}"
+        f" at run time; (2) .xp/system.md{third or '.'}"
     )
     return 0
 
