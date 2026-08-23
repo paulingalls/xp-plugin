@@ -4,6 +4,35 @@ Release notes started at v0.6.0; earlier entries are summarized from their
 tag and merge messages. Full detail lives in the merge history and the
 per-sprint review reports.
 
+## v0.6.4 — the plan review survives the harness, and says so when it doesn't
+
+- **The mandatory plan review now outlives the call that started it.** Two field
+  failures, one per harness, on the same step. Under codex, a shell call's
+  timeout is a per-call value *the model supplies* — ~10 seconds by default, and
+  a teammate guessed 120s, lost, guessed 180s and lost again against a review
+  that runs minutes. Under claude, a headless run ends when the model yields, so
+  a teammate that backgrounded the review and yielded orphaned it. `plan_review.py`
+  now detaches the review into its own session and waits on it; a call cut short
+  loses nothing, and running it again rejoins the review in progress rather than
+  starting a second one.
+- **A review that dies reaches the lead.** The evidence of a skipped gate is an
+  absence, and absences leave no artifact — so a marker is written at launch and
+  cleared only when the review's own guards are satisfied. `close.py`'s review leg
+  reports it to the lead and puts it in the story reviewer's bundle. Both field
+  failures had been caught only by luck; one more commit and a story whose
+  mandatory review never ran would have been accepted silently.
+- **`unified_exec` is no longer disabled on codex spawns.** It was disabled to
+  protect `PreToolUse`, and this plugin ships no PreToolUse hook — what binds a
+  codex leg is `close.py` running Verify and the git-hook wall, neither reachable
+  from `write_stdin`. An outdated bar with a measured cost.
+- **A `Verify:` line whose commands are bulleted below it no longer reads as
+  missing.** It parsed empty, indistinguishable from no line at all, and refused
+  at *land* — after the story was written and reviewed — saying "has no Verify:
+  line" about a card that visibly has one. The refusal moved to the credential
+  mint, so an unverifiable card is stopped before a teammate is ever spawned, and
+  the two states now say different things. The template that taught the form says
+  the line is load-bearing, and a test feeds the shipped card to the real gate.
+
 ## v0.6.3 — one implementation of each rule, and room to work in
 
 - **A missing plan reads the same at every leg.** Six commands answer "this
