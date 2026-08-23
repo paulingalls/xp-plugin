@@ -54,6 +54,16 @@ def stub_escalating(tmp_path, commit=False, write_file=False, note=True):
     return rec
 
 
+def file_note(repo, env, text):
+    subprocess.run(
+        [sys.executable, str(WORK), "note", text],
+        cwd=repo,
+        env=env,
+        check=True,
+        capture_output=True,
+    )
+
+
 def records(env):
     out = subprocess.run(
         [sys.executable, str(WORK), "list"], env=env, capture_output=True, text=True
@@ -96,6 +106,19 @@ class TestDeliberateStop:
         said nothing, is refused exactly as before."""
         repo, env, _g = make_repo(tmp_path)
         stub_escalating(tmp_path, note=False)
+        r = spawn(repo, env, "story-042")
+        assert r.returncode == 2, f"rc={r.returncode}\n{r.stderr}"
+        assert "no commits" in r.stderr.lower(), r.stderr
+        assert "escalat" not in r.stderr.lower(), r.stderr
+
+    def test_a_record_filed_before_the_run_is_not_this_runs_escalation(self, tmp_path):
+        """The snapshot is the whole seam. Every real repo's work.md already holds
+        records, so a spawn that read the FILE rather than the delta would report
+        every crashed teammate as an escalation and send the lead to read a note
+        from another story."""
+        repo, env, _g = make_repo(tmp_path)
+        stub_escalating(tmp_path, note=False)
+        file_note(repo, env, "a decision filed by an earlier story, long before this run")
         r = spawn(repo, env, "story-042")
         assert r.returncode == 2, f"rc={r.returncode}\n{r.stderr}"
         assert "no commits" in r.stderr.lower(), r.stderr
