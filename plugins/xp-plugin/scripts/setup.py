@@ -61,9 +61,16 @@ def write_hook_lib() -> None:
     shutil.copy(TEMPLATES / "hook-lib.sh", ".githooks/hook-lib.sh")
 
 
-def scaffold_wall() -> str:
+def scaffold_wall() -> tuple[str, bool]:
+    """(summary, wrote_a_hook). The flag exists because the closing advice named a
+    pre-commit hook unconditionally, including where we deliberately wrote none."""
     if routing := existing_hook_routing():
-        return f"existing hook routing found ({routing}) — left untouched; wire the tiers yourself"
+        return (
+            f"existing hook routing found ({routing}) — left untouched. Point"
+            " .xp/config.yml's tiers at that wall's OWN commands, so the two cannot"
+            ' drift into different definitions of "fast"',
+            False,
+        )
     if shutil.which("lefthook"):
         write_hook_lib()
         shutil.copy(TEMPLATES / "lefthook.yml", "lefthook.yml")
@@ -74,15 +81,15 @@ def scaffold_wall() -> str:
                 " yourself and read its error",
                 file=sys.stderr,
             )
-            return "wall: lefthook.yml written; install FAILED (see stderr)"
-        return "wall: lefthook.yml written and installed"
+            return "wall: lefthook.yml written; install FAILED (see stderr)", True
+        return "wall: lefthook.yml written and installed", True
     write_hook_lib()
     for hook in ("pre-commit", "pre-push"):
         dst = Path(".githooks") / hook
         shutil.copy(TEMPLATES / f"githooks-{hook}", dst)
         dst.chmod(dst.stat().st_mode | stat.S_IEXEC | stat.S_IXGRP | stat.S_IXOTH)
     subprocess.run(["git", "config", "core.hooksPath", ".githooks"], check=True)
-    return "wall: .githooks scaffolded (core.hooksPath set)"
+    return "wall: .githooks scaffolded (core.hooksPath set)", True
 
 
 def main() -> int:
@@ -107,14 +114,15 @@ def main() -> int:
         shutil.copy(TEMPLATES / name, Path(".xp") / name)
     plan_path().parent.mkdir(parents=True, exist_ok=True)
     shutil.copy(TEMPLATES / "plan.md", plan_path())
-    wall = scaffold_wall()
+    wall, wrote_hook = scaffold_wall()
+    third = " (3) add your linter to the pre-commit hook." if wrote_hook else ""
     print(
         f".xp/ scaffolded (config, seeded constraints, system)\n"
         f"plan scaffolded at {plan_path()} — PER CLONE, outside the repo\n"
         f"env.json seeded at {env_path()} — where anything NOT spawned from the plugin"
         f" reads its root\n{wall}\n"
         "Edit next: (1) tests.fast/story/full in .xp/config.yml — the wall reads them"
-        " at run time; (2) .xp/system.md; (3) add your linter to the pre-commit hook."
+        f" at run time; (2) .xp/system.md;{third or '.'}"
     )
     return 0
 

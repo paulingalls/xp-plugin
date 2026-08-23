@@ -30,6 +30,13 @@ def bare_repo(tmp_path, with_fake_lefthook=False):
     return repo, env
 
 
+def plant(tmp_path, name, body):
+    exe = tmp_path / "bin" / name
+    exe.write_text(body)
+    exe.chmod(exe.stat().st_mode | stat.S_IEXEC)
+    return exe
+
+
 def run_setup(repo, env, *args):
     return subprocess.run(
         [sys.executable, str(SCRIPTS / "setup.py"), *args],
@@ -147,6 +154,7 @@ class TestHookWall:
         repo, env = bare_repo(tmp_path)
         run_setup(repo, env)
         cfg = repo / ".xp" / "config.yml"
+        plant(tmp_path, "gitleaks", "#!/bin/sh\nexit 0\n")
         cfg.write_text(cfg.read_text().replace("fast: EDIT-ME", "fast: false"))
         r = subprocess.run(
             ["sh", ".githooks/pre-commit"], cwd=repo, env=env, capture_output=True, text=True
@@ -158,15 +166,15 @@ class TestHookWall:
         )
         assert r.returncode == 0, r.stderr
 
-    def test_wall_runs_gitleaks_when_present_and_warns_when_absent(self, tmp_path):
+    def test_wall_runs_gitleaks_when_present_and_refuses_when_absent(self, tmp_path):
+        """A missing scanner must RED the wall, not warn past it. DESIGN §7 puts
+        the secrets scan in the enforcement floor, and a floor with a skip in it
+        is not one: the commit it passes looks scanned and was not."""
         repo, env = bare_repo(tmp_path)
         run_setup(repo, env)
         cfg = repo / ".xp" / "config.yml"
         cfg.write_text(cfg.read_text().replace("fast: EDIT-ME", "fast: true"))
-        bin_dir = tmp_path / "bin"
-        fake = bin_dir / "gitleaks"
-        fake.write_text("#!/bin/sh\nexit 1\n")
-        fake.chmod(fake.stat().st_mode | stat.S_IEXEC)
+        fake = plant(tmp_path, "gitleaks", "#!/bin/sh\nexit 1\n")
         r = subprocess.run(
             ["sh", ".githooks/pre-commit"], cwd=repo, env=env, capture_output=True, text=True
         )
@@ -175,7 +183,21 @@ class TestHookWall:
         r = subprocess.run(
             ["sh", ".githooks/pre-commit"], cwd=repo, env=env, capture_output=True, text=True
         )
-        assert r.returncode == 0 and "gitleaks" in (r.stderr + r.stdout)  # loud warning
+        assert r.returncode != 0, "a missing scanner passed the wall"
+        assert "gitleaks" in r.stderr  # and the refusal carries the install line
+
+    def test_setup_never_points_at_a_hook_it_declined_to_write(self, tmp_path):
+        """Step 3 said "add your linter to the pre-commit hook" unconditionally,
+        so on a repo whose routing setup deliberately left alone it named a file
+        that does not exist. The real task there is the one the field report had
+        to work out by hand: point the tiers at the existing wall's own commands,
+        so two walls cannot drift into different definitions of "fast"."""
+        repo, env = bare_repo(tmp_path)
+        (repo / "lefthook.toml").write_text("# theirs\n")
+        r = run_setup(repo, env)
+        assert r.returncode == 0, r.stderr
+        assert "add your linter" not in r.stdout, r.stdout
+        assert "tiers at that wall" in r.stdout, r.stdout  # names the real task instead
 
     def test_preexisting_routing_left_untouched(self, tmp_path):
         repo, env = bare_repo(tmp_path)
@@ -234,6 +256,7 @@ class TestCloseReviewFindings:
         repo, env = bare_repo(tmp_path)
         run_setup(repo, env)
         cfg = repo / ".xp" / "config.yml"
+        plant(tmp_path, "gitleaks", "#!/bin/sh\nexit 0\n")
         quoted = 'fast: test "not slow" = "not slow"'
         cfg.write_text(cfg.read_text().replace("fast: EDIT-ME", quoted))
         r = subprocess.run(
@@ -246,19 +269,26 @@ class TestCloseReviewFindings:
         repo, env = bare_repo(tmp_path)
         run_setup(repo, env)
         cfg = repo / ".xp" / "config.yml"
+        plant(tmp_path, "gitleaks", "#!/bin/sh\nexit 0\n")
         cfg.write_text(cfg.read_text().replace("  fast: EDIT-ME", "    fast: true"))
         r = subprocess.run(
             ["sh", ".githooks/pre-commit"], cwd=repo, env=env, capture_output=True, text=True
         )
         assert r.returncode == 0 and "unset" not in (r.stdout + r.stderr)
 
-    def test_fresh_scaffold_edit_me_warns_and_passes_through_hook(self, tmp_path):
+    def test_fresh_scaffold_edit_me_reds_rather_than_greening(self, tmp_path):
+        """The worst arm of the same shape, because it fires on a JUST-scaffolded
+        repo: setup writes EDIT-ME as the tier default, so the first commit after
+        setup passed a wall that had run no test — invisible during exactly the
+        window where the user assumes setup worked."""
         repo, env = bare_repo(tmp_path)
         run_setup(repo, env)
+        plant(tmp_path, "gitleaks", "#!/bin/sh\nexit 0\n")
         r = subprocess.run(
             ["sh", ".githooks/pre-commit"], cwd=repo, env=env, capture_output=True, text=True
         )
-        assert r.returncode == 0 and "config" in (r.stdout + r.stderr)
+        assert r.returncode != 0, "an unedited tier passed the wall having run nothing"
+        assert "tests.fast" in r.stderr and ".xp/config.yml" in r.stderr
 
 
 class TestDogfoodMatchesTheScaffold:
