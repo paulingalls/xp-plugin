@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Append bug/debt/note records to work.md. The only writer — see PROCESS.md.
+"""Append bug/debt/note records to work.md (the only writer — see PROCESS.md), and
+resolve the installed plugin root for anything that was not spawned from it (`env`).
 
 A bug's falsifier must red (exit nonzero) right now; a debt's must be green.
 The check runs at creation because that is the only cheap enforcement point;
@@ -15,6 +16,9 @@ import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).parent))
+from env import data_root, plugin_root
 
 NOTE_CAP = 2000  # chars; a judgment call, not a derived number
 
@@ -40,25 +44,12 @@ def neutralize(text: str) -> str:
 
 def chdir_repo_root() -> bool:
     """Anchor to the git toplevel so .xp/ reads work from any subdirectory."""
-    import os
 
     r = subprocess.run(["git", "rev-parse", "--show-toplevel"], capture_output=True, text=True)
     if r.returncode != 0:
         return False
     os.chdir(r.stdout.strip())
     return True
-
-
-def data_root() -> Path:
-    if env := os.environ.get("XP_DATA"):
-        return Path(env)
-    proc = subprocess.run(["git", "rev-parse", "--git-common-dir"], capture_output=True, text=True)
-    if proc.returncode != 0:
-        print("not inside a git repository and XP_DATA is unset", file=sys.stderr)
-        raise SystemExit(2)
-    common = proc.stdout.strip()
-    project_id = hashlib.sha256(os.path.realpath(common).encode()).hexdigest()[:12]
-    return Path.home() / ".xp" / "data" / project_id
 
 
 def plan_path() -> Path:
@@ -187,8 +178,7 @@ def slugify(s: str) -> str:
 def user_ns() -> str:
     """The branch-naming namespace: git identity, slugified.
 
-    Here rather than in spawn.py because this module already owns per-clone
-    identity (data_root), and because close.py and spawn.py both import it —
+    Here rather than in spawn.py because close.py and spawn.py both import it —
     story-011's `<user>/free-...` branches get it with no new import edge.
     The "user" fallback is unreachable in any repo that can commit; it is a
     default, not a case to guard.
@@ -347,6 +337,7 @@ def main() -> int:
         p.add_argument("--files", required=True, help="comma-separated paths")
     sub.add_parser("note").add_argument("text")
     sub.add_parser("list")
+    sub.add_parser("env", help="print the installed plugin root recorded in the data root")
     a = sub.add_parser("archive")
     a.add_argument("--ref", required=True, help="record id from `list`")
     a.add_argument("--disposition", required=True, help="why: promoted, superseded, dropped")
@@ -355,6 +346,9 @@ def main() -> int:
     r.add_argument("--falsifier", required=True, help="replacement; must be GREEN now")
     args = parser.parse_args()
 
+    if args.kind == "env":
+        print(plugin_root())
+        return 0
     root = data_root()
     if args.kind == "list":
         for eid, text in entries(root):

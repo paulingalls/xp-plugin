@@ -6,6 +6,7 @@ import subprocess
 import sys
 from itertools import pairwise
 
+import pytest
 from close_helpers import (  # noqa: F401
     CARD,
     CLEAN,
@@ -20,6 +21,7 @@ from close_helpers import (  # noqa: F401
     make_repo,
     marker,
     marker_file,
+    mint_ready,
     prose,
     stub_reviewer,
 )
@@ -268,7 +270,8 @@ class TestReviewLeg:
         argv = launch["argv"]
         assert "--plugin-dir" in argv and "-p" in argv
         assert argv[argv.index("--model") + 1] == "opus"
-        assert argv[argv.index("--output-format") + 1] == "json"
+        assert argv[argv.index("--output-format") + 1] == "stream-json"
+        assert "--verbose" in argv
         prompt = launch["stdin"]
         assert "fault-inject" in prompt.lower()  # the charter, inlined
         assert "demo story" in prompt  # the card
@@ -351,7 +354,7 @@ class TestAReviewerMayNotREWRITEWhatItWasGiven:
             "echo 'x = 1' > src/thing.py\n"
             "git -c user.name='xp story-reviewer' -c user.email='r@xp'"
             " commit -qam 'reviewer rewrote the branch'\n"
-            'printf \'{"result": "clean"}\'\n'
+            'printf \'{"type": "result", "result": "clean"}\'\n'
         )
         (tmp_path / "bin" / "claude").chmod(0o755)
 
@@ -367,6 +370,7 @@ class TestAReviewerMayNotREWRITEWhatItWasGiven:
         g("reset", "-q", "--hard", reviewed)
         assert "A = 2" in (repo / "src" / "thing.py").read_text()
 
+    @pytest.mark.slow
     def test_a_reviewer_that_only_ADDS_commits_is_still_recorded(self, tmp_path):
         """The pair: the ordinary fixing reviewer must not trip this."""
         repo, env, _g = make_repo(tmp_path)
@@ -376,7 +380,7 @@ class TestAReviewerMayNotREWRITEWhatItWasGiven:
             'printf \'{"fixed": ["f"], "blocking": [], "noted": []}\' > "$p"\n'
             "echo 'x = 1' >> src/thing.py\n"
             "git -c user.name='xp story-reviewer' -c user.email='r@xp' commit -qam 'fix'\n"
-            'printf \'{"result": "fixed"}\'\n'
+            'printf \'{"type": "result", "result": "fixed"}\'\n'
         )
         (tmp_path / "bin" / "claude").chmod(0o755)
         assert close(repo, env, "review").returncode == 0
@@ -406,7 +410,9 @@ class TestCodexReviewerLeg:
 
     def codex_repo(self, tmp_path, **kw):
         repo, env, g = make_repo(tmp_path)
-        rec = stub_codex(tmp_path, commit=False, report=CLEAN, **kw)
+        # network=False is the other half of story-026's AC: the flag that lets an
+        # executor nest a plan review must not widen the leg that nests nothing.
+        rec = stub_codex(tmp_path, commit=False, report=CLEAN, network=False, **kw)
         (repo / ".xp" / "config.yml").write_text(
             "roles:\n  reviewer: codex/gpt-5.6-terra/high\ntests:\n  story: true\n"
         )
@@ -439,3 +445,29 @@ class TestCodexReviewerLeg:
         r = close(repo, env, "review")
         assert r.returncode == 2 and "Traceback" not in r.stderr, r.stderr
         assert "codex" in r.stderr and "install" in r.stderr.lower(), r.stderr
+
+
+class TestTheCardsReviewerLine:
+    """story-026: the config's reviewer is global, so it cannot say "author codex,
+    review claude" on one story and the inverse on the next. The card line is the
+    `Executor:` line's twin, and the round path and parse are unchanged."""
+
+    def test_the_card_line_beats_the_config_default(self, tmp_path):
+        repo, env, g = make_repo(tmp_path)
+        (repo / ".xp" / "config.yml").write_text(
+            "roles:\n  reviewer: codex/gpt-5.6-terra/high\ntests:\n  story: true\n"
+        )
+        g("add", "-A")
+        g("commit", "-qm", "reviewer role is codex")
+        plan = tmp_path / "data" / "plan.md"
+        plan.write_text(
+            plan.read_text().replace("Verify: true", "Verify: true\nReviewer: claude/opus")
+        )
+        mint_ready(repo, env)
+        # nothing named codex is on PATH: config's default would refuse loudly
+        # rather than pass this by accident
+        r = close(repo, env, "review")
+        assert r.returncode == 0, r.stdout + r.stderr
+        (launch,) = launches(tmp_path)
+        assert launch["argv"][launch["argv"].index("--model") + 1] == "opus"
+        assert marker(tmp_path)["rounds"] == [CLEAN]

@@ -113,17 +113,18 @@ def test_python_outside_scripts_counts_against_its_component(tmp_path):
     Codex adapter and the per-harness hooks land beside scripts/, and a scan
     rooted there printed an unchanged table and exited 0 over 3,400 lines sitting
     in plugins/xp-plugin/adapters/ and plugins/xp-plugin/hooks/ (measured)."""
+    budgets = _budgets()
     files = {
         "scripts/setup.py": "x = 1\n",
-        "adapters/codex.py": "x = 1\n" * 800,
-        "hooks/codex_hook.py": "x = 1\n" * 1100,
+        "adapters/codex.py": "x = 1\n" * (budgets.MISC + 50),
+        "hooks/codex_hook.py": "x = 1\n" * (budgets.HOOKS + 100),
     }
     root = build_plugin_tree(tmp_path, files)
     result = run_ratchet(root)
     assert result.returncode != 0, result.stdout
     violations = "\n".join(violation_lines(result.stdout))
-    assert "hooks measured 1100" in violations, violations
-    assert "misc measured 801" in violations, violations
+    assert f"hooks measured {budgets.HOOKS + 100}" in violations, violations
+    assert f"misc measured {budgets.MISC + 51}" in violations, violations
 
 
 def test_fixture_over_spawn_budget_reds_naming_budget_and_overage(tmp_path):

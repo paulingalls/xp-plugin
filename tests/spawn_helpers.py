@@ -190,7 +190,15 @@ def _total(stdout):
     raise AssertionError(f"no profile line in: {stdout[:200]}")
 
 
-def stub_codex(tmp_path, commit=True, write_file=False, report=None, prose=("thinking", "done")):
+def stub_codex(
+    tmp_path,
+    commit=True,
+    write_file=False,
+    report=None,
+    prose=("thinking", "done"),
+    network=None,
+    findings=None,
+):
     """A fake `codex` that REJECTS what the real binary rejects.
 
     story-017's measured loss, inherited verbatim by story-021's card: stub_claude
@@ -199,6 +207,12 @@ def stub_codex(tmp_path, commit=True, write_file=False, report=None, prose=("thi
     fault injection the AC names, so deleting the flag reds a test instead of
     shipping a PreToolUse bypass — and on the claude spellings, which is what
     stops the two legs' argv from silently fusing.
+
+    `network`: the sandbox posture this leg must have — True for the EXECUTOR,
+    which has to nest a headless plan review and dies on DNS without it (curl
+    EXIT=6, measured 0.149.0), False for a reviewer leg, which must not be
+    widened to buy it. None asserts nothing. Both directions die here rather
+    than in an argv assertion, so the check reds against a real launch.
 
     `report`: the reviewer shape. Its dict is written to the bundle's REPORT_PATH
     THROUGH `sh -c`, per the AC — the report lives outside the workspace, so the
@@ -222,6 +236,12 @@ def stub_codex(tmp_path, commit=True, write_file=False, report=None, prose=("thi
         "pairs = list(zip(argv, argv[1:]))",
         "if ('--disable', 'unified_exec') not in pairs:",
         "    die('unified_exec is enabled: write_stdin would bypass every gate')",
+        "net = ('-c', 'sandbox_workspace_write.network_access=true') in pairs",
+        f"want = {network!r}",
+        "if want is True and not net:",
+        "    die('no network_access: a nested harness dies on DNS')",
+        "if want is False and net:",
+        "    die('network_access on a leg that never nests a harness')",
         "stdin = sys.stdin.read()",
         f"json.dump({{'argv': argv, 'env': dict(os.environ), 'stdin': stdin}},"
         f" open({str(rec)!r}, 'w'))",
@@ -233,15 +253,26 @@ def stub_codex(tmp_path, commit=True, write_file=False, report=None, prose=("thi
             f"subprocess.run(['sh', '-c', 'cat > \"$1\"', 'sh', m.group(1).strip()],"
             f" input={json.dumps(report)!r}, text=True, check=True)",
         ]
+    if findings is not None:
+        body += [
+            "m = re.search(r'^FINDINGS_PATH: (.+)$', stdin, re.M)",
+            "assert m, 'the bundle named no FINDINGS_PATH'",
+            f"open(m.group(1).strip(), 'w').write({findings!r})",
+        ]
     if write_file:
         body.append("open('teammate-left-this-uncommitted.txt', 'w').write('oops')")
     if commit:
         body.append("subprocess.run(['git', 'add', '-A'])")
         body.append("subprocess.run(['git', 'commit', '--allow-empty', '-qm', 'teammate work'])")
-    # PLAIN prose, never JSON: codex's --json event vocabulary is unmeasured on
-    # 0.147.0 and the executor may not spawn codex to measure it, so the leg
-    # streams text and the exit code is the verdict.
-    body += [f"print({line!r})" for line in prose]
+    body += [
+        "if '--json' not in argv: die('native JSON stream was not requested')",
+        "print(json.dumps({'type': 'thread.started', 'thread_id': 'stub-thread'}))",
+    ]
+    body += [
+        f"print(json.dumps({{'type': 'item.completed', 'item':"
+        f" {{'type': 'agent_message', 'text': {line!r}}}}}))"
+        for line in prose
+    ]
     (bin_dir / "codex").write_text("\n".join(body) + "\n")
     (bin_dir / "codex").chmod(0o755)
     return rec

@@ -115,6 +115,7 @@ class TestFreeReview:
 
 
 class TestFreeLand:
+    @pytest.mark.slow
     def test_land_opens_the_pr_to_main_with_the_patch_bump(self, tmp_path):
         """AC 3: v0.2.0 -> v0.2.1. A free close targeting main IS a release, and
         a minor bump here would claim a sprint's worth of change."""
@@ -180,6 +181,7 @@ class TestFreeLand:
         assert "v0.3.1" in " ".join(create), create
         assert "v0.3.1" in r.stdout, r.stdout
 
+    @pytest.mark.slow
     def test_a_branch_cut_yesterday_still_lands_today(self, tmp_path):
         """The key is read off HEAD, never recomputed from today's date: a free
         close that spans midnight would otherwise lose the round it recorded."""
@@ -193,6 +195,7 @@ class TestFreeLand:
         assert r.returncode == 0, r.stderr + r.stdout
         assert [c for c in gh_calls(tmp_path) if c[:2] == ["pr", "create"]]
 
+    @pytest.mark.slow
     def test_land_names_the_full_diff_when_the_reviewer_changed_the_tree(self, tmp_path):
         """Assent is given by RUNNING land, so the artifact it rests on must be
         addressable HERE — the story leg prints the path, and a stat without one
@@ -270,6 +273,7 @@ class TestSharedLandGuards:
         ],
         ids=["ancestor", "gate-file"],
     )
+    @pytest.mark.slow
     def test_both_legs_refuse_with_the_same_words(self, tmp_path, inject, marks):
         story = self.story_refusal(tmp_path / "s", inject)
         freed = self.free_refusal(tmp_path / "f", inject)
@@ -282,6 +286,7 @@ class TestSharedLandGuards:
         # differ: the sha each fixture produced and the leg's own review command.
         assert normalize(story) == normalize(freed)
 
+    @pytest.mark.slow
     def test_the_tier_that_gates_is_the_one_the_merged_tree_declares(self, tmp_path):
         """The other half of the gate-file threat: a tier arriving on TRUNK is
         invisible to a shown..HEAD guard, and land read its command string

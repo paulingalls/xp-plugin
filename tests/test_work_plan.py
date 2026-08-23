@@ -9,6 +9,8 @@ the mutate deadlocks a correct implementation.
 """
 
 import fcntl
+import json
+import shutil
 import subprocess
 import sys
 import time
@@ -17,6 +19,8 @@ from pathlib import Path
 import pytest
 
 SCRIPTS = Path(__file__).parent.parent / "plugins" / "xp-plugin" / "scripts"
+sys.path.insert(0, str(SCRIPTS))
+from env import write_env  # noqa: E402
 
 PLAN = """# Plan
 
@@ -298,3 +302,171 @@ class TestOneFlipRule:
         plan = "#### story-x — the [in-progress] dance   [in-progress]\n"
         out = _flip_status(plan, "story-x")
         assert out == "#### story-x — the [in-progress] dance   [done]\n", out
+
+
+PLUGIN = Path(__file__).parent.parent / "plugins" / "xp-plugin"
+
+
+def work_env(cwd, home, data=None):
+    """The shipped `work.py env` validation surface."""
+    env = hashing_env(home)
+    if data is not None:
+        env["XP_DATA"] = str(data)
+    return subprocess.run(
+        [sys.executable, str(SCRIPTS / "work.py"), "env"],
+        cwd=cwd,
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+
+
+class TestPluginRootHelper:
+    """story-027: the env file, read by processes NOTHING spawned — which have no
+    ${CLAUDE_PLUGIN_ROOT} and no Path(__file__) inside the plugin."""
+
+    def fake_plugin(self, path, version="9.9.9"):
+        (path / ".claude-plugin").mkdir(parents=True)
+        (path / ".claude-plugin" / "plugin.json").write_text(json.dumps({"version": version}))
+        return path
+
+    def seed(self, data, root, version="9.9.9"):
+        data.mkdir(parents=True, exist_ok=True)
+        (data / "env.json").write_text(
+            json.dumps({"plugin_root": str(root), "plugin_version": version})
+        )
+        return data / "env.json"
+
+    def test_a_seeded_env_resolves_to_the_recorded_root(self, tmp_path):
+        install = self.fake_plugin(tmp_path / "install")
+        self.seed(tmp_path / "data", install)
+        r = work_env(tmp_path, tmp_path, tmp_path / "data")
+        assert r.returncode == 0, r.stderr
+        assert r.stdout.strip() == str(install)
+
+    def test_a_stale_root_refuses_naming_the_file_the_value_and_the_route(self, tmp_path):
+        install = self.fake_plugin(tmp_path / "install")
+        env_file = self.seed(tmp_path / "data", install)
+        shutil.rmtree(install)
+        r = work_env(tmp_path, tmp_path, tmp_path / "data")
+        assert r.returncode != 0, "a dead plugin root resolved"
+        assert str(install) not in r.stdout, "the dead path was returned anyway"
+        assert "gone" in r.stderr, r.stderr
+        for named in (str(env_file), str(install), "SessionStart"):
+            assert named in r.stderr, f"the refusal never names {named}:\n{r.stderr}"
+
+    def test_a_root_that_exists_at_another_version_refuses(self, tmp_path):
+        """The cache is version-keyed, so `is_dir()` is not a check: an upgrade
+        leaves the old directory in place and populated. This is the case that
+        makes the recorded version load-bearing rather than decorative."""
+        install = self.fake_plugin(tmp_path / "install", version="9.9.9")
+        self.seed(tmp_path / "data", install, version="1.0.0")
+        r = work_env(tmp_path, tmp_path, tmp_path / "data")
+        assert r.returncode != 0, "a pointer at another version's install resolved"
+        assert "1.0.0" in r.stderr and "9.9.9" in r.stderr, r.stderr
+
+    def test_a_root_that_is_not_a_plugin_refuses(self, tmp_path):
+        (tmp_path / "install").mkdir()
+        self.seed(tmp_path / "data", tmp_path / "install")
+        r = work_env(tmp_path, tmp_path, tmp_path / "data")
+        assert r.returncode != 0, "a directory with no manifest resolved as a plugin"
+        assert "plugin.json" in r.stderr, r.stderr
+
+    def test_a_manifest_without_a_usable_version_refuses(self, tmp_path):
+        for version in (7, ""):
+            install = self.fake_plugin(tmp_path / f"install-{version!r}", version=version)
+            self.seed(tmp_path / f"data-{version!r}", install, version=version)
+            r = work_env(tmp_path, tmp_path, tmp_path / f"data-{version!r}")
+            assert r.returncode != 0, f"manifest version {version!r} resolved as an install"
+            assert "plugin.json" in r.stderr and "SessionStart" in r.stderr, r.stderr
+
+    def test_a_non_object_manifest_refuses_without_a_traceback(self, tmp_path):
+        install = tmp_path / "install"
+        (install / ".claude-plugin").mkdir(parents=True)
+        (install / ".claude-plugin" / "plugin.json").write_text("[]")
+        self.seed(tmp_path / "data", install)
+        r = work_env(tmp_path, tmp_path, tmp_path / "data")
+        assert r.returncode != 0
+        assert "plugin.json" in r.stderr and "Traceback" not in r.stderr, r.stderr
+
+    def refusal_without(self, tmp_path, contents):
+        data = tmp_path / "data"
+        data.mkdir(parents=True, exist_ok=True)
+        if contents is not None:
+            (data / "env.json").write_text(contents)
+        r = work_env(tmp_path, tmp_path, data)
+        assert r.returncode != 0, "a missing plugin root resolved to something"
+        return r.stderr
+
+    def test_no_env_file_at_all_names_setup_as_the_seeder(self, tmp_path):
+        why = self.refusal_without(tmp_path, None)
+        assert "setup.py" in why, why
+
+    def test_an_env_without_the_key_refuses_the_same_way(self, tmp_path):
+        assert "setup.py" in self.refusal_without(tmp_path, "{}")
+
+    def test_an_invalid_env_names_the_manual_step_before_refresh(self, tmp_path):
+        for invalid in ('{"consumer": ', '["consumer"]'):
+            why = self.refusal_without(tmp_path, invalid)
+            assert "env.json" in why and "repair or remove" in why and "SessionStart" in why
+
+    def test_a_non_path_root_refuses_without_a_traceback(self, tmp_path):
+        why = self.refusal_without(
+            tmp_path, json.dumps({"plugin_root": 7, "plugin_version": "1.0.0"})
+        )
+        assert "env.json" in why and "7" in why and "SessionStart" in why, why
+        assert "Traceback" not in why, why
+
+    def test_the_pre_migration_and_stale_refusals_are_not_one_message(self, tmp_path):
+        """One message for two states is no message — the reader is told to run
+        setup when a session refresh is what it needs, or the reverse."""
+        install = self.fake_plugin(tmp_path / "install")
+        self.seed(tmp_path / "data", install)
+        shutil.rmtree(install)
+        stale = work_env(tmp_path, tmp_path, tmp_path / "data").stderr
+        (tmp_path / "data" / "env.json").unlink()
+        assert stale != work_env(tmp_path, tmp_path, tmp_path / "data").stderr
+
+    def test_an_install_outside_the_repo_resolves_and_reds_when_it_moves(self, tmp_path):
+        """AC5's walk, executed: a consuming-style repo with the plugin OUTSIDE the
+        tree — the shape this repo's in-tree plugin can never exercise. XP_DATA is
+        unset, so data_root() really hashes; HOME is tmp_path (R2-8)."""
+        install = shutil.copytree(PLUGIN, tmp_path / "install")
+        repo = git_init(tmp_path / "proj")
+        scaffold = subprocess.run(
+            [sys.executable, str(install / "scripts" / "setup.py")],
+            cwd=repo,
+            env=hashing_env(tmp_path),
+            capture_output=True,
+            text=True,
+        )
+        assert scaffold.returncode == 0, scaffold.stderr
+        resolved = work_env(repo, tmp_path)
+        assert resolved.returncode == 0, resolved.stderr
+        assert resolved.stdout.strip() == str(install)
+        moved = install.rename(tmp_path / "install-next")  # what a release does
+        after = subprocess.run(
+            [sys.executable, str(moved / "scripts" / "work.py"), "env"],
+            cwd=repo,
+            env=hashing_env(tmp_path),
+            capture_output=True,
+            text=True,
+        )
+        assert after.returncode != 0, "the moved-away install still resolved"
+        assert str(install) in after.stderr
+
+    def test_a_failed_replace_cleans_its_temp_file(self, tmp_path, monkeypatch):
+        data = tmp_path / "data"
+        data.mkdir()
+        (data / "env.json").write_text(json.dumps({"consumer": "keep"}))
+        monkeypatch.setenv("XP_DATA", str(data))
+
+        def fail_replace(_self, _target):
+            raise OSError("fault-injected replace failure")
+
+        monkeypatch.setattr(Path, "replace", fail_replace)
+        with pytest.raises(OSError, match="fault-injected"):
+            write_env(tmp_path / "install", "1.0.0")
+
+        assert not list(data.glob("env.json.*.tmp"))
+        assert json.loads((data / "env.json").read_text()) == {"consumer": "keep"}

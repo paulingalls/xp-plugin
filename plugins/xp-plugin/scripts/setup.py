@@ -17,9 +17,11 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
+from env import env_path, plugin_version, write_env
 from work import chdir_repo_root, plan_path
 
-TEMPLATES = Path(__file__).parent.parent / "templates"
+PLUGIN_ROOT = Path(__file__).parent.parent
+TEMPLATES = PLUGIN_ROOT / "templates"
 LEFTHOOK_CONFIGS = [
     "lefthook.yml",
     ".lefthook.yml",
@@ -91,6 +93,15 @@ def main() -> int:
         return fail("refused: .xp/ already exists — setup never overwrites")
     if plan_path().exists():
         return fail(f"refused: a plan already exists at {plan_path()} — setup never overwrites")
+    version = plugin_version(PLUGIN_ROOT)
+    if version == "unknown":
+        return fail(
+            f"refused: {PLUGIN_ROOT / '.claude-plugin' / 'plugin.json'} has no usable version"
+        )
+    try:
+        write_env(PLUGIN_ROOT, version)
+    except Exception as exc:
+        return fail(f"refused: could not seed {env_path()}: {exc}")
     Path(".xp").mkdir()
     for name in ("config.yml", "constraints.md", "system.md"):
         shutil.copy(TEMPLATES / name, Path(".xp") / name)
@@ -99,7 +110,9 @@ def main() -> int:
     wall = scaffold_wall()
     print(
         f".xp/ scaffolded (config, seeded constraints, system)\n"
-        f"plan scaffolded at {plan_path()} — PER CLONE, outside the repo\n{wall}\n"
+        f"plan scaffolded at {plan_path()} — PER CLONE, outside the repo\n"
+        f"env.json seeded at {env_path()} — where anything NOT spawned from the plugin"
+        f" reads its root\n{wall}\n"
         "Edit next: (1) tests.fast/story/full in .xp/config.yml — the wall reads them"
         " at run time; (2) .xp/system.md; (3) add your linter to the pre-commit hook."
     )

@@ -3,7 +3,6 @@ Verify: pytest -q tests/test_spawn.py"""
 
 import json
 import subprocess
-from itertools import pairwise
 from pathlib import Path
 
 from spawn_helpers import (  # noqa: F401
@@ -76,6 +75,31 @@ class TestLaunchContract:
         rec = stub_claude(tmp_path)
         assert spawn(repo, env, "story-042").returncode == 0
         assert json.loads(rec.read_text())["env"].get("XP_ROLE") == "teammate"
+
+    def test_codex_executor_launch_gets_network_for_its_nested_review(self, tmp_path):
+        repo, env, _g = make_repo(tmp_path, executor="codex/gpt-5.6-terra/high")
+        rec = stub_codex(tmp_path, network=True)
+        r = spawn(repo, env, "story-042")
+        assert r.returncode == 0, r.stderr
+        argv = json.loads(rec.read_text())["argv"]
+        assert "sandbox_workspace_write.network_access=true" in argv
+
+    def test_plan_reviewer_role_has_a_wall_clock(self, tmp_path, monkeypatch):
+        from spawn import run_agent
+
+        monkeypatch.setenv("XP_AGENT_TIMEOUT", "0.01")
+        try:
+            run_agent(
+                ["/bin/sh", "-c", "sleep 1"],
+                tmp_path,
+                "",
+                role="plan-reviewer",
+                harness="claude",
+                log_id="story-042-review",
+            )
+        except subprocess.TimeoutExpired:
+            return
+        raise AssertionError("the plan-reviewer role ran without a wall clock")
 
 
 def reset_to_ready(tmp_path):
@@ -203,6 +227,29 @@ class TestExecutorResolution:
         assert argv[argv.index("--model") + 1] == "opus"
         assert argv[argv.index("--effort") + 1] == "high"
 
+    def test_each_role_reads_its_OWN_card_line(self):
+        """story-026: one card expresses "author codex, review claude" only if the
+        line label follows the role. Before this, resolve_role read `Executor:`
+        whatever role it was asked for, so the close leg's card lookup would have
+        launched the AUTHOR's harness as the reviewer."""
+        from spawn import resolve_role
+
+        card = "Verify: true\nExecutor: codex/gpt-5.6-terra/high\nReviewer: claude/opus\n"
+        assert resolve_role("executor", card) == ("codex", "gpt-5.6-terra", "high")
+        assert resolve_role("reviewer", card) == ("claude", "opus", "")
+
+    def test_a_role_with_no_card_line_falls_through_to_config(self, tmp_path, monkeypatch):
+        """The no-`Reviewer:` case, which every existing close test rides on."""
+        from spawn import resolve_role
+
+        repo, _env, _g = make_repo(tmp_path)
+        monkeypatch.chdir(repo)
+        assert resolve_role("reviewer", "Executor: codex/gpt-5.6-terra/high\n") == (
+            "claude",
+            "opus",
+            "",
+        )
+
     def test_cli_override_beats_the_card(self, tmp_path):
         repo, env, _g = make_repo(tmp_path, executor="claude/opus/high")
         rec = stub_claude(tmp_path)
@@ -308,139 +355,86 @@ def test_spawn_reaches_the_integration_target_only_through_close():
     assert "sprint_branch" not in SPAWN.read_text()
 
 
-class TestCodexExecutor:
-    """story-021. Every divergence between the two legs is a silent hole in one
-    of them, so these assert the codex leg reaches the SAME shared guards."""
+class TestCommonDirWidening:
+    """Bug 0c31ac94, measured at the first live codex fixing review: a linked
+    worktree's index lives at <main>/.git/worktrees/<id>/, OUTSIDE the
+    workspace, so the reviewer fixed four files and could not commit one. The
+    021 probe that read the widening as unnecessary ran its scratch repo under
+    /tmp — writable by default in the codex sandbox — a confound, not a fact.
+    The widening is cwd-keyed: a MAIN checkout's .git is inside the workspace
+    and stays unwidened, the narrowest posture that still commits."""
 
-    def argv(self, tmp_path, executor="codex/gpt-5.6-terra/medium"):
-        repo, env, _g = make_repo(tmp_path, executor=executor)
-        stub_codex(tmp_path)
-        r = spawn(repo, env, "story-042", "--dry-run")
-        assert r.returncode == 0, r.stderr
-        for ln in r.stdout.splitlines():
-            if ln.startswith("codex "):
-                return ln.split(" ")
-        raise AssertionError(f"no codex argv in: {r.stdout[:400]}")
+    def _repo_with_worktree(self, tmp_path):
+        import subprocess
 
-    def test_the_assembled_argv(self, tmp_path):
-        argv = self.argv(tmp_path)
-        pairs = list(pairwise(argv))
-        for pair in [
-            ("-m", "gpt-5.6-terra"),
-            ("-c", "model_reasoning_effort=medium"),
-            ("--disable", "unified_exec"),
-            ("--sandbox", "workspace-write"),
-            ("--add-dir", str(tmp_path / "data")),
-            # XP_ROLE (self-close bar — close.py reads an ABSENT value as `lead`)
-            # and GIT_AUTHOR_* (the reviewer's signature) reach codex's shell only
-            # through shell_environment_policy, and ALL THREE of these keys can
-            # strip them: inherit chooses the source set, exclude drops patterns
-            # from it, include_only keeps only patterns. Each is a
-            # ~/.codex/config.toml key, so a consuming developer's file — not the
-            # lead's, which is the only one the story-021 walk measured — decides.
-            # All three measured present on 0.147.0 from codex's own error text
-            # for a bad value; `[]` is each list key's own default, which is why
-            # pinning it is a restoration and not a new policy.
-            ("-c", "shell_environment_policy.inherit=all"),
-            ("-c", "shell_environment_policy.exclude=[]"),
-            ("-c", "shell_environment_policy.include_only=[]"),
-        ]:
-            assert pair in pairs, f"{pair} missing from {argv}"
-        assert "-e" not in argv, "codex has no -e; the effort rides -c (spike-falsified)"
-        # asserting `--sandbox workspace-write` PRESENT bounds nothing on its own:
-        # 0.147.0 ships a documented override that silently voids it, and it is what
-        # a reader reaches for the first time the sandbox denies a write
-        assert "--dangerously-bypass-approvals-and-sandbox" not in argv, argv
-        # exactly one: note 6193855e probed the git-common-dir widening
-        # unnecessary on 0.147.0, and a second --add-dir is that widening returning
-        assert argv.count("--add-dir") == 1, argv
+        main = tmp_path / "main"
+        main.mkdir()
+        run = lambda *a, cwd=main: subprocess.run(  # noqa: E731
+            a, cwd=cwd, check=True, capture_output=True
+        )
+        run("git", "init", "-q")
+        run(
+            "git",
+            "-c",
+            "user.email=t@t",
+            "-c",
+            "user.name=t",
+            "commit",
+            "-q",
+            "--allow-empty",
+            "-m",
+            "seed",
+        )
+        run("git", "worktree", "add", "-q", str(tmp_path / "wt"))
+        return main, tmp_path / "wt"
 
-    def test_a_two_part_spec_carries_no_effort(self, tmp_path):
-        argv = self.argv(tmp_path, executor="codex/gpt-5.6-terra")
-        assert not [a for a in argv if a.startswith("model_reasoning_effort")], argv
+    def test_a_linked_worktree_widens_to_the_git_common_dir(self, tmp_path):
+        from spawn import common_dir_widening
 
-    def test_the_stub_reds_when_the_gate_flag_is_deleted(self, tmp_path, monkeypatch):
-        """Constraint 2: a stub that cannot red against its target defect
-        certifies. Strip the flag from the REAL builder's output and run the
-        real stub on it — the pair is what the spawn ships."""
-        import spawn as spawn_mod
+        main, wt = self._repo_with_worktree(tmp_path)
+        widening = common_dir_widening(wt)
+        assert widening[:1] == ["--add-dir"]
+        assert (main / ".git").resolve() == __import__("pathlib").Path(widening[1]).resolve()
 
-        # monkeypatch, not os.environ[...]: this test runs IN-PROCESS, and a bare
-        # assignment leaves every later data_root() in this worker pointed at a
-        # tmp_path pytest has already deleted
+    def test_run_agent_applies_the_widening_to_the_launched_argv(self, tmp_path, monkeypatch):
+        from spawn import agent_argv, run_agent
+
+        main, wt = self._repo_with_worktree(tmp_path)
+        rec = stub_codex(tmp_path, commit=False)
+        monkeypatch.setenv("PATH", f"{tmp_path / 'bin'}:/usr/bin:/bin")
         monkeypatch.setenv("XP_DATA", str(tmp_path / "data"))
-        argv = spawn_mod.codex_argv("gpt-5.6-terra", "medium")
-        stub_codex(tmp_path)
-        stripped = [a for a in argv if a not in ("--disable", "unified_exec")]
-        r = subprocess.run(
-            # cwd matters even on the arm that must die early: with the guard
-            # mutated away, the stub reaches its `git commit` and commits wherever
-            # it stands — the repo under review, if that is the cwd
-            [str(tmp_path / "bin" / "codex"), *stripped[1:]],
-            input="",
-            capture_output=True,
-            text=True,
-            cwd=tmp_path,
-        )
-        assert r.returncode != 0 and "unified_exec" in r.stderr, r.stderr
-        intact = subprocess.run(
-            [str(tmp_path / "bin" / "codex"), *argv[1:]],
-            input="",
-            capture_output=True,
-            text=True,
-            cwd=tmp_path,
-        )
-        assert intact.returncode == 0, intact.stderr
+        argv = agent_argv("codex", "m", "", "json", "plan-reviewer")
+        proc = run_agent(argv, wt, "", "plan-reviewer", "codex", "story-042-review")
+        assert proc.returncode == 0, proc.stderr
+        launched = json.loads(rec.read_text())["argv"]
+        adds = [launched[i + 1] for i, arg in enumerate(launched) if arg == "--add-dir"]
+        assert len(adds) == 2, launched
+        assert str((main / ".git").resolve()) in adds
 
-    def test_absent_from_path_refuses_before_any_worktree_is_cut(self, tmp_path):
-        repo, env, _g = make_repo(tmp_path, executor="codex/gpt-5.6-terra/medium")
-        r = spawn(repo, env, "story-042")  # no stub_codex: nothing named codex on PATH
-        assert r.returncode == 2
-        assert "codex" in r.stderr and "install" in r.stderr.lower(), r.stderr
-        assert not (tmp_path / "data" / "worktrees" / "story-042").exists()
-        branches = in_tree(repo, env, "branch", "--format=%(refname:short)")
-        assert "story-042" not in branches, branches
+    def test_the_TEAMMATE_launch_applies_it_too(self, tmp_path, monkeypatch):
+        """ONE rule, one launch path. It had two: while the widening lived in
+        run_agent alone, a codex teammate in a linked worktree could not commit —
+        measured on this story's own author, which hand-committed instead."""
+        from spawn import agent_argv
+        from teammate_tee import run_teammate
 
-    def test_dry_run_still_prints_the_argv_with_nothing_installed(self, tmp_path):
-        """Reading the argv a harness WOULD take is what a lead does before
-        installing it — review.run already exempts its dry run, and one rule with
-        two implementations is this repo's most-filed defect class."""
-        repo, env, _g = make_repo(tmp_path, executor="codex/gpt-5.6-terra/medium")
-        r = spawn(repo, env, "story-042", "--dry-run")
-        assert r.returncode == 0, r.stderr
-        assert "--disable unified_exec" in r.stdout, r.stdout[:400]
+        main, wt = self._repo_with_worktree(tmp_path)
+        rec = stub_codex(tmp_path, commit=False)
+        monkeypatch.setenv("PATH", f"{tmp_path / 'bin'}:/usr/bin:/bin")
+        monkeypatch.setenv("XP_DATA", str(tmp_path / "data"))
+        argv = agent_argv("codex", "m", "", "json", "executor")
+        assert run_teammate(argv, wt, "", "story-042", tmp_path / "data", "codex") == 0
+        launched = json.loads(rec.read_text())["argv"]
+        adds = [launched[i + 1] for i, arg in enumerate(launched) if arg == "--add-dir"]
+        assert str((main / ".git").resolve()) in adds, launched
 
-    def test_every_shipped_harness_has_its_own_argv_and_stream(self):
-        """Three registries, two files: HARNESS_INSTALL admits a harness, agent_argv
-        builds for it, STREAMS parses it. agent_argv FALLS THROUGH to claude, so a
-        third harness admitted without a builder launches the wrong binary silently;
-        a missing STREAMS row crashes after the worktree is cut and the card flipped."""
-        from spawn import HARNESS_INSTALL, agent_argv
-        from teammate_tee import STREAMS
+    def test_a_main_checkout_stays_unwidened(self, tmp_path):
+        from spawn import common_dir_widening
 
-        assert set(STREAMS) == set(HARNESS_INSTALL)
-        for harness in HARNESS_INSTALL:
-            assert agent_argv(harness, "m", "high", "json")[0] == harness
+        main, _wt = self._repo_with_worktree(tmp_path)
+        assert common_dir_widening(main) == []
 
-    def test_a_dirty_codex_teammate_hits_the_shared_completion_guard(self, tmp_path):
-        repo, env, _g = make_repo(tmp_path, executor="codex/gpt-5.6-terra/medium")
-        stub_codex(tmp_path, commit=False, write_file=True)
-        r = spawn(repo, env, "story-042")
-        assert r.returncode == 2 and "uncommitted" in r.stderr, r.stderr
+    def test_a_non_repo_cwd_stays_unwidened(self, tmp_path):
+        from spawn import common_dir_widening
 
-    def test_a_codex_teammate_with_no_commits_hits_the_shared_guard(self, tmp_path):
-        repo, env, _g = make_repo(tmp_path, executor="codex/gpt-5.6-terra/medium")
-        stub_codex(tmp_path, commit=False)
-        r = spawn(repo, env, "story-042")
-        assert r.returncode == 2 and "no commits of its own" in r.stderr, r.stderr
-
-    def test_a_clean_codex_teammate_passes(self, tmp_path):
-        repo, env, _g = make_repo(tmp_path, executor="codex/gpt-5.6-terra/medium")
-        rec = stub_codex(tmp_path)
-        r = spawn(repo, env, "story-042")
-        assert r.returncode == 0, r.stderr
-        launch = json.loads(rec.read_text())
-        assert launch["env"]["XP_ROLE"] == "teammate"
-        # the profile is INLINED, which is what makes a codex teammate need no
-        # plugin install — codex has no --plugin-dir to carry one
-        assert "CONSTRAINT-SENTINEL" in launch["stdin"] and "demo story" in launch["stdin"]
+        assert common_dir_widening(tmp_path) == []

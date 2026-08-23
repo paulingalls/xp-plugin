@@ -1,5 +1,6 @@
 """story-006: /xp-setup scaffold. Verify: pytest -q tests/test_setup.py"""
 
+import json
 import re
 import shutil
 import stat
@@ -302,3 +303,121 @@ class TestDogfoodMatchesTheScaffold:
             "a scaffolded repo cannot run a sprint close: the seeded plan has no"
             " `### Sprint N` section for sprint_stories to find"
         )
+
+
+class TestEnvFile:
+    """story-027 AC1: the data root records the plugin root that scaffolded it, so
+    a codex lead's scripts — spawned by nothing, holding no ${CLAUDE_PLUGIN_ROOT} —
+    can find the install. In THIS repo the plugin is in-tree and the gap is invisible."""
+
+    def test_setup_seeds_the_env_file_with_its_own_root_and_version(self, tmp_path):
+        """XP_DATA unset, as in the AC3 arm above: data_root() really hashes and the
+        developer's own ~/.xp is never written."""
+        repo, env = bare_repo(tmp_path)
+        r = run_setup(repo, env)
+        assert r.returncode == 0, r.stderr
+        found = list((tmp_path / ".xp" / "data").glob("*/env.json"))
+        assert len(found) == 1, f"expected one state-root env file, found {found}"
+        recorded = json.loads(found[0].read_text())
+        manifest = json.loads((SCRIPTS.parent / ".claude-plugin" / "plugin.json").read_text())
+        assert recorded["plugin_root"] == str(SCRIPTS.parent)
+        assert recorded["plugin_version"] == manifest["version"]
+        assert str(found[0]) in r.stdout, "the summary never says where it landed"
+
+    def test_setup_preserves_existing_non_plugin_keys(self, tmp_path):
+        repo, env = bare_repo(tmp_path)
+        data = tmp_path / "state"
+        data.mkdir()
+        env["XP_DATA"] = str(data)
+        (data / "env.json").write_text(json.dumps({"consumer": {"keep": True}}))
+
+        r = run_setup(repo, env)
+
+        assert r.returncode == 0, r.stderr
+        recorded = json.loads((data / "env.json").read_text())
+        manifest = json.loads((SCRIPTS.parent / ".claude-plugin" / "plugin.json").read_text())
+        assert recorded == {
+            "consumer": {"keep": True},
+            "plugin_root": str(SCRIPTS.parent),
+            "plugin_version": manifest["version"],
+        }
+
+    def test_an_invalid_env_refuses_before_scaffolding(self, tmp_path):
+        repo, env = bare_repo(tmp_path)
+        data = tmp_path / "state"
+        data.mkdir()
+        env["XP_DATA"] = str(data)
+        invalid = '{"consumer": '
+        (data / "env.json").write_text(invalid)
+
+        r = run_setup(repo, env)
+
+        assert r.returncode != 0 and "env.json" in r.stderr, r.stderr
+        assert not (repo / ".xp").exists(), "a failed env seed left a partial scaffold"
+        assert not (data / "plan.md").exists(), "a failed env seed left a partial plan"
+        assert (data / "env.json").read_text() == invalid
+
+    def test_an_install_without_a_version_refuses_before_scaffolding(self, tmp_path):
+        install = shutil.copytree(SCRIPTS.parent, tmp_path / "install")
+        (install / ".claude-plugin" / "plugin.json").unlink()
+        repo, env = bare_repo(tmp_path)
+        data = tmp_path / "state"
+        env["XP_DATA"] = str(data)
+
+        r = subprocess.run(
+            [sys.executable, str(install / "scripts" / "setup.py")],
+            cwd=repo,
+            env=env,
+            capture_output=True,
+            text=True,
+        )
+
+        assert r.returncode != 0 and "plugin.json" in r.stderr, r.stderr
+        assert not (repo / ".xp").exists(), "an invalid install scaffolded the repo"
+        assert not (data / "plan.md").exists(), "an invalid install seeded the plan"
+        assert not (data / "env.json").exists(), "an invalid version was recorded"
+
+    def test_the_concurrent_writer_that_replaces_last_wins(self, tmp_path):
+        data = tmp_path / "state"
+        data.mkdir()
+        (data / "env.json").write_text(json.dumps({"consumer": "keep"}))
+        writer = """
+import os, sys, time
+from pathlib import Path
+sys.path.insert(0, sys.argv[1])
+from env import write_env
+replace = Path.replace
+def rendezvous(self, target):
+    (Path(os.environ["XP_DATA"]) / f"ready.{os.getpid()}").touch()
+    deadline = time.monotonic() + 10
+    while len(list(Path(os.environ["XP_DATA"]).glob("ready.*"))) < 2:
+        if time.monotonic() > deadline:
+            raise TimeoutError("the other writer never reached replace")
+        time.sleep(0.01)
+    swapped = Path(os.environ["XP_DATA"]) / "first-swapped"
+    if sys.argv[3] == "1.0.0":
+        while not swapped.exists():
+            if time.monotonic() > deadline:
+                raise TimeoutError("the first writer never replaced")
+            time.sleep(0.01)
+        return replace(self, target)
+    result = replace(self, target)
+    swapped.touch()
+    return result
+Path.replace = rendezvous
+write_env(Path(sys.argv[2]), sys.argv[3])
+"""
+        env = {"PATH": "/usr/bin:/bin", "XP_DATA": str(data)}
+        writers = [
+            subprocess.Popen(
+                [sys.executable, "-c", writer, str(SCRIPTS), str(tmp_path / root), version],
+                env=env,
+            )
+            for root, version in (("install-a", "1.0.0"), ("install-b", "2.0.0"))
+        ]
+
+        assert [process.wait(15) for process in writers] == [0, 0]
+        recorded = json.loads((data / "env.json").read_text())
+        assert recorded["consumer"] == "keep"
+        assert recorded["plugin_root"] == str(tmp_path / "install-a")
+        assert recorded["plugin_version"] == "1.0.0"

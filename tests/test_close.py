@@ -294,7 +294,7 @@ class TestOverlapNotMotion:
             "echo 'x = 1' >> src/thing.py\n"
             "git -c user.name='xp story-reviewer' -c user.email='r@xp'"
             " commit -qam 'REVIEWER-FIX'\n"
-            'printf \'{"result": "fixed one thing"}\'\n'
+            'printf \'{"type": "result", "result": "fixed one thing"}\'\n'
         )
         (tmp_path / "bin" / "claude").chmod(0o755)
 
