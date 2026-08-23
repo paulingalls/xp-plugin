@@ -56,3 +56,10 @@ class TestConfigCommentRule:
         )
         assert config_block_value("review", "verify_batches") == ""
         assert config_block_value("tests", "full") == "pytest"
+
+    def test_a_missing_sentinel_distinguishes_absent_from_empty(self, tmp_path, monkeypatch):
+        from work import config_block_value
+
+        monkeypatch.chdir(self.config(tmp_path, "roles:\n  reviewer:\n"))
+        assert config_block_value("roles", "plan-reviewer", missing="ABSENT") == "ABSENT"
+        assert config_block_value("roles", "reviewer", missing="ABSENT") == ""

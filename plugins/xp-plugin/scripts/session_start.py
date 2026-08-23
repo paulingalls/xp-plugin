@@ -1,13 +1,10 @@
 #!/usr/bin/env python3
-"""SessionStart hook: inject the lead profile (DESIGN §8) for xp-managed repos.
-
-Deterministic assembly only — no judgment (constraints.md #7). Degrades to
-silence on any unexpected state: a broken hook must never break a session.
-"""
+"""Inject the lead profile without breaking a session on failure."""
 
 import contextlib
 import json
 import os
+import re
 import subprocess
 import sys
 import traceback
@@ -15,7 +12,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 from env import plugin_version, write_env
-from work import data_root, plan_path
+from work import data_root, plan_path, strip_comment
 
 PLUGIN_ROOT = Path(__file__).parent.parent
 OUTPUT_CAP = 12_000  # chars ≈ 3k tokens, the lead-profile budget (DESIGN §8)
@@ -29,6 +26,37 @@ def git(*args: str) -> str:
 
 def read(path: Path) -> str:
     return path.read_text(errors="replace") if path.exists() else ""
+
+
+def missing_template_keys(template_text: str, config_text: str) -> list[tuple[str, str]]:
+    def lines(text):
+        found, parents = {}, {}
+        for raw in text.splitlines():
+            line = strip_comment(raw).rstrip()
+            if not (match := re.match(r"^( *)([\w-]+):(.*)$", line)):
+                continue
+            indent, key, tail = len(match[1]), match[2], match[3]
+            parents = {depth: parent for depth, parent in parents.items() if depth < indent}
+            path = ".".join([parents[depth] for depth in sorted(parents)] + [key])
+            found[path] = line
+            if not tail.strip():
+                parents[indent] = key
+        return found
+
+    shipped, current = lines(template_text), lines(config_text)
+    return [(key, line) for key, line in shipped.items() if key not in current]
+
+
+def config_age(root: Path) -> str:
+    config = root / ".xp" / "config.yml"
+    if not config.exists():
+        return ""
+    missing = missing_template_keys(read(PLUGIN_ROOT / "templates" / "config.yml"), read(config))
+    if not missing:
+        return ""
+    return ".xp/config.yml is missing shipped keys — " + "; ".join(
+        f"{key}: add `{line}`" for key, line in missing
+    )
 
 
 def digest_with_staleness() -> str:
@@ -147,15 +175,8 @@ def recovery_block() -> str:
 
 
 def teammate_marker() -> str:
-    """The non-lead profile: one POSITIVE line, never silence.
-
-    Silence would be indistinguishable from this hook crashing — main() degrades
-    to exit 0 on anything — so a silent gate could never be told apart from a
-    gate that never ran (constraints.md #2). The teammate's rules are already
-    inlined in its prompt by spawn.py; re-injecting the lead profile on top is
-    duplicate tokens against the DESIGN §8 budget, which is the whole reason
-    this gate exists.
-    """
+    """Positive so a working role gate differs from a crash (#2). Spawn already
+    inlines teammate rules; repeating the lead profile spends DESIGN §8 budget."""
     return (
         f"xp-plugin {plugin_version(PLUGIN_ROOT)} · teammate session · your card, VALUES and "
         "constraints are in your prompt · you never close, never merge"
@@ -198,6 +219,7 @@ def main() -> int:
     # freshest layers first: the cap truncates the tail, so static prose goes last
     plugin_builders = [
         lambda: banner(root),
+        lambda: config_age(root),
         lambda: read(PLUGIN_ROOT / "VALUES.md"),
         lambda: read(PLUGIN_ROOT / "PROCESS.md"),
     ]

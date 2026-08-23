@@ -23,7 +23,11 @@ class TestDogfoodMatchesTheScaffold:
         return {ln.split(":")[0] for ln in path.read_text().splitlines() if re.match(r"^\w+:", ln)}
 
     def test_our_config_carries_every_key_the_scaffold_ships(self):
-        missing = self.keys(self.SHIPPED / "config.yml") - self.keys(self.OURS / "config.yml")
+        from session_start import missing_template_keys
+
+        missing = missing_template_keys(
+            (self.SHIPPED / "config.yml").read_text(), (self.OURS / "config.yml").read_text()
+        )
         assert not missing, f"we never exercise the shipped keys: {missing}"
 
     def test_the_scaffold_ships_no_key_we_invented_without_seeding(self):
