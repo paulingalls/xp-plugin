@@ -4,6 +4,25 @@ Release notes started at v0.6.0; earlier entries are summarized from their
 tag and merge messages. Full detail lives in the merge history and the
 per-sprint review reports.
 
+## v0.6.1 — the wall stops reporting green having run nothing
+
+- **The scaffolded wall refuses instead of warning.** `hook-lib.sh` had two
+  paths that passed a commit having run nothing: a missing `gitleaks` warned
+  and fell through, and an unset or still-`EDIT-ME` test tier returned 0. The
+  second fired on a *freshly scaffolded* repo — setup seeds `EDIT-ME`, so the
+  wall installed, the first commit passed, and no test had ever run. Both now
+  exit 1 naming their next action. Reported from the field on a real monorepo.
+- **`xp-setup` stops naming a hook it declined to write.** Where existing hook
+  routing is found, the closing advice no longer says "add your linter to the
+  pre-commit hook"; it names the actual task — point `.xp/config.yml`'s tiers
+  at the existing wall's own commands, so the two cannot drift into different
+  definitions of "fast".
+- **The release identity is now enforced, not just mandated.** v0.6.0 was
+  tagged with the manifest still at 0.5.0; since the manifest version keys the
+  consumer's plugin cache, that tag shipped the previous copy under a new name.
+  `tests/test_release.py` refuses a manifest behind the latest tag, or a
+  version with no CHANGELOG entry (constraint 14).
+
 ## v0.6.0 — either harness, any role (Sprint 5)
 
 - **Headless plan review** (`plan_review.py`): the last subagent riding a
