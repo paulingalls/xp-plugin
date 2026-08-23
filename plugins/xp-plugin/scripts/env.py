@@ -15,6 +15,14 @@ import subprocess
 import sys
 from pathlib import Path
 
+# HERE because env.py is the only shipped module free of the `str | None` 3.9 dies on.
+if sys.version_info < (3, 11):
+    raise SystemExit(
+        f"refused: xp-plugin needs Python 3.11+, and this is"
+        f" {sys.version_info[0]}.{sys.version_info[1]}"
+        f" ({sys.executable}). Point `python3` at a newer interpreter."
+    )
+
 
 def data_root() -> Path:
     if env := os.environ.get("XP_DATA"):

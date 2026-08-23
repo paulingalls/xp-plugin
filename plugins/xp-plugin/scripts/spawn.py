@@ -34,6 +34,7 @@ from work import (
     chdir_repo_root,
     config_block_value,
     data_root,
+    entries,
     flip_card,
     missing_plan_refusal,
     plan_path,
@@ -383,13 +384,28 @@ def cmd_spawn(story_id: str, override: str, dry_run: bool, in_place: bool = Fals
     flip_to_in_progress(story_id)
     print(f"{branch} at {tree} (off {trunk})")
     handed_over = tree_state(tree)
+    before = {eid for eid, _ in entries(data_root())}
     rc = run_teammate(argv, tree, prompt, story_id, data_root(), harness)
     # NOT `if rc: return rc` — a teammate that crashed is the likeliest one to
     # have left work uncommitted, so skipping the guard there withholds the
     # refusal exactly when it is worth most.
     if err := unclean_teammate_result(tree, handed_over, story_id):
-        return fail(err)
+        filed = [eid for eid, _ in entries(data_root()) if eid not in before]
+        return escalated(story_id, filed, err, rc) if filed else fail(err)
     return rc
+
+
+def escalated(story_id: str, filed: list[str], why: str, rc: int) -> int:
+    """The record tells a deliberate STOP (TEAMMATE.md: file it, then stop) from a
+    teammate that merely did not finish — and rc tells both from one that died."""
+    what = "ESCALATED by the teammate" if rc == 0 else f"DIED after filing (harness rc {rc})"
+    print(
+        f"{story_id} {what} — records filed: {', '.join(filed)}."
+        f" Read them (`work.py list`), then fix the card or take the work over."
+        f"\nWhat the handback guard saw: {why}",
+        file=sys.stderr,
+    )
+    return 3
 
 
 def tree_state(tree: Path) -> tuple[str, str]:

@@ -4,6 +4,30 @@ Release notes started at v0.6.0; earlier entries are summarized from their
 tag and merge messages. Full detail lives in the merge history and the
 per-sprint review reports.
 
+## v0.6.5 — a teammate that stops and says so is escalating, not failing
+
+- **An escalation is no longer reported as a failed run.** `TEAMMATE.md` tells a
+  blocked teammate to say so, file a note, and stop — and `spawn.py` then refused
+  that exact handback ("the teammate made no commits of its own"), stranding the
+  worktree for the lead to salvage by hand. Reported from the field at real cost:
+  four runs, three with zero commits, two of them correct escalations, one
+  carrying a plan three review rounds deep. A record filed during the run now
+  turns that refusal into a reported escalation naming the records to read, the
+  work left behind, and exit 3. A teammate that simply did not finish, and said
+  nothing, is refused exactly as before — and a run that filed a record and then
+  DIED is reported as that, with the harness's exit status, rather than as a stop
+  it chose.
+- **Python older than 3.11 now refuses by name instead of tracebacking.** Twelve
+  of the thirteen shipped scripts died on 3.9 with `unsupported operand type(s)
+  for |` — and `python3` on a stock Mac *is* 3.9. The README asked for 3.11+ and
+  nothing enforced it, so a consuming project met a TypeError that named nothing:
+  `setup.py` could not scaffold, and the SessionStart hook failed before its own
+  "never break a session" guard could catch it. Now it says which interpreter it
+  found and what it needs — on every entry point, including `plan_review.py`, the
+  one leg `TEAMMATE.md` prints, which reached its own annotations first.
+- **The v0.6.4 note that the Verify refusal "moved" to the mint was imprecise.**
+  It was added at the mint and kept at land — one rule at two depths.
+
 ## v0.6.4 — the plan review survives the harness, and says so when it doesn't
 
 - **The mandatory plan review now outlives the call that started it.** Two field
