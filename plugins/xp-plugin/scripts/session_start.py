@@ -16,7 +16,7 @@ from work import data_root, plan_path, strip_comment
 
 PLUGIN_ROOT = Path(__file__).parent.parent
 OUTPUT_CAP = 12_000  # chars ≈ 3k tokens, the lead-profile budget (DESIGN §8)
-ENTRY_CAP = 240  # per work.md entry in the recovery block; see recovery_block
+ENTRY_CAP = 100  # a TITLE per work.md entry, not an excerpt; see recovery_block
 
 
 def git(*args: str) -> str:
@@ -146,14 +146,14 @@ def recovery_block() -> str:
     for i, ln in enumerate(lines):
         if ln.startswith("## "):
             body = lines[i + 1] if i + 1 < len(lines) else ""
-            # BOUNDED: a work.md entry is one paragraph, so its "first line" is
-            # the whole entry. Three long notes were ~6,000 chars and pushed
-            # constraints.md off the end of the budget entirely — filing records
-            # silently evicted the rules that govern filing them.
+            # A TITLE, not an excerpt: three long notes were ~6,000 chars and
+            # pushed constraints.md off the end, so filing records evicted the
+            # rules that govern filing them. Naming more records in the same space
+            # beats quoting fewer — `work.py list` is what reads the rest.
             if len(body) > ENTRY_CAP:
                 body = body[:ENTRY_CAP] + f"… (+{len(body) - ENTRY_CAP} chars, see work.md)"
             entries.append(f"{ln}\n  {body}")
-    work_heads = entries[-3:]
+    work_heads = entries[-8:]
     dirty = git("status", "--porcelain")
     try:
         closed = last_close()

@@ -62,11 +62,11 @@ class TestBugDebtBoundary:
 
 class TestNote:
     def test_long_note_truncated_with_notice_exit_zero(self, tmp_path):
-        r = run(["note", "x" * 3000], tmp_path)
+        r = run(["note", "x" * 5000], tmp_path)
         assert r.returncode == 0
         text = (tmp_path / "work.md").read_text()
         assert "truncated" in text
-        assert "x" * 3000 not in text
+        assert "x" * 5000 not in text
 
     def test_first_append_creates_root_and_work_md(self, tmp_path):
         data = tmp_path / "deep" / "nested"

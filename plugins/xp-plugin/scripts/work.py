@@ -20,7 +20,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 from env import data_root, plugin_root
 
-NOTE_CAP = 2000  # chars; a judgment call, not a derived number
+NOTE_CAP = 4000  # chars; measured: p90 of 392 records is 1,799, so this binds rarely
 
 
 STRUCTURAL = re.compile(r"^(## |Claim:|Falsifier:|Resolves:|Archives:|Files:)", re.M)

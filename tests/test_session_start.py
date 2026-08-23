@@ -234,6 +234,26 @@ class TestConstraintsSurviveTheBudget:
         out = run_hook(repo, tmp_path).stdout
         assert out.count("## note 2026-08-20T0") == 3
 
+    def test_the_lead_sees_more_than_three_records(self, tmp_path):
+        """Three was the whole memory of what has been filed. Records are how a
+        decision survives a session, and at ~1 record per 20 minutes of sprint the
+        lead re-learned each morning that almost nothing had ever been recorded."""
+        repo = self.repo_with_long_work_entries(tmp_path, entries=10, body=50)
+        out = run_hook(repo, tmp_path).stdout
+        assert out.count("## note 2026-08-20T0") + out.count("## note 2026-08-20T1") == 8
+
+    def test_an_injected_record_is_cut_to_a_title(self, tmp_path):
+        """What buys the extra records: a title identifies the record so the lead
+        knows to go read it, and reading it is `work.py list` away. A 240-char
+        excerpt is neither the whole record nor a name."""
+        repo = self.repo_with_long_work_entries(tmp_path, entries=1, body=500)
+        out = run_hook(repo, tmp_path).stdout
+        # "xxx", not "x": the banner line starts `xp-plugin 0.6.5` and matched a
+        # single-x prefix, so this assertion passed against a 267-char body.
+        shown = [ln for ln in out.splitlines() if ln.strip().startswith("xxx")]
+        assert shown, f"no record body was injected at all:\n{out[:400]}"
+        assert len(shown[0].strip()) < 140, f"still an excerpt, not a title: {len(shown[0])} chars"
+
     def test_an_oversized_digest_cannot_evict_the_constraints_either(self, tmp_path):
         """The rules outrank the narrative. A digest is recreatable from git and
         work.md; a silently-absent constraint is a rule the lead never knew it
