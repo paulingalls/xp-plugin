@@ -2,8 +2,7 @@
 """Tee a spawned agent's output: verbatim to a durable log, a compact line to
 stdout. EVERY role runs through here — liveness is the spawner's property.
 
-One drain, two stream shapes — only the per-line parse and whether the stream
-carries a terminal result object differ by harness."""
+One drain, two stream shapes — only the per-line parse differs by harness."""
 
 import contextlib
 import json

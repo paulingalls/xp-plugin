@@ -234,8 +234,8 @@ def test_the_claude_slug_maps_dots_to_dashes_like_the_harness_does(tmp_path, mon
 
 
 def test_a_codex_line_that_is_not_an_object_is_tolerated_not_raised(tmp_path, monkeypatch):
-    """parse_stream_json's docstring promises an unparseable line is echoed as
-    nothing, never raised, and its codex twin guards only the `item` lookup — so
+    """teammate_tee.event promises an unparseable line is echoed as nothing,
+    never raised, and the codex parse guards only the `item` lookup — so
     a bare `7` or `[]` on the stream reached `evt.get` and died with an
     AttributeError. It is raised from inside tee_stream's drain loop, where only
     OSError is caught, so ONE stray line loses the whole run and its review with

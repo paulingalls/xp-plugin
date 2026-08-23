@@ -286,8 +286,10 @@ class TestCardDigest:
 
 class TestOneFlipRule:
     """Bug f009389a: a flip that rewrote a TITLE carrying the status text
-    (measured live: story-023's own heading). Every leg's pair, because the rule
-    is shared now and a leg passing the wrong pair is the failure left."""
+    (measured live: story-023's own heading). One implementation now, so the rule
+    is pinned once — at all three transitions, since the bracket text differs at
+    each. WHICH pair a leg passes is not pinned here: it is covered where the leg
+    runs, by mint, spawn and land each asserting the card they leave behind."""
 
     @pytest.mark.parametrize(
         ("frm", "to"),
