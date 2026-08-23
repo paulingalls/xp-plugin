@@ -155,7 +155,10 @@ def _transcript_path(harness: str, cwd: Path, session: str) -> str:
     not resolve: a pointer that silently does not open is worse than none."""
     home = Path.home()
     if harness == "claude":
-        slug = "-" + str(cwd.resolve()).lstrip("/").replace("/", "-")
+        # `.` dashes too, measured over ~90 recorded (cwd, slug) pairs under
+        # ~/.claude/projects: a `/`-only slug missed every worktree, ours included
+        # (they live under the data root, `~/.xp`).
+        slug = "-" + str(cwd.resolve()).lstrip("/").replace("/", "-").replace(".", "-")
         return str(home / ".claude" / "projects" / slug / f"{session}.jsonl")
     root = home / ".codex" / "sessions"
     pattern = f"rollout-*-{session}.jsonl"

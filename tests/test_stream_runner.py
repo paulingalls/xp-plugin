@@ -2,6 +2,7 @@ import inspect
 import json
 import subprocess
 import sys
+from pathlib import Path
 
 import pytest
 
@@ -212,3 +213,20 @@ def test_a_log_that_fails_on_its_FIRST_write_still_returns_the_result(tmp_path, 
         "story-042-review",
     )
     assert json.loads(proc.stdout)["result"] == "survived"
+
+
+def test_the_claude_slug_maps_dots_to_dashes_like_the_harness_does(tmp_path, monkeypatch):
+    """MEASURED against ~/.claude/projects on this machine: a cwd holding a dot
+    is slugged with that dot as a DASH — `/Users/x/.xp/data/…` lands under
+    `-Users-x--xp-data-…`, correlated over ~90 recorded (cwd, slug) pairs. A
+    `/`-only replace therefore names a file that never exists, and Sprint-5's
+    own story-028 log points at one: worktrees live under the data root, `~/.xp`.
+    A pointer that does not open is the whole failure this line exists to avoid."""
+    from teammate_tee import _transcript_path
+
+    monkeypatch.setenv("HOME", str(tmp_path))
+    cwd = tmp_path / ".xp" / "data" / "proj.id" / "worktrees" / "story-042"
+    slug = Path(_transcript_path("claude", cwd, "sess-1")).parent.name
+
+    assert "." not in slug, slug
+    assert slug.endswith("--xp-data-proj-id-worktrees-story-042"), slug
