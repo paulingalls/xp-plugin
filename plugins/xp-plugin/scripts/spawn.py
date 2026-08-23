@@ -391,15 +391,16 @@ def cmd_spawn(story_id: str, override: str, dry_run: bool, in_place: bool = Fals
     # refusal exactly when it is worth most.
     if err := unclean_teammate_result(tree, handed_over, story_id):
         filed = [eid for eid, _ in entries(data_root()) if eid not in before]
-        return escalated(story_id, filed, err) if filed else fail(err)
+        return escalated(story_id, filed, err, rc) if filed else fail(err)
     return rc
 
 
-def escalated(story_id: str, filed: list[str], why: str) -> int:
-    """TEAMMATE.md tells a blocked teammate to file a record and STOP, and the
-    guards below then refused it — so the record is what tells the two apart."""
+def escalated(story_id: str, filed: list[str], why: str, rc: int) -> int:
+    """The record tells a deliberate STOP (TEAMMATE.md: file it, then stop) from a
+    teammate that merely did not finish — and rc tells both from one that died."""
+    what = "ESCALATED by the teammate" if rc == 0 else f"DIED after filing (harness rc {rc})"
     print(
-        f"{story_id} ESCALATED by the teammate — records filed: {', '.join(filed)}."
+        f"{story_id} {what} — records filed: {', '.join(filed)}."
         f" Read them (`work.py list`), then fix the card or take the work over."
         f"\nWhat the handback guard saw: {why}",
         file=sys.stderr,

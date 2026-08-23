@@ -25,7 +25,7 @@ WORK = SPAWN.parent / "work.py"
 ESCALATION = "the card's AC3 cannot be built: the API it names returns no such field"
 
 
-def stub_escalating(tmp_path, commit=False, write_file=False, note=True):
+def stub_escalating(tmp_path, commit=False, write_file=False, note=True, crash=False):
     """A teammate that files a work.md note and stops, with the other two knobs
     the guards turn on: whether it committed, and whether it left files behind."""
     bin_dir = tmp_path / "bin"
@@ -47,6 +47,8 @@ def stub_escalating(tmp_path, commit=False, write_file=False, note=True):
         # exercise the escalation seam, not that.
         f"    subprocess.run([{sys.executable!r}, {str(WORK)!r},",
         f"                    'note', {ESCALATION!r}], check=True)",
+        f"if {crash!r}:",
+        "    sys.exit(9)",
         "print(json.dumps({'type': 'result', 'subtype': 'success', 'result': 'stopped'}))",
     ]
     (bin_dir / "claude").write_text("\n".join(body) + "\n")
@@ -100,6 +102,19 @@ class TestDeliberateStop:
         assert r.returncode == 3, f"rc={r.returncode}\n{r.stderr}"
         assert "escalat" in r.stderr.lower(), r.stderr
         assert "half-done.py" in r.stderr, "the work left behind is not named"
+
+    def test_a_run_that_died_after_filing_is_not_called_a_deliberate_stop(self, tmp_path):
+        """The record separates a stop from a non-finish; the harness's own exit
+        status separates a stop from a DEATH, and it costs nothing to read. A
+        teammate that filed a discovery note at turn 3 and died at turn 50 chose
+        nothing, and a lead told it escalated goes looking for a wrong card."""
+        repo, env, _g = make_repo(tmp_path)
+        stub_escalating(tmp_path, crash=True)
+        r = spawn(repo, env, "story-042")
+        assert r.returncode == 3, f"rc={r.returncode}\n{r.stderr}"
+        assert "escalated by the teammate" not in r.stderr.lower(), r.stderr
+        assert "rc 9" in r.stderr, r.stderr
+        assert records(env)[-1].split()[0] in r.stderr, r.stderr
 
     def test_no_record_is_still_refused(self, tmp_path):
         """The guard is not weakened: a teammate that simply did not finish, and
