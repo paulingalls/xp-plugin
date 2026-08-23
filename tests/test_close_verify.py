@@ -47,3 +47,45 @@ class TestVerifyGate:
         assert absent.returncode != 0
         assert "no Verify:" in absent.stderr, absent.stderr
         assert "same line" not in absent.stderr.lower(), absent.stderr
+
+
+class TestIncompletePlanReviewReachesTheLead:
+    """plan_review.py leaves a marker when its review produced no findings; the
+    close leg is where the lead and the story reviewer both meet it.
+
+    Measured twice in the field, both invisible from here: a codex teammate whose
+    review was killed at the model's own timeout guess, and a claude teammate that
+    backgrounded the review and then YIELDED — headless `-p` ends on yield, so the
+    review died with its parent. The second was caught only because that teammate
+    happened to leave work uncommitted; committing first would have handed back a
+    story whose mandatory gate never ran, with nothing to say so.
+    """
+
+    def marker(self, env):
+        p = pathlib.Path(env["XP_DATA"]) / "markers" / "story-042.plan-review-incomplete"
+        p.parent.mkdir(parents=True, exist_ok=True)
+        return p
+
+    def test_the_lead_and_the_reviewer_are_both_told(self, tmp_path):
+        from close_helpers import launches, stub_reviewer
+
+        repo, env, _g = make_repo(tmp_path)
+        stub_reviewer(tmp_path)
+        self.marker(env).write_text("story-042: plan review started against /d/draft.md")
+        r = close(repo, env, "review")
+        assert r.returncode == 0, r.stderr
+        assert "plan review" in (r.stdout + r.stderr).lower(), r.stdout + r.stderr
+        bundle = launches(tmp_path)[0]["stdin"]
+        assert "plan review" in bundle.lower(), bundle[:600]
+
+    def test_a_story_whose_review_completed_says_nothing(self, tmp_path):
+        """An always-present line is wallpaper (constraint 3): the silence is the
+        assertion, so it is tested positively."""
+        from close_helpers import launches, stub_reviewer
+
+        repo, env, _g = make_repo(tmp_path)
+        stub_reviewer(tmp_path)
+        r = close(repo, env, "review")
+        assert r.returncode == 0, r.stderr
+        assert "did not complete" not in (r.stdout + r.stderr).lower()
+        assert "did not complete" not in launches(tmp_path)[0]["stdin"].lower()

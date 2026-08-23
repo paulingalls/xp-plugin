@@ -43,6 +43,25 @@ def charter(name: str = "story-reviewer") -> str:
     return text.strip()
 
 
+def plan_review_notice(story_id: str) -> str:
+    """The teammate's plan review left its marker behind, or "".
+
+    A gate that did not run leaves no artifact of its own, so the marker is
+    written at launch and removed on findings (plan_review.incomplete_marker).
+    Measured twice in the field, neither visible from here: a review killed at the
+    harness's own timeout guess, and one orphaned when its teammate yielded.
+    """
+    from work import data_root
+
+    marker = data_root() / "markers" / f"{story_id}.plan-review-incomplete"
+    if not marker.exists():
+        return ""
+    return (
+        f"{story_id}'s plan review DID NOT COMPLETE — {marker.read_text().strip()}."
+        " The story was written against a plan no reviewer signed off"
+    )
+
+
 def report_path(story_id: str, round_n: int) -> Path:
     """Where this round's report goes. ROUND-scoped: the index advances only on a
     RECORDED round, so failed attempts at round N share N's path and a leftover

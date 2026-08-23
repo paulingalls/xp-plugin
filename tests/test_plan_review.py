@@ -232,3 +232,147 @@ class TestTheProfileCarriesTheInvocation:
             section = bullet.split("- **")[0]
             assert str(PLAN_REVIEW) in section, section
             assert "python3" in section, section
+
+
+class TestIncompleteReviewIsVisibleToTheLead:
+    """A plan review that dies reaches the lead ONLY if the teammate volunteers it
+    (field report, Legacy: theirs did, and nothing made it). The evidence of a
+    skipped gate is an ABSENCE, and absences leave no artifact.
+
+    So the marker is written at START and removed on SUCCESS, not written on
+    failure: the failure that matters is an external kill (exit 124, measured —
+    codex's shell timeout_ms is model-supplied and defaults to ~10s), and a killed
+    process writes nothing on its way out.
+    """
+
+    def repo(self, tmp_path):
+        repo, env, _g = make_repo(tmp_path)
+        (repo / ".xp" / "config.yml").write_text(CONFIG.format(spec="claude/haiku/low"))
+        draft = tmp_path / "draft.md"
+        draft.write_text("# draft plan\nstep 1\n")
+        return repo, env, draft
+
+    def marker(self, tmp_path):
+        return tmp_path / "data" / "markers" / "story-042.plan-review-incomplete"
+
+    def test_a_review_that_writes_no_findings_leaves_the_marker(self, tmp_path):
+        repo, env, draft = self.repo(tmp_path)
+        stub_planner(tmp_path, write_findings=False)
+        r = plan_review(repo, env, "story-042", str(draft))
+        assert r.returncode != 0, r.stdout
+        assert self.marker(tmp_path).exists(), "nothing records that the gate did not run"
+
+    def test_a_completed_review_leaves_none(self, tmp_path):
+        repo, env, draft = self.repo(tmp_path)
+        stub_planner(tmp_path)
+        r = plan_review(repo, env, "story-042", str(draft))
+        assert r.returncode == 0, r.stderr
+        assert not self.marker(tmp_path).exists(), "a clean review must not accuse itself"
+
+    def test_a_review_killed_from_outside_still_leaves_it(self, tmp_path):
+        """The arm the whole design is for: SIGKILL, so nothing runs on the way out.
+        The marker must already be on disk before the reviewer is launched."""
+        import os
+        import signal
+
+        repo, env, draft = self.repo(tmp_path)
+        bin_dir = tmp_path / "bin"
+        bin_dir.mkdir(exist_ok=True)
+        (bin_dir / "claude").write_text(
+            "#!/usr/bin/env python3\n"
+            "import os, signal, sys\n"
+            "sys.stdin.read()\n"
+            "os.kill(os.getppid(), signal.SIGKILL)\n"
+        )
+        (bin_dir / "claude").chmod(0o755)
+        proc = plan_review(repo, env, "story-042", str(draft))
+        assert proc.returncode != 0
+        assert self.marker(tmp_path).exists(), "a killed review left no trace at all"
+        assert os and signal
+
+
+class TestTheReviewOutlivesItsCaller:
+    """The gate must not depend on a model choosing the surviving invocation.
+
+    Measured twice in the field, once per harness: a codex teammate's foreground
+    call was killed at the model's own timeout guess (exit 124), and a claude
+    teammate backgrounded the review and yielded, which ends a headless run and
+    orphaned it. So the SCRIPT detaches the review and waits on it, and a caller
+    that dies leaves a review that finishes.
+    """
+
+    def repo(self, tmp_path):
+        repo, env, _g = make_repo(tmp_path)
+        (repo / ".xp" / "config.yml").write_text(CONFIG.format(spec="claude/haiku/low"))
+        draft = tmp_path / "draft.md"
+        draft.write_text("# draft plan\nstep 1\n")
+        return repo, env, draft
+
+    def slow_planner(self, tmp_path, seconds=4, findings="SLOW FINDINGS"):
+        bin_dir = tmp_path / "bin"
+        bin_dir.mkdir(exist_ok=True)
+        rec = tmp_path / "launch.json"
+        (bin_dir / "claude").write_text(
+            "#!/usr/bin/env python3\n"
+            "import json, os, re, sys, time\n"
+            "stdin = sys.stdin.read()\n"
+            f"open({str(rec)!r}, 'a').write('LAUNCH\\n')\n"
+            f"time.sleep({seconds})\n"
+            "m = re.search(r'^FINDINGS_PATH: (.+)$', stdin, re.M)\n"
+            f"open(m.group(1).strip(), 'w').write({findings!r})\n"
+            f"print(json.dumps({{'type': 'result', 'result': {findings!r}}}))\n"
+        )
+        (bin_dir / "claude").chmod(0o755)
+        return rec
+
+    def test_a_killed_caller_leaves_a_review_that_finishes(self, tmp_path):
+        import time
+
+        repo, env, draft = self.repo(tmp_path)
+        self.slow_planner(tmp_path, seconds=4)
+        import os
+        import signal
+
+        proc = subprocess.Popen(
+            [sys.executable, str(PLAN_REVIEW), "story-042", str(draft)],
+            cwd=repo,
+            env=env,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            start_new_session=True,
+        )
+        time.sleep(1.5)
+        # the GROUP, not the process: a harness timeout takes the shell and every
+        # descendant with it, which is what killed the field review. Killing only
+        # the direct child leaves the reviewer running and passes vacuously.
+        os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+        proc.wait()
+
+        plans = tmp_path / "data" / "plans"
+        for _ in range(80):
+            if any(p.read_text().strip() for p in plans.glob("story-042*.md")):
+                return
+            time.sleep(0.25)
+        raise AssertionError(f"the review died with its caller: {list(plans.glob('*'))}")
+
+    def test_a_second_call_joins_the_running_review_instead_of_starting_one(self, tmp_path):
+        import time
+
+        repo, env, draft = self.repo(tmp_path)
+        rec = self.slow_planner(tmp_path, seconds=4)
+        first = subprocess.Popen(
+            [sys.executable, str(PLAN_REVIEW), "story-042", str(draft)],
+            cwd=repo,
+            env=env,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        time.sleep(1.5)
+        first.kill()
+        first.wait()
+        again = plan_review(repo, env, "story-042", str(draft))
+        assert again.returncode == 0, again.stderr
+        assert "SLOW FINDINGS" in again.stdout, again.stdout
+        assert rec.read_text().count("LAUNCH") == 1, "a second reviewer was launched"
