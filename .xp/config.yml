@@ -6,7 +6,7 @@ constraints_cap: 15    # constraints.md line-items; add-over-cap requires a reti
 
 roles:                 # harness/model[/effort]; lead overrides per story in plan.md
   lead: claude/opus
-  executor: codex/gpt-5.6-sol/medium  # Sprint-5 retro, Paul: codex authoring proven at 028 — opus reviews, codex writes
+  executor: codex/gpt-5.6-sol/high  # Sprint-5 retro, Paul: codex authoring proven at 028 — opus reviews, codex writes
   reviewer: claude/opus     # Sprint-5 retro, Paul: the inverse pairing — codex authors, opus reviews (its 028 round was the sprint's best)
   plan-reviewer: claude/opus/medium  # nested codex-in-codex denied by the sandbox (app-server IPC, note 138eabf0); nested claude is the walk-proven arm — and claude planning-reviews a codex author IS the diversity pattern
 
