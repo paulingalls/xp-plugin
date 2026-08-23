@@ -15,5 +15,7 @@ doesn't carry>
 
 **Worktree bootstrap**: <one backticked command that makes a fresh worktree
 runnable — e.g. `npm ci` or `uv sync` — or "none needed". Only a value that is
-entirely one backticked command runs; anything else is a no-op, so prose here
-can never execute by accident. A nonzero exit refuses the spawn.>
+entirely one backticked command runs, so prose here can never execute by
+accident. Anything else REFUSES the spawn — an unreadable line and an absent
+one are different things, and skipping the first silently launched teammates
+into unprepared trees. A nonzero exit refuses the spawn too.>
