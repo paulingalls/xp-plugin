@@ -28,17 +28,18 @@ from harness import (
     codex_argv,  # noqa: F401
     missing_harness,
 )
+from role_config import card_role, config_role
 from teammate_tee import run_stream, run_teammate
 from work import (
     card_title,
     chdir_repo_root,
-    config_block_value,
     data_root,
     entries,
     flip_card,
     missing_plan_refusal,
     plan_path,
     slugify,
+    strip_comment,
     user_ns,
 )
 
@@ -131,14 +132,31 @@ def bootstrap_command(system_md: str) -> tuple[str, str]:
 
 
 def resolve_role(role: str, card: str = "", override: str = "") -> tuple[str, str, str]:
-    """(harness, model, effort) — CLI override, then the card, then config roles.
-
-    Its own block-scan rather than close.config_flat, which matches at column 0
-    and cannot see `executor:` indented under `roles:`.
-    """
-    spec = override or _card_role(card, role) or _config_role(role)
+    spec = override or card_role(card, role)
+    config_source = not spec
+    if config_source:
+        spec = config_role(role, "\0")
+    wanted = next(
+        strip_comment(raw).rstrip()
+        for raw in (PLUGIN_ROOT / "templates" / "config.yml").read_text().splitlines()
+        if strip_comment(raw).lstrip().startswith(f"{role}:")
+    )
+    if spec == "\0":
+        raise SystemExit(
+            fail(
+                f"refused: roles.{role} is absent from .xp/config.yml — your config predates"
+                f" this key; add `{wanted}` under `roles:`"
+            )
+        )
     parts = [p for p in spec.split("/") if p]
     if len(parts) < 2:
+        if config_source:
+            raise SystemExit(
+                fail(
+                    f"refused: roles.{role} in .xp/config.yml is malformed as {spec!r}"
+                    f" — replace it with `{wanted}`"
+                )
+            )
         raise SystemExit(
             fail(f"refused: cannot resolve {role} from {spec!r} — want harness/model[/effort]")
         )
@@ -148,21 +166,6 @@ def resolve_role(role: str, card: str = "", override: str = "") -> tuple[str, st
             fail(f"refused: harness {harness!r} — we ship {', '.join(HARNESS_INSTALL)}")
         )
     return harness, model, effort
-
-
-def _card_role(card: str, role: str) -> str:
-    """`Executor:` for the executor, `Reviewer:` for the reviewer. Keyed to the
-    ROLE, or one card cannot say "author codex, review claude"."""
-    label = f"{role.capitalize()}:"
-    for ln in card.splitlines():
-        if ln.startswith(label):
-            value = ln.removeprefix(label).strip()
-            return "" if value == "(default)" else value
-    return ""
-
-
-def _config_role(role: str) -> str:
-    return config_block_value("roles", role)
 
 
 def build_prompt(sections: list[tuple[str, str]]) -> str:

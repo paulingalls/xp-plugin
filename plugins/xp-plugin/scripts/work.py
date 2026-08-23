@@ -116,7 +116,7 @@ def strip_comment(line: str) -> str:
     return re.sub(r"(?:^|(?<=\s))#.*", "", line)
 
 
-def config_block_value(block: str, key: str) -> str:
+def config_block_value(block: str, key: str, missing: str = "") -> str:
     """`key:` nested under `block:` in the project config.
 
     Comments are stripped BEFORE the header compare. Shared by the roles and
@@ -125,7 +125,7 @@ def config_block_value(block: str, key: str) -> str:
     """
     cfg = Path(".xp/config.yml")
     if not cfg.exists():
-        return ""
+        return missing
     inside = False
     for raw in cfg.read_text(errors="replace").splitlines():
         line = strip_comment(raw)
@@ -135,7 +135,7 @@ def config_block_value(block: str, key: str) -> str:
             return line.split(f"{key}:", 1)[1].strip()
         elif inside and line.strip() and not line.startswith(" "):
             inside = False
-    return ""
+    return missing
 
 
 def card_title(card: str) -> str:

@@ -250,6 +250,41 @@ class TestExecutorResolution:
             "",
         )
 
+    def test_an_absent_config_role_names_the_stale_key_and_line(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        from spawn import resolve_role
+
+        repo, _env, _g = make_repo(tmp_path)
+        (repo / ".xp" / "config.yml").write_text("roles:\n  executor: claude/sonnet\n")
+        monkeypatch.chdir(repo)
+        try:
+            resolve_role("plan-reviewer")
+        except SystemExit as error:
+            assert error.code == 2
+        message = capsys.readouterr().err
+        assert "roles.plan-reviewer" in message and ".xp/config.yml" in message
+        assert "`  plan-reviewer: claude/opus`" in message and "predates" in message
+
+    def test_a_malformed_config_role_names_the_bad_value_not_age(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        from spawn import resolve_role
+
+        repo, _env, _g = make_repo(tmp_path)
+        (repo / ".xp" / "config.yml").write_text("roles:\n  plan-reviewer: claude\n")
+        monkeypatch.chdir(repo)
+        for card in ("", "Plan-reviewer: claude\n"):
+            try:
+                resolve_role("plan-reviewer", card)
+            except SystemExit as error:
+                assert error.code == 2
+        config_message, card_message = capsys.readouterr().err.splitlines()
+        assert "roles.plan-reviewer" in config_message and ".xp/config.yml" in config_message
+        assert "`  plan-reviewer: claude/opus`" in config_message
+        assert "predates" not in config_message
+        assert "cannot resolve plan-reviewer from 'claude'" in card_message
+
     def test_cli_override_beats_the_card(self, tmp_path):
         repo, env, _g = make_repo(tmp_path, executor="claude/opus/high")
         rec = stub_claude(tmp_path)
