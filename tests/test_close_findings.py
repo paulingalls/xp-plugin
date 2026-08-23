@@ -244,7 +244,7 @@ class TestRoundThreeFindings:
             'printf \'{"fixed": [], "blocking": [], "noted": []}\' > "$p"\n'
             "NEW=$(git commit-tree HEAD^{tree} -p main -m 'teammate landed mid-review')\n"
             "git update-ref refs/heads/main $NEW\n"
-            'printf \'{"result": "clean"}\'\n'
+            'printf \'{"type": "result", "result": "clean"}\'\n'
         )
         (bin_dir / "claude").chmod(0o755)
         assert close(repo, env, "review").returncode == 0

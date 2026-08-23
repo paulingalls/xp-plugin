@@ -264,10 +264,15 @@ def stub_codex(
     if commit:
         body.append("subprocess.run(['git', 'add', '-A'])")
         body.append("subprocess.run(['git', 'commit', '--allow-empty', '-qm', 'teammate work'])")
-    # PLAIN prose, never JSON: codex's --json event vocabulary is unmeasured on
-    # 0.147.0 and the executor may not spawn codex to measure it, so the leg
-    # streams text and the exit code is the verdict.
-    body += [f"print({line!r})" for line in prose]
+    body += [
+        "if '--json' not in argv: die('native JSON stream was not requested')",
+        "print(json.dumps({'type': 'thread.started', 'thread_id': 'stub-thread'}))",
+    ]
+    body += [
+        f"print(json.dumps({{'type': 'item.completed', 'item':"
+        f" {{'type': 'agent_message', 'text': {line!r}}}}}))"
+        for line in prose
+    ]
     (bin_dir / "codex").write_text("\n".join(body) + "\n")
     (bin_dir / "codex").chmod(0o755)
     return rec

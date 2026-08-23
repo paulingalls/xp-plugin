@@ -52,7 +52,7 @@ def codex_argv(model: str, effort: str, network: bool = False) -> list[str]:
     worktree gains a second at launch (spawn.common_dir_widening, bug 0c31ac94 —
     note 6193855e's probe was confounded by /tmp being sandbox-writable).
     `-` reads the prompt from stdin, keeping ~2k tokens out of `ps`."""
-    argv = ["codex", "exec", "--disable", "unified_exec"]
+    argv = ["codex", "exec", "--json", "--disable", "unified_exec"]
     # Our gates ride the ENVIRONMENT (XP_ROLE, GIT_AUTHOR_*), and THREE
     # ~/.codex/config.toml keys can each strip them on their way to the shell.
     # Never ignore_default_excludes: its default drops *KEY*/*SECRET*/*TOKEN*,

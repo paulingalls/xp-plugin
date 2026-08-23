@@ -38,7 +38,7 @@ class TestFixingReviewer:
             "echo 'x = 1' >> src/thing.py\n"
             f"git -c user.name='{author}' -c user.email='r@xp' commit -qam 'reviewer fix'\n"
             f"{extra}"
-            'printf \'{"result": "fixed one thing"}\'\n'
+            'printf \'{"type": "result", "result": "fixed one thing"}\'\n'
         )
         (bin_dir / "claude").chmod(0o755)
         return bin_dir
@@ -90,7 +90,7 @@ class TestFixingReviewer:
             'printf \'{"fixed": ["f"], "blocking": [], "noted": []}\' > "$p"\n'
             "echo 'x = 1' >> src/thing.py\n"
             "git commit -qam 'reviewer fix'\n"  # NO -c: the identity must come from env
-            'printf \'{"result": "fixed"}\'\n'
+            'printf \'{"type": "result", "result": "fixed"}\'\n'
         )
         (bin_dir / "claude").chmod(0o755)
         assert close(repo, env, "review").returncode == 0
@@ -135,7 +135,7 @@ class TestFixingReviewer:
             'printf \'{"fixed": [], "blocking": [], "noted": []}\' > "$p"\n'
             f"python3 -c \"import json;f='{mf}';d=json.load(open(f));"
             "d['rounds'][0]['blocking']=[];json.dump(d,open(f,'w'))\"\n"
-            'printf \'{"result": "clean"}\'\n'
+            'printf \'{"type": "result", "result": "clean"}\'\n'
         )
         (bin_dir / "claude").chmod(0o755)
         r = close(repo, env, "review")
@@ -422,7 +422,7 @@ class TestFixingReviewer:
             "#!/bin/sh\n"
             "echo 'x = 1' >> src/thing.py\n"
             f"git -c user.name='{REVIEWER_NAME}' -c user.email='r@xp' commit -qam 'fix'\n"
-            'printf \'{"result": "fixed it, forgot the report"}\'\n'
+            'printf \'{"type": "result", "result": "fixed it, forgot the report"}\'\n'
         )
         stub.chmod(0o755)
         r = close(repo, env, "review")

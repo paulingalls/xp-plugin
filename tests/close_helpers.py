@@ -35,6 +35,21 @@ REVIEWER_EMAIL = "story-reviewer@xp.local"
 CLEAN = {"fixed": [], "blocking": [], "noted": []}
 
 
+def stream_json(result: str, session: str = "sess-stub") -> str:
+    """What `claude --output-format stream-json --verbose` actually emits: a
+    session-bearing init event, then the terminal result envelope. A stub writing
+    the bare `{"result": ...}` object models no harness that exists, and a parser
+    widened to accept it would call any event carrying that key the end of a run.
+    """
+    return "".join(
+        json.dumps(e) + "\n"
+        for e in (
+            {"type": "system", "subtype": "init", "session_id": session},
+            {"type": "result", "subtype": "success", "is_error": False, "result": result},
+        )
+    )
+
+
 def stub_reviewer(tmp_path, result="findings above", exit_code=0, raw=None, report=...):
     """A fake `claude` that APPENDS one JSONL record per launch.
 
@@ -52,7 +67,7 @@ def stub_reviewer(tmp_path, result="findings above", exit_code=0, raw=None, repo
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir(exist_ok=True)
     rec = tmp_path / "launches.jsonl"
-    payload = raw if raw is not None else json.dumps({"result": result})
+    payload = raw if raw is not None else stream_json(result)
     body = report if isinstance(report, str) or report is None else json.dumps(report)
     (bin_dir / "claude").write_text(
         "#!/usr/bin/env python3\n"

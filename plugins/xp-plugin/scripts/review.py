@@ -270,24 +270,24 @@ def run(
     name = name or "story-reviewer"
     role = name if name == "plan-reviewer" else "reviewer"
     harness, model, effort = resolve_role(role, card)
-    argv = agent_argv(harness, model, effort, "json", role)
+    argv = agent_argv(harness, model, effort, "stream-json", role)
     if dry_run:
         print("would launch: " + " ".join(argv))
         print(prompt)
         return "", ""
     if missing := missing_harness(harness):
         return "", missing
-    # capture + --output-format json means total silence for the whole run;
-    # without this line a multi-minute review is indistinguishable from a hang.
-    print(f"spawning {name} ({model}) — no output until it finishes", file=sys.stderr)
+    log_id = ((re.search(r"#### (story-\d+)", card) or [None, name])[1] + "-review").replace(
+        " ", "-"
+    )
     try:
-        proc = run_agent(argv, cwd, prompt, role=role, capture=True)
+        proc = run_agent(argv, cwd, prompt, role, harness, log_id)
     except OSError as e:  # claude absent from PATH
         return "", f"could not launch the reviewer: {e}"
     except subprocess.TimeoutExpired as e:
         return "", (
             f"the reviewer exceeded its {e.timeout:.0f}s wall clock and was killed."
-            " Its output is lost; check the tree for commits it made before dying"
+            f" Live output remains in {e.stderr}; check the tree for commits"
         )
     if proc.returncode != 0:
         detail = (proc.stderr or proc.stdout or "").strip()[:500]
@@ -297,9 +297,8 @@ def run(
 
 def result_text(harness: str, proc: subprocess.CompletedProcess) -> tuple[str, str]:
     """(what to show the lead, error) — the only harness divergence here; downstream
-    reads the report JSON. Codex gets no envelope parse: `-o` exists on 0.147.0 but is
-    unmeasured, and this text is only printed; stderr is the fallback because which
-    channel carries codex's final message is exactly what is unmeasured."""
+    reads the report JSON. run_stream already reassembled the terminal result, so
+    codex's agent_message text IS the value; claude's is the envelope around it."""
     if harness != "claude":
         return (proc.stdout.strip() or proc.stderr.strip()), ""
     try:
