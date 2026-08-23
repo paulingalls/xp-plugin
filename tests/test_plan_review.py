@@ -272,9 +272,6 @@ class TestIncompleteReviewIsVisibleToTheLead:
     def test_a_review_killed_from_outside_still_leaves_it(self, tmp_path):
         """The arm the whole design is for: SIGKILL, so nothing runs on the way out.
         The marker must already be on disk before the reviewer is launched."""
-        import os
-        import signal
-
         repo, env, draft = self.repo(tmp_path)
         bin_dir = tmp_path / "bin"
         bin_dir.mkdir(exist_ok=True)
@@ -288,7 +285,6 @@ class TestIncompleteReviewIsVisibleToTheLead:
         proc = plan_review(repo, env, "story-042", str(draft))
         assert proc.returncode != 0
         assert self.marker(tmp_path).exists(), "a killed review left no trace at all"
-        assert os and signal
 
 
 class TestTheReviewOutlivesItsCaller:
