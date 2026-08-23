@@ -83,6 +83,21 @@ def verify_commands(card: str) -> str:
     return ""
 
 
+def verify_refusal(story_id: str, card: str) -> str:
+    """Why this card has no runnable Verify, or "". A LABEL with nothing after it
+    is a different problem from no label, and saying "no Verify: line" about a
+    card that visibly has one sends the author hunting for the wrong thing —
+    they wrote the commands as bullets below it, which is what `AC:` looks like."""
+    if verify_commands(card):
+        return ""
+    if any(ln.startswith("Verify:") for ln in card.splitlines()):
+        return (
+            f"refused: {story_id}'s Verify: line is empty — its commands must be on the"
+            " SAME line as the label (`Verify: pytest -q ...`), not a list below it"
+        )
+    return f"refused: {story_id} has no Verify: line — an unverifiable story cannot close"
+
+
 def config_flat(key: str) -> str:
     """A flat top-level `key: value` from .xp/config.yml."""
     cfg = Path(".xp/config.yml")
@@ -304,9 +319,9 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
     # diff shows a card edit, and the `Verify:` line below is SHELL-EXECUTED.
     if drift := ready.drift(story_id, card):
         return fail(drift)
+    if refusal := verify_refusal(story_id, card):
+        return fail(refusal)
     verify = verify_commands(card)
-    if not verify:
-        return fail(f"refused: {story_id} has no Verify: line — an unverifiable story cannot close")
     tier = config_block_value("tests", "story")
     branch = git("rev-parse", "--abbrev-ref", "HEAD").stdout.strip()
     verdict = render_merge_body(rounds)

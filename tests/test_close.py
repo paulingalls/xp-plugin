@@ -11,6 +11,7 @@ from close_helpers import (  # noqa: F401
     CONFIG,
     PLUGIN,
     REVIEWER_NAME,
+    SPAWN,
     WORK,
     close,
     close_bare,
@@ -256,14 +257,24 @@ class TestSecondReviewRound:
         r = close(repo, env, "review")
         assert r.returncode == 2 and "main" in r.stderr
 
-    def test_missing_verify_line_refused(self, tmp_path):
-        repo, env, _g = make_repo(tmp_path)
+    def test_missing_verify_line_refused_at_the_mint(self, tmp_path):
+        """The refusal moved EARLIER (bug abc052f2): an unverifiable card is now
+        stopped by the credential mint, before a teammate is spawned, rather than
+        at land after the story is written. mint_ready is what reds here."""
+        import subprocess
+        import sys
+
+        repo, env, _g = make_repo(tmp_path, status="planned")
         plan = tmp_path / "data" / "plan.md"
         plan.write_text(plan.read_text().replace("Verify: true\n", ""))
-        mint_ready(repo, env)  # or the credential answers, and "verify" matches its diff
-        close(repo, env, "review")
-        r = close(repo, env, "land")
-        assert r.returncode == 2 and "verify" in r.stderr.lower()
+        r = subprocess.run(
+            [sys.executable, str(SPAWN), "ready", "story-042"],
+            cwd=repo,
+            env=env,
+            capture_output=True,
+            text=True,
+        )
+        assert r.returncode == 2 and "verify" in r.stderr.lower(), r.stderr
 
     def test_master_default_branch_supported(self, tmp_path):
         repo, env, g = make_repo(tmp_path, branch="master")
