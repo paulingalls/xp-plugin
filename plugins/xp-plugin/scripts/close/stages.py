@@ -1,8 +1,7 @@
 """The sprint review's stages: their angles, their charters, their batch bound.
 
-Extracted from sprint_close.py rather than left inline: that file runs against
-the 500-line hard cap (constraints.md #8), and this is the seam — everything
-here answers "what does a stage get?", and nothing here knows about a sprint.
+The seam: everything here answers "what does a stage get?", and nothing here
+knows about a sprint.
 """
 
 import sys

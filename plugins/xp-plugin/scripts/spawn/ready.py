@@ -18,11 +18,10 @@ from work import (
     card_digest,
     card_lines,
     chdir_repo_root,
-    edit_plan,
-    flip_status,
+    flip_card,
+    missing_plan_refusal,
     plan_path,
     ready_marker_path,
-    stale_plan,
 )
 
 
@@ -73,10 +72,7 @@ def mint(story_id: str) -> int:
     """The one leg that clears a card, so the [ready] flip and the digest cannot
     come apart: a lead who types the bracket mints nothing and spawn refuses."""
     if not plan_path().exists():
-        return fail(
-            "refused: "
-            + (stale_plan() or f"no plan at {plan_path()} — is this an xp-managed repo?")
-        )
+        return fail("refused: " + missing_plan_refusal())
     try:
         card, status = story_card(plan_path().read_text(), story_id)
     except KeyError as e:
@@ -91,7 +87,7 @@ def mint(story_id: str) -> int:
     marker = ready_marker_path(story_id)
     marker.parent.mkdir(parents=True, exist_ok=True)
     marker.write_text(json.dumps({"digest": digest, "card": card}, ensure_ascii=False))
-    edit_plan(lambda text: flip_status(text, story_id, "planned", "ready"))
+    flip_card(story_id, "planned", "ready")
     print(f"{story_id} [planned] -> [ready], digest {digest} — edit the card and spawn refuses")
     return 0
 

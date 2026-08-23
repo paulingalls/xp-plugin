@@ -73,6 +73,13 @@ def stale_plan() -> str:
     )
 
 
+def missing_plan_refusal() -> str:
+    """What every leg says when this clone has no plan: the migration sentence
+    when a pre-move copy sits beside us, else the diagnosis. Five legs carried a
+    copy of it and the sixth had already lost the half naming what to check."""
+    return stale_plan() or f"no plan at {plan_path()} — is this an xp-managed repo?"
+
+
 def edit_plan(mutate) -> bool:
     """Read-modify-write the clone's plan under a lock; True when it changed.
 
@@ -81,11 +88,11 @@ def edit_plan(mutate) -> bool:
     edit. Two lanes flipping two cards is the normal case, not the rare one.
 
     temp+rename so an interrupted write leaves the PREVIOUS plan whole: the plan is
-    no longer git-versioned (DESIGN §3b cost 1), so a torn one is unrecoverable. Defense in
-    depth and NOT a tested property — measured, rename and in-place are
-    indistinguishable to a reader here, so a test telling them apart would certify
-    (note 12d7fcea). It forces the lock onto a SIBLING file: rename swaps the
-    inode, so flocking plan.md would leave the next writer locking a ghost.
+    not git-versioned (DESIGN §3b cost 1), so a torn one is unrecoverable. Untested
+    by design — rename and in-place are indistinguishable to a reader here, so a
+    test telling them apart would certify. It forces the lock onto a SIBLING file:
+    rename swaps the inode, so flocking plan.md would leave the next writer
+    locking a ghost.
 
     Serialises OUR writers only — the lead's Edit tool takes no lock, so
     lead-vs-lane stays last-writer-wins (DESIGN §3b cost 5).
@@ -173,6 +180,12 @@ def flip_status(text: str, story_id: str, frm: str, to: str) -> str:
     return "".join(out)
 
 
+def flip_card(story_id: str, frm: str, to: str) -> bool:
+    """Flip one card's status in the clone's plan, under the lock; True when it
+    moved. Locked because a sibling lane may be flipping its own card right now."""
+    return edit_plan(lambda text: flip_status(text, story_id, frm, to))
+
+
 def ready_marker_path(story_id: str) -> Path:
     """Story-scoped (constraint 10). No mkdir: a refused mint writes nothing."""
     return data_root() / "markers" / f"{story_id}.ready.json"
@@ -183,13 +196,8 @@ def slugify(s: str) -> str:
 
 
 def user_ns() -> str:
-    """The branch-naming namespace: git identity, slugified.
-
-    Here rather than in spawn.py because close.py and spawn.py both import it —
-    story-011's `<user>/free-...` branches get it with no new import edge.
-    The "user" fallback is unreachable in any repo that can commit; it is a
-    default, not a case to guard.
-    """
+    """The branch-naming namespace: git identity, slugified. The "user" fallback
+    is unreachable in any repo that can commit — a default, not a case to guard."""
     for key, take_local_part in (("user.email", True), ("user.name", False)):
         r = subprocess.run(["git", "config", key], capture_output=True, text=True)
         value = r.stdout.strip()
@@ -213,13 +221,8 @@ def stamp() -> str:
 
 
 def entry_id(text: str) -> str:
-    """A record's name, DERIVED from its text rather than stored in it.
-
-    The heading is an ISO second and that is not a name: 48 concurrent appends
-    produce 48 identical headings. Deriving it means the 53 entries filed before
-    ids existed have one too, which an append-only file can never be given by
-    backfilling.
-    """
+    """A record's name, DERIVED from its text rather than stored in it: the
+    heading is an ISO second, and 48 concurrent appends share one."""
     return hashlib.sha256(text.strip().encode()).hexdigest()[:8]
 
 
@@ -255,6 +258,20 @@ def _single_line(value: str, field: str) -> bool:
     return True
 
 
+def _kind_of(root: Path, ref: str) -> str | None:
+    """The referenced record's kind, or None having printed why not — None, so a
+    heading whose kind reads EMPTY still reaches the refusal below that names it."""
+    matches = [text for eid, text in entries(root) if eid == ref]
+    if len(matches) != 1:
+        print(
+            f"refused: --ref {ref!r} matches {len(matches)} records — a ref that"
+            " names none is a typo, one that names several silences the others.",
+            file=sys.stderr,
+        )
+        return None
+    return matches[0].split(" ", 2)[1]
+
+
 def resolve(root: Path, args: argparse.Namespace) -> int:
     """Resolve a record by SUBSTITUTING a falsifier, never by deleting one.
 
@@ -264,15 +281,8 @@ def resolve(root: Path, args: argparse.Namespace) -> int:
     """
     if not _single_line(args.falsifier, "falsifier"):
         return 2
-    matches = [(eid, text) for eid, text in entries(root) if eid == args.ref]
-    if len(matches) != 1:
-        print(
-            f"refused: --ref {args.ref!r} matches {len(matches)} records — a ref that"
-            " names none is a typo, one that names several silences the others.",
-            file=sys.stderr,
-        )
+    if (kind := _kind_of(root, args.ref)) is None:
         return 2
-    kind = matches[0][1].split(" ", 2)[1]
     if kind not in ("bug", "debt"):
         print(
             f"refused: {args.ref} is a {kind} — only a bug or a debt carries the"
@@ -308,15 +318,8 @@ def archive(root: Path, args: argparse.Namespace) -> int:
     and archive.md is read with FALSIFIER.finditer over the WHOLE file, so text
     landing there would be executed by the batch.
     """
-    matches = [(eid, text) for eid, text in entries(root) if eid == args.ref]
-    if len(matches) != 1:
-        print(
-            f"refused: --ref {args.ref!r} matches {len(matches)} records — a ref that"
-            " names none is a typo, one that names several silences the others.",
-            file=sys.stderr,
-        )
+    if (kind := _kind_of(root, args.ref)) is None:
         return 2
-    kind = matches[0][1].split(" ", 2)[1]
     if kind not in ("debt", "note"):
         print(
             f"refused: {args.ref} is a {kind} — only a debt or a note is archivable."

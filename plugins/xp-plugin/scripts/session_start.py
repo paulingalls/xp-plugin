@@ -55,11 +55,10 @@ ROUND_CAP = 100  # per round within it
 def _close_detail(record: dict) -> str:
     """Both record shapes, bounded.
 
-    closes.jsonl is append-only, so story-008's verdicts[] records outlive the
+    closes.jsonl is append-only, so the older verdicts[] records outlive the
     mechanism that wrote them; a reader that knows only rounds[] degrades this
     whole layer to "(unreadable log)". Bounded because more review rounds must
-    never mean fewer constraints reaching the lead — this is the section that
-    evicted constraints.md once already.
+    never mean fewer constraints reaching the lead.
     """
     rounds = record.get("rounds")
     if rounds is None:
@@ -90,13 +89,9 @@ def _fit(parts: list) -> str:
 
 
 def last_close() -> str:
-    """The most recent close, from close.py's append-only log.
-
-    Written here rather than left to session.md because the story list below
-    filters [done] out, so what was just finished appeared only in the digest —
-    the layer that goes stale, and whose author is a hand-step (Milestone 1
-    allows none). Facts only: close.py is deterministic Python and may not
-    summarize (constraints #7); the narrative digest stays LLM-written.
+    """The most recent close, from close.py's append-only log — the story list
+    below filters [done] out, so what was just finished would appear only in the
+    digest, the layer that goes stale. Facts only (constraints #7).
     """
     path = data_root() / "closes.jsonl"
     if not path.exists():

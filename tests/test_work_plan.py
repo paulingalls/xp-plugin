@@ -285,23 +285,22 @@ class TestCardDigest:
 
 
 class TestOneFlipRule:
-    """Bug f009389a: three spellings of 'rewrite the status bracket' — mint's
-    was fixed at story-023's review; spawn's and close's still rewrote a TITLE
-    carrying the status text (measured live: story-023's own heading)."""
+    """Bug f009389a: a flip that rewrote a TITLE carrying the status text
+    (measured live: story-023's own heading). One implementation now, so the rule
+    is pinned once — at all three transitions, since the bracket text differs at
+    each. WHICH pair a leg passes is not pinned here: it is covered where the leg
+    runs, by mint, spawn and land each asserting the card they leave behind."""
 
-    def test_spawns_flip_leaves_a_title_containing_ready_alone(self):
-        from spawn import flip_map
+    @pytest.mark.parametrize(
+        ("frm", "to"),
+        [("planned", "ready"), ("ready", "in-progress"), ("in-progress", "done")],
+    )
+    def test_a_title_containing_the_status_survives_every_legs_flip(self, frm, to):
+        from work import flip_status
 
-        plan = "#### story-x — [ready] is a credential   [ready]\n"
-        out = flip_map(plan, "story-x")
-        assert out == "#### story-x — [ready] is a credential   [in-progress]\n", out
-
-    def test_lands_flip_leaves_a_title_containing_in_progress_alone(self):
-        from close import _flip_status
-
-        plan = "#### story-x — the [in-progress] dance   [in-progress]\n"
-        out = _flip_status(plan, "story-x")
-        assert out == "#### story-x — the [in-progress] dance   [done]\n", out
+        plan = f"#### story-x — [{frm}] is a credential   [{frm}]\n"
+        out = flip_status(plan, "story-x", frm, to)
+        assert out == f"#### story-x — [{frm}] is a credential   [{to}]\n", out
 
 
 PLUGIN = Path(__file__).parent.parent / "plugins" / "xp-plugin"

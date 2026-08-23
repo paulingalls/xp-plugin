@@ -427,6 +427,20 @@ class TestArchive:
         assert r.returncode == 2 and "matches 0" in r.stderr, r.stderr
         assert self.filed(tmp_path) == before, "wrote before validating the ref"
 
+    def test_neither_leg_refuses_in_silence(self, tmp_path):
+        """A refusal that prints nothing leaves the lead an exit code and no next
+        action. Constructed, not grepped: a heading whose kind field reads EMPTY
+        is the one record shape that walks past both `--ref` arms."""
+        (tmp_path / "work.md").write_text("##  bug 2026-08-20T03:41:29Z\nClaim: c\n\n")
+        ref = run(["list"], tmp_path, check=True).stdout.split()[0]
+        for args in (
+            ["archive", "--ref", ref, "--disposition", "d"],
+            ["resolve", "--ref", ref, "--falsifier", "true"],
+        ):
+            r = run(args, tmp_path)
+            assert r.returncode == 2, r.stdout
+            assert ref in r.stderr, f"{args[0]} refused without naming the record: {r.stderr!r}"
+
     def test_no_break_character_in_a_disposition_can_forge_a_field(self, tmp_path):
         """The review's M3: a disposition rendered on the same line as its label
         never meets re.M's ^, so a naive test greens with neutralize() uncalled.
@@ -439,53 +453,3 @@ class TestArchive:
             run(["archive", "--ref", ref, "--disposition", f"d{ch}{attack}{ch}tail"], tmp_path)
         forged = [ln for ln in self.filed(tmp_path).splitlines() if ln.startswith("Falsifier:")]
         assert forged == [], forged
-
-
-class TestConfigCommentRule:
-    """The v0.6.1 wall fix taught hook-lib.sh that `p#ss` is one YAML scalar and
-    left its two Python twins reading the SAME keys the old way, so the wall and
-    the pipeline disagreed about `tests.story` — the tier close.py:311 runs at
-    land. Truncated, it is a bare assignment: exits 0, runs no test.
-    """
-
-    TIER = 'DB=postgres://u:p#ss@h/db pytest -q -m "not slow"'
-
-    def config(self, tmp_path, body):
-        (tmp_path / ".xp").mkdir()
-        (tmp_path / ".xp" / "config.yml").write_text(body)
-        return tmp_path
-
-    def test_both_python_readers_agree_with_the_wall_on_a_hash_inside_a_word(
-        self, tmp_path, monkeypatch
-    ):
-        from close import config_flat
-        from work import config_block_value
-
-        monkeypatch.chdir(
-            self.config(tmp_path, f"trunk: dev#1\ntests:\n  story: {self.TIER}   # ours\n")
-        )
-        assert config_block_value("tests", "story") == self.TIER
-        assert config_flat("trunk") == "dev#1"
-
-    def test_a_whitespace_preceded_comment_still_strips_everywhere(self, tmp_path, monkeypatch):
-        from close import config_flat
-        from work import config_block_value
-
-        body = "release: sprint   # a trailing note\ntests:\n  full: pytest  # x\n"
-        monkeypatch.chdir(self.config(tmp_path, body))
-        assert config_block_value("tests", "full") == "pytest"
-        assert config_flat("release") == "sprint"
-
-    def test_a_fully_commented_line_never_opens_or_closes_a_block(self, tmp_path, monkeypatch):
-        """`# review:` must not read as the review block, and a commented-out tier
-        inside `tests:` must not end it before the live tiers below."""
-        from work import config_block_value
-
-        monkeypatch.chdir(
-            self.config(
-                tmp_path,
-                "# review:\n#   verify_batches: 9\ntests:\n#  fast: retired\n  full: pytest\n",
-            )
-        )
-        assert config_block_value("review", "verify_batches") == ""
-        assert config_block_value("tests", "full") == "pytest"

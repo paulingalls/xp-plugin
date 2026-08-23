@@ -220,9 +220,10 @@ class TestSecondReviewRound:
         made before land ever starts is already IN that snapshot, so writing the
         snapshot back would keep it and the test would certify. The sibling write
         therefore rides the card's own Verify command, which is the one hook that
-        fires inside the window. Fault-injected: `edit_plan(lambda _t:
-        _flip_status(plan, story_id))` — the snapshot written back over merged
-        truth — reds this and nothing else in the suite.
+        fires inside the window. Fault-injected: land flipping the SNAPSHOT it
+        read the card from, rather than what flip_card re-reads under the lock,
+        reds this and test_a_flip_that_matched_nothing_is_reported_not_swallowed
+        — the same window from the other side — and nothing else.
 
         printf SUBSTITUTES the story id rather than spelling it: the Verify line
         is itself a line of the plan, so an assertion on a string the command

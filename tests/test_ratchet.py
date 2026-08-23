@@ -105,7 +105,7 @@ def test_the_spawn_leg_extracted_to_a_leaf_still_counts_against_spawn(tmp_path):
     rows = dict(ln.split()[:2] for ln in result.stdout.splitlines()[1:5])
     assert rows["spawn"] == "801", result.stdout
     assert rows["misc"] == "0", result.stdout
-    assert result.returncode == 0, result.stdout  # 801 fits spawn's cap; 800 blows misc's 750
+    assert result.returncode == 0, result.stdout  # 801 fits spawn's cap
 
 
 def test_python_outside_scripts_counts_against_its_component(tmp_path):

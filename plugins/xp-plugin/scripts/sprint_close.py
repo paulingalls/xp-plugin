@@ -24,8 +24,8 @@ from work import (
     data_root,
     entries,
     falsifier_is_green,
+    missing_plan_refusal,
     plan_path,
-    stale_plan,
     stamp,
     work_entries_since,
 )
@@ -142,8 +142,7 @@ def cmd_review(sprint_id: str, dry_run: bool) -> int:
         return fail("refused: working tree is dirty — commit or stash first")
     plan = plan_path()
     if not plan.exists():
-        why = stale_plan() or f"no plan at {plan} — is this an xp-managed repo?"
-        return fail(f"refused: {why}")
+        return fail(f"refused: {missing_plan_refusal()}")
     trunk = default_branch()
     if (branch := git("rev-parse", "--abbrev-ref", "HEAD").stdout.strip()) == trunk:
         return fail(
@@ -247,8 +246,7 @@ def cmd_review(sprint_id: str, dry_run: bool) -> int:
 def cmd_start(sprint_id: str) -> int:
     plan = plan_path()
     if not plan.exists():
-        why = stale_plan() or f"no plan at {plan} — is this an xp-managed repo?"
-        return fail(f"refused: {why}")
+        return fail(f"refused: {missing_plan_refusal()}")
     members = sprint_stories(plan.read_text(), sprint_id)
     if not members:
         return fail(f"refused: no `### Sprint {sprint_id}` section in {plan}")

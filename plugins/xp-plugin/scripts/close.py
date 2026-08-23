@@ -39,9 +39,9 @@ from work import (
     chdir_repo_root,
     config_block_value,
     data_root,
-    edit_plan,
+    flip_card,
+    missing_plan_refusal,
     plan_path,
-    stale_plan,
     strip_comment,
     work_entries_since,
 )
@@ -186,8 +186,7 @@ def _preflight(story_id: str, action: str, free: bool = False) -> tuple[str, str
     card, trunk = "", default_branch() if free else integration_target()
     if not free:
         if not plan_path().exists():
-            why = stale_plan() or f"no plan at {plan_path()} — is this an xp-managed repo?"
-            return "", "", f"refused: {why}"
+            return "", "", f"refused: {missing_plan_refusal()}"
         try:
             card, status = story_card(plan_path().read_text(), story_id)
         except KeyError as e:
@@ -292,14 +291,13 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
     if err:
         return fail(err)
     if not plan_path().exists():
-        return fail(f"refused: {stale_plan() or f'no plan at {plan_path()}'}")
+        return fail(f"refused: {missing_plan_refusal()}")
     try:
         card, status = story_card(plan_path().read_text(), story_id)
     except KeyError as e:
         return fail(f"refused: {e.args[0]}")
-    # cmd_review's _preflight has always checked this; land did not, and its [done]
-    # flip below matches nothing from any other status — so land merged and then
-    # left the card reading whatever it read before, silently.
+    # The [done] flip below matches nothing from any other status, so without this
+    # land merges and leaves the card reading whatever it read before, silently.
     if status != "in-progress":
         return fail(f"refused: {story_id} is [{status}], land requires [in-progress]")
     # The plan-review credential, unread since spawn: the plan left the repo, so no
@@ -379,8 +377,7 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
             if subprocess.run(c, capture_output=True, text=True).returncode != 0:
                 failed.append(" ".join(c))
         merge_sha = git("rev-parse", f"refs/remotes/origin/{trunk}").stdout.strip()
-    # locked: a sibling lane may be flipping its own card right now
-    if not edit_plan(lambda text: _flip_status(text, story_id)):
+    if not flip_card(story_id, "in-progress", "done"):
         failed.append(f"flip {story_id} to [done] in {plan_path()}")
     if merge_mode == "local":
         merge_sha = git("rev-parse", "HEAD").stdout.strip()
@@ -413,12 +410,6 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
     return 0
 
 
-def _flip_status(plan: str, story_id: str) -> str:
-    from work import flip_status
-
-    return flip_status(plan, story_id, "in-progress", "done")
-
-
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__)
     sub = p.add_subparsers(dest="kind", required=True)
@@ -439,12 +430,9 @@ def main() -> int:
     s.add_argument("--merge-mode", choices=["pr", "local"], default=None)
     s.add_argument("--dry-run", action="store_true")
     a = p.parse_args()
-    # The gate the teammate profile only DECLARES (constraints #5): a teammate
-    # loaded via --plugin-dir can reach close.py through Bash, and a self-close
-    # is an unreviewed merge. Any non-lead role, so an unknown role fails safe
-    # and the reviewer this pipeline spawns cannot close either. It bounds the
-    # /story-close path, NOT a teammate who types XP_ROLE=lead — say so rather
-    # than implying a boundary the code does not have.
+    # The gate the teammate profile only DECLARES (constraints #5): a self-close is
+    # an unreviewed merge. Any non-lead role, so an unknown one fails safe. It bounds
+    # the /story-close path, NOT a teammate who types XP_ROLE=lead.
     role = os.environ.get("XP_ROLE", "lead")
     if role != "lead":
         return fail(

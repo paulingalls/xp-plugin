@@ -1,5 +1,5 @@
 {
   "name": "xp-plugin",
-  "version": "0.6.2",
+  "version": "0.6.3",
   "description": "Extreme Programming for coding agents \u2014 adversarial reviews, executable acceptance, git-hook enforcement"
 }
