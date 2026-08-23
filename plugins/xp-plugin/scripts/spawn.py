@@ -118,7 +118,7 @@ def bootstrap_command(system_md: str) -> tuple[str, str]:
         if not sep or label.strip().strip("*-# ").casefold() != "worktree bootstrap":
             continue
         value = value.strip().rstrip(".")
-        if m := re.fullmatch(r"`(.+)`", value):
+        if m := re.fullmatch(r"`([^`]+)`", value):
             return m.group(1), ""
         if "`" not in value and re.match(r"none\b", value, re.I):
             return "", ""

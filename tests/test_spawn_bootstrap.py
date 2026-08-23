@@ -33,6 +33,16 @@ class TestBootstrap:
         assert r.returncode == 2 and "bootstrap" in r.stderr.lower()
         assert not rec.exists()  # nothing launched
 
+    def test_two_backticked_spans_are_prose_not_a_command(self, tmp_path):
+        """`(.+)` was greedy, so the template's own example wording — "`npm ci`
+        or `uv sync`" — fullmatched and ran verbatim under a shell, where the
+        inner backticks are command substitution."""
+        repo, env, _g = make_repo(tmp_path)
+        rec = stub_claude(tmp_path)
+        set_system_md(repo, "- Worktree bootstrap: `touch a` or `touch b`")
+        assert spawn(repo, env, "story-042").returncode == 2
+        assert not rec.exists()
+
     def test_an_explicit_none_is_a_legitimate_no_op(self, tmp_path):
         """Not every project needs a bootstrap. `none` must stay silent, or the
         refusal below would block every project that correctly has nothing to run."""

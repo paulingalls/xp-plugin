@@ -20,6 +20,10 @@ per-sprint review reports.
   stays a legitimate no-op so the refusal cannot block a project that correctly
   has nothing to run. A parse failure refuses BEFORE the worktree is cut, or the
   corrected retry would hit `already spawned` and name the wrong problem.
+- **Prose with two backticked spans no longer executes.** The value had to be
+  one backticked command, but the match was greedy: the template's own example
+  wording — `` `npm ci` or `uv sync` `` — matched end to end and ran verbatim
+  under a shell, where the inner backticks are command substitution.
 - **The shipped template is now exercised.** Every bootstrap test wrote its own
   unbolded line, so the form the template *teaches* had never once been fed to
   the parser — vacuous by fixture. A dogfood arm takes the template's own label
