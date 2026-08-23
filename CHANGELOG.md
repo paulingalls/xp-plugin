@@ -23,6 +23,14 @@ per-sprint review reports.
   pre-commit hook"; it names the actual task — point `.xp/config.yml`'s tiers
   at the existing wall's own commands, so the two cannot drift into different
   definitions of "fast".
+- **`trunk:` — release where you actually integrate.** Sprint close targeted
+  git's default branch with no way to say otherwise, so a repo integrating on
+  `develop` could open a sprint, land stories, and then be refused at close for
+  trying to tag a branch containing none of the sprint. `trunk:` in config.yml
+  names where sprints land and releases tag; configured-but-absent refuses
+  rather than falling back, since silently releasing to `main` is the failure
+  it exists to prevent. Deliberately ONE branch — cutting `develop -> main`
+  stays your release process, not xp's.
 - **The release identity is now enforced, not just mandated.** v0.6.0 was
   tagged with the manifest still at 0.5.0; since the manifest version keys the
   consumer's plugin cache, that tag shipped the previous copy under a new name.
