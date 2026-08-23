@@ -45,3 +45,10 @@ adding over the cap requires retiring one (the plan reviewer enforces).
 13. **A claim about existing code is CHECKED before it is written down.** A card, a
    plan or a review that asserts what the code does, without running or reading it,
    spends a story on a premise. Cheap to check, expensive to inherit.
+14. **A release is the tag, the manifest and the CHANGELOG naming ONE version.**
+   `plugin.json`'s version keys the consumer's plugin cache, so a tag that moves
+   without it ships the previous cached copy under the new name — silently, and to
+   everyone except us (measured: v0.6.0 tagged with the manifest at 0.5.0, surfaced
+   by a field report still running "0.3.0"). Bump the manifest and write the entry
+   in the release commit, before the tag; tests/test_release.py is the wall, because
+   a step mandated in prose and enforced by nothing is a step that gets skipped.

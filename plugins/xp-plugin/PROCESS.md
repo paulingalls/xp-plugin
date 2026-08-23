@@ -37,7 +37,7 @@ One page. The values (VALUES.md) cover what this page doesn't.
    is silent or corrupting (false green, corrupted record, unreviewed merge). Loud
    and patch-scale → fix it now if that is minutes, else file it.
 4. **Sprint close** (release: sprint — the default): stories integrated on the
-   sprint branch throughout; the batch PRs to main when it is RELEASABLE —
+   sprint branch throughout; the batch PRs to trunk when it is RELEASABLE —
    usually now (keep sprints small), else carried to the plan boundary; prefer
    flags that dark-launch unready behavior over holding the branch. Archived
    falsifiers batch-run + full tier + note triage + retro (one-page narrative + a

@@ -42,6 +42,7 @@ from work import (
     edit_plan,
     plan_path,
     stale_plan,
+    strip_comment,
     work_entries_since,
 )
 
@@ -89,7 +90,7 @@ def config_flat(key: str) -> str:
         return ""
     for ln in cfg.read_text().splitlines():
         if ln.startswith(f"{key}:"):
-            return ln.split(":", 1)[1].split("#")[0].strip()
+            return strip_comment(ln).split(":", 1)[1].strip()
     return ""
 
 
@@ -106,7 +107,7 @@ def integration_target() -> str:
                 print(
                     f"sprint_branch is configured but refs/heads/{branch} does not exist —"
                     " refusing to fall back to the default branch (a fresh clone must"
-                    " create the sprint branch, not silently merge to main)",
+                    " create the sprint branch, not silently merge to trunk)",
                     file=sys.stderr,
                 )
                 raise SystemExit(2)
@@ -115,6 +116,23 @@ def integration_target() -> str:
 
 
 def default_branch() -> str:
+    """The trunk: where sprints land and releases are tagged.
+
+    `trunk:` overrides git's own default, for a repo integrating on develop while
+    origin/HEAD still names main — every caller here means the former. Absent-but-
+    configured REFUSES rather than falling back, as sprint_branch does: silently
+    releasing to main is the failure this key exists to prevent. Deliberately ONE
+    branch; the develop->main release cut stays the project's own process.
+    """
+    if name := config_flat("trunk"):
+        if git("rev-parse", "--verify", "-q", f"refs/heads/{name}", check=False).returncode:
+            raise SystemExit(
+                fail(
+                    f"refused: trunk: {name} in .xp/config.yml, but refs/heads/{name}"
+                    f" does not exist — create it, or drop the key to release to git's default"
+                )
+            )
+        return name
     head = git("symbolic-ref", "refs/remotes/origin/HEAD", check=False)
     if head.returncode == 0:
         return head.stdout.strip().rsplit("/", 1)[1]
@@ -254,7 +272,7 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
     if merge_mode == "pr" and trunk != default_branch():
         return fail(
             f"refused: release: sprint stories close with --merge-mode local into {trunk};"
-            " the PR to main happens at sprint close"
+            " the PR to trunk happens at sprint close"
         )
     head = git("rev-parse", "HEAD").stdout.strip()
     base = git("merge-base", f"refs/heads/{trunk}", "HEAD").stdout.strip()
