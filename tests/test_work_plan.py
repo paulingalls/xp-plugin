@@ -320,6 +320,29 @@ def work_env(cwd, home, data=None):
     )
 
 
+class TestInterpreterFloor:
+    """12 of 13 shipped scripts traceback on 3.9 — `str | None` is evaluated at def
+    time there — and `python3` on a stock mac IS 3.9 (note 1e7b1197). README says
+    3.11+; nothing enforced it, so a consuming project met a TypeError naming
+    nothing. env.py is the guard's home because it is the one module that still
+    parses on 3.9, and importers evaluate it BEFORE their own annotations."""
+
+    def test_an_old_interpreter_is_refused_by_name(self, monkeypatch):
+        import importlib
+
+        monkeypatch.setattr(sys, "version_info", (3, 9, 6, "final", 0))
+        sys.modules.pop("env", None)
+        try:
+            with pytest.raises(SystemExit) as raised:
+                importlib.import_module("env")
+            said = str(raised.value)
+            assert "3.9" in said and "3.11" in said, said
+        finally:
+            monkeypatch.undo()
+            sys.modules.pop("env", None)
+            importlib.import_module("env")
+
+
 class TestPluginRootHelper:
     """story-027: the env file, read by processes NOTHING spawned — which have no
     ${CLAUDE_PLUGIN_ROOT} and no Path(__file__) inside the plugin."""
