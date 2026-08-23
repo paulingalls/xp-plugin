@@ -6,10 +6,10 @@ per-sprint review reports.
 
 ## v0.6.3 — one implementation of each rule, and room to work in
 
-- **A missing plan reads the same at every leg.** Five commands answer "this
+- **A missing plan reads the same at every leg.** Six commands answer "this
   clone has no plan", and `close.py story <id> land` had lost half of that
   answer — the half naming what to check. It is the leg reached last, so the
-  story furthest along got the least help. All five now share one wording, and a
+  story furthest along got the least help. All six now share one wording, and a
   test runs every leg against a plan-less clone and compares what they say.
 - **Internal consolidation, no behavior change.** The status flip, the
   stream-JSON line decode and the record lookup behind `work.py resolve` /
