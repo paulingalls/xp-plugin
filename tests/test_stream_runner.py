@@ -1,5 +1,6 @@
 import inspect
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -230,3 +231,55 @@ def test_the_claude_slug_maps_dots_to_dashes_like_the_harness_does(tmp_path, mon
 
     assert "." not in slug, slug
     assert slug.endswith("--xp-data-proj-id-worktrees-story-042"), slug
+
+
+def test_a_codex_line_that_is_not_an_object_is_tolerated_not_raised(tmp_path, monkeypatch):
+    """parse_stream_json's docstring promises an unparseable line is echoed as
+    nothing, never raised, and its codex twin guards only the `item` lookup — so
+    a bare `7` or `[]` on the stream reached `evt.get` and died with an
+    AttributeError. It is raised from inside tee_stream's drain loop, where only
+    OSError is caught, so ONE stray line loses the whole run and its review with
+    it."""
+    from teammate_tee import parse_codex_json, run_stream
+
+    for line in ("7", '"a string"', "[]", "null"):
+        assert parse_codex_json(line) == (None, None), line
+
+    monkeypatch.setenv("XP_DATA", str(tmp_path / "data"))
+    lines = ["7", '{"type":"item.completed","item":{"type":"agent_message","text":"done"}}']
+    proc = run_stream(
+        event_script(tmp_path, lines),
+        tmp_path,
+        "",
+        "story-042-review",
+        tmp_path / "data",
+        "codex",
+        dict(os.environ),
+        out=lambda _l: None,
+        err=lambda _l: None,
+    )
+    assert proc.returncode == 0 and proc.stdout == "done"
+
+
+def test_the_LAST_codex_agent_message_is_the_result_not_the_first(tmp_path, monkeypatch):
+    """MEASURED on 0.149.0 (walks/story-028-json-full-probe.jsonl): with tools in
+    play codex emits MULTIPLE completed agent_messages per turn — an early
+    narration and then the terminal answer. First-wins hands review.py the
+    narration and records a round on prose no reviewer wrote. The rule was
+    documented and unpinned: mutating tee_stream to first-wins left the full
+    suite green."""
+    from spawn import run_agent
+
+    monkeypatch.setenv("XP_DATA", str(tmp_path / "data"))
+    lines = [
+        '{"type":"thread.started","thread_id":"t-1"}',
+        '{"type":"item.completed","item":{"type":"agent_message","text":"narrating first"}}',
+        '{"type":"item.completed","item":{"type":"command_execution","command":"pytest"}}',
+        '{"type":"item.completed","item":{"type":"agent_message","text":"the real findings"}}',
+        '{"type":"turn.completed","usage":{}}',
+    ]
+    proc = run_agent(
+        event_script(tmp_path, lines), tmp_path, "", "reviewer", "codex", "story-042-review"
+    )
+    assert proc.returncode == 0
+    assert proc.stdout == "the real findings"

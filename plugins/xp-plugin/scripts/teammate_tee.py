@@ -64,7 +64,9 @@ def parse_codex_json(line: str) -> tuple[str | None, dict | None]:
         evt = json.loads(line)
     except ValueError:
         return None, None
-    item = evt.get("item", {}) if isinstance(evt, dict) else {}
+    if not isinstance(evt, dict):
+        return None, None
+    item = evt.get("item") if isinstance(evt.get("item"), dict) else {}
     completed = evt.get("type") == "item.completed"
     terminal = evt if completed and item.get("type") == "agent_message" else None
     return f"[{evt.get('type', '?')}] {item.get('type', '')}".rstrip(), terminal
