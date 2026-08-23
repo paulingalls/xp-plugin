@@ -42,6 +42,7 @@ from work import (
     edit_plan,
     plan_path,
     stale_plan,
+    strip_comment,
     work_entries_since,
 )
 
@@ -89,7 +90,7 @@ def config_flat(key: str) -> str:
         return ""
     for ln in cfg.read_text().splitlines():
         if ln.startswith(f"{key}:"):
-            return ln.split(":", 1)[1].split("#")[0].strip()
+            return strip_comment(ln).split(":", 1)[1].strip()
     return ""
 
 

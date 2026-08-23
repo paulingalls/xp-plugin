@@ -102,6 +102,13 @@ def edit_plan(mutate) -> bool:
     return edited != text
 
 
+def strip_comment(line: str) -> str:
+    """A YAML comment opens at a `#` starting the line or after whitespace, never
+    one inside a word: cutting at any `#` truncated a tier whose inline env var held
+    one to a bare assignment — exits 0, runs no test. Third reader: tier_cmd."""
+    return re.sub(r"(?:^|(?<=\s))#.*", "", line)
+
+
 def config_block_value(block: str, key: str) -> str:
     """`key:` nested under `block:` in the project config.
 
@@ -114,7 +121,7 @@ def config_block_value(block: str, key: str) -> str:
         return ""
     inside = False
     for raw in cfg.read_text(errors="replace").splitlines():
-        line = raw.split("#", 1)[0]
+        line = strip_comment(raw)
         if line.rstrip() == f"{block}:":
             inside = True
         elif inside and line.strip().startswith(f"{key}:"):
