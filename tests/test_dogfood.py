@@ -8,7 +8,6 @@ constraints and stories are legitimately its own.
 """
 
 import re
-import sys
 from pathlib import Path
 
 
@@ -48,7 +47,6 @@ class TestDogfoodMatchesTheScaffold:
         run, so a future reformat of that line reds here rather than in a
         consuming project's unprepared worktree.
         """
-        sys.path.insert(0, str(self.REPO / "plugins" / "xp-plugin" / "scripts"))
         from spawn import bootstrap_command
 
         label = next(
@@ -64,7 +62,6 @@ class TestDogfoodMatchesTheScaffold:
         """Same discipline as tests.fast: EDIT-ME reddening the wall — a scaffold
         ships a placeholder, and a placeholder that silently means "no bootstrap"
         is the defect, not the default. Pinned so it stays a decision."""
-        sys.path.insert(0, str(self.REPO / "plugins" / "xp-plugin" / "scripts"))
         from spawn import bootstrap_command
 
         command, problem = bootstrap_command((self.SHIPPED / "system.md").read_text())
@@ -77,7 +74,6 @@ class TestDogfoodMatchesTheScaffold:
         would be the observed state constraint 11 forbids — so the drift alarm is
         gone, not moved. AC7's migration walk re-asserts the parse where the live
         plan is present by construction."""
-        sys.path.insert(0, str(self.REPO / "plugins" / "xp-plugin" / "scripts"))
         from sprint_close import sprint_stories
 
         assert sprint_stories((self.SHIPPED / "plan.md").read_text(), "1"), (
