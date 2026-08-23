@@ -16,9 +16,10 @@ from pathlib import Path
 
 from close_helpers import CLOSE, SPAWN, close, make_repo
 
-# The sentence each leg builds around the path. Deliberately loose on the tail:
-# what is compared is whether the legs agree, not what they agree on.
-MISSING = re.compile(r"no plan at (?P<path>\S+)(?P<tail>.*)")
+# The whole sentence, PATH included: the plan moving out of the repo is what
+# split these legs apart, so a leg still naming .xp/plan.md is the drift with
+# the shortest road back. Nothing pins the words — only that the legs agree.
+MISSING = re.compile(r"no plan at .*")
 
 
 def run(script, repo, env, *args):
@@ -54,7 +55,7 @@ def sentence(proc, leg):
     assert proc.returncode != 0, f"{leg} exited {proc.returncode} with no plan:\n{proc.stdout}"
     found = MISSING.search(proc.stderr)
     assert found, f"{leg} does not name the missing plan:\n{proc.stderr}"
-    return found.group("tail").strip()
+    return found.group(0).strip()
 
 
 class TestOneMissingPlanRefusal:
