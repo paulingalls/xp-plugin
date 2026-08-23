@@ -205,7 +205,8 @@ class TestTheLaunch:
         r = plan_review(repo, env, "story-042", str(draft))
         assert r.returncode == 0, r.stderr
         argv = json.loads(rec.read_text())["argv"]
-        assert list(pairwise(argv)).count(("--disable", "unified_exec")) == 1, argv
+        assert ("--sandbox", "workspace-write") in list(pairwise(argv)), argv
+        assert ("--disable", "unified_exec") not in list(pairwise(argv)), argv
         assert argv[argv.index("-m") + 1] == "gpt-5.6-terra"
         assert CHARTER_MARK in json.loads(rec.read_text())["stdin"]
         assert "ROUND FINDINGS" in r.stdout

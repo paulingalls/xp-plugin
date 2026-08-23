@@ -428,12 +428,14 @@ class TestCodexReviewerLeg:
         assert rounds == [CLEAN], rounds
 
     def test_the_reviewer_argv_is_the_hardened_one(self, tmp_path):
-        """Not a second, unhardened spawn path: the gate flag rides both legs."""
+        """Not a second spawn path: the reviewer leg takes the same hardening the
+        teammate leg does — the sandbox, the environment pins and the model."""
         repo, env, rec = self.codex_repo(tmp_path)
         assert close(repo, env, "review").returncode == 0
         launch = json.loads(rec.read_text())
         argv = launch["argv"]
-        assert list(pairwise(argv)).count(("--disable", "unified_exec")) == 1, argv
+        assert ("--sandbox", "workspace-write") in list(pairwise(argv)), argv
+        assert ("--disable", "unified_exec") not in list(pairwise(argv)), argv
         assert argv[argv.index("-m") + 1] == "gpt-5.6-terra"
         assert ("-c", "model_reasoning_effort=high") in list(pairwise(argv))
         assert launch["env"]["XP_ROLE"] == "reviewer"

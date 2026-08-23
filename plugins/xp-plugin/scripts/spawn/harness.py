@@ -47,11 +47,15 @@ def claude_argv(model: str, effort: str, output_format: str = "json") -> list[st
 
 
 def codex_argv(model: str, effort: str, network: bool = False) -> list[str]:
-    """`--disable unified_exec` is non-negotiable (DESIGN §3): without it
-    `write_stdin` bypasses every PreToolUse gate. One `--add-dir` here; a LINKED
-    worktree gains a second at launch (spawn.common_dir_widening).
+    """unified_exec stays ENABLED (reversed 2026-08-23, Paul; DESIGN §3): it is
+    codex's persistent-session exec tool, and without it a teammate's shell call
+    cannot outlive codex's per-command bound — which made TEAMMATE.md's mandatory
+    plan review unrunnable on the harness that mechanism exists for. It was
+    disabled to protect `PreToolUse`; this plugin ships no PreToolUse hook.
+    One `--add-dir` here; a LINKED worktree gains a second at launch
+    (spawn.common_dir_widening).
     `-` reads the prompt from stdin, keeping ~2k tokens out of `ps`."""
-    argv = ["codex", "exec", "--json", "--disable", "unified_exec"]
+    argv = ["codex", "exec", "--json"]
     # Our gates ride the ENVIRONMENT (XP_ROLE, GIT_AUTHOR_*), and THREE
     # ~/.codex/config.toml keys can each strip them on their way to the shell.
     # Never ignore_default_excludes: its default drops *KEY*/*SECRET*/*TOKEN*,

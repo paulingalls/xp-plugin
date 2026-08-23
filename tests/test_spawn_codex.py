@@ -29,7 +29,6 @@ class TestCodexExecutor:
         for pair in [
             ("-m", "gpt-5.6-terra"),
             ("-c", "model_reasoning_effort=medium"),
-            ("--disable", "unified_exec"),
             ("--sandbox", "workspace-write"),
             ("--add-dir", str(tmp_path / "data")),
             # XP_ROLE (self-close bar — close.py reads an ABSENT value as `lead`)
@@ -65,10 +64,11 @@ class TestCodexExecutor:
         argv = self.argv(tmp_path, executor="codex/gpt-5.6-terra")
         assert not [a for a in argv if a.startswith("model_reasoning_effort")], argv
 
-    def test_the_stub_reds_when_the_gate_flag_is_deleted(self, tmp_path, monkeypatch):
-        """Constraint 2: a stub that cannot red against its target defect
-        certifies. Strip the flag from the REAL builder's output and run the
-        real stub on it — the pair is what the spawn ships."""
+    def test_the_stub_reds_when_the_flag_comes_back(self, tmp_path, monkeypatch):
+        """Constraint 2, polarity flipped with the rule (bug 296c3e4f): a stub that
+        cannot red against its target defect certifies. Re-ADD `--disable
+        unified_exec` to the REAL builder's output and run the real stub on it —
+        the pair is what the spawn ships, and re-disabling it is now the defect."""
         import spawn as spawn_mod
 
         # monkeypatch, not os.environ[...]: this test runs IN-PROCESS, and a bare
@@ -77,12 +77,12 @@ class TestCodexExecutor:
         monkeypatch.setenv("XP_DATA", str(tmp_path / "data"))
         argv = spawn_mod.codex_argv("gpt-5.6-terra", "medium")
         stub_codex(tmp_path)
-        stripped = [a for a in argv if a not in ("--disable", "unified_exec")]
+        mutated = [argv[0], "exec", "--disable", "unified_exec", *argv[2:]]
         r = subprocess.run(
             # cwd matters even on the arm that must die early: with the guard
             # mutated away, the stub reaches its `git commit` and commits wherever
             # it stands — the repo under review, if that is the cwd
-            [str(tmp_path / "bin" / "codex"), *stripped[1:]],
+            [str(tmp_path / "bin" / "codex"), *mutated[1:]],
             input="",
             capture_output=True,
             text=True,
@@ -138,7 +138,30 @@ class TestCodexExecutor:
         repo, env, _g = make_repo(tmp_path, executor="codex/gpt-5.6-terra/medium")
         r = spawn(repo, env, "story-042", "--dry-run")
         assert r.returncode == 0, r.stderr
-        assert "--disable unified_exec" in r.stdout, r.stdout[:400]
+        assert "--sandbox workspace-write" in r.stdout, r.stdout[:400]
+        assert "--disable unified_exec" not in r.stdout, r.stdout[:400]
+
+    def test_the_teammates_shell_keeps_codexs_own_long_process_facility(self, tmp_path):
+        """unified_exec is codex's persistent-session exec tool — start a process,
+        poll it, write its stdin — and it is what carries a tool call past codex's
+        per-command bound. Disabling it made TEAMMATE.md's mandatory plan review
+        unrunnable on the harness that mechanism was written FOR: a real review runs
+        5-15 minutes against a ~120s shell bound, so the teammate timed out twice and
+        implemented anyway (field report, Legacy, 0.6.2).
+
+        The bar it was disabled under is outdated, not wrong-at-the-time (Paul, at
+        this fix): DESIGN §3 justified it as protecting `PreToolUse`, and this plugin
+        ships no PreToolUse hook at all — the gates that bind a codex leg are
+        close.py running Verify and the git-hook wall, which a shell obtained any
+        way at all still meets.
+        """
+        import spawn as spawn_mod
+
+        monkeypatch_free = spawn_mod.codex_argv("gpt-5.6-terra", "medium")
+        assert ("--disable", "unified_exec") not in list(pairwise(monkeypatch_free)), (
+            "the codex teammate cannot run a command past the shell bound: "
+            + " ".join(monkeypatch_free)
+        )
 
     def test_every_shipped_harness_has_its_own_argv_and_stream(self):
         """Three registries, two files: HARNESS_INSTALL admits a harness, agent_argv

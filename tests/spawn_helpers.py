@@ -203,10 +203,11 @@ def stub_codex(
 
     story-017's measured loss, inherited verbatim by story-021's card: stub_claude
     accepted any argv, so the suite would have shipped a spawn that died on
-    contact. This one exits 2 on an argv missing `--disable unified_exec` — the
-    fault injection the AC names, so deleting the flag reds a test instead of
-    shipping a PreToolUse bypass — and on the claude spellings, which is what
-    stops the two legs' argv from silently fusing.
+    contact. This one exits 2 on an argv that DISABLES unified_exec — the
+    polarity flipped when the disablement did (bug 296c3e4f), so re-adding the
+    flag reds a test instead of silently costing the teammate its plan review —
+    and on the claude spellings, which is what stops the two legs' argv from
+    silently fusing.
 
     `network`: the sandbox posture this leg must have — True for the EXECUTOR,
     which has to nest a headless plan review and dies on DNS without it (curl
@@ -234,8 +235,8 @@ def stub_codex(
         "for flag in ('-e', '--plugin-dir', '--output-format', '--verbose'):",
         "    if flag in argv: die('unexpected argument ' + flag)",
         "pairs = list(zip(argv, argv[1:]))",
-        "if ('--disable', 'unified_exec') not in pairs:",
-        "    die('unified_exec is enabled: write_stdin would bypass every gate')",
+        "if ('--disable', 'unified_exec') in pairs:",
+        "    die('unified_exec disabled: no tool call here can outlive the shell bound')",
         "net = ('-c', 'sandbox_workspace_write.network_access=true') in pairs",
         f"want = {network!r}",
         "if want is True and not net:",
