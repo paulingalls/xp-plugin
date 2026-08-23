@@ -285,6 +285,25 @@ class TestExecutorResolution:
         assert "predates" not in config_message
         assert "cannot resolve plan-reviewer from 'claude'" in card_message
 
+    def test_a_config_that_is_absent_entirely_is_not_called_stale(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        """An absent FILE and an absent KEY are different repairs — scaffold the
+        repo, or add one line — so they cannot share a sentence. sprint_close.py
+        already owns the wording for the first."""
+        from spawn import resolve_role
+
+        repo, _env, _g = make_repo(tmp_path)
+        (repo / ".xp" / "config.yml").unlink()
+        monkeypatch.chdir(repo)
+        try:
+            resolve_role("executor")
+        except SystemExit as error:
+            assert error.code == 2
+        message = capsys.readouterr().err
+        assert "no .xp/config.yml" in message, message
+        assert "predates" not in message and "under `roles:`" not in message
+
     def test_cli_override_beats_the_card(self, tmp_path):
         repo, env, _g = make_repo(tmp_path, executor="claude/opus/high")
         rec = stub_claude(tmp_path)

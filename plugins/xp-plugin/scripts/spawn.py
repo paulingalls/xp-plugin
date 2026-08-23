@@ -131,21 +131,26 @@ def bootstrap_command(system_md: str) -> tuple[str, str]:
     return "", ""
 
 
+def template_role_line(role: str) -> str:
+    return next(
+        line
+        for raw in (PLUGIN_ROOT / "templates" / "config.yml").read_text().splitlines()
+        if (line := strip_comment(raw).rstrip()).lstrip().startswith(f"{role}:")
+    )
+
+
 def resolve_role(role: str, card: str = "", override: str = "") -> tuple[str, str, str]:
     spec = override or card_role(card, role)
     config_source = not spec
     if config_source:
         spec = config_role(role, "\0")
-    wanted = next(
-        strip_comment(raw).rstrip()
-        for raw in (PLUGIN_ROOT / "templates" / "config.yml").read_text().splitlines()
-        if strip_comment(raw).lstrip().startswith(f"{role}:")
-    )
     if spec == "\0":
+        if not Path(".xp/config.yml").exists():
+            raise SystemExit(fail("refused: no .xp/config.yml here — is this an xp-managed repo?"))
         raise SystemExit(
             fail(
                 f"refused: roles.{role} is absent from .xp/config.yml — your config predates"
-                f" this key; add `{wanted}` under `roles:`"
+                f" this key; add `{template_role_line(role)}` under `roles:`"
             )
         )
     parts = [p for p in spec.split("/") if p]
@@ -154,7 +159,7 @@ def resolve_role(role: str, card: str = "", override: str = "") -> tuple[str, st
             raise SystemExit(
                 fail(
                     f"refused: roles.{role} in .xp/config.yml is malformed as {spec!r}"
-                    f" — replace it with `{wanted}`"
+                    f" — replace it with `{template_role_line(role)}`"
                 )
             )
         raise SystemExit(
