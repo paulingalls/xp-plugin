@@ -120,3 +120,95 @@ def test_cardless_sprint_review_gets_scoped_log(tmp_path, monkeypatch):
     )
     assert result and not error
     assert (tmp_path / "data" / "logs" / "sprint-release-review.log").exists()
+
+
+def log_lines(tmp_path, log_id="story-042-review"):
+    return (tmp_path / "data" / "logs" / f"{log_id}.log").read_text().splitlines()
+
+
+def test_the_log_points_at_claudes_native_transcript_never_in_the_header(tmp_path, monkeypatch):
+    """AC6. The header is written before any session id exists, so a pointer
+    found THERE would be one the code invented rather than read off the stream."""
+    from spawn import run_agent
+
+    monkeypatch.setenv("XP_DATA", str(tmp_path / "data"))
+    monkeypatch.setenv("HOME", str(tmp_path))
+    run_agent(
+        event_script(
+            tmp_path,
+            ['{"type":"system","session_id":"sess-9"}', '{"type":"result","result":"done"}'],
+        ),
+        tmp_path,
+        "",
+        "reviewer",
+        "claude",
+        "story-042-review",
+    )
+    header, first, pointer, *_ = log_lines(tmp_path)
+    assert "sess-9" not in header and "transcript" not in header
+    slug = "-" + str(tmp_path.resolve()).lstrip("/").replace("/", "-")
+    assert pointer == f"transcript: {tmp_path / '.claude' / 'projects' / slug / 'sess-9.jsonl'}"
+    assert "session_id" in first, "the pointer displaced the event it was read from"
+
+
+def test_the_codex_pointer_resolves_the_rollout_and_says_so_when_it_cannot(tmp_path, monkeypatch):
+    """`thread.started` is codex's FIRST event, so the rollout it names may not
+    exist yet — the miss must read as a search, not as a path that never opens."""
+    from spawn import run_agent
+
+    monkeypatch.setenv("XP_DATA", str(tmp_path / "data"))
+    monkeypatch.setenv("HOME", str(tmp_path))
+    rollout = tmp_path / ".codex" / "sessions" / "2026" / "08" / "23"
+    rollout.mkdir(parents=True)
+    (rollout / "rollout-2026-08-23T01-00-00-thread-1.jsonl").write_text("{}\n")
+    done = '{"type":"item.completed","item":{"type":"agent_message","text":"done"}}'
+    for t, expected in (("thread-1", str(rollout)), ("thread-404", "not written yet")):
+        stream = [f'{{"type":"thread.started","thread_id":"{t}"}}', done]
+        run_agent(event_script(tmp_path, stream), tmp_path, "", "reviewer", "codex", f"{t}-review")
+        pointer = [ln for ln in log_lines(tmp_path, f"{t}-review") if ln.startswith("transcript")]
+        assert pointer and expected in pointer[0], pointer
+
+
+def test_every_role_leaves_a_tee_d_log(tmp_path, monkeypatch):
+    """AC4's second half, asserted positively: liveness is the SPAWNER's property,
+    so no role may be the one whose run is a void."""
+    from spawn import run_agent
+
+    monkeypatch.setenv("XP_DATA", str(tmp_path / "data"))
+    for role in ("reviewer", "plan-reviewer", "executor"):
+        run_agent(
+            event_script(tmp_path, ['{"type":"result","result":"done"}']),
+            tmp_path,
+            "",
+            role,
+            "claude",
+            f"story-042-{role}",
+        )
+        assert (tmp_path / "data" / "logs" / f"story-042-{role}.log").exists(), role
+
+
+def test_a_log_that_fails_on_its_FIRST_write_still_returns_the_result(tmp_path, monkeypatch):
+    """AC1's fault injection at the one write outside tee_stream's OSError arm:
+    the header. Disk-full between open and first write is the modelled failure,
+    and an unguarded header turns it into `could not launch the reviewer` — the
+    whole review lost to its own log."""
+    import teammate_tee
+    from spawn import run_agent
+
+    class Dead:
+        def write(self, _line):
+            raise OSError("disk full")
+
+        flush = close = lambda self: None
+
+    monkeypatch.setenv("XP_DATA", str(tmp_path / "data"))
+    monkeypatch.setattr(teammate_tee, "open", lambda *a, **k: Dead(), raising=False)
+    proc = run_agent(
+        event_script(tmp_path, ['{"type":"result","result":"survived"}']),
+        tmp_path,
+        "",
+        "reviewer",
+        "claude",
+        "story-042-review",
+    )
+    assert json.loads(proc.stdout)["result"] == "survived"

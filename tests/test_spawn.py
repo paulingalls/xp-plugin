@@ -411,6 +411,23 @@ class TestCommonDirWidening:
         assert len(adds) == 2, launched
         assert str((main / ".git").resolve()) in adds
 
+    def test_the_TEAMMATE_launch_applies_it_too(self, tmp_path, monkeypatch):
+        """ONE rule, one launch path. It had two: while the widening lived in
+        run_agent alone, a codex teammate in a linked worktree could not commit —
+        measured on this story's own author, which hand-committed instead."""
+        from spawn import agent_argv
+        from teammate_tee import run_teammate
+
+        main, wt = self._repo_with_worktree(tmp_path)
+        rec = stub_codex(tmp_path, commit=False)
+        monkeypatch.setenv("PATH", f"{tmp_path / 'bin'}:/usr/bin:/bin")
+        monkeypatch.setenv("XP_DATA", str(tmp_path / "data"))
+        argv = agent_argv("codex", "m", "", "json", "executor")
+        assert run_teammate(argv, wt, "", "story-042", tmp_path / "data", "codex") == 0
+        launched = json.loads(rec.read_text())["argv"]
+        adds = [launched[i + 1] for i, arg in enumerate(launched) if arg == "--add-dir"]
+        assert str((main / ".git").resolve()) in adds, launched
+
     def test_a_main_checkout_stays_unwidened(self, tmp_path):
         from spawn import common_dir_widening
 

@@ -196,10 +196,10 @@ def run_agent(
 ) -> subprocess.CompletedProcess:
     """Prompt on stdin: it keeps ~2k tokens out of argv and out of `ps`.
 
-    `role` and `capture` carried defaults shaped for the teammate launch until
-    story-017 moved that leg to teammate_tee.run_teammate. Defaulting them now
-    hands a future caller XP_ROLE=teammate and no wall clock by omission — the
-    two things the branch below turns on.
+    `role` carried a default shaped for the teammate launch until story-017 moved
+    that leg to teammate_tee.run_teammate. Defaulting it now hands a future caller
+    XP_ROLE=teammate and no wall clock by omission — the two things the branches
+    below turn on.
     """
     env = os.environ | {"XP_ROLE": role}
     # BOTH reviewer legs: a review is the one launch both long-running AND
@@ -213,8 +213,11 @@ def run_agent(
     # The STORY reviewer alone: this name is the credential close.py and
     # sprint_close.py gate the merge on, and the plan reviewer never earns it.
     # EMAIL too: with the name alone, every email-keyed tool reports the lead.
-    fixing_reviewer = not log_id.startswith("sprint-") or log_id == "sprint-fix-review"
-    if role == "reviewer" and fixing_reviewer:
+    # The sprint pipeline's finders, verifiers and closing pass are NOT it: only
+    # its fixer moves the tree, and a credential handed to a leg that must not
+    # commit turns sprint_close's stray-authorship refusal into a rubber stamp.
+    fixing = not log_id.startswith("sprint-") or log_id == "sprint-fix-review"
+    if role == "reviewer" and fixing:
         from review import REVIEWER_EMAIL, REVIEWER_NAME
 
         env |= {
@@ -223,8 +226,6 @@ def run_agent(
             "GIT_AUTHOR_EMAIL": REVIEWER_EMAIL,
             "GIT_COMMITTER_EMAIL": REVIEWER_EMAIL,
         }
-    if argv[:2] == ["codex", "exec"] and (widen := common_dir_widening(cwd)):
-        argv = [*argv[:-1], *widen, argv[-1]]  # before the trailing stdin `-`
     return run_stream(argv, cwd, prompt, log_id, data_root(), harness, env, timeout)
 
 
