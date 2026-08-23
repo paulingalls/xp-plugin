@@ -3,9 +3,11 @@ Extracted from test_spawn.py at story-026, which took it to 498 of the 500-line
 cap — over-cap means extract, not scroll (constraint 8).
 Verify: pytest -q tests/test_spawn_codex.py"""
 
+import json
 import subprocess
 from itertools import pairwise
 
+from session_start_helpers import HOOKS_JSON
 from spawn_helpers import in_tree, make_repo, spawn, stub_codex
 
 
@@ -143,11 +145,15 @@ class TestCodexExecutor:
 
     def test_the_teammates_shell_keeps_codexs_own_long_process_facility(self, tmp_path):
         """unified_exec is codex's persistent-session exec tool — start a process,
-        poll it, write its stdin — and it is what carries a tool call past codex's
-        per-command bound. Disabling it made TEAMMATE.md's mandatory plan review
-        unrunnable on the harness that mechanism was written FOR: a real review runs
-        5-15 minutes against a ~120s shell bound, so the teammate timed out twice and
-        implemented anyway (field report, Legacy, 0.6.2).
+        poll it, write its stdin — and it is what carries a tool call past the bound
+        codex puts on one. Disabling it made TEAMMATE.md's mandatory plan review
+        unrunnable on the harness that mechanism was written FOR: the bound is
+        `timeout_ms` on codex's own shell action, a per-call value THE MODEL supplies
+        with no config override, and a model with nothing telling it a review takes
+        5-15 minutes guesses low — the field teammate's two attempts died at codex's
+        own "timed out after 120008 ms" and "180009 ms" (note 095395d4; the field
+        report's "~120s cap" was those two guesses, not a fixed bound — a bare
+        `sleep 700` survives, note 97bfbca0).
 
         The bar it was disabled under is outdated, not wrong-at-the-time (Paul, at
         this fix): DESIGN §3 justified it as protecting `PreToolUse`, and this plugin
@@ -157,10 +163,23 @@ class TestCodexExecutor:
         """
         import spawn as spawn_mod
 
-        monkeypatch_free = spawn_mod.codex_argv("gpt-5.6-terra", "medium")
-        assert ("--disable", "unified_exec") not in list(pairwise(monkeypatch_free)), (
-            "the codex teammate cannot run a command past the shell bound: "
-            + " ".join(monkeypatch_free)
+        argv = spawn_mod.codex_argv("gpt-5.6-terra", "medium")
+        assert ("--disable", "unified_exec") not in list(pairwise(argv)), (
+            "the codex teammate cannot run a command past the shell bound: " + " ".join(argv)
+        )
+
+    def test_the_premise_that_reversal_rests_on_reds_when_it_expires(self):
+        """Enabling unified_exec is safe only while nothing of OURS runs at
+        PreToolUse, and that premise is unbuilt-design, not a decision: DESIGN §7
+        item 4 still plans an exit-status-masking PreToolUse block. Nothing else in
+        the suite would notice the day it lands, so the hole would reopen silently
+        on the harness the reversal was made for."""
+        hooks = json.loads(HOOKS_JSON.read_text())["hooks"]
+        assert "PreToolUse" not in hooks, (
+            "a PreToolUse hook now ships and codex's write_stdin bypasses it — either"
+            " re-add `--disable unified_exec` to spawn.codex_argv (DESIGN §3 row 80,"
+            " which costs the codex teammate its plan review again) or register the"
+            " hook claude-only. Whichever wins, row 80 and DESIGN §7 item 4 must say so"
         )
 
     def test_every_shipped_harness_has_its_own_argv_and_stream(self):
