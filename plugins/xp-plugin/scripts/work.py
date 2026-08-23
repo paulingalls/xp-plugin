@@ -258,8 +258,9 @@ def _single_line(value: str, field: str) -> bool:
     return True
 
 
-def _kind_of(root: Path, ref: str) -> str:
-    """The referenced record's kind, or "" having printed why not."""
+def _kind_of(root: Path, ref: str) -> str | None:
+    """The referenced record's kind, or None having printed why not — None, so a
+    heading whose kind reads EMPTY still reaches the refusal below that names it."""
     matches = [text for eid, text in entries(root) if eid == ref]
     if len(matches) != 1:
         print(
@@ -267,7 +268,7 @@ def _kind_of(root: Path, ref: str) -> str:
             " names none is a typo, one that names several silences the others.",
             file=sys.stderr,
         )
-        return ""
+        return None
     return matches[0].split(" ", 2)[1]
 
 
@@ -280,8 +281,7 @@ def resolve(root: Path, args: argparse.Namespace) -> int:
     """
     if not _single_line(args.falsifier, "falsifier"):
         return 2
-    kind = _kind_of(root, args.ref)
-    if not kind:
+    if (kind := _kind_of(root, args.ref)) is None:
         return 2
     if kind not in ("bug", "debt"):
         print(
@@ -318,8 +318,7 @@ def archive(root: Path, args: argparse.Namespace) -> int:
     and archive.md is read with FALSIFIER.finditer over the WHOLE file, so text
     landing there would be executed by the batch.
     """
-    kind = _kind_of(root, args.ref)
-    if not kind:
+    if (kind := _kind_of(root, args.ref)) is None:
         return 2
     if kind not in ("debt", "note"):
         print(
