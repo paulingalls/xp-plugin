@@ -4,6 +4,7 @@ import json
 import subprocess
 import sys
 
+import pytest
 from close_helpers import (  # noqa: F401
     CARD,
     CLOSE,
@@ -186,6 +187,7 @@ class TestOverlapReadsTheRefTheModeMerges:
             text=True,
         )
 
+    @pytest.mark.slow
     def test_pr_mode_overlap_is_computed_on_the_FETCHED_origin_ref(self, tmp_path):
         repo, env, g = self.remote_repo(tmp_path)
         gh = tmp_path / "bin" / "gh"
@@ -206,6 +208,7 @@ class TestOverlapReadsTheRefTheModeMerges:
         assert r.returncode == 2 and "src/thing.py" in r.stderr
         assert "origin/main" in r.stderr, "the refusal named the ref pr mode does not merge"
 
+    @pytest.mark.slow
     def test_local_mode_overlap_is_computed_on_the_LOCAL_ref_with_a_remote_present(self, tmp_path):
         """The remote EXISTS and never moves: the whole of c1e586bc was a guard that
         read origin here and therefore saw nothing."""

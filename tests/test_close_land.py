@@ -5,6 +5,7 @@ import json
 import subprocess
 import sys
 
+import pytest
 from close_helpers import (  # noqa: F401
     CARD,
     CLEAN,
@@ -188,6 +189,7 @@ class TestLandFailureModes:
         rec = json.loads((tmp_path / "data" / "closes.jsonl").read_text().splitlines()[-1])
         assert rec["merge_sha"] != story_head, "recorded the story tip, not the PR merge"
 
+    @pytest.mark.slow
     def test_pr_mode_also_deletes_the_local_story_branch(self, tmp_path):
         """F3: AC 7 was met in local mode only. gh runs FROM the story branch,
         so --delete-branch cannot remove it locally."""
@@ -329,6 +331,7 @@ class TestStructuredGate:
         assert "src/thing.py" in first.stderr
         assert len(launches(tmp_path)) == 1
 
+    @pytest.mark.slow
     def test_a_second_round_reviews_the_whole_story_diff_not_a_delta(self, tmp_path):
         repo, env, g = make_repo(tmp_path)
         stub_reviewer(tmp_path, report=CLEAN)

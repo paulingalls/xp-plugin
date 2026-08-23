@@ -6,6 +6,7 @@ import subprocess
 import sys
 from itertools import pairwise
 
+import pytest
 from close_helpers import (  # noqa: F401
     CARD,
     CLEAN,
@@ -369,6 +370,7 @@ class TestAReviewerMayNotREWRITEWhatItWasGiven:
         g("reset", "-q", "--hard", reviewed)
         assert "A = 2" in (repo / "src" / "thing.py").read_text()
 
+    @pytest.mark.slow
     def test_a_reviewer_that_only_ADDS_commits_is_still_recorded(self, tmp_path):
         """The pair: the ordinary fixing reviewer must not trip this."""
         repo, env, _g = make_repo(tmp_path)

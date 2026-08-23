@@ -8,6 +8,7 @@ import sys
 from itertools import pairwise
 from pathlib import Path
 
+import pytest
 from spawn_helpers import make_repo, spawn, stub_codex
 
 PLUGIN = Path(__file__).parent.parent / "plugins" / "xp-plugin"
@@ -145,6 +146,7 @@ class TestTheLaunch:
         assert "ROUND FINDINGS" not in r.stdout
         assert rec.exists(), "the fault injection never reached the reviewer"
 
+    @pytest.mark.slow
     def test_report_only_role_refuses_every_guarded_motion(self, tmp_path):
         for motion in ("dirty", "commit", "draft", "card"):
             repo, env, draft = self.repo(tmp_path / motion)
