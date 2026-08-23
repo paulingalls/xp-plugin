@@ -12,12 +12,14 @@ per-sprint review reports.
   label does not contain: the `**` sits between label and colon. It returned
   empty, and spawn's `if command := ...` skipped the block. No bootstrap, no
   warning, no nonzero exit — a teammate launched into a tree nothing prepared.
-  Every repo scaffolded from the template was affected.
+  Every repo that wrote the line in the template's own bolded style was
+  affected; one written unbolded — the form every test used — was not.
 - **An unreadable line now refuses; an absent one still doesn't.** Empty
   conflated "no line" (legitimate — a project may need no bootstrap) with "a
   line I could not read" (a defect), which is what made the above silent. `none`
   stays a legitimate no-op so the refusal cannot block a project that correctly
-  has nothing to run, and prose still never executes.
+  has nothing to run. A parse failure refuses BEFORE the worktree is cut, or the
+  corrected retry would hit `already spawned` and name the wrong problem.
 - **The shipped template is now exercised.** Every bootstrap test wrote its own
   unbolded line, so the form the template *teaches* had never once been fed to
   the parser — vacuous by fixture. A dogfood arm takes the template's own label

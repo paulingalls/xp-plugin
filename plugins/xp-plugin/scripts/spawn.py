@@ -362,6 +362,12 @@ def cmd_spawn(story_id: str, override: str, dry_run: bool, in_place: bool = Fals
     # missing binary must not cost a tree and a branch to unwind.
     if gone := missing_harness(harness):
         return fail("refused: " + gone)
+    # Parsed here and RUN below: reading the line needs no tree, and refusing
+    # after `worktree add` leaves a tree and a branch whose only effect is that
+    # the corrected retry refuses with "already spawned" instead.
+    command, problem = bootstrap_command(_read(Path(".xp/system.md")))
+    if problem:
+        return fail("refused: " + problem)
     # The worktree is cut from a COMMIT, so anything uncommitted — including the
     # scaffold itself on a fresh repo — is simply absent from the teammate's tree.
     # Without this the first spawn after xp-setup tracebacks on a missing plan.md
@@ -381,9 +387,6 @@ def cmd_spawn(story_id: str, override: str, dry_run: bool, in_place: bool = Fals
     added = git("worktree", "add", "-b", branch, str(tree), trunk, check=False)
     if added.returncode != 0:
         return fail(f"git worktree add failed: {added.stderr.strip()}")
-    command, problem = bootstrap_command(_read(Path(".xp/system.md")))
-    if problem:
-        return fail(f"refused: {problem}. Worktree left at {tree}")
     if command:
         done = subprocess.run(command, shell=True, cwd=tree, capture_output=True, text=True)
         if done.returncode != 0:
