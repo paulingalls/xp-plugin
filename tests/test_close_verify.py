@@ -8,7 +8,7 @@ import json
 import pathlib
 
 from close import story_card
-from close_helpers import close, make_repo
+from close_helpers import close, make_repo, ready_marker
 
 
 class TestVerifyGate:
@@ -23,7 +23,7 @@ class TestVerifyGate:
         models the only way this reaches land once mint refuses it: a card minted
         by a version that had no such guard.
         """
-        from work import card_digest, ready_marker_path
+        from work import card_digest
 
         repo, env, _g = make_repo(tmp_path)
         assert close(repo, env, "review").returncode == 0
@@ -33,9 +33,9 @@ class TestVerifyGate:
         def recredential(text):
             plan.write_text(text)
             card = story_card(text, "story-042")[0]
-            marker = pathlib.Path(env["XP_DATA"]) / "markers" / "story-042.ready.json"
-            marker.write_text(json.dumps({"digest": card_digest(card), "card": card}))
-            assert marker.exists() and ready_marker_path
+            ready_marker(tmp_path).write_text(
+                json.dumps({"digest": card_digest(card), "card": card})
+            )
 
         recredential(original.replace("Verify: true", "Verify:\n- `pytest -q`\n- `bun test`"))
         empty = close(repo, env, "land")
