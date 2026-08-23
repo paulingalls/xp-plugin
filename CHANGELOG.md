@@ -12,6 +12,12 @@ per-sprint review reports.
   second fired on a *freshly scaffolded* repo — setup seeds `EDIT-ME`, so the
   wall installed, the first commit passed, and no test had ever run. Both now
   exit 1 naming their next action. Reported from the field on a real monorepo.
+- **A `#` inside a word is no longer read as a YAML comment.** `tier_cmd` cut
+  the tier value at any `#`; YAML opens a comment only at a whitespace-preceded
+  one. A tier carrying an inline env var whose password held a `#` truncated to
+  a bare `VAR=value` — a valid shell command that assigns, exits 0 and runs no
+  test. The same false green as the two legs above, reached from the parser
+  instead of the guard. Trailing `  # ...` comments strip exactly as before.
 - **`xp-setup` stops naming a hook it declined to write.** Where existing hook
   routing is found, the closing advice no longer says "add your linter to the
   pre-commit hook"; it names the actual task — point `.xp/config.yml`'s tiers

@@ -265,6 +265,34 @@ class TestCloseReviewFindings:
         assert r.returncode == 0, (r.stdout, r.stderr)  # quotes intact -> test passes
         assert "unset" not in (r.stdout + r.stderr)  # and no lying diagnostic
 
+    def test_a_hash_inside_a_word_is_not_a_yaml_comment(self, tmp_path):
+        """YAML opens a comment only at a WHITESPACE-preceded `#`, so `p#ss` is one
+        scalar to every other reader of config.yml and was a truncation point only
+        to us. The field case: a tier carrying an inline env var whose password
+        holds a `#` truncated to a bare `VAR=value` — a syntactically valid shell
+        command that assigns, exits 0, and runs no test. The same false green as
+        the two legs above, reached from the parser instead of the guard.
+
+        Trailing-comment stripping stays covered by the tier tests around this one:
+        the shipped template comments every tier line, and they only ever replace
+        the value, so each of them runs a command with a real `  # ...` after it.
+        """
+        repo, env = bare_repo(tmp_path)
+        run_setup(repo, env)
+        plant(tmp_path, "gitleaks", "#!/bin/sh\nexit 0\n")
+        cfg = repo / ".xp" / "config.yml"
+        cfg.write_text(
+            cfg.read_text().replace(
+                "fast: EDIT-ME", "fast: DB=postgres://u:p#ss@h/db touch ran-a && touch ran-b"
+            )
+        )
+        r = subprocess.run(
+            ["sh", ".githooks/pre-commit"], cwd=repo, env=env, capture_output=True, text=True
+        )
+        assert r.returncode == 0, (r.stdout, r.stderr)
+        assert (repo / "ran-a").exists(), "the tier truncated to a bare assignment and ran nothing"
+        assert (repo / "ran-b").exists(), "the tier ran only part of the command"
+
     def test_reindented_config_still_read(self, tmp_path):
         repo, env = bare_repo(tmp_path)
         run_setup(repo, env)
