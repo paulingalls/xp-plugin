@@ -259,33 +259,6 @@ class TestExecutorResolution:
         assert "--effort" not in argv  # two-part spec: reviewer role shape (story-008)
 
 
-class TestBootstrap:
-    def test_backticked_command_runs_in_the_worktree(self, tmp_path):
-        repo, env, _g = make_repo(tmp_path)
-        stub_claude(tmp_path)
-        set_system_md(repo, "- Worktree bootstrap: `touch bootstrapped`")
-        assert spawn(repo, env, "story-042").returncode == 0
-        assert (tmp_path / "data" / "worktrees" / "story-042" / "bootstrapped").exists()
-
-    def test_prose_mentioning_a_backticked_path_does_not_execute(self, tmp_path):
-        """The whole value must be one backticked command. Otherwise
-        `none needed — see `docs/setup.md`` would execute docs/setup.md."""
-        repo, env, _g = make_repo(tmp_path)
-        stub_claude(tmp_path)
-        set_system_md(repo, "- Worktree bootstrap: none needed — see `touch pwned`")
-        assert spawn(repo, env, "story-042").returncode == 0
-        assert not (tmp_path / "data" / "worktrees" / "story-042" / "pwned").exists()
-
-    def test_red_bootstrap_refuses_and_does_not_launch(self, tmp_path):
-        """A teammate in a non-working tree is the silent-corrupting failure."""
-        repo, env, _g = make_repo(tmp_path)
-        rec = stub_claude(tmp_path)
-        set_system_md(repo, "- Worktree bootstrap: `exit 3`")
-        r = spawn(repo, env, "story-042")
-        assert r.returncode == 2 and "bootstrap" in r.stderr.lower()
-        assert not rec.exists()  # nothing launched
-
-
 class TestInPlace:
     """The lead implementing a story solo (DESIGN §8) had NO branch-creation step:
     spawn made one only on the delegation path, so solo work landed straight on

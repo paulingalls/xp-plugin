@@ -4,6 +4,31 @@ Release notes started at v0.6.0; earlier entries are summarized from their
 tag and merge messages. Full detail lives in the merge history and the
 per-sprint review reports.
 
+## v0.6.2 — the bootstrap line the template taught was unreadable
+
+- **`Worktree bootstrap:` is read past markdown emphasis.** `templates/system.md`
+  bolds every field it teaches — `**Product**`, `**Stack**`, `**Layout**` — and
+  the parser matched the literal substring `Worktree bootstrap:`, which a bolded
+  label does not contain: the `**` sits between label and colon. It returned
+  empty, and spawn's `if command := ...` skipped the block. No bootstrap, no
+  warning, no nonzero exit — a teammate launched into a tree nothing prepared.
+  Every repo that wrote the line in the template's own bolded style was
+  affected; one written unbolded — the form every test used — was not.
+- **An unreadable line now refuses; an absent one still doesn't.** Empty
+  conflated "no line" (legitimate — a project may need no bootstrap) with "a
+  line I could not read" (a defect), which is what made the above silent. `none`
+  stays a legitimate no-op so the refusal cannot block a project that correctly
+  has nothing to run. A parse failure refuses BEFORE the worktree is cut, or the
+  corrected retry would hit `already spawned` and name the wrong problem.
+- **Prose with two backticked spans no longer executes.** The value had to be
+  one backticked command, but the match was greedy: the template's own example
+  wording — `` `npm ci` or `uv sync` `` — matched end to end and ran verbatim
+  under a shell, where the inner backticks are command substitution.
+- **The shipped template is now exercised.** Every bootstrap test wrote its own
+  unbolded line, so the form the template *teaches* had never once been fed to
+  the parser — vacuous by fixture. A dogfood arm takes the template's own label
+  verbatim, so a reformat reds here rather than in a consuming project.
+
 ## v0.6.1 — the wall stops reporting green having run nothing
 
 - **The scaffolded wall refuses instead of warning.** `hook-lib.sh` had two

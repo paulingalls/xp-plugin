@@ -104,19 +104,29 @@ def profile_report(card: str, prompt: str) -> tuple[str, str]:
     )
 
 
-def bootstrap_command(system_md: str) -> str:
-    """The whole value must be ONE backticked command, or nothing runs.
+def bootstrap_command(system_md: str) -> tuple[str, str]:
+    """(command, problem) — at most one is ever non-empty.
 
-    A substring match would execute the path in a line like
-    "Worktree bootstrap: none needed - see [a backticked path]". Deterministic
-    by construction: no judging prose (constraints.md #7).
+    ONE backticked command or nothing runs: a substring match would execute the
+    path in "none needed - see [a backticked path]". Deterministic, no judging
+    prose (#7). Unreadable REFUSES where absent stays silent — both were "" once,
+    and a literal-substring label missed the template's own bolded form, skipping
+    the bootstrap into an unprepared tree with no warning.
     """
     for ln in system_md.splitlines():
-        if "Worktree bootstrap:" in ln:
-            value = ln.split("Worktree bootstrap:", 1)[1].strip().rstrip(".")
-            m = re.fullmatch(r"`(.+)`", value)
-            return m.group(1) if m else ""
-    return ""
+        label, sep, value = ln.partition(":")
+        if not sep or label.strip().strip("*-# ").casefold() != "worktree bootstrap":
+            continue
+        value = value.strip().rstrip(".")
+        if m := re.fullmatch(r"`([^`]+)`", value):
+            return m.group(1), ""
+        if "`" not in value and re.match(r"none\b", value, re.I):
+            return "", ""
+        return "", (
+            f"cannot read the Worktree bootstrap line in .xp/system.md: {ln.strip()!r}"
+            " — the value must be ONE backticked command, or start with 'none'"
+        )
+    return "", ""
 
 
 def resolve_role(role: str, card: str = "", override: str = "") -> tuple[str, str, str]:
@@ -352,6 +362,12 @@ def cmd_spawn(story_id: str, override: str, dry_run: bool, in_place: bool = Fals
     # missing binary must not cost a tree and a branch to unwind.
     if gone := missing_harness(harness):
         return fail("refused: " + gone)
+    # Parsed here and RUN below: reading the line needs no tree, and refusing
+    # after `worktree add` leaves a tree and a branch whose only effect is that
+    # the corrected retry refuses with "already spawned" instead.
+    command, problem = bootstrap_command(_read(Path(".xp/system.md")))
+    if problem:
+        return fail("refused: " + problem)
     # The worktree is cut from a COMMIT, so anything uncommitted — including the
     # scaffold itself on a fresh repo — is simply absent from the teammate's tree.
     # Without this the first spawn after xp-setup tracebacks on a missing plan.md
@@ -371,7 +387,7 @@ def cmd_spawn(story_id: str, override: str, dry_run: bool, in_place: bool = Fals
     added = git("worktree", "add", "-b", branch, str(tree), trunk, check=False)
     if added.returncode != 0:
         return fail(f"git worktree add failed: {added.stderr.strip()}")
-    if command := bootstrap_command(_read(Path(".xp/system.md"))):
+    if command:
         done = subprocess.run(command, shell=True, cwd=tree, capture_output=True, text=True)
         if done.returncode != 0:
             print(done.stderr.strip(), file=sys.stderr)
