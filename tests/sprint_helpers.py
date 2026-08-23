@@ -11,6 +11,7 @@ from close_helpers import (
     REVIEWER_EMAIL,
     REVIEWER_NAME,
     launches,
+    stream_json,
     stub_reviewer,
 )
 
@@ -150,7 +151,7 @@ def staged_stub(tmp_path, commits=(), **stages):
         f"for prefix, cmd in {json.dumps([list(c) for c in commits])}:\n"
         "    if key.startswith(prefix):\n"
         "        os.system(cmd)\n"
-        "sys.stdout.write(json.dumps({'result': 'findings above'}))\n"
+        f"sys.stdout.write({stream_json('findings above')!r})\n"
     )
     (bin_dir / "claude").chmod(0o755)
     return bin_dir

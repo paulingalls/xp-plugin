@@ -63,7 +63,7 @@ def stub_planner(tmp_path, findings="ROUND FINDINGS", write_findings=True, motio
         "    import subprocess\n"
         "    subprocess.run(['git', 'add', '-A'], check=True)\n"
         "    subprocess.run(['git', 'commit', '-qm', 'plan reviewer motion'], check=True)\n"
-        f"print(json.dumps({{'result': {findings!r}}}))\n"
+        f"print(json.dumps({{'type': 'result', 'result': {findings!r}}}))\n"
     )
     (bin_dir / "claude").chmod(0o755)
     return rec

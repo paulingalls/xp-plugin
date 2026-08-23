@@ -400,9 +400,8 @@ class TestFirstSpawnInAScaffoldedRepo:
 
 class TestCodexTee:
     """story-021: the codex teammate rides teammate_tee, not a second copy. Its
-    stream is PLAIN TEXT — codex's `--json` event vocabulary is unmeasured on
-    0.147.0 and any AC that spawns codex belongs to the lead, so a summarizer
-    written against a guessed schema would be a guess that compiles."""
+    stream is `codex exec --json`, measured on 0.149.0 at story-028 — the two legs
+    diverge in the per-line parse and nowhere else."""
 
     def test_codex_native_stream_requires_a_terminal_agent_message(self, tmp_path):
         from teammate_tee import run_teammate
@@ -419,7 +418,7 @@ class TestCodexTee:
             out=out.append,
         )
         assert rc == 0
-        assert "[item.completed]" in out
+        assert "[item.completed] agent_message" in out, "the tail names the item, not the event"
 
     def test_the_same_append_only_log_contract(self, tmp_path):
         from teammate_tee import run_teammate

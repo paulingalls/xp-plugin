@@ -353,7 +353,7 @@ class TestAReviewerMayNotREWRITEWhatItWasGiven:
             "echo 'x = 1' > src/thing.py\n"
             "git -c user.name='xp story-reviewer' -c user.email='r@xp'"
             " commit -qam 'reviewer rewrote the branch'\n"
-            'printf \'{"result": "clean"}\'\n'
+            'printf \'{"type": "result", "result": "clean"}\'\n'
         )
         (tmp_path / "bin" / "claude").chmod(0o755)
 
@@ -378,7 +378,7 @@ class TestAReviewerMayNotREWRITEWhatItWasGiven:
             'printf \'{"fixed": ["f"], "blocking": [], "noted": []}\' > "$p"\n'
             "echo 'x = 1' >> src/thing.py\n"
             "git -c user.name='xp story-reviewer' -c user.email='r@xp' commit -qam 'fix'\n"
-            'printf \'{"result": "fixed"}\'\n'
+            'printf \'{"type": "result", "result": "fixed"}\'\n'
         )
         (tmp_path / "bin" / "claude").chmod(0o755)
         assert close(repo, env, "review").returncode == 0
