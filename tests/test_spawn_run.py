@@ -32,7 +32,7 @@ class TestAgentWallClock:
         monkeypatch.setenv("XP_AGENT_TIMEOUT", "1")
         with pytest.raises(subprocess.TimeoutExpired):
             spawn.run_agent(
-                ["/bin/sh", "-c", "sleep 5"], tmp_path, "", role="reviewer", capture=True
+                ["/bin/sh", "-c", "sleep 5"], tmp_path, "", "reviewer", "claude", "story-042-review"
             )
 
     def test_the_teammate_launch_is_not(self, monkeypatch, tmp_path):
@@ -404,12 +404,13 @@ class TestCodexTee:
     0.147.0 and any AC that spawns codex belongs to the lead, so a summarizer
     written against a guessed schema would be a guess that compiles."""
 
-    def test_plain_lines_tee_and_no_terminal_object_is_demanded(self, tmp_path):
+    def test_codex_native_stream_requires_a_terminal_agent_message(self, tmp_path):
         from teammate_tee import run_teammate
 
         out = []
+        line = '{"type":"item.completed","item":{"type":"agent_message","text":"done"}}'
         rc = run_teammate(
-            ["/bin/sh", "-c", "echo thinking; echo done"],
+            ["/bin/sh", "-c", f"echo '{line}'"],
             tmp_path,
             "",
             "story-042",
@@ -417,8 +418,8 @@ class TestCodexTee:
             harness="codex",
             out=out.append,
         )
-        assert rc == 0, "codex carries no terminal result object; the exit code is the verdict"
-        assert "thinking" in out and "done" in out
+        assert rc == 0
+        assert "[item.completed]" in out
 
     def test_the_same_append_only_log_contract(self, tmp_path):
         from teammate_tee import run_teammate
@@ -449,9 +450,10 @@ class TestCodexTee:
             if len(seen) == 2:
                 raise OSError("disk full")
 
-        tee_stream([f"line {i}\n" for i in range(4)], flaky_write, out.append, parse)
+        lines = [f'{{"type":"turn.started","n":{i}}}\n' for i in range(4)]
+        tee_stream(lines, flaky_write, out.append, parse)
         assert len(seen) == 4
-        assert [o for o in out if o.startswith("line")] == [f"line {i}" for i in range(4)]
+        assert sum(o == "[turn.started]" for o in out) == 4
 
     def test_the_claude_leg_still_demands_its_terminal_object(self, tmp_path):
         """The two legs must diverge HERE and nowhere else: dropping the check
@@ -468,4 +470,4 @@ class TestCodexTee:
             out=lambda _l: None,
             err=errs.append,
         )
-        assert any("terminal result object" in e for e in errs), errs
+        assert any("terminal result" in e for e in errs), errs

@@ -94,7 +94,8 @@ class TestLaunchContract:
                 tmp_path,
                 "",
                 role="plan-reviewer",
-                capture=True,
+                harness="claude",
+                log_id="story-042-review",
             )
         except subprocess.TimeoutExpired:
             return
@@ -403,7 +404,7 @@ class TestCommonDirWidening:
         monkeypatch.setenv("PATH", f"{tmp_path / 'bin'}:/usr/bin:/bin")
         monkeypatch.setenv("XP_DATA", str(tmp_path / "data"))
         argv = agent_argv("codex", "m", "", "json", "plan-reviewer")
-        proc = run_agent(argv, wt, "", role="plan-reviewer", capture=True)
+        proc = run_agent(argv, wt, "", "plan-reviewer", "codex", "story-042-review")
         assert proc.returncode == 0, proc.stderr
         launched = json.loads(rec.read_text())["argv"]
         adds = [launched[i + 1] for i, arg in enumerate(launched) if arg == "--add-dir"]

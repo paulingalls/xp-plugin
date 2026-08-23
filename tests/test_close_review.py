@@ -269,7 +269,8 @@ class TestReviewLeg:
         argv = launch["argv"]
         assert "--plugin-dir" in argv and "-p" in argv
         assert argv[argv.index("--model") + 1] == "opus"
-        assert argv[argv.index("--output-format") + 1] == "json"
+        assert argv[argv.index("--output-format") + 1] == "stream-json"
+        assert "--verbose" in argv
         prompt = launch["stdin"]
         assert "fault-inject" in prompt.lower()  # the charter, inlined
         assert "demo story" in prompt  # the card

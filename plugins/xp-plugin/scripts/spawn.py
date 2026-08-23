@@ -28,7 +28,7 @@ from harness import (
     codex_argv,  # noqa: F401
     missing_harness,
 )
-from teammate_tee import run_teammate
+from teammate_tee import run_stream, run_teammate
 from work import (
     card_title,
     chdir_repo_root,
@@ -191,7 +191,8 @@ def run_agent(
     cwd: Path,
     prompt: str,
     role: str,
-    capture: bool,
+    harness: str,
+    log_id: str,
 ) -> subprocess.CompletedProcess:
     """Prompt on stdin: it keeps ~2k tokens out of argv and out of `ps`.
 
@@ -212,7 +213,8 @@ def run_agent(
     # The STORY reviewer alone: this name is the credential close.py and
     # sprint_close.py gate the merge on, and the plan reviewer never earns it.
     # EMAIL too: with the name alone, every email-keyed tool reports the lead.
-    if role == "reviewer":
+    fixing_reviewer = not log_id.startswith("sprint-") or log_id == "sprint-fix-review"
+    if role == "reviewer" and fixing_reviewer:
         from review import REVIEWER_EMAIL, REVIEWER_NAME
 
         env |= {
@@ -223,9 +225,7 @@ def run_agent(
         }
     if argv[:2] == ["codex", "exec"] and (widen := common_dir_widening(cwd)):
         argv = [*argv[:-1], *widen, argv[-1]]  # before the trailing stdin `-`
-    return subprocess.run(
-        argv, cwd=cwd, input=prompt, text=True, env=env, capture_output=capture, timeout=timeout
-    )
+    return run_stream(argv, cwd, prompt, log_id, data_root(), harness, env, timeout)
 
 
 def common_dir_widening(cwd: Path) -> list[str]:

@@ -51,20 +51,24 @@ def parse_stream_json(line: str) -> tuple[str | None, dict | None]:
         return None, None
     if not isinstance(evt, dict):
         return None, None
-    return summarize_event(evt), (evt if evt.get("type") == "result" else None)
+    return summarize_event(evt), (evt if evt.get("type") == "result" or "result" in evt else None)
 
 
-def parse_plain(line: str) -> tuple[str | None, dict | None]:
-    """Codex: prose, echoed as-is. `codex exec --json` exists, but its event
-    vocabulary is unmeasured on 0.147.0 and measuring it means spawning codex —
-    a summarizer against a guessed schema is a guess that compiles."""
-    return line, None
+def parse_codex_json(line: str) -> tuple[str | None, dict | None]:
+    try:
+        evt = json.loads(line)
+    except ValueError:
+        return None, None
+    item = evt.get("item", {}) if isinstance(evt, dict) else {}
+    completed = evt.get("type") == "item.completed"
+    terminal = evt if completed and item.get("type") == "agent_message" else None
+    return f"[{evt.get('type', '?')}]", terminal
 
 
 # (per-line parse, does this harness's stream carry a terminal result object?)
 STREAMS: dict[str, tuple[Callable[[str], tuple[str | None, dict | None]], bool]] = {
     "claude": (parse_stream_json, True),
-    "codex": (parse_plain, False),
+    "codex": (parse_codex_json, True),
 }
 
 
@@ -116,6 +120,121 @@ def _feed_stdin(proc: subprocess.Popen, prompt: str) -> None:
             proc.stdin.close()
 
 
+def _session_id(harness: str, event: dict) -> str:
+    if harness == "codex" and event.get("type") == "thread.started":
+        return str(event.get("thread_id", ""))
+    if harness == "claude" and event.get("type") == "system":
+        return str(event.get("session_id", ""))
+    return ""
+
+
+def _result_text(harness: str, result: dict) -> str:
+    if harness == "claude":
+        return json.dumps(result)
+    return str((result.get("item") or {}).get("text", ""))
+
+
+def _transcript_path(harness: str, cwd: Path, session: str) -> str:
+    home = Path.home()
+    if harness == "claude":
+        slug = "-" + str(cwd.resolve()).lstrip("/").replace("/", "-")
+        return str(home / ".claude" / "projects" / slug / f"{session}.jsonl")
+    root = home / ".codex" / "sessions"
+    fallback = root / f"**/rollout-*-{session}.jsonl"
+    return str(next(root.rglob(f"rollout-*-{session}.jsonl"), fallback))
+
+
+def run_stream(
+    argv: list[str],
+    cwd: Path,
+    prompt: str,
+    log_id: str,
+    data_root: Path,
+    harness: str,
+    env: dict,
+    timeout: float | None = None,
+    out: OutWrite = print,
+    err: OutWrite = lambda s: print(s, file=sys.stderr),
+) -> subprocess.CompletedProcess:
+    parse, carries_result = STREAMS[harness]
+    proc = subprocess.Popen(
+        argv,
+        cwd=cwd,
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        env=env,
+    )
+    feeder = threading.Thread(target=_feed_stdin, args=(proc, prompt))
+    feeder.start()
+    timed_out = threading.Event()
+
+    def kill() -> None:
+        timed_out.set()
+        proc.kill()
+
+    timer = threading.Timer(timeout, kill) if timeout is not None else None
+    if timer:
+        timer.start()
+    path = data_root / "logs" / f"{log_id}.log"
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        log = open(path, "a")  # noqa: SIM115 — conditional fallback has no file to enter
+    except OSError as exc:
+        err(f"warning: log open failed ({exc}); continuing without it")
+        log = None
+    result = None
+    pointer_written = False
+
+    def write(line: str) -> None:
+        if log:
+            log.write(line)
+            log.flush()
+
+    try:
+        write(spawn_header(log_id, datetime.now(timezone.utc).isoformat(timespec="seconds")))
+        assert proc.stdout is not None
+        for line in proc.stdout:
+            try:
+                write(line)
+            except OSError as exc:
+                err(f"warning: log write failed ({exc}); continuing without it")
+            stripped = line.strip()
+            echo, terminal = parse(stripped) if stripped else (None, None)
+            if echo is not None:
+                out(echo)
+            if terminal is not None:
+                result = terminal
+            if not pointer_written and stripped:
+                try:
+                    session = _session_id(harness, json.loads(stripped))
+                except (ValueError, TypeError):
+                    session = ""
+                if session:
+                    write(f"transcript: {_transcript_path(harness, cwd, session)}\n")
+                    pointer_written = True
+    finally:
+        if timer:
+            timer.cancel()
+        feeder.join()
+        proc.wait()
+        if log:
+            log.close()
+    if timed_out.is_set():
+        raise subprocess.TimeoutExpired(argv, timeout, stderr=str(path))
+    rc = proc.returncode
+    if result is None and carries_result:
+        err(f"{log_id}: stream never carried a terminal result; see {path}")
+        rc = rc or 1
+    return subprocess.CompletedProcess(
+        argv,
+        rc,
+        _result_text(harness, result) if result else "",
+        "" if rc == 0 else f"see live log: {path}",
+    )
+
+
 def run_teammate(
     argv: list[str],
     cwd: Path,
@@ -133,35 +252,17 @@ def run_teammate(
     and writing it inline before reading stdout would deadlock a child that
     starts producing output before it has finished reading stdin.
     """
-    parse, carries_result = STREAMS[harness]
-    proc = subprocess.Popen(
+    proc = run_stream(
         argv,
-        cwd=cwd,
-        stdin=subprocess.PIPE,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-        env=os.environ | {"XP_ROLE": "teammate"},
+        cwd,
+        prompt,
+        story_id,
+        data_root,
+        harness,
+        os.environ | {"XP_ROLE": "teammate"},
+        out=out,
+        err=err,
     )
-    feeder = threading.Thread(target=_feed_stdin, args=(proc, prompt))
-    feeder.start()
-    assert proc.stdout is not None
-    with open(log_path(data_root, story_id), "a") as log:
-
-        def log_write(line: str) -> None:
-            log.write(line)
-            log.flush()
-
-        log_write(spawn_header(story_id, datetime.now(timezone.utc).isoformat(timespec="seconds")))
-        result = tee_stream(proc.stdout, log_write, out, parse)
-    feeder.join()
-    proc.wait()
-    if result is None:
-        # Only where the harness promises one. On codex the exit code is the
-        # whole in-band verdict, which is why spawn.py re-checks the TREE.
-        if carries_result:
-            err(f"{story_id}: the teammate's stream never carried a terminal result object")
-            return proc.returncode or 1
-        return proc.returncode
-    out(closing_line(story_id, result))
+    if proc.returncode == 0 and harness == "claude" and proc.stdout:
+        out(closing_line(story_id, json.loads(proc.stdout)))
     return proc.returncode
