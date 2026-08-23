@@ -15,8 +15,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-# HERE because env.py is the only shipped module that still parses on 3.9, and
-# importers reach it before their own `str | None` annotations traceback.
+# HERE because env.py is the only shipped module free of the `str | None` 3.9 dies on.
 if sys.version_info < (3, 11):
     raise SystemExit(
         f"refused: xp-plugin needs Python 3.11+, and this is"

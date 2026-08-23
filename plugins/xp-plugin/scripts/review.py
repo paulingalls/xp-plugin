@@ -8,6 +8,8 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
+# Module level: importers must reach env.py's 3.11 floor before the `Path | None` below
+from work import data_root
 
 PLUGIN_ROOT = Path(__file__).parent.parent
 
@@ -51,8 +53,6 @@ def plan_review_notice(story_id: str) -> str:
     Measured twice in the field, neither visible from here: a review killed at the
     harness's own timeout guess, and one orphaned when its teammate yielded.
     """
-    from work import data_root
-
     marker = data_root() / "markers" / f"{story_id}.plan-review-incomplete"
     if not marker.exists():
         return ""
@@ -66,8 +66,6 @@ def report_path(story_id: str, round_n: int) -> Path:
     """Where this round's report goes. ROUND-scoped: the index advances only on a
     RECORDED round, so failed attempts at round N share N's path and a leftover
     would certify a round that produced nothing. The caller unlinks first."""
-    from work import data_root
-
     p = data_root() / "reports" / f"{story_id}.round-{round_n}.json"
     p.parent.mkdir(parents=True, exist_ok=True)
     return p
@@ -76,8 +74,6 @@ def report_path(story_id: str, round_n: int) -> Path:
 def sprint_report_path(sprint_id: str, stage: str, round_n: int) -> Path:
     """Its own DIRECTORY, not a prefix: story ids are free text, so any separator
     a sprint key uses is one a story can spell (constraints.md #10)."""
-    from work import data_root
-
     d = data_root() / "reports" / "sprint"
     d.mkdir(parents=True, exist_ok=True)
     return d / f"{sprint_id}.{stage}.round-{round_n}.json"
