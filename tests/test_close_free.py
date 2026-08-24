@@ -9,13 +9,14 @@ import json
 import re
 import subprocess
 import sys
+from pathlib import Path
 
 import pytest
 from close_helpers import CLOSE, close, free, free_repo, gh_calls, make_repo, marker_file
 
 TODAY = datetime.date.today().isoformat()
 BRANCH = f"t/free-{TODAY}-fix-typo"
-KEY = f"free/{TODAY}-fix-typo"
+KEY = f"free-{TODAY}-fix-typo"
 
 
 def normalize(refusal: str) -> str:
@@ -38,6 +39,15 @@ def reviewed(tmp_path, slug="fix-typo"):
     r = free(repo, env, slug, "review")
     assert r.returncode == 0, r.stderr + r.stdout
     return repo, env, g
+
+
+def add_free_card(env, verify="true"):
+    plan = Path(env["XP_DATA"]) / "plan.md"
+    plan.write_text(
+        plan.read_text()
+        + f"\n### Free\n#### {KEY} — fix typo   [planned]\n"
+        + f"Context: small release.\nVerify: {verify}\n"
+    )
 
 
 class TestFreeStart:
@@ -75,6 +85,53 @@ class TestFreeStart:
 
 
 class TestFreeReview:
+    def test_a_dirty_refusal_does_not_advance_an_optional_card(self, tmp_path):
+        repo, env, g = free_repo(tmp_path)
+        free(repo, env, "fix-typo", "start")
+        commit_on_free(repo, g)
+        add_free_card(env)
+        (repo / "dirty.py").write_text("dirty = True\n")
+        result = free(repo, env, "fix-typo", "review")
+        assert result.returncode == 2 and "dirty" in result.stderr
+        assert "[planned]" in (Path(env["XP_DATA"]) / "plan.md").read_text()
+
+    def test_a_free_card_is_reviewed_minted_and_its_edit_reaches_shared_drift(self, tmp_path):
+        repo, env, g = free_repo(tmp_path)
+        free(repo, env, "fix-typo", "start")
+        commit_on_free(repo, g)
+        add_free_card(env)
+        reviewed = free(repo, env, "fix-typo", "review")
+        assert reviewed.returncode == 0, reviewed.stderr
+        from close_helpers import launches
+
+        assert "#### free-" in launches(tmp_path)[-1]["stdin"]
+        plan = (Path(env["XP_DATA"]) / "plan.md").read_text()
+        assert "[in-progress]" in plan
+        assert (Path(env["XP_DATA"]) / "markers" / f"{KEY}.ready.json").exists()
+        (Path(env["XP_DATA"]) / "plan.md").write_text(plan.replace("Verify: true", "Verify: false"))
+        landed = free(repo, env, "fix-typo", "land")
+        assert landed.returncode == 2
+        assert "edited after its plan review" in landed.stderr
+        assert "--- reviewed" in landed.stderr and "+++ now" in landed.stderr
+        plan_path = Path(env["XP_DATA"]) / "plan.md"
+        plan_path.write_text(plan_path.read_text().replace("[in-progress]", "[planned]"))
+        assert free(repo, env, "fix-typo", "review").returncode == 0
+        verified = free(repo, env, "fix-typo", "land")
+        assert verified.returncode == 2 and "Verify red" in verified.stderr
+
+    def test_cardless_notice_varies_with_the_diff_and_reaches_stderr(self, tmp_path):
+        notices = []
+        for name, text in (("one", "B = 1\n"), ("two", "B = 1\nC = 2\n")):
+            repo, env, g = free_repo(tmp_path / name)
+            free(repo, env, "fix-typo", "start")
+            commit_on_free(repo, g, text=text)
+            result = free(repo, env, "fix-typo", "review")
+            assert result.returncode == 0, result.stderr
+            notices.append(
+                next(ln for ln in result.stderr.splitlines() if ln.startswith("warning: card-less"))
+            )
+        assert notices[0] != notices[1]
+
     def test_the_bundle_carries_no_story_card(self, tmp_path):
         """AC 1: card-less is the point — the bundle must SAY there is no card,
         not omit the section and let the reviewer invent a scope."""
@@ -231,6 +288,41 @@ class TestFreeLand:
         assert "unreviewed" in r.stdout, r.stdout
 
 
+class TestFreePostMerge:
+    def merged(self, tmp_path, card=False, manifest=""):
+        repo, env, g = free_repo(tmp_path)
+        free(repo, env, "fix-typo", "start")
+        commit_on_free(repo, g)
+        if card:
+            add_free_card(env)
+        assert free(repo, env, "fix-typo", "review").returncode == 0
+        if manifest:
+            path = repo / "plugin.json"
+            path.write_text(json.dumps({"version": manifest}))
+            config = repo / ".xp" / "config.yml"
+            config.write_text(config.read_text() + "version_files: plugin.json\n")
+            g("add", "-A")
+            g("commit", "-qm", "release identity")
+        g("checkout", "-q", "main")
+        g("merge", "-q", "--no-ff", BRANCH, "-m", "merge free release")
+        return repo, env, g
+
+    def test_post_merge_tags_the_merged_sha_and_retires_a_card(self, tmp_path):
+        repo, env, g = self.merged(tmp_path, card=True)
+        merged = g("rev-parse", "HEAD").stdout.strip()
+        result = free(repo, env, "fix-typo", "post-merge")
+        assert result.returncode == 0, result.stderr
+        assert g("rev-list", "-n1", "v0.2.1").stdout.strip() == merged
+        assert "[done]" in (Path(env["XP_DATA"]) / "plan.md").read_text()
+
+    def test_a_manifest_behind_the_pending_tag_refuses_before_tagging(self, tmp_path):
+        repo, env, g = self.merged(tmp_path, manifest="0.2.0")
+        result = free(repo, env, "fix-typo", "post-merge")
+        assert result.returncode == 2
+        assert "plugin.json" in result.stderr and "behind" in result.stderr.lower()
+        assert "v0.2.1" not in g("tag").stdout.split()
+
+
 class TestSharedLandGuards:
     """AC 5. Each guard is fault-injected on BOTH legs and the refusal texts are
     asserted IDENTICAL — the property is one implementation, not two that agree
@@ -320,7 +412,7 @@ class TestSharedLandGuards:
 
 
 class TestFreeIsUndocumentedNowhere:
-    def test_free_help_names_the_three_actions(self, tmp_path):
+    def test_free_help_names_the_four_actions(self, tmp_path):
         """Constraint 12: a surface a consuming project drives must answer
         --help without doing anything."""
         r = subprocess.run(
@@ -330,5 +422,5 @@ class TestFreeIsUndocumentedNowhere:
             cwd=tmp_path,
         )
         assert r.returncode == 0
-        for action in ("start", "review", "land"):
+        for action in ("start", "review", "land", "post-merge"):
             assert action in r.stdout

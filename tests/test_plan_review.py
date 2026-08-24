@@ -16,6 +16,7 @@ PLAN_REVIEW = PLUGIN / "scripts" / "plan_review.py"
 # a phrase from the charter BODY: the stub is handed what it must see, so a
 # bundle assembled with an empty charter section cannot pass for a real one
 CHARTER_MARK = "Checks, in order of payoff"
+CLEAN = '{"status":"clean","reasons":[]}'
 
 CONFIG = """release: sprint
 sprint_branch: main
@@ -30,7 +31,7 @@ tests:
 """
 
 
-def stub_planner(tmp_path, findings="ROUND FINDINGS", write_findings=True, motion=""):
+def stub_planner(tmp_path, findings=CLEAN, write_findings=True, motion=""):
     """A fake `claude` that REFUSES a prompt carrying no charter.
 
     The rubric is the whole value of a review: a leg that lost it would still
@@ -51,6 +52,7 @@ def stub_planner(tmp_path, findings="ROUND FINDINGS", write_findings=True, motio
         "    sys.exit(2)\n"
         "m = re.search(r'^FINDINGS_PATH: (.+)$', stdin, re.M)\n"
         "assert m, 'the bundle named no FINDINGS_PATH'\n"
+        "plan = re.search(r'^PLAN_PATH: (.+)$', stdin, re.M)\n"
         f"write_findings = {write_findings!r}\n"
         f"motion = {motion!r}\n"
         f"open(m.group(1).strip(), 'w').write({findings!r}) if write_findings else None\n"
@@ -58,6 +60,11 @@ def stub_planner(tmp_path, findings="ROUND FINDINGS", write_findings=True, motio
         "    open('drift.txt', 'a').write('reviewer motion\\n')\n"
         "if motion == 'draft':\n"
         f"    open({str(tmp_path / 'draft.md')!r}, 'a').write('reviewer motion\\n')\n"
+        "if motion in ('edit', 'edit-no-reason'):\n"
+        "    assert plan, 'the bundle named no PLAN_PATH'\n"
+        "    why = '\\nReason: the guard needs an executable acceptance check.\\n'"
+        " if motion == 'edit' else '\\nchanged without explanation\\n'\n"
+        "    open(plan.group(1).strip(), 'a').write(why)\n"
         "if motion == 'card':\n"
         f"    open({str(tmp_path / 'data' / 'plan.md')!r}, 'a').write('reviewer motion\\n')\n"
         "if motion == 'own':\n"
@@ -169,7 +176,7 @@ class TestTheLaunch:
         assert argv[argv.index("--model") + 1] == "haiku"  # the plan-reviewer ROLE
         assert argv[argv.index("--effort") + 1] == "low"
         assert launch["env"]["XP_ROLE"] == "plan-reviewer"  # cannot close
-        assert "ROUND FINDINGS" in r.stdout  # returned, not only written
+        assert CLEAN in r.stdout  # returned, not only written
 
     def test_an_empty_charter_ships_NOTHING(self, tmp_path):
         """The AC's fault injection, CONSTRUCTED rather than mocked: truncate the
@@ -193,26 +200,29 @@ class TestTheLaunch:
         """One name for a file written once per round destroys the earlier round
         on write, and plan review does run in rounds."""
         repo, env, draft = self.repo(tmp_path)
-        rec = stub_planner(tmp_path, findings="round one")
+        first_report = '{"status":"clean","reasons":[],"summary":"round one"}'
+        rec = stub_planner(tmp_path, findings=first_report)
         assert plan_review(repo, env, "story-042", str(draft)).returncode == 0
         first = findings_of(rec)
         assert first.is_absolute() and first.name == "story-042.md"
-        rec = stub_planner(tmp_path, findings="round two")
+        rec = stub_planner(
+            tmp_path, findings='{"status":"clean","reasons":[],"summary":"round two"}'
+        )
         assert plan_review(repo, env, "story-042", str(draft)).returncode == 0
         assert findings_of(rec).name == "story-042.round-2.md"
-        assert first.read_text() == "round one"
+        assert first.read_text() == first_report
 
     def test_success_without_the_required_findings_file_refuses(self, tmp_path):
         repo, env, draft = self.repo(tmp_path)
         rec = stub_planner(tmp_path, write_findings=False)
         r = plan_review(repo, env, "story-042", str(draft))
         assert r.returncode == 2 and "no findings" in r.stderr.lower(), r.stderr
-        assert "ROUND FINDINGS" not in r.stdout
+        assert CLEAN not in r.stdout
         assert rec.exists(), "the fault injection never reached the reviewer"
 
     @pytest.mark.slow
-    def test_report_only_role_refuses_every_guarded_motion(self, tmp_path):
-        for motion in ("dirty", "commit", "draft", "card"):
+    def test_plan_editing_role_refuses_every_other_guarded_motion(self, tmp_path):
+        for motion in ("dirty", "commit", "card"):
             repo, env, draft = self.repo(tmp_path / motion)
             stub_planner(tmp_path / motion, motion=motion)
             before = subprocess.run(
@@ -265,7 +275,7 @@ class TestTheLaunch:
         """It nests nothing, so it gets no network — the other half of the
         executor's flag, asserted on the leg that must not have it."""
         repo, env, draft = self.repo(tmp_path, spec="codex/gpt-5.6-terra/high")
-        rec = stub_codex(tmp_path, commit=False, network=False, findings="ROUND FINDINGS")
+        rec = stub_codex(tmp_path, commit=False, network=False, findings=CLEAN)
         r = plan_review(repo, env, "story-042", str(draft))
         assert r.returncode == 0, r.stderr
         argv = json.loads(rec.read_text())["argv"]
@@ -273,7 +283,7 @@ class TestTheLaunch:
         assert ("--disable", "unified_exec") not in list(pairwise(argv)), argv
         assert argv[argv.index("-m") + 1] == "gpt-5.6-terra"
         assert CHARTER_MARK in json.loads(rec.read_text())["stdin"]
-        assert "ROUND FINDINGS" in r.stdout
+        assert CLEAN in r.stdout
 
 
 class TestTheProfileCarriesTheInvocation:
@@ -351,88 +361,70 @@ class TestIncompleteReviewIsVisibleToTheLead:
         assert self.marker(tmp_path).exists(), "a killed review left no trace at all"
 
 
-class TestTheReviewOutlivesItsCaller:
-    """The gate must not depend on a model choosing the surviving invocation.
+class TestPlanEditsInPlace:
+    EDITED = json.dumps(
+        {"status": "edited", "reasons": ["the guard needs an executable acceptance check"]}
+    )
 
-    Measured twice in the field, once per harness: a codex teammate's foreground
-    call was killed at the model's own timeout guess (exit 124), and a claude
-    teammate backgrounded the review and yielded, which ends a headless run and
-    orphaned it. So the SCRIPT detaches the review and waits on it, and a caller
-    that dies leaves a review that finishes.
-    """
-
-    def repo(self, tmp_path):
-        repo, env, _g = make_repo(tmp_path)
+    def repo(self, tmp_path, tracked=False):
+        repo, env, g = make_repo(tmp_path)
         (repo / ".xp" / "config.yml").write_text(CONFIG.format(spec="claude/haiku/low"))
-        draft = tmp_path / "draft.md"
+        draft = repo / "draft plan.md" if tracked else tmp_path / "draft.md"
         draft.write_text("# draft plan\nstep 1\n")
+        if tracked:
+            g("add", "draft plan.md")
+            g("commit", "-qm", "track plan")
         return repo, env, draft
 
-    def slow_planner(self, tmp_path, seconds=4, findings="SLOW FINDINGS"):
-        bin_dir = tmp_path / "bin"
-        bin_dir.mkdir(exist_ok=True)
-        rec = tmp_path / "launch.json"
-        (bin_dir / "claude").write_text(
-            "#!/usr/bin/env python3\n"
-            "import json, os, re, sys, time\n"
-            "stdin = sys.stdin.read()\n"
-            f"open({str(rec)!r}, 'a').write('LAUNCH\\n')\n"
-            f"time.sleep({seconds})\n"
-            "m = re.search(r'^FINDINGS_PATH: (.+)$', stdin, re.M)\n"
-            f"open(m.group(1).strip(), 'w').write({findings!r})\n"
-            f"print(json.dumps({{'type': 'result', 'result': {findings!r}}}))\n"
-        )
-        (bin_dir / "claude").chmod(0o755)
-        return rec
+    @pytest.mark.parametrize("tracked", [False, True], ids=["untracked", "tracked"])
+    def test_reasoned_edits_replace_findings_negotiation(self, tmp_path, tracked):
+        repo, env, draft = self.repo(tmp_path, tracked)
+        stub_planner(tmp_path, findings=self.EDITED, motion="edit")
+        result = plan_review(repo, env, "story-042", str(draft))
+        assert result.returncode == 0, result.stderr
+        assert "Reason: the guard needs" in draft.read_text()
 
-    def test_a_killed_caller_leaves_a_review_that_finishes(self, tmp_path):
-        import time
-
+    def test_an_edit_without_its_reason_refuses(self, tmp_path):
         repo, env, draft = self.repo(tmp_path)
-        self.slow_planner(tmp_path, seconds=4)
-        import os
-        import signal
-
-        proc = subprocess.Popen(
-            [sys.executable, str(PLAN_REVIEW), "story-042", str(draft)],
-            cwd=repo,
-            env=env,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            start_new_session=True,
+        stub_planner(
+            tmp_path,
+            findings=json.dumps({"status": "edited", "reasons": []}),
+            motion="edit-no-reason",
         )
-        time.sleep(1.5)
-        # the GROUP, not the process: a harness timeout takes the shell and every
-        # descendant with it, which is what killed the field review. Killing only
-        # the direct child leaves the reviewer running and passes vacuously.
-        os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
-        proc.wait()
+        result = plan_review(repo, env, "story-042", str(draft))
+        assert result.returncode == 2 and "reason" in result.stderr.lower()
 
-        plans = tmp_path / "data" / "plans"
-        for _ in range(80):
-            if any(p.read_text().strip() for p in plans.glob("story-042*.md")):
-                return
-            time.sleep(0.25)
-        raise AssertionError(f"the review died with its caller: {list(plans.glob('*'))}")
-
-    def test_a_second_call_joins_the_running_review_instead_of_starting_one(self, tmp_path):
-        import time
-
+    def test_a_clean_review_leaves_the_plan_byte_identical(self, tmp_path):
         repo, env, draft = self.repo(tmp_path)
-        rec = self.slow_planner(tmp_path, seconds=4)
-        first = subprocess.Popen(
-            [sys.executable, str(PLAN_REVIEW), "story-042", str(draft)],
-            cwd=repo,
-            env=env,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-        )
-        time.sleep(1.5)
-        first.kill()
-        first.wait()
-        again = plan_review(repo, env, "story-042", str(draft))
-        assert again.returncode == 0, again.stderr
-        assert "SLOW FINDINGS" in again.stdout, again.stdout
-        assert rec.read_text().count("LAUNCH") == 1, "a second reviewer was launched"
+        before = draft.read_bytes()
+        stub_planner(tmp_path, findings=json.dumps({"status": "clean", "reasons": []}))
+        assert plan_review(repo, env, "story-042", str(draft)).returncode == 0
+        assert draft.read_bytes() == before
+
+    def test_a_human_question_stops_and_keeps_the_incomplete_marker(self, tmp_path):
+        repo, env, draft = self.repo(tmp_path)
+        before = draft.read_bytes()
+        blocked = json.dumps({"status": "blocked", "question": "How long may teardown take?"})
+        stub_planner(tmp_path, findings=blocked)
+        result = plan_review(repo, env, "story-042", str(draft))
+        marker = tmp_path / "data" / "markers" / "story-042.plan-review-incomplete"
+        assert result.returncode == 2 and marker.exists()
+        assert draft.read_bytes() == before
+
+    @pytest.mark.parametrize(
+        "findings,mark", [("human question in prose", "structured"), ("[]", "json object")]
+    )
+    def test_an_unstructured_disposition_cannot_clear_the_marker(self, tmp_path, findings, mark):
+        repo, env, draft = self.repo(tmp_path)
+        stub_planner(tmp_path, findings=findings)
+        result = plan_review(repo, env, "story-042", str(draft))
+        marker = tmp_path / "data" / "markers" / "story-042.plan-review-incomplete"
+        assert result.returncode == 2 and mark in result.stderr.lower()
+        assert marker.exists()
+
+    def test_the_teammate_is_told_to_reread_the_plan(self):
+        teammate = (PLUGIN / "TEAMMATE.md").read_text().lower()
+        assert "re-read" in teammate and "plan file" in teammate
+
+
+from plan_review_liveness import TestTheReviewOutlivesItsCaller  # noqa: E402,F401

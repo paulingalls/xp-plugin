@@ -25,7 +25,7 @@ from work import (
 )
 
 
-def drift(story_id: str, card: str) -> str:
+def drift(story_id: str, card: str, remediation: str = "") -> str:
     """ "" when this card is the one the plan reviewer saw; otherwise the refusal.
 
     The reviewed TEXT is stored beside its digest so the refusal can show what
@@ -33,12 +33,14 @@ def drift(story_id: str, card: str) -> str:
     diff away from knowing whether to re-review or to undo.
     """
     marker = ready_marker_path(story_id)
+    recovery = remediation or (
+        f"Put the heading back to [planned] and run `spawn.py ready {story_id}`, which"
+        " records the card the reviewer saw."
+    )
     if not marker.exists():
         return (
             f"refused: {story_id}'s card is cleared and nothing minted it — the bracket"
-            f" was typed, not earned, or {marker} was deleted. Put the heading back to"
-            f" [planned] and run `spawn.py ready {story_id}`, which records the card the"
-            " reviewer saw."
+            f" was typed, not earned, or {marker} was deleted. {recovery}"
         )
     try:
         minted = json.loads(marker.read_text())
@@ -46,8 +48,7 @@ def drift(story_id: str, card: str) -> str:
     except (OSError, ValueError, KeyError, TypeError):
         return (
             f"refused: {marker} is unreadable, so nothing vouches for {story_id} — an"
-            " interrupted mint leaves half of it. Put the heading back to [planned] and"
-            f" re-run `spawn.py ready {story_id}`."
+            f" interrupted mint leaves half of it. {recovery}"
         )
     if digest == card_digest(card):
         return ""
@@ -61,10 +62,7 @@ def drift(story_id: str, card: str) -> str:
     )
     return (
         f"refused: {story_id} was edited after its plan review — spawning would launch"
-        " a teammate on text no reviewer saw:\n"
-        + "\n".join(diff)
-        + f"\nRe-review the card, put its heading back to [planned], and re-run"
-        f" `spawn.py ready {story_id}`."
+        " a teammate on text no reviewer saw:\n" + "\n".join(diff) + f"\n{recovery}"
     )
 
 

@@ -4,10 +4,10 @@ One page. The values (VALUES.md) cover what this page doesn't.
 
 ## The loop
 
-1. **Plan** (any multi-file change): draft the plan, then spawn the **plan-reviewer**
-   (fresh context — it owes your plan nothing). It checks TDD ordering, artifact
-   coherence, constraint conflicts, and sprint size. A card starts `[planned]`;
-   address the findings, then `spawn.py ready <story-id>` flips it to `[ready]`
+1. **Plan** (any multi-file change): draft the plan, then run the **plan-reviewer**.
+   It checks TDD ordering, coherence, constraints and sprint size, edits addressable
+   problems in the plan with reasons, and stops on human-only questions. Re-read the
+   plan; then `spawn.py ready <story-id>` flips its `[planned]` card to `[ready]`
    and records a digest of the card. Spawn recomputes it, so a card edited
    afterwards refuses with the diff — the bracket is display, the digest is the
    credential. It binds the text you reviewed; it cannot know you reviewed it.
