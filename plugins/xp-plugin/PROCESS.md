@@ -54,8 +54,9 @@ One page. The values (VALUES.md) cover what this page doesn't.
 
 ## Records (work.md — via the append CLI)
 
-- **bug** — claim + falsifier that reds NOW + files. Fix immediately; the red is what
-  bounds "now". Can't red? It's not a bug.
+- **bug** — claim + falsifier that reds NOW + files. A DEFECT is a bug: if you called
+  it one, the rule below is the one you are under. Fix immediately; the red is what
+  bounds "now". Can't red? It's not a bug — file debt or a note, and say which.
 - **debt** — claim + falsifier (currently green) + files. Considered only at sprint
   planning: scheduled or dropped to archive. Never scheduled mid-sprint unless it
   blocks the current story's acceptance (which makes it a bug).

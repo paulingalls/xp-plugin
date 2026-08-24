@@ -78,3 +78,38 @@ def test_this_repos_release_guard_reads_an_existing_manifest():
     names = (name.strip() for name in config_flat("version_files").split(","))
     paths = [REPO / name for name in names if name]
     assert paths and all(path.is_file() for path in paths)
+
+
+def _refusal(tmp_path, monkeypatch, manifest_body=None):
+    """version_refusal against a scratch tree — the config key is read from cwd."""
+    import sys as _sys
+
+    _sys.path.insert(0, str(REPO / "plugins" / "xp-plugin" / "scripts" / "close"))
+    import release
+
+    xp = tmp_path / ".xp"
+    xp.mkdir()
+    (xp / "config.yml").write_text("version_files: pkg/manifest.json\n")
+    if manifest_body is not None:
+        (tmp_path / "pkg").mkdir()
+        (tmp_path / "pkg" / "manifest.json").write_text(manifest_body)
+    monkeypatch.chdir(tmp_path)
+    return release.version_refusal("v1.2.3")
+
+
+def test_a_missing_manifest_is_not_called_unreadable(tmp_path, monkeypatch):
+    """Absent and unreadable are different problems with different fixes — the
+    repo's most-filed defect class (90fcd7d4, 5a1abadb, c12ab60d, 2d32fe3d).
+    OSError was caught beside ValueError/KeyError, so a manifest that does not
+    exist and one full of garbage produced the same sentence, and the reader was
+    sent to fix a version field in a file they have not created."""
+    absent = _refusal(tmp_path, monkeypatch)
+    assert "missing" in absent, f"a manifest that does not exist: {absent!r}"
+    assert "no readable" not in absent, absent
+
+
+def test_a_present_but_malformed_manifest_still_says_unreadable(tmp_path, monkeypatch):
+    """The other arm, so the fix cannot collapse the pair the other way."""
+    bad = _refusal(tmp_path, monkeypatch, manifest_body="{not json")
+    assert "no readable" in bad, bad
+    assert "missing" not in bad, bad

@@ -27,10 +27,21 @@ def version_refusal(version: str) -> str:
     names = (part.strip() for part in config_flat("version_files").split(","))
     for name in filter(None, names):
         path = Path(name)
+        # ABSENT and UNREADABLE are different problems with different fixes, and
+        # OSError sat beside the parse errors: a manifest nobody has created yet
+        # was reported as one whose version field is malformed, sending the reader
+        # to edit a file that is not there (the repo's most-filed class).
         try:
-            declared = str(json.loads(path.read_text())["version"])
+            raw = path.read_text()
+        except OSError:
+            return (
+                f"refused: manifest {path} is missing — version_files names it,"
+                " so create it or drop it from that key"
+            )
+        try:
+            declared = str(json.loads(raw)["version"])
             parts = tuple(map(int, declared.removeprefix("v").split(".")))
-        except (OSError, ValueError, KeyError, TypeError):
+        except (ValueError, KeyError, TypeError):
             return f"refused: manifest {path} has no readable MAJOR.MINOR.PATCH version"
         if parts < target:
             return f"refused: manifest {path} version {declared} is BEHIND tag {version}"
