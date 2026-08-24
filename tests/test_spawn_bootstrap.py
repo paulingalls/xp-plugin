@@ -33,7 +33,12 @@ class TestBootstrap:
         assert again.returncode == 2 and "bootstrap line" in again.stderr
         assert "is missing" not in again.stderr
 
-    def test_missing_xp_remediation_creates_the_directory(self, tmp_path):
+    def test_an_unscaffolded_repo_is_not_told_to_half_scaffold_itself(self, tmp_path):
+        """A card-level `Executor:` walks past resolve_role's .xp/config.yml gate,
+        so this state is reachable. Following EVERY command the refusal offers must
+        not CREATE .xp/: `mkdir -p .xp && cp` made one holding only system.md, which
+        setup.py refuses over ever after ('.xp/ already exists'), while the next
+        spawn succeeded with no constraints and no wall."""
         repo, env, g = make_repo(tmp_path, executor="claude/sonnet/medium")
         stub_claude(tmp_path)
         shutil.rmtree(repo / ".xp")
@@ -41,11 +46,26 @@ class TestBootstrap:
         g("commit", "-qm", "drop xp directory")
 
         r = spawn(repo, env, "story-042")
+        assert r.returncode == 2 and ".xp/" in r.stderr
+        for command in re.findall(r"`([^`]+)`", r.stderr):
+            subprocess.run(command, shell=True, cwd=repo)
+        assert not (repo / ".xp").exists()
+        assert spawn(repo, env, "story-042").returncode == 2
+
+    def test_a_non_utf8_system_refuses_rather_than_tracebacking(self, tmp_path):
+        """Present but undecodable is the same absent-vs-unreadable conflation one
+        encoding down — and remove_story_worktree already guards its own call site
+        against exactly this file (bug 3895c908)."""
+        repo, env, g = make_repo(tmp_path)
+        stub_claude(tmp_path)
+        (repo / ".xp" / "system.md").write_bytes(b"\xff\xfe**Worktree bootstrap**: `true`\n")
+        g("add", "-A")
+        g("commit", "-qm", "non-utf-8 system.md")
+
+        r = spawn(repo, env, "story-042")
         assert r.returncode == 2 and ".xp/system.md" in r.stderr
-        command = re.search(r"`([^`]+)`", r.stderr).group(1)
-        assert subprocess.run(command, shell=True, cwd=repo).returncode == 0
-        again = spawn(repo, env, "story-042")
-        assert again.returncode == 2 and "bootstrap line" in again.stderr
+        assert "Traceback" not in r.stderr
+        assert not (tmp_path / "data" / "worktrees" / "story-042").exists()
 
     def test_backticked_command_runs_in_the_worktree(self, tmp_path):
         repo, env, _g = make_repo(tmp_path)

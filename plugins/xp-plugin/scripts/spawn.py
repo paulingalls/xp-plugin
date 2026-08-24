@@ -335,13 +335,24 @@ def cmd_spawn(story_id: str, override: str, dry_run: bool, in_place: bool = Fals
     # after `worktree add` leaves a tree and a branch whose only effect is that
     # the corrected retry refuses with "already spawned" instead.
     system = Path(".xp/system.md")
+    if not system.parent.exists():
+        # The rejected repair is `mkdir -p .xp && cp`: it half-scaffolds, and
+        # setup.py then refuses over the .xp/ it made, forever (test below).
+        return fail(
+            f"refused: no .xp/ here — is this an xp-managed repo? Restore .xp/ from"
+            f" version control; xp-setup refuses over the plan at {plan_path()}"
+        )
     if not system.exists():
         return fail(
             f"refused: {system} is missing — the worktree bootstrap line lives there. Run"
-            f" `mkdir -p .xp && cp {PLUGIN_ROOT / 'templates' / 'system.md'} {system}`,"
+            f" `cp {PLUGIN_ROOT / 'templates' / 'system.md'} {system}`,"
             " then edit its Worktree bootstrap line"
         )
-    command, problem = bootstrap_command(system.read_text())
+    try:
+        text = system.read_text()
+    except UnicodeDecodeError as exc:
+        return fail(f"refused: {system} is not UTF-8 ({exc}) — rewrite it as UTF-8 text")
+    command, problem = bootstrap_command(text)
     if problem:
         return fail("refused: " + problem)
     # The worktree is cut from a COMMIT, so anything uncommitted — including the
