@@ -34,6 +34,7 @@ def stub_escalating(
     crash=False,
     wait_for=None,
     artifacts=False,
+    note_text=ESCALATION,
 ):
     """A teammate that files a work.md note and stops, with the other two knobs
     the guards turn on: whether it committed, and whether it left files behind."""
@@ -61,7 +62,7 @@ def stub_escalating(
         # every shipped script still tracebacks (note 1e7b1197). The stub must
         # exercise the escalation seam, not that.
         f"    subprocess.run([{sys.executable!r}, {str(WORK)!r},",
-        f"                    'note', {ESCALATION!r}], check=True)",
+        f"                    'note', {note_text!r}], check=True)",
         f"while {str(wait_for) if wait_for else ''!r} and not os.path.exists("
         f"{str(wait_for) if wait_for else ''!r}):",
         "    time.sleep(0.01)",
@@ -134,6 +135,37 @@ class TestDeliberateStop:
         assert "escalated by the teammate" not in r.stderr.lower(), r.stderr
         assert "rc 9" in r.stderr, r.stderr
         assert records(env)[-1].split()[0] in r.stderr, r.stderr
+        # naming records without naming what to do with them is half a refusal
+        assert "work.py list" in r.stderr, r.stderr
+
+    def test_a_death_that_filed_nothing_is_still_reported_as_a_death(self, tmp_path):
+        """rc discriminates before any record does. The seam reads the two halves
+        independently, so the half with no record must not fall through to the
+        plain no-commits refusal and lose the fact that the harness died."""
+        repo, env, _g = make_repo(tmp_path)
+        stub_escalating(tmp_path, note=False, crash=True)
+        r = spawn(repo, env, "story-042")
+        assert r.returncode == 3, f"rc={r.returncode}\n{r.stderr}"
+        assert "died" in r.stderr.lower() and "escalat" not in r.stderr.lower(), r.stderr
+
+    def test_records_accumulate_across_successive_stops(self, tmp_path):
+        """A record filed at stop 1 is in `before` at stop 2 and can never be
+        `during` again, so a marker that overwrites hands stop 3 only stop 2's
+        words. story-028 stopped five times; the draft and the findings survive
+        all five because they are files, and the records must not be the one
+        artifact that does not."""
+        repo, env, g = make_repo(tmp_path)
+        later = "still blocked: the field the card names is still absent"
+        for text in (ESCALATION, later):
+            stub_escalating(tmp_path, note_text=text)
+            assert spawn(repo, env, "story-042").returncode == 3
+            tree = Path(env["XP_DATA"]) / "worktrees" / "story-042"
+            assert g("worktree", "remove", "--force", str(tree)).returncode == 0
+            g("branch", "-D", "ada/story-042-demo-story")
+            plan = Path(env["XP_DATA"]) / "plan.md"
+            plan.write_text(plan.read_text().replace("[in-progress]", "[ready]"))
+        inherited = spawn(repo, env, "story-042", "--dry-run").stdout
+        assert ESCALATION in inherited and later in inherited, inherited
 
     def test_no_record_is_still_refused(self, tmp_path):
         """The guard is not weakened: a teammate that simply did not finish, and
