@@ -119,6 +119,22 @@ class TestFreeReview:
         verified = free(repo, env, "fix-typo", "land")
         assert verified.returncode == 2 and "Verify red" in verified.stderr
 
+    def test_a_deleted_free_card_cannot_drop_the_credential_it_minted(self, tmp_path):
+        """A free card is OPTIONAL, so a missing one reads as a card-less close —
+        but THIS one was minted and handed to the reviewer, and deleting it
+        between the two legs would silently drop its Verify and its digest. The
+        ready marker is what says a card was there to begin with."""
+        repo, env, g = free_repo(tmp_path)
+        free(repo, env, "fix-typo", "start")
+        commit_on_free(repo, g)
+        add_free_card(env)
+        assert free(repo, env, "fix-typo", "review").returncode == 0
+        plan = Path(env["XP_DATA"]) / "plan.md"
+        plan.write_text(plan.read_text().split(f"#### {KEY} ")[0])
+        result = free(repo, env, "fix-typo", "land")
+        assert result.returncode == 2 and KEY in result.stderr
+        assert not [c for c in gh_calls(tmp_path) if c[:2] == ["pr", "create"]]
+
     def test_cardless_notice_varies_with_the_diff_and_reaches_stderr(self, tmp_path):
         notices = []
         for name, text in (("one", "B = 1\n"), ("two", "B = 1\nC = 2\n")):

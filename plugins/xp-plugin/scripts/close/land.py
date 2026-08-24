@@ -46,23 +46,23 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool, free_slug: str = "")
         held, err = bookkeep.held_trunk_tree(trunk)
         if err:
             return close.fail(err)
-    if not free and not work.plan_path().exists():
-        return close.fail(f"refused: {work.missing_plan_refusal()}")
+    minted = work.ready_marker_path(story_id).exists()
+    text = work.plan_path().read_text() if work.plan_path().exists() else ""
     card, status = "", ""
-    if work.plan_path().exists() and f"#### {story_id} " in work.plan_path().read_text():
+    # Optional ONLY on a free branch that minted no card: a minted one went to the
+    # reviewer, so losing it must refuse, not read as card-less and skip what follows.
+    if not free or minted or f"#### {story_id} " in text:
+        if not text:
+            return close.fail(f"refused: {work.missing_plan_refusal()}")
         try:
-            card, status = close.story_card(work.plan_path().read_text(), story_id)
+            card, status = close.story_card(text, story_id)
         except KeyError as e:
             return close.fail(f"refused: {e.args[0]}")
     if card:
         if status != "in-progress":
             return close.fail(f"refused: {story_id} is [{status}], land requires [in-progress]")
-        recovery = (
-            f"Put the heading back to [planned] and run `close.py free {free_slug} review`."
-            if free
-            else ""
-        )
-        if drift := ready.drift(story_id, card, recovery):
+        rerun = f"Put the heading back to [planned] and run `close.py free {free_slug} review`."
+        if drift := ready.drift(story_id, card, rerun if free else ""):
             return close.fail(drift)
         if refusal := close.verify_refusal(story_id, card):
             return close.fail(refusal)
