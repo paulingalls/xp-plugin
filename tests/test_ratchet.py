@@ -18,6 +18,9 @@ DESIGN = REPO_ROOT / "docs" / "DESIGN.md"
 # "Python ≤5,000 lines", "skill prose ≤3,000 words". Must NOT match
 # "Python 3.11+" (no ≤), so a stray version string never trips this.
 BUDGET_NUMBER_SHAPE = re.compile(r"[A-Za-z][A-Za-z+/ ]*≤\s*[\d,]+")
+SHRINK_CONSEQUENCE = (
+    "a broken glob silently shrinks coverage while every component still reports under cap"
+)
 
 
 def run_ratchet(root=None):
@@ -27,7 +30,7 @@ def run_ratchet(root=None):
     return subprocess.run(args, capture_output=True, text=True)
 
 
-def build_plugin_tree(tmp_path, files, tests=True):
+def build_plugin_tree(tmp_path, files, tests=True, plugin_floor=True, test_floor=True):
     """Keys are relative to the plugin root, not to scripts/ — the budget covers
     every directory of the shipped plugin and the fixtures have to be able to
     say so. `tests=False` builds the tree the ratchet must REFUSE to measure."""
@@ -37,10 +40,22 @@ def build_plugin_tree(tmp_path, files, tests=True):
         path = plugin_dir / name
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(content)
+    ratchet = _budgets()
+    if plugin_floor:
+        count = len(list(plugin_dir.rglob("*.py")))
+        add_empty_files(plugin_dir / "scripts", ratchet.PLUGIN_FILE_FLOOR - count, "floor")
     if tests:
         (tmp_path / "tests").mkdir(parents=True, exist_ok=True)
         (tmp_path / "tests" / "test_seed.py").write_text("def test_seed():\n    assert True\n")
+        if test_floor:
+            add_empty_files(tmp_path / "tests", ratchet.TEST_FILE_FLOOR - 1, "test_floor")
     return tmp_path
+
+
+def add_empty_files(directory, count, stem, suffix=".py"):
+    directory.mkdir(parents=True, exist_ok=True)
+    for number in range(count):
+        (directory / f"{stem}_{number}{suffix}").write_text("")
 
 
 def violation_lines(stdout):
@@ -221,10 +236,44 @@ def test_density_is_the_aggregate_not_the_worst_file(tmp_path):
 
 
 def test_empty_scripts_tree_refuses_rather_than_certifying(tmp_path):
-    root = build_plugin_tree(tmp_path, {})
+    root = build_plugin_tree(tmp_path, {}, plugin_floor=False)
     result = run_ratchet(root)
     assert result.returncode != 0, result.stdout
     assert "MEASURED NOTHING" in result.stdout, result.stdout
+
+
+def sized_tree(tmp_path, plugin_py, test_py):
+    """A tree whose two populations are set INDEPENDENTLY, so each floor test
+    holds the other arm at its floor and only its own arm can be what refused."""
+    root = build_plugin_tree(
+        tmp_path, {"scripts/setup.py": "x = 1\n"}, plugin_floor=False, test_floor=False
+    )
+    add_empty_files(root / "plugins" / "xp-plugin" / "scripts", plugin_py - 1, "measured")
+    add_empty_files(root / "tests", test_py - 1, "test_measured")  # test_seed.py is the first
+    return root
+
+
+def test_a_plugin_population_one_below_its_reviewed_floor_refuses(tmp_path):
+    """The decoys are the point of AC3: a floor counting what merely EXISTS in
+    the directory rather than what the walk consumes clears them and never
+    fires — Legacy shipped exactly that, and it was decoration."""
+    ratchet = _budgets()
+    root = sized_tree(tmp_path, ratchet.PLUGIN_FILE_FLOOR - 1, ratchet.TEST_FILE_FLOOR)
+    add_empty_files(root / "plugins" / "xp-plugin" / "scripts", 30, "ignored", ".txt")
+    result = run_ratchet(root)
+    assert result.returncode != 0, result.stdout
+    assert SHRINK_CONSEQUENCE in result.stdout, result.stdout
+    assert "PLUGIN_FILE_FLOOR" in result.stdout, result.stdout
+
+
+def test_a_test_population_one_below_its_reviewed_floor_refuses(tmp_path):
+    ratchet = _budgets()
+    root = sized_tree(tmp_path, ratchet.PLUGIN_FILE_FLOOR, ratchet.TEST_FILE_FLOOR - 1)
+    add_empty_files(root / "tests", 50, "ignored", ".txt")
+    result = run_ratchet(root)
+    assert result.returncode != 0, result.stdout
+    assert SHRINK_CONSEQUENCE in result.stdout, result.stdout
+    assert "TEST_FILE_FLOOR" in result.stdout, result.stdout
 
 
 def test_a_tree_with_no_TESTS_refuses_rather_than_certifying(tmp_path):
