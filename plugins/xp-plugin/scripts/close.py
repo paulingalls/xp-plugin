@@ -155,7 +155,7 @@ def build_bundle(card: str, base: str, report: Path, prior: str = "", notice: st
     sections = [
         ("Your charter", review.charter()),
         # One greppable line: the charter explains the shape, this is the address.
-        ("Your report", f"REPORT_PATH: {report}"),
+        ("Your report", f"REPORT_PATH: {report}\nPATCH_PATH: {review.patch_path(report)}"),
         ("Story card", card or "none — this is a free branch; judge the diff itself"),
         *([("Before you start", notice)] if notice else []),
         ("Earlier rounds of THIS review", prior or "none — you are round 1"),
@@ -218,6 +218,7 @@ def cmd_review(story_id: str, dry_run: bool = False, free: bool = False) -> int:
     path = review.report_path(story_id, len(state.get("rounds", [])) + 1)
     if not dry_run:  # a preview must not delete the findings of a refused round
         path.unlink(missing_ok=True)
+        review.patch_path(path).unlink(missing_ok=True)
     head = git("rev-parse", "HEAD").stdout.strip()
     base = git("merge-base", f"refs/heads/{trunk}", "HEAD").stdout.strip()
     digest_before = review.marker_digest(marker)
@@ -247,6 +248,8 @@ def cmd_review(story_id: str, dry_run: bool = False, free: bool = False) -> int:
         return fail(motion)
     report, err = review.read_report(path)
     if err:
+        return fail(review.abort_text(head, err))
+    if err := review.apply_patch(path, card):
         return fail(review.abort_text(head, err))
     state.setdefault("rounds", []).append(report)
     state["reviewed_head"] = head  # the tree the REVIEWER was shown

@@ -214,29 +214,19 @@ def run_agent(
     timeout = None
     if role.endswith("reviewer"):
         timeout = float(os.environ.get("XP_AGENT_TIMEOUT", 3600))
-    # The STORY reviewer alone: this name is the credential close.py and
-    # sprint_close.py gate the merge on, and the plan reviewer never earns it.
-    # EMAIL too: with the name alone, every email-keyed tool reports the lead.
-    # The sprint pipeline's finders, verifiers and closing pass are NOT it: only
-    # its fixer moves the tree, and a credential handed to a leg that must not
-    # commit turns sprint_close's stray-authorship refusal into a rubber stamp.
-    fixing = not log_id.startswith("sprint-") or log_id == "sprint-fix-review"
-    if role == "reviewer" and fixing:
-        from review import REVIEWER_EMAIL, REVIEWER_NAME
-
-        env |= {
-            "GIT_AUTHOR_NAME": REVIEWER_NAME,
-            "GIT_COMMITTER_NAME": REVIEWER_NAME,
-            "GIT_AUTHOR_EMAIL": REVIEWER_EMAIL,
-            "GIT_COMMITTER_EMAIL": REVIEWER_EMAIL,
-        }
-    return run_stream(argv, cwd, prompt, log_id, data_root(), harness, env, timeout)
+        env = {k: v for k, v in env.items() if not k.startswith(("GIT_AUTHOR_", "GIT_COMMITTER_"))}
+    if role.endswith("reviewer") and harness == "claude":
+        argv = [a for a in argv if a != "--dangerously-skip-permissions"]
+        argv += ["--permission-mode", "acceptEdits"]
+    return run_stream(
+        argv, cwd, prompt, log_id, data_root(), harness, env, timeout, widen_git=False
+    )
 
 
 def common_dir_widening(cwd: Path) -> list[str]:
-    """["--add-dir", <git common dir>] for a LINKED worktree, [] otherwise: its
+    """["--add-dir", <git common dir>] for a LINKED executor worktree, [] otherwise: its
     index lives at <main>/.git/worktrees/<id>/, outside workspace-write, so a
-    codex agent there cannot commit (bug 0c31ac94; a /tmp scratch repo hides it,
+    codex teammate there cannot commit (bug 0c31ac94; a /tmp scratch repo hides it,
     since the sandbox writes /tmp anyway). A main checkout's .git is inside the
     workspace already; widening it would loosen the posture for nothing."""
     proc = subprocess.run(

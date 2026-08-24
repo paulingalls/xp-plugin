@@ -52,7 +52,7 @@ def codex_argv(model: str, effort: str, network: bool = False) -> list[str]:
     cannot outlive codex's per-command bound — which made TEAMMATE.md's mandatory
     plan review unrunnable on the harness that mechanism exists for. It was
     disabled to protect `PreToolUse`; this plugin ships no PreToolUse hook.
-    One `--add-dir` here; a LINKED worktree gains a second at launch
+    One `--add-dir` here; a LINKED executor worktree gains a second at launch
     (spawn.common_dir_widening).
     `-` reads the prompt from stdin, keeping ~2k tokens out of `ps`."""
     argv = ["codex", "exec", "--json"]

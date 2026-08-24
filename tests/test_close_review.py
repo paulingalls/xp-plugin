@@ -272,11 +272,15 @@ class TestReviewLeg:
         assert argv[argv.index("--model") + 1] == "opus"
         assert argv[argv.index("--output-format") + 1] == "stream-json"
         assert "--verbose" in argv
+        assert "--dangerously-skip-permissions" not in argv
+        assert ("--permission-mode", "acceptEdits") in list(pairwise(argv))
+        assert not [k for k in launch["env"] if k.startswith(("GIT_AUTHOR_", "GIT_COMMITTER_"))]
         prompt = launch["stdin"]
         assert "fault-inject" in prompt.lower()  # the charter, inlined
         assert "demo story" in prompt  # the card
         assert "-A = 1" in prompt and "+A = 2" in prompt  # the cumulative diff
         assert "CONSTRAINT-SENTINEL" in prompt and "SYSTEM-SENTINEL" in prompt
+        assert "PATCH_PATH:" in prompt and "leave the tree unchanged" in prompt
 
     def test_the_spawned_reviewer_is_not_a_lead_and_cannot_close(self, tmp_path):
         """N10: the only thing pinning the reviewer's role otherwise lives in
@@ -285,6 +289,7 @@ class TestReviewLeg:
         close(repo, env, "review")
         (launch,) = launches(tmp_path)
         assert launch["env"]["XP_ROLE"] == "reviewer"
+        assert not [k for k in launch["env"] if k.startswith(("GIT_AUTHOR_", "GIT_COMMITTER_"))]
 
     def test_reviewer_crash_refuses_cleanly_surfacing_its_stderr(self, tmp_path):
         repo, env, _g = make_repo(tmp_path)
@@ -371,8 +376,7 @@ class TestAReviewerMayNotREWRITEWhatItWasGiven:
         assert "A = 2" in (repo / "src" / "thing.py").read_text()
 
     @pytest.mark.slow
-    def test_a_reviewer_that_only_ADDS_commits_is_still_recorded(self, tmp_path):
-        """The pair: the ordinary fixing reviewer must not trip this."""
+    def test_a_read_only_reviewer_that_adds_a_commit_is_refused(self, tmp_path):
         repo, env, _g = make_repo(tmp_path)
         (tmp_path / "bin" / "claude").write_text(
             "#!/bin/sh\n"
@@ -383,8 +387,8 @@ class TestAReviewerMayNotREWRITEWhatItWasGiven:
             'printf \'{"type": "result", "result": "fixed"}\'\n'
         )
         (tmp_path / "bin" / "claude").chmod(0o755)
-        assert close(repo, env, "review").returncode == 0
-        assert marker(tmp_path)["rounds"][0]["fixed"] == ["f"]
+        assert close(repo, env, "review").returncode == 2
+        assert not marker_file(tmp_path).exists()
 
 
 class TestSelfCloseRefusal:

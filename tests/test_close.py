@@ -9,6 +9,7 @@ from close_helpers import (  # noqa: F401
     CARD,
     CLOSE,
     CONFIG,
+    FIX_PATCH,
     PLUGIN,
     REVIEWER_NAME,
     SPAWN,
@@ -299,16 +300,7 @@ class TestOverlapNotMotion:
         g("checkout", "-q", "story-042-branch")
 
     def fixing_reviewer(self, tmp_path):
-        (tmp_path / "bin" / "claude").write_text(
-            "#!/bin/sh\n"
-            "p=$(sed -n 's/^REPORT_PATH: //p')\n"
-            'printf \'{"fixed": [], "blocking": [], "noted": []}\' > "$p"\n'
-            "echo 'x = 1' >> src/thing.py\n"
-            "git -c user.name='xp story-reviewer' -c user.email='r@xp'"
-            " commit -qam 'REVIEWER-FIX'\n"
-            'printf \'{"type": "result", "result": "fixed one thing"}\'\n'
-        )
-        (tmp_path / "bin" / "claude").chmod(0o755)
+        stub_reviewer(tmp_path, result="fixed one thing", patch=FIX_PATCH)
 
     def test_disjoint_trunk_motion_lands_without_a_new_round(self, tmp_path):
         repo, env, g = make_repo(tmp_path)
@@ -369,7 +361,7 @@ class TestOverlapNotMotion:
         assert r.returncode == 0, r.stderr
         reviewer_part, _, lead_part = r.stdout.partition("merging unreviewed")
         assert lead_part, "the lead's commits were not presented at all"
-        assert "REVIEWER-FIX" in reviewer_part and "LEAD-FIX-AFTER-REVIEW" in lead_part
+        assert "reviewer patch" in reviewer_part and "LEAD-FIX-AFTER-REVIEW" in lead_part
         assert "LEAD-FIX-AFTER-REVIEW" not in reviewer_part, (
             "the lead's commit read as the reviewer's"
         )
@@ -436,7 +428,7 @@ class TestOverlapNotMotion:
         g("reset", "-q", "--hard", pre)
         r = close(repo, env, "land")
         assert r.returncode == 2, r.stdout
-        assert "REVIEWER-FIX" not in r.stdout, "land claimed to merge commits it dropped"
+        assert "reviewer patch" not in r.stdout, "land claimed to merge commits it dropped"
         assert "[done]" not in (tmp_path / "data" / "plan.md").read_text()
 
 

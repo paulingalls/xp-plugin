@@ -176,17 +176,18 @@ def run_stream(
     timeout: float | None = None,
     out: OutWrite = print,
     err: OutWrite = lambda s: print(s, file=sys.stderr),
+    widen_git: bool = True,
 ) -> subprocess.CompletedProcess:
-    """EVERY spawned agent, whatever its role: stream live, tee to a durable log,
-    reassemble the harness's terminal result so the caller reads what the old
-    captured run handed it.
+    """Every spawned agent streams live and tees to a durable log; `widen_git`
+    is executor-only commit access. Reassemble the harness's terminal result so
+    the caller reads what the old captured run handed it.
 
     stdin is fed on its own thread — the prompt can exceed the pipe buffer, and
     writing it inline before draining stdout would deadlock a child that starts
     producing output before it has finished reading stdin.
     """
     parse = STREAMS[harness]
-    if argv[:2] == ["codex", "exec"]:
+    if widen_git and argv[:2] == ["codex", "exec"]:
         # HERE, not at one caller: while the widening lived in run_agent alone the
         # teammate leg launched without it, and the codex teammate that could not
         # commit was this story's own author.
