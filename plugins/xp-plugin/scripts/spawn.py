@@ -80,15 +80,21 @@ def plugin_shipped_chars() -> int:
     return sum(len(_read(p)) for p in shipped) + component_metadata_chars()
 
 
-def profile_report(card: str, prompt: str) -> tuple[str, str]:
+def profile_report(card: str, prompt: str, handoff: str) -> tuple[str, str]:
     """(breakdown for the lead, warning or "") — routed to the LEAD, never into
     the teammate's prompt where it is noise and unactionable. An always-identical
-    table is wallpaper (constraints.md #3), so the warning is what carries news."""
+    table is wallpaper (constraints.md #3), so the warning is what carries news.
+
+    `handoff` is listed only when there IS one, and it is taken as an argument
+    rather than re-derived: a contributor the breakdown cannot see is one the
+    overage warning blames some other file for."""
     project = {
         "the story card": len(card),
         "constraints.md": len(_read(Path(".xp/constraints.md"))),
         "CLAUDE.md": len(_read(Path("CLAUDE.md"))),
     }
+    if handoff:
+        project["predecessor handoff"] = len(handoff)
     total = (len(prompt) + project["CLAUDE.md"] + component_metadata_chars()) // 4
     shares = " · ".join(f"{k} {v // 4}" for k, v in project.items())
     # the CAPPED quantity, not a prompt-derived cousin of it: two computations
@@ -153,7 +159,7 @@ def build_prompt(sections: list[tuple[str, str]]) -> str:
     return "\n".join(f"## {title}\n\n{body}\n" for title, body in sections)
 
 
-def teammate_sections(card: str, story_id: str) -> list[tuple[str, str]]:
+def teammate_sections(card: str, story_id: str, handoff: str) -> list[tuple[str, str]]:
     sections = [
         ("VALUES", _read_shipped(PLUGIN_ROOT / "VALUES.md")),
         # the escalation command must be runnable: work.py is not on PATH, and
@@ -168,8 +174,8 @@ def teammate_sections(card: str, story_id: str) -> list[tuple[str, str]]:
         ("Your story card", card),
         ("Constraints", _read(Path(".xp/constraints.md"))),
     ]
-    if prior := inheritance(data_root(), story_id):
-        sections.append(("Predecessor handoff", prior))
+    if handoff:
+        sections.append(("Predecessor handoff", handoff))
     return sections
 
 
@@ -323,8 +329,9 @@ def cmd_spawn(story_id: str, override: str, dry_run: bool, in_place: bool = Fals
     branch = story_branch(card, story_id)
     tree = worktree_path(story_id)
     argv = agent_argv(harness, model, effort, "stream-json", "executor")
-    prompt = build_prompt(teammate_sections(card, story_id))
-    report, warning = profile_report(card, prompt)
+    handoff = inheritance(data_root(), story_id)
+    prompt = build_prompt(teammate_sections(card, story_id, handoff))
+    report, warning = profile_report(card, prompt, handoff)
     print(report)
     if warning:
         print(warning, file=sys.stderr)
