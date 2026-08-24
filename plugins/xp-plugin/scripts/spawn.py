@@ -334,7 +334,14 @@ def cmd_spawn(story_id: str, override: str, dry_run: bool, in_place: bool = Fals
     # Parsed here and RUN below: reading the line needs no tree, and refusing
     # after `worktree add` leaves a tree and a branch whose only effect is that
     # the corrected retry refuses with "already spawned" instead.
-    command, problem = bootstrap_command(_read(Path(".xp/system.md")))
+    system = Path(".xp/system.md")
+    if not system.exists():
+        return fail(
+            f"refused: {system} is missing — the worktree bootstrap line lives there. Run"
+            f" `mkdir -p .xp && cp {PLUGIN_ROOT / 'templates' / 'system.md'} {system}`,"
+            " then edit its Worktree bootstrap line"
+        )
+    command, problem = bootstrap_command(system.read_text())
     if problem:
         return fail("refused: " + problem)
     # The worktree is cut from a COMMIT, so anything uncommitted — including the

@@ -76,6 +76,16 @@ class TestDogfoodMatchesTheScaffold:
             f"spawn cannot read the label the template teaches: {label!r}"
         )
 
+    def test_our_system_md_label_is_one_spawn_can_read(self):
+        from spawn import bootstrap_command
+
+        label = next(
+            ln.split(":", 1)[0]
+            for ln in (self.OURS / "system.md").read_text().splitlines()
+            if "Worktree bootstrap" in ln
+        )
+        assert bootstrap_command(f"{label}: `echo ok`")[0] == "echo ok", label
+
     def test_an_unedited_bootstrap_placeholder_refuses_rather_than_skipping(self):
         """Same discipline as tests.fast: EDIT-ME reddening the wall — a scaffold
         ships a placeholder, and a placeholder that silently means "no bootstrap"
