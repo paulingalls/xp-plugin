@@ -11,7 +11,6 @@ profile is the mechanism and not a convenience (DESIGN §3).
 
 import argparse
 import os
-import re
 import subprocess
 import sys
 from pathlib import Path
@@ -20,6 +19,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 sys.path.insert(0, str(Path(__file__).parent / "spawn"))
 # close must import back FUNCTION-LOCALLY: a module-level edge cycles
 # (close -> spawn -> close) and fails before fail/git exist (story-008).
+from bookkeep import bootstrap_command, worktree_command
 from close import fail, git, integration_target, story_card
 from harness import (
     HARNESS_INSTALL,
@@ -104,31 +104,6 @@ def profile_report(card: str, prompt: str) -> tuple[str, str]:
         f" Largest project-owned contributor is {largest} ({project[largest] // 4} tokens)"
         " — yours to retire, not the plugin's."
     )
-
-
-def bootstrap_command(system_md: str) -> tuple[str, str]:
-    """(command, problem) — at most one is ever non-empty.
-
-    ONE backticked command or nothing runs: a substring match would execute the
-    path in "none needed - see [a backticked path]". Deterministic, no judging
-    prose (#7). Unreadable REFUSES where absent stays silent — both were "" once,
-    and a literal-substring label missed the template's own bolded form, skipping
-    the bootstrap into an unprepared tree with no warning.
-    """
-    for ln in system_md.splitlines():
-        label, sep, value = ln.partition(":")
-        if not sep or label.strip().strip("*-# ").casefold() != "worktree bootstrap":
-            continue
-        value = value.strip().rstrip(".")
-        if m := re.fullmatch(r"`([^`]+)`", value):
-            return m.group(1), ""
-        if "`" not in value and re.match(r"none\b", value, re.I):
-            return "", ""
-        return "", (
-            f"cannot read the Worktree bootstrap line in .xp/system.md: {ln.strip()!r}"
-            " — the value must be ONE backticked command, or start with 'none'"
-        )
-    return "", ""
 
 
 def template_role_line(role: str) -> str:
@@ -439,10 +414,18 @@ def unclean_teammate_result(tree: Path, handed_over: tuple[str, str], story_id: 
     the teammate with whatever the bootstrap command dirtied before it started.
     """
     flip_head, handed_dirty = handed_over
+    system = tree / ".xp/system.md"
+    teardown, problem = worktree_command(system.read_text() if system.exists() else "", "teardown")
+    discard = f"`git worktree remove {tree}`"
+    if teardown:
+        discard = (
+            f"running {teardown!r} and then `git worktree remove {tree}`"
+            " (add --force if teardown leaves files behind)"
+        )
     recovery = (
-        f" Recover by committing by hand in {tree}, or by"
-        f" `git worktree remove {tree}`, putting {story_id}'s heading back to [ready]"
-        f" in {plan_path()}, and re-spawning."
+        f" Recover by committing by hand in {tree}, or by {discard}, putting"
+        f" {story_id}'s heading back to [ready] in {plan_path()}, and re-spawning."
+        + (f" {problem}." if problem else "")
     )
     try:
         head, dirty = tree_state(tree)

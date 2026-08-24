@@ -19,3 +19,8 @@ entirely one backticked command runs, so prose here can never execute by
 accident. Anything else REFUSES the spawn — an unreadable line and an absent
 one are different things, and skipping the first silently launched teammates
 into unprepared trees. A nonzero exit refuses the spawn too.>
+
+**Worktree teardown**: none needed
+Same value grammar as bootstrap: ONE backticked command, or "none". It runs in
+the checkout before removal; unlike bootstrap, failure is reported and removal
+continues. `config.yml`'s `teardown_timeout` caps it.

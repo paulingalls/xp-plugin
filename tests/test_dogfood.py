@@ -85,6 +85,26 @@ class TestDogfoodMatchesTheScaffold:
         command, problem = bootstrap_command((self.SHIPPED / "system.md").read_text())
         assert not command and problem, "the unedited placeholder read as a valid no-op"
 
+    def test_the_shipped_teardown_value_is_a_readable_no_op(self):
+        from bookkeep import worktree_command
+
+        line = next(
+            ln
+            for ln in (self.SHIPPED / "system.md").read_text().splitlines()
+            if "Worktree teardown" in ln
+        )
+        assert worktree_command(line, "teardown") == ("", "")
+
+    def test_the_shipped_teardown_timeout_default_is_the_one_the_code_uses(self):
+        from bookkeep import TEARDOWN_TIMEOUT
+
+        line = next(
+            ln
+            for ln in (self.SHIPPED / "config.yml").read_text().splitlines()
+            if "teardown_timeout" in ln
+        )
+        assert f"teardown_timeout: {TEARDOWN_TIMEOUT}" in line, line
+
     def test_the_shipped_plan_parses_with_the_parser_sprint_close_uses(self):
         """Was a PAIR: it also read THIS repo's .xp/plan.md, so our live plan and
         the template could not drift apart unnoticed. story-019 moved our plan to

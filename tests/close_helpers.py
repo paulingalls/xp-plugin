@@ -123,7 +123,16 @@ def mint_ready(repo, env, story_id="story-042"):
     plan.write_text(flip_status(plan.read_text(), story_id, "ready", "in-progress"))
 
 
-def make_repo(tmp_path, status="in-progress", verify="true", branch="main"):
+def make_repo(
+    tmp_path,
+    status="in-progress",
+    verify="true",
+    branch="main",
+    teardown=None,
+    bootstrap=None,
+    teardown_timeout=None,
+    system=True,
+):
     repo = tmp_path / "repo"
     (repo / ".xp").mkdir(parents=True)
     env = {
@@ -144,9 +153,16 @@ def make_repo(tmp_path, status="in-progress", verify="true", branch="main"):
     # walks past the one gate binding that line to the reviewed text.
     landing = status == "in-progress"
     plan.write_text(CARD.format(status="planned" if landing else status, verify=verify))
-    (repo / ".xp" / "config.yml").write_text(CONFIG)
+    timeout = f"teardown_timeout: {teardown_timeout}\n" if teardown_timeout is not None else ""
+    (repo / ".xp" / "config.yml").write_text(CONFIG + timeout)
     (repo / ".xp" / "constraints.md").write_text("# Constraints\n1. CONSTRAINT-SENTINEL\n")
-    (repo / ".xp" / "system.md").write_text("# System\nSYSTEM-SENTINEL\n")
+    if system:
+        lines = ["# System", "SYSTEM-SENTINEL"]
+        if bootstrap is not None:
+            lines.append(f"**Worktree bootstrap**: {bootstrap}")
+        if teardown is not None:
+            lines.append(f"**Worktree teardown**: {teardown}")
+        (repo / ".xp" / "system.md").write_text("\n".join(lines) + "\n")
     if landing:
         mint_ready(repo, env)
     (repo / "VALUES.md").write_text("# XP Values\nVALUES-SENTINEL\n")
@@ -159,6 +175,16 @@ def make_repo(tmp_path, status="in-progress", verify="true", branch="main"):
     g("add", "-A")
     g("commit", "-qm", "story work")
     return repo, env, g
+
+
+def worktree_land_setup(tmp_path, verify="true", **repo_options):
+    repo, env, g = make_repo(tmp_path, verify=verify, **repo_options)
+    assert close(repo, env, "review").returncode == 0
+    tree = tmp_path / "wt"
+    branch = g("rev-parse", "--abbrev-ref", "HEAD").stdout.strip()
+    g("checkout", "-q", "main")
+    g("worktree", "add", str(tree), branch)
+    return repo, env, g, tree, branch
 
 
 def close_bare(repo, env, *args):

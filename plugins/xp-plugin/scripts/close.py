@@ -408,7 +408,7 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
             if subprocess.run(c, capture_output=True, text=True).returncode != 0:
                 failed.append(" ".join(c))
     if held:
-        failed += remove_story_worktree(story_tree)
+        failed += remove_story_worktree(story_tree, config_flat("teardown_timeout"))
     failed += delete_story_branch(branch)
     # merge_sha is the merge commit, always on a ref now that no amend rewrites it
     delete_story_markers(story_id)
@@ -417,7 +417,7 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
     if failed:
         # The merge HAS landed, so this is not a refusal (2) — but exiting 0
         # would make a hand-step invisible, which M1's done-when forbids.
-        print("\nincomplete — the merge landed, these did not. Re-run them:", file=sys.stderr)
+        print("\nincomplete — the merge landed. Re-run or resolve them:", file=sys.stderr)
         for c in failed:
             print(f"  {c}", file=sys.stderr)
         return 3

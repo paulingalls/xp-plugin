@@ -10,6 +10,7 @@ release: sprint      # sprint = stories integrate on a sprint branch, sprint clo
 sprint_cap: 6        # max stories per sprint
 debt_budget: 0.2     # max share of sprint stories that are scheduled debt
 constraints_cap: 15  # constraints.md line-items; add-over-cap requires a retire
+# teardown_timeout: 60  # seconds before close kills worktree teardown
 # review:
 #   verify_batches: 2   # sprint-close verifier AGENTS per round. Bounds the
 #                       # spend: candidates are batched across this many, never
