@@ -17,8 +17,8 @@ from pathlib import Path
 
 SPAWN = 1345
 CLOSE = 1980
-HOOKS = 650
-MISC = 1025
+HOOKS = 590
+MISC = 1085
 TOTAL = 5000
 
 CLOSE_NAMES = {"close", "review", "bookkeep", "sprint_close"}
