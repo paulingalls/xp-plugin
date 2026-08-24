@@ -10,10 +10,13 @@ and consumers kept running the previous cached copy under the new name.
 import json
 import re
 import subprocess
+import sys
 from pathlib import Path
 
 REPO = Path(__file__).parent.parent
 MANIFEST = REPO / "plugins" / "xp-plugin" / ".claude-plugin" / "plugin.json"
+sys.path.insert(0, str(REPO / "plugins" / "xp-plugin" / "scripts"))
+from close import config_flat  # noqa: E402
 
 
 def parts(version):
@@ -69,3 +72,9 @@ def test_the_changelog_carries_an_entry_for_the_declared_version():
     assert f"v{declared()}" in (REPO / "CHANGELOG.md").read_text(), (
         f"CHANGELOG.md has no v{declared()} entry"
     )
+
+
+def test_this_repos_release_guard_reads_an_existing_manifest():
+    names = (name.strip() for name in config_flat("version_files").split(","))
+    paths = [REPO / name for name in names if name]
+    assert paths and all(path.is_file() for path in paths)

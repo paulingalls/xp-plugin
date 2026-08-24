@@ -1,8 +1,7 @@
 # xp project config — EDIT the tiers for your stack, then re-run your first commit
 release: sprint      # sprint = stories integrate on a sprint branch, sprint close PRs trunk
-# sprint_branch: sprint-001   # UNCOMMENT and `git switch -c sprint-001` to open a
-#                             # sprint. Without it every story lands on the default
-#                             # branch, which is `release: story`, not what you set.
+# sprint_branch: sprint-001   # UNCOMMENT and create it; without the key stories
+#                             # land on the default branch (`release: story`).
 # trunk: develop            # UNCOMMENT where releases do NOT land on git's default
 #                           # branch (a repo integrating on develop, main behind).
 #                           # Sprints land here and releases tag here; cutting
@@ -10,6 +9,7 @@ release: sprint      # sprint = stories integrate on a sprint branch, sprint clo
 sprint_cap: 6        # max stories per sprint
 debt_budget: 0.2     # max share of sprint stories that are scheduled debt
 constraints_cap: 15  # constraints.md line-items; add-over-cap requires a retire
+# version_files: path/to/manifest.json  # comma-separated JSON manifests
 # teardown_timeout: 60  # seconds before close kills worktree teardown
 # review:
 #   verify_batches: 2   # sprint-close verifier AGENTS per round. Bounds the

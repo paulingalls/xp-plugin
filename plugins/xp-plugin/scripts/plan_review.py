@@ -1,12 +1,8 @@
 #!/usr/bin/env python3
-"""Plan review as a headless role — the last subagent call, made a spawn.
+"""Plan review as a headless role through the runner both harnesses use.
 
-A codex teammate has no `--plugin-dir` and no subagents, so TEAMMATE.md's "spawn
-the plan-reviewer" named an agent file that is not in its tree: the review this
-repo added after three measured slips was skipped, or invented. This runs the
-same charter on either harness, through the runner every other leg already uses.
-
-Usage: plan_review.py <story-id> <plan-file> [--dry-run]
+Codex teammates have neither `--plugin-dir` nor subagents; the script is what
+makes the shipped charter reachable there.
 """
 
 import argparse
@@ -60,10 +56,11 @@ def card_for(story_id: str) -> str:
         return ""
 
 
-def build_bundle(charter: str, plan: str, card: str, out: Path) -> str:
+def build_bundle(charter: str, plan: str, card: str, plan_file: Path, out: Path) -> str:
     sections = [
         ("Your charter", charter),
         ("Your findings file", f"FINDINGS_PATH: {out}"),
+        ("The plan file", f"PLAN_PATH: {plan_file}"),
         ("The plan under review", plan),
         ("Story card", card or "none in the plan — judge the plan on its own"),
         ("VALUES", _read_shipped(PLUGIN_ROOT / "VALUES.md")),
@@ -73,8 +70,8 @@ def build_bundle(charter: str, plan: str, card: str, out: Path) -> str:
     return "".join(f"## {title}\n\n{body}\n\n" for title, body in sections)
 
 
-def review_state(plan_file: Path, story_id: str) -> tuple[tuple[str, str], bytes | None, str]:
-    """State a report-only plan reviewer must leave unchanged.
+def review_state(plan_file: Path, story_id: str) -> tuple[str, str, str]:
+    """State a plan reviewer must leave unchanged outside its draft.
 
     THIS STORY'S OWN CARD, never the whole plan: plan.md is project-global and the
     lead edits it throughout a run — status flips, re-mints, a sibling lane's card
@@ -83,13 +80,57 @@ def review_state(plan_file: Path, story_id: str) -> tuple[tuple[str, str], bytes
     close.review.check_reviewer_motion already scopes its card check this way.
     """
 
-    def contents(path: Path) -> bytes | None:
-        try:
-            return path.read_bytes()
-        except OSError:
-            return None
+    head, porcelain = tree_state(Path.cwd())
+    try:
+        relative = str(plan_file.relative_to(Path.cwd()))
+    except ValueError:
+        relative = ""
+    if relative:
+        status = subprocess.run(
+            ["git", "status", "--porcelain", "--", ".", f":(exclude){relative}"],
+            capture_output=True,
+            text=True,
+        )
+        if status.returncode:
+            raise OSError(status.stderr.strip())
+        porcelain = status.stdout.strip()
+    return head, porcelain, card_for(story_id)
 
-    return tree_state(Path.cwd()), contents(plan_file), card_for(story_id)
+
+def plan_bytes(path: Path) -> bytes | None:
+    try:
+        return path.read_bytes()
+    except OSError:
+        return None
+
+
+def disposition(text: str, before: bytes | None, after: bytes | None) -> str:
+    changed = before != after
+    try:
+        report = json.loads(text)
+    except ValueError:
+        return "the plan review wrote no structured disposition"
+    if not isinstance(report, dict):
+        return "the plan disposition must be a JSON object"
+    status = report.get("status")
+    if status == "blocked":
+        question = report.get("question", "")
+        if changed:
+            return "a human-only question changed the plan instead of stopping"
+        return f"blocked for the human: {question}" if question else "blocked without a question"
+    if status == "clean":
+        return "" if not changed else "a clean review changed the plan"
+    if status != "edited":
+        return "plan disposition status must be clean, edited, or blocked"
+    reasons = report.get("reasons", [])
+    if not isinstance(reasons, list):
+        return "edited plan reasons must be a JSON list"
+    plan = (after or b"").decode(errors="replace")
+    if not changed:
+        return "an edited disposition left the plan unchanged"
+    if not reasons or not all(isinstance(reason, str) and reason in plan for reason in reasons):
+        return "every plan edit must carry its reason in the plan file"
+    return ""
 
 
 def cmd_review(story_id: str, plan_file: Path, dry_run: bool) -> int:
@@ -233,7 +274,8 @@ def _run_review(
         before = review_state(plan_file, story_id)
     except OSError as e:
         return fail(f"refused: cannot snapshot the repository before review: {e}")
-    bundle = build_bundle(charter, plan, card, out)
+    before_plan = plan_bytes(plan_file)
+    bundle = build_bundle(charter, plan, card, plan_file, out)
     _result, err = review.run(bundle, Path.cwd(), dry_run, name="plan-reviewer", card=card)
     if dry_run:
         return 0
@@ -243,7 +285,7 @@ def _run_review(
         return fail(f"refused: the plan reviewer left the repository unreadable: {e}")
     if changed:
         return fail(
-            "refused: the plan reviewer changed the repository, draft, or story plan"
+            "refused: the plan reviewer changed the repository or story card"
             " — inspect and restore its changes before continuing"
         )
     if err:
@@ -254,6 +296,8 @@ def _run_review(
         findings = ""
     if not findings:
         return fail(f"refused: the plan reviewer wrote no findings at {out}")
+    if problem := disposition(findings, before_plan, plan_bytes(plan_file)):
+        return fail(f"refused: {problem}")
     incomplete_marker(story_id).unlink(missing_ok=True)  # the child's own verdict
     print(findings)
     return 0

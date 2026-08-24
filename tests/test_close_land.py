@@ -147,6 +147,21 @@ class TestLandFailureModes:
         assert "Traceback" not in r.stderr, r.stderr
         assert r.returncode == 2 and "no plan at" in r.stderr
 
+    def test_a_card_that_vanished_between_review_and_land_refuses_before_merging(self, tmp_path):
+        """The narrower half of the same failure, and the worse one: the plan is
+        still there, only the CARD is gone. Everything land checks the card for —
+        the [in-progress] status, the plan-review digest, the Verify line — hangs
+        off finding it, so a card-shaped hole skips all three and merges."""
+        repo, env, g = make_repo(tmp_path)
+        close(repo, env, "review")
+        plan = tmp_path / "data" / "plan.md"
+        plan.write_text(plan.read_text().split("#### story-042 ")[0])
+        before = g("rev-parse", "main").stdout.strip()
+        r = close(repo, env, "land")
+        assert "Traceback" not in r.stderr, r.stderr
+        assert r.returncode == 2 and "story-042" in r.stderr
+        assert g("rev-parse", "main").stdout.strip() == before, "it merged anyway"
+
     def pr_repo(self, tmp_path):
         repo, env, g = make_repo(tmp_path)
         origin = tmp_path / "origin.git"

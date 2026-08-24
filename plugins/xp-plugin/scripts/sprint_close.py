@@ -16,7 +16,9 @@ sys.path.insert(0, str(Path(__file__).parent))
 sys.path.insert(0, str(Path(__file__).parent / "close"))
 import overlap
 import stages
-from close import config_flat, default_branch, fail, git, story_card
+from close import default_branch, fail, git, story_card
+from release import cmd_post_merge as release_post_merge
+from release import next_version, refuse_unbumpable
 from review import REVIEWER_NAME
 from work import (
     append,
@@ -304,26 +306,6 @@ def cmd_start(sprint_id: str) -> int:
     return 0
 
 
-def next_version(part: str = "minor", ref: str = "HEAD") -> str:
-    """Bump the latest TAG REACHABLE FROM `ref` — the tree that will be the release,
-    which for a branch cut before the last release is not HEAD.
-    The tag is the source of truth: a plugin.json path is meaningless in a consuming project,
-    which is also why the scheme is checked: theirs is the input we don't pick.
-    Returns "" when the latest tag is not semver, so the caller refuses."""
-    latest = git("describe", "--tags", "--abbrev=0", ref, check=False).stdout.strip() or "v0.0.0"
-    if not (m := re.fullmatch(r"v?(\d+)\.(\d+)(\..*)?", latest)):
-        return ""
-    if part != "patch":
-        return f"v{m.group(1)}.{int(m.group(2)) + 1}.0"
-    patch = re.match(r"\.(\d+)", m.group(3) or "")
-    return f"v{m.group(1)}.{m.group(2)}.{int(patch.group(1)) + 1 if patch else 1}"
-
-
-def refuse_unbumpable(ref: str = "HEAD") -> int:
-    latest = git("describe", "--tags", "--abbrev=0", ref, check=False).stdout.strip()
-    return fail(f"refused: latest tag {latest!r} is not vMAJOR.MINOR — cannot bump it")
-
-
 def _is_retro_prose(path: str) -> bool:
     return path.startswith(".xp/") and path not in overlap.GATE_FILES
 
@@ -449,41 +431,4 @@ def cmd_land(sprint_id: str, dry_run: bool) -> int:
 
 
 def cmd_post_merge(sprint_id: str) -> int:
-    """Bump, tag and key retirement in ONE leg, on the merged sha.
-
-    A tag cut at PR-open names a commit that is not the release: the review
-    commits the PR exists to produce land after it, and a fetched tag never moves.
-    """
-    if (head := git("rev-parse", "--abbrev-ref", "HEAD").stdout.strip()) != (
-        trunk := default_branch()
-    ):
-        return fail(f"refused: on {head}, not {trunk} — the release tag names the MERGED sha")
-    sprint_branch = config_flat("sprint_branch")
-    if (
-        sprint_branch
-        and git("merge-base", "--is-ancestor", sprint_branch, "HEAD", check=False).returncode != 0
-    ):
-        return fail(
-            f"refused: {sprint_branch} is not merged into {trunk} — tagging here would"
-            " name a commit containing none of the sprint. Merge the release PR first"
-        )
-    if not (version := next_version()):
-        return refuse_unbumpable()
-    if git("rev-parse", "--verify", "-q", f"refs/tags/{version}", check=False).returncode == 0:
-        return fail(f"refused: tag {version} already exists — nothing was changed")
-    config = Path(".xp/config.yml")
-    if not config.exists():
-        return fail("refused: no .xp/config.yml here — is this an xp-managed repo?")
-    kept = [
-        ln
-        for ln in config.read_text().splitlines(keepends=True)
-        if not ln.startswith("sprint_branch:")
-    ]
-    if git("tag", version, check=False).returncode != 0:
-        return fail(f"refused: could not create tag {version}")
-    config.write_text("".join(kept))
-    print(
-        f"tagged {version} at {git('rev-parse', 'HEAD').stdout.strip()[:8]}; sprint_branch retired"
-    )
-    print("commit the config change, push the tag, and open the next sprint")
-    return 0
+    return release_post_merge(sprint_id)
