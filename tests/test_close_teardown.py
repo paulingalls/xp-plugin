@@ -58,9 +58,11 @@ def test_a_missing_system_file_is_the_no_teardown_arm(tmp_path):
 
 
 def test_a_hung_teardown_is_killed_and_removal_continues(tmp_path):
+    # The bound has to beat `sleep 30`, not time a land: at 5s it red under
+    # xdist load on a machine where a land alone takes four.
     started = time.monotonic()
     tree, result = land(tmp_path, teardown="`sleep 30`", teardown_timeout=1)
-    assert time.monotonic() - started < 5
+    assert time.monotonic() - started < 20
     assert result.returncode == 3
     assert "Worktree teardown timed out after 1s ('sleep 30')" in result.stderr
     assert "worktree removed; inspect external state manually" in result.stderr
@@ -121,7 +123,7 @@ def test_timeout_comes_from_the_post_merge_trunk_config(tmp_path):
     g("commit", "-qm", "lower teardown timeout on trunk")
     started = time.monotonic()
     result = close(tree, env, "land", "--merge-mode", "local")
-    assert time.monotonic() - started < 5
+    assert time.monotonic() - started < 20
     assert result.returncode == 3
     assert "timed out after 1s" in result.stderr
     assert not tree.exists()

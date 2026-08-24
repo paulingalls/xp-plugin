@@ -17,6 +17,10 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 from work import card_title, data_root
 
+# templates/config.yml ships this number commented out, and test_dogfood pins the two
+# together: a default a project reads in prose and never gets is worse than no default.
+TEARDOWN_TIMEOUT = 60
+
 
 def git(*args: str, check: bool = False) -> subprocess.CompletedProcess:
     return subprocess.run(["git", *args], capture_output=True, text=True, check=check)
@@ -197,7 +201,7 @@ def _teardown(tree: str, timeout_value: str) -> str:
     command, problem = worktree_command(system.read_text() if system.exists() else "", "teardown")
     if not command:
         return problem
-    timeout = 60
+    timeout = TEARDOWN_TIMEOUT
     if timeout_value:
         if timeout_value.isdigit() and int(timeout_value) > 0:
             timeout = int(timeout_value)
