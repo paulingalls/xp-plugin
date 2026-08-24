@@ -242,34 +242,38 @@ def test_empty_scripts_tree_refuses_rather_than_certifying(tmp_path):
     assert "MEASURED NOTHING" in result.stdout, result.stdout
 
 
-def test_a_plugin_population_one_below_its_reviewed_floor_refuses(tmp_path):
+def sized_tree(tmp_path, plugin_py, test_py):
+    """A tree whose two populations are set INDEPENDENTLY, so each floor test
+    holds the other arm at its floor and only its own arm can be what refused."""
     root = build_plugin_tree(
-        tmp_path,
-        {"scripts/setup.py": "x = 1\n"},
-        plugin_floor=False,
-        test_floor=False,
+        tmp_path, {"scripts/setup.py": "x = 1\n"}, plugin_floor=False, test_floor=False
     )
-    add_empty_files(root / "plugins" / "xp-plugin" / "scripts", 19, "measured")
-    add_empty_files(root / "tests", 44, "test_measured")
+    add_empty_files(root / "plugins" / "xp-plugin" / "scripts", plugin_py - 1, "measured")
+    add_empty_files(root / "tests", test_py - 1, "test_measured")  # test_seed.py is the first
+    return root
+
+
+def test_a_plugin_population_one_below_its_reviewed_floor_refuses(tmp_path):
+    """The decoys are the point of AC3: a floor counting what merely EXISTS in
+    the directory rather than what the walk consumes clears them and never
+    fires — Legacy shipped exactly that, and it was decoration."""
+    ratchet = _budgets()
+    root = sized_tree(tmp_path, ratchet.PLUGIN_FILE_FLOOR - 1, ratchet.TEST_FILE_FLOOR)
     add_empty_files(root / "plugins" / "xp-plugin" / "scripts", 30, "ignored", ".txt")
     result = run_ratchet(root)
     assert result.returncode != 0, result.stdout
-    assert SHRINK_CONSEQUENCE in result.stdout
+    assert SHRINK_CONSEQUENCE in result.stdout, result.stdout
+    assert "PLUGIN_FILE_FLOOR" in result.stdout, result.stdout
 
 
 def test_a_test_population_one_below_its_reviewed_floor_refuses(tmp_path):
-    root = build_plugin_tree(
-        tmp_path,
-        {"scripts/setup.py": "x = 1\n"},
-        plugin_floor=False,
-        test_floor=False,
-    )
-    add_empty_files(root / "plugins" / "xp-plugin" / "scripts", 20, "measured")
-    add_empty_files(root / "tests", 43, "test_measured")
+    ratchet = _budgets()
+    root = sized_tree(tmp_path, ratchet.PLUGIN_FILE_FLOOR, ratchet.TEST_FILE_FLOOR - 1)
     add_empty_files(root / "tests", 50, "ignored", ".txt")
     result = run_ratchet(root)
     assert result.returncode != 0, result.stdout
-    assert SHRINK_CONSEQUENCE in result.stdout
+    assert SHRINK_CONSEQUENCE in result.stdout, result.stdout
+    assert "TEST_FILE_FLOOR" in result.stdout, result.stdout
 
 
 def test_a_tree_with_no_TESTS_refuses_rather_than_certifying(tmp_path):

@@ -26,8 +26,8 @@ HOOKS_NAMES = {"hooks", "session_start", "stop_gate", "bash_status"}
 SPAWN_NAMES = {"spawn", "teammate_tee"}
 
 DENSITY_THRESHOLD = 0.20
-# Healthy populations reviewed at story-033; lower only with an intentional
-# deletion of files this measurement consumes.
+# Sized to what this walk consumes today (measured at story-033). Legal under
+# constraint 11 because it counts a structurally enumerated set, never a name.
 PLUGIN_FILE_FLOOR = 21
 TEST_FILE_FLOOR = 45
 
@@ -101,7 +101,7 @@ def measure(root):
     if not paths:
         raise NoScriptsFound(d)
     if len(paths) < PLUGIN_FILE_FLOOR:
-        raise CoverageShrank(d)
+        raise CoverageShrank(d, "PLUGIN_FILE_FLOOR", len(paths))
 
     totals = {"spawn": 0, "close": 0, "hooks": 0, "misc": 0}
     total_lines = 0
@@ -127,7 +127,7 @@ def measure(root):
     if not test_paths:
         raise NoScriptsFound(tests_dir)  # constraint 8 binds tests; zero of them is not a pass
     if len(test_paths) < TEST_FILE_FLOOR:
-        raise CoverageShrank(tests_dir)
+        raise CoverageShrank(tests_dir, "TEST_FILE_FLOOR", len(test_paths))
     file_findings = []
     for path in paths + test_paths:
         rel = path.relative_to(root).as_posix()
@@ -197,9 +197,12 @@ def main():
         print(f"MEASURED NOTHING: no *.py under {exc.args[0]} — the ratchet cannot certify")
         return 2
     except CoverageShrank as exc:
+        directory, floor, measured = exc.args
         print(
-            f"COVERAGE SHRANK under {exc.args[0]}: a broken glob silently shrinks coverage"
+            f"COVERAGE SHRANK under {directory}: a broken glob silently shrinks coverage"
             " while every component still reports under cap"
+            f"\n  fix the glob; or, if files were deliberately deleted, lower {floor}"
+            f" in tests/scripts/ratchet.py to the {measured} this walk consumed"
         )
         return 2
 
