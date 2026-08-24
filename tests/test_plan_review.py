@@ -316,7 +316,10 @@ class TestTheProfileCarriesTheInvocation:
         draft = Path(line.split("Persistent PLAN_PATH: ", 1)[1])
         tree = Path(env["XP_DATA"]) / "worktrees" / "story-042"
         assert not draft.is_relative_to(tree)
-        draft.parent.mkdir(parents=True, exist_ok=True)
+        # spawn must MAKE it: the teammate drafts before plan_review.py, which is
+        # the only other creator, and a shell redirect into a missing directory
+        # sends the model back to the worktree this path exists to avoid
+        assert draft.parent.is_dir(), draft
         draft.write_text("SURVIVES-UNWIND\n")
         assert g("worktree", "remove", "--force", str(tree)).returncode == 0
         assert draft.read_text() == "SURVIVES-UNWIND\n"

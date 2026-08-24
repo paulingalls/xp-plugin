@@ -394,6 +394,11 @@ def cmd_spawn(story_id: str, override: str, dry_run: bool, in_place: bool = Fals
                 f" a teammate into a broken tree. Worktree left at {tree}"
             )
     flip_to_in_progress(story_id)
+    # The teammate is the FIRST writer of plans/ — it drafts before plan_review.py,
+    # which is what creates the directory today — and a shell redirect does not
+    # make one. Left to fail, the model's own recovery is to draft inside the
+    # worktree, which is exactly the loss this path exists to prevent.
+    draft_path(data_root(), story_id).parent.mkdir(parents=True, exist_ok=True)
     print(f"{branch} at {tree} (off {trunk})")
     handed_over = tree_state(tree)
     before = {eid for eid, _ in entries(data_root())}
