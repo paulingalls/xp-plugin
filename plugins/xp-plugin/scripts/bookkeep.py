@@ -175,11 +175,23 @@ def worktree_command(system_md: str, action: str) -> tuple[str, str]:
     continues — because reading it wrong is the one failure this parser can hide.
     """
     wanted = f"worktree {action}"
+    hits = []
     for ln in system_md.splitlines():
-        label, sep, value = ln.partition(":")
-        if not sep or label.strip().strip("*-# ").casefold() != wanted:
-            continue
-        value = value.strip().rstrip(".")
+        label, sep, _ = ln.partition(":")
+        if sep and label.strip().strip("*-# ").casefold() == wanted:
+            hits.append(ln)
+    if len(hits) > 1:
+        # NEVER pick one: the template ships bootstrap as an unreadable
+        # placeholder, so appending below it — how people edit a scaffolded file —
+        # refused over a line the consumer never wrote (bug 90fcd7d4), and either
+        # ordering is someone's idea of the obvious winner.
+        listed = "".join(f"\n  {h.strip()}" for h in hits)
+        return "", (
+            f"the Worktree {action} label appears more than once in .xp/system.md"
+            f" ({len(hits)} lines) — keep ONE and delete the rest:{listed}"
+        )
+    for ln in hits:
+        value = ln.partition(":")[2].strip().rstrip(".")
         if m := re.fullmatch(r"`([^`]+)`", value):
             return m.group(1), ""
         if "`" not in value and re.match(r"none\b", value, re.I):

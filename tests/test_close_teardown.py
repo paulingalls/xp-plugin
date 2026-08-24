@@ -149,6 +149,38 @@ def test_the_general_parser_still_reads_bootstrap():
     assert worktree_command("Worktree bootstrap: `echo ok`", "bootstrap") == ("echo ok", "")
 
 
+def test_a_second_line_for_one_label_is_refused_naming_both():
+    """Bug 90fcd7d4, hit during story-029's AC8 walk. The shipped template's
+    bootstrap line is an unreadable PLACEHOLDER on purpose, and appending below a
+    commented block is the ordinary way people edit a scaffolded file — so the
+    real command sits two rows under the placeholder that wins, and the consumer
+    is refused over a line they never wrote. Refuse rather than pick: last-wins
+    would guess, and the two orderings mean opposite things to different people.
+    """
+    from bookkeep import worktree_command
+
+    doc = "**Worktree bootstrap**: <one backticked command>\n- Worktree bootstrap: `make dev`\n"
+    command, problem = worktree_command(doc, "bootstrap")
+    assert command == "", f"a duplicated label must not silently pick one: {command!r}"
+    assert "twice" in problem or "more than once" in problem, problem
+    assert "<one backticked command>" in problem and "make dev" in problem, (
+        f"the refusal must name BOTH lines, or it sends the reader to the wrong one: {problem!r}"
+    )
+
+
+def test_one_label_twice_is_refused_even_when_both_lines_are_readable():
+    """The duplicate is the defect, not the unreadability — two valid commands is
+    the case where silently running the first is most expensive."""
+    from bookkeep import worktree_command
+
+    command, problem = worktree_command(
+        "- Worktree teardown: `docker compose down`\n- Worktree teardown: `make clean`\n",
+        "teardown",
+    )
+    assert command == "", command
+    assert "docker compose down" in problem and "make clean" in problem, problem
+
+
 def spawn_refusal(tmp_path, teardown):
     repo, env, g = make_spawn_repo(tmp_path)
     g("checkout", "-q", "main")
