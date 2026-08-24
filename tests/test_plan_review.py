@@ -60,6 +60,16 @@ def stub_planner(tmp_path, findings="ROUND FINDINGS", write_findings=True, motio
         f"    open({str(tmp_path / 'draft.md')!r}, 'a').write('reviewer motion\\n')\n"
         "if motion == 'card':\n"
         f"    open({str(tmp_path / 'data' / 'plan.md')!r}, 'a').write('reviewer motion\\n')\n"
+        "if motion == 'own':\n"
+        f"    _p = open({str(tmp_path / 'data' / 'plan.md')!r})\n"
+        "    _t = _p.read(); _p.close()\n"
+        f"    open({str(tmp_path / 'data' / 'plan.md')!r}, 'w').write(\n"
+        "        _t.replace('OWN-CONTEXT', 'the review rewrote the card it is judged against'))\n"
+        "if motion == 'sibling':\n"
+        f"    _p = open({str(tmp_path / 'data' / 'plan.md')!r})\n"
+        "    _t = _p.read(); _p.close()\n"
+        f"    open({str(tmp_path / 'data' / 'plan.md')!r}, 'w').write(\n"
+        "        _t.replace('SIBLING-CONTEXT', 'a sibling lane flipped its own card'))\n"
         "if motion == 'commit':\n"
         "    import subprocess\n"
         "    subprocess.run(['git', 'add', '-A'], check=True)\n"
@@ -81,6 +91,60 @@ def findings_of(rec):
     stdin = json.loads(rec.read_text())["stdin"]
     (line,) = [ln for ln in stdin.splitlines() if ln.startswith("FINDINGS_PATH: ")]
     return Path(line.removeprefix("FINDINGS_PATH: "))
+
+
+TWO_CARDS = """# plan
+## Milestone 1
+### Sprint 1
+#### story-042 — demo story   [ready]
+Context: OWN-CONTEXT
+Files: src/thing.py
+AC:
+- Given X, When Y, Then Z
+Verify: true
+
+#### story-099 — the other lane   [in-progress]
+Context: SIBLING-CONTEXT
+Files: src/other.py
+AC:
+- Given A, When B, Then C
+Verify: true
+"""
+
+
+class TestTheSharedPlanIsNotThisStorysGate:
+    """Bug 5a1abadb, measured: it cost story-032 a whole run. plan.md is
+    PROJECT-GLOBAL and the lead edits it constantly — status flips, re-mints,
+    card edits — while parallel lanes review. close.review.check_reviewer_motion
+    already scopes its card check to the story's OWN card for exactly this
+    reason; plan_review never got that fix.
+    """
+
+    def repo(self, tmp_path):
+        repo, env, _g = make_repo(tmp_path)
+        (repo / ".xp" / "config.yml").write_text(CONFIG.format(spec="claude/haiku/low"))
+        (Path(env["XP_DATA"]) / "plan.md").write_text(TWO_CARDS)
+        draft = tmp_path / "draft.md"
+        draft.write_text("PLAN-SENTINEL: two files, one red test, then the code.\n")
+        return repo, env, draft
+
+    def test_another_card_changing_mid_review_does_not_refuse_this_one(self, tmp_path):
+        repo, env, draft = self.repo(tmp_path)
+        stub_planner(tmp_path, motion="sibling")
+        r = plan_review(repo, env, "story-042", str(draft))
+        assert r.returncode == 0, (
+            f"a sibling lane's card edit refused this story's review:\n{r.stderr}"
+        )
+        assert "changed the repository" not in r.stderr, r.stderr
+
+    def test_this_storys_own_card_changing_still_refuses(self, tmp_path):
+        """The guard is not weakened — only scoped. A review that rewrites the
+        card it is being judged against is still the thing worth refusing."""
+        repo, env, draft = self.repo(tmp_path)
+        stub_planner(tmp_path, motion="own")
+        r = plan_review(repo, env, "story-042", str(draft))
+        assert r.returncode != 0, "a review that edited its own card was accepted"
+        assert "changed the repository" in r.stderr, r.stderr
 
 
 class TestTheLaunch:

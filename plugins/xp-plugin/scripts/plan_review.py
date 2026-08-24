@@ -73,10 +73,15 @@ def build_bundle(charter: str, plan: str, card: str, out: Path) -> str:
     return "".join(f"## {title}\n\n{body}\n\n" for title, body in sections)
 
 
-def review_state(
-    plan_file: Path,
-) -> tuple[tuple[str, str], bytes | None, bytes | None]:
-    """State a report-only plan reviewer must leave unchanged."""
+def review_state(plan_file: Path, story_id: str) -> tuple[tuple[str, str], bytes | None, str]:
+    """State a report-only plan reviewer must leave unchanged.
+
+    THIS STORY'S OWN CARD, never the whole plan: plan.md is project-global and the
+    lead edits it throughout a run — status flips, re-mints, a sibling lane's card
+    — so a whole-file digest refuses a review that did nothing wrong, and blames
+    the reviewer by name for it (bug 5a1abadb, which cost story-032 a full run).
+    close.review.check_reviewer_motion already scopes its card check this way.
+    """
 
     def contents(path: Path) -> bytes | None:
         try:
@@ -84,8 +89,7 @@ def review_state(
         except OSError:
             return None
 
-    live_plan = plan_path()
-    return tree_state(Path.cwd()), contents(plan_file), contents(live_plan)
+    return tree_state(Path.cwd()), contents(plan_file), card_for(story_id)
 
 
 def cmd_review(story_id: str, plan_file: Path, dry_run: bool) -> int:
@@ -226,7 +230,7 @@ def _run_review(
     story_id: str, plan_file: Path, charter: str, plan: str, card: str, out: Path, dry_run: bool
 ) -> int:
     try:
-        before = review_state(plan_file)
+        before = review_state(plan_file, story_id)
     except OSError as e:
         return fail(f"refused: cannot snapshot the repository before review: {e}")
     bundle = build_bundle(charter, plan, card, out)
@@ -234,7 +238,7 @@ def _run_review(
     if dry_run:
         return 0
     try:
-        changed = review_state(plan_file) != before
+        changed = review_state(plan_file, story_id) != before
     except OSError as e:
         return fail(f"refused: the plan reviewer left the repository unreadable: {e}")
     if changed:
