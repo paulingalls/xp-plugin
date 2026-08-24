@@ -476,3 +476,8 @@ class TestFixingReviewer:
         r = close(repo, env | {"XP_AGENT_TIMEOUT": "1"}, "review")
         assert r.returncode == 2 and "wall clock" in r.stderr
         assert not marker_file(tmp_path).exists()
+        # Field-reported: a lead read spawn.py to discover the bound was movable
+        # at all, and concluded the tool could not do the job. CLAUDE.md's rule is
+        # that every refusal names its next action, and a bound with no named knob
+        # names none.
+        assert "XP_AGENT_TIMEOUT" in r.stderr, r.stderr

@@ -297,7 +297,8 @@ def run(
         return "", f"could not launch the reviewer: {e}"
     except subprocess.TimeoutExpired as e:
         return "", (
-            f"the reviewer exceeded its {e.timeout:.0f}s wall clock and was killed."
+            f"the reviewer exceeded its {e.timeout:.0f}s wall clock and was killed"
+            f" — raise it with XP_AGENT_TIMEOUT=<seconds> and review again."
             f" Live output remains in {e.stderr}; check the tree for commits"
         )
     if proc.returncode != 0:
