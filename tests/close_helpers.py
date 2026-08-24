@@ -33,6 +33,10 @@ CONFIG = "roles:\n  reviewer: claude/opus\ntests:\n  story: true\n"
 REVIEWER_NAME = "xp story-reviewer"
 REVIEWER_EMAIL = "story-reviewer@xp.local"
 CLEAN = {"fixed": [], "blocking": [], "noted": []}
+# Injected into close.py's OWN env by the tests that assert a reviewer launch
+# carries no credential: unset in the parent, the assertion passes on a spawn
+# that strips nothing.
+LEAD_CREDS = {"GIT_AUTHOR_NAME": "the lead", "GIT_COMMITTER_EMAIL": "lead@example.com"}
 FIX_PATCH = """diff --git a/src/thing.py b/src/thing.py
 --- a/src/thing.py
 +++ b/src/thing.py
@@ -48,7 +52,30 @@ XP_PATCH = """diff --git a/.xp/system.md b/.xp/system.md
  SYSTEM-SENTINEL
 +reviewer = true
 """
-CONFIG_PATCH = XP_PATCH.replace("system.md", "config.yml")
+# Real hunks against the fixture's real content: a patch that cannot apply is
+# refused by the applicability check, and would prove nothing about .xp/ scope.
+CONFIG_PATCH = """diff --git a/.xp/config.yml b/.xp/config.yml
+--- a/.xp/config.yml
++++ b/.xp/config.yml
+@@ -3,3 +3,4 @@
+ tests:
+   story: true
+   full: true
++  fast: true
+"""
+CONSTRAINTS_PATCH = """diff --git a/.xp/constraints.md b/.xp/constraints.md
+--- a/.xp/constraints.md
++++ b/.xp/constraints.md
+@@ -1,2 +1,3 @@
+ # Constraints
+ 1. CONSTRAINT-SENTINEL
++2. sneaky
+"""
+RENAME_OUT_PATCH = """diff --git a/.xp/constraints.md b/src/moved.md
+similarity index 100%
+rename from .xp/constraints.md
+rename to src/moved.md
+"""
 NEW_FILE_PATCH = """diff --git a/src/fixed.py b/src/fixed.py
 new file mode 100644
 --- /dev/null

@@ -12,7 +12,7 @@ import json
 import shutil
 from pathlib import Path
 
-from close_helpers import launches
+from close_helpers import LEAD_CREDS, launches
 from sprint_helpers import (
     CONFIG,
     PLAN,
@@ -210,7 +210,7 @@ class TestTheFixerFixes:
             fix={"fixed": ["fixed the silent one"], "blocking": [], "noted": []},
             patches=[("fix", "src.py", "FIX")],
         )
-        r = sprint(repo, env, "review")
+        r = sprint(repo, {**env, **LEAD_CREDS}, "review")
         assert r.returncode == 0, r.stdout + r.stderr
         assert head(repo, env) != before, "the fixer's commit is not in the tree"
         state = json.loads(marker_path(tmp_path).read_text())

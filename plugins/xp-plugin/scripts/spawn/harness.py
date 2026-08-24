@@ -14,9 +14,11 @@ from work import data_root
 
 PLUGIN_ROOT = Path(__file__).parent.parent.parent
 
-# Bypass is REQUIRED, measured: acceptEdits denies `git add`/`git commit`, and an
-# --allowedTools list under bypass restricts nothing. The teammate is UNBOUNDED in
-# its throwaway worktree; self-closing is close.py's refusal (story-008), not a deny.
+# Bypass is REQUIRED for REVIEWERS TOO, re-measured at story-034's close: under
+# `--permission-mode acceptEdits` a headless claude denies Bash outright and denies
+# the out-of-workspace Write its report and patch need, then exits 0 with nothing on
+# disk. An --allowedTools list under bypass restricts nothing. The teammate is
+# UNBOUNDED in its throwaway worktree; self-closing is close.py's refusal (story-008).
 PERMISSION_ARGV = ["--dangerously-skip-permissions"]
 
 HARNESS_INSTALL = {

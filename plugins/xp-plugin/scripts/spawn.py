@@ -214,10 +214,9 @@ def run_agent(
     timeout = None
     if role.endswith("reviewer"):
         timeout = float(os.environ.get("XP_AGENT_TIMEOUT", 3600))
+        # The read-only bound is the ABSENT credential plus close.py's HEAD check,
+        # never the permission mode — bypass stays (harness.PERMISSION_ARGV).
         env = {k: v for k, v in env.items() if not k.startswith(("GIT_AUTHOR_", "GIT_COMMITTER_"))}
-    if role.endswith("reviewer") and harness == "claude":
-        argv = [a for a in argv if a != "--dangerously-skip-permissions"]
-        argv += ["--permission-mode", "acceptEdits"]
     return run_stream(
         argv, cwd, prompt, log_id, data_root(), harness, env, timeout, widen_git=False
     )

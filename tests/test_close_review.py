@@ -12,6 +12,7 @@ from close_helpers import (  # noqa: F401
     CLEAN,
     CLOSE,
     CONFIG,
+    LEAD_CREDS,
     PLUGIN,
     REVIEWER_NAME,
     WORK,
@@ -264,7 +265,7 @@ class TestReviewLeg:
 
     def test_review_launches_the_reviewer_with_the_bundle_inlined(self, tmp_path):
         repo, env, _g = make_repo(tmp_path)
-        r = close(repo, env, "review")
+        r = close(repo, {**env, **LEAD_CREDS}, "review")
         assert r.returncode == 0, r.stderr
         (launch,) = launches(tmp_path)
         argv = launch["argv"]
@@ -272,8 +273,10 @@ class TestReviewLeg:
         assert argv[argv.index("--model") + 1] == "opus"
         assert argv[argv.index("--output-format") + 1] == "stream-json"
         assert "--verbose" in argv
-        assert "--dangerously-skip-permissions" not in argv
-        assert ("--permission-mode", "acceptEdits") in list(pairwise(argv))
+        # acceptEdits denies Bash and the data-root Write (story-034 close): the
+        # read-only bound is the missing credential below, not the permission mode.
+        assert "--dangerously-skip-permissions" in argv
+        assert "--permission-mode" not in argv
         assert not [k for k in launch["env"] if k.startswith(("GIT_AUTHOR_", "GIT_COMMITTER_"))]
         prompt = launch["stdin"]
         assert "fault-inject" in prompt.lower()  # the charter, inlined
@@ -286,7 +289,7 @@ class TestReviewLeg:
         """N10: the only thing pinning the reviewer's role otherwise lives in
         test_spawn.py, which this story's Verify does not run."""
         repo, env, _g = make_repo(tmp_path)
-        close(repo, env, "review")
+        close(repo, {**env, **LEAD_CREDS}, "review")
         (launch,) = launches(tmp_path)
         assert launch["env"]["XP_ROLE"] == "reviewer"
         assert not [k for k in launch["env"] if k.startswith(("GIT_AUTHOR_", "GIT_COMMITTER_"))]
