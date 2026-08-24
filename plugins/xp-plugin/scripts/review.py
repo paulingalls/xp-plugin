@@ -213,18 +213,20 @@ def apply_patch(report: Path, card: str) -> str:
     path = patch_path(report)
     if not path.exists() or not path.stat().st_size:
         return ""
-    listed = git("apply", "--numstat", "-z", str(path), check=False)
-    if listed.returncode:
-        return f"the reviewer's patch is invalid: {listed.stderr.strip()}"
-    touched = [row.rsplit("\t", 1)[-1] for row in listed.stdout.split("\0") if row]
-    if bad := [p for p in touched if p.startswith(".xp/") and p not in declared_files(card)]:
-        return f"the reviewer proposed {', '.join(bad)} — the Files line does not name it"
     checked = git("apply", "--check", str(path), check=False)
     if checked.returncode:
         return f"the reviewer's patch does not apply cleanly: {checked.stderr.strip()}"
     applied = git("apply", "--index", str(path), check=False)
     if applied.returncode:
         return f"the reviewer's patch could not be applied: {applied.stderr.strip()}"
+    # SCOPE from the staged tree with --no-renames, never from `git apply --numstat`:
+    # numstat reports a rename's DESTINATION only, so a patch that renamed
+    # .xp/config.yml OUT of .xp/ read as untouched and deleted the gate file.
+    # Resetting is safe — check_reviewer_motion proved the tree clean and HEAD here.
+    touched = git("diff", "--cached", "--name-only", "--no-renames", "HEAD").stdout.splitlines()
+    if bad := [p for p in touched if p.startswith(".xp/") and p not in declared_files(card)]:
+        git("reset", "-q", "--hard", check=False)  # a refusal must not become a traceback
+        return f"the reviewer proposed {', '.join(bad)} — the Files line does not name it"
     env = os.environ | {
         "GIT_AUTHOR_NAME": REVIEWER_NAME,
         "GIT_COMMITTER_NAME": REVIEWER_NAME,

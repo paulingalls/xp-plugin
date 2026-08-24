@@ -9,8 +9,10 @@ from close_helpers import (  # noqa: F401
     CLEAN,
     CLOSE,
     CONFIG,
+    CONSTRAINTS_PATCH,
     FIX_PATCH,
     PLUGIN,
+    RENAME_OUT_PATCH,
     REVIEWER_EMAIL,
     REVIEWER_NAME,
     WORK,
@@ -156,12 +158,23 @@ class TestFixingReviewer:
         assert r.returncode == 2, "the reviewer rewrote the file that gates its own merge"
         assert "marker" in r.stderr.lower()
 
+    def test_a_patch_that_RENAMES_a_gate_file_out_of_xp_is_refused(self, tmp_path):
+        """`git apply --numstat` names a rename's DESTINATION only, so scoping on it
+        let a patch delete .xp/constraints.md by moving it out. Fault-injected."""
+        repo, env, g = make_repo(tmp_path)
+        self.fixing_stub(tmp_path, patch=RENAME_OUT_PATCH)
+        r = close(repo, env, "review")
+        assert r.returncode == 2 and ".xp/constraints.md" in r.stderr, r.stderr
+        assert (repo / ".xp" / "constraints.md").exists(), "the gate file was deleted"
+        assert g("status", "--porcelain").stdout == "", "a refused patch stayed staged"
+
     def test_a_reviewer_that_touches_xp_is_refused(self, tmp_path):
         """AC 6: it may fix code, never the plan."""
         repo, env, _g = make_repo(tmp_path)
-        self.fixing_stub(tmp_path, patch=XP_PATCH.replace("system.md", "constraints.md"))
+        self.fixing_stub(tmp_path, patch=CONSTRAINTS_PATCH)
         r = close(repo, env, "review")
-        assert r.returncode == 2 and ".xp" in r.stderr
+        assert r.returncode == 2 and ".xp/constraints.md" in r.stderr
+        assert "Files line" in r.stderr, "refused for applicability, not for scope"
 
     def test_a_reviewer_that_rewrites_its_OWN_card_is_refused(self, tmp_path):
         """story-019: the plan left the repo, so `git diff` stopped covering it and
