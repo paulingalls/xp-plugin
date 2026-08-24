@@ -7,8 +7,8 @@ These pin the SHAPE the code parses, never the content: a project's tiers,
 constraints and stories are legitimately its own.
 """
 
-import re
 from pathlib import Path
+from unittest.mock import patch
 
 
 class TestDogfoodMatchesTheScaffold:
@@ -20,7 +20,26 @@ class TestDogfoodMatchesTheScaffold:
     SHIPPED = REPO / "plugins" / "xp-plugin" / "templates"
 
     def keys(self, path):
-        return {ln.split(":")[0] for ln in path.read_text().splitlines() if re.match(r"^\w+:", ln)}
+        lines = path.read_text().splitlines()
+        candidates = {}
+        for index, line in enumerate(lines):
+            if line and not line[0].isspace() and not line.startswith("#") and ":" in line:
+                candidates.setdefault(line.split(":", 1)[0], index)
+
+        from close import config_flat
+
+        found = set()
+        sentinel = "__dogfood_key_probe__"
+        for key, index in candidates.items():
+            probe = lines.copy()
+            probe[index] = f"{key}: {sentinel}"
+            with patch("close.Path") as path_type:
+                config = path_type.return_value
+                config.exists.return_value = True
+                config.read_text.return_value = "\n".join(probe)
+                if config_flat(key) == sentinel:
+                    found.add(key)
+        return found
 
     def test_our_config_carries_every_key_the_scaffold_ships(self):
         from session_start import missing_template_keys
@@ -38,6 +57,13 @@ class TestDogfoodMatchesTheScaffold:
         extra = {k for k in self.keys(self.OURS / "config.yml") - self.keys(shipped)}
         for key in sorted(extra):
             assert f"# {key}:" in text, f"we use {key!r} and the scaffold never mentions it"
+
+    def test_a_hyphenated_dogfood_key_is_not_invisible_to_the_drift_alarm(self, tmp_path):
+        ours = tmp_path / "config.yml"
+        ours.write_text((self.OURS / "config.yml").read_text() + "dogfood-only-key: yes\n")
+
+        extra = self.keys(ours) - self.keys(self.SHIPPED / "config.yml")
+        assert "dogfood-only-key" in extra, extra
 
     def test_the_shipped_plan_templates_card_passes_the_gate_that_reads_it(self):
         """b4c3ef33's practice, applied to the third template we parse: the card

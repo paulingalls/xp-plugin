@@ -40,7 +40,8 @@ def reviewed_repo(tmp_path):
 
 def legs(repo, env):
     """Every command that answers the question — one population, so neither
-    property below is asserted over a subset of the other's."""
+    property below is asserted over a subset of the other's. This population is
+    hand-maintained and cannot certify that a newly added call path is covered."""
     return {
         "spawn": run(SPAWN, repo, env, "story-042"),
         "spawn ready": run(SPAWN, repo, env, "ready", "story-042"),
