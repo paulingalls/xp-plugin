@@ -23,7 +23,7 @@ from env import data_root, plugin_root
 NOTE_CAP = 4000  # chars; measured: p90 of 392 records is 1,799, so this binds rarely
 
 
-STRUCTURAL = re.compile(r"^(## |Claim:|Falsifier:|Resolves:|Archives:|Files:)", re.M)
+STRUCTURAL = re.compile(r"^(## |Claim:|Falsifier:|Resolves:|Archives:|Files:|Story:)", re.M)
 
 
 def neutralize(text: str) -> str:
@@ -210,6 +210,9 @@ def user_ns() -> str:
 
 def append(root: Path, block: str) -> str:
     root.mkdir(parents=True, exist_ok=True)
+    if story_id := os.environ.get("XP_STORY_ID"):
+        heading, body = block.split("\n", 1)
+        block = f"{heading}\nStory: {neutralize(story_id)}\n{body}"
     with open(root / "work.md", "a") as f:
         fcntl.flock(f, fcntl.LOCK_EX)
         f.write(block)

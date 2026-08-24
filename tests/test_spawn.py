@@ -20,6 +20,7 @@ from spawn_helpers import (  # noqa: F401
     stub_codex,
     trunk_sha,
 )
+from test_spawn_escalation import ESCALATION, stub_escalating
 
 
 class TestLaunchContract:
@@ -100,6 +101,22 @@ class TestLaunchContract:
         except subprocess.TimeoutExpired:
             return
         raise AssertionError("the plan-reviewer role ran without a wall clock")
+
+    def test_a_respawn_inherits_the_stopped_teammates_artifacts_only(self, tmp_path):
+        repo, env, g = make_repo(tmp_path)
+        rec = stub_escalating(tmp_path, artifacts=True)
+        assert spawn(repo, env, "story-042").returncode == 3
+        first = json.loads(rec.read_text())["stdin"]
+        tree = Path(env["XP_DATA"]) / "worktrees" / "story-042"
+        g("worktree", "remove", "--force", str(tree))
+        g("branch", "-D", "ada/story-042-demo-story")
+        reset_to_ready(tmp_path)
+        rec = stub_claude(tmp_path)
+        assert spawn(repo, env, "story-042").returncode == 0
+        inherited = json.loads(rec.read_text())["stdin"]
+        assert inherited.startswith(first)
+        for mark in ("DRAFT-SENTINEL", "FINDING-ONE", "FINDING-TWO", ESCALATION):
+            assert mark in inherited
 
 
 def reset_to_ready(tmp_path):

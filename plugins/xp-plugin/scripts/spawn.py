@@ -21,6 +21,7 @@ sys.path.insert(0, str(Path(__file__).parent / "spawn"))
 # (close -> spawn -> close) and fails before fail/git exist (story-008).
 from bookkeep import bootstrap_command, worktree_command
 from close import fail, git, integration_target, story_card
+from handoff import draft_path, inheritance, marker_path, report_handoff
 from harness import (
     HARNESS_INSTALL,
     agent_argv,
@@ -152,19 +153,24 @@ def build_prompt(sections: list[tuple[str, str]]) -> str:
     return "\n".join(f"## {title}\n\n{body}\n" for title, body in sections)
 
 
-def teammate_sections(card: str) -> list[tuple[str, str]]:
-    return [
+def teammate_sections(card: str, story_id: str) -> list[tuple[str, str]]:
+    sections = [
         ("VALUES", _read_shipped(PLUGIN_ROOT / "VALUES.md")),
         # the escalation command must be runnable: work.py is not on PATH, and
         # spawn inlines this as raw prompt text, so ${CLAUDE_PLUGIN_ROOT} would
         # arrive literal. A teammate hitting "command not found" guesses instead.
         (
             "How you work",
-            _read_shipped(PLUGIN_ROOT / "TEAMMATE.md").replace("{PLUGIN_ROOT}", str(PLUGIN_ROOT)),
+            _read_shipped(PLUGIN_ROOT / "TEAMMATE.md")
+            .replace("{PLUGIN_ROOT}", str(PLUGIN_ROOT))
+            .replace("{PLAN_PATH}", str(draft_path(data_root(), story_id))),
         ),
         ("Your story card", card),
         ("Constraints", _read(Path(".xp/constraints.md"))),
     ]
+    if prior := inheritance(data_root(), story_id):
+        sections.append(("Predecessor handoff", prior))
+    return sections
 
 
 def _read(path: Path) -> str:
@@ -317,7 +323,7 @@ def cmd_spawn(story_id: str, override: str, dry_run: bool, in_place: bool = Fals
     branch = story_branch(card, story_id)
     tree = worktree_path(story_id)
     argv = agent_argv(harness, model, effort, "stream-json", "executor")
-    prompt = build_prompt(teammate_sections(card))
+    prompt = build_prompt(teammate_sections(card, story_id))
     report, warning = profile_report(card, prompt)
     print(report)
     if warning:
@@ -389,22 +395,9 @@ def cmd_spawn(story_id: str, override: str, dry_run: bool, in_place: bool = Fals
     # have left work uncommitted, so skipping the guard there withholds the
     # refusal exactly when it is worth most.
     if err := unclean_teammate_result(tree, handed_over, story_id):
-        filed = [eid for eid, _ in entries(data_root()) if eid not in before]
-        return escalated(story_id, filed, err, rc) if filed else fail(err)
+        return report_handoff(data_root(), story_id, before, err, rc)
+    marker_path(data_root(), story_id).unlink(missing_ok=True)
     return rc
-
-
-def escalated(story_id: str, filed: list[str], why: str, rc: int) -> int:
-    """The record tells a deliberate STOP (TEAMMATE.md: file it, then stop) from a
-    teammate that merely did not finish — and rc tells both from one that died."""
-    what = "ESCALATED by the teammate" if rc == 0 else f"DIED after filing (harness rc {rc})"
-    print(
-        f"{story_id} {what} — records filed: {', '.join(filed)}."
-        f" Read them (`work.py list`), then fix the card or take the work over."
-        f"\nWhat the handback guard saw: {why}",
-        file=sys.stderr,
-    )
-    return 3
 
 
 def tree_state(tree: Path) -> tuple[str, str]:

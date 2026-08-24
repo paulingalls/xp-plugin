@@ -289,7 +289,7 @@ def run_teammate(
         story_id,
         data_root,
         harness,
-        os.environ | {"XP_ROLE": "teammate"},
+        os.environ | {"XP_ROLE": "teammate", "XP_STORY_ID": story_id},
         out=out,
         err=err,
     )

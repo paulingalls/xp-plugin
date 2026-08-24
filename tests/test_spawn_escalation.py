@@ -16,6 +16,7 @@ teammate that files a note and stops has claimed exactly what stopping claims.
 import json
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 from spawn_helpers import SPAWN, make_repo, spawn
@@ -25,7 +26,15 @@ WORK = SPAWN.parent / "work.py"
 ESCALATION = "the card's AC3 cannot be built: the API it names returns no such field"
 
 
-def stub_escalating(tmp_path, commit=False, write_file=False, note=True, crash=False):
+def stub_escalating(
+    tmp_path,
+    commit=False,
+    write_file=False,
+    note=True,
+    crash=False,
+    wait_for=None,
+    artifacts=False,
+):
     """A teammate that files a work.md note and stops, with the other two knobs
     the guards turn on: whether it committed, and whether it left files behind."""
     bin_dir = tmp_path / "bin"
@@ -33,11 +42,17 @@ def stub_escalating(tmp_path, commit=False, write_file=False, note=True, crash=F
     rec = tmp_path / "launch.json"
     body = [
         "#!/usr/bin/env python3",
-        "import json, os, subprocess, sys",
+        "import json, os, subprocess, sys, time",
         "stdin = sys.stdin.read()",
-        f"json.dump({{'env': dict(os.environ)}}, open({str(rec)!r}, 'w'))",
+        f"json.dump({{'env': dict(os.environ), 'stdin': stdin}}, open({str(rec)!r}, 'w'))",
         f"if {write_file!r} or {commit!r}:",
         "    open('half-done.py', 'w').write('# WIP\\n')",
+        f"if {artifacts!r}:",
+        "    plans = os.path.join(os.environ['XP_DATA'], 'plans')",
+        "    os.makedirs(plans, exist_ok=True)",
+        "    open(os.path.join(plans, 'story-042.plan.md'), 'w').write('DRAFT-SENTINEL\\n')",
+        "    open(os.path.join(plans, 'story-042.md'), 'w').write('FINDING-ONE\\n')",
+        "    open(os.path.join(plans, 'story-042.round-2.md'), 'w').write('FINDING-TWO\\n')",
         f"if {commit!r}:",
         "    subprocess.run(['git', 'add', '-A'], check=True)",
         "    subprocess.run(['git', 'commit', '-qm', 'real work'], check=True)",
@@ -47,6 +62,9 @@ def stub_escalating(tmp_path, commit=False, write_file=False, note=True, crash=F
         # exercise the escalation seam, not that.
         f"    subprocess.run([{sys.executable!r}, {str(WORK)!r},",
         f"                    'note', {ESCALATION!r}], check=True)",
+        f"while {str(wait_for) if wait_for else ''!r} and not os.path.exists("
+        f"{str(wait_for) if wait_for else ''!r}):",
+        "    time.sleep(0.01)",
         f"if {crash!r}:",
         "    sys.exit(9)",
         "print(json.dumps({'type': 'result', 'subtype': 'success', 'result': 'stopped'}))",
@@ -57,13 +75,14 @@ def stub_escalating(tmp_path, commit=False, write_file=False, note=True, crash=F
 
 
 def file_note(repo, env, text):
-    subprocess.run(
+    return subprocess.run(
         [sys.executable, str(WORK), "note", text],
         cwd=repo,
         env=env,
         check=True,
         capture_output=True,
-    )
+        text=True,
+    ).stdout.strip()
 
 
 def records(env):
@@ -138,6 +157,57 @@ class TestDeliberateStop:
         assert r.returncode == 2, f"rc={r.returncode}\n{r.stderr}"
         assert "no commits" in r.stderr.lower(), r.stderr
         assert "escalat" not in r.stderr.lower(), r.stderr
+
+    def test_a_concurrent_lead_record_does_not_turn_a_yield_into_an_escalation(self, tmp_path):
+        repo, env, _g = make_repo(tmp_path)
+        release = tmp_path / "release"
+        rec = stub_escalating(tmp_path, note=False, wait_for=release)
+        proc = subprocess.Popen(
+            [sys.executable, str(SPAWN), "story-042"],
+            cwd=repo,
+            env=env,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        for _ in range(1000):
+            if rec.exists():
+                break
+            time.sleep(0.01)
+        else:
+            proc.kill()
+            raise AssertionError("the teammate never launched")
+        file_note(repo, env, "the lead filed this while the teammate ran\nStory: story-042")
+        release.touch()
+        _stdout, stderr = proc.communicate(timeout=10)
+        assert proc.returncode == 2, stderr
+        assert "escalat" not in stderr.lower(), stderr
+
+    def test_an_escalation_names_only_the_teammates_record(self, tmp_path):
+        repo, env, _g = make_repo(tmp_path)
+        release = tmp_path / "release"
+        rec = stub_escalating(tmp_path, wait_for=release)
+        proc = subprocess.Popen(
+            [sys.executable, str(SPAWN), "story-042"],
+            cwd=repo,
+            env=env,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        for _ in range(1000):
+            if rec.exists() and len(records(env)) == 1:
+                break
+            time.sleep(0.01)
+        else:
+            proc.kill()
+            raise AssertionError("the teammate never filed its escalation")
+        lead = file_note(repo, env, "the lead filed this during the teammate's stop")
+        teammate = next(line.split()[0] for line in records(env) if not line.startswith(lead))
+        release.touch()
+        _stdout, stderr = proc.communicate(timeout=10)
+        assert proc.returncode == 3 and "escalated by the teammate" in stderr.lower()
+        assert teammate in stderr and lead not in stderr, stderr
 
     def test_a_finished_story_is_never_an_escalation(self, tmp_path):
         """A record filed during a SUCCESSFUL run is a discovery, not a stop —

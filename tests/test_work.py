@@ -74,6 +74,22 @@ class TestNote:
         assert r.returncode == 0
         assert (data / "work.md").read_text().count("hello") == 1
 
+    def test_note_preserves_backticks_received_in_argv(self, tmp_path):
+        text = "the load-bearing `code quotation` stays"
+        assert run(["note", text], tmp_path).returncode == 0
+        assert text in (tmp_path / "work.md").read_text()
+
+    def test_the_shipped_escalation_command_preserves_backticks_through_a_shell(self, tmp_path):
+        teammate = (WORK.parent.parent / "TEAMMATE.md").read_text()
+        (line,) = [ln.strip() for ln in teammate.splitlines() if "scripts/work.py note" in ln]
+        text = "the load-bearing `code quotation` stays"
+        command = line.removeprefix("File it: `").removesuffix("`.")
+        command = command.replace("python3 ", f"{sys.executable} ", 1)
+        command = command.replace("{PLUGIN_ROOT}", str(WORK.parent.parent)).replace("...", text)
+        result = subprocess.run(command, shell=True, env={"XP_DATA": str(tmp_path)})
+        assert result.returncode == 0
+        assert text in (tmp_path / "work.md").read_text()
+
 
 class TestReviewFindings:
     """story-001 close review: forgery, no-repo error, git-derived root."""
