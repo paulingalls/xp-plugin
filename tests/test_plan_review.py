@@ -9,7 +9,7 @@ from itertools import pairwise
 from pathlib import Path
 
 import pytest
-from spawn_helpers import make_repo, spawn, stub_codex
+from spawn_helpers import make_repo, spawn, stub_claude, stub_codex
 
 PLUGIN = Path(__file__).parent.parent / "plugins" / "xp-plugin"
 PLAN_REVIEW = PLUGIN / "scripts" / "plan_review.py"
@@ -306,6 +306,23 @@ class TestTheProfileCarriesTheInvocation:
             section = bullet.split("- **")[0]
             assert str(PLAN_REVIEW) in section, section
             assert "python3" in section, section
+
+    def test_the_launched_plan_path_survives_worktree_removal(self, tmp_path):
+        repo, env, g = make_repo(tmp_path)
+        rec = stub_claude(tmp_path)
+        assert spawn(repo, env, "story-042").returncode == 0
+        prompt = json.loads(rec.read_text())["stdin"]
+        (line,) = [ln for ln in prompt.splitlines() if "Persistent PLAN_PATH: " in ln]
+        draft = Path(line.split("Persistent PLAN_PATH: ", 1)[1])
+        tree = Path(env["XP_DATA"]) / "worktrees" / "story-042"
+        assert not draft.is_relative_to(tree)
+        # spawn must MAKE it: the teammate drafts before plan_review.py, which is
+        # the only other creator, and a shell redirect into a missing directory
+        # sends the model back to the worktree this path exists to avoid
+        assert draft.parent.is_dir(), draft
+        draft.write_text("SURVIVES-UNWIND\n")
+        assert g("worktree", "remove", "--force", str(tree)).returncode == 0
+        assert draft.read_text() == "SURVIVES-UNWIND\n"
 
 
 class TestIncompleteReviewIsVisibleToTheLead:
