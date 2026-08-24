@@ -336,8 +336,7 @@ def cmd_spawn(story_id: str, override: str, dry_run: bool, in_place: bool = Fals
     # the corrected retry refuses with "already spawned" instead.
     system = Path(".xp/system.md")
     if not system.parent.exists():
-        # The rejected repair is `mkdir -p .xp && cp`: it half-scaffolds, and
-        # setup.py then refuses over the .xp/ it made, forever (test below).
+        # NOT a `mkdir -p .xp && cp`: that half-scaffold locks setup.py out for good.
         return fail(
             f"refused: no .xp/ here — is this an xp-managed repo? Restore .xp/ from"
             f" version control; xp-setup refuses over the plan at {plan_path()}"
@@ -349,10 +348,9 @@ def cmd_spawn(story_id: str, override: str, dry_run: bool, in_place: bool = Fals
             " then edit its Worktree bootstrap line"
         )
     try:
-        text = system.read_text()
+        command, problem = bootstrap_command(system.read_text())
     except UnicodeDecodeError as exc:
         return fail(f"refused: {system} is not UTF-8 ({exc}) — rewrite it as UTF-8 text")
-    command, problem = bootstrap_command(text)
     if problem:
         return fail("refused: " + problem)
     # The worktree is cut from a COMMIT, so anything uncommitted — including the
@@ -433,7 +431,11 @@ def unclean_teammate_result(tree: Path, handed_over: tuple[str, str], story_id: 
     """
     flip_head, handed_dirty = handed_over
     system = tree / ".xp/system.md"
-    teardown, problem = worktree_command(system.read_text() if system.exists() else "", "teardown")
+    try:
+        text = system.read_text() if system.exists() else ""
+        teardown, problem = worktree_command(text, "teardown")
+    except UnicodeDecodeError as exc:
+        teardown, problem = "", f"Could not read {system}: {exc}"
     discard = f"`git worktree remove {tree}`"
     if teardown:
         discard = (

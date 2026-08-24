@@ -2,6 +2,7 @@
 
 import os
 import signal
+import subprocess
 import time
 from contextlib import suppress
 from pathlib import Path
@@ -111,6 +112,26 @@ def test_a_teardown_that_raises_still_removes_the_worktree(tmp_path, monkeypatch
     assert not tree.exists(), "a raising teardown kept the worktree alive"
     assert "Worktree teardown could not run" in failed[0]
     assert "worktree removed; inspect external state manually" in failed[0]
+
+
+def test_the_handback_guard_survives_a_teammate_written_non_utf8_system(tmp_path):
+    """spawn's THIRD reader of this file. It parses the teardown line only to
+    enrich the handback refusal, so a decode error there costs the whole guard:
+    the teammate's uncommitted work goes unreported and spawn dies rc 1 instead."""
+    from spawn import unclean_teammate_result
+
+    _repo, _env, g = make_repo(tmp_path)
+    tree = tmp_path / "wt"
+    g("worktree", "add", "-q", str(tree), "main")
+    (tree / ".xp" / "system.md").write_bytes(b"**Worktree teardown**: `true` caf\xe9\n")
+    (tree / "left-behind.txt").write_text("uncommitted\n")
+    head = subprocess.run(
+        ["git", "rev-parse", "HEAD"], cwd=tree, capture_output=True, text=True
+    ).stdout.strip()
+
+    err = unclean_teammate_result(tree, (head, ""), "story-042")
+    assert "left work uncommitted" in err and "left-behind.txt" in err
+    assert "Could not read" in err
 
 
 def test_timeout_comes_from_the_post_merge_trunk_config(tmp_path):

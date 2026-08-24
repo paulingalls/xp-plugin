@@ -161,6 +161,16 @@ class TestBootstrap:
         line = f"{padding}{prefix}{label}{padding}: `echo ok`"
         assert worktree_command(line, action) == ("echo ok", "")
 
+    @pytest.mark.parametrize("label", ["worktree bootstrap", "**Worktree Bootstrap**"])
+    def test_a_miscased_label_refuses_rather_than_running(self, label):
+        """The card dropped casefold() from the ACCEPTED grammar while the
+        collector still matches case-insensitively — so a miscased line is caught
+        and refused, never silently skipped. Nothing else pins that pairing."""
+        from bookkeep import worktree_command
+
+        command, problem = worktree_command(f"{label}: `echo ok`", "bootstrap")
+        assert not command and "cannot read the Worktree bootstrap label" in problem
+
     def test_a_mixed_shape_duplicate_still_refuses(self):
         from bookkeep import worktree_command
 
