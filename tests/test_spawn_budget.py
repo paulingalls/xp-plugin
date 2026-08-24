@@ -67,3 +67,17 @@ class TestBudget:
         loud = spawn(repo, env, "story-042", "--dry-run")
         assert "constraints.md" in loud.stderr and "over the" in loud.stderr
         assert loud.returncode == 0  # reports, never refuses: the project's tradeoff
+
+    def test_project_owned_absences_stay_tolerant_at_each_consumer(self, tmp_path):
+        repo, env, _g = make_repo(tmp_path)
+        (repo / ".xp" / "constraints.md").unlink()
+        r = spawn(repo, env, "story-042", "--dry-run")
+        missing_constraints = "(missing: .xp/constraints.md)"
+        missing_claude = "(missing: CLAUDE.md)"
+        assert r.returncode == 0
+        expected = [
+            missing_constraints,
+            f"constraints.md {len(missing_constraints) // 4}",
+            f"CLAUDE.md {len(missing_claude) // 4}",
+        ]
+        assert not [item for item in expected if item not in r.stdout]

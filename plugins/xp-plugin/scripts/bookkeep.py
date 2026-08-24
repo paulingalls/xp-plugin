@@ -174,11 +174,11 @@ def worktree_command(system_md: str, action: str) -> tuple[str, str]:
     decide what that costs — bootstrap refuses the spawn, teardown reports and
     continues — because reading it wrong is the one failure this parser can hide.
     """
-    wanted = f"worktree {action}"
+    wanted = f"Worktree {action}"
     hits = []
     for ln in system_md.splitlines():
         label, sep, _ = ln.partition(":")
-        if sep and label.strip().strip("*-# ").casefold() == wanted:
+        if sep and label.strip().strip("*-# ").casefold() == wanted.casefold():
             hits.append(ln)
     if len(hits) > 1:
         # NEVER pick one: the template ships bootstrap as an unreadable
@@ -191,6 +191,17 @@ def worktree_command(system_md: str, action: str) -> tuple[str, str]:
             f" ({len(hits)} lines) — keep ONE and delete the rest:{listed}"
         )
     for ln in hits:
+        label = ln.partition(":")[0].strip()
+        if label.startswith(("- ", "* ")):
+            label = label[2:]
+        if label.startswith("**") and label.endswith("**"):
+            label = label[2:-2]
+        if label != wanted:
+            return "", (
+                f"cannot read the Worktree {action} label in .xp/system.md: {ln.strip()!r}"
+                f" — use `Worktree {action}`, optionally prefixed with '- ' or '* '"
+                " and optionally bolded"
+            )
         value = ln.partition(":")[2].strip().rstrip(".")
         if m := re.fullmatch(r"`([^`]+)`", value):
             return m.group(1), ""
