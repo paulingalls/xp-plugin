@@ -365,7 +365,7 @@ def main() -> int:
     root = data_root()
     if args.kind == "list":
         for eid, text in entries(root):
-            head = text.splitlines()
+            head = [ln for ln in text.splitlines() if not ln.startswith("Story: ")]
             print(f"{eid} {head[0][3:]} — {(head[1] if len(head) > 1 else '')[:60]}")
         return 0
     if args.kind == "archive":
