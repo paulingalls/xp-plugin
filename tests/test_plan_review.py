@@ -401,6 +401,24 @@ class TestPlanEditsInPlace:
         assert plan_review(repo, env, "story-042", str(draft)).returncode == 0
         assert draft.read_bytes() == before
 
+    @pytest.mark.parametrize(
+        "findings,motion,mark",
+        [
+            (CLEAN, "edit", "a clean review changed the plan"),
+            (EDITED, "", "an edited disposition left the plan unchanged"),
+        ],
+        ids=["clean-but-edited", "edited-but-clean"],
+    )
+    def test_a_disposition_the_plan_contradicts_refuses(self, tmp_path, findings, motion, mark):
+        """The byte comparison in BOTH directions, because a one-way check leaves
+        the reviewer's own report deciding what happened to the plan. Above, the
+        clean case is asserted against a stub that edits NOTHING, so it passes
+        against a do-nothing guard; these two are what make it red."""
+        repo, env, draft = self.repo(tmp_path)
+        stub_planner(tmp_path, findings=findings, motion=motion)
+        result = plan_review(repo, env, "story-042", str(draft))
+        assert result.returncode == 2 and mark in result.stderr, result.stderr
+
     def test_a_human_question_stops_and_keeps_the_incomplete_marker(self, tmp_path):
         repo, env, draft = self.repo(tmp_path)
         before = draft.read_bytes()

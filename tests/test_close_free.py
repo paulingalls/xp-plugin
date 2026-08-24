@@ -289,7 +289,9 @@ class TestFreeLand:
 
 
 class TestFreePostMerge:
-    def merged(self, tmp_path, card=False, manifest=""):
+    def reviewed(self, tmp_path, card=False, manifest="", extra=""):
+        """A reviewed free branch whose PR has NOT merged yet — the state the
+        post-merge leg must refuse from."""
         repo, env, g = free_repo(tmp_path)
         free(repo, env, "fix-typo", "start")
         commit_on_free(repo, g)
@@ -297,30 +299,58 @@ class TestFreePostMerge:
             add_free_card(env)
         assert free(repo, env, "fix-typo", "review").returncode == 0
         if manifest:
-            path = repo / "plugin.json"
-            path.write_text(json.dumps({"version": manifest}))
+            (repo / "plugin.json").write_text(json.dumps({"version": manifest}))
+            extra += "version_files: plugin.json\n"
+        if extra:
             config = repo / ".xp" / "config.yml"
-            config.write_text(config.read_text() + "version_files: plugin.json\n")
+            config.write_text(config.read_text() + extra)
             g("add", "-A")
             g("commit", "-qm", "release identity")
-        g("checkout", "-q", "main")
-        g("merge", "-q", "--no-ff", BRANCH, "-m", "merge free release")
         return repo, env, g
 
+    def merge_pr(self, g):
+        g("checkout", "-q", "main")
+        g("merge", "-q", "--no-ff", BRANCH, "-m", "merge free release")
+
     def test_post_merge_tags_the_merged_sha_and_retires_a_card(self, tmp_path):
-        repo, env, g = self.merged(tmp_path, card=True)
+        repo, env, g = self.reviewed(tmp_path, card=True)
+        self.merge_pr(g)
         merged = g("rev-parse", "HEAD").stdout.strip()
         result = free(repo, env, "fix-typo", "post-merge")
         assert result.returncode == 0, result.stderr
         assert g("rev-list", "-n1", "v0.2.1").stdout.strip() == merged
         assert "[done]" in (Path(env["XP_DATA"]) / "plan.md").read_text()
 
-    def test_a_manifest_behind_the_pending_tag_refuses_before_tagging(self, tmp_path):
-        repo, env, g = self.merged(tmp_path, manifest="0.2.0")
+    def test_post_merge_before_the_pr_merges_refuses_and_cuts_no_tag(self, tmp_path):
+        """The ordering half of AC 4, which nothing else on this leg drives:
+        blanking the branch the marker records leaves the whole suite green, and
+        constraint 14 can only red once a wrong tag EXISTS."""
+        repo, env, g = self.reviewed(tmp_path)
+        g("checkout", "-q", "main")
         result = free(repo, env, "fix-typo", "post-merge")
-        assert result.returncode == 2
-        assert "plugin.json" in result.stderr and "behind" in result.stderr.lower()
+        assert result.returncode == 2 and BRANCH in result.stderr
         assert "v0.2.1" not in g("tag").stdout.split()
+
+    def test_a_free_release_leaves_the_sprint_branch_key_alone(self, tmp_path):
+        """A patch release lands MID-SPRINT. Retiring `sprint_branch:` here would
+        redirect every later story close from the sprint branch to main, silently:
+        integration_target falls back to trunk the moment the key is gone."""
+        repo, env, g = self.reviewed(tmp_path, extra="sprint_branch: sprint-001\n")
+        self.merge_pr(g)
+        assert free(repo, env, "fix-typo", "post-merge").returncode == 0
+        assert "sprint_branch: sprint-001" in (repo / ".xp" / "config.yml").read_text()
+
+    @pytest.mark.parametrize("manifest,rc", [("0.2.0", 2), ("0.2.1", 0)], ids=["behind", "level"])
+    def test_the_manifest_must_name_the_tag_being_cut(self, tmp_path, manifest, rc):
+        """AC 5 in BOTH directions: a guard only ever asserted red could refuse
+        every release alike and no test here would know."""
+        repo, env, g = self.reviewed(tmp_path, manifest=manifest)
+        self.merge_pr(g)
+        result = free(repo, env, "fix-typo", "post-merge")
+        assert result.returncode == rc, result.stderr
+        if rc:
+            assert "plugin.json" in result.stderr and "behind" in result.stderr.lower()
+        assert ("v0.2.1" in g("tag").stdout.split()) is (rc == 0)
 
 
 class TestSharedLandGuards:
