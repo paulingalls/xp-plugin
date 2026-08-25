@@ -11,11 +11,18 @@ constraint 11's exact prohibition, and constraint 2's vacuous guard.
 
 What a script CAN hold is the half the decision made load-bearing: Files binds
 nothing in code EXCEPT the `.xp/` explicit grant. Both arms are CONSTRUCTED
-against the shipped gate — a reviewer commit that edits an undeclared ordinary
-file is permitted, one that edits an undeclared `.xp/` file refuses — so the
+against the shipped gate — a reviewer PATCH that touches an undeclared ordinary
+file is permitted, one that touches an undeclared `.xp/` file refuses — so the
 day someone widens the gate to all of Files, or drops the `.xp/` exception,
 this reds and the record reopens. The prose half is held where prose is held:
 the charters, re-read at every review.
+
+THE SITE MOVED AT STORY-034 and this followed it. It used to drive
+check_reviewer_motion over a reviewer COMMIT; reviewers no longer commit at all,
+so that arm began reding on the new design rather than on the property, and
+blocked sprint-006's close. The grant now lives in review.apply_patch, which
+scopes the STAGED tree. A falsifier that outlives the site it names is the
+failure this batch hit three times in one close (see 7fed6ef1, f009389a).
 """
 
 import os
@@ -29,9 +36,9 @@ import review
 CARD = "#### story-001 — demo   [ready]\nFiles: src/thing.py, .xp/config.yml\nVerify: true\n"
 
 
-def reviewer_motion_over(tmp: Path, path: str) -> str:
-    """A repo whose only post-review commit is the reviewer editing `path`.
-    Returns check_reviewer_motion's verdict: "" is permitted."""
+def apply_patch_over(tmp: Path, path: str) -> str:
+    """A repo where the reviewer's PATCH touches `path`.
+    Returns review.apply_patch's verdict: "" is permitted."""
     repo = tmp / path.replace("/", "_")
     (repo / ".xp").mkdir(parents=True)
     (repo / "src").mkdir()
@@ -49,28 +56,32 @@ def reviewer_motion_over(tmp: Path, path: str) -> str:
         ["git", "rev-parse", "HEAD"], cwd=repo, capture_output=True, text=True, check=True
     ).stdout.strip()
 
+    del head  # the patch path is judged on the STAGED tree, not on a range
+    # Built by STAGING and diffing --cached, never `diff --no-index`: the latter
+    # emits absolute a/ and b/ paths, and rewriting them by hand produces
+    # `a.xp/system.md` — a patch git cannot read, so apply_patch returns early and
+    # BOTH arms read as permitted. A falsifier that cannot construct its own
+    # condition asserts nothing (constraint 11).
     target = repo / path
     target.write_text("# the reviewer's fix\n")
     run("add", "-A")
-    run(
-        "-c",
-        f"user.name={review.REVIEWER_NAME}",
-        "-c",
-        f"user.email={review.REVIEWER_EMAIL}",
-        "commit",
-        "-qm",
-        "reviewer fix",
-    )
+    diff = subprocess.run(
+        ["git", "diff", "--cached", "HEAD"], cwd=repo, capture_output=True, text=True
+    ).stdout
+    run("reset", "-q", "HEAD")
+    target.unlink()  # apply_patch applies it; the tree must not already carry it
+    report = repo / "round-1.json"
+    review.patch_path(report).write_text(diff)
     cwd = Path.cwd()
     try:
         os.chdir(repo)
-        return review.check_reviewer_motion(head, repo / "no-such-marker.json", "", CARD)
+        return review.apply_patch(report, CARD)
     finally:
         os.chdir(cwd)
 
 
 def main(tmp: Path) -> int:
-    undeclared_ordinary = reviewer_motion_over(tmp, "src/other.py")
+    undeclared_ordinary = apply_patch_over(tmp, "src/other.py")
     if undeclared_ordinary:
         print(
             "an undeclared ORDINARY file was refused — Files is a permission list"
@@ -78,7 +89,7 @@ def main(tmp: Path) -> int:
             file=sys.stderr,
         )
         return 1
-    undeclared_xp = reviewer_motion_over(tmp, ".xp/system.md")
+    undeclared_xp = apply_patch_over(tmp, ".xp/system.md")
     if not undeclared_xp:
         print(
             "an undeclared .xp/ file was permitted — the explicit grant that stayed"

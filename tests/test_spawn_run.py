@@ -44,7 +44,9 @@ class TestAgentWallClock:
 
         monkeypatch.setenv("XP_AGENT_TIMEOUT", "1")
         rc = run_teammate(
-            ["/bin/sh", "-c", 'sleep 3; echo \'{"type": "result", "is_error": false}\''],
+            # 2 against XP_AGENT_TIMEOUT=1 proves unbounded as well as 3 did, and
+            # this is the suite's one literal sleep (debt 15aec3fc named it).
+            ["/bin/sh", "-c", 'sleep 2; echo \'{"type": "result", "is_error": false}\''],
             tmp_path,
             "",
             "story-042",
