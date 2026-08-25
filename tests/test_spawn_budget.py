@@ -2,6 +2,8 @@
 story-021, which needed the room under constraint 8's 500-line cap for the
 codex leg's tee ACs — the card's Verify names test_spawn_run.py."""
 
+from pathlib import Path
+
 from spawn_helpers import _total, make_repo, spawn, stub_claude
 
 
@@ -67,3 +69,33 @@ class TestBudget:
         loud = spawn(repo, env, "story-042", "--dry-run")
         assert "constraints.md" in loud.stderr and "over the" in loud.stderr
         assert loud.returncode == 0  # reports, never refuses: the project's tradeoff
+
+    def test_an_inherited_handoff_is_a_contributor_the_breakdown_names(self, tmp_path):
+        """It is the only contributor that grows while every file the breakdown
+        lists holds still, so omitting it blames a 34-token card for the overage
+        and the lead cannot find the tokens. Listed only when there IS one."""
+        repo, env, _g = make_repo(tmp_path)
+        stub_claude(tmp_path)
+        assert "predecessor handoff" not in spawn(repo, env, "story-042", "--dry-run").stdout
+
+        plans = Path(env["XP_DATA"]) / "plans"
+        plans.mkdir(parents=True, exist_ok=True)
+        (plans / "story-042.handoff.json").write_text('{"why": "no commits", "records": []}')
+        (plans / "story-042.plan.md").write_text("PLAN\n" + "bloat\n" * 3000)
+        loud = spawn(repo, env, "story-042", "--dry-run")
+        assert "predecessor handoff" in loud.stdout, loud.stdout
+        assert "predecessor handoff" in loud.stderr and "over the" in loud.stderr, loud.stderr
+
+    def test_project_owned_absences_stay_tolerant_at_each_consumer(self, tmp_path):
+        repo, env, _g = make_repo(tmp_path)
+        (repo / ".xp" / "constraints.md").unlink()
+        r = spawn(repo, env, "story-042", "--dry-run")
+        missing_constraints = "(missing: .xp/constraints.md)"
+        missing_claude = "(missing: CLAUDE.md)"
+        assert r.returncode == 0
+        expected = [
+            missing_constraints,
+            f"constraints.md {len(missing_constraints) // 4}",
+            f"CLAUDE.md {len(missing_claude) // 4}",
+        ]
+        assert not [item for item in expected if item not in r.stdout]

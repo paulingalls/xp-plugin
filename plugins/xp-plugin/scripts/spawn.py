@@ -11,7 +11,6 @@ profile is the mechanism and not a convenience (DESIGN §3).
 
 import argparse
 import os
-import re
 import subprocess
 import sys
 from pathlib import Path
@@ -20,7 +19,9 @@ sys.path.insert(0, str(Path(__file__).parent))
 sys.path.insert(0, str(Path(__file__).parent / "spawn"))
 # close must import back FUNCTION-LOCALLY: a module-level edge cycles
 # (close -> spawn -> close) and fails before fail/git exist (story-008).
+from bookkeep import bootstrap_command, worktree_command
 from close import fail, git, integration_target, story_card
+from handoff import draft_path, inheritance, marker_path, report_handoff
 from harness import (
     HARNESS_INSTALL,
     agent_argv,
@@ -28,17 +29,18 @@ from harness import (
     codex_argv,  # noqa: F401
     missing_harness,
 )
+from role_config import card_role, config_role
 from teammate_tee import run_stream, run_teammate
 from work import (
     card_title,
     chdir_repo_root,
-    config_block_value,
     data_root,
     entries,
     flip_card,
     missing_plan_refusal,
     plan_path,
     slugify,
+    strip_comment,
     user_ns,
 )
 
@@ -78,15 +80,21 @@ def plugin_shipped_chars() -> int:
     return sum(len(_read(p)) for p in shipped) + component_metadata_chars()
 
 
-def profile_report(card: str, prompt: str) -> tuple[str, str]:
+def profile_report(card: str, prompt: str, handoff: str) -> tuple[str, str]:
     """(breakdown for the lead, warning or "") — routed to the LEAD, never into
     the teammate's prompt where it is noise and unactionable. An always-identical
-    table is wallpaper (constraints.md #3), so the warning is what carries news."""
+    table is wallpaper (constraints.md #3), so the warning is what carries news.
+
+    `handoff` is listed only when there IS one, and it is taken as an argument
+    rather than re-derived: a contributor the breakdown cannot see is one the
+    overage warning blames some other file for."""
     project = {
         "the story card": len(card),
         "constraints.md": len(_read(Path(".xp/constraints.md"))),
         "CLAUDE.md": len(_read(Path("CLAUDE.md"))),
     }
+    if handoff:
+        project["predecessor handoff"] = len(handoff)
     total = (len(prompt) + project["CLAUDE.md"] + component_metadata_chars()) // 4
     shares = " · ".join(f"{k} {v // 4}" for k, v in project.items())
     # the CAPPED quantity, not a prompt-derived cousin of it: two computations
@@ -105,40 +113,37 @@ def profile_report(card: str, prompt: str) -> tuple[str, str]:
     )
 
 
-def bootstrap_command(system_md: str) -> tuple[str, str]:
-    """(command, problem) — at most one is ever non-empty.
-
-    ONE backticked command or nothing runs: a substring match would execute the
-    path in "none needed - see [a backticked path]". Deterministic, no judging
-    prose (#7). Unreadable REFUSES where absent stays silent — both were "" once,
-    and a literal-substring label missed the template's own bolded form, skipping
-    the bootstrap into an unprepared tree with no warning.
-    """
-    for ln in system_md.splitlines():
-        label, sep, value = ln.partition(":")
-        if not sep or label.strip().strip("*-# ").casefold() != "worktree bootstrap":
-            continue
-        value = value.strip().rstrip(".")
-        if m := re.fullmatch(r"`([^`]+)`", value):
-            return m.group(1), ""
-        if "`" not in value and re.match(r"none\b", value, re.I):
-            return "", ""
-        return "", (
-            f"cannot read the Worktree bootstrap line in .xp/system.md: {ln.strip()!r}"
-            " — the value must be ONE backticked command, or start with 'none'"
-        )
-    return "", ""
+def template_role_line(role: str) -> str:
+    return next(
+        line
+        for raw in (PLUGIN_ROOT / "templates" / "config.yml").read_text().splitlines()
+        if (line := strip_comment(raw).rstrip()).lstrip().startswith(f"{role}:")
+    )
 
 
 def resolve_role(role: str, card: str = "", override: str = "") -> tuple[str, str, str]:
-    """(harness, model, effort) — CLI override, then the card, then config roles.
-
-    Its own block-scan rather than close.config_flat, which matches at column 0
-    and cannot see `executor:` indented under `roles:`.
-    """
-    spec = override or _card_role(card, role) or _config_role(role)
+    spec = override or card_role(card, role)
+    config_source = not spec
+    if config_source:
+        spec = config_role(role, "\0")
+    if spec == "\0":
+        if not Path(".xp/config.yml").exists():
+            raise SystemExit(fail("refused: no .xp/config.yml here — is this an xp-managed repo?"))
+        raise SystemExit(
+            fail(
+                f"refused: roles.{role} is absent from .xp/config.yml — your config predates"
+                f" this key; add `{template_role_line(role)}` under `roles:`"
+            )
+        )
     parts = [p for p in spec.split("/") if p]
     if len(parts) < 2:
+        if config_source:
+            raise SystemExit(
+                fail(
+                    f"refused: roles.{role} in .xp/config.yml is malformed as {spec!r}"
+                    f" — replace it with `{template_role_line(role)}`"
+                )
+            )
         raise SystemExit(
             fail(f"refused: cannot resolve {role} from {spec!r} — want harness/model[/effort]")
         )
@@ -150,38 +155,28 @@ def resolve_role(role: str, card: str = "", override: str = "") -> tuple[str, st
     return harness, model, effort
 
 
-def _card_role(card: str, role: str) -> str:
-    """`Executor:` for the executor, `Reviewer:` for the reviewer. Keyed to the
-    ROLE, or one card cannot say "author codex, review claude"."""
-    label = f"{role.capitalize()}:"
-    for ln in card.splitlines():
-        if ln.startswith(label):
-            value = ln.removeprefix(label).strip()
-            return "" if value == "(default)" else value
-    return ""
-
-
-def _config_role(role: str) -> str:
-    return config_block_value("roles", role)
-
-
 def build_prompt(sections: list[tuple[str, str]]) -> str:
     return "\n".join(f"## {title}\n\n{body}\n" for title, body in sections)
 
 
-def teammate_sections(card: str) -> list[tuple[str, str]]:
-    return [
+def teammate_sections(card: str, story_id: str, handoff: str) -> list[tuple[str, str]]:
+    sections = [
         ("VALUES", _read_shipped(PLUGIN_ROOT / "VALUES.md")),
         # the escalation command must be runnable: work.py is not on PATH, and
         # spawn inlines this as raw prompt text, so ${CLAUDE_PLUGIN_ROOT} would
         # arrive literal. A teammate hitting "command not found" guesses instead.
         (
             "How you work",
-            _read_shipped(PLUGIN_ROOT / "TEAMMATE.md").replace("{PLUGIN_ROOT}", str(PLUGIN_ROOT)),
+            _read_shipped(PLUGIN_ROOT / "TEAMMATE.md")
+            .replace("{PLUGIN_ROOT}", str(PLUGIN_ROOT))
+            .replace("{PLAN_PATH}", str(draft_path(data_root(), story_id))),
         ),
         ("Your story card", card),
         ("Constraints", _read(Path(".xp/constraints.md"))),
     ]
+    if handoff:
+        sections.append(("Predecessor handoff", handoff))
+    return sections
 
 
 def _read(path: Path) -> str:
@@ -219,29 +214,18 @@ def run_agent(
     timeout = None
     if role.endswith("reviewer"):
         timeout = float(os.environ.get("XP_AGENT_TIMEOUT", 3600))
-    # The STORY reviewer alone: this name is the credential close.py and
-    # sprint_close.py gate the merge on, and the plan reviewer never earns it.
-    # EMAIL too: with the name alone, every email-keyed tool reports the lead.
-    # The sprint pipeline's finders, verifiers and closing pass are NOT it: only
-    # its fixer moves the tree, and a credential handed to a leg that must not
-    # commit turns sprint_close's stray-authorship refusal into a rubber stamp.
-    fixing = not log_id.startswith("sprint-") or log_id == "sprint-fix-review"
-    if role == "reviewer" and fixing:
-        from review import REVIEWER_EMAIL, REVIEWER_NAME
-
-        env |= {
-            "GIT_AUTHOR_NAME": REVIEWER_NAME,
-            "GIT_COMMITTER_NAME": REVIEWER_NAME,
-            "GIT_AUTHOR_EMAIL": REVIEWER_EMAIL,
-            "GIT_COMMITTER_EMAIL": REVIEWER_EMAIL,
-        }
-    return run_stream(argv, cwd, prompt, log_id, data_root(), harness, env, timeout)
+        # The read-only bound is the ABSENT credential plus close.py's HEAD check,
+        # never the permission mode — bypass stays (harness.PERMISSION_ARGV).
+        env = {k: v for k, v in env.items() if not k.startswith(("GIT_AUTHOR_", "GIT_COMMITTER_"))}
+    return run_stream(
+        argv, cwd, prompt, log_id, data_root(), harness, env, timeout, widen_git=False
+    )
 
 
 def common_dir_widening(cwd: Path) -> list[str]:
-    """["--add-dir", <git common dir>] for a LINKED worktree, [] otherwise: its
+    """["--add-dir", <git common dir>] for a LINKED executor worktree, [] otherwise: its
     index lives at <main>/.git/worktrees/<id>/, outside workspace-write, so a
-    codex agent there cannot commit (bug 0c31ac94; a /tmp scratch repo hides it,
+    codex teammate there cannot commit (bug 0c31ac94; a /tmp scratch repo hides it,
     since the sandbox writes /tmp anyway). A main checkout's .git is inside the
     workspace already; widening it would loosen the posture for nothing."""
     proc = subprocess.run(
@@ -334,8 +318,9 @@ def cmd_spawn(story_id: str, override: str, dry_run: bool, in_place: bool = Fals
     branch = story_branch(card, story_id)
     tree = worktree_path(story_id)
     argv = agent_argv(harness, model, effort, "stream-json", "executor")
-    prompt = build_prompt(teammate_sections(card))
-    report, warning = profile_report(card, prompt)
+    handoff = inheritance(data_root(), story_id)
+    prompt = build_prompt(teammate_sections(card, story_id, handoff))
+    report, warning = profile_report(card, prompt, handoff)
     print(report)
     if warning:
         print(warning, file=sys.stderr)
@@ -351,7 +336,23 @@ def cmd_spawn(story_id: str, override: str, dry_run: bool, in_place: bool = Fals
     # Parsed here and RUN below: reading the line needs no tree, and refusing
     # after `worktree add` leaves a tree and a branch whose only effect is that
     # the corrected retry refuses with "already spawned" instead.
-    command, problem = bootstrap_command(_read(Path(".xp/system.md")))
+    system = Path(".xp/system.md")
+    if not system.parent.exists():
+        # NOT a `mkdir -p .xp && cp`: that half-scaffold locks setup.py out for good.
+        return fail(
+            f"refused: no .xp/ here — is this an xp-managed repo? Restore .xp/ from"
+            f" version control; xp-setup refuses over the plan at {plan_path()}"
+        )
+    if not system.exists():
+        return fail(
+            f"refused: {system} is missing — the worktree bootstrap line lives there. Run"
+            f" `cp {PLUGIN_ROOT / 'templates' / 'system.md'} {system}`,"
+            " then edit its Worktree bootstrap line"
+        )
+    try:
+        command, problem = bootstrap_command(system.read_text())
+    except UnicodeDecodeError as exc:
+        return fail(f"refused: {system} is not UTF-8 ({exc}) — rewrite it as UTF-8 text")
     if problem:
         return fail("refused: " + problem)
     # The worktree is cut from a COMMIT, so anything uncommitted — including the
@@ -382,6 +383,11 @@ def cmd_spawn(story_id: str, override: str, dry_run: bool, in_place: bool = Fals
                 f" a teammate into a broken tree. Worktree left at {tree}"
             )
     flip_to_in_progress(story_id)
+    # The teammate is the FIRST writer of plans/ — it drafts before plan_review.py,
+    # which is what creates the directory today — and a shell redirect does not
+    # make one. Left to fail, the model's own recovery is to draft inside the
+    # worktree, which is exactly the loss this path exists to prevent.
+    draft_path(data_root(), story_id).parent.mkdir(parents=True, exist_ok=True)
     print(f"{branch} at {tree} (off {trunk})")
     handed_over = tree_state(tree)
     before = {eid for eid, _ in entries(data_root())}
@@ -390,22 +396,9 @@ def cmd_spawn(story_id: str, override: str, dry_run: bool, in_place: bool = Fals
     # have left work uncommitted, so skipping the guard there withholds the
     # refusal exactly when it is worth most.
     if err := unclean_teammate_result(tree, handed_over, story_id):
-        filed = [eid for eid, _ in entries(data_root()) if eid not in before]
-        return escalated(story_id, filed, err, rc) if filed else fail(err)
+        return report_handoff(data_root(), story_id, before, err, rc)
+    marker_path(data_root(), story_id).unlink(missing_ok=True)
     return rc
-
-
-def escalated(story_id: str, filed: list[str], why: str, rc: int) -> int:
-    """The record tells a deliberate STOP (TEAMMATE.md: file it, then stop) from a
-    teammate that merely did not finish — and rc tells both from one that died."""
-    what = "ESCALATED by the teammate" if rc == 0 else f"DIED after filing (harness rc {rc})"
-    print(
-        f"{story_id} {what} — records filed: {', '.join(filed)}."
-        f" Read them (`work.py list`), then fix the card or take the work over."
-        f"\nWhat the handback guard saw: {why}",
-        file=sys.stderr,
-    )
-    return 3
 
 
 def tree_state(tree: Path) -> tuple[str, str]:
@@ -431,10 +424,22 @@ def unclean_teammate_result(tree: Path, handed_over: tuple[str, str], story_id: 
     the teammate with whatever the bootstrap command dirtied before it started.
     """
     flip_head, handed_dirty = handed_over
+    system = tree / ".xp/system.md"
+    try:
+        text = system.read_text() if system.exists() else ""
+        teardown, problem = worktree_command(text, "teardown")
+    except UnicodeDecodeError as exc:
+        teardown, problem = "", f"Could not read {system}: {exc}"
+    discard = f"`git worktree remove {tree}`"
+    if teardown:
+        discard = (
+            f"running {teardown!r} and then `git worktree remove {tree}`"
+            " (add --force if teardown leaves files behind)"
+        )
     recovery = (
-        f" Recover by committing by hand in {tree}, or by"
-        f" `git worktree remove {tree}`, putting {story_id}'s heading back to [ready]"
-        f" in {plan_path()}, and re-spawning."
+        f" Recover by committing by hand in {tree}, or by {discard}, putting"
+        f" {story_id}'s heading back to [ready] in {plan_path()}, and re-spawning."
+        + (f" {problem}." if problem else "")
     )
     try:
         head, dirty = tree_state(tree)

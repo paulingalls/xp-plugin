@@ -21,8 +21,16 @@ pre-commit:
       # exit 5 = no tests collected — legal while the suite is growing
       run: sh -c 'pytest -q -n auto -m "not slow"; s=$?; [ $s -eq 5 ] && exit 0; exit $s'
 
+# pre-push RE-CHECKS what pre-commit checked, over the whole tree rather than
+# staged files. A `--no-verify` or `core.hooksPath` bypass leaves no trace in the
+# commit, so the ACT is unverifiable after the fact — but every commit-stage gate
+# here is a pure function of the tree, so the OUTCOME still is (a8195145).
 pre-push:
   commands:
+    lint:
+      run: ruff check .
+    secrets:
+      run: gitleaks git --no-banner --redact
     full-tests:
       run: sh -c 'pytest -q -n auto; s=$?; [ $s -eq 5 ] && exit 0; exit $s'
     ratchet:

@@ -44,13 +44,36 @@ class TestAgentWallClock:
 
         monkeypatch.setenv("XP_AGENT_TIMEOUT", "1")
         rc = run_teammate(
-            ["/bin/sh", "-c", 'sleep 3; echo \'{"type": "result", "is_error": false}\''],
+            # 2 against XP_AGENT_TIMEOUT=1 proves unbounded as well as 3 did, and
+            # this is the suite's one literal sleep (debt 15aec3fc named it).
+            ["/bin/sh", "-c", 'sleep 2; echo \'{"type": "result", "is_error": false}\''],
             tmp_path,
             "",
             "story-042",
             tmp_path / "data",
         )
         assert rc == 0, "a teammate story legitimately outruns any wall clock"
+
+    @pytest.mark.parametrize("role", ["plan-reviewer", "reviewer"])
+    def test_no_reviewer_launch_receives_a_git_credential(self, monkeypatch, tmp_path, role):
+        import spawn
+
+        seen = {}
+        monkeypatch.setenv("GIT_AUTHOR_NAME", "inherited lead")
+        monkeypatch.setenv("GIT_COMMITTER_EMAIL", "lead@example.com")
+        monkeypatch.setattr(
+            spawn,
+            "run_stream",
+            lambda *a, **k: (
+                seen.update(argv=a[0], env=a[6], options=k)
+                or subprocess.CompletedProcess(a[0], 0, "", "")
+            ),
+        )
+        argv = ["claude", "--dangerously-skip-permissions"]
+        spawn.run_agent(argv, tmp_path, "", role, "claude", "review")
+        assert not [k for k in seen["env"] if k.startswith(("GIT_AUTHOR_", "GIT_COMMITTER_"))]
+        assert seen["argv"] == ["claude", "--dangerously-skip-permissions"]
+        assert seen["options"]["widen_git"] is False
 
 
 class TestLiveTee:
@@ -133,6 +156,7 @@ class TestStreamJsonRequiresVerbose:
 
         claude = stub_claude_requiring_verbose(tmp_path)
         argv = claude_argv("sonnet", "medium", "stream-json")[1:]  # drop the "claude" argv[0]
+        assert "--dangerously-skip-permissions" in argv
         r = subprocess.run([str(claude), *argv], capture_output=True, text=True)
         assert r.returncode == 0, r.stderr
 

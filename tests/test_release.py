@@ -10,10 +10,13 @@ and consumers kept running the previous cached copy under the new name.
 import json
 import re
 import subprocess
+import sys
 from pathlib import Path
 
 REPO = Path(__file__).parent.parent
 MANIFEST = REPO / "plugins" / "xp-plugin" / ".claude-plugin" / "plugin.json"
+sys.path.insert(0, str(REPO / "plugins" / "xp-plugin" / "scripts"))
+from close import config_flat  # noqa: E402
 
 
 def parts(version):
@@ -69,3 +72,77 @@ def test_the_changelog_carries_an_entry_for_the_declared_version():
     assert f"v{declared()}" in (REPO / "CHANGELOG.md").read_text(), (
         f"CHANGELOG.md has no v{declared()} entry"
     )
+
+
+def test_this_repos_release_guard_reads_an_existing_manifest():
+    names = (name.strip() for name in config_flat("version_files").split(","))
+    paths = [REPO / name for name in names if name]
+    assert paths and all(path.is_file() for path in paths)
+
+
+def _refusal(tmp_path, monkeypatch, manifest_body=None):
+    """version_refusal against a scratch tree — the config key is read from cwd."""
+    import sys as _sys
+
+    _sys.path.insert(0, str(REPO / "plugins" / "xp-plugin" / "scripts" / "close"))
+    import release
+
+    xp = tmp_path / ".xp"
+    xp.mkdir()
+    (xp / "config.yml").write_text("version_files: pkg/manifest.json\n")
+    if manifest_body is not None:
+        (tmp_path / "pkg").mkdir()
+        (tmp_path / "pkg" / "manifest.json").write_text(manifest_body)
+    monkeypatch.chdir(tmp_path)
+    return release.version_refusal("v1.2.3")
+
+
+def test_a_missing_manifest_is_not_called_unreadable(tmp_path, monkeypatch):
+    """Absent and unreadable are different problems with different fixes — the
+    repo's most-filed defect class (90fcd7d4, 5a1abadb, c12ab60d, 2d32fe3d).
+    OSError was caught beside ValueError/KeyError, so a manifest that does not
+    exist and one full of garbage produced the same sentence, and the reader was
+    sent to fix a version field in a file they have not created."""
+    absent = _refusal(tmp_path, monkeypatch)
+    assert "missing" in absent, f"a manifest that does not exist: {absent!r}"
+    assert "no readable" not in absent, absent
+
+
+def test_a_present_but_malformed_manifest_still_says_unreadable(tmp_path, monkeypatch):
+    """The other arm, so the fix cannot collapse the pair the other way."""
+    bad = _refusal(tmp_path, monkeypatch, manifest_body="{not json")
+    assert "no readable" in bad, bad
+    assert "missing" not in bad, bad
+
+
+def test_a_release_that_checked_NO_manifest_says_so(tmp_path, monkeypatch):
+    """version_files ships COMMENTED, so a consuming project's post-merge printed
+    `tagged vX.Y.Z at <sha>` whether the manifest matched or whether nothing had
+    ever looked — the same line for a wall that held and a wall that is absent.
+    Constraint 14's whole failure mode is a release step nothing enforces."""
+    import sys as _sys
+
+    _sys.path.insert(0, str(REPO / "plugins" / "xp-plugin" / "scripts" / "close"))
+    import release
+
+    xp = tmp_path / ".xp"
+    xp.mkdir()
+    (xp / "config.yml").write_text("release: sprint\n")
+    monkeypatch.chdir(tmp_path)
+    assert release.version_files() == []
+    assert release.version_refusal("v1.2.3") == "", "no key configured is not a refusal"
+
+
+def test_a_release_that_DID_check_names_the_manifest_it_checked(tmp_path, monkeypatch):
+    """The pair: a report that says the same thing either way is the wallpaper
+    this replaces, so the two states must produce two different sentences."""
+    import sys as _sys
+
+    _sys.path.insert(0, str(REPO / "plugins" / "xp-plugin" / "scripts" / "close"))
+    import release
+
+    xp = tmp_path / ".xp"
+    xp.mkdir()
+    (xp / "config.yml").write_text("version_files: pkg/manifest.json, other.json\n")
+    monkeypatch.chdir(tmp_path)
+    assert release.version_files() == ["pkg/manifest.json", "other.json"]

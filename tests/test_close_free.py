@@ -9,13 +9,25 @@ import json
 import re
 import subprocess
 import sys
+from pathlib import Path
 
 import pytest
-from close_helpers import CLOSE, close, free, free_repo, gh_calls, make_repo, marker_file
+from close_helpers import (
+    CLOSE,
+    CONFIG_PATCH,
+    NEW_FILE_PATCH,
+    close,
+    free,
+    free_repo,
+    gh_calls,
+    make_repo,
+    marker_file,
+    stub_reviewer,
+)
 
 TODAY = datetime.date.today().isoformat()
 BRANCH = f"t/free-{TODAY}-fix-typo"
-KEY = f"free/{TODAY}-fix-typo"
+KEY = f"free-{TODAY}-fix-typo"
 
 
 def normalize(refusal: str) -> str:
@@ -38,6 +50,15 @@ def reviewed(tmp_path, slug="fix-typo"):
     r = free(repo, env, slug, "review")
     assert r.returncode == 0, r.stderr + r.stdout
     return repo, env, g
+
+
+def add_free_card(env, verify="true"):
+    plan = Path(env["XP_DATA"]) / "plan.md"
+    plan.write_text(
+        plan.read_text()
+        + f"\n### Free\n#### {KEY} — fix typo   [planned]\n"
+        + f"Context: small release.\nVerify: {verify}\n"
+    )
 
 
 class TestFreeStart:
@@ -75,6 +96,69 @@ class TestFreeStart:
 
 
 class TestFreeReview:
+    def test_a_dirty_refusal_does_not_advance_an_optional_card(self, tmp_path):
+        repo, env, g = free_repo(tmp_path)
+        free(repo, env, "fix-typo", "start")
+        commit_on_free(repo, g)
+        add_free_card(env)
+        (repo / "dirty.py").write_text("dirty = True\n")
+        result = free(repo, env, "fix-typo", "review")
+        assert result.returncode == 2 and "dirty" in result.stderr
+        assert "[planned]" in (Path(env["XP_DATA"]) / "plan.md").read_text()
+
+    def test_a_free_card_is_reviewed_minted_and_its_edit_reaches_shared_drift(self, tmp_path):
+        repo, env, g = free_repo(tmp_path)
+        free(repo, env, "fix-typo", "start")
+        commit_on_free(repo, g)
+        add_free_card(env)
+        reviewed = free(repo, env, "fix-typo", "review")
+        assert reviewed.returncode == 0, reviewed.stderr
+        from close_helpers import launches
+
+        assert "#### free-" in launches(tmp_path)[-1]["stdin"]
+        plan = (Path(env["XP_DATA"]) / "plan.md").read_text()
+        assert "[in-progress]" in plan
+        assert (Path(env["XP_DATA"]) / "markers" / f"{KEY}.ready.json").exists()
+        (Path(env["XP_DATA"]) / "plan.md").write_text(plan.replace("Verify: true", "Verify: false"))
+        landed = free(repo, env, "fix-typo", "land")
+        assert landed.returncode == 2
+        assert "edited after its plan review" in landed.stderr
+        assert "--- reviewed" in landed.stderr and "+++ now" in landed.stderr
+        plan_path = Path(env["XP_DATA"]) / "plan.md"
+        plan_path.write_text(plan_path.read_text().replace("[in-progress]", "[planned]"))
+        assert free(repo, env, "fix-typo", "review").returncode == 0
+        verified = free(repo, env, "fix-typo", "land")
+        assert verified.returncode == 2 and "Verify red" in verified.stderr
+
+    def test_a_deleted_free_card_cannot_drop_the_credential_it_minted(self, tmp_path):
+        """A free card is OPTIONAL, so a missing one reads as a card-less close —
+        but THIS one was minted and handed to the reviewer, and deleting it
+        between the two legs would silently drop its Verify and its digest. The
+        ready marker is what says a card was there to begin with."""
+        repo, env, g = free_repo(tmp_path)
+        free(repo, env, "fix-typo", "start")
+        commit_on_free(repo, g)
+        add_free_card(env)
+        assert free(repo, env, "fix-typo", "review").returncode == 0
+        plan = Path(env["XP_DATA"]) / "plan.md"
+        plan.write_text(plan.read_text().split(f"#### {KEY} ")[0])
+        result = free(repo, env, "fix-typo", "land")
+        assert result.returncode == 2 and KEY in result.stderr
+        assert not [c for c in gh_calls(tmp_path) if c[:2] == ["pr", "create"]]
+
+    def test_cardless_notice_varies_with_the_diff_and_reaches_stderr(self, tmp_path):
+        notices = []
+        for name, text in (("one", "B = 1\n"), ("two", "B = 1\nC = 2\n")):
+            repo, env, g = free_repo(tmp_path / name)
+            free(repo, env, "fix-typo", "start")
+            commit_on_free(repo, g, text=text)
+            result = free(repo, env, "fix-typo", "review")
+            assert result.returncode == 0, result.stderr
+            notices.append(
+                next(ln for ln in result.stderr.splitlines() if ln.startswith("warning: card-less"))
+            )
+        assert notices[0] != notices[1]
+
     def test_the_bundle_carries_no_story_card(self, tmp_path):
         """AC 1: card-less is the point — the bundle must SAY there is no card,
         not omit the section and let the reviewer invent a scope."""
@@ -97,21 +181,10 @@ class TestFreeReview:
         repo, env, g = free_repo(tmp_path)
         free(repo, env, "fix-typo", "start")
         commit_on_free(repo, g)
-        gh = tmp_path / "bin" / "claude"
-        gh.write_text(
-            gh.read_text().replace(
-                "sys.stdout.write",
-                "open('.xp/config.yml', 'a').write('# edited\\n')\n"
-                "import subprocess\n"
-                "subprocess.run(['git', 'add', '-A'])\n"
-                "subprocess.run(['git', '-c', 'user.name=xp story-reviewer',"
-                " '-c', 'user.email=story-reviewer@xp.local', 'commit', '-qm', 'r'])\n"
-                "sys.stdout.write",
-            )
-        )
+        stub_reviewer(tmp_path, patch=CONFIG_PATCH)
         r = free(repo, env, "fix-typo", "review")
         assert r.returncode == 2, r.stdout
-        assert ".xp/config.yml" in r.stderr and "may fix code" in r.stderr
+        assert ".xp/config.yml" in r.stderr and "Files line" in r.stderr
 
 
 class TestFreeLand:
@@ -203,19 +276,7 @@ class TestFreeLand:
         repo, env, g = free_repo(tmp_path)
         free(repo, env, "fix-typo", "start")
         commit_on_free(repo, g)
-        stub = tmp_path / "bin" / "claude"
-        stub.write_text(
-            stub.read_text().replace(
-                "sys.stdout.write",
-                "open('src/fixed.py', 'w').write('F = 1\\n')\n"
-                "import subprocess\n"
-                "subprocess.run(['git', 'add', '-A'])\n"
-                "subprocess.run(['git', '-c', 'user.name=xp story-reviewer',"
-                " '-c', 'user.email=story-reviewer@xp.local', 'commit', '-qm', 'r'])\n"
-                "sys.stdout.write",
-                1,
-            )
-        )
+        stub_reviewer(tmp_path, patch=NEW_FILE_PATCH)
         assert free(repo, env, "fix-typo", "review").returncode == 0
         r = free(repo, env, "fix-typo", "land")
         assert r.returncode == 0, r.stderr
@@ -229,6 +290,76 @@ class TestFreeLand:
         r = free(repo, env, "fix-typo", "land")
         assert r.returncode == 0, r.stderr
         assert "unreviewed" in r.stdout, r.stdout
+
+
+class TestFreePostMerge:
+    def reviewed(self, tmp_path, card=False, manifest="", extra=""):
+        """A reviewed free branch whose PR has NOT merged yet — the state the
+        post-merge leg must refuse from."""
+        repo, env, g = free_repo(tmp_path)
+        free(repo, env, "fix-typo", "start")
+        commit_on_free(repo, g)
+        if card:
+            add_free_card(env)
+        assert free(repo, env, "fix-typo", "review").returncode == 0
+        if manifest:
+            (repo / "plugin.json").write_text(json.dumps({"version": manifest}))
+            extra += "version_files: plugin.json\n"
+        if extra:
+            config = repo / ".xp" / "config.yml"
+            config.write_text(config.read_text() + extra)
+            g("add", "-A")
+            g("commit", "-qm", "release identity")
+        return repo, env, g
+
+    def merge_pr(self, g):
+        g("checkout", "-q", "main")
+        g("merge", "-q", "--no-ff", BRANCH, "-m", "merge free release")
+
+    def test_post_merge_tags_the_merged_sha_and_retires_a_card(self, tmp_path):
+        repo, env, g = self.reviewed(tmp_path, card=True)
+        self.merge_pr(g)
+        merged = g("rev-parse", "HEAD").stdout.strip()
+        result = free(repo, env, "fix-typo", "post-merge")
+        assert result.returncode == 0, result.stderr
+        assert g("rev-list", "-n1", "v0.2.1").stdout.strip() == merged
+        assert "[done]" in (Path(env["XP_DATA"]) / "plan.md").read_text()
+        # this project configured no version_files, and a tag cut with NOTHING
+        # walling the manifest must not read like one that passed a check
+        assert "NO manifest was checked" in result.stdout, result.stdout
+
+    def test_post_merge_before_the_pr_merges_refuses_and_cuts_no_tag(self, tmp_path):
+        """The ordering half of AC 4, which nothing else on this leg drives:
+        blanking the branch the marker records leaves the whole suite green, and
+        constraint 14 can only red once a wrong tag EXISTS."""
+        repo, env, g = self.reviewed(tmp_path)
+        g("checkout", "-q", "main")
+        result = free(repo, env, "fix-typo", "post-merge")
+        assert result.returncode == 2 and BRANCH in result.stderr
+        assert "v0.2.1" not in g("tag").stdout.split()
+
+    def test_a_free_release_leaves_the_sprint_branch_key_alone(self, tmp_path):
+        """A patch release lands MID-SPRINT. Retiring `sprint_branch:` here would
+        redirect every later story close from the sprint branch to main, silently:
+        integration_target falls back to trunk the moment the key is gone."""
+        repo, env, g = self.reviewed(tmp_path, extra="sprint_branch: sprint-001\n")
+        self.merge_pr(g)
+        assert free(repo, env, "fix-typo", "post-merge").returncode == 0
+        assert "sprint_branch: sprint-001" in (repo / ".xp" / "config.yml").read_text()
+
+    @pytest.mark.parametrize("manifest,rc", [("0.2.0", 2), ("0.2.1", 0)], ids=["behind", "level"])
+    def test_the_manifest_must_name_the_tag_being_cut(self, tmp_path, manifest, rc):
+        """AC 5 in BOTH directions: a guard only ever asserted red could refuse
+        every release alike and no test here would know."""
+        repo, env, g = self.reviewed(tmp_path, manifest=manifest)
+        self.merge_pr(g)
+        result = free(repo, env, "fix-typo", "post-merge")
+        assert result.returncode == rc, result.stderr
+        if rc:
+            assert "plugin.json" in result.stderr and "behind" in result.stderr.lower()
+        else:  # the pass NAMES what it checked, or it reads like the arm above
+            assert "manifests matching v0.2.1: plugin.json" in result.stdout, result.stdout
+        assert ("v0.2.1" in g("tag").stdout.split()) is (rc == 0)
 
 
 class TestSharedLandGuards:
@@ -320,7 +451,7 @@ class TestSharedLandGuards:
 
 
 class TestFreeIsUndocumentedNowhere:
-    def test_free_help_names_the_three_actions(self, tmp_path):
+    def test_free_help_names_the_four_actions(self, tmp_path):
         """Constraint 12: a surface a consuming project drives must answer
         --help without doing anything."""
         r = subprocess.run(
@@ -330,5 +461,5 @@ class TestFreeIsUndocumentedNowhere:
             cwd=tmp_path,
         )
         assert r.returncode == 0
-        for action in ("start", "review", "land"):
+        for action in ("start", "review", "land", "post-merge"):
             assert action in r.stdout

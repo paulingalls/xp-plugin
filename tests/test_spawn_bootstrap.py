@@ -3,6 +3,11 @@ prose, and which refuse. Split from test_spawn.py at v0.6.2, when the refusal
 half pushed that file past the 500-line cap.
 Verify: pytest -q tests/test_spawn_bootstrap.py"""
 
+import re
+import shutil
+import subprocess
+
+import pytest
 from spawn_helpers import (
     make_repo,
     set_system_md,
@@ -12,6 +17,56 @@ from spawn_helpers import (
 
 
 class TestBootstrap:
+    def test_missing_system_refuses_before_the_worktree_and_repairs_the_file(self, tmp_path):
+        repo, env, g = make_repo(tmp_path)
+        stub_claude(tmp_path)
+        (repo / ".xp" / "system.md").unlink()
+        g("add", "-A")
+        g("commit", "-qm", "drop system.md")
+
+        r = spawn(repo, env, "story-042")
+        assert r.returncode == 2 and ".xp/system.md" in r.stderr
+        assert not (tmp_path / "data" / "worktrees" / "story-042").exists()
+        command = re.search(r"`([^`]+)`", r.stderr).group(1)
+        assert subprocess.run(command, shell=True, cwd=repo).returncode == 0
+        again = spawn(repo, env, "story-042")
+        assert again.returncode == 2 and "bootstrap line" in again.stderr
+        assert "is missing" not in again.stderr
+
+    def test_an_unscaffolded_repo_is_not_told_to_half_scaffold_itself(self, tmp_path):
+        """A card-level `Executor:` walks past resolve_role's .xp/config.yml gate,
+        so this state is reachable. Following EVERY command the refusal offers must
+        not CREATE .xp/: `mkdir -p .xp && cp` made one holding only system.md, which
+        setup.py refuses over ever after ('.xp/ already exists'), while the next
+        spawn succeeded with no constraints and no wall."""
+        repo, env, g = make_repo(tmp_path, executor="claude/sonnet/medium")
+        stub_claude(tmp_path)
+        shutil.rmtree(repo / ".xp")
+        g("add", "-A")
+        g("commit", "-qm", "drop xp directory")
+
+        r = spawn(repo, env, "story-042")
+        assert r.returncode == 2 and ".xp/" in r.stderr
+        for command in re.findall(r"`([^`]+)`", r.stderr):
+            subprocess.run(command, shell=True, cwd=repo)
+        assert not (repo / ".xp").exists()
+        assert spawn(repo, env, "story-042").returncode == 2
+
+    def test_a_non_utf8_system_refuses_rather_than_tracebacking(self, tmp_path):
+        """Present but undecodable is the same absent-vs-unreadable conflation one
+        encoding down — and remove_story_worktree already guards its own call site
+        against exactly this file (bug 3895c908)."""
+        repo, env, g = make_repo(tmp_path)
+        stub_claude(tmp_path)
+        (repo / ".xp" / "system.md").write_bytes(b"\xff\xfe**Worktree bootstrap**: `true`\n")
+        g("add", "-A")
+        g("commit", "-qm", "non-utf-8 system.md")
+
+        r = spawn(repo, env, "story-042")
+        assert r.returncode == 2 and ".xp/system.md" in r.stderr
+        assert "Traceback" not in r.stderr
+        assert not (tmp_path / "data" / "worktrees" / "story-042").exists()
+
     def test_backticked_command_runs_in_the_worktree(self, tmp_path):
         repo, env, _g = make_repo(tmp_path)
         stub_claude(tmp_path)
@@ -89,8 +144,49 @@ class TestBootstrap:
     def test_no_line_at_all_stays_silent(self, tmp_path):
         repo, env, _g = make_repo(tmp_path)
         stub_claude(tmp_path)
-        set_system_md(repo, "**Stack**: python")
+        set_system_md(repo, "**Stack**: `touch not-a-bootstrap`")
         assert spawn(repo, env, "story-042").returncode == 0
+        tree = tmp_path / "data" / "worktrees" / "story-042"
+        assert not (tree / "not-a-bootstrap").exists()
+
+    @pytest.mark.parametrize("action", ["bootstrap", "teardown"])
+    @pytest.mark.parametrize("prefix", ["", "- ", "* "])
+    @pytest.mark.parametrize("bold", [False, True])
+    @pytest.mark.parametrize("padding", ["", "  "])
+    def test_the_label_grammar_matches_its_optional_parts(self, action, prefix, bold, padding):
+        from bookkeep import worktree_command
+
+        wanted = f"Worktree {action}"
+        label = f"**{wanted}**" if bold else wanted
+        line = f"{padding}{prefix}{label}{padding}: `echo ok`"
+        assert worktree_command(line, action) == ("echo ok", "")
+
+    @pytest.mark.parametrize("label", ["worktree bootstrap", "**Worktree Bootstrap**"])
+    def test_a_miscased_label_refuses_rather_than_running(self, label):
+        """The card dropped casefold() from the ACCEPTED grammar while the
+        collector still matches case-insensitively — so a miscased line is caught
+        and refused, never silently skipped. Nothing else pins that pairing."""
+        from bookkeep import worktree_command
+
+        command, problem = worktree_command(f"{label}: `echo ok`", "bootstrap")
+        assert not command and "cannot read the Worktree bootstrap label" in problem
+
+    def test_a_mixed_shape_duplicate_still_refuses(self):
+        from bookkeep import worktree_command
+
+        system = "- **Worktree bootstrap**: `make dev`\n#### Worktree bootstrap: `npm ci`"
+        command, problem = worktree_command(system, "bootstrap")
+        assert not command and "appears more than once" in problem
+
+    def test_an_untaught_label_shape_refuses_without_running(self, tmp_path):
+        repo, env, _g = make_repo(tmp_path)
+        stub_claude(tmp_path)
+        set_system_md(repo, "#### Worktree bootstrap: `touch not-accepted`")
+        r = spawn(repo, env, "story-042")
+        assert r.returncode == 2 and "Worktree bootstrap label" in r.stderr
+        assert "optionally prefixed with '- ' or '* ' and optionally bolded" in r.stderr
+        tree = tmp_path / "data" / "worktrees" / "story-042"
+        assert not (tree / "not-accepted").exists()
 
     def test_red_bootstrap_refuses_and_does_not_launch(self, tmp_path):
         """A teammate in a non-working tree is the silent-corrupting failure."""

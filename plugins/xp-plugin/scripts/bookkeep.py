@@ -6,12 +6,20 @@ seam, and it is why these live outside cmd_land's control flow.
 """
 
 import json
+import os
+import re
+import signal
 import subprocess
 import sys
+from contextlib import suppress
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 from work import card_title, data_root
+
+# templates/config.yml ships this number commented out, and test_dogfood pins the two
+# together: a default a project reads in prose and never gets is worse than no default.
+TEARDOWN_TIMEOUT = 60
 
 
 def git(*args: str, check: bool = False) -> subprocess.CompletedProcess:
@@ -157,10 +165,106 @@ def held_trunk_tree(trunk: str) -> tuple[str, str]:
     return "", ""
 
 
-def remove_story_worktree(tree: str) -> list[str]:
-    """Only `git branch -d` needs the worktree gone — MEASURED, the merge succeeds
+def worktree_command(system_md: str, action: str) -> tuple[str, str]:
+    """(command, problem) — at most one is ever non-empty, for `worktree <action>`.
+
+    ONE backticked command or nothing runs: a substring match would execute the
+    path in "none needed - see [a backticked path]". Deterministic, no judging
+    prose (#7). Unreadable and absent stay DIFFERENT things here and the callers
+    decide what that costs — bootstrap refuses the spawn, teardown reports and
+    continues — because reading it wrong is the one failure this parser can hide.
+    """
+    wanted = f"Worktree {action}"
+    hits = []
+    for ln in system_md.splitlines():
+        label, sep, _ = ln.partition(":")
+        if sep and label.strip().strip("*-# ").casefold() == wanted.casefold():
+            hits.append(ln)
+    if len(hits) > 1:
+        # NEVER pick one: the template ships bootstrap as an unreadable
+        # placeholder, so appending below it — how people edit a scaffolded file —
+        # refused over a line the consumer never wrote (bug 90fcd7d4), and either
+        # ordering is someone's idea of the obvious winner.
+        listed = "".join(f"\n  {h.strip()}" for h in hits)
+        return "", (
+            f"the Worktree {action} label appears more than once in .xp/system.md"
+            f" ({len(hits)} lines) — keep ONE and delete the rest:{listed}"
+        )
+    for ln in hits:
+        label = ln.partition(":")[0].strip()
+        if label.startswith(("- ", "* ")):
+            label = label[2:]
+        if label.startswith("**") and label.endswith("**"):
+            label = label[2:-2]
+        if label != wanted:
+            return "", (
+                f"cannot read the Worktree {action} label in .xp/system.md: {ln.strip()!r}"
+                f" — use `Worktree {action}`, optionally prefixed with '- ' or '* '"
+                " and optionally bolded"
+            )
+        value = ln.partition(":")[2].strip().rstrip(".")
+        if m := re.fullmatch(r"`([^`]+)`", value):
+            return m.group(1), ""
+        if "`" not in value and re.match(r"none\b", value, re.I):
+            return "", ""
+        return "", (
+            f"cannot read the Worktree {action} line in .xp/system.md: {ln.strip()!r}"
+            " — the value must be ONE backticked command, or start with 'none'"
+        )
+    return "", ""
+
+
+def bootstrap_command(system_md: str) -> tuple[str, str]:
+    return worktree_command(system_md, "bootstrap")
+
+
+def _teardown(tree: str, timeout_value: str) -> str:
+    """Run the project's teardown inside the doomed checkout — "" or what went wrong."""
+    system = Path(tree, ".xp/system.md")
+    command, problem = worktree_command(system.read_text() if system.exists() else "", "teardown")
+    if not command:
+        return problem
+    timeout = TEARDOWN_TIMEOUT
+    if timeout_value:
+        if timeout_value.isdigit() and int(timeout_value) > 0:
+            timeout = int(timeout_value)
+        else:
+            print(
+                f"teardown_timeout: {timeout_value!r} is not a positive integer — used {timeout}s",
+                file=sys.stderr,
+            )
+    # Its own session, so the timeout kill reaches the whole process group: a
+    # compound command leaves a shell whose children outlive a kill of the shell.
+    proc = subprocess.Popen(command, shell=True, cwd=tree, start_new_session=True)
+    try:
+        if proc.wait(timeout=timeout):
+            return f"Worktree teardown failed ({command!r})"
+    except subprocess.TimeoutExpired:
+        with suppress(ProcessLookupError):
+            os.killpg(proc.pid, signal.SIGKILL)
+        proc.wait()
+        return f"Worktree teardown timed out after {timeout}s ({command!r})"
+    return ""
+
+
+def remove_story_worktree(tree: str, timeout_value: str = "") -> list[str]:
+    """The teardown, then the removal that happens either way.
+
+    Only `git branch -d` needs the worktree gone — MEASURED, the merge succeeds
     while the branch is checked out elsewhere. So it runs just before the delete:
-    every refusal above names a next action the lead takes in that tree."""
-    if git("worktree", "remove", tree).returncode != 0:
-        return [f"git worktree remove {tree}"]
-    return []
+    every refusal above names a next action the lead takes in that tree.
+
+    The merge has LANDED by here, so a teardown reports and never refuses — and a
+    raise refuses hardest of all, taking the removal and the bookkeeping below it
+    down with a half-closed story (measured: a .xp/system.md that is not UTF-8).
+    """
+    try:
+        issue = _teardown(tree, timeout_value)
+    except Exception as e:
+        issue = f"Worktree teardown could not run: {e!r}"
+    removed = git("worktree", "remove", "--force", tree).returncode == 0
+    failed = [f"git worktree remove --force {tree}"] if not removed else []
+    if issue:
+        suffix = " — worktree removed; inspect external state manually" if removed else ""
+        failed.insert(0, issue + suffix)
+    return failed

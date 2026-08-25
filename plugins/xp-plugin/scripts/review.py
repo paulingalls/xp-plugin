@@ -2,6 +2,7 @@
 """Spawn the story-reviewer and read its structured report — close.py's review leg."""
 
 import json
+import os
 import re
 import subprocess
 import sys
@@ -19,10 +20,6 @@ REPORT_KEYS = ("fixed", "blocking", "noted")
 # before.
 ITEM_CAP = 400
 LIST_CAP = 20
-
-# No tool deny-list: it never bounded a reviewer that had Bash, so `git commit`
-# was always reachable. AUTHORSHIP is the real bound — any commit in the range the
-# reviewer did not sign means unreviewed work is riding along.
 
 REVIEWER_NAME = "xp story-reviewer"
 REVIEWER_EMAIL = "story-reviewer@xp.local"
@@ -77,6 +74,10 @@ def sprint_report_path(sprint_id: str, stage: str, round_n: int) -> Path:
     d = data_root() / "reports" / "sprint"
     d.mkdir(parents=True, exist_ok=True)
     return d / f"{sprint_id}.{stage}.round-{round_n}.json"
+
+
+def patch_path(report: Path) -> Path:
+    return report.with_suffix(".patch")
 
 
 def _cap(items: list, path: Path) -> list:
@@ -179,21 +180,12 @@ def check_reviewer_motion(
             "HEAD no longer contains the tree you were shown — the review REWROTE"
             " history, so commits it was handed are not in what would merge"
         )
-    rng = f"{reviewed_head}..HEAD"
-    strays = [
-        ln
-        for ln in git("log", "--format=%h|%an|%s", rng).stdout.splitlines()
-        if ln.split("|")[1] != REVIEWER_NAME
-    ]
-    if strays:
-        return refuse(
-            "commits in this review's range were not authored by the reviewer, so"
-            " work no reviewer read would ride the merge:\n  " + "\n  ".join(strays)
-        )
-    touched = git("diff", "--name-only", rng).stdout.splitlines()
-    # SCOPE, not a deny-list: a whole-directory ban wedged story-010, whose card
-    # named system.md; a three-path deny-list left system.md writable by the agent
-    # under review, and spawn EXECUTES its `Worktree bootstrap:` line via shell.
+    if git("rev-parse", "HEAD").stdout.strip() != reviewed_head:
+        return refuse("the read-only reviewer changed HEAD; no reviewer leg may commit")
+    return ""
+
+
+def declared_files(card: str) -> set[str]:
     declared, in_files = set(), False
     for ln in card.splitlines():
         if ln.startswith("Files:"):
@@ -202,11 +194,50 @@ def check_reviewer_motion(
             in_files = False
         if in_files:
             declared |= {f.strip() for f in ln.split(",") if f.strip()}
-    if bad := [f for f in touched if f.startswith(".xp/") and f not in declared]:
-        return refuse(
-            f"the reviewer changed {', '.join(bad)} — it may fix code, and only the"
-            " .xp/ files this story's Files line already names"
-        )
+    return declared
+
+
+def reviewer_strays(start: str, end: str) -> list[str]:
+    from close import git
+
+    return [
+        ln
+        for ln in git("log", "--format=%h|%an|%s", f"{start}..{end}").stdout.splitlines()
+        if ln.split("|")[1] != REVIEWER_NAME
+    ]
+
+
+def apply_patch(report: Path, card: str) -> str:
+    from close import git
+
+    path = patch_path(report)
+    if not path.exists() or not path.stat().st_size:
+        return ""
+    checked = git("apply", "--check", str(path), check=False)
+    if checked.returncode:
+        return f"the reviewer's patch does not apply cleanly: {checked.stderr.strip()}"
+    applied = git("apply", "--index", str(path), check=False)
+    if applied.returncode:
+        return f"the reviewer's patch could not be applied: {applied.stderr.strip()}"
+    # SCOPE from the staged tree with --no-renames, never from `git apply --numstat`:
+    # numstat reports a rename's DESTINATION only, so a patch that renamed
+    # .xp/config.yml OUT of .xp/ read as untouched and deleted the gate file.
+    # Resetting is safe — check_reviewer_motion proved the tree clean and HEAD here.
+    touched = git("diff", "--cached", "--name-only", "--no-renames", "HEAD").stdout.splitlines()
+    if bad := [p for p in touched if p.startswith(".xp/") and p not in declared_files(card)]:
+        git("reset", "-q", "--hard", check=False)  # a refusal must not become a traceback
+        return f"the reviewer proposed {', '.join(bad)} — the Files line does not name it"
+    env = os.environ | {
+        "GIT_AUTHOR_NAME": REVIEWER_NAME,
+        "GIT_COMMITTER_NAME": REVIEWER_NAME,
+        "GIT_AUTHOR_EMAIL": REVIEWER_EMAIL,
+        "GIT_COMMITTER_EMAIL": REVIEWER_EMAIL,
+    }
+    committed = subprocess.run(
+        ["git", "commit", "-qm", "reviewer patch"], capture_output=True, text=True, env=env
+    )
+    if committed.returncode:
+        return f"the reviewer patch did not commit: {committed.stderr.strip()}"
     return ""
 
 
@@ -297,7 +328,8 @@ def run(
         return "", f"could not launch the reviewer: {e}"
     except subprocess.TimeoutExpired as e:
         return "", (
-            f"the reviewer exceeded its {e.timeout:.0f}s wall clock and was killed."
+            f"the reviewer exceeded its {e.timeout:.0f}s wall clock and was killed"
+            f" — raise it with XP_AGENT_TIMEOUT=<seconds> and review again."
             f" Live output remains in {e.stderr}; check the tree for commits"
         )
     if proc.returncode != 0:

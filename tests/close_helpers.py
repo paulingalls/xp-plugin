@@ -33,6 +33,56 @@ CONFIG = "roles:\n  reviewer: claude/opus\ntests:\n  story: true\n"
 REVIEWER_NAME = "xp story-reviewer"
 REVIEWER_EMAIL = "story-reviewer@xp.local"
 CLEAN = {"fixed": [], "blocking": [], "noted": []}
+# Injected into close.py's OWN env by the tests that assert a reviewer launch
+# carries no credential: unset in the parent, the assertion passes on a spawn
+# that strips nothing.
+LEAD_CREDS = {"GIT_AUTHOR_NAME": "the lead", "GIT_COMMITTER_EMAIL": "lead@example.com"}
+FIX_PATCH = """diff --git a/src/thing.py b/src/thing.py
+--- a/src/thing.py
++++ b/src/thing.py
+@@ -1 +1,2 @@
+ A = 2
++x = 1
+"""
+XP_PATCH = """diff --git a/.xp/system.md b/.xp/system.md
+--- a/.xp/system.md
++++ b/.xp/system.md
+@@ -1,2 +1,3 @@
+ # System
+ SYSTEM-SENTINEL
++reviewer = true
+"""
+# Real hunks against the fixture's real content: a patch that cannot apply is
+# refused by the applicability check, and would prove nothing about .xp/ scope.
+CONFIG_PATCH = """diff --git a/.xp/config.yml b/.xp/config.yml
+--- a/.xp/config.yml
++++ b/.xp/config.yml
+@@ -3,3 +3,4 @@
+ tests:
+   story: true
+   full: true
++  fast: true
+"""
+CONSTRAINTS_PATCH = """diff --git a/.xp/constraints.md b/.xp/constraints.md
+--- a/.xp/constraints.md
++++ b/.xp/constraints.md
+@@ -1,2 +1,3 @@
+ # Constraints
+ 1. CONSTRAINT-SENTINEL
++2. sneaky
+"""
+RENAME_OUT_PATCH = """diff --git a/.xp/constraints.md b/src/moved.md
+similarity index 100%
+rename from .xp/constraints.md
+rename to src/moved.md
+"""
+NEW_FILE_PATCH = """diff --git a/src/fixed.py b/src/fixed.py
+new file mode 100644
+--- /dev/null
++++ b/src/fixed.py
+@@ -0,0 +1 @@
++F = 1
+"""
 
 
 def stream_json(result: str, session: str = "sess-stub") -> str:
@@ -50,7 +100,7 @@ def stream_json(result: str, session: str = "sess-stub") -> str:
     )
 
 
-def stub_reviewer(tmp_path, result="findings above", exit_code=0, raw=None, report=...):
+def stub_reviewer(tmp_path, result="findings above", exit_code=0, raw=None, report=..., patch=""):
     """A fake `claude` that APPENDS one JSONL record per launch.
 
     Append, not overwrite: an overwriting stub makes "the reviewer was not
@@ -80,6 +130,10 @@ def stub_reviewer(tmp_path, result="findings above", exit_code=0, raw=None, repo
         "    m = re.search(r'^REPORT_PATH: (.+)$', stdin, re.M)\n"
         "    assert m, 'the bundle named no REPORT_PATH'\n"
         "    open(m.group(1).strip(), 'w').write(body)\n"
+        f"patch = {patch!r}\n"
+        "m = re.search(r'^PATCH_PATH: (.+)$', stdin, re.M)\n"
+        "if m:\n"
+        "    open(m.group(1).strip(), 'w').write(patch)\n"
         f"sys.stdout.write({payload!r})\n"
         f"sys.exit({exit_code})\n"
     )
@@ -123,7 +177,16 @@ def mint_ready(repo, env, story_id="story-042"):
     plan.write_text(flip_status(plan.read_text(), story_id, "ready", "in-progress"))
 
 
-def make_repo(tmp_path, status="in-progress", verify="true", branch="main"):
+def make_repo(
+    tmp_path,
+    status="in-progress",
+    verify="true",
+    branch="main",
+    teardown=None,
+    bootstrap=None,
+    teardown_timeout=None,
+    system=True,
+):
     repo = tmp_path / "repo"
     (repo / ".xp").mkdir(parents=True)
     env = {
@@ -144,9 +207,16 @@ def make_repo(tmp_path, status="in-progress", verify="true", branch="main"):
     # walks past the one gate binding that line to the reviewed text.
     landing = status == "in-progress"
     plan.write_text(CARD.format(status="planned" if landing else status, verify=verify))
-    (repo / ".xp" / "config.yml").write_text(CONFIG)
+    timeout = f"teardown_timeout: {teardown_timeout}\n" if teardown_timeout is not None else ""
+    (repo / ".xp" / "config.yml").write_text(CONFIG + timeout)
     (repo / ".xp" / "constraints.md").write_text("# Constraints\n1. CONSTRAINT-SENTINEL\n")
-    (repo / ".xp" / "system.md").write_text("# System\nSYSTEM-SENTINEL\n")
+    if system:
+        lines = ["# System", "SYSTEM-SENTINEL"]
+        if bootstrap is not None:
+            lines.append(f"**Worktree bootstrap**: {bootstrap}")
+        if teardown is not None:
+            lines.append(f"**Worktree teardown**: {teardown}")
+        (repo / ".xp" / "system.md").write_text("\n".join(lines) + "\n")
     if landing:
         mint_ready(repo, env)
     (repo / "VALUES.md").write_text("# XP Values\nVALUES-SENTINEL\n")
@@ -159,6 +229,16 @@ def make_repo(tmp_path, status="in-progress", verify="true", branch="main"):
     g("add", "-A")
     g("commit", "-qm", "story work")
     return repo, env, g
+
+
+def worktree_land_setup(tmp_path, verify="true", **repo_options):
+    repo, env, g = make_repo(tmp_path, verify=verify, **repo_options)
+    assert close(repo, env, "review").returncode == 0
+    tree = tmp_path / "wt"
+    branch = g("rev-parse", "--abbrev-ref", "HEAD").stdout.strip()
+    g("checkout", "-q", "main")
+    g("worktree", "add", str(tree), branch)
+    return repo, env, g, tree, branch
 
 
 def close_bare(repo, env, *args):

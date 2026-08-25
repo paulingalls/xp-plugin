@@ -40,7 +40,10 @@ def reviewed_repo(tmp_path):
 
 def legs(repo, env):
     """Every command that answers the question — one population, so neither
-    property below is asserted over a subset of the other's."""
+    property below is asserted over a subset of the other's. Hand-maintained and
+    deliberately unguarded: the only guard available counts grepped call sites,
+    which constraint 11 bans — so a leg added later is uncovered until listed
+    here, and nothing reds to say so."""
     return {
         "spawn": run(SPAWN, repo, env, "story-042"),
         "spawn ready": run(SPAWN, repo, env, "ready", "story-042"),

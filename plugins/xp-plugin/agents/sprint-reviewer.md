@@ -55,12 +55,12 @@ saw the candidate list can act on them. `noted` — what you killed, and why.
 
 ## fixer
 
-You fix what survived, in the tree you were given: commit each fix, run nothing
-you were not asked to, leave the tree clean, and write commits a reader can
-follow. You may not touch `.xp/` — you fix code, never the plan or the rules.
-The lead reads your diff, and running land is how it accepts your work.
+Propose fixes for what survived, but leave the tree unchanged. Use Write to put
+one unified diff at PATCH_PATH; never commit. You may propose `.xp/` changes only
+when a sprint card's Files line names them. Close applies and commits the patch;
+running land is how the lead accepts it.
 
-`fixed` — what you changed. Default here: anything you can fix, fix. `blocking`
+`fixed` — what your patch changes. Default here: anything you can fix, fix. `blocking`
 — what you could NOT fix and that clears the consequence bar above; the release
 refuses while it is non-empty, so it is the most expensive thing you can write.
 `noted` — what you hand back deliberately.

@@ -16,8 +16,10 @@ sys.path.insert(0, str(Path(__file__).parent))
 sys.path.insert(0, str(Path(__file__).parent / "close"))
 import overlap
 import stages
-from close import config_flat, default_branch, fail, git, story_card
-from review import REVIEWER_NAME
+from close import default_branch, fail, git, story_card
+from release import cmd_post_merge as release_post_merge
+from release import next_version, refuse_unbumpable
+from review import reviewer_strays
 from work import (
     append,
     config_block_value,
@@ -26,6 +28,7 @@ from work import (
     falsifier_is_green,
     missing_plan_refusal,
     plan_path,
+    record_summary,
     stamp,
     work_entries_since,
 )
@@ -174,14 +177,22 @@ def cmd_review(sprint_id: str, dry_run: bool) -> int:
         path = review.sprint_report_path(sprint_id, key, round_n)
         if not dry_run:  # a preview must not delete the findings of a refused round
             path.unlink(missing_ok=True)
+            review.patch_path(path).unlink(missing_ok=True)
+        if stage == "fixer":
+            extra = [("Your patch", f"PATCH_PATH: {review.patch_path(path)}"), *extra]
         bundle = build_sprint_bundle(sprint_id, cards, base, path, charters[stage], extra)
+        stage_head = git("rev-parse", "HEAD").stdout.strip()
         result, err = review.run(bundle, Path.cwd(), dry_run, name=f"sprint {key}")
         if dry_run or err:  # an EMPTY report, not a shapeless one: a preview walks
             empty = {k: [] for k in review.REPORT_KEYS}
             return empty, review.abort_text(head, err) if err else ""
         print(result)  # before any refusal: the findings exist nowhere else yet
+        if motion := review.check_reviewer_motion(stage_head, marker, digest_before, cards):
+            return {k: [] for k in review.REPORT_KEYS}, motion
         report, err = review.read_report(path)
-        return report, review.abort_text(head, err) if err else ""
+        if not err and stage == "fixer":
+            err = review.apply_patch(path, cards)
+        return report, review.abort_text(stage_head, err) if err else ""
 
     prior = [("Findings from earlier rounds", render_sprint_prior(state.get("rounds", [])))]
     candidates = []
@@ -213,8 +224,6 @@ def cmd_review(sprint_id: str, dry_run: bool) -> int:
     if err:
         return fail(err)
 
-    if motion := review.check_reviewer_motion(head, marker, digest_before, cards):
-        return fail(motion)
     # No diff covers the plan now. Cross-lane BY CONSTRUCTION here, safe only
     # because a sprint review runs when every member is [done]: a mid-sprint run
     # would refuse and blame itself for a lane's flip.
@@ -294,34 +303,14 @@ def cmd_start(sprint_id: str) -> int:
     print(f"\n{len(members)} stories, {len(notes)} notes to triage. Each note: promote to")
     print("constraints.md/system.md via the retro diff, or archive it.\n")
     for text in notes:
-        lines = text.splitlines()
-        print(f"  {lines[0][3:]} — {(lines[1] if len(lines) > 1 else '')[:100]}")
+        heading, body = record_summary(text)
+        print(f"  {heading[3:]} — {body[:100]}")
     print("\n" + (PLUGIN_ROOT / "templates" / "retro.md").read_text())
     print(
         "Then write the sprint digest yourself — this leg emits facts, never a"
         " narrative (constraint 7). First line: # Session digest — written <ISO-ts> at <short-sha>"
     )
     return 0
-
-
-def next_version(part: str = "minor", ref: str = "HEAD") -> str:
-    """Bump the latest TAG REACHABLE FROM `ref` — the tree that will be the release,
-    which for a branch cut before the last release is not HEAD.
-    The tag is the source of truth: a plugin.json path is meaningless in a consuming project,
-    which is also why the scheme is checked: theirs is the input we don't pick.
-    Returns "" when the latest tag is not semver, so the caller refuses."""
-    latest = git("describe", "--tags", "--abbrev=0", ref, check=False).stdout.strip() or "v0.0.0"
-    if not (m := re.fullmatch(r"v?(\d+)\.(\d+)(\..*)?", latest)):
-        return ""
-    if part != "patch":
-        return f"v{m.group(1)}.{int(m.group(2)) + 1}.0"
-    patch = re.match(r"\.(\d+)", m.group(3) or "")
-    return f"v{m.group(1)}.{m.group(2)}.{int(patch.group(1)) + 1 if patch else 1}"
-
-
-def refuse_unbumpable(ref: str = "HEAD") -> int:
-    latest = git("describe", "--tags", "--abbrev=0", ref, check=False).stdout.strip()
-    return fail(f"refused: latest tag {latest!r} is not vMAJOR.MINOR — cannot bump it")
 
 
 def _is_retro_prose(path: str) -> bool:
@@ -362,12 +351,8 @@ def _coverage_refusal(sprint_id: str, head: str) -> str:
     # AUTHORSHIP, the story leg's rule: the review leg's fixer commits inside the
     # range its round covers, so a bare sha compare refuses the release over the
     # fixes the review exists to produce. Never over a GATE_FILE, whatever signed
-    # it — review-time motion permits any `.xp/` path a sprint card declares.
-    strays = [
-        ln
-        for ln in git("log", "--format=%h|%an|%s", f"{shown}..{head}").stdout.splitlines()
-        if ln.split("|")[1] != REVIEWER_NAME
-    ]
+    # it — patch application permits any `.xp/` path a sprint card declares.
+    strays = reviewer_strays(shown, head)
     if not strays and not any(f in overlap.GATE_FILES for f in moved.stdout.splitlines()):
         print(f"the delta since {shown[:8]} is the reviewer's own fixes")
         return ""
@@ -449,41 +434,4 @@ def cmd_land(sprint_id: str, dry_run: bool) -> int:
 
 
 def cmd_post_merge(sprint_id: str) -> int:
-    """Bump, tag and key retirement in ONE leg, on the merged sha.
-
-    A tag cut at PR-open names a commit that is not the release: the review
-    commits the PR exists to produce land after it, and a fetched tag never moves.
-    """
-    if (head := git("rev-parse", "--abbrev-ref", "HEAD").stdout.strip()) != (
-        trunk := default_branch()
-    ):
-        return fail(f"refused: on {head}, not {trunk} — the release tag names the MERGED sha")
-    sprint_branch = config_flat("sprint_branch")
-    if (
-        sprint_branch
-        and git("merge-base", "--is-ancestor", sprint_branch, "HEAD", check=False).returncode != 0
-    ):
-        return fail(
-            f"refused: {sprint_branch} is not merged into {trunk} — tagging here would"
-            " name a commit containing none of the sprint. Merge the release PR first"
-        )
-    if not (version := next_version()):
-        return refuse_unbumpable()
-    if git("rev-parse", "--verify", "-q", f"refs/tags/{version}", check=False).returncode == 0:
-        return fail(f"refused: tag {version} already exists — nothing was changed")
-    config = Path(".xp/config.yml")
-    if not config.exists():
-        return fail("refused: no .xp/config.yml here — is this an xp-managed repo?")
-    kept = [
-        ln
-        for ln in config.read_text().splitlines(keepends=True)
-        if not ln.startswith("sprint_branch:")
-    ]
-    if git("tag", version, check=False).returncode != 0:
-        return fail(f"refused: could not create tag {version}")
-    config.write_text("".join(kept))
-    print(
-        f"tagged {version} at {git('rev-parse', 'HEAD').stdout.strip()[:8]}; sprint_branch retired"
-    )
-    print("commit the config change, push the tag, and open the next sprint")
-    return 0
+    return release_post_merge(sprint_id)

@@ -7,8 +7,8 @@ These pin the SHAPE the code parses, never the content: a project's tiers,
 constraints and stories are legitimately its own.
 """
 
-import re
 from pathlib import Path
+from unittest.mock import patch
 
 
 class TestDogfoodMatchesTheScaffold:
@@ -20,10 +20,33 @@ class TestDogfoodMatchesTheScaffold:
     SHIPPED = REPO / "plugins" / "xp-plugin" / "templates"
 
     def keys(self, path):
-        return {ln.split(":")[0] for ln in path.read_text().splitlines() if re.match(r"^\w+:", ln)}
+        lines = path.read_text().splitlines()
+        candidates = {}
+        for index, line in enumerate(lines):
+            if line and not line[0].isspace() and not line.startswith("#") and ":" in line:
+                candidates.setdefault(line.split(":", 1)[0], index)
+
+        from close import config_flat
+
+        found = set()
+        sentinel = "__dogfood_key_probe__"
+        for key, index in candidates.items():
+            probe = lines.copy()
+            probe[index] = f"{key}: {sentinel}"
+            with patch("close.Path") as path_type:
+                config = path_type.return_value
+                config.exists.return_value = True
+                config.read_text.return_value = "\n".join(probe)
+                if config_flat(key) == sentinel:
+                    found.add(key)
+        return found
 
     def test_our_config_carries_every_key_the_scaffold_ships(self):
-        missing = self.keys(self.SHIPPED / "config.yml") - self.keys(self.OURS / "config.yml")
+        from session_start import missing_template_keys
+
+        missing = missing_template_keys(
+            (self.SHIPPED / "config.yml").read_text(), (self.OURS / "config.yml").read_text()
+        )
         assert not missing, f"we never exercise the shipped keys: {missing}"
 
     def test_the_scaffold_ships_no_key_we_invented_without_seeding(self):
@@ -34,6 +57,13 @@ class TestDogfoodMatchesTheScaffold:
         extra = {k for k in self.keys(self.OURS / "config.yml") - self.keys(shipped)}
         for key in sorted(extra):
             assert f"# {key}:" in text, f"we use {key!r} and the scaffold never mentions it"
+
+    def test_a_hyphenated_dogfood_key_is_not_invisible_to_the_drift_alarm(self, tmp_path):
+        ours = tmp_path / "config.yml"
+        ours.write_text((self.OURS / "config.yml").read_text() + "dogfood-only-key: yes\n")
+
+        extra = self.keys(ours) - self.keys(self.SHIPPED / "config.yml")
+        assert "dogfood-only-key" in extra, extra
 
     def test_the_shipped_plan_templates_card_passes_the_gate_that_reads_it(self):
         """b4c3ef33's practice, applied to the third template we parse: the card
@@ -72,6 +102,16 @@ class TestDogfoodMatchesTheScaffold:
             f"spawn cannot read the label the template teaches: {label!r}"
         )
 
+    def test_our_system_md_label_is_one_spawn_can_read(self):
+        from spawn import bootstrap_command
+
+        label = next(
+            ln.split(":", 1)[0]
+            for ln in (self.OURS / "system.md").read_text().splitlines()
+            if "Worktree bootstrap" in ln
+        )
+        assert bootstrap_command(f"{label}: `echo ok`")[0] == "echo ok", label
+
     def test_an_unedited_bootstrap_placeholder_refuses_rather_than_skipping(self):
         """Same discipline as tests.fast: EDIT-ME reddening the wall — a scaffold
         ships a placeholder, and a placeholder that silently means "no bootstrap"
@@ -80,6 +120,26 @@ class TestDogfoodMatchesTheScaffold:
 
         command, problem = bootstrap_command((self.SHIPPED / "system.md").read_text())
         assert not command and problem, "the unedited placeholder read as a valid no-op"
+
+    def test_the_shipped_teardown_value_is_a_readable_no_op(self):
+        from bookkeep import worktree_command
+
+        line = next(
+            ln
+            for ln in (self.SHIPPED / "system.md").read_text().splitlines()
+            if "Worktree teardown" in ln
+        )
+        assert worktree_command(line, "teardown") == ("", "")
+
+    def test_the_shipped_teardown_timeout_default_is_the_one_the_code_uses(self):
+        from bookkeep import TEARDOWN_TIMEOUT
+
+        line = next(
+            ln
+            for ln in (self.SHIPPED / "config.yml").read_text().splitlines()
+            if "teardown_timeout" in ln
+        )
+        assert f"teardown_timeout: {TEARDOWN_TIMEOUT}" in line, line
 
     def test_the_shipped_plan_parses_with_the_parser_sprint_close_uses(self):
         """Was a PAIR: it also read THIS repo's .xp/plan.md, so our live plan and

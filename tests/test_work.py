@@ -8,10 +8,11 @@ from pathlib import Path
 WORK = Path(__file__).parent.parent / "plugins" / "xp-plugin" / "scripts" / "work.py"
 
 
-def run(args, data_dir, check=False):
+def run(args, data_dir, check=False, story=""):
+    env = {"XP_DATA": str(data_dir), "PATH": "/usr/bin:/bin"}
     return subprocess.run(
         [sys.executable, str(WORK), *args],
-        env={"XP_DATA": str(data_dir), "PATH": "/usr/bin:/bin"},
+        env=env | {"XP_STORY_ID": story} if story else env,
         capture_output=True,
         text=True,
         check=check,
@@ -62,17 +63,41 @@ class TestBugDebtBoundary:
 
 class TestNote:
     def test_long_note_truncated_with_notice_exit_zero(self, tmp_path):
-        r = run(["note", "x" * 3000], tmp_path)
+        r = run(["note", "x" * 5000], tmp_path)
         assert r.returncode == 0
         text = (tmp_path / "work.md").read_text()
         assert "truncated" in text
-        assert "x" * 3000 not in text
+        assert "x" * 5000 not in text
 
     def test_first_append_creates_root_and_work_md(self, tmp_path):
         data = tmp_path / "deep" / "nested"
         r = run(["note", "hello"], data)
         assert r.returncode == 0
         assert (data / "work.md").read_text().count("hello") == 1
+
+    def test_note_preserves_backticks_received_in_argv(self, tmp_path):
+        text = "the load-bearing `code quotation` stays"
+        assert run(["note", text], tmp_path).returncode == 0
+        assert text in (tmp_path / "work.md").read_text()
+
+    def test_the_shipped_escalation_command_preserves_backticks_through_a_shell(self, tmp_path):
+        teammate = (WORK.parent.parent / "TEAMMATE.md").read_text()
+        (line,) = [ln.strip() for ln in teammate.splitlines() if "scripts/work.py note" in ln]
+        text = "the load-bearing `code quotation` stays"
+        command = line.removeprefix("File it: `").removesuffix("`.")
+        command = command.replace("python3 ", f"{sys.executable} ", 1)
+        command = command.replace("{PLUGIN_ROOT}", str(WORK.parent.parent)).replace("...", text)
+        result = subprocess.run(command, shell=True, env={"XP_DATA": str(tmp_path)})
+        assert result.returncode == 0
+        assert text in (tmp_path / "work.md").read_text()
+
+    def test_a_story_stamped_record_lists_its_claim_and_not_its_stamp(self, tmp_path):
+        """`list` is where the escalation refusal sends the lead, and it summarises
+        a record by its SECOND line — exactly where the story stamp lands."""
+        claim = "the API the card names returns no such field"
+        assert run(["note", claim], tmp_path, story="story-042").returncode == 0
+        assert "Story: story-042" in (tmp_path / "work.md").read_text()
+        assert claim in (listed := run(["list"], tmp_path).stdout), listed
 
 
 class TestReviewFindings:

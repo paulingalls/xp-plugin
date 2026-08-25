@@ -20,6 +20,7 @@ from spawn_helpers import (  # noqa: F401
     stub_codex,
     trunk_sha,
 )
+from test_spawn_escalation import ESCALATION, stub_escalating
 
 
 class TestLaunchContract:
@@ -100,6 +101,22 @@ class TestLaunchContract:
         except subprocess.TimeoutExpired:
             return
         raise AssertionError("the plan-reviewer role ran without a wall clock")
+
+    def test_a_respawn_inherits_the_stopped_teammates_artifacts_only(self, tmp_path):
+        repo, env, g = make_repo(tmp_path)
+        rec = stub_escalating(tmp_path, artifacts=True)
+        assert spawn(repo, env, "story-042").returncode == 3
+        first = json.loads(rec.read_text())["stdin"]
+        tree = Path(env["XP_DATA"]) / "worktrees" / "story-042"
+        g("worktree", "remove", "--force", str(tree))
+        g("branch", "-D", "ada/story-042-demo-story")
+        reset_to_ready(tmp_path)
+        rec = stub_claude(tmp_path)
+        assert spawn(repo, env, "story-042").returncode == 0
+        inherited = json.loads(rec.read_text())["stdin"]
+        assert inherited.startswith(first)
+        for mark in ("DRAFT-SENTINEL", "FINDING-ONE", "FINDING-TWO", ESCALATION):
+            assert mark in inherited
 
 
 def reset_to_ready(tmp_path):
@@ -250,6 +267,60 @@ class TestExecutorResolution:
             "",
         )
 
+    def test_an_absent_config_role_names_the_stale_key_and_line(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        from spawn import resolve_role
+
+        repo, _env, _g = make_repo(tmp_path)
+        (repo / ".xp" / "config.yml").write_text("roles:\n  executor: claude/sonnet\n")
+        monkeypatch.chdir(repo)
+        try:
+            resolve_role("plan-reviewer")
+        except SystemExit as error:
+            assert error.code == 2
+        message = capsys.readouterr().err
+        assert "roles.plan-reviewer" in message and ".xp/config.yml" in message
+        assert "`  plan-reviewer: claude/opus`" in message and "predates" in message
+
+    def test_a_malformed_config_role_names_the_bad_value_not_age(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        from spawn import resolve_role
+
+        repo, _env, _g = make_repo(tmp_path)
+        (repo / ".xp" / "config.yml").write_text("roles:\n  plan-reviewer: claude\n")
+        monkeypatch.chdir(repo)
+        for card in ("", "Plan-reviewer: claude\n"):
+            try:
+                resolve_role("plan-reviewer", card)
+            except SystemExit as error:
+                assert error.code == 2
+        config_message, card_message = capsys.readouterr().err.splitlines()
+        assert "roles.plan-reviewer" in config_message and ".xp/config.yml" in config_message
+        assert "`  plan-reviewer: claude/opus`" in config_message
+        assert "predates" not in config_message
+        assert "cannot resolve plan-reviewer from 'claude'" in card_message
+
+    def test_a_config_that_is_absent_entirely_is_not_called_stale(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        """An absent FILE and an absent KEY are different repairs — scaffold the
+        repo, or add one line — so they cannot share a sentence. sprint_close.py
+        already owns the wording for the first."""
+        from spawn import resolve_role
+
+        repo, _env, _g = make_repo(tmp_path)
+        (repo / ".xp" / "config.yml").unlink()
+        monkeypatch.chdir(repo)
+        try:
+            resolve_role("executor")
+        except SystemExit as error:
+            assert error.code == 2
+        message = capsys.readouterr().err
+        assert "no .xp/config.yml" in message, message
+        assert "predates" not in message and "under `roles:`" not in message
+
     def test_cli_override_beats_the_card(self, tmp_path):
         repo, env, _g = make_repo(tmp_path, executor="claude/opus/high")
         rec = stub_claude(tmp_path)
@@ -369,7 +440,7 @@ class TestCommonDirWidening:
         assert widening[:1] == ["--add-dir"]
         assert (main / ".git").resolve() == __import__("pathlib").Path(widening[1]).resolve()
 
-    def test_run_agent_applies_the_widening_to_the_launched_argv(self, tmp_path, monkeypatch):
+    def test_run_agent_keeps_the_git_common_dir_from_reviewers(self, tmp_path, monkeypatch):
         from spawn import agent_argv, run_agent
 
         main, wt = self._repo_with_worktree(tmp_path)
@@ -381,8 +452,8 @@ class TestCommonDirWidening:
         assert proc.returncode == 0, proc.stderr
         launched = json.loads(rec.read_text())["argv"]
         adds = [launched[i + 1] for i, arg in enumerate(launched) if arg == "--add-dir"]
-        assert len(adds) == 2, launched
-        assert str((main / ".git").resolve()) in adds
+        assert adds == [str(tmp_path / "data")], launched
+        assert str((main / ".git").resolve()) not in adds
 
     def test_the_TEAMMATE_launch_applies_it_too(self, tmp_path, monkeypatch):
         """ONE rule, one launch path. It had two: while the widening lived in

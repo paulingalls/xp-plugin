@@ -274,8 +274,28 @@ class TestCharterBar:
         written: PROCESS.md states it twice, at story close and at sprint close.
         """
         bar = "silent or corrupting (false green, corrupted record, unreviewed merge)"
-        assert bar in (PLUGIN / "PROCESS.md").read_text()
+        # Whitespace-normalised: the pin is the WORDS, not their wrapping. Matching
+        # raw text made a reflow of PROCESS.md read as a dropped bar — a false
+        # negative that says nothing about whether the charters copy it.
+        assert bar in prose(PLUGIN / "PROCESS.md")
         for name in ("story-reviewer", "sprint-reviewer"):
-            charter = (PLUGIN / "agents" / f"{name}.md").read_text()
+            charter = prose(PLUGIN / "agents" / f"{name}.md")
             assert bar not in charter, f"{name} still ships a second copy of the bar"
             assert "PROCESS" in charter, f"{name} dropped the copy without pointing"
+
+
+def test_every_shipped_skill_is_named_by_shipped_prose():
+    """A skill nothing points at is reachable only by someone who already knows it
+    exists, which is the opposite of what a skill is for. Measured: /sprint-close
+    and /xp-setup shipped for six sprints named by no prose, and the lead ran the
+    scripts they wrap for seven story closes and one sprint close — skipping, both
+    times, the judgment step the skill reserves and the script cannot enforce.
+
+    Enumerated from the directory, never a hand-list: a skill added later is
+    covered without editing this test (bug 6d384ef9).
+    """
+    process = (PLUGIN / "PROCESS.md").read_text()
+    shipped = sorted(d.name for d in (PLUGIN / "skills").iterdir() if d.is_dir())
+    assert shipped, "no skills found — the enumeration itself broke"
+    missing = [s for s in shipped if s not in process]
+    assert not missing, f"shipped but named by no prose: {', '.join(missing)}"

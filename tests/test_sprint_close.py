@@ -243,6 +243,23 @@ class TestStartIsReadOnly:
         assert "Retro" in r.stdout
         assert "digest" in r.stdout.lower()
 
+    def test_a_teammate_stamped_note_is_triaged_by_its_CLAIM_not_its_stamp(self, tmp_path):
+        """work.py stamps `Story: <id>` as a teammate-filed record's SECOND line,
+        and this listing took the second line as the claim — so every note a
+        teammate filed read `note <ts> — Story: story-0NN`, and the human decides
+        promote-or-archive on a line that says only which lane filed it. THIRD
+        reader of a record's second line; `work.py list` and the session banner
+        were both taught to skip the stamp and this one was not."""
+        repo, env, _g = make_repo(tmp_path)
+        claim = "THE-CLAIM-A-HUMAN-TRIAGES"
+        work(repo, env | {"XP_STORY_ID": "story-042"}, "note", claim)
+        r = sprint(repo, env, "start")
+        assert r.returncode == 0, r.stderr
+        listed = [ln for ln in r.stdout.splitlines() if ln.strip().startswith("note ")]
+        assert listed, r.stdout
+        assert claim in listed[0], f"the stamp displaced the claim: {listed[0]!r}"
+        assert "Story: story-042" not in listed[0], listed[0]
+
 
 class TestLandCoverage:
     """Bug c9b48a66: sprint land had NO coverage check, so a release PR could open

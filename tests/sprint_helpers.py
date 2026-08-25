@@ -118,7 +118,7 @@ def bundles(tmp_path, stage=""):
     return [b for r in launches(tmp_path) if (b := r["stdin"]) and stage_key(b).startswith(stage)]
 
 
-def staged_stub(tmp_path, commits=(), **stages):
+def staged_stub(tmp_path, patches=(), **stages):
     """A fake `claude` that answers PER STAGE, keyed off the report path.
 
     One body for every launch cannot tell a finder from the closing pass, so a
@@ -126,9 +126,8 @@ def staged_stub(tmp_path, commits=(), **stages):
     would pass against a pipeline that never ran the stage it names. Stage keys
     spell `-` as `_`: `find_security=`, `verify=`, `fix=`, `close=`, and a key
     answers every stage whose `-`-separated key it prefixes, so `find=` reaches
-    every angle's finder and not only the one whose slug has no hyphen. `commits` is
-    [(stage prefix, shell)] the stub runs after writing its report — a stub that
-    never moves the tree cannot exercise the motion gates (constraint 2).
+    every angle's finder and not only the one whose slug has no hyphen. `patches`
+    entries are (stage prefix, path, appended line).
     """
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir(exist_ok=True)
@@ -136,7 +135,7 @@ def staged_stub(tmp_path, commits=(), **stages):
     table = {k.replace("_", "-"): v for k, v in stages.items()}
     (bin_dir / "claude").write_text(
         "#!/usr/bin/env python3\n"
-        "import json, os, re, sys\n"
+        "import difflib, json, os, re, sys\n"
         "stdin = sys.stdin.read()\n"
         f"open({str(rec)!r}, 'a').write(json.dumps({{'argv': sys.argv[1:],"
         " 'env': dict(os.environ), 'stdin': stdin}) + '\\n')\n"
@@ -148,9 +147,15 @@ def staged_stub(tmp_path, commits=(), **stages):
         "hit = [v for k, v in table.items() if key == k or key.startswith(k + '-')]\n"
         "report = hit[0] if hit else clean\n"
         "open(m.group(1).strip(), 'w').write(json.dumps(report))\n"
-        f"for prefix, cmd in {json.dumps([list(c) for c in commits])}:\n"
+        "pm = re.search(r'^PATCH_PATH: (.+)$', stdin, re.M)\n"
+        f"for prefix, target, line in {json.dumps([list(c) for c in patches])}:\n"
         "    if key.startswith(prefix):\n"
-        "        os.system(cmd)\n"
+        "        before = open(target).read().splitlines(True)\n"
+        "        after = before + [line + '\\n']\n"
+        "        diff = 'diff --git a/{0} b/{0}\\n'.format(target)\n"
+        "        diff += ''.join(difflib.unified_diff(\n"
+        "            before, after, 'a/' + target, 'b/' + target))\n"
+        "        open(pm.group(1).strip(), 'w').write(diff)\n"
         f"sys.stdout.write({stream_json('findings above')!r})\n"
     )
     (bin_dir / "claude").chmod(0o755)

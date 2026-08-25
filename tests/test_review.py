@@ -12,6 +12,7 @@ import json
 import shutil
 from pathlib import Path
 
+from close_helpers import LEAD_CREDS, launches
 from sprint_helpers import (
     CONFIG,
     PLAN,
@@ -207,18 +208,21 @@ class TestTheFixerFixes:
             find=CANDIDATES,
             verify=SURVIVES,
             fix={"fixed": ["fixed the silent one"], "blocking": [], "noted": []},
-            commits=[("fix", "echo FIX >> src.py && git commit -qam fix")],
+            patches=[("fix", "src.py", "FIX")],
         )
-        r = sprint(repo, env, "review")
+        r = sprint(repo, {**env, **LEAD_CREDS}, "review")
         assert r.returncode == 0, r.stdout + r.stderr
         assert head(repo, env) != before, "the fixer's commit is not in the tree"
         state = json.loads(marker_path(tmp_path).read_text())
         assert state["rounds"][-1]["fixed"] == ["fixed the silent one"]
         assert state["shown_sha"] == head(repo, env), "the round names a tree nobody reviewed"
+        for launch in launches(tmp_path):
+            assert not [k for k in launch["env"] if k.startswith(("GIT_AUTHOR_", "GIT_COMMITTER_"))]
 
-    def test_a_commit_the_reviewer_did_not_AUTHOR_is_still_refused(self, tmp_path):
-        """The bound is authorship, not motion: run_agent signs every review
-        launch, so a commit under any other name is work no reviewer read."""
+    def test_a_STAGE_THAT_COMMITS_AT_ALL_is_refused(self, tmp_path):
+        """The bound INVERTED here: it was authorship, because run_agent signed
+        every review launch. It signs nothing now, so motion is the whole rule and
+        the identity a stage forges is beside the point."""
         repo, env, _g = make_repo(tmp_path)
         committing_stub(
             tmp_path,
@@ -227,7 +231,25 @@ class TestTheFixerFixes:
         )
         r = sprint(repo, env, "review")
         assert r.returncode == 2, r.stdout
-        assert "not authored by the reviewer" in r.stderr, r.stderr
+        assert "read-only reviewer changed HEAD" in r.stderr, r.stderr
+        assert not marker_path(tmp_path).exists(), "recorded a round it refused"
+
+    def test_a_fixer_patch_touching_an_UNDECLARED_xp_file_is_refused(self, tmp_path):
+        """The `.xp/` scope moved from the committed range to patch apply, and the
+        sprint arm passes the whole sprint's cards where the story arm passes one.
+        Only the story arm had a negative test, so this call site's refusal was
+        carried by nothing (constraint 2)."""
+        repo, env, _g = make_repo(tmp_path)
+        staged_stub(
+            tmp_path,
+            find=CANDIDATES,
+            verify=SURVIVES,
+            patches=[("fix", ".xp/constraints.md", "sneaky")],
+        )
+        r = sprint(repo, env, "review")
+        assert r.returncode == 2, r.stdout
+        assert ".xp/constraints.md" in r.stderr and "Files line" in r.stderr, r.stderr
+        assert "sneaky" not in (repo / ".xp" / "constraints.md").read_text()
         assert not marker_path(tmp_path).exists(), "recorded a round it refused"
 
     def test_a_reviewer_that_leaves_the_tree_DIRTY_is_refused(self, tmp_path):
@@ -249,7 +271,7 @@ class TestTheFixerFixes:
             tmp_path,
             find=CANDIDATES,
             verify=SURVIVES,
-            commits=[("fix", "echo FIX >> src.py && git commit -qam fix")],
+            patches=[("fix", "src.py", "FIX")],
         )
         r = sprint(repo, env, "review")
         assert r.returncode == 0, r.stderr
@@ -267,7 +289,7 @@ class TestTheFixerFixes:
             tmp_path,
             find=CANDIDATES,
             verify=SURVIVES,
-            commits=[("fix", "echo FIXED_BY_THE_REVIEWER = 1 >> src.py && git commit -qam fix")],
+            patches=[("fix", "src.py", "FIXED_BY_THE_REVIEWER = 1")],
         )
         assert sprint(repo, env, "review").returncode == 0
         land = sprint(repo, env, "land")  # not --dry-run: a preview runs nothing
@@ -289,7 +311,7 @@ class TestTheFixerFixes:
             tmp_path,
             find=CANDIDATES,
             verify=SURVIVES,
-            commits=[("fix", "echo boot: x >> .xp/system.md && git commit -qam fix")],
+            patches=[("fix", ".xp/system.md", "boot: x")],
         )
         assert sprint(repo, env, "review").returncode == 0
         land = sprint(repo, env, "land")
@@ -350,7 +372,7 @@ class TestTheClosingPass:
             tmp_path,
             find=CANDIDATES,
             verify=SURVIVES,
-            commits=[("fix", "echo THE_FIXERS_LINE = 1 >> src.py && git commit -qam fix")],
+            patches=[("fix", "src.py", "THE_FIXERS_LINE = 1")],
         )
         assert sprint(repo, env, "review").returncode == 0
         assert "THE_FIXERS_LINE" in bundles(tmp_path, "close")[0]

@@ -13,9 +13,9 @@ instead.
 
 ## The process, enforced
 
-- Multi-file change → draft plan → spawn `plan-reviewer` agent → address findings →
-  then write code. Red test first; never fake a red for config/docs commits — say so
-  in the commit body.
+- Multi-file change → draft plan → `scripts/plan_review.py <story-id> <plan-file>` →
+  re-read the plan, the reviewer's edits land there → then write code. Red test
+  first; never fake a red for config/docs commits — say so in the commit body.
 - Story done → run the `/story-close` checklist (spawns `story-reviewer`).
 - Records (bug/debt/note) per PROCESS.md; mid-sprint you may record, never schedule.
 - Git hooks (lefthook) are the wall: ruff + gitleaks + fast tests at commit, full

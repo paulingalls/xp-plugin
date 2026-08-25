@@ -1,13 +1,10 @@
 #!/usr/bin/env python3
-"""SessionStart hook: inject the lead profile (DESIGN §8) for xp-managed repos.
-
-Deterministic assembly only — no judgment (constraints.md #7). Degrades to
-silence on any unexpected state: a broken hook must never break a session.
-"""
+"""Inject the lead profile without breaking a session on failure."""
 
 import contextlib
 import json
 import os
+import re
 import subprocess
 import sys
 import traceback
@@ -15,11 +12,11 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 from env import plugin_version, write_env
-from work import data_root, plan_path
+from work import data_root, entries, plan_path, record_summary, strip_comment
 
 PLUGIN_ROOT = Path(__file__).parent.parent
 OUTPUT_CAP = 12_000  # chars ≈ 3k tokens, the lead-profile budget (DESIGN §8)
-ENTRY_CAP = 240  # per work.md entry in the recovery block; see recovery_block
+ENTRY_CAP = 100  # a TITLE per work.md entry, not an excerpt; see recovery_block
 
 
 def git(*args: str) -> str:
@@ -29,6 +26,37 @@ def git(*args: str) -> str:
 
 def read(path: Path) -> str:
     return path.read_text(errors="replace") if path.exists() else ""
+
+
+def missing_template_keys(template_text: str, config_text: str) -> list[tuple[str, str]]:
+    def lines(text):
+        found, parents = {}, {}
+        for raw in text.splitlines():
+            line = strip_comment(raw).rstrip()
+            if not (match := re.match(r"^( *)([\w-]+):(.*)$", line)):
+                continue
+            indent, key, tail = len(match[1]), match[2], match[3]
+            parents = {depth: parent for depth, parent in parents.items() if depth < indent}
+            path = ".".join([parents[depth] for depth in sorted(parents)] + [key])
+            found[path] = line
+            if not tail.strip():
+                parents[indent] = key
+        return found
+
+    shipped, current = lines(template_text), lines(config_text)
+    return [(key, line) for key, line in shipped.items() if key not in current]
+
+
+def config_age(root: Path) -> str:
+    config = root / ".xp" / "config.yml"
+    if not config.exists():
+        return ""
+    missing = missing_template_keys(read(PLUGIN_ROOT / "templates" / "config.yml"), read(config))
+    if not missing:
+        return ""
+    return ".xp/config.yml is missing shipped keys — " + "; ".join(
+        f"{key}: add `{line}`" for key, line in missing
+    )
 
 
 def digest_with_staleness() -> str:
@@ -113,19 +141,19 @@ def recovery_block() -> str:
     stories = [
         ln for ln in read(plan_path()).splitlines() if ln.startswith("#### ") and "[done]" not in ln
     ]
-    lines = read(data_root() / "work.md").splitlines()
-    entries = []  # heading + its claim/body line: content, not just timestamps
-    for i, ln in enumerate(lines):
-        if ln.startswith("## "):
-            body = lines[i + 1] if i + 1 < len(lines) else ""
-            # BOUNDED: a work.md entry is one paragraph, so its "first line" is
-            # the whole entry. Three long notes were ~6,000 chars and pushed
-            # constraints.md off the end of the budget entirely — filing records
-            # silently evicted the rules that govern filing them.
-            if len(body) > ENTRY_CAP:
-                body = body[:ENTRY_CAP] + f"… (+{len(body) - ENTRY_CAP} chars, see work.md)"
-            entries.append(f"{ln}\n  {body}")
-    work_heads = entries[-3:]
+    # Through work.py's own summariser, never a second line-scan here: it is the
+    # writer, so it is where the `Story:` stamp is known not to be the claim.
+    # A TITLE, not an excerpt: three long notes were ~6,000 chars and pushed
+    # constraints.md off the end, so filing records evicted the rules that govern
+    # filing them. Naming more records in the same space beats quoting fewer —
+    # `work.py list` is what reads the rest.
+    summaries = []
+    for _eid, text in entries(data_root()):
+        heading, body = record_summary(text)
+        if len(body) > ENTRY_CAP:
+            body = body[:ENTRY_CAP] + f"… (+{len(body) - ENTRY_CAP} chars, see work.md)"
+        summaries.append(f"{heading}\n  {body}")
+    work_heads = summaries[-8:]
     dirty = git("status", "--porcelain")
     try:
         closed = last_close()
@@ -147,15 +175,8 @@ def recovery_block() -> str:
 
 
 def teammate_marker() -> str:
-    """The non-lead profile: one POSITIVE line, never silence.
-
-    Silence would be indistinguishable from this hook crashing — main() degrades
-    to exit 0 on anything — so a silent gate could never be told apart from a
-    gate that never ran (constraints.md #2). The teammate's rules are already
-    inlined in its prompt by spawn.py; re-injecting the lead profile on top is
-    duplicate tokens against the DESIGN §8 budget, which is the whole reason
-    this gate exists.
-    """
+    """Positive so a working role gate differs from a crash (#2). Spawn already
+    inlines teammate rules; repeating the lead profile spends DESIGN §8 budget."""
     return (
         f"xp-plugin {plugin_version(PLUGIN_ROOT)} · teammate session · your card, VALUES and "
         "constraints are in your prompt · you never close, never merge"
@@ -198,6 +219,7 @@ def main() -> int:
     # freshest layers first: the cap truncates the tail, so static prose goes last
     plugin_builders = [
         lambda: banner(root),
+        lambda: config_age(root),
         lambda: read(PLUGIN_ROOT / "VALUES.md"),
         lambda: read(PLUGIN_ROOT / "PROCESS.md"),
     ]
@@ -229,7 +251,18 @@ def main() -> int:
         sections.append("--- END project content ---")
     out = "\n\n".join(sections)
     if len(out) > OUTPUT_CAP:
-        out = out[: OUTPUT_CAP - 60] + "\n[truncated: lead-profile budget is 12,000 chars]"
+        # NAME WHAT WAS LOST. The cut used to say only that it happened, and it
+        # lands inside constraints.md — so rules the lead is judged by went missing
+        # with nothing to notice. A budget that cannot fit everything is a fact; a
+        # budget that hides which rules it dropped is a defect.
+        out, dropped = out[: OUTPUT_CAP - 160], out[OUTPUT_CAP - 160 :]
+        lost = re.findall(r"^(\d+)\. \*\*", dropped, re.M)
+        missing = (
+            f" CONSTRAINTS {', '.join(lost)} ARE NOT ABOVE — read .xp/constraints.md."
+            if lost
+            else ""
+        )
+        out += f"\n[truncated at the {OUTPUT_CAP}-char lead-profile budget.{missing}]"
     print(out)
     return 0
 
