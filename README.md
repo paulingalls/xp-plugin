@@ -68,6 +68,46 @@ hash — repeat after every update), or pass `--dangerously-bypass-hook-trust`
 headless. One `hooks.json` serves both harnesses; there is no codex-specific
 hook file to maintain.
 
+**Launching the lead.** Nothing special is needed to run stories, review and
+land — the hooks and the session injection work in a plain `codex` session once
+you have trusted them above. One flag matters, and only if you want your lead to
+spawn *Codex* teammates rather than Claude ones:
+
+```bash
+codex --sandbox danger-full-access
+```
+
+A spawn happens inside the lead's own sandbox, and a nested `codex exec` cannot
+initialise inside a confined one (`failed to initialize in-process app-server
+client: Operation not permitted`, measured on 0.149.0). No flag on the inner run
+fixes it — the outer posture is the whole difference. A Claude lead has no such
+constraint. Teammates the plugin spawns are unaffected either way: they are
+launched unconfined (below), so a Codex teammate can nest its own plan review.
+
+**What teammates are launched with.** Every Codex teammate and reviewer runs
+`--sandbox danger-full-access`, and every launch prints the posture it took.
+**This is not yet configurable**: if you need Codex confined, this release cannot
+give you that. It is a decision, not an oversight — a Claude teammate already
+runs with no OS sandbox because Claude Code exposes none, and under
+`workspace-write` a Codex teammate reaches neither the Docker socket, nor
+loopback TCP, nor a nested `codex exec`. What bounds both harnesses is the same
+either way: a throwaway worktree, the git-hook wall, and `close.py` running your
+`Verify` itself.
+
+**What a Codex lead does not get.** None of these is a correctness gap — the
+wall, the completion contract and the review-report contract are shared code:
+
+- **The Stop gate is inert.** Codex's `PostToolUse` payload carries no
+  success-or-failure field, so nothing writes the test status that gate reads and
+  it never blocks. Your `Verify` guarantee is the one it always was: `close.py`
+  runs it at close.
+- **No turns/cost/duration line** when a spawned run ends. The exit code is the
+  whole in-band verdict, which is why the spawn re-checks the *tree* rather than
+  believing any harness's own report.
+- **A spawned Codex teammate loads no hooks or skills at all** — `codex exec` has
+  no `--plugin-dir`, so its whole profile is inlined into the prompt instead. The
+  install above is for the lead; teammates need nothing.
+
 **Requirements:** Python 3.11+, git. [lefthook](https://github.com/evilmartians/lefthook)
 and [gitleaks](https://github.com/gitleaks/gitleaks) for the enforcement wall
 (setup scaffolds the config if lefthook is installed). `gh` for release PRs.
@@ -106,11 +146,12 @@ and [gitleaks](https://github.com/gitleaks/gitleaks) for the enforcement wall
   Honesty ([VALUES.md](plugins/xp-plugin/VALUES.md)) injected into every agent;
   review findings cite the value they defend; conflicts resolve in a fixed
   order. Practices derive from values, and when they conflict, the value wins.
-- **Both harnesses, really** — Codex teammates and reviewers run under a
-  measured sandbox with the environment pins our gates need; Claude and Codex
-  hit the same git wall; the dual-harness ground rules are a table of
-  *measured* facts in [DESIGN.md](docs/DESIGN.md), each stamped with the
-  version it was verified against.
+- **Both harnesses, really** — Codex teammates and reviewers carry the
+  environment pins our gates need and hit the same git wall Claude ones do; the
+  dual-harness ground rules are a table of *measured* facts in
+  [DESIGN.md](docs/DESIGN.md), each stamped with the version it was verified
+  against. What each harness is launched with, and what a Codex lead gives up,
+  is under [On Codex](#on-codex).
 - **Reviews that fix** — story reviewers commit repairs under their own git
   identity (authorship is the audit trail); the sprint pipeline kills
   plausible-but-wrong findings with independent verifiers before anything is
