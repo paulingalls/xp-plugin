@@ -31,8 +31,8 @@ def run_hook(main) -> None:
         raise SystemExit(0)
     try:
         rc = main(json.load(sys.stdin))
-    except Exception:
-        traceback.print_exc(file=sys.stderr)
+    except Exception:  # advisory: never break a session — but never in silence,
+        traceback.print_exc(file=sys.stderr)  # or a dead hook reads as a passing one
         rc = 0
     raise SystemExit(rc)
 

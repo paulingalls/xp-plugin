@@ -174,9 +174,9 @@ and [gitleaks](https://github.com/gitleaks/gitleaks) for the enforcement wall
 Negative space is a feature. There is no event log, no status-message-market,
 no per-commit review cadence, no conflict-detection telemetry, no force-close
 matrix, and no hook empire — four CLI hook bindings, advisory by design. The
-shipped plugin itself lives under a test-enforced size budget (~5k lines of
-Python, prose caps included): every added rule displaces one, and sacrificial
-features are named in advance so growth has a price list.
+shipped plugin itself lives under a test-enforced size budget (~5.5k lines of
+Python, prose caps included): every added rule displaces one, and the total has
+moved once in fifteen re-cuts — priced against measurement, never a reserve.
 
 ## Layout
 
