@@ -12,6 +12,18 @@ CONSTRUCTED, never grepped: a real repo, a real ruff violation, a commit made
 with core.hooksPath pointed at a directory that does not exist, and this
 project's own lefthook.yml driving `lefthook run pre-push` over the result.
 Greps of lefthook.yml would green the day the stanza is renamed.
+
+A NONZERO EXIT IS NOT THE WALL, and reading it as one is how this falsifier
+would certify its own subject's absence: `lefthook run pre-push` also exits
+nonzero when a stanza it needs is broken, when a tool it drives is missing from
+PATH, or when the ratchet stub stops parsing — every one of which would report
+"walled" over a wall that had been deleted. So the run is bracketed. The CONTROL
+proves pre-push is GREEN on the same tree before the violation exists, which is
+where an unrelated failure now surfaces; and the refusal must NAME the file the
+violation is in, which is what makes it this gate refusing rather than another.
+Neither half can be dropped: the control alone still accepts a refusal that came
+from somewhere else, and attribution alone still passes on a repo where pre-push
+never worked. Both were absent, and the falsifier read green either way.
 """
 
 import shutil
@@ -42,6 +54,16 @@ def main(tmp: Path) -> int:
     run("git", "add", "-A")
     run("git", "commit", "-qm", "base")
 
+    control = run("lefthook", "run", "pre-push")
+    if control.returncode != 0:
+        print(
+            "pre-push already REFUSES this fixture before any violation exists, so a"
+            " refusal below would prove nothing about the wall — fix the fixture or the"
+            f" broken stanza first:\n{control.stdout}{control.stderr}",
+            file=sys.stderr,
+        )
+        return 1
+
     # ruff rejects an unused import; the commit skips every hook by pointing
     # core.hooksPath at a directory that does not exist — git says nothing.
     (tmp / "sneaked.py").write_text("import os\n")
@@ -56,6 +78,14 @@ def main(tmp: Path) -> int:
         print(
             "pre-push PASSED a tree carrying a violation pre-commit would have"
             " refused — a hooksPath bypass now reaches the remote unchecked",
+            file=sys.stderr,
+        )
+        return 1
+    if "sneaked.py" not in walled.stdout + walled.stderr:
+        print(
+            "pre-push refused, but never named sneaked.py — the refusal came from"
+            " something other than the gate re-checking this violation, so the wall"
+            f" this asserts is unproven:\n{walled.stdout}{walled.stderr}",
             file=sys.stderr,
         )
         return 1

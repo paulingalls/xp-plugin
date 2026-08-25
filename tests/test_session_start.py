@@ -429,3 +429,37 @@ class TestEnvRefresh:
             assert r.returncode == 0
             assert "CONSTRAINT-SENTINEL" in r.stdout, r.stdout or r.stderr
             assert path.read_text() == invalid
+
+
+class TestTheStoryStampIsProvenanceNotContent:
+    """work.py stamps `Story: <id>` as every teammate-filed record's SECOND line,
+    and the recovery block takes the second line as the claim — so a lead whose
+    lane spawns teammates is shown eight records that say only which story filed
+    them. `work.py list` was taught to skip the stamp and this reader was not:
+    one rule, two implementations, which is this repo's most-filed defect class.
+    """
+
+    def repo(self, tmp_path):
+        repo, _g = xp_repo(tmp_path)
+        xp = tmp_path / "xp"
+        xp.mkdir(parents=True, exist_ok=True)
+        (xp / "work.md").write_text(
+            "## note 2026-08-20T01:00:00Z\nStory: story-042\nTHE-CLAIM-THE-LEAD-NEEDS\n\n"
+        )
+        return repo
+
+    def test_a_stamped_record_shows_its_claim_and_not_its_stamp(self, tmp_path):
+        out = run_hook(self.repo(tmp_path), tmp_path).stdout
+        block = out.split("recent work.md entries:")[1]
+        assert "THE-CLAIM-THE-LEAD-NEEDS" in block, block
+        assert "Story: story-042" not in block, block
+
+    def test_a_work_md_byte_nobody_can_decode_costs_a_character(self, tmp_path):
+        """The recovery block is a BUILDER, and main() degrades a raising builder
+        to silence — so a strict read here would delete the branch, the stories
+        and the last close along with the record it choked on."""
+        repo = self.repo(tmp_path)
+        work = tmp_path / "xp" / "work.md"
+        work.write_bytes(work.read_bytes() + b"## note 2026-08-20T02:00:00Z\ncaf\xe9\n\n")
+        out = run_hook(repo, tmp_path).stdout
+        assert "recent work.md entries:" in out and "THE-CLAIM-THE-LEAD-NEEDS" in out, out

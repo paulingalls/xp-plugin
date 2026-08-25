@@ -229,9 +229,24 @@ def entry_id(text: str) -> str:
     return hashlib.sha256(text.strip().encode()).hexdigest()[:8]
 
 
+def record_summary(text: str) -> tuple[str, str]:
+    """(heading, claim line) — `Story:` is PROVENANCE and never the record's own
+    words, so every reader that summarises a record drops it here rather than
+    each re-deriving the rule and one of them forgetting (constraint 15's shape:
+    two implementations, and the stale one shows a stamp where a claim belongs).
+    """
+    kept = [ln for ln in text.splitlines() if not ln.startswith("Story: ")]
+    return (kept[0] if kept else ""), (kept[1] if len(kept) > 1 else "")
+
+
 def entries(root: Path) -> list[tuple[str, str]]:
     """(id, text) per record, in file order."""
-    text = (root / "work.md").read_text() if (root / "work.md").exists() else ""
+    # errors="replace": every reader of this is a REPORTER — the session banner,
+    # the escalation seam — and a byte nobody can decode must cost one mangled
+    # character, never the whole report (the hook degrades a raising builder to
+    # silence, so a traceback here deletes the recovery block wholesale).
+    path = root / "work.md"
+    text = path.read_text(errors="replace") if path.exists() else ""
     blocks = re.split(r"^(?=## )", text, flags=re.M)
     return [(entry_id(b), b) for b in blocks if b.strip()]
 
@@ -365,8 +380,8 @@ def main() -> int:
     root = data_root()
     if args.kind == "list":
         for eid, text in entries(root):
-            head = [ln for ln in text.splitlines() if not ln.startswith("Story: ")]
-            print(f"{eid} {head[0][3:]} — {(head[1] if len(head) > 1 else '')[:60]}")
+            heading, body = record_summary(text)
+            print(f"{eid} {heading[3:]} — {body[:60]}")
         return 0
     if args.kind == "archive":
         return archive(root, args)

@@ -12,7 +12,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 from env import plugin_version, write_env
-from work import data_root, plan_path, strip_comment
+from work import data_root, entries, plan_path, record_summary, strip_comment
 
 PLUGIN_ROOT = Path(__file__).parent.parent
 OUTPUT_CAP = 12_000  # chars ≈ 3k tokens, the lead-profile budget (DESIGN §8)
@@ -141,19 +141,19 @@ def recovery_block() -> str:
     stories = [
         ln for ln in read(plan_path()).splitlines() if ln.startswith("#### ") and "[done]" not in ln
     ]
-    lines = read(data_root() / "work.md").splitlines()
-    entries = []  # heading + its claim/body line: content, not just timestamps
-    for i, ln in enumerate(lines):
-        if ln.startswith("## "):
-            body = lines[i + 1] if i + 1 < len(lines) else ""
-            # A TITLE, not an excerpt: three long notes were ~6,000 chars and
-            # pushed constraints.md off the end, so filing records evicted the
-            # rules that govern filing them. Naming more records in the same space
-            # beats quoting fewer — `work.py list` is what reads the rest.
-            if len(body) > ENTRY_CAP:
-                body = body[:ENTRY_CAP] + f"… (+{len(body) - ENTRY_CAP} chars, see work.md)"
-            entries.append(f"{ln}\n  {body}")
-    work_heads = entries[-8:]
+    # Through work.py's own summariser, never a second line-scan here: it is the
+    # writer, so it is where the `Story:` stamp is known not to be the claim.
+    # A TITLE, not an excerpt: three long notes were ~6,000 chars and pushed
+    # constraints.md off the end, so filing records evicted the rules that govern
+    # filing them. Naming more records in the same space beats quoting fewer —
+    # `work.py list` is what reads the rest.
+    summaries = []
+    for _eid, text in entries(data_root()):
+        heading, body = record_summary(text)
+        if len(body) > ENTRY_CAP:
+            body = body[:ENTRY_CAP] + f"… (+{len(body) - ENTRY_CAP} chars, see work.md)"
+        summaries.append(f"{heading}\n  {body}")
+    work_heads = summaries[-8:]
     dirty = git("status", "--porcelain")
     try:
         closed = last_close()
