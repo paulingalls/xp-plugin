@@ -25,6 +25,7 @@ HARNESS_INSTALL = {
     "claude": "https://claude.com/product/claude-code",
     "codex": "npm install -g @openai/codex",
 }
+CODEX_SANDBOXES = ("workspace-write", "danger-full-access")
 
 
 def missing_harness(harness: str) -> str:
@@ -48,7 +49,24 @@ def claude_argv(model: str, effort: str, output_format: str = "json") -> list[st
     return argv + (["--effort", effort] if effort else [])
 
 
-def codex_argv(model: str, effort: str) -> list[str]:
+def resolve_codex_sandbox(harness: str, configured: str) -> tuple[str, str]:
+    if harness != "codex":
+        return "", ""
+    posture = configured or "danger-full-access"
+    if posture in CODEX_SANDBOXES:
+        return posture, ""
+    if posture == "read-only":
+        return "", (
+            "codex_sandbox read-only is refused — every role this plugin launches must"
+            " write its deliverable; use workspace-write or danger-full-access"
+        )
+    return "", (
+        f"codex_sandbox {posture!r} is unrecognised — accepted values are"
+        f" {CODEX_SANDBOXES[0]} and {CODEX_SANDBOXES[1]}"
+    )
+
+
+def codex_argv(model: str, effort: str, sandbox: str = "danger-full-access") -> list[str]:
     """unified_exec stays ENABLED (reversed 2026-08-23, Paul; DESIGN §3): it is
     codex's persistent-session exec tool, and without it a teammate's shell call
     cannot outlive codex's per-command bound — which made TEAMMATE.md's mandatory
@@ -63,25 +81,27 @@ def codex_argv(model: str, effort: str) -> list[str]:
     # agent the lead's secrets to buy nothing.
     for pin in ("inherit=all", "exclude=[]", "include_only=[]"):
         argv += ["-c", f"shell_environment_policy.{pin}"]
-    # EVERY codex role, no exceptions; teammate_tee.sandbox_line prints it. Under
-    # workspace-write, docker, loopback TCP and a nested `codex exec` are each
-    # denied and this one string lifts all three (measured 0.149.0) — `--add-dir`
-    # does not, it grants path writes, not socket-connect capability. Why that is
-    # an asymmetry removed rather than a risk class added, and what it costs a
-    # consuming project until story-040: DESIGN §3. `--add-dir` is inert here and
-    # kept for that story, which restores a confining posture — as is
-    # spawn.common_dir_widening.
-    argv += ["--sandbox", "danger-full-access", "--add-dir", str(data_root())]
+    # EVERY codex role takes the caller-resolved posture; teammate_tee prints it
+    # back off this argv. Under workspace-write, docker, loopback and nested codex
+    # are denied (measured 0.149.0); `--add-dir` grants data-root writes, not
+    # socket-connect capability. The default stays danger-full-access (DESIGN §3).
+    argv += ["--sandbox", sandbox, "--add-dir", str(data_root())]
     argv += ["-m", model]
     if effort:  # never -e: codex has no such flag, and a wrong spelling dies on contact
         argv += ["-c", f"model_reasoning_effort={effort}"]
     return [*argv, "-"]
 
 
-def agent_argv(harness: str, model: str, effort: str, output_format: str) -> list[str]:
+def agent_argv(
+    harness: str,
+    model: str,
+    effort: str,
+    output_format: str,
+    sandbox: str = "danger-full-access",
+) -> list[str]:
     """No `role`: nothing about a launch turns on it any more. It used to pick the
     codex sandbox posture, which is how the REVIEWER came to run with no network
     at all — unprinted, and believed the other way round in writing."""
     if harness == "codex":
-        return codex_argv(model, effort)
+        return codex_argv(model, effort, sandbox)
     return claude_argv(model, effort, output_format)

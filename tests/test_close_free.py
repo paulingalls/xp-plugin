@@ -94,6 +94,23 @@ class TestFreeStart:
         r = free(repo, env, "fix-typo", "start")
         assert r.returncode == 2 and BRANCH in r.stderr
 
+    def test_start_refuses_a_slug_that_would_be_truncated(self, tmp_path):
+        repo, env, g = free_repo(tmp_path)
+        before = g("rev-parse", "HEAD").stdout.strip()
+        slug = "codex-posture-and-budget"
+        r = free(repo, env, slug, "start")
+        assert r.returncode == 2
+        assert "20" in r.stderr
+        assert f"t/free-{TODAY}-codex-posture-and-bu" in r.stderr
+        assert g("rev-parse", "HEAD").stdout.strip() == before
+        assert "codex-posture-and-bu" not in g("branch", "--format=%(refname:short)").stdout
+
+    def test_start_accepts_a_fitting_slug_that_needs_normalising(self, tmp_path):
+        repo, env, g = free_repo(tmp_path)
+        r = free(repo, env, "Fix Typo.", "start")
+        assert r.returncode == 0, r.stderr
+        assert g("rev-parse", "--abbrev-ref", "HEAD").stdout.strip() == BRANCH
+
 
 class TestFreeReview:
     def test_a_dirty_refusal_does_not_advance_an_optional_card(self, tmp_path):

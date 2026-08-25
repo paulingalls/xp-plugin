@@ -8,8 +8,10 @@ import os
 import subprocess
 from itertools import pairwise
 
+import pytest
+from session_start import missing_template_keys
 from session_start_helpers import HOOKS_JSON
-from spawn_helpers import in_tree, make_repo, spawn, stub_codex
+from spawn_helpers import SPAWN, in_tree, make_repo, spawn, stub_codex
 
 
 class TestCodexExecutor:
@@ -63,6 +65,73 @@ class TestCodexExecutor:
         # exactly one: note 6193855e probed the git-common-dir widening
         # unnecessary on 0.147.0, and a second --add-dir is that widening returning
         assert argv.count("--add-dir") == 1, argv
+
+    def test_no_config_key_keeps_the_v071_argv_byte_for_byte(self, tmp_path):
+        assert self.argv(tmp_path) == [
+            "codex",
+            "exec",
+            "--json",
+            "-c",
+            "shell_environment_policy.inherit=all",
+            "-c",
+            "shell_environment_policy.exclude=[]",
+            "-c",
+            "shell_environment_policy.include_only=[]",
+            "--sandbox",
+            "danger-full-access",
+            "--add-dir",
+            str(tmp_path / "data"),
+            "-m",
+            "gpt-5.6-terra",
+            "-c",
+            "model_reasoning_effort=medium",
+            "-",
+        ]
+
+    def test_the_commented_template_key_does_not_pin_a_posture(self):
+        template = (SPAWN.parents[1] / "templates" / "config.yml").read_text()
+        seeds = [line for line in template.splitlines() if "codex_sandbox:" in line]
+        assert len(seeds) == 1
+        assert missing_template_keys(seeds[0], "") == []
+        active = seeds[0].removeprefix("# ")
+        assert missing_template_keys(active, "") == [
+            ("codex_sandbox", "codex_sandbox: danger-full-access")
+        ]
+
+    @pytest.mark.parametrize("posture", ["workspace-write", "danger-full-access"])
+    def test_each_configured_posture_is_launched_and_reported(self, tmp_path, posture):
+        repo, env, g = make_repo(tmp_path, executor="codex/gpt-5.6-terra/medium")
+        config = repo / ".xp" / "config.yml"
+        config.write_text(config.read_text() + f"codex_sandbox: {posture}\n")
+        g("add", "-A")
+        g("commit", "-qm", "choose codex posture")
+        rec = stub_codex(tmp_path, sandbox=posture)
+        r = spawn(repo, env, "story-042")
+        assert r.returncode == 0, r.stderr
+        argv = json.loads(rec.read_text())["argv"]
+        assert argv[argv.index("--sandbox") + 1] == posture
+        assert f"codex sandbox: {posture}" in r.stderr
+        if posture == "workspace-write":
+            for denied in ("docker", "loopback", "nested codex", "danger-full-access"):
+                assert denied in r.stderr.lower(), r.stderr
+
+    @pytest.mark.parametrize("posture", ["unknown-posture", "read-only"])
+    def test_invalid_posture_refuses_before_cutting_a_worktree(self, tmp_path, posture):
+        repo, env, g = make_repo(tmp_path, executor="codex/gpt-5.6-terra/medium")
+        config = repo / ".xp" / "config.yml"
+        config.write_text(config.read_text() + f"codex_sandbox: {posture}\n")
+        g("add", "-A")
+        g("commit", "-qm", "bad codex posture")
+        stub_codex(tmp_path, sandbox=posture)
+        r = spawn(repo, env, "story-042")
+        assert r.returncode == 2
+        if posture == "read-only":
+            assert "every role" in r.stderr and "deliverable" in r.stderr
+            assert "unrecognised" not in r.stderr
+        else:
+            assert "workspace-write" in r.stderr and "danger-full-access" in r.stderr
+        assert not (tmp_path / "data" / "worktrees" / "story-042").exists()
+        assert "story-042" not in in_tree(repo, env, "branch", "--format=%(refname:short)")
 
     def test_a_two_part_spec_carries_no_effort(self, tmp_path):
         argv = self.argv(tmp_path, executor="codex/gpt-5.6-terra")

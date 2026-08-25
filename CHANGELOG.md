@@ -4,6 +4,21 @@ Release notes started at v0.6.0; earlier entries are summarized from their
 tag and merge messages. Full detail lives in the merge history and the
 per-sprint review reports.
 
+## v0.7.2 — the opt-out arrives before the default does
+
+- **Codex sandbox posture is project-selectable.** `codex_sandbox` accepts
+  `workspace-write` or `danger-full-access`; the latter remains the default, so
+  an existing project gets byte-identical launch argv. Every Codex executor and
+  reviewer reports the posture read back from its launched argv. Unknown values
+  refuse before a worktree is cut, and `read-only` is refused separately because
+  the plugin's roles must write their deliverables. Claude launches are unchanged.
+- **Free work uses the same spawned-executor shape as stories.** PROCESS now
+  names the path; `free start` refuses slugs whose 20-character truncation would
+  detach an optional card, and its nudge places project-owned release artifacts
+  before review without prescribing what those artifacts are.
+- The Python sub-budgets were re-cut, still totaling 5,000 lines, to fund the
+  close/free surface against measured occupancy.
+
 ## v0.7.1 — the sandbox we never chose, and the rules that never arrived
 
 A patch, not a sprint. Three unrelated defects that each cost a consuming

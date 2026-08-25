@@ -20,7 +20,7 @@ sys.path.insert(0, str(Path(__file__).parent / "spawn"))
 # close must import back FUNCTION-LOCALLY: a module-level edge cycles
 # (close -> spawn -> close) and fails before fail/git exist (story-008).
 from bookkeep import bootstrap_command, worktree_command
-from close import fail, git, integration_target, story_card
+from close import config_flat, fail, git, integration_target, story_card
 from handoff import draft_path, inheritance, marker_path, report_handoff
 from harness import (
     HARNESS_INSTALL,
@@ -28,6 +28,7 @@ from harness import (
     claude_argv,  # noqa: F401  — re-exported: story-017's argv tests import it here
     codex_argv,  # noqa: F401
     missing_harness,
+    resolve_codex_sandbox,
 )
 from role_config import card_role, config_role
 from teammate_tee import run_stream, run_teammate
@@ -225,11 +226,9 @@ def run_agent(
 def common_dir_widening(cwd: Path) -> list[str]:
     """["--add-dir", <git common dir>] for a LINKED executor worktree, [] otherwise: its
     index lives at <main>/.git/worktrees/<id>/, outside workspace-write, so a
-    codex teammate there cannot commit — INERT under v0.7.1's danger-full-access
-    posture, kept for story-040, which restores a confining one
-    (bug 0c31ac94; a /tmp scratch repo hides it,
-    since the sandbox writes /tmp anyway). A main checkout's .git is inside the
-    workspace already; widening it would loosen the posture for nothing."""
+    codex teammate there cannot commit without the widening (bug 0c31ac94; a /tmp
+    scratch repo hides it because the sandbox writes /tmp). It is inert under
+    danger-full-access. A main checkout's .git is already inside the workspace."""
     proc = subprocess.run(
         ["git", "-C", str(cwd), "rev-parse", "--git-common-dir"],
         capture_output=True,
@@ -317,9 +316,12 @@ def cmd_spawn(story_id: str, override: str, dry_run: bool, in_place: bool = Fals
             return 0
         return cmd_in_place(story_id, card)
     harness, model, effort = resolve_role("executor", card, override)
+    sandbox, problem = resolve_codex_sandbox(harness, config_flat("codex_sandbox"))
+    if problem:
+        return fail("refused: " + problem)
     branch = story_branch(card, story_id)
     tree = worktree_path(story_id)
-    argv = agent_argv(harness, model, effort, "stream-json")
+    argv = agent_argv(harness, model, effort, "stream-json", sandbox)
     handoff = inheritance(data_root(), story_id)
     prompt = build_prompt(teammate_sections(card, story_id, handoff))
     report, warning = profile_report(card, prompt, handoff)

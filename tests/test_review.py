@@ -38,6 +38,22 @@ def angle_names():
     return sorted(p.stem for p in ANGLES.glob("*.md"))
 
 
+def test_bad_codex_sandbox_is_a_review_error_not_an_exception(tmp_path, monkeypatch):
+    import review
+    from close_helpers import make_repo as make_close_repo
+
+    repo, env, _g = make_close_repo(tmp_path)
+    (repo / ".xp" / "config.yml").write_text(
+        "roles:\n  reviewer: codex/gpt-5.6-terra/high\ncodex_sandbox: broken\n"
+    )
+    monkeypatch.chdir(repo)
+    for key, value in env.items():
+        monkeypatch.setenv(key, value)
+    result, error = review.run("prompt", repo)
+    assert result == ""
+    assert "workspace-write" in error and "danger-full-access" in error
+
+
 class TestTheFindersAreBlind:
     """AC 1. Each finder reads ONLY its own angle, over the WHOLE diff. The
     failure this guards is silent by construction: a finder whose angle never
