@@ -16,6 +16,8 @@ def stopped_story(tmp_path):
     stub_claude(tmp_path, commit=False)
     stopped = spawn(repo, env, "story-042")
     assert stopped.returncode == 2 and "no commits" in stopped.stderr.lower(), stopped.stderr
+    # the FIRST stop is the one that has to name the verb; nothing else will
+    assert "spawn.py resume story-042" in stopped.stderr, stopped.stderr
     tree = tmp_path / "data" / "worktrees" / "story-042"
     marker = plans / "story-042.handoff.json"
     assert tree.is_dir() and marker.is_file()
@@ -81,6 +83,63 @@ class TestResume:
         assert in_tree(tree, env, "branch", "--show-current") == "ada/story-042-demo-story"
         assert predecessor in in_tree(tree, env, "log", "--format=%H")
         assert "DRAFT-SENTINEL" in json.loads(rec.read_text())["stdin"]
+
+    def test_a_tree_off_its_stopped_branch_is_never_taken_over(self, tmp_path):
+        repo, env, _g, tree, _marker = stopped_story(tmp_path)
+        subprocess.run(["git", "checkout", "-q", "--detach"], cwd=tree, env=env, check=True)
+        rec = tmp_path / "launch.json"
+        rec.unlink()
+
+        result = resume(repo, env)
+
+        assert result.returncode == 2 and "not on stopped branch" in result.stderr
+        assert not rec.exists(), "resume launched into a tree it could not identify"
+
+    def test_a_removed_worktree_refuses_rather_than_launching_nowhere(self, tmp_path):
+        repo, env, g, tree, _marker = stopped_story(tmp_path)
+        assert g("worktree", "remove", "--force", str(tree)).returncode == 0
+        rec = tmp_path / "launch.json"
+        rec.unlink()
+
+        result = resume(repo, env)
+
+        assert result.returncode == 2 and "is missing" in result.stderr, result.stderr
+        assert not rec.exists(), "resume launched with no tree to take over"
+
+    def test_an_unreadable_handoff_is_not_read_as_an_absent_one(self, tmp_path):
+        repo, env, _g, _tree, marker = stopped_story(tmp_path)
+        marker.write_text('{"why": "no comm')
+        rec = tmp_path / "launch.json"
+        rec.unlink()
+
+        result = resume(repo, env)
+
+        assert result.returncode == 2 and "unreadable" in result.stderr, result.stderr
+        assert "still be running" not in result.stderr  # constraint 15: different problems
+        assert not rec.exists(), "a truncated marker was taken as proof of a stop"
+
+    def test_resume_refuses_a_card_no_longer_open_for_work(self, tmp_path):
+        repo, env, _g, _tree, _marker = stopped_story(tmp_path)
+        plan = tmp_path / "data" / "plan.md"
+        plan.write_text(plan.read_text().replace("[in-progress]", "[planned]"))
+        rec = tmp_path / "launch.json"
+        rec.unlink()
+
+        result = resume(repo, env)
+
+        assert result.returncode == 2 and "resume requires" in result.stderr, result.stderr
+        assert not rec.exists(), "resume launched on a card no reviewer had cleared"
+
+    def test_the_successor_is_told_which_commits_are_not_its_own(self, tmp_path):
+        repo, env, _g, tree, _marker = stopped_story(tmp_path)
+        predecessor = commit(tree, env)
+        rec = stub_claude(tmp_path)
+
+        assert resume(repo, env).returncode == 0
+
+        prompt = json.loads(rec.read_text())["stdin"]
+        assert predecessor[:7] in prompt and "predecessor work" in prompt, prompt
+        assert "NOT yours" in prompt, "the inherited commits are handed over unlabelled"
 
     def test_plain_spawn_still_refuses_the_existing_worktree(self, tmp_path):
         repo, env, _g, _tree, _marker = stopped_story(tmp_path)

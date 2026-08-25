@@ -68,11 +68,6 @@ def validate(root: Path, story_id: str, tree: Path, branch: str) -> str:
         )
     if not tree.is_dir():
         return f"refused: stopped worktree {tree} is missing — recover it before resuming"
-    expected = subprocess.run(
-        ["git", "show-ref", "--verify", "--quiet", f"refs/heads/{branch}"], cwd=tree
-    )
-    if expected.returncode:
-        return f"refused: stopped branch {branch} is missing — recover it before resuming"
     actual = subprocess.run(
         ["git", "branch", "--show-current"], cwd=tree, capture_output=True, text=True
     )
@@ -84,18 +79,17 @@ def validate(root: Path, story_id: str, tree: Path, branch: str) -> str:
     return ""
 
 
-def dirty_handover(tree: Path) -> str:
-    result = subprocess.run(
-        ["git", "status", "--porcelain"], cwd=tree, capture_output=True, text=True, check=True
-    )
-    dirty = result.stdout.strip()
-    if not dirty:
-        return ""
+def inherited_evidence(tree: Path, trunk: str) -> str:
+    def read(*args: str) -> str:
+        done = subprocess.run(["git", *args], cwd=tree, capture_output=True, text=True)
+        return done.stdout.strip() if done.returncode == 0 else "(unreadable)"
+
     return (
-        "### Inherited working-tree evidence\n\n"
-        "These paths were dirty before this fresh run and belong to the predecessor:\n\n"
-        f"```text\n{dirty}\n```\n\n"
-        "Inspect `git diff` as predecessor evidence. If you adopt it, verify and attribute"
-        " it explicitly; do not claim a red you did not observe. Commit every adopted path"
-        " or hand the remaining diff back.\n"
+        "### Inherited from the predecessor — NOT yours\n\n"
+        f"Commits already on this branch:\n\n```text\n{read('log', '--oneline', f'{trunk}..HEAD')}"
+        f"\n```\n\nUncommitted paths:\n\n```text\n{read('status', '--porcelain')}\n```\n\n"
+        "Read `git log -p` and `git diff` as predecessor EVIDENCE, never as your own work:"
+        " your handback names only what you commit from here. If you adopt an uncommitted"
+        " path, verify it and say so; do not claim a red you did not observe. Commit every"
+        " path you adopt or hand the rest back.\n"
     )

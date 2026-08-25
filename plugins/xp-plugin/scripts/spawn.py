@@ -293,10 +293,11 @@ def cmd_spawn(
     harness, model, effort = resolve_role("executor", card, override)
     branch = story_branch(card, story_id)
     tree = worktree_path(story_id)
+    trunk = integration_target()
     argv = agent_argv(harness, model, effort, "stream-json")
     handoff = inheritance(data_root(), story_id)
     if resuming and tree.is_dir():
-        handoff += resume().dirty_handover(tree)
+        handoff += resume().inherited_evidence(tree, trunk)
     prompt = build_prompt(teammate_sections(card, story_id, handoff))
     report, warning = profile_report(card, prompt, handoff)
     print(report)
@@ -345,7 +346,6 @@ def cmd_spawn(
             " cut from a commit, so uncommitted files (a fresh .xp/ scaffold included)"
             f" would not be in it:\n{dirty}"
         )
-    trunk = integration_target()
     held, problem = resume().acquire(data_root(), story_id)
     if problem:
         return fail(problem)
@@ -385,12 +385,10 @@ def cmd_spawn(
     # A crashed teammate is the likeliest one to leave work uncommitted.
     if err := unclean_teammate_result(tree, handed_over, story_id, resuming):
         result = report_handoff(data_root(), story_id, before, err, rc)
-        if held:
-            held.close()
+        held.close()
         return result
     marker_path(data_root(), story_id).unlink(missing_ok=True)
-    if held:
-        held.close()
+    held.close()
     return rc
 
 
@@ -432,8 +430,9 @@ def unclean_teammate_result(
             " (add --force if teardown leaves files behind)"
         )
     recovery = (
-        f" Recover by committing by hand in {tree}, or by {discard}, putting"
-        f" {story_id}'s heading back to [ready] in {plan_path()}, and re-spawning."
+        f" Recover by `spawn.py resume {story_id}`, which takes this tree and its commits"
+        f" over with a fresh teammate; by committing by hand in {tree}; or by {discard},"
+        f" putting {story_id}'s heading back to [ready] in {plan_path()}, and re-spawning."
         + (f" {problem}." if problem else "")
     )
     if resumed:
@@ -479,7 +478,8 @@ def main() -> int:
     p = argparse.ArgumentParser(
         description=__doc__,
         epilog="ready <story-id>: after the plan review, mint the card's digest and"
-        " flip [planned] -> [ready]. Editing the card afterwards refuses the spawn.",
+        " flip [planned] -> [ready]. Editing the card afterwards refuses the spawn."
+        " resume <story-id>: hand a STOPPED story's own worktree to a fresh teammate.",
     )
     p.add_argument("story_id")
     p.add_argument("executor", nargs="?", default="", help="harness/model[/effort] override")
