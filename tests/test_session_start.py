@@ -16,7 +16,7 @@ class TestLastClose(LastCloseCases):
 
 
 class TestScope:
-    def test_a_pipe_keeps_the_existing_empty_output_contract(self, tmp_path):
+    def test_a_pipe_outside_a_git_repo_stays_byte_silent(self, tmp_path):
         result = run_hook(tmp_path, tmp_path)
         assert (result.returncode, result.stdout, result.stderr) == (0, "", "")
 
@@ -36,10 +36,6 @@ class TestScope:
         assert result.returncode == 0
         assert all(word in result.stdout for word in ("session_start.py", "JSON", "stdin"))
 
-    def test_outside_git_repo_silent(self, tmp_path):
-        r = run_hook(tmp_path, tmp_path)
-        assert r.returncode == 0 and r.stdout == ""
-
     def test_git_repo_without_xp_silent(self, tmp_path):
         repo = tmp_path / "plain"
         repo.mkdir()
@@ -55,6 +51,7 @@ class TestInjection:
         assert r.returncode == 0, r.stderr
         for sentinel in ("XP Values", "CONSTRAINT-SENTINEL", "story-042", "main"):
             assert sentinel in r.stdout, f"missing {sentinel}"
+        assert "is a hook" not in r.stdout  # the tty nudge never reaches the harness channel
 
     def test_banner_names_version_and_gates(self, tmp_path):
         repo, _g = xp_repo(tmp_path)

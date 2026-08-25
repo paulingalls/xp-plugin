@@ -110,11 +110,11 @@ def cmd_post_merge(slug: str) -> int:
     result = release.cmd_post_merge(key, branch, "patch", False)
     if result:
         return result
-    carded = card_in_plan(key)
-    if carded and not flip_card(key, "in-progress", "done"):
-        print(f"incomplete — tag landed; flip {key} to [done]", file=sys.stderr)
-        return 3
     tree, failed = bookkeep.story_worktree(branch)
+    if card_in_plan(key) and not flip_card(key, "in-progress", "done"):
+        # Reported, not returned: the tag is cut by here and a second post-merge
+        # refuses it, so an early return leaves no leg to discharge the checkout.
+        failed.append(f"flip {key} to [done] in {plan_path()}")
     failed += bookkeep.remove_story_checkout(tree, branch, config_flat("teardown_timeout"))
     bookkeep.delete_story_markers(key)
     ready_marker_path(key).unlink(missing_ok=True)

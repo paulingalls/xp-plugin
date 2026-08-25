@@ -44,7 +44,7 @@ class TestBashStatus:
         run_script("bash_status.py", failure_payload("pytest -q tests/test_x.py"), repo, tmp_path)
         mention = success_payload("git commit -m 'red: pytest -q tests/test_x.py still failing'")
         run_script("bash_status.py", mention, repo, tmp_path)
-        assert [m["red"] for m in markers(tmp_path)] == [True]
+        assert [m["red"] for m in markers(tmp_path)] == [True]  # mention is not invocation
 
     def test_success_masking_never_greens_a_red(self, tmp_path):
         repo, _g = repo_with_story(tmp_path)
@@ -83,6 +83,7 @@ class TestBashStatus:
         )
         run_script("bash_status.py", failure_payload("pytest -q tests/test_x.py"), repo, tmp_path)
         run_script("bash_status.py", success_payload("bun test x"), repo, tmp_path)
+        # two markers, per constraint 10: B's green cannot hide A's red
         assert sorted(m["red"] for m in markers(tmp_path)) == [False, True]
 
     def test_a_pipe_keeps_the_existing_empty_output_contract(self, tmp_path):

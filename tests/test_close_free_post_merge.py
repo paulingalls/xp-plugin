@@ -10,6 +10,8 @@ from test_close_free import BRANCH, add_free_card, commit_on_free
 
 class TestFreePostMerge:
     def reviewed(self, tmp_path, card=False, manifest="", extra=""):
+        """A reviewed free branch whose PR has NOT merged yet — the state the
+        post-merge leg must refuse from."""
         repo, env, g = free_repo(tmp_path)
         free(repo, env, "fix-typo", "start")
         commit_on_free(repo, g)
@@ -38,9 +40,14 @@ class TestFreePostMerge:
         assert result.returncode == 0, result.stderr
         assert g("rev-list", "-n1", "v0.2.1").stdout.strip() == merged
         assert "[done]" in (Path(env["XP_DATA"]) / "plan.md").read_text()
+        # this project configured no version_files, and a tag cut with NOTHING
+        # walling the manifest must not read like one that passed a check
         assert "NO manifest was checked" in result.stdout, result.stdout
 
     def test_post_merge_before_the_pr_merges_refuses_and_cuts_no_tag(self, tmp_path):
+        """The ordering half of AC 4, which nothing else on this leg drives:
+        blanking the branch the marker records leaves the whole suite green, and
+        constraint 14 can only red once a wrong tag EXISTS."""
         repo, env, g = self.reviewed(tmp_path)
         g("checkout", "-q", "main")
         result = free(repo, env, "fix-typo", "post-merge")
@@ -48,6 +55,9 @@ class TestFreePostMerge:
         assert "v0.2.1" not in g("tag").stdout.split()
 
     def test_a_free_release_leaves_the_sprint_branch_key_alone(self, tmp_path):
+        """A patch release lands MID-SPRINT. Retiring `sprint_branch:` here would
+        redirect every later story close from the sprint branch to main, silently:
+        integration_target falls back to trunk the moment the key is gone."""
         repo, env, g = self.reviewed(tmp_path, extra="sprint_branch: sprint-001\n")
         self.merge_pr(g)
         assert free(repo, env, "fix-typo", "post-merge").returncode == 0
@@ -55,12 +65,14 @@ class TestFreePostMerge:
 
     @pytest.mark.parametrize("manifest,rc", [("0.2.0", 2), ("0.2.1", 0)], ids=["behind", "level"])
     def test_the_manifest_must_name_the_tag_being_cut(self, tmp_path, manifest, rc):
+        """AC 5 in BOTH directions: a guard only ever asserted red could refuse
+        every release alike and no test here would know."""
         repo, env, g = self.reviewed(tmp_path, manifest=manifest)
         self.merge_pr(g)
         result = free(repo, env, "fix-typo", "post-merge")
         assert result.returncode == rc, result.stderr
         if rc:
             assert "plugin.json" in result.stderr and "behind" in result.stderr.lower()
-        else:
+        else:  # the pass NAMES what it checked, or it reads like the arm above
             assert "manifests matching v0.2.1: plugin.json" in result.stdout, result.stdout
         assert ("v0.2.1" in g("tag").stdout.split()) is (rc == 0)

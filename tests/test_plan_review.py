@@ -402,6 +402,7 @@ class TestPlanEditsInPlace:
         result = plan_review(repo, env, "story-042", str(draft))
         assert result.returncode == 0, result.stderr
         assert "Reason: the guard needs" in draft.read_text()
+        assert not (tmp_path / "data" / "markers" / "story-042.plan-review-incomplete").exists()
 
     def test_a_reason_split_by_hard_wrapping_is_present(self):
         reason = "the guard needs an executable acceptance check"
