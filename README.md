@@ -68,21 +68,24 @@ hash — repeat after every update), or pass `--dangerously-bypass-hook-trust`
 headless. One `hooks.json` serves both harnesses; there is no codex-specific
 hook file to maintain.
 
-**Launching the lead.** Nothing special is needed to run stories, review and
-land — the hooks and the session injection work in a plain `codex` session once
-you have trusted them above. One flag matters, and only if you want your lead to
-spawn *Codex* teammates rather than Claude ones:
+**Launching the lead.** The hooks and the session injection work in a plain
+`codex` session once you have trusted them above. Spawning does not: every
+story, review and plan review launches a nested harness from *inside* the lead's
+own sandbox, and Codex's default `workspace-write` denies both halves of that —
+a nested `codex exec` cannot initialise (`failed to initialize in-process
+app-server client: Operation not permitted`) and the network a nested `claude
+-p` needs is off (DNS refused, curl exit 6). Both measured on 0.149.0 against
+`codex exec`; an interactive lead may prompt you to escalate instead, which we
+have not walked. No flag on the *inner* run fixes either — the outer posture is
+the whole difference, so launch the lead with:
 
 ```bash
 codex --sandbox danger-full-access
 ```
 
-A spawn happens inside the lead's own sandbox, and a nested `codex exec` cannot
-initialise inside a confined one (`failed to initialize in-process app-server
-client: Operation not permitted`, measured on 0.149.0). No flag on the inner run
-fixes it — the outer posture is the whole difference. A Claude lead has no such
-constraint. Teammates the plugin spawns are unaffected either way: they are
-launched unconfined (below), so a Codex teammate can nest its own plan review.
+A Claude lead has no such constraint. What the flag does *not* change is the
+teammate's own posture: spawned legs are launched unconfined either way (below),
+so a Codex teammate can nest its own plan review.
 
 **What teammates are launched with.** Every Codex teammate and reviewer runs
 `--sandbox danger-full-access`, and every launch prints the posture it took.

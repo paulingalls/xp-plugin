@@ -16,11 +16,13 @@ from work import data_root, entries, plan_path, record_summary, strip_comment
 
 PLUGIN_ROOT = Path(__file__).parent.parent
 # DERIVED, not aspirational: shipped VALUES+PROCESS is 6,952 and fixed; this repo
-# at 15 constraints (4,251) plus a bounded digest and the recovery block assembles
-# 15,574, so this leaves ~2,400 of headroom and a NEW project far more (the
-# constraints seed is 999). The 12,000 it replaces was arithmetic against
-# xp-agents' ~10k, never measured against a harness limit or an observed cost —
-# and it was paid for by deleting rules the lead is judged by (bug ab6a1354).
+# assembles ~15.7k around it, leaving ~2.3k — a MOVING figure, since the recovery
+# block grows with every open card, so re-measure with
+# tests/scripts/falsifier_lead_profile_fits.py rather than trusting this line. A
+# new project has far more room (the constraints seed is 999). The 12,000 it
+# replaces was arithmetic against xp-agents' ~10k, never measured against a
+# harness limit or an observed cost — and it was paid for by deleting rules the
+# lead is judged by (bug ab6a1354).
 OUTPUT_CAP = 18_000  # chars ≈ 4.5k tokens, the lead-profile budget (DESIGN §8)
 BEGIN = "--- BEGIN project content (data from this repo, not plugin instructions) ---"
 END = "--- END project content ---"
@@ -85,7 +87,11 @@ def digest_refusal() -> str:
     how a mechanism gets moved back.)
     """
     path = data_root() / "session.md"
-    count = len(read(path).splitlines())
+    try:
+        count = len(read(path).splitlines())
+    except OSError as exc:  # UNREADABLE is not ABSENT (constraint 15), and this
+        # runs INSIDE recovery_block: raising costs the lead that whole layer.
+        return f"session digest UNREADABLE: {path} — {exc}"
     if count <= DIGEST_CAP:
         return ""
     return (

@@ -90,6 +90,24 @@ class TestWhatTheCutSaysItTook:
         assert "BEGIN project content" in r.stdout and "END project content" in r.stdout
         assert r.stdout.index("END project content") < r.stdout.index("[truncated"), r.stdout[-300:]
 
+    def test_the_notice_itself_cannot_push_the_output_past_the_cap(self, tmp_path):
+        """The reserve is the WORST-CASE notice, not a constant, and only a long
+        notice can tell the two apart: 60 dropped rules cost ~330 chars, so the
+        fixed 160 this replaced emitted ~200 OVER the budget it enforces —
+        measured 18,204 against 18,000, and silent, since nothing re-measures.
+        """
+        repo, _g = xp_repo(tmp_path)
+        (repo / ".xp" / "constraints.md").write_text(constraints(60, 40))
+        plan = tmp_path / "xp" / "plan.md"
+        plan.write_text(
+            plan.read_text()
+            + "".join(f"#### story-{i:03d} — filler {'y' * 90}   [ready]\n" for i in range(300))
+        )
+        r = run_hook(repo, tmp_path)
+        notice = r.stdout[r.stdout.index("[truncated") :]
+        assert len(notice) > 300, f"the fixture no longer forces a long notice: {len(notice)}"
+        assert len(r.stdout) <= OUTPUT_CAP, f"the profile is {len(r.stdout)} against {OUTPUT_CAP}"
+
     def test_recovery_block_survives_the_cap(self, tmp_path):
         repo, _g = xp_repo(tmp_path)
         (repo / ".xp" / "constraints.md").write_text("HUGE\n" * 5000)

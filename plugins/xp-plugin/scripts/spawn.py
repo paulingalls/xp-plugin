@@ -225,7 +225,9 @@ def run_agent(
 def common_dir_widening(cwd: Path) -> list[str]:
     """["--add-dir", <git common dir>] for a LINKED executor worktree, [] otherwise: its
     index lives at <main>/.git/worktrees/<id>/, outside workspace-write, so a
-    codex teammate there cannot commit (bug 0c31ac94; a /tmp scratch repo hides it,
+    codex teammate there cannot commit — INERT under v0.7.1's danger-full-access
+    posture, kept for story-040, which restores a confining one
+    (bug 0c31ac94; a /tmp scratch repo hides it,
     since the sandbox writes /tmp anyway). A main checkout's .git is inside the
     workspace already; widening it would loosen the posture for nothing."""
     proc = subprocess.run(

@@ -79,3 +79,19 @@ class TestTheDigestLayer:
         )
         out = run_hook(repo, tmp_path).stdout
         assert "DIGEST-BODY" in out and "NOT INJECTED" not in out, out
+
+    def test_an_unreadable_digest_costs_the_digest_and_not_the_recovery_block(self, tmp_path):
+        """Constraint 15, and the file's own "one bad file degrades one section".
+        `digest_refusal` is read from INSIDE `recovery_block`, so a raise there
+        takes branch, dirty count, stories and work.md entries with it — the one
+        layer that cannot go stale, gone in silence at exit 0.
+
+        A DIRECTORY at the path is the cheap unreadable: `exists()` is true and
+        `read_text` raises, which is exactly the absent-vs-unreadable split.
+        """
+        repo, _g = xp_repo(tmp_path)
+        (tmp_path / "xp").mkdir(exist_ok=True)
+        (tmp_path / "xp" / "session.md").mkdir()
+        out = run_hook(repo, tmp_path).stdout
+        assert "story-042" in out, "the unreadable digest ate the whole recovery block"
+        assert "UNREADABLE" in out, out
