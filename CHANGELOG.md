@@ -4,6 +4,28 @@ Release notes started at v0.6.0; earlier entries are summarized from their
 tag and merge messages. Full detail lives in the merge history and the
 per-sprint review reports.
 
+## v0.7.2 — the opt-out arrives before the default does
+
+- **Codex sandbox posture is project-selectable.** `codex_sandbox` accepts
+  `workspace-write` or `danger-full-access`; the latter remains the default, so
+  an existing project gets byte-identical launch argv. Every Codex executor and
+  reviewer reports the posture read back from its launched argv. Unknown values
+  refuse before a worktree is cut, and `read-only` is refused separately because
+  the plugin's roles must write their deliverables. Claude launches are unchanged.
+- **Free work uses the same spawned-executor shape as stories.** PROCESS now
+  names the path; `free start` refuses slugs whose 20-character truncation would
+  detach an optional card, and its nudge places project-owned release artifacts
+  before review without prescribing what those artifacts are.
+- **A stopped story is taken over, not started again.** `spawn.py resume <id>`
+  hands a stopped story's OWN worktree — its commits and its uncommitted work —
+  to a fresh teammate, which is told plainly what it inherited and that it is not
+  its own. Plain `spawn` still refuses a story that already has a worktree, so
+  resume is an explicit verb and never a silent reuse. Before this, a stopped
+  story could only be finished by hand or discarded along with its tree.
+- The Python sub-budgets were re-cut twice, still totaling 5,000 lines: once to
+  fund the close/free surface, then 70 lines misc-to-spawn for the resume work.
+  Both were priced against measured occupancy.
+
 ## v0.7.1 — the sandbox we never chose, and the rules that never arrived
 
 A patch, not a sprint. Three unrelated defects that each cost a consuming

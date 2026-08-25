@@ -31,6 +31,5 @@ script cannot absorb them (constraint 7).
 4. **`close.py sprint <id> land`** opens the release PR. Not releasable? Don't run
    it — the branch carries, the key stays.
 5. **`close.py sprint <id> post-merge`**, AFTER the PR merges — it tags and
-   retires the `sprint_branch` key step 0 sets. Your release artifacts are yours:
-   bump and changelog at step 2, because anything outside `.xp/` landing after
-   step 3 invalidates the review that permits land.
+   retires the `sprint_branch` key step 0 sets. Your release artifacts are yours;
+   cut them at step 2, before review, because later code motion invalidates it.

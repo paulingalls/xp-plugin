@@ -107,7 +107,12 @@ def tee_stream(
 
 
 SANDBOX_NOTE = {
-    "danger-full-access": "no OS confinement — network, docker and nested codex all reachable"
+    "danger-full-access": "no OS confinement — network, docker and nested codex all reachable",
+    "workspace-write": (
+        "no outbound network — DNS, loopback, docker and a nested harness are all denied,"
+        " so TEAMMATE.md's mandatory plan_review.py cannot reach an API from a teammate's"
+        " shell; danger-full-access lifts them"
+    ),
 }
 
 

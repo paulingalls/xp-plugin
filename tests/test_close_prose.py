@@ -12,6 +12,8 @@ from close_helpers import (  # noqa: F401
     WORK,
     close,
     close_bare,
+    free,
+    free_repo,
     launches,
     make_repo,
     marker,
@@ -119,6 +121,36 @@ class TestShippedProseMatchesTheMechanism:
         skill = prose(PLUGIN / "skills" / "sprint-close" / "SKILL.md")
         assert skill.index("Note triage") < skill.index("close.py sprint <id> review")
         assert "BEFORE the review" in skill
+
+    def test_release_artifacts_are_project_owned_and_timed_without_enumeration(self):
+        skill = prose(PLUGIN / "skills" / "sprint-close" / "SKILL.md")
+        step = skill.split("5. **", 1)[1]
+        assert "Your release artifacts are yours" in step
+        assert "before" in step.lower() and "review" in step.lower()
+        assert "bump" not in step.lower() and "changelog" not in step.lower()
+
+    def test_free_start_names_release_timing_without_telling_the_lead_to_commit(self, tmp_path):
+        outputs = []
+        for name, slug in (("one", "fix-one"), ("two", "fix-two")):
+            repo, env, _g = free_repo(tmp_path / name)
+            result = free(repo, env, slug, "start")
+            assert result.returncode == 0, result.stderr
+            outputs.append(result.stdout)
+            assert result.stdout.index("release artifacts") < result.stdout.index("review")
+            assert "Commit, then" not in result.stdout
+        assert outputs[0] != outputs[1]
+
+    def test_the_loop_names_free_execution_and_does_not_grow(self):
+        """Constraint 1: the free entry displaces its own weight. PROCESS.md
+        measured 5,517 bytes at 896da44, the commit before the entry landed; the
+        cap sits under that so a later edit cannot quietly spend the displacement
+        back."""
+        process = (PLUGIN / "PROCESS.md").read_text()
+        assert len(process) <= 5454, "the free entry stopped paying for itself"
+        free_entry = process.split("5. **Free", 1)[1].split("## Records", 1)[0]
+        assert "spawn.py" in free_entry
+        assert "worktree" in free_entry and "data root" in free_entry
+        assert "authorship cannot" in free_entry.lower()
 
     def test_a_script_driving_skill_does_not_restate_the_mechanism(self):
         """Measured drift, three times in two sprints, caught by a READER every

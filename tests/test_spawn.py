@@ -25,7 +25,11 @@ from test_spawn_escalation import ESCALATION, stub_escalating
 
 class TestLaunchContract:
     def test_argv_carries_model_effort_plugin_dir_and_permission_posture(self, tmp_path):
-        repo, env, _g = make_repo(tmp_path)
+        repo, env, g = make_repo(tmp_path)
+        config = repo / ".xp" / "config.yml"
+        config.write_text(config.read_text() + "codex_sandbox: workspace-write\n")
+        g("add", "-A")
+        g("commit", "-qm", "codex-only posture")
         rec = stub_claude(tmp_path)
         r = spawn(repo, env, "story-042")
         assert r.returncode == 0, r.stderr
@@ -43,6 +47,8 @@ class TestLaunchContract:
         # and no allow-list: measured to restrict nothing under bypass, so
         # shipping one would certify a bound that does not exist
         assert "--allowedTools" not in argv
+        assert "--sandbox" not in argv
+        assert "codex sandbox:" not in r.stdout + r.stderr
         # stream-json (not json) so the lead can see it live; the installed
         # binary REQUIRES --verbose alongside stream-json or it refuses to launch
         assert argv[argv.index("--output-format") + 1] == "stream-json"
@@ -451,7 +457,7 @@ class TestCommonDirWidening:
         rec = stub_codex(tmp_path, commit=False)
         monkeypatch.setenv("PATH", f"{tmp_path / 'bin'}:/usr/bin:/bin")
         monkeypatch.setenv("XP_DATA", str(tmp_path / "data"))
-        argv = agent_argv("codex", "m", "", "json")
+        argv = agent_argv("codex", "m", "", "json", "danger-full-access")
         proc = run_agent(argv, wt, "", "plan-reviewer", "codex", "story-042-review")
         assert proc.returncode == 0, proc.stderr
         launched = json.loads(rec.read_text())["argv"]
@@ -470,7 +476,7 @@ class TestCommonDirWidening:
         rec = stub_codex(tmp_path, commit=False)
         monkeypatch.setenv("PATH", f"{tmp_path / 'bin'}:/usr/bin:/bin")
         monkeypatch.setenv("XP_DATA", str(tmp_path / "data"))
-        argv = agent_argv("codex", "m", "", "json")
+        argv = agent_argv("codex", "m", "", "json", "danger-full-access")
         assert run_teammate(argv, wt, "", "story-042", tmp_path / "data", "codex") == 0
         launched = json.loads(rec.read_text())["argv"]
         adds = [launched[i + 1] for i, arg in enumerate(launched) if arg == "--add-dir"]

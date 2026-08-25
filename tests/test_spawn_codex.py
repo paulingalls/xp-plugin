@@ -8,8 +8,10 @@ import os
 import subprocess
 from itertools import pairwise
 
+import pytest
+from session_start import missing_template_keys
 from session_start_helpers import HOOKS_JSON
-from spawn_helpers import in_tree, make_repo, spawn, stub_codex
+from spawn_helpers import SPAWN, in_tree, make_repo, spawn, stub_codex
 
 
 class TestCodexExecutor:
@@ -64,6 +66,90 @@ class TestCodexExecutor:
         # unnecessary on 0.147.0, and a second --add-dir is that widening returning
         assert argv.count("--add-dir") == 1, argv
 
+    def test_no_config_key_keeps_the_v071_argv_byte_for_byte(self, tmp_path):
+        assert self.argv(tmp_path) == [
+            "codex",
+            "exec",
+            "--json",
+            "-c",
+            "shell_environment_policy.inherit=all",
+            "-c",
+            "shell_environment_policy.exclude=[]",
+            "-c",
+            "shell_environment_policy.include_only=[]",
+            "--sandbox",
+            "danger-full-access",
+            "--add-dir",
+            str(tmp_path / "data"),
+            "-m",
+            "gpt-5.6-terra",
+            "-c",
+            "model_reasoning_effort=medium",
+            "-",
+        ]
+
+    def test_the_commented_template_key_does_not_pin_a_posture(self):
+        template = (SPAWN.parents[1] / "templates" / "config.yml").read_text()
+        seeds = [line for line in template.splitlines() if "codex_sandbox:" in line]
+        assert len(seeds) == 1
+        assert missing_template_keys(seeds[0], "") == []
+        active = seeds[0].removeprefix("# ")
+        assert missing_template_keys(active, "") == [
+            ("codex_sandbox", "codex_sandbox: danger-full-access")
+        ]
+
+    def test_this_repo_sets_the_key_its_template_only_seeds(self, monkeypatch):
+        """Constraint 12, and nothing else guards it: the template seeds the key
+        COMMENTED, so test_dogfood is green whether we set it or not — deleting
+        our line leaves the whole suite green while we stop executing the surface
+        we ship. Compared to the RESOLVED value, so an absent key (which resolves
+        to the default) is not mistaken for a chosen one."""
+        import spawn
+        from close import config_flat
+
+        monkeypatch.chdir(SPAWN.parents[3])
+        configured = config_flat("codex_sandbox")
+        assert spawn.resolve_codex_sandbox("codex", configured) == (configured, "")
+
+    @pytest.mark.parametrize("posture", ["workspace-write", "danger-full-access"])
+    def test_each_configured_posture_is_launched_and_reported(self, tmp_path, posture):
+        repo, env, g = make_repo(tmp_path, executor="codex/gpt-5.6-terra/medium")
+        config = repo / ".xp" / "config.yml"
+        config.write_text(config.read_text() + f"codex_sandbox: {posture}\n")
+        g("add", "-A")
+        g("commit", "-qm", "choose codex posture")
+        rec = stub_codex(tmp_path, sandbox=posture)
+        r = spawn(repo, env, "story-042")
+        assert r.returncode == 0, r.stderr
+        argv = json.loads(rec.read_text())["argv"]
+        assert argv[argv.index("--sandbox") + 1] == posture
+        assert f"codex sandbox: {posture}" in r.stderr
+        if posture == "workspace-write":
+            # network FIRST, and named as the superset: DNS and loopback are both
+            # denied here (re-measured 0.149.0 against a danger-full-access
+            # control, 2026-08-25), so the casualty a lead meets is TEAMMATE.md's
+            # mandatory nested plan review, not docker
+            for denied in ("network", "loopback", "docker", "plan_review", "danger-full-access"):
+                assert denied in r.stderr.lower(), r.stderr
+
+    @pytest.mark.parametrize("posture", ["unknown-posture", "read-only"])
+    def test_invalid_posture_refuses_before_cutting_a_worktree(self, tmp_path, posture):
+        repo, env, g = make_repo(tmp_path, executor="codex/gpt-5.6-terra/medium")
+        config = repo / ".xp" / "config.yml"
+        config.write_text(config.read_text() + f"codex_sandbox: {posture}\n")
+        g("add", "-A")
+        g("commit", "-qm", "bad codex posture")
+        stub_codex(tmp_path, sandbox=posture)
+        r = spawn(repo, env, "story-042")
+        assert r.returncode == 2
+        if posture == "read-only":
+            assert "every role" in r.stderr and "deliverable" in r.stderr
+            assert "unrecognised" not in r.stderr
+        else:
+            assert "workspace-write" in r.stderr and "danger-full-access" in r.stderr
+        assert not (tmp_path / "data" / "worktrees" / "story-042").exists()
+        assert "story-042" not in in_tree(repo, env, "branch", "--format=%(refname:short)")
+
     def test_a_two_part_spec_carries_no_effort(self, tmp_path):
         argv = self.argv(tmp_path, executor="codex/gpt-5.6-terra")
         assert not [a for a in argv if a.startswith("model_reasoning_effort")], argv
@@ -79,7 +165,7 @@ class TestCodexExecutor:
         # assignment leaves every later data_root() in this worker pointed at a
         # tmp_path pytest has already deleted
         monkeypatch.setenv("XP_DATA", str(tmp_path / "data"))
-        argv = spawn_mod.codex_argv("gpt-5.6-terra", "medium")
+        argv = spawn_mod.codex_argv("gpt-5.6-terra", "medium", "danger-full-access")
         stub_codex(tmp_path)
         mutated = [argv[0], "exec", "--disable", "unified_exec", *argv[2:]]
         r = subprocess.run(
@@ -110,7 +196,7 @@ class TestCodexExecutor:
         import spawn as spawn_mod
 
         monkeypatch.setenv("XP_DATA", str(tmp_path / "data"))
-        argv = spawn_mod.agent_argv("codex", "m", "", "json")
+        argv = spawn_mod.agent_argv("codex", "m", "", "json", "danger-full-access")
         for want, dies in (("workspace-write", True), ("danger-full-access", False)):
             stub_codex(tmp_path, commit=False, sandbox=want)
             r = subprocess.run(
@@ -139,7 +225,7 @@ class TestCodexExecutor:
         from teammate_tee import run_stream
 
         monkeypatch.setenv("XP_DATA", str(tmp_path / "data"))
-        shipped = spawn_mod.agent_argv("codex", "m", "", "json")
+        shipped = spawn_mod.agent_argv("codex", "m", "", "json", "danger-full-access")
         confined = [a if a != "danger-full-access" else "workspace-write" for a in shipped]
         for argv, posture in ((shipped, "danger-full-access"), (confined, "workspace-write")):
             stub_codex(tmp_path, commit=False, sandbox=posture)
@@ -196,7 +282,7 @@ class TestCodexExecutor:
         """
         import spawn as spawn_mod
 
-        argv = spawn_mod.codex_argv("gpt-5.6-terra", "medium")
+        argv = spawn_mod.codex_argv("gpt-5.6-terra", "medium", "danger-full-access")
         assert ("--disable", "unified_exec") not in list(pairwise(argv)), (
             "the codex teammate cannot run a command past the shell bound: " + " ".join(argv)
         )
@@ -225,7 +311,7 @@ class TestCodexExecutor:
 
         assert set(STREAMS) == set(HARNESS_INSTALL)
         for harness in HARNESS_INSTALL:
-            assert agent_argv(harness, "m", "high", "json")[0] == harness
+            assert agent_argv(harness, "m", "high", "json", "danger-full-access")[0] == harness
 
     def test_a_dirty_codex_teammate_hits_the_shared_completion_guard(self, tmp_path):
         repo, env, _g = make_repo(tmp_path, executor="codex/gpt-5.6-terra/medium")
