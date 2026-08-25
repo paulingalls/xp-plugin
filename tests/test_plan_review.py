@@ -9,6 +9,7 @@ from itertools import pairwise
 from pathlib import Path
 
 import pytest
+from plan_review import disposition as disposition_result
 from spawn_helpers import make_repo, spawn, stub_claude, stub_codex
 
 PLUGIN = Path(__file__).parent.parent / "plugins" / "xp-plugin"
@@ -401,6 +402,18 @@ class TestPlanEditsInPlace:
         result = plan_review(repo, env, "story-042", str(draft))
         assert result.returncode == 0, result.stderr
         assert "Reason: the guard needs" in draft.read_text()
+        assert not (tmp_path / "data" / "markers" / "story-042.plan-review-incomplete").exists()
+
+    def test_a_reason_split_by_hard_wrapping_is_present(self):
+        reason = "the guard needs an executable acceptance check"
+        report = json.dumps({"status": "edited", "reasons": [reason]})
+        plan = b"Reason: the guard needs an executable\nacceptance check.\n"
+        assert disposition_result(report, b"before", plan) == ""
+
+    def test_a_reason_absent_under_whitespace_normalization_refuses(self):
+        report = json.dumps({"status": "edited", "reasons": ["a missing reason"]})
+        problem = disposition_result(report, b"before", b"Reason: a different reason\n")
+        assert "every plan edit" in problem
 
     def test_an_edit_without_its_reason_refuses(self, tmp_path):
         repo, env, draft = self.repo(tmp_path)
@@ -411,6 +424,7 @@ class TestPlanEditsInPlace:
         )
         result = plan_review(repo, env, "story-042", str(draft))
         assert result.returncode == 2 and "reason" in result.stderr.lower()
+        assert (tmp_path / "data" / "markers" / "story-042.plan-review-incomplete").exists()
 
     def test_a_clean_review_leaves_the_plan_byte_identical(self, tmp_path):
         repo, env, draft = self.repo(tmp_path)

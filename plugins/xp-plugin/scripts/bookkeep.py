@@ -165,6 +165,35 @@ def held_trunk_tree(trunk: str) -> tuple[str, str]:
     return "", ""
 
 
+def story_worktree(branch: str) -> tuple[str, list[str]]:
+    """The worktree holding branch and any lookup failure."""
+    listed = git("worktree", "list", "--porcelain")
+    if listed.returncode:
+        return "", ["git worktree list --porcelain"]
+    path = ""
+    for line in listed.stdout.splitlines():
+        if line.startswith("worktree "):
+            path = line.removeprefix("worktree ")
+        elif line == f"branch refs/heads/{branch}":
+            return path, []
+    return "", []
+
+
+def remove_story_checkout(tree: str, branch: str, timeout_value: str = "") -> list[str]:
+    """Remove an optional spawned tree and its branch, accumulating failures."""
+    failed = remove_story_worktree(tree, timeout_value) if tree else []
+    return failed + delete_story_branch(branch)
+
+
+def report_incomplete(failed: list[str]) -> bool:
+    if not failed:
+        return False
+    print("\nincomplete — the merge landed. Re-run or resolve them:", file=sys.stderr)
+    for command in failed:
+        print(f"  {command}", file=sys.stderr)
+    return True
+
+
 def worktree_command(system_md: str, action: str) -> tuple[str, str]:
     """(command, problem) — at most one is ever non-empty, for `worktree <action>`.
 

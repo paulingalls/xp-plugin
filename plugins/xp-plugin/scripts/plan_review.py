@@ -104,6 +104,10 @@ def plan_bytes(path: Path) -> bytes | None:
         return None
 
 
+def normalized_whitespace(text: str) -> str:
+    return " ".join(text.split())
+
+
 def disposition(text: str, before: bytes | None, after: bytes | None) -> str:
     changed = before != after
     try:
@@ -128,7 +132,11 @@ def disposition(text: str, before: bytes | None, after: bytes | None) -> str:
     plan = (after or b"").decode(errors="replace")
     if not changed:
         return "an edited disposition left the plan unchanged"
-    if not reasons or not all(isinstance(reason, str) and reason in plan for reason in reasons):
+    normalized_plan = normalized_whitespace(plan)
+    if not reasons or not all(
+        isinstance(reason, str) and normalized_whitespace(reason) in normalized_plan
+        for reason in reasons
+    ):
         return "every plan edit must carry its reason in the plan file"
     return ""
 

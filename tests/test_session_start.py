@@ -1,6 +1,8 @@
 """story-003: SessionStart hook. Verify: pytest -q tests/test_session_start.py"""
 
 import json
+import os
+import pty
 import subprocess
 import sys
 from pathlib import Path
@@ -14,9 +16,25 @@ class TestLastClose(LastCloseCases):
 
 
 class TestScope:
-    def test_outside_git_repo_silent(self, tmp_path):
-        r = run_hook(tmp_path, tmp_path)
-        assert r.returncode == 0 and r.stdout == ""
+    def test_a_pipe_outside_a_git_repo_stays_byte_silent(self, tmp_path):
+        result = run_hook(tmp_path, tmp_path)
+        assert (result.returncode, result.stdout, result.stderr) == (0, "", "")
+
+    def test_a_tty_names_the_hook_and_its_json_input(self):
+        master, slave = pty.openpty()
+        try:
+            result = subprocess.run(
+                [sys.executable, str(HOOK)],
+                stdin=slave,
+                capture_output=True,
+                text=True,
+                timeout=1,
+            )
+        finally:
+            os.close(master)
+            os.close(slave)
+        assert result.returncode == 0
+        assert all(word in result.stdout for word in ("session_start.py", "JSON", "stdin"))
 
     def test_git_repo_without_xp_silent(self, tmp_path):
         repo = tmp_path / "plain"
@@ -33,6 +51,7 @@ class TestInjection:
         assert r.returncode == 0, r.stderr
         for sentinel in ("XP Values", "CONSTRAINT-SENTINEL", "story-042", "main"):
             assert sentinel in r.stdout, f"missing {sentinel}"
+        assert "is a hook" not in r.stdout  # the tty nudge never reaches the harness channel
 
     def test_banner_names_version_and_gates(self, tmp_path):
         repo, _g = xp_repo(tmp_path)
