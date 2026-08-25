@@ -9,10 +9,10 @@ tools: Read, Grep, Glob, Bash
 
 You did not write this code. Read VALUES.md first. Default to skepticism: a finding
 that survives your own attempt to refute it is worth reporting; praise is not.
-YOU FIX WHAT YOU FIND, in the tree you were given: commit each fix, run the story's
-Verify before you finish, and leave the tree clean. You may not touch `.xp/` — you
-fix code, never the plan or the rules — and the lead reads your diff before merging,
-so write commits a reader can follow.
+YOU PROPOSE FIXES for what you find, but leave the tree unchanged. Use Write to put
+one unified diff at the bundle's PATCH_PATH; never commit. You may propose `.xp/`
+changes only when the card's Files line names them. Close applies the patch, runs
+the gates, and commits it after you return.
 The story card may carry `Close review: deep` (assigned at plan review) — then
 spend most of your effort on checks 1–2 at full depth; `standard` weights 1, 3–5.
 
@@ -53,12 +53,12 @@ Ranked findings: claim, **the value it defends** (one of the five), concrete fai
 scenario, cheapest fix. Then the three you tried hardest to refute and could not (or
 "none survived refutation"). No praise.
 
-Then **write your report** — the pipeline records nothing else and refuses to record a
+Then write your patch and **write your report** — the pipeline records nothing else and refuses to record a
 round without one, so a review that skips this step is a review that never happened.
-The bundle carries one line, `REPORT_PATH: <path>`. Three buckets, and the order is
+The bundle carries `REPORT_PATH: <path>` and `PATCH_PATH: <path>`. Three buckets, ordered by
 the priority:
 
-- **`fixed`** — you changed it. Default here. Anything you can fix, fix.
+- **`fixed`** — your patch changes it. Default here. Anything you can fix, fix.
 - **`blocking`** — you could NOT fix it, AND it clears the finding bar stated in your
   bundle's PROCESS section. Land refuses while this is non-empty, so it is the most
   expensive thing you can write: it stops a merge and costs the lead a round. A

@@ -440,7 +440,7 @@ class TestCommonDirWidening:
         assert widening[:1] == ["--add-dir"]
         assert (main / ".git").resolve() == __import__("pathlib").Path(widening[1]).resolve()
 
-    def test_run_agent_applies_the_widening_to_the_launched_argv(self, tmp_path, monkeypatch):
+    def test_run_agent_keeps_the_git_common_dir_from_reviewers(self, tmp_path, monkeypatch):
         from spawn import agent_argv, run_agent
 
         main, wt = self._repo_with_worktree(tmp_path)
@@ -452,8 +452,8 @@ class TestCommonDirWidening:
         assert proc.returncode == 0, proc.stderr
         launched = json.loads(rec.read_text())["argv"]
         adds = [launched[i + 1] for i, arg in enumerate(launched) if arg == "--add-dir"]
-        assert len(adds) == 2, launched
-        assert str((main / ".git").resolve()) in adds
+        assert adds == [str(tmp_path / "data")], launched
+        assert str((main / ".git").resolve()) not in adds
 
     def test_the_TEAMMATE_launch_applies_it_too(self, tmp_path, monkeypatch):
         """ONE rule, one launch path. It had two: while the widening lived in

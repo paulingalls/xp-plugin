@@ -176,17 +176,20 @@ def run_stream(
     timeout: float | None = None,
     out: OutWrite = print,
     err: OutWrite = lambda s: print(s, file=sys.stderr),
+    widen_git: bool = False,
 ) -> subprocess.CompletedProcess:
-    """EVERY spawned agent, whatever its role: stream live, tee to a durable log,
-    reassemble the harness's terminal result so the caller reads what the old
-    captured run handed it.
+    """Every spawned agent streams live and tees to a durable log; `widen_git`
+    is executor-only commit access, and it defaults OFF for the reason run_agent's
+    `role` takes no default: the capability this story moved out of the reviewer
+    must not come back by omission. Reassemble the harness's terminal result so
+    the caller reads what the old captured run handed it.
 
     stdin is fed on its own thread — the prompt can exceed the pipe buffer, and
     writing it inline before draining stdout would deadlock a child that starts
     producing output before it has finished reading stdin.
     """
     parse = STREAMS[harness]
-    if argv[:2] == ["codex", "exec"]:
+    if widen_git and argv[:2] == ["codex", "exec"]:
         # HERE, not at one caller: while the widening lived in run_agent alone the
         # teammate leg launched without it, and the codex teammate that could not
         # commit was this story's own author.
@@ -292,6 +295,7 @@ def run_teammate(
         os.environ | {"XP_ROLE": "teammate", "XP_STORY_ID": story_id},
         out=out,
         err=err,
+        widen_git=True,  # the executor commits and must
     )
     if proc.returncode == 0 and harness == "claude" and proc.stdout:
         out(closing_line(story_id, json.loads(proc.stdout)))

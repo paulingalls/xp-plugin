@@ -19,7 +19,7 @@ import stages
 from close import default_branch, fail, git, story_card
 from release import cmd_post_merge as release_post_merge
 from release import next_version, refuse_unbumpable
-from review import REVIEWER_NAME
+from review import reviewer_strays
 from work import (
     append,
     config_block_value,
@@ -176,14 +176,22 @@ def cmd_review(sprint_id: str, dry_run: bool) -> int:
         path = review.sprint_report_path(sprint_id, key, round_n)
         if not dry_run:  # a preview must not delete the findings of a refused round
             path.unlink(missing_ok=True)
+            review.patch_path(path).unlink(missing_ok=True)
+        if stage == "fixer":
+            extra = [("Your patch", f"PATCH_PATH: {review.patch_path(path)}"), *extra]
         bundle = build_sprint_bundle(sprint_id, cards, base, path, charters[stage], extra)
+        stage_head = git("rev-parse", "HEAD").stdout.strip()
         result, err = review.run(bundle, Path.cwd(), dry_run, name=f"sprint {key}")
         if dry_run or err:  # an EMPTY report, not a shapeless one: a preview walks
             empty = {k: [] for k in review.REPORT_KEYS}
             return empty, review.abort_text(head, err) if err else ""
         print(result)  # before any refusal: the findings exist nowhere else yet
+        if motion := review.check_reviewer_motion(stage_head, marker, digest_before, cards):
+            return {k: [] for k in review.REPORT_KEYS}, motion
         report, err = review.read_report(path)
-        return report, review.abort_text(head, err) if err else ""
+        if not err and stage == "fixer":
+            err = review.apply_patch(path, cards)
+        return report, review.abort_text(stage_head, err) if err else ""
 
     prior = [("Findings from earlier rounds", render_sprint_prior(state.get("rounds", [])))]
     candidates = []
@@ -215,8 +223,6 @@ def cmd_review(sprint_id: str, dry_run: bool) -> int:
     if err:
         return fail(err)
 
-    if motion := review.check_reviewer_motion(head, marker, digest_before, cards):
-        return fail(motion)
     # No diff covers the plan now. Cross-lane BY CONSTRUCTION here, safe only
     # because a sprint review runs when every member is [done]: a mid-sprint run
     # would refuse and blame itself for a lane's flip.
@@ -344,12 +350,8 @@ def _coverage_refusal(sprint_id: str, head: str) -> str:
     # AUTHORSHIP, the story leg's rule: the review leg's fixer commits inside the
     # range its round covers, so a bare sha compare refuses the release over the
     # fixes the review exists to produce. Never over a GATE_FILE, whatever signed
-    # it — review-time motion permits any `.xp/` path a sprint card declares.
-    strays = [
-        ln
-        for ln in git("log", "--format=%h|%an|%s", f"{shown}..{head}").stdout.splitlines()
-        if ln.split("|")[1] != REVIEWER_NAME
-    ]
+    # it — patch application permits any `.xp/` path a sprint card declares.
+    strays = reviewer_strays(shown, head)
     if not strays and not any(f in overlap.GATE_FILES for f in moved.stdout.splitlines()):
         print(f"the delta since {shown[:8]} is the reviewer's own fixes")
         return ""

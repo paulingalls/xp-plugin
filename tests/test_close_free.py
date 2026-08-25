@@ -12,7 +12,18 @@ import sys
 from pathlib import Path
 
 import pytest
-from close_helpers import CLOSE, close, free, free_repo, gh_calls, make_repo, marker_file
+from close_helpers import (
+    CLOSE,
+    CONFIG_PATCH,
+    NEW_FILE_PATCH,
+    close,
+    free,
+    free_repo,
+    gh_calls,
+    make_repo,
+    marker_file,
+    stub_reviewer,
+)
 
 TODAY = datetime.date.today().isoformat()
 BRANCH = f"t/free-{TODAY}-fix-typo"
@@ -170,21 +181,10 @@ class TestFreeReview:
         repo, env, g = free_repo(tmp_path)
         free(repo, env, "fix-typo", "start")
         commit_on_free(repo, g)
-        gh = tmp_path / "bin" / "claude"
-        gh.write_text(
-            gh.read_text().replace(
-                "sys.stdout.write",
-                "open('.xp/config.yml', 'a').write('# edited\\n')\n"
-                "import subprocess\n"
-                "subprocess.run(['git', 'add', '-A'])\n"
-                "subprocess.run(['git', '-c', 'user.name=xp story-reviewer',"
-                " '-c', 'user.email=story-reviewer@xp.local', 'commit', '-qm', 'r'])\n"
-                "sys.stdout.write",
-            )
-        )
+        stub_reviewer(tmp_path, patch=CONFIG_PATCH)
         r = free(repo, env, "fix-typo", "review")
         assert r.returncode == 2, r.stdout
-        assert ".xp/config.yml" in r.stderr and "may fix code" in r.stderr
+        assert ".xp/config.yml" in r.stderr and "Files line" in r.stderr
 
 
 class TestFreeLand:
@@ -276,19 +276,7 @@ class TestFreeLand:
         repo, env, g = free_repo(tmp_path)
         free(repo, env, "fix-typo", "start")
         commit_on_free(repo, g)
-        stub = tmp_path / "bin" / "claude"
-        stub.write_text(
-            stub.read_text().replace(
-                "sys.stdout.write",
-                "open('src/fixed.py', 'w').write('F = 1\\n')\n"
-                "import subprocess\n"
-                "subprocess.run(['git', 'add', '-A'])\n"
-                "subprocess.run(['git', '-c', 'user.name=xp story-reviewer',"
-                " '-c', 'user.email=story-reviewer@xp.local', 'commit', '-qm', 'r'])\n"
-                "sys.stdout.write",
-                1,
-            )
-        )
+        stub_reviewer(tmp_path, patch=NEW_FILE_PATCH)
         assert free(repo, env, "fix-typo", "review").returncode == 0
         r = free(repo, env, "fix-typo", "land")
         assert r.returncode == 0, r.stderr
