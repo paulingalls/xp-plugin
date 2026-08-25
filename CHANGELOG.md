@@ -16,8 +16,15 @@ per-sprint review reports.
   names the path; `free start` refuses slugs whose 20-character truncation would
   detach an optional card, and its nudge places project-owned release artifacts
   before review without prescribing what those artifacts are.
-- The Python sub-budgets were re-cut, still totaling 5,000 lines, to fund the
-  close/free surface against measured occupancy.
+- **A stopped story is taken over, not started again.** `spawn.py resume <id>`
+  hands a stopped story's OWN worktree — its commits and its uncommitted work —
+  to a fresh teammate, which is told plainly what it inherited and that it is not
+  its own. Plain `spawn` still refuses a story that already has a worktree, so
+  resume is an explicit verb and never a silent reuse. Before this, a stopped
+  story could only be finished by hand or discarded along with its tree.
+- The Python sub-budgets were re-cut twice, still totaling 5,000 lines: once to
+  fund the close/free surface, then 70 lines misc-to-spawn for the resume work.
+  Both were priced against measured occupancy.
 
 ## v0.7.1 — the sandbox we never chose, and the rules that never arrived
 
