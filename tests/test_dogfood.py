@@ -141,6 +141,19 @@ class TestDogfoodMatchesTheScaffold:
         )
         assert f"teardown_timeout: {TEARDOWN_TIMEOUT}" in line, line
 
+    def test_the_digest_bound_the_skill_states_is_the_one_the_hook_enforces(self):
+        """Two copies of one number, and only one of them is runnable: the SKILL
+        is what a lead reads at the moment of writing the digest, and
+        session_start is what refuses over it. Bug c2d7ffdf was exactly this
+        drift between two prose copies nobody could run — here the prose copy is
+        pinned to the code's, so it reds instead of drifting."""
+        from session_start import DIGEST_CAP
+
+        skill = (self.REPO / "plugins/xp-plugin/skills/story-close/SKILL.md").read_text()
+        assert f"≤{DIGEST_CAP} lines" in skill, (
+            f"the SKILL does not state the {DIGEST_CAP}-line bound the hook enforces"
+        )
+
     def test_the_shipped_plan_parses_with_the_parser_sprint_close_uses(self):
         """Was a PAIR: it also read THIS repo's .xp/plan.md, so our live plan and
         the template could not drift apart unnoticed. story-019 moved our plan to

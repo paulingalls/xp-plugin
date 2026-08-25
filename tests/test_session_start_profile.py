@@ -46,6 +46,22 @@ class TestTheRealProfileAgainstTheRealCap:
         assert "teammate session" not in out, "the role gate ate the profile; this asserts nothing"
         return out
 
+    def test_our_own_digest_is_within_the_bound_the_hook_enforces(self):
+        """The dogfood arm of bug 597c32db. Ours was 380 lines and 26,797 chars
+        when the sprint closer found it — by reading, not by any gate — and the
+        toy fixtures next door stayed green throughout, which is this file's
+        whole reason to exist.
+
+        Absent reads as zero: a fresh clone legitimately has no digest yet, and
+        that is a different state from one too big to inject (constraint 15).
+        """
+        sys.path.insert(0, str(Path(__file__).parent.parent / "plugins/xp-plugin/scripts"))
+        from session_start import DIGEST_CAP, data_root
+
+        digest = data_root() / "session.md"
+        count = len(digest.read_text().splitlines()) if digest.exists() else 0
+        assert count <= DIGEST_CAP, f"{digest} is {count} lines against {DIGEST_CAP}"
+
     def test_a_truncated_profile_names_the_constraints_it_dropped(self):
         """The budget is allowed not to fit. It is NOT allowed to hide which
         rules it cut: a silently-absent constraint is one the lead never knew it

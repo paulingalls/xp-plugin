@@ -29,6 +29,6 @@ yourself doing by hand is a defect in the pipeline — file it.
    the story worktree: it merges in whichever tree holds the integration branch, so
    YOUR SHELL IS LEFT IN A DELETED DIRECTORY. Every refusal names its own next
    action; run it twice and you get the same answer.
-5. **Write the session digest** (≤30 lines: intent, surprises, next step). You are
-   its sole writer — the pipeline records the facts of the close, never the
-   narrative.
+5. **REPLACE the session digest** (≤30 lines: intent, surprises, next step) —
+   rewritten, never appended to. You are its sole writer; the pipeline records
+   the facts, never the narrative.

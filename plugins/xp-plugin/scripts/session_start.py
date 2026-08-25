@@ -59,8 +59,36 @@ def config_age(root: Path) -> str:
     )
 
 
+DIGEST_CAP = 30  # lines; the story-close SKILL's copy is pinned to this by a test
+
+
+def digest_refusal() -> str:
+    """The bound, measured — the whole of it. Three prose statements said the size
+    and none said the lifecycle, so ours was APPENDED to 380 lines, took the
+    profile to 40,311 chars against OUTPUT_CAP and evicted constraints 12-15
+    (bug 597c32db). Names the path, the count and the bound: a refusal that says
+    only "too long" leaves the lead guessing which file.
+
+    Read by `recovery_block`, NOT emitted from the digest's own slot: the cap
+    truncates the TAIL and the digest is last, so a refusal there is the first
+    thing cut — measured on this repo, where the cut already lands inside
+    constraints.md and the digest never arrives at all.
+    """
+    path = data_root() / "session.md"
+    count = len(read(path).splitlines())
+    if count <= DIGEST_CAP:
+        return ""
+    return (
+        f"session digest NOT INJECTED: {path} is {count} lines against the"
+        f" {DIGEST_CAP}-line bound. It is REPLACED at each close, never appended —"
+        " read it at that path and rewrite it there"
+    )
+
+
 def digest_with_staleness() -> str:
     """session.md, STALE-prefixed by commit distance; stampless never reads fresh."""
+    if digest_refusal():
+        return ""
     text = read(data_root() / "session.md")
     if not text:
         return ""
@@ -161,10 +189,12 @@ def recovery_block() -> str:
         # a corrupt log must cost its own line, not the whole recovery layer:
         # build_all try/excepts per BUILDER, and this is one builder
         closed = "last close: (unreadable log)"
+    refusal = digest_refusal()
     return "\n".join(
         [
             f"branch: {git('rev-parse', '--abbrev-ref', 'HEAD')}",
             f"dirty files: {len(dirty.splitlines()) if dirty else 0}",
+            *([refusal] if refusal else []),
             *([closed] if closed else []),
             "stories:",
             *stories,

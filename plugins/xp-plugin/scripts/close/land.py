@@ -178,7 +178,7 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool, free_slug: str = "")
             print(f"  {c}", file=sys.stderr)
         return 3
     print(
-        f"{story_id} closed. Update the session digest (you are its sole writer);"
+        f"{story_id} closed. REPLACE the session digest (you are its sole writer);"
         " first line must be: # Session digest — written <ISO-ts> at <short-sha>"
     )
     return 0
