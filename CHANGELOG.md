@@ -4,6 +4,16 @@ Release notes started at v0.6.0; earlier entries are summarized from their
 tag and merge messages. Full detail lives in the merge history and the
 per-sprint review reports.
 
+## v0.7.3 — completed work reports itself completed
+
+- Plan review accepts reasons preserved across hard wrapping while still
+  refusing reasons absent under whitespace normalization.
+- Free post-merge now uses story land's shared worktree teardown and branch
+  discharge, reporting teardown failures after continuing cleanup.
+- Hooks invoked from a terminal identify their JSON-on-stdin contract and exit
+  instead of blocking; piped hook behavior is unchanged.
+- `free start` reports whether its optional card already exists in the plan.
+
 ## v0.7.2 — the opt-out arrives before the default does
 
 - **Codex sandbox posture is project-selectable.** `codex_sandbox` accepts

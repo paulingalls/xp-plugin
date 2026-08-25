@@ -1,0 +1,66 @@
+"""Existing free post-merge release regressions, split for the 500-line cap."""
+
+import json
+from pathlib import Path
+
+import pytest
+from close_helpers import free, free_repo
+from test_close_free import BRANCH, add_free_card, commit_on_free
+
+
+class TestFreePostMerge:
+    def reviewed(self, tmp_path, card=False, manifest="", extra=""):
+        repo, env, g = free_repo(tmp_path)
+        free(repo, env, "fix-typo", "start")
+        commit_on_free(repo, g)
+        if card:
+            add_free_card(env)
+        assert free(repo, env, "fix-typo", "review").returncode == 0
+        if manifest:
+            (repo / "plugin.json").write_text(json.dumps({"version": manifest}))
+            extra += "version_files: plugin.json\n"
+        if extra:
+            config = repo / ".xp" / "config.yml"
+            config.write_text(config.read_text() + extra)
+            g("add", "-A")
+            g("commit", "-qm", "release identity")
+        return repo, env, g
+
+    def merge_pr(self, g):
+        g("checkout", "-q", "main")
+        g("merge", "-q", "--no-ff", BRANCH, "-m", "merge free release")
+
+    def test_post_merge_tags_the_merged_sha_and_retires_a_card(self, tmp_path):
+        repo, env, g = self.reviewed(tmp_path, card=True)
+        self.merge_pr(g)
+        merged = g("rev-parse", "HEAD").stdout.strip()
+        result = free(repo, env, "fix-typo", "post-merge")
+        assert result.returncode == 0, result.stderr
+        assert g("rev-list", "-n1", "v0.2.1").stdout.strip() == merged
+        assert "[done]" in (Path(env["XP_DATA"]) / "plan.md").read_text()
+        assert "NO manifest was checked" in result.stdout, result.stdout
+
+    def test_post_merge_before_the_pr_merges_refuses_and_cuts_no_tag(self, tmp_path):
+        repo, env, g = self.reviewed(tmp_path)
+        g("checkout", "-q", "main")
+        result = free(repo, env, "fix-typo", "post-merge")
+        assert result.returncode == 2 and BRANCH in result.stderr
+        assert "v0.2.1" not in g("tag").stdout.split()
+
+    def test_a_free_release_leaves_the_sprint_branch_key_alone(self, tmp_path):
+        repo, env, g = self.reviewed(tmp_path, extra="sprint_branch: sprint-001\n")
+        self.merge_pr(g)
+        assert free(repo, env, "fix-typo", "post-merge").returncode == 0
+        assert "sprint_branch: sprint-001" in (repo / ".xp" / "config.yml").read_text()
+
+    @pytest.mark.parametrize("manifest,rc", [("0.2.0", 2), ("0.2.1", 0)], ids=["behind", "level"])
+    def test_the_manifest_must_name_the_tag_being_cut(self, tmp_path, manifest, rc):
+        repo, env, g = self.reviewed(tmp_path, manifest=manifest)
+        self.merge_pr(g)
+        result = free(repo, env, "fix-typo", "post-merge")
+        assert result.returncode == rc, result.stderr
+        if rc:
+            assert "plugin.json" in result.stderr and "behind" in result.stderr.lower()
+        else:
+            assert "manifests matching v0.2.1: plugin.json" in result.stdout, result.stdout
+        assert ("v0.2.1" in g("tag").stdout.split()) is (rc == 0)

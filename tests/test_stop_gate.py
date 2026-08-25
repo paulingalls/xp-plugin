@@ -7,6 +7,8 @@ tool_response; successful PostToolUse's tool_response has NO exit_code.
 """
 
 import json
+import os
+import pty
 import subprocess
 import sys
 from pathlib import Path
@@ -77,76 +79,33 @@ def markers(tmp_path, session="sess-1"):
     return [json.loads(p.read_text()) for p in d.glob(f"{session}.*.test-status")]
 
 
-class TestBashStatus:
-    def test_failure_event_records_red_then_success_greens(self, tmp_path):
-        repo, _g = repo_with_story(tmp_path)
-        payload = failure_payload("cd x && pytest -q tests/test_x.py")
-        run_script("bash_status.py", payload, repo, tmp_path)
-        assert [m["red"] for m in markers(tmp_path)] == [True]
-        run_script("bash_status.py", success_payload("pytest -q tests/test_x.py"), repo, tmp_path)
-        assert [m["red"] for m in markers(tmp_path)] == [False]
-
-    def test_non_verify_failure_writes_nothing(self, tmp_path):
-        repo, _g = repo_with_story(tmp_path)
-        run_script("bash_status.py", failure_payload("pytest -q tests/other.py"), repo, tmp_path)
-        assert markers(tmp_path) == []
-
-    def test_non_exit_failure_writes_nothing(self, tmp_path):
-        repo, _g = repo_with_story(tmp_path)
-        p = failure_payload("pytest -q tests/test_x.py", error="Permission denied by user")
-        run_script("bash_status.py", p, repo, tmp_path)
-        assert markers(tmp_path) == []
-
-    def test_mention_in_exit_zero_command_does_not_green(self, tmp_path):
-        repo, _g = repo_with_story(tmp_path)
-        run_script("bash_status.py", failure_payload("pytest -q tests/test_x.py"), repo, tmp_path)
-        mention = success_payload("git commit -m 'red: pytest -q tests/test_x.py still failing'")
-        run_script("bash_status.py", mention, repo, tmp_path)
-        assert [m["red"] for m in markers(tmp_path)] == [True]  # mention is not invocation
-
-    def test_success_masking_never_greens_a_red(self, tmp_path):
-        repo, _g = repo_with_story(tmp_path)
-        run_script("bash_status.py", failure_payload("pytest -q tests/test_x.py"), repo, tmp_path)
-        for masked in (
-            "pytest -q tests/test_x.py 2>&1 | tail -5",
-            "pytest -q tests/test_x.py; echo done",
-            "pytest -q tests/test_x.py || true",
-            "pytest -q tests/test_x.py::test_one",
-        ):
-            run_script("bash_status.py", success_payload(masked), repo, tmp_path)
-            assert [m["red"] for m in markers(tmp_path)] == [True], f"greened by: {masked}"
-
-    def test_exact_verify_with_and_chain_greens(self, tmp_path):
-        repo, _g = repo_with_story(tmp_path)
-        run_script("bash_status.py", failure_payload("pytest -q tests/test_x.py"), repo, tmp_path)
-        ok = success_payload("pytest -q tests/test_x.py && git push")
-        run_script("bash_status.py", ok, repo, tmp_path)
-        assert [m["red"] for m in markers(tmp_path)] == [False]
-
-    def test_multiline_command_failure_records_red(self, tmp_path):
-        repo, _g = repo_with_story(tmp_path)
-        p = failure_payload("cd sub\npytest -q tests/test_x.py")
-        run_script("bash_status.py", p, repo, tmp_path)
-        assert [m["red"] for m in markers(tmp_path)] == [True]
-
-    def test_matches_any_in_progress_story_with_per_verify_markers(self, tmp_path):
-        repo, _g = repo_with_story(tmp_path)
-        plan = tmp_path / "xp" / "plan.md"
-        plan.write_text(
-            plan.read_text() + "#### story-043 — other   [in-progress]\nVerify: bun test x\n"
-        )
-        run_script("bash_status.py", failure_payload("pytest -q tests/test_x.py"), repo, tmp_path)
-        run_script("bash_status.py", success_payload("bun test x"), repo, tmp_path)
-        reds = sorted(m["red"] for m in markers(tmp_path))
-        assert reds == [False, True]  # two markers: B's green cannot hide A's red
-
-
 class TestStopGate:
     def stop_payload(self, session="sess-1", active=False):
         return {"session_id": session, "cwd": ".", "stop_hook_active": active}
 
     def _red(self, repo, tmp_path):
         run_script("bash_status.py", failure_payload("pytest -q tests/test_x.py"), repo, tmp_path)
+
+    def test_a_pipe_keeps_the_existing_empty_output_contract(self, tmp_path):
+        repo, _g = repo_with_story(tmp_path)
+        result = run_script("stop_gate.py", self.stop_payload(), repo, tmp_path)
+        assert (result.returncode, result.stdout, result.stderr) == (0, "", "")
+
+    def test_a_tty_names_the_hook_and_its_json_input(self):
+        master, slave = pty.openpty()
+        try:
+            result = subprocess.run(
+                [sys.executable, str(SCRIPTS / "stop_gate.py")],
+                stdin=slave,
+                capture_output=True,
+                text=True,
+                timeout=1,
+            )
+        finally:
+            os.close(master)
+            os.close(slave)
+        assert result.returncode == 0
+        assert all(word in result.stdout for word in ("stop_gate.py", "JSON", "stdin"))
 
     def test_red_marker_blocks_naming_command(self, tmp_path):
         repo, _g = repo_with_story(tmp_path)

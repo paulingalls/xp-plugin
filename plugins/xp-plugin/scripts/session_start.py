@@ -274,6 +274,9 @@ def truncated(out: str, rules: str, static: list[tuple[str, str]]) -> str:
 
 
 def main() -> int:
+    if sys.stdin.isatty():
+        print(f"{Path(__file__).name} is a hook; invoke it with a JSON payload on stdin.")
+        return 0
     try:
         data = json.load(sys.stdin)
     except Exception:

@@ -4,7 +4,6 @@ import json
 import os
 import shutil
 import subprocess
-import sys
 from pathlib import Path
 
 import bookkeep
@@ -166,16 +165,13 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool, free_slug: str = "")
         for c in pr_bookkeep:
             if subprocess.run(c, capture_output=True, text=True).returncode != 0:
                 failed.append(" ".join(c))
-    if held:
-        failed += bookkeep.remove_story_worktree(story_tree, close.config_flat("teardown_timeout"))
-    failed += bookkeep.delete_story_branch(branch)
+    failed += bookkeep.remove_story_checkout(
+        story_tree if held else "", branch, close.config_flat("teardown_timeout")
+    )
     bookkeep.delete_story_markers(story_id)
     bookkeep.log_close(story_id, card, rounds, merge_sha)
     marker.unlink()
-    if failed:
-        print("\nincomplete — the merge landed. Re-run or resolve them:", file=sys.stderr)
-        for c in failed:
-            print(f"  {c}", file=sys.stderr)
+    if bookkeep.report_incomplete(failed):
         return 3
     print(
         f"{story_id} closed. REPLACE the session digest (you are its sole writer);"

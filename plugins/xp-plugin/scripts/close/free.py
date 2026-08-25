@@ -9,8 +9,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 sys.path.insert(0, str(Path(__file__).parent))
 sys.path.insert(0, str(Path(__file__).parent.parent / "spawn"))
-from bookkeep import delete_story_markers
-from close import default_branch, fail, git, marker_path, story_card
+import bookkeep
+from close import config_flat, default_branch, fail, git, marker_path, story_card
 from work import data_root, flip_card, plan_path, ready_marker_path, slugify, user_ns
 
 FREE = re.compile(r"[^/]+/free-(\d{4}-\d\d-\d\d-(.+))")
@@ -18,6 +18,10 @@ FREE = re.compile(r"[^/]+/free-(\d{4}-\d\d-\d\d-(.+))")
 
 def branch_for(slug: str) -> str:
     return f"{user_ns()}/free-{datetime.date.today().isoformat()}-{slugify(slug)}"
+
+
+def card_in_plan(key: str) -> bool:
+    return plan_path().exists() and f"#### {key} " in plan_path().read_text()
 
 
 def current_free(slug: str) -> tuple[str, str, str]:
@@ -58,8 +62,9 @@ def cmd_start(slug: str) -> int:
         return fail(f"refused: branch {new} already exists")
     if (made := git("checkout", "-q", "-b", new, trunk, check=False)).returncode:
         return fail(f"git checkout -b failed: {made.stderr.strip()}")
+    card = "card in the plan" if card_in_plan(new.split("/", 1)[1]) else "no card"
     print(
-        f"{new} off {trunk} — no card. Cut your release artifacts, then"
+        f"{new} off {trunk} — {card}. Cut your release artifacts, then"
         f" `close.py free {slug} review`"
     )
     return 0
@@ -74,7 +79,7 @@ def cmd_review(slug: str, dry_run: bool) -> int:
         return fail(err)
     if git("status", "--porcelain").stdout.strip():
         return fail("refused: working tree is dirty — commit or stash first")
-    if plan_path().exists() and f"#### {key} " in plan_path().read_text() and not dry_run:
+    if card_in_plan(key) and not dry_run:
         _card, status = story_card(plan_path().read_text(), key)
         if status == "planned" and ready.mint(key):
             return 2
@@ -101,14 +106,19 @@ def cmd_post_merge(slug: str) -> int:
         )
     key = matches[0].name.removesuffix(".close.json")
     state = json.loads(matches[0].read_text())
-    result = release.cmd_post_merge(key, state.get("branch", ""), "patch", False)
+    branch = str(state.get("branch", ""))
+    result = release.cmd_post_merge(key, branch, "patch", False)
     if result:
         return result
-    carded = plan_path().exists() and f"#### {key} " in plan_path().read_text()
+    carded = card_in_plan(key)
     if carded and not flip_card(key, "in-progress", "done"):
         print(f"incomplete — tag landed; flip {key} to [done]", file=sys.stderr)
         return 3
-    delete_story_markers(key)
+    tree, failed = bookkeep.story_worktree(branch)
+    failed += bookkeep.remove_story_checkout(tree, branch, config_flat("teardown_timeout"))
+    bookkeep.delete_story_markers(key)
     ready_marker_path(key).unlink(missing_ok=True)
     marker_path(key).unlink(missing_ok=True)
+    if bookkeep.report_incomplete(failed):
+        return 3
     return 0

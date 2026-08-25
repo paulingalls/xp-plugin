@@ -11,6 +11,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+import bookkeep
 import pytest
 from close_helpers import (
     CLOSE,
@@ -71,6 +72,18 @@ class TestFreeStart:
         assert r.returncode == 0, r.stderr
         assert g("rev-parse", "--abbrev-ref", "HEAD").stdout.strip() == BRANCH
         assert g("rev-parse", BRANCH).stdout.strip() == main
+
+    def test_start_names_the_card_already_in_the_plan(self, tmp_path):
+        repo, env, _g = free_repo(tmp_path)
+        add_free_card(env)
+        result = free(repo, env, "fix-typo", "start")
+        assert result.returncode == 0
+        assert "card in the plan" in result.stdout and "no card" not in result.stdout
+
+    def test_start_still_names_the_designed_cardless_mode(self, tmp_path):
+        repo, env, _g = free_repo(tmp_path)
+        result = free(repo, env, "fix-typo", "start")
+        assert result.returncode == 0 and "no card" in result.stdout
 
     def test_start_anywhere_but_the_default_branch_refuses_naming_it(self, tmp_path):
         """AC 2: a free branch cut off a story branch carries that story's
@@ -317,74 +330,48 @@ class TestFreeLand:
         assert "unreviewed" in r.stdout, r.stdout
 
 
-class TestFreePostMerge:
-    def reviewed(self, tmp_path, card=False, manifest="", extra=""):
-        """A reviewed free branch whose PR has NOT merged yet — the state the
-        post-merge leg must refuse from."""
+class TestFreeTeardown:
+    def test_a_failed_worktree_lookup_is_not_reported_as_absence(self, monkeypatch):
+        failed = subprocess.CompletedProcess([], 1, "", "broken")
+        monkeypatch.setattr(bookkeep, "git", lambda *args: failed)
+        tree, problems = bookkeep.story_worktree(BRANCH)
+        assert tree == "" and problems == ["git worktree list --porcelain"]
+
+    def merged(self, tmp_path, spawned=True, teardown=""):
         repo, env, g = free_repo(tmp_path)
-        free(repo, env, "fix-typo", "start")
+        assert free(repo, env, "fix-typo", "start").returncode == 0
+        if teardown:
+            system = repo / ".xp" / "system.md"
+            system.write_text(system.read_text() + f"**Worktree teardown**: `{teardown}`\n")
         commit_on_free(repo, g)
-        if card:
-            add_free_card(env)
         assert free(repo, env, "fix-typo", "review").returncode == 0
-        if manifest:
-            (repo / "plugin.json").write_text(json.dumps({"version": manifest}))
-            extra += "version_files: plugin.json\n"
-        if extra:
-            config = repo / ".xp" / "config.yml"
-            config.write_text(config.read_text() + extra)
-            g("add", "-A")
-            g("commit", "-qm", "release identity")
-        return repo, env, g
-
-    def merge_pr(self, g):
         g("checkout", "-q", "main")
+        tree = tmp_path / "spawned"
+        if spawned:
+            g("worktree", "add", "-q", str(tree), BRANCH)
         g("merge", "-q", "--no-ff", BRANCH, "-m", "merge free release")
+        return repo, env, g, tree
 
-    def test_post_merge_tags_the_merged_sha_and_retires_a_card(self, tmp_path):
-        repo, env, g = self.reviewed(tmp_path, card=True)
-        self.merge_pr(g)
-        merged = g("rev-parse", "HEAD").stdout.strip()
+    def test_post_merge_removes_the_spawn_worktree_and_branch(self, tmp_path):
+        repo, env, g, tree = self.merged(tmp_path)
         result = free(repo, env, "fix-typo", "post-merge")
         assert result.returncode == 0, result.stderr
-        assert g("rev-list", "-n1", "v0.2.1").stdout.strip() == merged
-        assert "[done]" in (Path(env["XP_DATA"]) / "plan.md").read_text()
-        # this project configured no version_files, and a tag cut with NOTHING
-        # walling the manifest must not read like one that passed a check
-        assert "NO manifest was checked" in result.stdout, result.stdout
+        assert not tree.exists()
+        assert BRANCH not in g("branch", "--list").stdout
 
-    def test_post_merge_before_the_pr_merges_refuses_and_cuts_no_tag(self, tmp_path):
-        """The ordering half of AC 4, which nothing else on this leg drives:
-        blanking the branch the marker records leaves the whole suite green, and
-        constraint 14 can only red once a wrong tag EXISTS."""
-        repo, env, g = self.reviewed(tmp_path)
-        g("checkout", "-q", "main")
+    def test_a_failed_teardown_reports_after_cleanup_continues(self, tmp_path):
+        repo, env, g, tree = self.merged(tmp_path, teardown="false")
         result = free(repo, env, "fix-typo", "post-merge")
-        assert result.returncode == 2 and BRANCH in result.stderr
-        assert "v0.2.1" not in g("tag").stdout.split()
+        assert result.returncode == 3 and "teardown failed" in result.stderr.lower()
+        assert "v0.2.1" in g("tag").stdout.split()
+        assert not tree.exists() and BRANCH not in g("branch", "--list").stdout
+        assert not marker_file(tmp_path, KEY).exists()
 
-    def test_a_free_release_leaves_the_sprint_branch_key_alone(self, tmp_path):
-        """A patch release lands MID-SPRINT. Retiring `sprint_branch:` here would
-        redirect every later story close from the sprint branch to main, silently:
-        integration_target falls back to trunk the moment the key is gone."""
-        repo, env, g = self.reviewed(tmp_path, extra="sprint_branch: sprint-001\n")
-        self.merge_pr(g)
-        assert free(repo, env, "fix-typo", "post-merge").returncode == 0
-        assert "sprint_branch: sprint-001" in (repo / ".xp" / "config.yml").read_text()
-
-    @pytest.mark.parametrize("manifest,rc", [("0.2.0", 2), ("0.2.1", 0)], ids=["behind", "level"])
-    def test_the_manifest_must_name_the_tag_being_cut(self, tmp_path, manifest, rc):
-        """AC 5 in BOTH directions: a guard only ever asserted red could refuse
-        every release alike and no test here would know."""
-        repo, env, g = self.reviewed(tmp_path, manifest=manifest)
-        self.merge_pr(g)
+    def test_an_unspawned_free_close_has_no_missing_worktree_error(self, tmp_path):
+        repo, env, g, _tree = self.merged(tmp_path, spawned=False)
         result = free(repo, env, "fix-typo", "post-merge")
-        assert result.returncode == rc, result.stderr
-        if rc:
-            assert "plugin.json" in result.stderr and "behind" in result.stderr.lower()
-        else:  # the pass NAMES what it checked, or it reads like the arm above
-            assert "manifests matching v0.2.1: plugin.json" in result.stdout, result.stdout
-        assert ("v0.2.1" in g("tag").stdout.split()) is (rc == 0)
+        assert result.returncode == 0, result.stderr
+        assert BRANCH not in g("branch", "--list").stdout
 
 
 class TestSharedLandGuards:

@@ -72,6 +72,9 @@ def marker_file(session: str, story_id: str) -> Path:
 
 
 def main() -> int:
+    if sys.stdin.isatty():
+        print(f"{Path(__file__).name} is a hook; invoke it with a JSON payload on stdin.")
+        return 0
     data = json.load(sys.stdin)
     if not chdir_repo_root():
         return 0
