@@ -1,13 +1,5 @@
 #!/usr/bin/env python3
-"""Spawn a teammate on a story: worktree, clean branch, headless launch.
-
-The piece neither harness provides. The teammate profile is INLINED into the
-prompt (DESIGN §8) — paths are a fallback, never the mechanism — and the plugin
-itself rides in on --plugin-dir, because a worktree `claude -p` session applies
-no project-scoped marketplace enablement and would otherwise load no hooks,
-agents or skills. Codex has no --plugin-dir at all, which is why the inlined
-profile is the mechanism and not a convenience (DESIGN §3).
-"""
+"""Spawn or resume a fresh teammate in a story worktree."""
 
 import argparse
 import os
@@ -81,13 +73,7 @@ def plugin_shipped_chars() -> int:
 
 
 def profile_report(card: str, prompt: str, handoff: str) -> tuple[str, str]:
-    """(breakdown for the lead, warning or "") — routed to the LEAD, never into
-    the teammate's prompt where it is noise and unactionable. An always-identical
-    table is wallpaper (constraints.md #3), so the warning is what carries news.
-
-    `handoff` is listed only when there IS one, and it is taken as an argument
-    rather than re-derived: a contributor the breakdown cannot see is one the
-    overage warning blames some other file for."""
+    """Return the lead's profile breakdown and actionable overage warning."""
     project = {
         "the story card": len(card),
         "constraints.md": len(_read(Path(".xp/constraints.md"))),
@@ -97,8 +83,6 @@ def profile_report(card: str, prompt: str, handoff: str) -> tuple[str, str]:
         project["predecessor handoff"] = len(handoff)
     total = (len(prompt) + project["CLAUDE.md"] + component_metadata_chars()) // 4
     shares = " · ".join(f"{k} {v // 4}" for k, v in project.items())
-    # the CAPPED quantity, not a prompt-derived cousin of it: two computations
-    # under one name let a lead read headroom the ratchet does not have
     line = (
         f"profile: total {total} tokens · plugin-shipped"
         f" {plugin_shipped_chars() // 4}/{PLUGIN_SHIPPED_CAP} · {shares}"
@@ -200,11 +184,7 @@ def run_agent(
     harness: str,
     log_id: str,
 ) -> subprocess.CompletedProcess:
-    """Prompt on stdin: it keeps ~2k tokens out of argv and out of `ps`.
-
-    `role` takes no default: one would hand a caller XP_ROLE=teammate and no wall
-    clock by omission — the two things the branches below turn on.
-    """
+    """Run one role with its prompt off argv and reviewer wall clock applied."""
     env = os.environ | {"XP_ROLE": role}
     # BOTH reviewer legs: a review is the one launch both long-running AND
     # writing, and a hung one owns the lead's tree, with edit rights, forever. A
@@ -223,13 +203,7 @@ def run_agent(
 
 
 def common_dir_widening(cwd: Path) -> list[str]:
-    """["--add-dir", <git common dir>] for a LINKED executor worktree, [] otherwise: its
-    index lives at <main>/.git/worktrees/<id>/, outside workspace-write, so a
-    codex teammate there cannot commit — INERT under v0.7.1's danger-full-access
-    posture, kept for story-040, which restores a confining one
-    (bug 0c31ac94; a /tmp scratch repo hides it,
-    since the sandbox writes /tmp anyway). A main checkout's .git is inside the
-    workspace already; widening it would loosen the posture for nothing."""
+    """Widen a linked executor worktree to its out-of-tree git common dir."""
     proc = subprocess.run(
         ["git", "-C", str(cwd), "rev-parse", "--git-common-dir"],
         capture_output=True,
@@ -268,13 +242,7 @@ def not_ready_hint(status: str, story_id: str) -> str:
 
 
 def cmd_in_place(story_id: str, card: str) -> int:
-    """Create the story branch in the CURRENT tree and stop — no worktree, no launch.
-
-    The lead implementing a story solo (DESIGN §8) otherwise has no
-    branch-creation step at all, so the work lands on the integration branch and
-    close.py's trunk refusal fires only after the story is written. Loud, but the
-    recovery is cheap only while nothing is pushed.
-    """
+    """Create the story branch in the current tree without launching."""
     if git("status", "--porcelain").stdout.strip():
         return fail(
             "refused: working tree is dirty — commit or stash first, or the"
@@ -296,17 +264,23 @@ def story_branch(card: str, story_id: str) -> str:
     return f"{user_ns()}/{story_id}-{slugify(card_title(card))}"
 
 
-def cmd_spawn(story_id: str, override: str, dry_run: bool, in_place: bool = False) -> int:
+def cmd_spawn(
+    story_id: str, override: str, dry_run: bool, in_place: bool = False, resuming: bool = False
+) -> int:
     if not plan_path().exists():
         return fail("refused: " + missing_plan_refusal())
     try:
         card, status = story_card(plan_path().read_text(), story_id)
     except KeyError as e:
         return fail(f"refused: {e.args[0]}")
-    if status != "ready":
+    if resuming and (drift := ready().drift(story_id, card, resume().remint_route(story_id))):
+        return fail(drift)
+    if resuming and status not in {"ready", "in-progress"}:
+        return fail(f"refused: {story_id} is [{status}], resume requires [in-progress] or [ready]")
+    if not resuming and status != "ready":
         hint = not_ready_hint(status, story_id)
         return fail(f"refused: {story_id} is [{status}], spawn requires [ready]. {hint}")
-    if drift := ready().drift(story_id, card):
+    if not resuming and (drift := ready().drift(story_id, card)):
         return fail(drift)
     if in_place:
         if dry_run:
@@ -319,8 +293,11 @@ def cmd_spawn(story_id: str, override: str, dry_run: bool, in_place: bool = Fals
     harness, model, effort = resolve_role("executor", card, override)
     branch = story_branch(card, story_id)
     tree = worktree_path(story_id)
+    trunk = integration_target()
     argv = agent_argv(harness, model, effort, "stream-json")
     handoff = inheritance(data_root(), story_id)
+    if resuming and tree.is_dir():
+        handoff += resume().inherited_evidence(tree, trunk)
     prompt = build_prompt(teammate_sections(card, story_id, handoff))
     report, warning = profile_report(card, prompt, handoff)
     print(report)
@@ -339,67 +316,79 @@ def cmd_spawn(story_id: str, override: str, dry_run: bool, in_place: bool = Fals
     # after `worktree add` leaves a tree and a branch whose only effect is that
     # the corrected retry refuses with "already spawned" instead.
     system = Path(".xp/system.md")
-    if not system.parent.exists():
+    if not resuming and not system.parent.exists():
         # NOT a `mkdir -p .xp && cp`: that half-scaffold locks setup.py out for good.
         return fail(
             f"refused: no .xp/ here — is this an xp-managed repo? Restore .xp/ from"
             f" version control; xp-setup refuses over the plan at {plan_path()}"
         )
-    if not system.exists():
+    if not resuming and not system.exists():
         return fail(
             f"refused: {system} is missing — the worktree bootstrap line lives there. Run"
             f" `cp {PLUGIN_ROOT / 'templates' / 'system.md'} {system}`,"
             " then edit its Worktree bootstrap line"
         )
-    try:
-        command, problem = bootstrap_command(system.read_text())
-    except UnicodeDecodeError as exc:
-        return fail(f"refused: {system} is not UTF-8 ({exc}) — rewrite it as UTF-8 text")
-    if problem:
-        return fail("refused: " + problem)
+    command = ""
+    if not resuming:
+        try:
+            command, problem = bootstrap_command(system.read_text())
+        except UnicodeDecodeError as exc:
+            return fail(f"refused: {system} is not UTF-8 ({exc}) — rewrite it as UTF-8 text")
+        if problem:
+            return fail("refused: " + problem)
     # The worktree is cut from a COMMIT, so anything uncommitted — including the
     # scaffold itself on a fresh repo — is simply absent from the teammate's tree.
     # Without this the first spawn after xp-setup tracebacks on a missing plan.md
     # and leaves the worktree behind.
-    if dirty := git("status", "--porcelain", check=False).stdout.strip():
+    if not resuming and (dirty := git("status", "--porcelain", check=False).stdout.strip()):
         return fail(
             "refused: commit your work before spawning — the teammate's worktree is"
             " cut from a commit, so uncommitted files (a fresh .xp/ scaffold included)"
             f" would not be in it:\n{dirty}"
         )
-    if tree.exists():
-        return fail(f"refused: {tree} already exists — {story_id} is already spawned")
-    if git("rev-parse", "--verify", "-q", f"refs/heads/{branch}", check=False).returncode == 0:
-        return fail(f"refused: branch {branch} already exists")
-    trunk = integration_target()
-    tree.parent.mkdir(parents=True, exist_ok=True)
-    added = git("worktree", "add", "-b", branch, str(tree), trunk, check=False)
-    if added.returncode != 0:
-        return fail(f"git worktree add failed: {added.stderr.strip()}")
-    if command:
-        done = subprocess.run(command, shell=True, cwd=tree, capture_output=True, text=True)
-        if done.returncode != 0:
-            print(done.stderr.strip(), file=sys.stderr)
-            return fail(
-                f"refused: worktree bootstrap failed ({command!r}) — not launching"
-                f" a teammate into a broken tree. Worktree left at {tree}"
-            )
-    flip_to_in_progress(story_id)
+    held, problem = resume().acquire(data_root(), story_id)
+    if problem:
+        return fail(problem)
+    if resuming:
+        if problem := resume().validate(data_root(), story_id, tree, branch):
+            held.close()
+            return fail(problem)
+        if status == "ready":
+            flip_to_in_progress(story_id)
+    else:
+        if tree.exists():
+            return fail(f"refused: {tree} already exists — {story_id} is already spawned")
+        if git("rev-parse", "--verify", "-q", f"refs/heads/{branch}", check=False).returncode == 0:
+            return fail(f"refused: branch {branch} already exists")
+        tree.parent.mkdir(parents=True, exist_ok=True)
+        added = git("worktree", "add", "-b", branch, str(tree), trunk, check=False)
+        if added.returncode != 0:
+            return fail(f"git worktree add failed: {added.stderr.strip()}")
+        if command:
+            done = subprocess.run(command, shell=True, cwd=tree, capture_output=True, text=True)
+            if done.returncode != 0:
+                print(done.stderr.strip(), file=sys.stderr)
+                return fail(
+                    f"refused: worktree bootstrap failed ({command!r}) — not launching"
+                    f" a teammate into a broken tree. Worktree left at {tree}"
+                )
+        flip_to_in_progress(story_id)
     # The teammate is the FIRST writer of plans/ — it drafts before plan_review.py,
     # which is what creates the directory today — and a shell redirect does not
     # make one. Left to fail, the model's own recovery is to draft inside the
     # worktree, which is exactly the loss this path exists to prevent.
     draft_path(data_root(), story_id).parent.mkdir(parents=True, exist_ok=True)
-    print(f"{branch} at {tree} (off {trunk})")
+    print(f"{branch} at {tree} ({'resumed' if resuming else f'off {trunk}'})")
     handed_over = tree_state(tree)
     before = {eid for eid, _ in entries(data_root())}
     rc = run_teammate(argv, tree, prompt, story_id, data_root(), harness)
-    # NOT `if rc: return rc` — a teammate that crashed is the likeliest one to
-    # have left work uncommitted, so skipping the guard there withholds the
-    # refusal exactly when it is worth most.
-    if err := unclean_teammate_result(tree, handed_over, story_id):
-        return report_handoff(data_root(), story_id, before, err, rc)
+    # A crashed teammate is the likeliest one to leave work uncommitted.
+    if err := unclean_teammate_result(tree, handed_over, story_id, resuming):
+        result = report_handoff(data_root(), story_id, before, err, rc)
+        held.close()
+        return result
     marker_path(data_root(), story_id).unlink(missing_ok=True)
+    held.close()
     return rc
 
 
@@ -418,7 +407,9 @@ def tree_state(tree: Path) -> tuple[str, str]:
     return out("rev-parse", "HEAD"), out("status", "--porcelain")
 
 
-def unclean_teammate_result(tree: Path, handed_over: tuple[str, str], story_id: str) -> str:
+def unclean_teammate_result(
+    tree: Path, handed_over: tuple[str, str], story_id: str, resumed: bool = False
+) -> str:
     """ "" when the teammate left a clean, committed story behind; otherwise the
     refusal, naming both recoveries.
 
@@ -439,10 +430,13 @@ def unclean_teammate_result(tree: Path, handed_over: tuple[str, str], story_id: 
             " (add --force if teardown leaves files behind)"
         )
     recovery = (
-        f" Recover by committing by hand in {tree}, or by {discard}, putting"
-        f" {story_id}'s heading back to [ready] in {plan_path()}, and re-spawning."
+        f" Recover by `spawn.py resume {story_id}`, which takes this tree and its commits"
+        f" over with a fresh teammate; by committing by hand in {tree}; or by {discard},"
+        f" putting {story_id}'s heading back to [ready] in {plan_path()}, and re-spawning."
         + (f" {problem}." if problem else "")
     )
+    if resumed:
+        recovery = resume().handback_recovery(tree, story_id)
     try:
         head, dirty = tree_state(tree)
     except OSError as e:
@@ -451,16 +445,24 @@ def unclean_teammate_result(tree: Path, handed_over: tuple[str, str], story_id: 
         return "refused: the teammate left work uncommitted in {}:\n{}\n{}".format(
             tree, "\n".join(left), recovery
         )
+    if resumed and dirty:
+        return "refused: inherited takeover work remains uncommitted in {}:\n{}\n{}".format(
+            tree, dirty, recovery
+        )
     if head == flip_head:
         return f"refused: the teammate made no commits of its own in {tree}.{recovery}"
     return ""
 
 
 def ready():
-    """The credential leg, in its own leaf module under the 500-line cap
-    (constraint 8). Still function-local: only `main` and one refusal reach it,
-    and a module-level edge would import it on every hook that touches spawn."""
+    """Load the credential leaf only on its two call paths."""
     import ready as module
+
+    return module
+
+
+def resume():
+    import resume as module
 
     return module
 
@@ -468,10 +470,16 @@ def ready():
 def main() -> int:
     if sys.argv[1:2] == ["ready"]:
         return ready().main(sys.argv[2:])
+    if sys.argv[1:2] == ["resume"]:
+        a = resume().parse(sys.argv[2:])
+        if not chdir_repo_root():
+            return fail("refused: not inside a git repository")
+        return cmd_spawn(a.story_id, a.executor, a.dry_run, resuming=True)
     p = argparse.ArgumentParser(
         description=__doc__,
         epilog="ready <story-id>: after the plan review, mint the card's digest and"
-        " flip [planned] -> [ready]. Editing the card afterwards refuses the spawn.",
+        " flip [planned] -> [ready]. Editing the card afterwards refuses the spawn."
+        " resume <story-id>: hand a STOPPED story's own worktree to a fresh teammate.",
     )
     p.add_argument("story_id")
     p.add_argument("executor", nargs="?", default="", help="harness/model[/effort] override")
