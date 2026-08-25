@@ -17,11 +17,11 @@ shipped a pair — and a verify-keyed marker cannot tell whose status it holds.
 import json
 import re
 import sys
-import traceback
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 from close import story_card, verify_commands
+from env import run_hook
 from work import chdir_repo_root, data_root, plan_path
 
 
@@ -71,11 +71,7 @@ def marker_file(session: str, story_id: str) -> Path:
     return d / f"{session}.{story_id}.test-status"
 
 
-def main() -> int:
-    if sys.stdin.isatty():
-        print(f"{Path(__file__).name} is a hook; invoke it with a JSON payload on stdin.")
-        return 0
-    data = json.load(sys.stdin)
+def main(data: dict) -> int:
     if not chdir_repo_root():
         return 0
     command = str(data.get("tool_input", {}).get("command", ""))
@@ -102,9 +98,4 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    try:
-        rc = main()
-    except Exception:  # advisory: never break a session — but never in silence,
-        traceback.print_exc(file=sys.stderr)  # or a dead hook reads as a passing one
-        rc = 0
-    sys.exit(rc)
+    run_hook(main)

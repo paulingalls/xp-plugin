@@ -16,6 +16,18 @@ class TestLastClose(LastCloseCases):
 
 
 class TestScope:
+    def test_malformed_payload_is_advisory_but_visible(self, tmp_path):
+        result = subprocess.run(
+            [sys.executable, str(HOOK)],
+            input="not json",
+            env={"PATH": "/usr/bin:/bin", "HOME": str(tmp_path), "XP_DATA": str(tmp_path / "xp")},
+            cwd=tmp_path,
+            capture_output=True,
+            text=True,
+        )
+        assert result.returncode == 0 and result.stdout == ""
+        assert "JSONDecodeError" in result.stderr
+
     def test_a_pipe_outside_a_git_repo_stays_byte_silent(self, tmp_path):
         result = run_hook(tmp_path, tmp_path)
         assert (result.returncode, result.stdout, result.stderr) == (0, "", "")

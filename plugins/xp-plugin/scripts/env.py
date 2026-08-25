@@ -13,6 +13,7 @@ import json
 import os
 import subprocess
 import sys
+import traceback
 from pathlib import Path
 
 # HERE because env.py is the only shipped module free of the `str | None` 3.9 dies on.
@@ -22,6 +23,18 @@ if sys.version_info < (3, 11):
         f" {sys.version_info[0]}.{sys.version_info[1]}"
         f" ({sys.executable}). Point `python3` at a newer interpreter."
     )
+
+
+def run_hook(main) -> None:
+    if sys.stdin.isatty():
+        print(f"{Path(sys.argv[0]).name} is a hook; invoke it with a JSON payload on stdin.")
+        raise SystemExit(0)
+    try:
+        rc = main(json.load(sys.stdin))
+    except Exception:
+        traceback.print_exc(file=sys.stderr)
+        rc = 0
+    raise SystemExit(rc)
 
 
 def data_root() -> Path:

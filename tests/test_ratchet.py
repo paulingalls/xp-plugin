@@ -340,7 +340,7 @@ def test_subbudgets_sum_to_total():
     try:
         import ratchet
 
-        assert ratchet.SPAWN + ratchet.CLOSE + ratchet.HOOKS + ratchet.MISC <= ratchet.TOTAL
+        assert ratchet.SPAWN + ratchet.CLOSE + ratchet.HOOKS + ratchet.MISC == ratchet.TOTAL == 5500
     finally:
         sys.path.remove(str(RATCHET.parent))
 

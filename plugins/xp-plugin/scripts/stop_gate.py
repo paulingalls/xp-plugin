@@ -9,11 +9,11 @@ is handled once, correctly, at SessionStart.
 
 import json
 import sys
-import traceback
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 from bash_status import in_progress_stories
+from env import run_hook
 from work import chdir_repo_root, data_root
 
 
@@ -34,11 +34,7 @@ def red_verify_in_play(session: str) -> str | None:
     return None
 
 
-def main() -> int:
-    if sys.stdin.isatty():
-        print(f"{Path(__file__).name} is a hook; invoke it with a JSON payload on stdin.")
-        return 0
-    data = json.load(sys.stdin)
+def main(data: dict) -> int:
     if not chdir_repo_root():
         return 0
     if data.get("stop_hook_active"):
@@ -61,9 +57,4 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    try:
-        rc = main()
-    except Exception:  # advisory: never break a session — but never in silence,
-        traceback.print_exc(file=sys.stderr)  # or a dead hook reads as a passing one
-        rc = 0
-    sys.exit(rc)
+    run_hook(main)

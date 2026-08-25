@@ -7,11 +7,10 @@ import os
 import re
 import subprocess
 import sys
-import traceback
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
-from env import plugin_version, write_env
+from env import plugin_version, run_hook, write_env
 from work import data_root, entries, plan_path, record_summary, strip_comment
 
 PLUGIN_ROOT = Path(__file__).parent.parent
@@ -273,14 +272,7 @@ def truncated(out: str, rules: str, static: list[tuple[str, str]]) -> str:
     return kept + notice(lost, [f for f, s in static if s and s not in kept])
 
 
-def main() -> int:
-    if sys.stdin.isatty():
-        print(f"{Path(__file__).name} is a hook; invoke it with a JSON payload on stdin.")
-        return 0
-    try:
-        data = json.load(sys.stdin)
-    except Exception:
-        return 0
+def main(data: dict) -> int:
     top = git("rev-parse", "--show-toplevel")
     if not top:
         return 0
@@ -332,9 +324,4 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    try:
-        rc = main()
-    except Exception:  # advisory: never break a session — but never in silence,
-        traceback.print_exc(file=sys.stderr)  # or a dead hook reads as a passing one
-        rc = 0
-    sys.exit(rc)
+    run_hook(main)

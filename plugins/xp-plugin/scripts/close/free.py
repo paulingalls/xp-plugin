@@ -10,6 +10,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 sys.path.insert(0, str(Path(__file__).parent))
 sys.path.insert(0, str(Path(__file__).parent.parent / "spawn"))
 import bookkeep
+import spawn
 from close import config_flat, default_branch, fail, git, marker_path, story_card
 from work import data_root, flip_card, plan_path, ready_marker_path, slugify, user_ns
 
@@ -110,12 +111,13 @@ def cmd_post_merge(slug: str) -> int:
     result = release.cmd_post_merge(key, branch, "patch", False)
     if result:
         return result
-    tree, failed = bookkeep.story_worktree(branch)
+    tree, spawned_branch, failed = bookkeep.story_worktree(spawn.worktree_path(key))
     if card_in_plan(key) and not flip_card(key, "in-progress", "done"):
         # Reported, not returned: the tag is cut by here and a second post-merge
         # refuses it, so an early return leaves no leg to discharge the checkout.
         failed.append(f"flip {key} to [done] in {plan_path()}")
-    failed += bookkeep.remove_story_checkout(tree, branch, config_flat("teardown_timeout"))
+    failed += bookkeep.remove_story_checkout(tree, spawned_branch, config_flat("teardown_timeout"))
+    failed += bookkeep.delete_story_branch(branch)
     bookkeep.delete_story_markers(key)
     ready_marker_path(key).unlink(missing_ok=True)
     marker_path(key).unlink(missing_ok=True)
