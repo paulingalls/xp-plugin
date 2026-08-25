@@ -19,8 +19,8 @@ script cannot absorb them (constraint 7).
    Each note is promoted to constraints.md/system.md via the retro diff, or
    archived. A learning that changes nothing executable is not recorded, and every
    promotion must displace something (constraint 1). Then write the retro
-   narrative and the digest: the pipeline emits facts, the narrative is the part
-   with judgment in it.
+   narrative and REPLACE the digest: the pipeline emits facts, the
+   narrative is the part with judgment in it.
    BEFORE the review, not after. Land refuses when code moved since the review,
    and a retro that promotes into DESIGN.md or PROCESS.md is code motion — run it
    last and you must review again, which invalidates what you just wrote.

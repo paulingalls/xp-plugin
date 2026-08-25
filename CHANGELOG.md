@@ -4,6 +4,39 @@ Release notes started at v0.6.0; earlier entries are summarized from their
 tag and merge messages. Full detail lives in the merge history and the
 per-sprint review reports.
 
+## v0.7.1 — the sandbox we never chose, and the rules that never arrived
+
+A patch, not a sprint. Three unrelated defects that each cost a consuming
+project on day one, plus one the fix for the second uncovered.
+
+- **Codex teammates and reviewers run unsandboxed.** Every codex leg now
+  launches `--sandbox danger-full-access`, and every launch PRINTS the posture,
+  read back off the argv actually used. Measured on 0.149.0 with controls:
+  under `workspace-write` the Docker socket, loopback TCP and a nested
+  `codex exec` are each denied, and one string lifts all three — `--add-dir`
+  does not, it grants path writes, not socket-connect capability. This removes
+  an inconsistency rather than adding a risk class: the Claude legs already run
+  with no OS sandbox, because Claude Code exposes none. **Not yet configurable
+  — story-040 owes the opt-out, and until it lands a project cannot decline.**
+  Gone with it: the role-keyed `network` argument, which is how the REVIEWER leg
+  came to run with no network at all — true, unprinted, and believed backwards.
+- **The session digest is REPLACED, and something measures it.** Its size was
+  stated in three places and its lifecycle in none, so ours grew to 380 lines
+  and 26,797 chars over six sprints and silently evicted four constraints from
+  the lead's profile. SessionStart now refuses over the bound, naming the path,
+  the count and the bound.
+- **The lead profile fits, and VALUES leads it.** `OUTPUT_CAP` 12,000 → 18,000,
+  derived rather than aspirational. Order is now contract: VALUES first,
+  PROCESS second, neither dropped nor moved. When the cap does bind, the notice
+  names every rule it dropped — computed against `constraints.md`, never by
+  scanning the cut region, because PROCESS.md carries four lines of the shape a
+  constraint has.
+- **README says how to launch a Codex lead.** A spawn happens inside the lead's
+  own sandbox, so a confined Codex lead can nest neither `codex exec` nor the
+  network a nested `claude -p` needs. The flag, and what a Codex lead gives up.
+- The push wall re-runs lint and gitleaks, closing the `core.hooksPath` bypass;
+  an unreadable session digest costs the digest, not the whole recovery block.
+
 ## v0.7.0 — the consumer's copy: what a project that is not us can see
 
 Seven stories. The theme is everything a consuming project hits that we never

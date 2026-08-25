@@ -271,15 +271,16 @@ class TestTheLaunch:
         assert not rec.exists()
         assert not (tmp_path / "data" / "plans").exists()
 
-    def test_a_codex_plan_reviewer_is_hardened_and_stays_network_off(self, tmp_path):
-        """It nests nothing, so it gets no network — the other half of the
-        executor's flag, asserted on the leg that must not have it."""
+    def test_a_codex_plan_reviewer_launches_under_the_shipped_posture(self, tmp_path):
+        """The third codex leg, and the one no other test launches. It nests
+        nothing, which is exactly why it used to be the leg the network flag was
+        withheld from — a distinction the shipped posture dissolves."""
         repo, env, draft = self.repo(tmp_path, spec="codex/gpt-5.6-terra/high")
-        rec = stub_codex(tmp_path, commit=False, network=False, findings=CLEAN)
+        rec = stub_codex(tmp_path, commit=False, sandbox="danger-full-access", findings=CLEAN)
         r = plan_review(repo, env, "story-042", str(draft))
         assert r.returncode == 0, r.stderr
         argv = json.loads(rec.read_text())["argv"]
-        assert ("--sandbox", "workspace-write") in list(pairwise(argv)), argv
+        assert ("--sandbox", "danger-full-access") in list(pairwise(argv)), argv
         assert ("--disable", "unified_exec") not in list(pairwise(argv)), argv
         assert argv[argv.index("-m") + 1] == "gpt-5.6-terra"
         assert CHARTER_MARK in json.loads(rec.read_text())["stdin"]

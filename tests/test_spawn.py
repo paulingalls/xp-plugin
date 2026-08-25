@@ -77,13 +77,17 @@ class TestLaunchContract:
         assert spawn(repo, env, "story-042").returncode == 0
         assert json.loads(rec.read_text())["env"].get("XP_ROLE") == "teammate"
 
-    def test_codex_executor_launch_gets_network_for_its_nested_review(self, tmp_path):
+    def test_codex_executor_launch_carries_the_shipped_posture(self, tmp_path):
+        """AC2's other half: the EXECUTOR's launched argv, from the real spawn.
+        Paired with the reviewer leg's own call-site assertion — the two must not
+        drift apart again, and neither can be checked at the builder now that
+        nothing about the launch turns on the role."""
         repo, env, _g = make_repo(tmp_path, executor="codex/gpt-5.6-terra/high")
-        rec = stub_codex(tmp_path, network=True)
+        rec = stub_codex(tmp_path, sandbox="danger-full-access")
         r = spawn(repo, env, "story-042")
         assert r.returncode == 0, r.stderr
         argv = json.loads(rec.read_text())["argv"]
-        assert "sandbox_workspace_write.network_access=true" in argv
+        assert argv[argv.index("--sandbox") + 1] == "danger-full-access", argv
 
     def test_plan_reviewer_role_has_a_wall_clock(self, tmp_path, monkeypatch):
         from spawn import run_agent
@@ -447,7 +451,7 @@ class TestCommonDirWidening:
         rec = stub_codex(tmp_path, commit=False)
         monkeypatch.setenv("PATH", f"{tmp_path / 'bin'}:/usr/bin:/bin")
         monkeypatch.setenv("XP_DATA", str(tmp_path / "data"))
-        argv = agent_argv("codex", "m", "", "json", "plan-reviewer")
+        argv = agent_argv("codex", "m", "", "json")
         proc = run_agent(argv, wt, "", "plan-reviewer", "codex", "story-042-review")
         assert proc.returncode == 0, proc.stderr
         launched = json.loads(rec.read_text())["argv"]
@@ -466,7 +470,7 @@ class TestCommonDirWidening:
         rec = stub_codex(tmp_path, commit=False)
         monkeypatch.setenv("PATH", f"{tmp_path / 'bin'}:/usr/bin:/bin")
         monkeypatch.setenv("XP_DATA", str(tmp_path / "data"))
-        argv = agent_argv("codex", "m", "", "json", "executor")
+        argv = agent_argv("codex", "m", "", "json")
         assert run_teammate(argv, wt, "", "story-042", tmp_path / "data", "codex") == 0
         launched = json.loads(rec.read_text())["argv"]
         adds = [launched[i + 1] for i, arg in enumerate(launched) if arg == "--add-dir"]

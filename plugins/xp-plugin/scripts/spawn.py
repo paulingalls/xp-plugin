@@ -225,7 +225,9 @@ def run_agent(
 def common_dir_widening(cwd: Path) -> list[str]:
     """["--add-dir", <git common dir>] for a LINKED executor worktree, [] otherwise: its
     index lives at <main>/.git/worktrees/<id>/, outside workspace-write, so a
-    codex teammate there cannot commit (bug 0c31ac94; a /tmp scratch repo hides it,
+    codex teammate there cannot commit — INERT under v0.7.1's danger-full-access
+    posture, kept for story-040, which restores a confining one
+    (bug 0c31ac94; a /tmp scratch repo hides it,
     since the sandbox writes /tmp anyway). A main checkout's .git is inside the
     workspace already; widening it would loosen the posture for nothing."""
     proc = subprocess.run(
@@ -317,7 +319,7 @@ def cmd_spawn(story_id: str, override: str, dry_run: bool, in_place: bool = Fals
     harness, model, effort = resolve_role("executor", card, override)
     branch = story_branch(card, story_id)
     tree = worktree_path(story_id)
-    argv = agent_argv(harness, model, effort, "stream-json", "executor")
+    argv = agent_argv(harness, model, effort, "stream-json")
     handoff = inheritance(data_root(), story_id)
     prompt = build_prompt(teammate_sections(card, story_id, handoff))
     report, warning = profile_report(card, prompt, handoff)

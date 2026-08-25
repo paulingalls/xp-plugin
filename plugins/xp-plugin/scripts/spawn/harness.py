@@ -48,14 +48,12 @@ def claude_argv(model: str, effort: str, output_format: str = "json") -> list[st
     return argv + (["--effort", effort] if effort else [])
 
 
-def codex_argv(model: str, effort: str, network: bool = False) -> list[str]:
+def codex_argv(model: str, effort: str) -> list[str]:
     """unified_exec stays ENABLED (reversed 2026-08-23, Paul; DESIGN §3): it is
     codex's persistent-session exec tool, and without it a teammate's shell call
     cannot outlive codex's per-command bound — which made TEAMMATE.md's mandatory
     plan review unrunnable on the harness that mechanism exists for. It was
     disabled to protect `PreToolUse`; this plugin ships no PreToolUse hook.
-    One `--add-dir` here; a LINKED executor worktree gains a second at launch
-    (spawn.common_dir_widening).
     `-` reads the prompt from stdin, keeping ~2k tokens out of `ps`."""
     argv = ["codex", "exec", "--json"]
     # Our gates ride the ENVIRONMENT (XP_ROLE, GIT_AUTHOR_*), and THREE
@@ -65,22 +63,25 @@ def codex_argv(model: str, effort: str, network: bool = False) -> list[str]:
     # agent the lead's secrets to buy nothing.
     for pin in ("inherit=all", "exclude=[]", "include_only=[]"):
         argv += ["-c", f"shell_environment_policy.{pin}"]
-    argv += ["--sandbox", "workspace-write", "--add-dir", str(data_root())]
-    # The EXECUTOR alone: workspace-write blocks DNS (curl EXIT=6, measured
-    # 0.149.0) and it is the only leg that nests a headless plan review.
-    if network:
-        argv += ["-c", "sandbox_workspace_write.network_access=true"]
+    # EVERY codex role, no exceptions; teammate_tee.sandbox_line prints it. Under
+    # workspace-write, docker, loopback TCP and a nested `codex exec` are each
+    # denied and this one string lifts all three (measured 0.149.0) — `--add-dir`
+    # does not, it grants path writes, not socket-connect capability. Why that is
+    # an asymmetry removed rather than a risk class added, and what it costs a
+    # consuming project until story-040: DESIGN §3. `--add-dir` is inert here and
+    # kept for that story, which restores a confining posture — as is
+    # spawn.common_dir_widening.
+    argv += ["--sandbox", "danger-full-access", "--add-dir", str(data_root())]
     argv += ["-m", model]
     if effort:  # never -e: codex has no such flag, and a wrong spelling dies on contact
         argv += ["-c", f"model_reasoning_effort={effort}"]
     return [*argv, "-"]
 
 
-def agent_argv(
-    harness: str, model: str, effort: str, output_format: str, role: str = ""
-) -> list[str]:
-    """`role`, never `output_format`, picks the sandbox posture — stream-json is
-    executor-only by accident, and a format change would move what is permitted."""
+def agent_argv(harness: str, model: str, effort: str, output_format: str) -> list[str]:
+    """No `role`: nothing about a launch turns on it any more. It used to pick the
+    codex sandbox posture, which is how the REVIEWER came to run with no network
+    at all — unprinted, and believed the other way round in writing."""
     if harness == "codex":
-        return codex_argv(model, effort, network=role == "executor")
+        return codex_argv(model, effort)
     return claude_argv(model, effort, output_format)

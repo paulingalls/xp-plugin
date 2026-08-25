@@ -42,54 +42,10 @@ class TestInjection:
         assert "xp-plugin" in r.stdout and version in r.stdout
         assert "git hooks: none detected" in r.stdout  # fixture has no lefthook/.githooks
 
-    def test_fresh_digest_injected_without_stale(self, tmp_path):
-        repo, g = xp_repo(tmp_path)
-        head = g("rev-parse", "--short", "HEAD").stdout.strip()
-        data = tmp_path / "xp"
-        data.mkdir(exist_ok=True)
-        (data / "session.md").write_text(f"# Session digest — written x at {head}\nDIGEST-BODY\n")
-        r = run_hook(repo, tmp_path)
-        assert "DIGEST-BODY" in r.stdout and "STALE" not in r.stdout
-
-    def test_stale_digest_prefixed_with_distance(self, tmp_path):
-        repo, g = xp_repo(tmp_path)
-        old = g("rev-parse", "--short", "HEAD").stdout.strip()
-        data = tmp_path / "xp"
-        data.mkdir(exist_ok=True)
-        (data / "session.md").write_text(f"# Session digest — written x at {old}\nDIGEST-BODY\n")
-        (repo / "f.py").write_text("A = 2\n")
-        g("add", "-A")
-        g("commit", "-qm", "one")
-        (repo / "f.py").write_text("A = 3\n")
-        g("add", "-A")
-        g("commit", "-qm", "two")
-        r = run_hook(repo, tmp_path)
-        assert "STALE" in r.stdout and "2 commit" in r.stdout
-
-    def test_stampless_digest_reads_stale_unknown(self, tmp_path):
-        repo, _g = xp_repo(tmp_path)
-        data = tmp_path / "xp"
-        data.mkdir(exist_ok=True)
-        (data / "session.md").write_text("no stamp here\nDIGEST-BODY\n")
-        r = run_hook(repo, tmp_path)
-        assert "STALE" in r.stdout and "unknown" in r.stdout
-
-    def test_no_digest_recovery_block_only(self, tmp_path):
-        repo, _g = xp_repo(tmp_path)
-        r = run_hook(repo, tmp_path)
-        assert r.returncode == 0
-        assert "STALE" not in r.stdout and "story-042" in r.stdout
-
     def test_liveness_touchfile_session_scoped(self, tmp_path):
         repo, _g = xp_repo(tmp_path)
         run_hook(repo, tmp_path, session_id="sess-xyz")
         assert (tmp_path / "xp" / "markers" / "sess-xyz.alive").exists()
-
-    def test_output_capped_with_notice(self, tmp_path):
-        repo, _g = xp_repo(tmp_path)
-        (repo / ".xp" / "constraints.md").write_text("HUGE\n" * 5000)
-        r = run_hook(repo, tmp_path)
-        assert len(r.stdout) <= 12_000 and "truncated" in r.stdout
 
 
 class TestRegistration:
@@ -138,23 +94,18 @@ class TestReviewFindings:
         assert r.returncode == 0 and r.stdout == ""
         assert not (tmp_path / "xp" / "markers").exists()
 
-    def test_truncation_preserves_recovery_block(self, tmp_path):
-        repo, _g = xp_repo(tmp_path)
-        (repo / ".xp" / "constraints.md").write_text("HUGE\n" * 5000)
-        r = run_hook(repo, tmp_path)
-        assert len(r.stdout) <= 12_000 and "truncated" in r.stdout
-        assert "story-042" in r.stdout  # the freshest layer survives the cap
-
 
 class TestTrustBoundary:
     def test_repo_sourced_sections_are_fenced_as_data(self, tmp_path):
         repo, _g = xp_repo(tmp_path)
         r = run_hook(repo, tmp_path)
         assert "BEGIN project content" in r.stdout and "END project content" in r.stdout
-        fenced = r.stdout.split("BEGIN project content")[1]
+        fenced = r.stdout.split("BEGIN project content")[1].split("END project content")[0]
         assert "CONSTRAINT-SENTINEL" in fenced  # repo files inside the fence
-        head = r.stdout.split("BEGIN project content")[0]
-        assert "XP Values" in head  # plugin-owned prose outside it
+        # BOUNDED at END, not "everything after BEGIN": the property is that
+        # plugin prose sits outside the fence, and reading it as "before it" was
+        # a proxy that only held while the profile put static prose first
+        assert "XP Values" not in fenced and "XP Values" in r.stdout
 
 
 class TestSprintCloseFindings:
