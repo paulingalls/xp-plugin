@@ -4,6 +4,59 @@ Release notes started at v0.6.0; earlier entries are summarized from their
 tag and merge messages. Full detail lives in the merge history and the
 per-sprint review reports.
 
+## v0.7.0 — the consumer's copy: what a project that is not us can see
+
+Seven stories. The theme is everything a consuming project hits that we never
+do, because we are the only user and our tests build their own fixtures.
+
+- **A worktree's environment is torn down, not just unlinked.** `Worktree
+  bootstrap:` has shipped since v0.6.2; teardown was a promise with no code, so a
+  project whose bootstrap starts a container outside the checkout was handed an
+  obligation nothing discharged. Teardown now runs inside the doomed checkout
+  before removal, REPORTS and continues rather than refusing (a refusing teardown
+  wedges every close), and gets a wall clock — `teardown_timeout:` in
+  `config.yml`, so a project doing heavy lifting raises it rather than forking.
+- **An aging config says so.** A `config.yml` scaffolded by an older `xp-setup`
+  never gains keys the template adds later, and the refusal named the SHAPE it
+  wanted rather than the cause. It now names the key, the file and the line to
+  add — and distinguishes a key that is ABSENT because your config predates it
+  from one that is MALFORMED because you typed it wrong.
+- **Free mode is a one-card sprint.** `close/free.py` was 120 lines re-expressing
+  `sprint_close.cmd_land` almost step for step; the duplication is gone, free
+  inherits the release-ordering guard rather than taking a fourth copy of it, and
+  the tag is cut on the merged sha instead of being a hand-step.
+- **The plan review edits the plan instead of arguing about it.** The reviewer
+  now writes its findings INTO the draft with their reasons, rather than handing
+  them back to the party least able to concede them. Measured across this sprint:
+  stories before the change took eight and nine plan rounds; the three after it
+  took one each.
+- **`spawn` refuses what it cannot read.** A missing `.xp/system.md` read as "no
+  bootstrap line" and skipped; a present but non-UTF-8 one tracebacked. Both now
+  refuse by name, and the refusal names a command that WORKS in that state — the
+  first draft named one that refuses in exactly the state that produces it.
+- **A respawned teammate inherits what stopped the last one.** An escalation used
+  to cost the successor everything: it re-derived the plan and re-ran the review
+  from scratch, though both survived on disk. It now receives its predecessor's
+  draft, the findings that stopped it, and the record it filed — and the draft
+  lands somewhere `git worktree remove` cannot destroy.
+- **The reviewer proposes a patch; the script commits it.** Reviewers are
+  read-only on every harness now and emit a patch beside their report;
+  `close.py` applies and commits it under the reviewer identity. That retires the
+  injected `GIT_AUTHOR_*` credential, the linked-worktree index write a sandboxed
+  codex reviewer could not perform, and an after-the-fact authorship scan.
+- **The push wall re-checks what a skipped commit hook would have caught.**
+  `git -c core.hooksPath=<nonexistent> commit` runs no hooks and exits 0 — a
+  silent equivalent of `--no-verify`. `pre-push` ran neither lint nor gitleaks, so
+  a bypassed commit carried secrets to the remote. It now re-runs both: the ACT
+  leaves no trace, but every gate here is a pure function of the tree, so the
+  OUTCOME still can be checked.
+- **Smaller, and consumer-facing:** a duplicated `Worktree` label is refused
+  naming both lines instead of silently resolving to the first; a missing release
+  manifest is reported as missing rather than unreadable; the reviewer's
+  wall-clock refusal names `XP_AGENT_TIMEOUT`, the knob that moves it; records
+  hold 4,000 chars and the session start names eight of them rather than three;
+  and `PROCESS.md` names every skill it ships.
+
 ## v0.6.5 — a teammate that stops and says so is escalating, not failing
 
 - **An escalation is no longer reported as a failed run.** `TEAMMATE.md` tells a
