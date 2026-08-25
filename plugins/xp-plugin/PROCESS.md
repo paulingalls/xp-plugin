@@ -13,11 +13,10 @@ the decisions are only in the skill.
    - Draft the plan to a file, then run the **plan-reviewer**: it checks TDD
      ordering, coherence, constraints and sprint size, edits addressable problems
      into the plan with reasons, and stops on human-only questions.
-   - Re-read the plan, then `spawn.py ready <story-id>`: flips `[planned]` →
-     `[ready]` and records a digest of the card.
-   - Spawn recomputes that digest, so a card edited afterwards refuses with the
-     diff. The bracket is display; the digest is the credential. It binds the text
-     you reviewed — it cannot know you reviewed it.
+   - Re-read it, then `spawn.py ready <story-id>`: flips `[planned]` → `[ready]`
+     and records a digest of the card. Spawn recomputes that digest, so a card
+     edited afterwards refuses with the diff. The bracket is display; the digest is
+     the credential — it binds the text you reviewed, it cannot know you read it.
 2. **Story** — red → green → refactor, small commits.
    - Done = ACs verified against the running system at its surface (the story
      loop), not "tests green" (the commit loop). Two loops, two clocks.
@@ -35,33 +34,27 @@ the decisions are only in the skill.
    - Review and merge are separate commands. Land never spawns: on drift or a
      conflict it refuses and names the review leg, so a round is something you
      choose to run, not something a merge inflicts.
-   - **Stopping rule**: one full review always. A REVIEWER fix costs nothing extra
-     — it is inside the round that found it, and reading its diff is your judgment.
-     A LEAD fix moves HEAD past what the review covered, so it costs one confirming
-     round; land REPORTS that delta rather than refusing, so this half is yours to
-     honour. Fix batches are batches.
+   - **Stopping rule**: one full review always. A REVIEWER fix is inside the round
+     that found it — reading its diff is your judgment. A LEAD fix moves HEAD past
+     what the review covered and costs one confirming round; land REPORTS that
+     delta rather than refusing, so this half is yours to honour.
    - Faithful means SCOPE-IDENTICAL: generalizing a prescription is a deviation,
-     and deviations, new uncovered behavior and conflict resolutions are owed a
-     real round. Uncertain? One delta ping beats a wrong self-call.
+     and deviations, uncovered behavior and conflict resolutions are owed a round.
    - What ENDS a round is the finding bar, never a count: a finding earns another
      round only if its failure mode is silent or corrupting (false green, corrupted
      record, unreviewed merge). Loud and patch-scale → fix it now if that is
      minutes, else file it.
 4. **Sprint close** — run **`/sprint-close`** (release: sprint, the default).
-   - Stories integrate on the sprint branch throughout; the batch PRs to trunk when
-     it is RELEASABLE — usually now (keep sprints small), else carried to the plan
-     boundary. Prefer flags that dark-launch unready behavior over holding the branch.
-   - ORDER MATTERS: archived-falsifier batch and full tier, then note triage and the
-     retro, then `review` LAST. The retro promotes into constraints/DESIGN/PROCESS,
-     which is code motion, and running it after the review invalidates the review
-     that permits land.
-   - The retro is a one-page narrative plus a proposed diff to constraints/config.
-     A learning that changes nothing executable is not recorded, and the narrative is
-     PRESENTED to the human at close, never just filed.
-   - Debt triage with the human under the same finding bar. Loud + self-healing →
-     NEVER: everything here is built fail-loud, so a never that later matters returns
-     as an evidence-bearing red. Never is a decision, not a backlog — schedule under
-     budget or drop; nothing carries.
+   - Stories integrate on the sprint branch; the batch PRs to trunk when RELEASABLE
+     — usually now (keep sprints small). Prefer flags that dark-launch unready work.
+   - ORDER MATTERS: falsifier batch and full tier, then note triage and the retro,
+     then `review` LAST. The retro promotes into constraints/DESIGN/PROCESS, which
+     is code motion — after the review it invalidates the review that permits land.
+   - The retro is a narrative plus a proposed diff. A learning that changes nothing
+     executable is not recorded, and the narrative is PRESENTED, never just filed.
+   - Debt triage with the human under the same bar. Loud + self-healing → NEVER:
+     everything is fail-loud, so a never that later matters returns as a red. Never
+     is a decision, not a backlog — schedule under budget or drop; nothing carries.
 
 ## Records (work.md — via the append CLI)
 

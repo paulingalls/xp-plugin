@@ -251,7 +251,18 @@ def main() -> int:
         sections.append("--- END project content ---")
     out = "\n\n".join(sections)
     if len(out) > OUTPUT_CAP:
-        out = out[: OUTPUT_CAP - 60] + "\n[truncated: lead-profile budget is 12,000 chars]"
+        # NAME WHAT WAS LOST. The cut used to say only that it happened, and it
+        # lands inside constraints.md — so rules the lead is judged by went missing
+        # with nothing to notice. A budget that cannot fit everything is a fact; a
+        # budget that hides which rules it dropped is a defect.
+        out, dropped = out[: OUTPUT_CAP - 160], out[OUTPUT_CAP - 160 :]
+        lost = re.findall(r"^(\d+)\. \*\*", dropped, re.M)
+        missing = (
+            f" CONSTRAINTS {', '.join(lost)} ARE NOT ABOVE — read .xp/constraints.md."
+            if lost
+            else ""
+        )
+        out += f"\n[truncated at the {OUTPUT_CAP}-char lead-profile budget.{missing}]"
     print(out)
     return 0
 
