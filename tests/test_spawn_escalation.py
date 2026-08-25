@@ -19,6 +19,7 @@ import sys
 import time
 from pathlib import Path
 
+import pytest
 from spawn_helpers import SPAWN, make_repo, spawn
 
 WORK = SPAWN.parent / "work.py"
@@ -251,3 +252,68 @@ class TestDeliberateStop:
         assert "escalat" not in r.stderr.lower(), r.stderr
         assert json.loads((tmp_path / "launch.json").read_text())["env"]["XP_ROLE"] == "teammate"
         assert Path(env["XP_DATA"], "worktrees", "story-042").exists()
+
+
+class TestAnUnreadableHandoffMarkerIsNotAFirstSpawn:
+    """Constraint 15 at the one site where conflating the two is SILENT: `{}` meant
+    "first spawn ever", so a truncated or unreadable marker discarded the draft,
+    its plan-review findings and the escalation record — all readable on disk
+    right beside it — and the successor re-derived the plan its predecessor was
+    stopped for, which is the entire cost story-041 exists to remove."""
+
+    def artifacts(self, tmp_path, marker_text):
+        import spawn  # noqa: F401  — seeds scripts/spawn on sys.path
+        from handoff import draft_path, marker_path
+
+        root = tmp_path / "data"
+        (root / "plans").mkdir(parents=True)
+        draft_path(root, "story-042").write_text("DRAFT-SENTINEL\n")
+        (root / "plans" / "story-042.md").write_text("FINDING-ONE\n")
+        marker_path(root, "story-042").write_text(marker_text)
+        return root
+
+    def test_a_truncated_marker_still_hands_over_what_survived(self, tmp_path):
+        import spawn  # noqa: F401
+
+        # exactly what a stop interrupted mid-write leaves: a valid JSON PREFIX
+        root = self.artifacts(tmp_path, '{"why": "no commits", "record')
+        from handoff import inheritance
+
+        handed = inheritance(root, "story-042")
+        assert "DRAFT-SENTINEL" in handed and "FINDING-ONE" in handed, handed
+        assert "unreadable" in handed, "the successor is not told why the why is missing"
+
+    def test_a_marker_that_never_EXISTED_still_hands_over_nothing(self, tmp_path):
+        """The other arm, or the fix above turns every FIRST spawn into an
+        inheriting one and every card pays for a section saying nothing."""
+        import spawn  # noqa: F401
+        from handoff import draft_path, inheritance
+
+        root = tmp_path / "data"
+        (root / "plans").mkdir(parents=True)
+        draft_path(root, "story-042").write_text("DRAFT-SENTINEL\n")
+        assert inheritance(root, "story-042") == ""
+
+    def test_a_write_that_dies_mid_flight_leaves_THE_LAST_marker_intact(self, tmp_path):
+        """The PRODUCER half — the reader above tolerates a torn marker, and this
+        is what stops one being made. Fault-injected by failing the write after it
+        has emitted bytes: written in place that leaves the truncated prefix, and
+        stop 1's records are gone; written beside and moved, stop 1 survives."""
+        import spawn  # noqa: F401
+        from handoff import marker_path, record_handoff
+
+        root = tmp_path / "data"
+        record_handoff(root, "story-042", set(), "stop one", 0)
+        whole = Path.write_text
+
+        def torn(self, text, *args, **kwargs):
+            whole(self, text[: len(text) // 2], *args, **kwargs)
+            raise OSError("no space left on device")
+
+        Path.write_text = torn
+        try:
+            with pytest.raises(OSError):
+                record_handoff(root, "story-042", set(), "stop two", 0)
+        finally:
+            Path.write_text = whole
+        assert json.loads(marker_path(root, "story-042").read_text())["why"] == "stop one"

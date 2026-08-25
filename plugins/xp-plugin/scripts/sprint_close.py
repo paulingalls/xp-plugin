@@ -28,6 +28,7 @@ from work import (
     falsifier_is_green,
     missing_plan_refusal,
     plan_path,
+    record_summary,
     stamp,
     work_entries_since,
 )
@@ -302,8 +303,8 @@ def cmd_start(sprint_id: str) -> int:
     print(f"\n{len(members)} stories, {len(notes)} notes to triage. Each note: promote to")
     print("constraints.md/system.md via the retro diff, or archive it.\n")
     for text in notes:
-        lines = text.splitlines()
-        print(f"  {lines[0][3:]} — {(lines[1] if len(lines) > 1 else '')[:100]}")
+        heading, body = record_summary(text)
+        print(f"  {heading[3:]} — {body[:100]}")
     print("\n" + (PLUGIN_ROOT / "templates" / "retro.md").read_text())
     print(
         "Then write the sprint digest yourself — this leg emits facts, never a"

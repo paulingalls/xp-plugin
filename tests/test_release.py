@@ -113,3 +113,36 @@ def test_a_present_but_malformed_manifest_still_says_unreadable(tmp_path, monkey
     bad = _refusal(tmp_path, monkeypatch, manifest_body="{not json")
     assert "no readable" in bad, bad
     assert "missing" not in bad, bad
+
+
+def test_a_release_that_checked_NO_manifest_says_so(tmp_path, monkeypatch):
+    """version_files ships COMMENTED, so a consuming project's post-merge printed
+    `tagged vX.Y.Z at <sha>` whether the manifest matched or whether nothing had
+    ever looked — the same line for a wall that held and a wall that is absent.
+    Constraint 14's whole failure mode is a release step nothing enforces."""
+    import sys as _sys
+
+    _sys.path.insert(0, str(REPO / "plugins" / "xp-plugin" / "scripts" / "close"))
+    import release
+
+    xp = tmp_path / ".xp"
+    xp.mkdir()
+    (xp / "config.yml").write_text("release: sprint\n")
+    monkeypatch.chdir(tmp_path)
+    assert release.version_files() == []
+    assert release.version_refusal("v1.2.3") == "", "no key configured is not a refusal"
+
+
+def test_a_release_that_DID_check_names_the_manifest_it_checked(tmp_path, monkeypatch):
+    """The pair: a report that says the same thing either way is the wallpaper
+    this replaces, so the two states must produce two different sentences."""
+    import sys as _sys
+
+    _sys.path.insert(0, str(REPO / "plugins" / "xp-plugin" / "scripts" / "close"))
+    import release
+
+    xp = tmp_path / ".xp"
+    xp.mkdir()
+    (xp / "config.yml").write_text("version_files: pkg/manifest.json, other.json\n")
+    monkeypatch.chdir(tmp_path)
+    assert release.version_files() == ["pkg/manifest.json", "other.json"]

@@ -27,17 +27,24 @@ class TestTheRealProfileAgainstTheRealCap:
     """
 
     def run_real(self):
-
+        """XP_ROLE PINNED, and the marker asserted absent: the whole suite runs
+        under a reviewer role at every sprint review, where the hook's role gate
+        prints its 121-char teammate line and returns before a profile is built.
+        Both tests below then took their early `return` and asserted NOTHING —
+        vacuous exactly when a review is what would have caught it (constraint 2).
+        """
         repo = Path(__file__).parent.parent
         payload = {"hook_event_name": "SessionStart", "cwd": str(repo)}
-        return subprocess.run(
+        out = subprocess.run(
             [sys.executable, str(HOOK)],
             input=json.dumps(payload),
             capture_output=True,
             text=True,
             cwd=repo,
-            env=dict(os.environ),
+            env=dict(os.environ) | {"XP_ROLE": "lead"},
         ).stdout
+        assert "teammate session" not in out, "the role gate ate the profile; this asserts nothing"
+        return out
 
     def test_a_truncated_profile_names_the_constraints_it_dropped(self):
         """The budget is allowed not to fit. It is NOT allowed to hide which

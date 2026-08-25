@@ -22,13 +22,23 @@ def _is_authored(text: str, story_id: str) -> bool:
 READ_THEM = " Read them (`work.py list`), then fix the card or take the work over."
 
 
-def _state(root: Path, story_id: str) -> dict:
-    """The marker as a dict, or {} for absent, unreadable or not-an-object."""
-    try:
-        state = json.loads(marker_path(root, story_id).read_text())
-    except (OSError, ValueError):
+def _state(root: Path, story_id: str) -> dict | None:
+    """The marker as a dict, {} for ABSENT, None for present-but-unreadable.
+
+    Absent and unreadable are different problems (constraint 15) and this is the
+    one file where conflating them is silent: {} means "first spawn ever", so a
+    truncated marker threw away a draft, its findings and the escalation record
+    that were all readable on disk beside it — the whole inheritance, and no
+    refusal, because the successor cannot miss what it was never told exists.
+    """
+    path = marker_path(root, story_id)
+    if not path.exists():
         return {}
-    return state if isinstance(state, dict) else {}
+    try:
+        state = json.loads(path.read_text())
+    except (OSError, ValueError):
+        return None
+    return state if isinstance(state, dict) else None
 
 
 def record_handoff(
@@ -39,10 +49,14 @@ def record_handoff(
     # Records ACCUMULATE, because the draft and the findings do: one filed at stop
     # 1 is in `before` at stop 2 and can never be `during` again, so overwriting
     # hands stop 3 only stop 2's words. story-028 stopped five times.
-    kept = [eid for eid in _state(root, story_id).get("records", []) if eid not in authored]
+    kept = [eid for eid in (_state(root, story_id) or {}).get("records", []) if eid not in authored]
     path = marker_path(root, story_id)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps({"why": why, "records": kept + authored}))
+    # Written whole and MOVED into place: a stop interrupted mid-write is how the
+    # unreadable marker above gets made, and this is its one producer.
+    temp = path.with_suffix(".json.part")
+    temp.write_text(json.dumps({"why": why, "records": kept + authored}))
+    temp.replace(path)
     recovery = f"\nWhat the handback guard saw: {why}"
     if rc:
         if authored:
@@ -72,9 +86,18 @@ def _findings(root: Path, story_id: str) -> list[Path]:
 
 def inheritance(root: Path, story_id: str) -> str:
     state = _state(root, story_id)
-    if not state:
-        return ""
-    parts = [("Why the predecessor stopped", str(state.get("why", "")))]
+    if state == {}:
+        return ""  # no marker: a first spawn inherits nothing and says nothing
+    if state is None:
+        why = (
+            f"{marker_path(root, story_id)} is unreadable, so the records the predecessor"
+            " filed cannot be listed here — read them with `work.py list`."
+            " What survived on disk follows."
+        )
+        state = {}
+    else:
+        why = str(state.get("why", ""))
+    parts = [("Why the predecessor stopped", why)]
     draft = draft_path(root, story_id)
     if draft.is_file():
         parts.append(("Predecessor plan draft", draft.read_text()))

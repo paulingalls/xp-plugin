@@ -22,10 +22,14 @@ def refuse_unbumpable(ref: str = "HEAD") -> int:
     return fail(f"refused: latest tag {latest!r} is not vMAJOR.MINOR — cannot bump it")
 
 
+def version_files() -> list[str]:
+    """Named once: the leg that REPORTS cannot drift from the leg that checks."""
+    return [part.strip() for part in config_flat("version_files").split(",") if part.strip()]
+
+
 def version_refusal(version: str) -> str:
     target = tuple(map(int, version.removeprefix("v").split(".")))
-    names = (part.strip() for part in config_flat("version_files").split(","))
-    for name in filter(None, names):
+    for name in version_files():
         path = Path(name)
         # ABSENT and UNREADABLE are different problems with different fixes, and
         # OSError sat beside the parse errors: a manifest nobody has created yet
@@ -84,7 +88,14 @@ def cmd_post_merge(
         return fail(f"refused: could not create tag {version}")
     config.write_text("".join(kept))
     suffix = "; sprint_branch retired" if retire_sprint else ""
-    print(f"tagged {version} at {git('rev-parse', 'HEAD').stdout.strip()[:8]}{suffix}")
+    # version_files ships COMMENTED, so the DEFAULT project cuts every tag with
+    # nothing walling it — and a silent pass read identically (constraint 14).
+    walled = (
+        f"manifests matching {version}: {', '.join(checked)}"
+        if (checked := version_files())
+        else "NO manifest was checked — set version_files: in .xp/config.yml to wall it"
+    )
+    print(f"tagged {version} at {git('rev-parse', 'HEAD').stdout.strip()[:8]}{suffix}; {walled}")
     next_step = "commit the config change, push the tag, and open the next sprint"
     print(next_step if retire_sprint else "push the tag")
     return 0

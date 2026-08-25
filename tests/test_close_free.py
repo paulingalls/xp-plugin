@@ -324,6 +324,9 @@ class TestFreePostMerge:
         assert result.returncode == 0, result.stderr
         assert g("rev-list", "-n1", "v0.2.1").stdout.strip() == merged
         assert "[done]" in (Path(env["XP_DATA"]) / "plan.md").read_text()
+        # this project configured no version_files, and a tag cut with NOTHING
+        # walling the manifest must not read like one that passed a check
+        assert "NO manifest was checked" in result.stdout, result.stdout
 
     def test_post_merge_before_the_pr_merges_refuses_and_cuts_no_tag(self, tmp_path):
         """The ordering half of AC 4, which nothing else on this leg drives:
@@ -354,6 +357,8 @@ class TestFreePostMerge:
         assert result.returncode == rc, result.stderr
         if rc:
             assert "plugin.json" in result.stderr and "behind" in result.stderr.lower()
+        else:  # the pass NAMES what it checked, or it reads like the arm above
+            assert "manifests matching v0.2.1: plugin.json" in result.stdout, result.stdout
         assert ("v0.2.1" in g("tag").stdout.split()) is (rc == 0)
 
 
