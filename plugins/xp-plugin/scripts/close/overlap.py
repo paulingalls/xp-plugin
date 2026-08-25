@@ -87,6 +87,12 @@ def collision(ref: str, files: list[str]) -> str:
 
 
 def run_checks(verify: str, tier: str, where: str = "") -> str:
+    if not tier:
+        # SAYS SO rather than refusing: hook-lib.sh's run_tier refuses an unset
+        # tier, and the two legs disagreeing is worth a card (f6c00b18) — but the
+        # defect worth fixing now is the SILENCE. A merge gated by Verify alone is
+        # legal; one the lead believes a tier gated is not.
+        print("no tests.<tier> in .xp/config.yml — Verify alone gates this", file=sys.stderr)
     for label, cmd in (("Verify", verify), ("test tier", tier)):
         if cmd and subprocess.run(cmd, shell=True).returncode != 0:
             return f"refused: {label} red{where}: {cmd}"
