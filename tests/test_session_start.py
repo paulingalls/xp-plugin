@@ -47,12 +47,6 @@ class TestInjection:
         run_hook(repo, tmp_path, session_id="sess-xyz")
         assert (tmp_path / "xp" / "markers" / "sess-xyz.alive").exists()
 
-    def test_output_capped_with_notice(self, tmp_path):
-        repo, _g = xp_repo(tmp_path)
-        (repo / ".xp" / "constraints.md").write_text("HUGE\n" * 5000)
-        r = run_hook(repo, tmp_path)
-        assert len(r.stdout) <= 12_000 and "truncated" in r.stdout
-
 
 class TestRegistration:
     def test_hooks_json_registers_the_script(self):
@@ -100,23 +94,18 @@ class TestReviewFindings:
         assert r.returncode == 0 and r.stdout == ""
         assert not (tmp_path / "xp" / "markers").exists()
 
-    def test_truncation_preserves_recovery_block(self, tmp_path):
-        repo, _g = xp_repo(tmp_path)
-        (repo / ".xp" / "constraints.md").write_text("HUGE\n" * 5000)
-        r = run_hook(repo, tmp_path)
-        assert len(r.stdout) <= 12_000 and "truncated" in r.stdout
-        assert "story-042" in r.stdout  # the freshest layer survives the cap
-
 
 class TestTrustBoundary:
     def test_repo_sourced_sections_are_fenced_as_data(self, tmp_path):
         repo, _g = xp_repo(tmp_path)
         r = run_hook(repo, tmp_path)
         assert "BEGIN project content" in r.stdout and "END project content" in r.stdout
-        fenced = r.stdout.split("BEGIN project content")[1]
+        fenced = r.stdout.split("BEGIN project content")[1].split("END project content")[0]
         assert "CONSTRAINT-SENTINEL" in fenced  # repo files inside the fence
-        head = r.stdout.split("BEGIN project content")[0]
-        assert "XP Values" in head  # plugin-owned prose outside it
+        # BOUNDED at END, not "everything after BEGIN": the property is that
+        # plugin prose sits outside the fence, and reading it as "before it" was
+        # a proxy that only held while the profile put static prose first
+        assert "XP Values" not in fenced and "XP Values" in r.stdout
 
 
 class TestSprintCloseFindings:

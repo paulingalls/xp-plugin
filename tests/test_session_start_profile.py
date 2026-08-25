@@ -62,6 +62,25 @@ class TestTheRealProfileAgainstTheRealCap:
         count = len(digest.read_text().splitlines()) if digest.exists() else 0
         assert count <= DIGEST_CAP, f"{digest} is {count} lines against {DIGEST_CAP}"
 
+    def test_this_repos_profile_fits_with_values_and_process_leading_it(self):
+        """Bug ab6a1354, on the HOOK'S OWN STDOUT — not on a sum of parts, which
+        misses the joins and the trust markers by 117 chars.
+
+        ORDER is asserted alongside size, and it is the half a size check cannot
+        carry: nothing truncates at 18,000 against an assembled 15,574, so a
+        size-only assertion passes under any arrangement at all.
+        """
+        from session_start import OUTPUT_CAP
+
+        out = self.run_real()
+        assert len(out) <= OUTPUT_CAP, f"the profile assembles {len(out)} against {OUTPUT_CAP}"
+        plugin = Path(__file__).parent.parent / "plugins" / "xp-plugin"
+        values = (plugin / "VALUES.md").read_text()[:60]
+        process = (plugin / "PROCESS.md").read_text()[:60]
+        assert out.index(values) < out.index(process) < out.index("BEGIN project content"), (
+            "VALUES sets the stage and PROCESS is the loop; they lead the profile"
+        )
+
     def test_a_truncated_profile_names_the_constraints_it_dropped(self):
         """The budget is allowed not to fit. It is NOT allowed to hide which
         rules it cut: a silently-absent constraint is one the lead never knew it

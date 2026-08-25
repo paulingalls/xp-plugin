@@ -187,7 +187,7 @@ Mid-sprint durable learnings go to work.md notes as they happen; sprint close pr
 
 ## 6. Process flows
 
-**Session start** (hook, not a skill): inject the lead profile from §8 (VALUES + one-page PROCESS + constraints.md + session.md + current sprint slice). No retro, no housekeeper, no gate marker dance. Target injection: **< 3k tokens**.
+**Session start** (hook, not a skill): inject the lead profile from §8 (VALUES + one-page PROCESS + constraints.md + session.md + current sprint slice). No retro, no housekeeper, no gate marker dance. Target injection: **≤ 4.5k tokens** (`session_start.OUTPUT_CAP` = 18,000 chars).
 
 **Plan** (multi-file work): draft plan → **fresh-context plan reviewer** (checks TDD ordering — red before green, real-behavior-not-reachability — artifact coherence: plan vs stories vs Verify commands vs collision declarations, constraint conflicts and sprint cap; edits addressable problems in the plan with adjacent reasons, stops on human-only questions, and writes its disposition to `<data-root>/plans/<story-id>.md`, then `<story-id>.round-N.md`) → re-read plan → `spawn.py ready <story-id>` mints a digest of the whole card block and flips [planned] → [ready] → execute; spawn recomputes that digest and refuses, naming the drift, when the card was edited after its review (the bracket alone was a credential with a reader and no writer — measured three times in sprint-003). The reviewer prompt is a page, not 3,153 words.
 
@@ -250,9 +250,11 @@ Every agent, on every spawn path, gets **VALUES.md** — the spawn CLI and the a
 
 | Audience | Injected | Target |
 |---|---|---|
-| Lead / orchestrator | VALUES + `PROCESS.md` (one page: the flows in §6, nothing else) + `constraints.md` + `session.md` + recovery block + current sprint slice of plan.md | < 3k tokens |
+| Lead / orchestrator | VALUES + `PROCESS.md` (one page: the flows in §6, nothing else) + `constraints.md` + `session.md` + recovery block + current sprint slice of plan.md | ≤ 4.5k tokens, ENFORCED (`session_start.OUTPUT_CAP` = 18,000 chars) |
 | Teammate | VALUES + `TEAMMATE.md` (one page: TDD loop, commit conventions, escalate-don't-guess, done = Verify green) + its story card + constraints.md | plugin-shipped ≤ 1,200 tokens, ENFORCED (`spawn.plugin_shipped_chars`); the composed total is reported, never capped — the card and the project's own constraints belong to the consuming project. The original "< 2k" was measured unmeetable: story cards alone run 2,193–2,305. |
 | Reviewer (plan & story) | VALUES + its review charter (in the agent definition) + the diff/plan under review + constraints.md + **system.md** (the WHERE layer — a reviewer judging approach needs it, and a file nothing reads is the audit's dead-pillar mistake reborn) | < 2.5k tokens |
+
+**The lead budget was raised once, at v0.7.1 (bug ab6a1354).** The 3k figure was arithmetic against xp-agents' ~10k, never measured against a harness limit or an observed cost; 18,000 chars is derived — shipped VALUES+PROCESS is 6,952 and fixed, and this repo at its 15-constraint cap assembles 15,574. **ORDER IS PART OF THE CONTRACT, not an implementation detail (Paul, 2026-08-24): VALUES first, PROCESS second, and neither may be dropped or moved.** Values set the stage for everything read after them and the loop is how the work happens; the two files define the plugin, so they get primacy. They may be made SMALLER — everything after them is orderable, constraints ahead of the digest because a digest is recreatable from git and work.md while a silently-absent constraint is a rule the lead never knew it was breaking. THE COST THAT ARRANGEMENT ACCEPTS, stated so nobody rediscovers it: the cut takes the tail, so a project past the cap loses constraints. What pays for it is that the cap is derived rather than aspirational, the digest is bounded (`DIGEST_CAP`), and `session_start.truncated` names every rule it dropped and where to read it. Two invariants inside that function a reader must not undo: dropped constraints are computed from `constraints.md` against the surviving PREFIX of it, never by asking whether `N. **` appears in the kept text — PROCESS.md carries four lines of that exact shape and is assembled ahead of the rules, so the naive question reports constraints 1-4 present while they are gone; and the cut may swallow the `--- END project content ---` terminator, so it is re-appended before the notice, which must never render inside a region the lead is told to treat as repo data.
 
 Injection budgets are enforced outward too: `config.yml` caps constraints.md's size, the SessionStart banner prints current-size-vs-cap, and the **plan reviewer refuses a sprint whose injection profile exceeds budget** — the consuming project gets the same displace-one-to-add-one pressure the plugin's own CI ratchet applies to the plugin (§9), otherwise the sprint-close retro quietly rebuilds the unread pillar one promoted note at a time.
 
@@ -265,7 +267,7 @@ Injection budgets are enforced outward too: `config.yml` caps constraints.md's s
 | Agent prose | ~13,500 words | ≤ 2,500 words | ~81% |
 | Hook bindings | 34 | 4 CLI + 2 git | ~82% |
 | State stores | 6 JSON + event log + 15 CLIs | 4 markdown in-repo + 2 out + 1 config | — |
-| Per-session injection | ~10k+ tokens | < 3k tokens | ~70% |
+| Per-session injection | ~10k+ tokens | ≤ 4.5k tokens | ~55% |
 | Kickoff subagent tax | ~115k tokens measured | 0 | 100% |
 
 These are acceptance criteria for the build, not aspirations: `ratchet.py` measures the Python line and prose-density budgets at pre-push and fails if they are exceeded; the prose-word and test-ratio budgets below are read-and-judge, unmeasured so far. The sub-allocation below is the only other copy of the sub-budget numbers, and a test pins it to ratchet.py's constants; README, CLAUDE.md and system.md point here and to the command, never restate a number. Meta-tests are budgeted too: test lines ≤ 2× code lines (1.7× at sprint-003, down from 3.6× at sprint-001 — hand-measured, which is why it is the next thing the ratchet should count).
