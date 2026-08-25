@@ -16,6 +16,19 @@ from test_stop_gate import (
 
 
 class TestBashStatus:
+    def test_malformed_payload_is_advisory_but_visible(self, tmp_path):
+        repo, _g = repo_with_story(tmp_path)
+        result = subprocess.run(
+            [sys.executable, str(SCRIPTS / "bash_status.py")],
+            input="not json",
+            env={"PATH": "/usr/bin:/bin", "HOME": str(tmp_path), "XP_DATA": str(tmp_path / "xp")},
+            cwd=repo,
+            capture_output=True,
+            text=True,
+        )
+        assert result.returncode == 0 and result.stdout == ""
+        assert "JSONDecodeError" in result.stderr
+
     def test_failure_event_records_red_then_success_greens(self, tmp_path):
         repo, _g = repo_with_story(tmp_path)
         run_script(

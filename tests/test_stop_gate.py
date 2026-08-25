@@ -9,6 +9,7 @@ tool_response; successful PostToolUse's tool_response has NO exit_code.
 import json
 import os
 import pty
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -90,6 +91,19 @@ class TestStopGate:
         repo, _g = repo_with_story(tmp_path)
         result = run_script("stop_gate.py", self.stop_payload(), repo, tmp_path)
         assert (result.returncode, result.stdout, result.stderr) == (0, "", "")
+
+    def test_malformed_payload_is_advisory_but_visible(self, tmp_path):
+        repo, _g = repo_with_story(tmp_path)
+        result = subprocess.run(
+            [sys.executable, str(SCRIPTS / "stop_gate.py")],
+            input="not json",
+            env={"PATH": "/usr/bin:/bin", "HOME": str(tmp_path), "XP_DATA": str(tmp_path / "xp")},
+            cwd=repo,
+            capture_output=True,
+            text=True,
+        )
+        assert result.returncode == 0 and result.stdout == ""
+        assert "JSONDecodeError" in result.stderr
 
     def test_a_tty_names_the_hook_and_its_json_input(self):
         master, slave = pty.openpty()
@@ -343,7 +357,7 @@ class TestACrashIsNotAPass:
         survive is an exception, so nothing weaker constructs the condition."""
         broken = tmp_path / name
         text = (SCRIPTS / name).read_text()
-        marker = "def main() -> int:\n"
+        marker = "def main(data: dict) -> int:\n"
         assert marker in text, name
         broken.write_text(text.replace(marker, marker + '    raise ValueError("boom")\n', 1))
         return broken  # its siblings resolve off PYTHONPATH below, not off its new home
@@ -374,3 +388,28 @@ class TestACrashIsNotAPass:
             r = self.run(repo, name, payload)
             assert r.returncode == 0, f"{name} broke the session: {r.stderr}"
             assert "ValueError" in r.stderr, f"{name} died in silence"
+
+    def test_every_hook_inherits_the_shared_tty_guard(self, tmp_path):
+        scripts = tmp_path / "scripts"
+        shutil.copytree(SCRIPTS, scripts)
+        env = scripts / "env.py"
+        text = env.read_text()
+        original = "is a hook; invoke it with a JSON payload on stdin."
+        changed = "is a hook; CHANGED shared payload on stdin."
+        assert original in text
+        env.write_text(text.replace(original, changed, 1))
+        for name in ("bash_status.py", "stop_gate.py", "session_start.py"):
+            master, slave = pty.openpty()
+            try:
+                result = subprocess.run(
+                    [sys.executable, str(scripts / name)],
+                    stdin=slave,
+                    capture_output=True,
+                    text=True,
+                    timeout=1,
+                )
+            finally:
+                os.close(master)
+                os.close(slave)
+            assert result.returncode == 0, result.stderr
+            assert all(word in result.stdout for word in (name, "CHANGED", "stdin"))

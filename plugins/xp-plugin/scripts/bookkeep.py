@@ -165,24 +165,27 @@ def held_trunk_tree(trunk: str) -> tuple[str, str]:
     return "", ""
 
 
-def story_worktree(branch: str) -> tuple[str, list[str]]:
-    """The worktree holding branch and any lookup failure."""
+def story_worktree(target: Path) -> tuple[str, str, list[str]]:
+    """The keyed worktree, its structurally paired branch, and lookup failures."""
     listed = git("worktree", "list", "--porcelain")
     if listed.returncode:
-        return "", ["git worktree list --porcelain"]
-    path = ""
+        return "", "", ["git worktree list --porcelain"]
+    path, matched = "", False
     for line in listed.stdout.splitlines():
         if line.startswith("worktree "):
+            if matched:
+                return path, "", []
             path = line.removeprefix("worktree ")
-        elif line == f"branch refs/heads/{branch}":
-            return path, []
-    return "", []
+            matched = Path(path).resolve() == target.resolve()
+        elif matched and line.startswith("branch refs/heads/"):
+            return path, line.removeprefix("branch refs/heads/"), []
+    return (path, "", []) if matched else ("", "", [])
 
 
 def remove_story_checkout(tree: str, branch: str, timeout_value: str = "") -> list[str]:
     """Remove an optional spawned tree and its branch, accumulating failures."""
     failed = remove_story_worktree(tree, timeout_value) if tree else []
-    return failed + delete_story_branch(branch)
+    return failed + (delete_story_branch(branch) if branch else [])
 
 
 def report_incomplete(failed: list[str]) -> bool:

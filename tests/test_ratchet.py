@@ -335,12 +335,25 @@ def test_design_names_the_directory_the_ratchet_scans():
     assert f"`{scanned}/**`" in DESIGN.read_text()
 
 
+def test_the_overage_refusal_never_sends_anyone_to_the_empty_reserve(tmp_path):
+    """DESIGN §9 records the pre-named sacrificial reserve as EMPTY — two of the three
+    features were never built and the third became load-bearing. The refusal is where
+    a reader lands at overage, so it is the copy that must stop naming them; leaving it
+    is the AC satisfied in the document nobody reads at the moment it matters."""
+    assert "pre-named sacrificial reserve is empty" in DESIGN.read_text()
+    over = _budgets().SPAWN + 1
+    root = build_plugin_tree(tmp_path, {"scripts/spawn.py": "x = 1\n" * over})
+    out = run_ratchet(root).stdout
+    assert "BUDGET EXCEEDED" in out, out
+    assert "sacrificial" not in out, out
+
+
 def test_subbudgets_sum_to_total():
     sys.path.insert(0, str(RATCHET.parent))
     try:
         import ratchet
 
-        assert ratchet.SPAWN + ratchet.CLOSE + ratchet.HOOKS + ratchet.MISC <= ratchet.TOTAL
+        assert ratchet.SPAWN + ratchet.CLOSE + ratchet.HOOKS + ratchet.MISC == ratchet.TOTAL == 5500
     finally:
         sys.path.remove(str(RATCHET.parent))
 

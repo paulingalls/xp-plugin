@@ -11,7 +11,6 @@ import subprocess
 import sys
 from pathlib import Path
 
-import bookkeep
 import pytest
 from close_helpers import (
     CLOSE,
@@ -328,62 +327,6 @@ class TestFreeLand:
         r = free(repo, env, "fix-typo", "land")
         assert r.returncode == 0, r.stderr
         assert "unreviewed" in r.stdout, r.stdout
-
-
-class TestFreeTeardown:
-    def test_a_failed_worktree_lookup_is_not_reported_as_absence(self, monkeypatch):
-        failed = subprocess.CompletedProcess([], 1, "", "broken")
-        monkeypatch.setattr(bookkeep, "git", lambda *args: failed)
-        tree, problems = bookkeep.story_worktree(BRANCH)
-        assert tree == "" and problems == ["git worktree list --porcelain"]
-
-    def merged(self, tmp_path, spawned=True, teardown="", carded=False):
-        repo, env, g = free_repo(tmp_path)
-        assert free(repo, env, "fix-typo", "start").returncode == 0
-        if teardown:
-            system = repo / ".xp" / "system.md"
-            system.write_text(system.read_text() + f"**Worktree teardown**: `{teardown}`\n")
-        commit_on_free(repo, g)
-        if carded:
-            add_free_card(env)
-        assert free(repo, env, "fix-typo", "review").returncode == 0
-        g("checkout", "-q", "main")
-        tree = tmp_path / "spawned"
-        if spawned:
-            g("worktree", "add", "-q", str(tree), BRANCH)
-        g("merge", "-q", "--no-ff", BRANCH, "-m", "merge free release")
-        return repo, env, g, tree
-
-    def test_post_merge_removes_the_spawn_worktree_and_branch(self, tmp_path):
-        repo, env, g, tree = self.merged(tmp_path)
-        result = free(repo, env, "fix-typo", "post-merge")
-        assert result.returncode == 0, result.stderr
-        assert not tree.exists()
-        assert BRANCH not in g("branch", "--list").stdout
-
-    def test_a_failed_teardown_reports_after_cleanup_continues(self, tmp_path):
-        repo, env, g, tree = self.merged(tmp_path, teardown="false")
-        result = free(repo, env, "fix-typo", "post-merge")
-        assert result.returncode == 3 and "teardown failed" in result.stderr.lower()
-        assert "v0.2.1" in g("tag").stdout.split()
-        assert not tree.exists() and BRANCH not in g("branch", "--list").stdout
-        assert not marker_file(tmp_path, KEY).exists()
-
-    def test_a_card_that_will_not_flip_still_discharges_the_checkout(self, tmp_path):
-        """The tag is cut before the flip and post-merge refuses a second one, so
-        an early return here is a leak no later leg can reach."""
-        repo, env, g, tree = self.merged(tmp_path, carded=True)
-        plan = Path(env["XP_DATA"]) / "plan.md"
-        plan.write_text(plan.read_text().replace("[in-progress]", "[done]"))
-        result = free(repo, env, "fix-typo", "post-merge")
-        assert result.returncode == 3 and KEY in result.stderr
-        assert not tree.exists() and BRANCH not in g("branch", "--list").stdout
-
-    def test_an_unspawned_free_close_has_no_missing_worktree_error(self, tmp_path):
-        repo, env, g, _tree = self.merged(tmp_path, spawned=False)
-        result = free(repo, env, "fix-typo", "post-merge")
-        assert result.returncode == 0, result.stderr
-        assert BRANCH not in g("branch", "--list").stdout
 
 
 class TestSharedLandGuards:

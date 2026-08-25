@@ -4,6 +4,15 @@ Release notes started at v0.6.0; earlier entries are summarized from their
 tag and merge messages. Full detail lives in the merge history and the
 per-sprint review reports.
 
+## v0.7.4 — a leg that stops says so, and one that finishes finishes
+
+- All three hooks share one advisory runner: malformed payloads and crashes remain
+  exit-zero but print their traceback, and the terminal-input guard lives once.
+- Free post-merge finds a spawned card by its keyed worktree, removes that tree
+  and its recorded branch, then independently discharges the free branch.
+- The Python cap rises once to 5,500 after the measured audit; exact component
+  equality enforces the attributed 1,495/2,245/585/1,175 allocation.
+
 ## v0.7.3 — completed work reports itself completed
 
 - Plan review accepts reasons preserved across hard wrapping while still

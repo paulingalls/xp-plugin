@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Size ratchet: measure shipped Python against the sub-budgets, red if over.
 
-Sole holder of the sub-budget numbers in code; DESIGN §9 keeps the total, the
-rationale and the sacrificial-feature order, and test_ratchet pins its copy of
+Sole holder of the sub-budget numbers in code; DESIGN §9 keeps the total and
+the rationale (its pre-named reserve is empty), and test_ratchet pins its copy of
 the sub-allocation to the constants below so the two cannot drift (bug c2d7ffdf
 was that drift, between two prose copies nobody could run).
 
@@ -15,11 +15,11 @@ import sys
 import tokenize
 from pathlib import Path
 
-SPAWN = 1295
-CLOSE = 2095
-HOOKS = 535
-MISC = 1075
-TOTAL = 5000
+SPAWN = 1495
+CLOSE = 2245
+HOOKS = 585
+MISC = 1175
+TOTAL = 5500
 
 CLOSE_NAMES = {"close", "review", "bookkeep", "sprint_close"}
 HOOKS_NAMES = {"hooks", "session_start", "stop_gate", "bash_status"}
@@ -154,7 +154,8 @@ def report(root):
                 f"BUDGET EXCEEDED: {name} measured {measured}, cap {cap}, over by {measured - cap}"
                 "\n  fix by displacing equal weight in this component; or move budget"
                 " between components (here + DESIGN §9, zero-sum, the human's call);"
-                " or cut a §9 sacrificial feature — never a gate, never a test"
+                " or cut real surface, priced against what DESIGN §9 measures —"
+                " never a gate, never a test"
             )
 
     worst_path = worst[1]
