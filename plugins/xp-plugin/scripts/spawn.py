@@ -11,8 +11,9 @@ sys.path.insert(0, str(Path(__file__).parent))
 sys.path.insert(0, str(Path(__file__).parent / "spawn"))
 # close must import back FUNCTION-LOCALLY: a module-level edge cycles
 # (close -> spawn -> close) and fails before fail/git exist (story-008).
-from bookkeep import bootstrap_command, worktree_command
-from close import fail, git, integration_target, story_card
+from bookkeep import bootstrap_command
+from close import config_flat, fail, git, integration_target, story_card
+from handback import tree_state, unclean_teammate_result
 from handoff import draft_path, inheritance, marker_path, report_handoff
 from harness import (
     HARNESS_INSTALL,
@@ -20,6 +21,7 @@ from harness import (
     claude_argv,  # noqa: F401  — re-exported: story-017's argv tests import it here
     codex_argv,  # noqa: F401
     missing_harness,
+    resolve_codex_sandbox,
 )
 from role_config import card_role, config_role
 from teammate_tee import run_stream, run_teammate
@@ -291,10 +293,13 @@ def cmd_spawn(
             return 0
         return cmd_in_place(story_id, card)
     harness, model, effort = resolve_role("executor", card, override)
+    sandbox, problem = resolve_codex_sandbox(harness, config_flat("codex_sandbox"))
+    if problem:
+        return fail("refused: " + problem)
     branch = story_branch(card, story_id)
     tree = worktree_path(story_id)
     trunk = integration_target()
-    argv = agent_argv(harness, model, effort, "stream-json")
+    argv = agent_argv(harness, model, effort, "stream-json", sandbox)
     handoff = inheritance(data_root(), story_id)
     if resuming and tree.is_dir():
         handoff += resume().inherited_evidence(tree, trunk)
@@ -390,68 +395,6 @@ def cmd_spawn(
     marker_path(data_root(), story_id).unlink(missing_ok=True)
     held.close()
     return rc
-
-
-def tree_state(tree: Path) -> tuple[str, str]:
-    """(HEAD, porcelain) — the guard's baseline. Raises rather than passing
-    stdout through: a FAILED git returns empty output, which reads as an empty
-    porcelain and a HEAD unequal to the flip's — clean and committed, the one
-    wrong answer the guard can give."""
-
-    def out(*args: str) -> str:
-        r = subprocess.run(["git", *args], cwd=tree, capture_output=True, text=True)
-        if r.returncode != 0:
-            raise OSError(f"git {args[0]} failed in {tree}: {(r.stderr or r.stdout).strip()}")
-        return r.stdout.strip()
-
-    return out("rev-parse", "HEAD"), out("status", "--porcelain")
-
-
-def unclean_teammate_result(
-    tree: Path, handed_over: tuple[str, str], story_id: str, resumed: bool = False
-) -> str:
-    """ "" when the teammate left a clean, committed story behind; otherwise the
-    refusal, naming both recoveries.
-
-    Both halves measure against the tree AS HANDED OVER: raw porcelain would charge
-    the teammate with whatever the bootstrap command dirtied before it started.
-    """
-    flip_head, handed_dirty = handed_over
-    system = tree / ".xp/system.md"
-    try:
-        text = system.read_text() if system.exists() else ""
-        teardown, problem = worktree_command(text, "teardown")
-    except UnicodeDecodeError as exc:
-        teardown, problem = "", f"Could not read {system}: {exc}"
-    discard = f"`git worktree remove {tree}`"
-    if teardown:
-        discard = (
-            f"running {teardown!r} and then `git worktree remove {tree}`"
-            " (add --force if teardown leaves files behind)"
-        )
-    recovery = (
-        f" Recover by `spawn.py resume {story_id}`, which takes this tree and its commits"
-        f" over with a fresh teammate; by committing by hand in {tree}; or by {discard},"
-        f" putting {story_id}'s heading back to [ready] in {plan_path()}, and re-spawning."
-        + (f" {problem}." if problem else "")
-    )
-    if resumed:
-        recovery = resume().handback_recovery(tree, story_id)
-    try:
-        head, dirty = tree_state(tree)
-    except OSError as e:
-        return f"refused: the story is unverified — {e}.{recovery}"
-    if left := sorted(set(dirty.splitlines()) - set(handed_dirty.splitlines())):
-        return "refused: the teammate left work uncommitted in {}:\n{}\n{}".format(
-            tree, "\n".join(left), recovery
-        )
-    if resumed and dirty:
-        return "refused: inherited takeover work remains uncommitted in {}:\n{}\n{}".format(
-            tree, dirty, recovery
-        )
-    if head == flip_head:
-        return f"refused: the teammate made no commits of its own in {tree}.{recovery}"
-    return ""
 
 
 def ready():

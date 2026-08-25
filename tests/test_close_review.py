@@ -415,13 +415,14 @@ class TestCodexReviewerLeg:
     SAME round path with the SAME parse, so no caller of review.py can tell which
     harness wrote it — the divergence is the argv and nothing else."""
 
-    def codex_repo(self, tmp_path, **kw):
+    def codex_repo(self, tmp_path, posture="danger-full-access", **kw):
         repo, env, g = make_repo(tmp_path)
         # The stub dies on any other posture, so every test in this class walks
         # the reviewer leg's real launch under the posture the branch ships.
-        rec = stub_codex(tmp_path, commit=False, report=CLEAN, sandbox="danger-full-access", **kw)
+        rec = stub_codex(tmp_path, commit=False, report=CLEAN, sandbox=posture, **kw)
         (repo / ".xp" / "config.yml").write_text(
             "roles:\n  reviewer: codex/gpt-5.6-terra/high\ntests:\n  story: true\n"
+            f"codex_sandbox: {posture}\n"
         )
         g("add", "-A")
         g("commit", "-qm", "reviewer role is codex")
@@ -434,18 +435,21 @@ class TestCodexReviewerLeg:
         rounds = marker(tmp_path)["rounds"]
         assert rounds == [CLEAN], rounds
 
-    def test_the_reviewer_argv_is_the_same_one_the_teammate_leg_takes(self, tmp_path):
+    @pytest.mark.parametrize("posture", ["workspace-write", "danger-full-access"])
+    def test_the_reviewer_argv_is_the_same_one_the_teammate_leg_takes(self, tmp_path, posture):
         """Not a second spawn path: same posture, same environment pins, same
         model handling. AC2 lives HERE and not at `agent_argv` — with the role
         parameter gone the two legs are one expression, so comparing them through
         the builder is f(x) == f(x). What can still red is a caller re-deriving a
         posture from its role, which is what left the reviewer with no network at
         all while the lead believed the opposite in writing."""
-        repo, env, rec = self.codex_repo(tmp_path)
-        assert close(repo, env, "review").returncode == 0
+        repo, env, rec = self.codex_repo(tmp_path, posture)
+        result = close(repo, env, "review")
+        assert result.returncode == 0
         launch = json.loads(rec.read_text())
         argv = launch["argv"]
-        assert ("--sandbox", "danger-full-access") in list(pairwise(argv)), argv
+        assert ("--sandbox", posture) in list(pairwise(argv)), argv
+        assert f"codex sandbox: {posture}" in result.stderr
         assert not [a for a in argv if a.startswith("sandbox_workspace_write.")], argv
         assert ("--disable", "unified_exec") not in list(pairwise(argv)), argv
         assert argv[argv.index("-m") + 1] == "gpt-5.6-terra"

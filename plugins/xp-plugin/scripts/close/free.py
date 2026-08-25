@@ -38,6 +38,12 @@ def current_free(slug: str) -> tuple[str, str, str]:
 
 
 def cmd_start(slug: str) -> int:
+    normalized = re.sub(r"[^a-z0-9]+", "-", slug.lower()).strip("-")
+    if slugify(slug) != normalized:
+        return fail(
+            f"refused: free slugs are limited to 20 characters — this would cut"
+            f" branch {branch_for(slug)}; choose a shorter slug"
+        )
     if git("status", "--porcelain").stdout.strip():
         return fail("refused: working tree is dirty — commit or stash first")
     trunk = default_branch()
@@ -52,7 +58,10 @@ def cmd_start(slug: str) -> int:
         return fail(f"refused: branch {new} already exists")
     if (made := git("checkout", "-q", "-b", new, trunk, check=False)).returncode:
         return fail(f"git checkout -b failed: {made.stderr.strip()}")
-    print(f"{new} off {trunk} — no card. Commit, then `close.py free {slug} review`")
+    print(
+        f"{new} off {trunk} — no card. Cut your release artifacts, then"
+        f" `close.py free {slug} review`"
+    )
     return 0
 
 

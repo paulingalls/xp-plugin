@@ -307,12 +307,16 @@ def run(
 
     Function-local imports: spawn -> close -> review would close a cycle.
     """
-    from spawn import agent_argv, missing_harness, resolve_role, run_agent
+    from close import config_flat
+    from spawn import agent_argv, missing_harness, resolve_codex_sandbox, resolve_role, run_agent
 
     name = name or "story-reviewer"
     role = name if name == "plan-reviewer" else "reviewer"
     harness, model, effort = resolve_role(role, card)
-    argv = agent_argv(harness, model, effort, "stream-json")
+    sandbox, problem = resolve_codex_sandbox(harness, config_flat("codex_sandbox"))
+    if problem:
+        return "", problem
+    argv = agent_argv(harness, model, effort, "stream-json", sandbox)
     if dry_run:
         print("would launch: " + " ".join(argv))
         print(prompt)

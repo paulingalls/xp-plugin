@@ -107,7 +107,8 @@ def tee_stream(
 
 
 SANDBOX_NOTE = {
-    "danger-full-access": "no OS confinement — network, docker and nested codex all reachable"
+    "danger-full-access": "no OS confinement — network, docker and nested codex all reachable",
+    "workspace-write": ("docker, loopback and nested codex denied — danger-full-access lifts them"),
 }
 
 

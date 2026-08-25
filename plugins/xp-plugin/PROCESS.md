@@ -4,19 +4,14 @@ One page. The values (VALUES.md) cover what this page doesn't.
 
 ## The loop
 
-Three skills carry the judgment the scripts cannot: **`/xp-setup`** scaffolds a
-project once, **`/story-close`** closes a story, **`/sprint-close`** closes a
-sprint. Run them rather than the scripts they wrap — the steps are in the script,
-the decisions are only in the skill.
+**`/xp-setup`**, **`/story-close`** and **`/sprint-close`** carry judgment scripts
+cannot. Run the skill when one exists; the script owns only its mechanics.
 
 1. **Plan** — any multi-file change.
-   - Draft the plan to a file, then run the **plan-reviewer**: it checks TDD
-     ordering, coherence, constraints and sprint size, edits addressable problems
-     into the plan with reasons, and stops on human-only questions.
-   - Re-read it, then `spawn.py ready <story-id>`: flips `[planned]` → `[ready]`
-     and records a digest of the card. Spawn recomputes that digest, so a card
-     edited afterwards refuses with the diff. The bracket is display; the digest is
-     the credential — it binds the text you reviewed, it cannot know you read it.
+   - Draft it, then run the **plan-reviewer**. It edits addressable problems into
+     the plan with reasons and stops on human-only questions.
+   - Re-read it, then `spawn.py ready <story-id>` mints the card digest. Later
+     edits refuse with a diff: the bracket is display; the digest is the credential.
 2. **Story** — red → green → refactor, small commits.
    - Done = ACs verified against the running system at its surface (the story
      loop), not "tests green" (the commit loop). Two loops, two clocks.
@@ -28,12 +23,10 @@ the decisions are only in the skill.
      claim → write the test · narrates history → delete, git holds it. Keep only the
      why, an external constraint, a rejected design.
 3. **Story close** — run **`/story-close`**.
-   - It spawns the **story-reviewer** on the cumulative diff plus anything you
-     filed in work.md, stops for your fix-or-ask call, runs the story's Verify,
-     records every round in the merge body, and merges.
-   - Review and merge are separate commands. Land never spawns: on drift or a
-     conflict it refuses and names the review leg, so a round is something you
-     choose to run, not something a merge inflicts.
+   - It reviews the cumulative diff and work.md, stops for your fix-or-ask call,
+     runs Verify, records each round, and merges.
+   - Review and merge are separate. Land never spawns; drift or conflict names
+     the review leg, so merge cannot inflict a review.
    - **Stopping rule**: one full review always. A REVIEWER fix is inside the round
      that found it — reading its diff is your judgment. A LEAD fix moves HEAD past
      what the review covered and costs one confirming round; land REPORTS that
@@ -45,8 +38,7 @@ the decisions are only in the skill.
      record, unreviewed merge). Loud and patch-scale → fix it now if that is
      minutes, else file it.
 4. **Sprint close** — run **`/sprint-close`** (release: sprint, the default).
-   - Stories integrate on the sprint branch; the batch PRs to trunk when RELEASABLE
-     — usually now (keep sprints small). Prefer flags that dark-launch unready work.
+   - Stories integrate on the sprint branch; the releasable batch PRs to trunk.
    - ORDER MATTERS: falsifier batch and full tier, then note triage and the retro,
      then `review` LAST. The retro promotes into constraints/DESIGN/PROCESS, which
      is code motion — after the review it invalidates the review that permits land.
@@ -55,6 +47,12 @@ the decisions are only in the skill.
    - Debt triage with the human under the same bar. Loud + self-healing → NEVER:
      everything is fail-loud, so a never that later matters returns as a red. Never
      is a decision, not a backlog — schedule under budget or drop; nothing carries.
+5. **Free** — one patch outside a sprint.
+   - Plan it, then `free start`. Execute through `spawn.py`, as a story: a spawned
+     teammate owns a worktree and returns a commit for the free branch. The
+     worktree and its log in the data root prove the spawn; commit authorship cannot.
+   - Cut the project's release artifacts, then run the free `review`, `land` and
+     `post-merge` legs. Free close may be card-less; its diff is then the scope.
 
 ## Records (work.md — via the append CLI)
 
