@@ -60,21 +60,18 @@ class TestFixingReviewer:
         assert m["shown_sha"] != m["reviewed_head"]
         assert g("show", "--format=", "--name-only", "HEAD").stdout.strip() == "src/thing.py"
 
-    def test_a_commit_the_reviewer_did_not_author_is_refused(self, tmp_path):
+    def test_a_commit_made_while_the_reviewer_held_the_tree_is_refused(self, tmp_path):
         """AC 2, job B of the deleted guard. A lead commit made while the reviewer
         held the tree is otherwise absorbed into shown_sha, land's HEAD==shown_sha
-        holds by construction, and it merges having been read by nobody."""
+        holds by construction, and it merges having been read by nobody. No `env -u`
+        any more: the launch carries no GIT_AUTHOR_* to out-rank `-c user.name`."""
         repo, env, _g = make_repo(tmp_path)
         self.fixing_stub(
             tmp_path,
             extra=(
-                # `env -u`: GIT_AUTHOR_NAME in the environment BEATS -c user.name,
-                # so a lead commit must be made outside the reviewer's env to carry
-                # the lead's identity — which is exactly where a real one is made.
                 "echo 'lead = 1' >> src/other.py\n"
                 "git add -A\n"
-                "env -u GIT_AUTHOR_NAME -u GIT_COMMITTER_NAME -u GIT_AUTHOR_EMAIL"
-                " -u GIT_COMMITTER_EMAIL git -c user.name=t -c user.email=t@t"
+                "git -c user.name=t -c user.email=t@t"
                 " commit -qm 'lead worked in parallel'\n"
             ),
         )
