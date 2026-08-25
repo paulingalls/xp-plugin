@@ -66,7 +66,7 @@ def resolve_codex_sandbox(harness: str, configured: str) -> tuple[str, str]:
     )
 
 
-def codex_argv(model: str, effort: str, sandbox: str = "danger-full-access") -> list[str]:
+def codex_argv(model: str, effort: str, sandbox: str) -> list[str]:
     """unified_exec stays ENABLED (reversed 2026-08-23, Paul; DESIGN §3): it is
     codex's persistent-session exec tool, and without it a teammate's shell call
     cannot outlive codex's per-command bound — which made TEAMMATE.md's mandatory
@@ -82,9 +82,10 @@ def codex_argv(model: str, effort: str, sandbox: str = "danger-full-access") -> 
     for pin in ("inherit=all", "exclude=[]", "include_only=[]"):
         argv += ["-c", f"shell_environment_policy.{pin}"]
     # EVERY codex role takes the caller-resolved posture; teammate_tee prints it
-    # back off this argv. Under workspace-write, docker, loopback and nested codex
-    # are denied (measured 0.149.0); `--add-dir` grants data-root writes, not
-    # socket-connect capability. The default stays danger-full-access (DESIGN §3).
+    # back off this argv. Under workspace-write ALL outbound network is denied —
+    # DNS, loopback, the docker socket (re-measured 0.149.0 with a control,
+    # 2026-08-25); `--add-dir` grants path writes, never socket-connect. The one
+    # copy of the default lives in resolve_codex_sandbox above (DESIGN §3).
     argv += ["--sandbox", sandbox, "--add-dir", str(data_root())]
     argv += ["-m", model]
     if effort:  # never -e: codex has no such flag, and a wrong spelling dies on contact
@@ -93,11 +94,7 @@ def codex_argv(model: str, effort: str, sandbox: str = "danger-full-access") -> 
 
 
 def agent_argv(
-    harness: str,
-    model: str,
-    effort: str,
-    output_format: str,
-    sandbox: str = "danger-full-access",
+    harness: str, model: str, effort: str, output_format: str, sandbox: str
 ) -> list[str]:
     """No `role`: nothing about a launch turns on it any more. It used to pick the
     codex sandbox posture, which is how the REVIEWER came to run with no network

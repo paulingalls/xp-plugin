@@ -11,7 +11,8 @@ cannot. Run the skill when one exists; the script owns only its mechanics.
    - Draft it, then run the **plan-reviewer**. It edits addressable problems into
      the plan with reasons and stops on human-only questions.
    - Re-read it, then `spawn.py ready <story-id>` mints the card digest. Later
-     edits refuse with a diff: the bracket is display; the digest is the credential.
+     edits refuse with a diff: the bracket is display; the digest is the
+     credential — it binds the text you reviewed, it cannot know you read it.
 2. **Story** — red → green → refactor, small commits.
    - Done = ACs verified against the running system at its surface (the story
      loop), not "tests green" (the commit loop). Two loops, two clocks.

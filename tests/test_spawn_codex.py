@@ -98,6 +98,19 @@ class TestCodexExecutor:
             ("codex_sandbox", "codex_sandbox: danger-full-access")
         ]
 
+    def test_this_repo_sets_the_key_its_template_only_seeds(self, monkeypatch):
+        """Constraint 12, and nothing else guards it: the template seeds the key
+        COMMENTED, so test_dogfood is green whether we set it or not — deleting
+        our line leaves the whole suite green while we stop executing the surface
+        we ship. Compared to the RESOLVED value, so an absent key (which resolves
+        to the default) is not mistaken for a chosen one."""
+        import spawn
+        from close import config_flat
+
+        monkeypatch.chdir(SPAWN.parents[3])
+        configured = config_flat("codex_sandbox")
+        assert spawn.resolve_codex_sandbox("codex", configured) == (configured, "")
+
     @pytest.mark.parametrize("posture", ["workspace-write", "danger-full-access"])
     def test_each_configured_posture_is_launched_and_reported(self, tmp_path, posture):
         repo, env, g = make_repo(tmp_path, executor="codex/gpt-5.6-terra/medium")
@@ -112,7 +125,11 @@ class TestCodexExecutor:
         assert argv[argv.index("--sandbox") + 1] == posture
         assert f"codex sandbox: {posture}" in r.stderr
         if posture == "workspace-write":
-            for denied in ("docker", "loopback", "nested codex", "danger-full-access"):
+            # network FIRST, and named as the superset: DNS and loopback are both
+            # denied here (re-measured 0.149.0 against a danger-full-access
+            # control, 2026-08-25), so the casualty a lead meets is TEAMMATE.md's
+            # mandatory nested plan review, not docker
+            for denied in ("network", "loopback", "docker", "plan_review", "danger-full-access"):
                 assert denied in r.stderr.lower(), r.stderr
 
     @pytest.mark.parametrize("posture", ["unknown-posture", "read-only"])
@@ -148,7 +165,7 @@ class TestCodexExecutor:
         # assignment leaves every later data_root() in this worker pointed at a
         # tmp_path pytest has already deleted
         monkeypatch.setenv("XP_DATA", str(tmp_path / "data"))
-        argv = spawn_mod.codex_argv("gpt-5.6-terra", "medium")
+        argv = spawn_mod.codex_argv("gpt-5.6-terra", "medium", "danger-full-access")
         stub_codex(tmp_path)
         mutated = [argv[0], "exec", "--disable", "unified_exec", *argv[2:]]
         r = subprocess.run(
@@ -179,7 +196,7 @@ class TestCodexExecutor:
         import spawn as spawn_mod
 
         monkeypatch.setenv("XP_DATA", str(tmp_path / "data"))
-        argv = spawn_mod.agent_argv("codex", "m", "", "json")
+        argv = spawn_mod.agent_argv("codex", "m", "", "json", "danger-full-access")
         for want, dies in (("workspace-write", True), ("danger-full-access", False)):
             stub_codex(tmp_path, commit=False, sandbox=want)
             r = subprocess.run(
@@ -208,7 +225,7 @@ class TestCodexExecutor:
         from teammate_tee import run_stream
 
         monkeypatch.setenv("XP_DATA", str(tmp_path / "data"))
-        shipped = spawn_mod.agent_argv("codex", "m", "", "json")
+        shipped = spawn_mod.agent_argv("codex", "m", "", "json", "danger-full-access")
         confined = [a if a != "danger-full-access" else "workspace-write" for a in shipped]
         for argv, posture in ((shipped, "danger-full-access"), (confined, "workspace-write")):
             stub_codex(tmp_path, commit=False, sandbox=posture)
@@ -265,7 +282,7 @@ class TestCodexExecutor:
         """
         import spawn as spawn_mod
 
-        argv = spawn_mod.codex_argv("gpt-5.6-terra", "medium")
+        argv = spawn_mod.codex_argv("gpt-5.6-terra", "medium", "danger-full-access")
         assert ("--disable", "unified_exec") not in list(pairwise(argv)), (
             "the codex teammate cannot run a command past the shell bound: " + " ".join(argv)
         )
@@ -294,7 +311,7 @@ class TestCodexExecutor:
 
         assert set(STREAMS) == set(HARNESS_INSTALL)
         for harness in HARNESS_INSTALL:
-            assert agent_argv(harness, "m", "high", "json")[0] == harness
+            assert agent_argv(harness, "m", "high", "json", "danger-full-access")[0] == harness
 
     def test_a_dirty_codex_teammate_hits_the_shared_completion_guard(self, tmp_path):
         repo, env, _g = make_repo(tmp_path, executor="codex/gpt-5.6-terra/medium")

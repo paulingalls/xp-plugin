@@ -457,7 +457,7 @@ class TestCommonDirWidening:
         rec = stub_codex(tmp_path, commit=False)
         monkeypatch.setenv("PATH", f"{tmp_path / 'bin'}:/usr/bin:/bin")
         monkeypatch.setenv("XP_DATA", str(tmp_path / "data"))
-        argv = agent_argv("codex", "m", "", "json")
+        argv = agent_argv("codex", "m", "", "json", "danger-full-access")
         proc = run_agent(argv, wt, "", "plan-reviewer", "codex", "story-042-review")
         assert proc.returncode == 0, proc.stderr
         launched = json.loads(rec.read_text())["argv"]
@@ -476,7 +476,7 @@ class TestCommonDirWidening:
         rec = stub_codex(tmp_path, commit=False)
         monkeypatch.setenv("PATH", f"{tmp_path / 'bin'}:/usr/bin:/bin")
         monkeypatch.setenv("XP_DATA", str(tmp_path / "data"))
-        argv = agent_argv("codex", "m", "", "json")
+        argv = agent_argv("codex", "m", "", "json", "danger-full-access")
         assert run_teammate(argv, wt, "", "story-042", tmp_path / "data", "codex") == 0
         launched = json.loads(rec.read_text())["argv"]
         adds = [launched[i + 1] for i, arg in enumerate(launched) if arg == "--add-dir"]

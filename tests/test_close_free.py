@@ -105,11 +105,19 @@ class TestFreeStart:
         assert g("rev-parse", "HEAD").stdout.strip() == before
         assert "codex-posture-and-bu" not in g("branch", "--format=%(refname:short)").stdout
 
-    def test_start_accepts_a_fitting_slug_that_needs_normalising(self, tmp_path):
-        repo, env, g = free_repo(tmp_path)
-        r = free(repo, env, "Fix Typo.", "start")
+    @pytest.mark.parametrize(
+        "slug,tail",
+        # 20 chars EXACTLY is the boundary slugify keeps whole, and the cheapest
+        # wrong fix (`len(...) >= 20`) refuses it: without this arm the full suite
+        # stays green against that off-by-one, because every other free fixture
+        # here uses a slug of eight characters or fewer.
+        [("Fix Typo.", "fix-typo"), ("a" * 20, "a" * 20)],
+    )
+    def test_start_accepts_a_fitting_slug(self, tmp_path, slug, tail):
+        repo, env, g = free_repo(tmp_path / tail)
+        r = free(repo, env, slug, "start")
         assert r.returncode == 0, r.stderr
-        assert g("rev-parse", "--abbrev-ref", "HEAD").stdout.strip() == BRANCH
+        assert g("rev-parse", "--abbrev-ref", "HEAD").stdout.strip().endswith(f"-{tail}")
 
 
 class TestFreeReview:

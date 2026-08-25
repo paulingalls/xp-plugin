@@ -141,8 +141,12 @@ class TestShippedProseMatchesTheMechanism:
         assert outputs[0] != outputs[1]
 
     def test_the_loop_names_free_execution_and_does_not_grow(self):
+        """Constraint 1: the free entry displaces its own weight. PROCESS.md
+        measured 5,517 bytes at 896da44, the commit before the entry landed; the
+        cap sits under that so a later edit cannot quietly spend the displacement
+        back."""
         process = (PLUGIN / "PROCESS.md").read_text()
-        assert len(process) <= 5454
+        assert len(process) <= 5454, "the free entry stopped paying for itself"
         free_entry = process.split("5. **Free", 1)[1].split("## Records", 1)[0]
         assert "spawn.py" in free_entry
         assert "worktree" in free_entry and "data root" in free_entry
