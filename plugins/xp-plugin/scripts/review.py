@@ -312,7 +312,7 @@ def run(
     name = name or "story-reviewer"
     role = name if name == "plan-reviewer" else "reviewer"
     harness, model, effort = resolve_role(role, card)
-    argv = agent_argv(harness, model, effort, "stream-json", role)
+    argv = agent_argv(harness, model, effort, "stream-json")
     if dry_run:
         print("would launch: " + " ".join(argv))
         print(prompt)

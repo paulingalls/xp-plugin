@@ -4,6 +4,7 @@ cap — over-cap means extract, not scroll (constraint 8).
 Verify: pytest -q tests/test_spawn_codex.py"""
 
 import json
+import os
 import subprocess
 from itertools import pairwise
 
@@ -17,7 +18,7 @@ class TestCodexExecutor:
 
     def argv(self, tmp_path, executor="codex/gpt-5.6-terra/medium"):
         repo, env, _g = make_repo(tmp_path, executor=executor)
-        stub_codex(tmp_path, network=True)
+        stub_codex(tmp_path, sandbox="danger-full-access")
         r = spawn(repo, env, "story-042", "--dry-run")
         assert r.returncode == 0, r.stderr
         for ln in r.stdout.splitlines():
@@ -31,7 +32,10 @@ class TestCodexExecutor:
         for pair in [
             ("-m", "gpt-5.6-terra"),
             ("-c", "model_reasoning_effort=medium"),
-            ("--sandbox", "workspace-write"),
+            # story-035, carried by free-2026-08-24-codex-and-digest: ONE string
+            # lifts docker, loopback and codex-in-codex together, and it is the
+            # posture the claude leg has always had (no sandbox flag at all).
+            ("--sandbox", "danger-full-access"),
             ("--add-dir", str(tmp_path / "data")),
             # XP_ROLE (self-close bar — close.py reads an ABSENT value as `lead`)
             # and GIT_AUTHOR_* (the reviewer's signature) reach codex's shell only
@@ -46,17 +50,15 @@ class TestCodexExecutor:
             ("-c", "shell_environment_policy.inherit=all"),
             ("-c", "shell_environment_policy.exclude=[]"),
             ("-c", "shell_environment_policy.include_only=[]"),
-            # story-026: the executor is the leg that NESTS a headless plan
-            # review, and the workspace-write sandbox blocks DNS (curl EXIT=6,
-            # measured 0.149.0) — without this the nested harness dies on first
-            # contact. Executor only: see TestCodexReviewerLeg for the other half.
-            ("-c", "sandbox_workspace_write.network_access=true"),
         ]:
             assert pair in pairs, f"{pair} missing from {argv}"
         assert "-e" not in argv, "codex has no -e; the effort rides -c (spike-falsified)"
-        # asserting `--sandbox workspace-write` PRESENT bounds nothing on its own:
-        # 0.147.0 ships a documented override that silently voids it, and it is what
-        # a reader reaches for the first time the sandbox denies a write
+        # every `sandbox_workspace_write.*` key is a sub-key of a posture we no
+        # longer take: one left behind is a second posture-shaped string that
+        # decides nothing, and the next reader cannot tell which one governs
+        assert not [a for a in argv if a.startswith("sandbox_workspace_write.")], argv
+        # still banned, and not for the sandbox half: it also routes approvals
+        # through an automatic model review, which is judgment where a gate belongs
         assert "--dangerously-bypass-approvals-and-sandbox" not in argv, argv
         # exactly one: note 6193855e probed the git-common-dir widening
         # unnecessary on 0.147.0, and a second --add-dir is that widening returning
@@ -100,21 +102,17 @@ class TestCodexExecutor:
         )
         assert intact.returncode == 0, intact.stderr
 
-    def test_the_stub_reds_in_BOTH_network_directions(self, tmp_path, monkeypatch):
-        """Constraint 2: the executor CARRYING the flag and the reviewer NOT
-        carrying it are one property with two failure modes, and a stub that
-        cannot red on either certifies both. Feed each leg's real argv to the
-        stub expecting the other posture — both must die."""
+    def test_the_stub_reds_when_a_confining_posture_returns(self, tmp_path, monkeypatch):
+        """Constraint 2: the posture assertions above are worth what this stub can
+        red against. Feed the REAL argv to a stub demanding the posture we left
+        behind — it must die — and to one demanding the posture we ship, where it
+        must live. A stub that accepts both certifies whichever is passed."""
         import spawn as spawn_mod
 
         monkeypatch.setenv("XP_DATA", str(tmp_path / "data"))
-        legs = {
-            r: spawn_mod.agent_argv("codex", "m", "", "json", r) for r in ("executor", "reviewer")
-        }
-        net = "sandbox_workspace_write.network_access=true"
-        assert net in legs["executor"] and net not in legs["reviewer"]
-        for wants_network, argv in ((True, legs["reviewer"]), (False, legs["executor"])):
-            stub_codex(tmp_path, commit=False, network=wants_network)
+        argv = spawn_mod.agent_argv("codex", "m", "", "json")
+        for want, dies in (("workspace-write", True), ("danger-full-access", False)):
+            stub_codex(tmp_path, commit=False, sandbox=want)
             r = subprocess.run(
                 [str(tmp_path / "bin" / "codex"), *argv[1:]],
                 input="",
@@ -122,7 +120,42 @@ class TestCodexExecutor:
                 text=True,
                 cwd=tmp_path,
             )
-            assert r.returncode != 0 and "network" in r.stderr, (wants_network, r.stderr)
+            assert (r.returncode != 0) is dies, (want, r.returncode, r.stderr)
+            if dies:
+                assert "sandbox" in r.stderr, r.stderr
+
+    def test_the_launch_prints_the_posture_it_actually_took(self, tmp_path, monkeypatch):
+        """AC1: an invisible relaxation is the same defect as the invisible
+        restriction that produced this card. Printed from `run_stream`, so the
+        REVIEWER legs print it too — a reviewer's posture going unprinted is the
+        specific defect here, and it went unprinted for two sprints while the
+        lead believed it the other way round.
+
+        Fault-injected by launching a posture we do NOT ship: a line composed
+        from the decision instead of read off the argv reports the shipped value
+        on both arms and could never red.
+        """
+        import spawn as spawn_mod
+        from teammate_tee import run_stream
+
+        monkeypatch.setenv("XP_DATA", str(tmp_path / "data"))
+        shipped = spawn_mod.agent_argv("codex", "m", "", "json")
+        confined = [a if a != "danger-full-access" else "workspace-write" for a in shipped]
+        for argv, posture in ((shipped, "danger-full-access"), (confined, "workspace-write")):
+            stub_codex(tmp_path, commit=False, sandbox=posture)
+            said = []
+            run_stream(
+                [str(tmp_path / "bin" / "codex"), *argv[1:]],
+                tmp_path,
+                "",
+                "posture-probe",
+                tmp_path / "data",
+                "codex",
+                dict(os.environ),
+                out=lambda _s: None,
+                err=said.append,
+            )
+            assert any(f"codex sandbox: {posture}" in line for line in said), (posture, said)
 
     def test_absent_from_path_refuses_before_any_worktree_is_cut(self, tmp_path):
         repo, env, _g = make_repo(tmp_path, executor="codex/gpt-5.6-terra/medium")
@@ -140,7 +173,7 @@ class TestCodexExecutor:
         repo, env, _g = make_repo(tmp_path, executor="codex/gpt-5.6-terra/medium")
         r = spawn(repo, env, "story-042", "--dry-run")
         assert r.returncode == 0, r.stderr
-        assert "--sandbox workspace-write" in r.stdout, r.stdout[:400]
+        assert "--sandbox danger-full-access" in r.stdout, r.stdout[:400]
         assert "--disable unified_exec" not in r.stdout, r.stdout[:400]
 
     def test_the_teammates_shell_keeps_codexs_own_long_process_facility(self, tmp_path):

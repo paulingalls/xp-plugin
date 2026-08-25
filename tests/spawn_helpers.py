@@ -196,7 +196,7 @@ def stub_codex(
     write_file=False,
     report=None,
     prose=("thinking", "done"),
-    network=None,
+    sandbox=None,
     findings=None,
 ):
     """A fake `codex` that REJECTS what the real binary rejects.
@@ -209,11 +209,10 @@ def stub_codex(
     and on the claude spellings, which is what stops the two legs' argv from
     silently fusing.
 
-    `network`: the sandbox posture this leg must have — True for the EXECUTOR,
-    which has to nest a headless plan review and dies on DNS without it (curl
-    EXIT=6, measured 0.149.0), False for a reviewer leg, which must not be
-    widened to buy it. None asserts nothing. Both directions die here rather
-    than in an argv assertion, so the check reds against a real launch.
+    `sandbox`: the `--sandbox` value this leg must launch under. The stub dies
+    when the argv carries a different one, in EITHER direction, so a confining
+    posture returning reds against a real launch instead of against an argv
+    assertion. None asserts nothing.
 
     `report`: the reviewer shape. Its dict is written to the bundle's REPORT_PATH
     THROUGH `sh -c`, per the AC — the report lives outside the workspace, so the
@@ -237,12 +236,10 @@ def stub_codex(
         "pairs = list(zip(argv, argv[1:]))",
         "if ('--disable', 'unified_exec') in pairs:",
         "    die('unified_exec disabled: no tool call here can outlive the shell bound')",
-        "net = ('-c', 'sandbox_workspace_write.network_access=true') in pairs",
-        f"want = {network!r}",
-        "if want is True and not net:",
-        "    die('no network_access: a nested harness dies on DNS')",
-        "if want is False and net:",
-        "    die('network_access on a leg that never nests a harness')",
+        "posture = argv[argv.index('--sandbox') + 1] if '--sandbox' in argv else ''",
+        f"want = {sandbox!r}",
+        "if want is not None and posture != want:",
+        "    die('launched under sandbox ' + (posture or '(none)') + ', want ' + want)",
         "stdin = sys.stdin.read()",
         f"json.dump({{'argv': argv, 'env': dict(os.environ), 'stdin': stdin}},"
         f" open({str(rec)!r}, 'w'))",

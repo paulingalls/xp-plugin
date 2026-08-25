@@ -106,6 +106,22 @@ def tee_stream(
     return result
 
 
+SANDBOX_NOTE = {
+    "danger-full-access": "no OS confinement — network, docker and nested codex all reachable"
+}
+
+
+def sandbox_line(argv: list[str]) -> str:
+    """The posture read BACK OFF the argv actually launched, never composed from
+    the decision that built it: a second copy is how the reviewer leg came to run
+    with no network at all, true and unprinted, while the lead believed the
+    opposite in writing."""
+    if "--sandbox" not in argv:
+        return ""
+    posture = argv[argv.index("--sandbox") + 1]
+    return f"codex sandbox: {posture} — {SANDBOX_NOTE.get(posture, 'as codex defines it')}"
+
+
 def closing_line(story_id: str, result: dict) -> str:
     turns = result.get("num_turns", "?")
     duration = result.get("duration_ms")
@@ -197,6 +213,11 @@ def run_stream(
 
         if widen := common_dir_widening(cwd):
             argv = [*argv[:-1], *widen, argv[-1]]  # before the trailing stdin `-`
+    # After the widening and BEFORE the launch: a lead must read the posture even
+    # if what follows then hangs. Here rather than at one caller, so the reviewer
+    # legs report it too.
+    if posture := sandbox_line(argv):
+        err(posture)
     proc = subprocess.Popen(
         argv,
         cwd=cwd,

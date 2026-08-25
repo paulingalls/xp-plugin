@@ -417,9 +417,9 @@ class TestCodexReviewerLeg:
 
     def codex_repo(self, tmp_path, **kw):
         repo, env, g = make_repo(tmp_path)
-        # network=False is the other half of story-026's AC: the flag that lets an
-        # executor nest a plan review must not widen the leg that nests nothing.
-        rec = stub_codex(tmp_path, commit=False, report=CLEAN, network=False, **kw)
+        # The stub dies on any other posture, so every test in this class walks
+        # the reviewer leg's real launch under the posture the branch ships.
+        rec = stub_codex(tmp_path, commit=False, report=CLEAN, sandbox="danger-full-access", **kw)
         (repo / ".xp" / "config.yml").write_text(
             "roles:\n  reviewer: codex/gpt-5.6-terra/high\ntests:\n  story: true\n"
         )
@@ -434,14 +434,19 @@ class TestCodexReviewerLeg:
         rounds = marker(tmp_path)["rounds"]
         assert rounds == [CLEAN], rounds
 
-    def test_the_reviewer_argv_is_the_hardened_one(self, tmp_path):
-        """Not a second spawn path: the reviewer leg takes the same hardening the
-        teammate leg does — the sandbox, the environment pins and the model."""
+    def test_the_reviewer_argv_is_the_same_one_the_teammate_leg_takes(self, tmp_path):
+        """Not a second spawn path: same posture, same environment pins, same
+        model handling. AC2 lives HERE and not at `agent_argv` — with the role
+        parameter gone the two legs are one expression, so comparing them through
+        the builder is f(x) == f(x). What can still red is a caller re-deriving a
+        posture from its role, which is what left the reviewer with no network at
+        all while the lead believed the opposite in writing."""
         repo, env, rec = self.codex_repo(tmp_path)
         assert close(repo, env, "review").returncode == 0
         launch = json.loads(rec.read_text())
         argv = launch["argv"]
-        assert ("--sandbox", "workspace-write") in list(pairwise(argv)), argv
+        assert ("--sandbox", "danger-full-access") in list(pairwise(argv)), argv
+        assert not [a for a in argv if a.startswith("sandbox_workspace_write.")], argv
         assert ("--disable", "unified_exec") not in list(pairwise(argv)), argv
         assert argv[argv.index("-m") + 1] == "gpt-5.6-terra"
         assert ("-c", "model_reasoning_effort=high") in list(pairwise(argv))
