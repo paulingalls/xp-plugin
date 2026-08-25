@@ -63,16 +63,14 @@ def codex_argv(model: str, effort: str) -> list[str]:
     # agent the lead's secrets to buy nothing.
     for pin in ("inherit=all", "exclude=[]", "include_only=[]"):
         argv += ["-c", f"shell_environment_policy.{pin}"]
-    # EVERY codex role, no exceptions, and the spawn prints it (teammate_tee.
-    # sandbox_line). Measured 0.149.0: under workspace-write, docker, loopback TCP
-    # and a nested `codex exec` are each denied, and this one string lifts all
-    # three — `--add-dir` does not, it grants path writes, not socket-connect.
-    # This removes an asymmetry rather than adding a risk class: the claude legs
-    # already run PERMISSION_ARGV with no OS sandbox, because claude 2.1.241
-    # exposes none. What it COSTS is that a consuming project cannot decline
-    # until story-040 ships the opt-out (DESIGN §3, §9).
-    # The `--add-dir` is inert under this posture and kept for that story, which
-    # restores a confining one; the same goes for spawn.common_dir_widening.
+    # EVERY codex role, no exceptions; teammate_tee.sandbox_line prints it. Under
+    # workspace-write, docker, loopback TCP and a nested `codex exec` are each
+    # denied and this one string lifts all three (measured 0.149.0) — `--add-dir`
+    # does not, it grants path writes, not socket-connect capability. Why that is
+    # an asymmetry removed rather than a risk class added, and what it costs a
+    # consuming project until story-040: DESIGN §3. `--add-dir` is inert here and
+    # kept for that story, which restores a confining posture — as is
+    # spawn.common_dir_widening.
     argv += ["--sandbox", "danger-full-access", "--add-dir", str(data_root())]
     argv += ["-m", model]
     if effort:  # never -e: codex has no such flag, and a wrong spelling dies on contact
