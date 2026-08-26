@@ -267,13 +267,25 @@ def cmd_review(sprint_id: str, dry_run: bool) -> int:
     state.setdefault("rounds", []).append(round_)
     state["reviewed_head"] = head
     state["shown_sha"] = git("rev-parse", "HEAD").stdout.strip()
-    marker.write_text(json.dumps(state))
     fix_report = review.sprint_report_path(sprint_id, "fix", round_n)
-    if diff := review.write_reviewer_diff(fix_report, head):
+    try:
+        diff = review.write_reviewer_diff(fix_report, head)
+    except OSError as exc:
+        rolled_back = git("reset", "--hard", head, check=False)
+        if rolled_back.returncode:
+            why = f"could not write reviewer handoff ({exc}); rollback failed: {rolled_back.stderr}"
+            return fail(review.abort_text(head, why))
+        path = review.diff_path(fix_report)
+        return fail(
+            f"refused: could not write reviewer handoff at {path} ({exc}); the script-applied"
+            f" fix was rolled back — repair that path and run `close.py sprint {sprint_id} review`"
+        )
+    if diff:
         print(
             f"the script-applied sprint review fix changed the tree. Read its commit and"
             f" full diff at {diff} before `close.py sprint {sprint_id} land`; landing accepts it."
         )
+    marker.write_text(json.dumps(state))
     print(
         f"round {round_n} recorded at {state['shown_sha'][:8]}:"
         f" {len(round_['fixed'])} fixed, {len(round_['blocking'])} blocking"

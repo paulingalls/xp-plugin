@@ -1,34 +1,13 @@
-"""story-047: a confirming round is priced like a confirmation, not like a sweep.
-
-Extracted from test_sprint_review.py at story-043's merge, which carried that file
-to 520 against constraint 8's hard 500. story-047's own round predicted this and
-named this class as the cohesive leaf to shed — over-cap means extract, never
-delete tests to fit.
-Verify: pytest -q tests/test_sprint_review_scope.py
-"""
-
 import json
 
 from close_helpers import launches
-from sprint_helpers import (  # noqa: F401
-    CLOSE,
-    CONFIG,
-    PLAN,
-    PLUGIN,
-    SPRINT_ID,
-    WORK,
-    WORK_SECTION,
-    committing_stub,
-    head,
+from sprint_helpers import (
     make_repo,
     marker_path,
-    record_reviews,
     section,
-    snapshot,
     sprint,
     stage_key,
     staged_stub,
-    work,
 )
 
 CLEAN = {"fixed": [], "blocking": [], "noted": []}

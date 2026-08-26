@@ -56,6 +56,23 @@ class TestReviewLeg:
             lines.append(line)
         assert lines[0] != lines[1]
 
+    def test_a_round_is_not_recorded_without_its_handoff_diff(self, tmp_path):
+        repo, env, _g = make_repo(tmp_path)
+        before = head(repo, env)
+        staged_stub(
+            tmp_path,
+            patches=[("fix", "src.py", "C = 2")],
+            find={"fixed": [], "blocking": ["FIXED"], "noted": []},
+            verify={"fixed": [], "blocking": ["FIXED"], "noted": []},
+            fix={"fixed": ["FIXED"], "blocking": [], "noted": []},
+        )
+        diff = tmp_path / "data" / "reports" / "sprint" / "2.fix.round-1.diff"
+        diff.mkdir(parents=True)
+        result = sprint(repo, env, "review")
+        assert result.returncode == 2 and "could not write reviewer handoff" in result.stderr
+        assert head(repo, env) == before and not marker_path(tmp_path).exists()
+        assert sprint(repo, env, "land", "--dry-run").returncode == 2
+
     def test_the_bundle_diffs_against_the_DEFAULT_branch_not_the_integration_target(self, tmp_path):
         """Under `release: sprint`, integration_target() returns the SPRINT branch
         and the fixture is ON it — so that diff is EMPTY and the reviewer would
