@@ -351,7 +351,13 @@ def test_a_leader_that_exits_leaving_a_child_on_the_pipe_still_ends_at_the_bound
     from spawn import run_agent
 
     monkeypatch.setenv("XP_DATA", str(tmp_path / "data"))
-    monkeypatch.setenv("XP_AGENT_TIMEOUT", "1")
+    # 5s, not 1: the bound is the fake agent's allowed SILENCE, not the property.
+    # At 1s a loaded box has not finished starting the shell, so poll() is still
+    # None, timed_out sets, and run_stream RAISES where this test asserts it
+    # returns — a race against process startup, not against the drain. The
+    # property is unchanged: the orphan holds the pipe for 20s and we return well
+    # inside 10.
+    monkeypatch.setenv("XP_AGENT_TIMEOUT", "5")
     script = tmp_path / "orphans.sh"
     script.write_text('#!/bin/sh\nprintf \'{"type":"system"}\\n\'\nsleep 20 &\nexit 0\n')
     script.chmod(0o755)
