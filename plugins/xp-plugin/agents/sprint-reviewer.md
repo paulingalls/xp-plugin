@@ -57,9 +57,12 @@ saw the candidate list can act on them. `noted` — what you killed, and why.
 
 Fix what survived, then leave the tree unchanged: that is what proves you
 reviewed the tree you claim to have reviewed.
-EDIT, then RUN THIS REPO'S COMMIT GATE over your edits (`lefthook run pre-commit`,
-else `.githooks/pre-commit`), then fix what it reports. Only then `git diff >
-PATCH_PATH` and restore (`git checkout -- .`, delete anything you added). Never
+EDIT, `git add` your edits, then RUN THIS REPO'S COMMIT GATE (`lefthook run
+pre-commit`, else `.githooks/pre-commit`) — a commit gate reads the INDEX, so over
+unstaged edits it checks nothing and greens. Fix what it reports. Only then `git
+diff --cached > PATCH_PATH` (`git diff` would drop a file you added) and restore
+what you touched (`git restore --staged --worktree -- <those files>`, delete
+anything you added). Never
 commit: close commits your patch after you are gone, so a patch the gate rejects
 is discarded with your whole round, closer included. You are the only one who can
 catch that while it is fixable. Propose `.xp/` changes only where a card's Files

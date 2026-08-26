@@ -6,12 +6,15 @@ per-sprint review reports.
 
 ## v0.7.7 — the fixer validates its own patch against the wall
 
-- Both reviewer charters now tell the fixer to EDIT, run the repo's commit gate
-  over its edits, fix what it reports, then diff-and-restore. It still leaves the
-  tree unchanged and still never commits, so the motion guard is untouched — but
-  a patch that the gate would reject is now caught by the agent that wrote it.
+- Both reviewer charters now tell the fixer to EDIT, STAGE, run the repo's commit
+  gate over the INDEX, fix what it reports, then diff-and-restore. It still leaves
+  the tree unchanged and still never commits, so the motion guard is untouched —
+  but a patch that the gate would reject is now caught by the agent that wrote it.
+  Staging is the load-bearing word: a commit gate reads the index, so over
+  unstaged edits it checks nothing and greens.
 - When the gate refuses anyway, the refusal names the gate, quotes the cause with
-  ANSI stripped, and tells the human what to do — instead of a colour-framed hook
+  ANSI stripped, says how much of the transcript it cut, and names the patch file
+  that outlives the undo offered under it — instead of a colour-framed hook
   transcript with the reason twelve lines up.
 - Field-reported by a consuming project: a formatter disagreeing about array
   wrapping discarded a whole sprint-review round, closer included.
