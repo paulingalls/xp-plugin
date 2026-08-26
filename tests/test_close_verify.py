@@ -210,3 +210,44 @@ class TestTheRoundNeedsItsHandoffDiff:
         assert g("rev-parse", "HEAD").stdout.strip() == before, "the applied fix was not undone"
         assert not marker_file(tmp_path).exists(), "a round was recorded without its handoff"
         assert close(repo, env, "land").returncode != 0
+
+
+class TestTheReviewersOwnFixIsUnderTheGateItPasses:
+    """close.py::_record_round runs Verify AFTER applying the reviewer's patch, so
+    the round certifies the same tree it stores as `shown_sha`. Nothing pinned that
+    order: measured on this tree, swapping the two statements so Verify reads the
+    PRE-patch tree left all 844 tests green, because every other test's reviewer
+    stub leaves a tree that is red both before and after its patch. Story-036's own
+    argument is the property — "a reviewer that cannot run tests still produces
+    confident fixes, and they are exactly as wrong as the confidence is unearned".
+
+    The consequence is bounded and must not be read as larger: land runs Verify
+    again on the tree it merges (test_land_still_runs_verify_after_the_review_leg_
+    does), so a bad reviewer patch is still caught one leg later and no wrong merge
+    lands. What a swap costs is the review-time catch and the truth of a RECORDED
+    round, not the merge gate.
+    """
+
+    # green on the reviewed tree (`A = 2`), red on the tree the reviewer leaves
+    VERIFY = "! grep -q BROKEN src/thing.py"
+    BREAKS_VERIFY = """diff --git a/src/thing.py b/src/thing.py
+--- a/src/thing.py
++++ b/src/thing.py
+@@ -1 +1,2 @@
+ A = 2
++BROKEN = 1
+"""
+
+    def test_a_reviewer_patch_that_reds_verify_records_no_round(self, tmp_path):
+        repo, env, _g = make_repo(tmp_path, verify=self.VERIFY)
+        thing = repo / "src" / "thing.py"
+        assert "BROKEN" not in thing.read_text(), "Verify was already red before the patch"
+        stub_reviewer(tmp_path, patch=self.BREAKS_VERIFY)
+
+        r = close(repo, env, "review")
+        assert r.returncode != 0, r.stdout
+        assert "Verify red" in r.stderr, r.stderr
+        # BOTH halves, or the assertion above passes for the wrong reason: a patch
+        # that never applied would red Verify only by failing to apply.
+        assert "BROKEN" in thing.read_text(), "the reviewer's patch never reached the tree"
+        assert not marker_file(tmp_path).exists(), "a round certified a tree Verify never saw"

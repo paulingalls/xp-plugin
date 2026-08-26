@@ -58,6 +58,25 @@ currently only mints a digest.
 **A vacuous gate reached a release commit** because free patches are card-less —
 no AC, no Verify bound what v0.7.7 promised. Its own reviewer named this.
 
+**Story-047's delta scoping was unit-tested but NEVER WALKED, and this close is
+not its walk.** The sprint-007 card scheduled 047 last so that "this sprint's own
+close walks it (constraint 12)" — the story-034 shape. It did not happen, and the
+review round that found this is itself the evidence: `close.py sprint 7 review`
+runs the INSTALLED plugin root, never the branch under review, and that root sits
+on main at `1735244` with the six-parameter `build_sprint_bundle` (no `diff_base`,
+no `round_n > 1` branch) and the pre-047 charter opening. So round 2 re-ran all
+three finders AND both verifiers over the full cumulative diff — the sweep 047
+exists to replace, including a stage the new code would not launch at all.
+
+Stated here in place, the way story-048's AC 5 was waived, so nobody later cites
+this close as the walk: 047 ships on `tests/test_sprint_review_scope.py` alone.
+Its first real walk is Sprint 8's close, and the general defect is worth more than
+the instance — **we dogfood through the installed root, so a story that changes
+the close pipeline can never be walked by its own close.** That is note
+`2026-08-26T06:11:51Z` (the teammate prompt hardcodes `PLUGIN_ROOT` to the
+installed checkout) arriving at the lead's own leg rather than a teammate's, and
+it is the mechanism this section is asking for.
+
 **Note triage has not run for three sprints.** 141 notes queued at this close; 83
 predate Sprint 7. The step is in the skill and nothing measures whether it happened.
 

@@ -84,6 +84,97 @@ def test_a_default_call_is_served_by_the_finished_template(tmp_path, template_na
     assert head(repo) and head(repo) == head(template)
 
 
+def branches(repo):
+    """Explicit env, like every git call in this file: an inherited GIT_DIR runs
+    against the real repository with the fixture as its work tree (bug 7fed6ef1)."""
+    return subprocess.run(
+        ["git", "branch", "--format=%(refname:short)"],
+        cwd=repo,
+        env={"PATH": "/usr/bin:/bin", "HOME": str(repo.parent)},
+        capture_output=True,
+        text=True,
+    ).stdout.split()
+
+
+@pytest.mark.parametrize(
+    ("build", "served_what_was_asked_for"),
+    [
+        pytest.param(
+            lambda root: make_close_repo(root, system=False),
+            lambda repo, root: not (repo / ".xp" / "system.md").exists(),
+            id="close-system",
+        ),
+        pytest.param(
+            lambda root: make_close_repo(root, teardown="echo bye"),
+            lambda repo, root: "echo bye" in (repo / ".xp" / "system.md").read_text(),
+            id="close-teardown",
+        ),
+        pytest.param(
+            lambda root: make_close_repo(root, bootstrap="echo hi"),
+            lambda repo, root: "echo hi" in (repo / ".xp" / "system.md").read_text(),
+            id="close-bootstrap",
+        ),
+        pytest.param(
+            lambda root: make_close_repo(root, teardown_timeout=7),
+            lambda repo, root: "teardown_timeout: 7" in (repo / ".xp" / "config.yml").read_text(),
+            id="close-teardown-timeout",
+        ),
+        pytest.param(
+            lambda root: make_close_repo(root, branch="dev"),
+            lambda repo, root: "dev" in branches(repo) and "main" not in branches(repo),
+            id="close-branch",
+        ),
+        pytest.param(
+            # the credential, not the bracket: the template path always mints one,
+            # so a lost `status` term hands every caller a cleared card
+            lambda root: make_close_repo(root, status="planned"),
+            lambda repo, root: "[planned]" in (root / "data" / "plan.md").read_text(),
+            id="close-status",
+        ),
+        pytest.param(
+            lambda root: make_spawn_repo(root, trunk="dev"),
+            lambda repo, root: "sprint_branch: dev" in (repo / ".xp" / "config.yml").read_text(),
+            id="spawn-trunk",
+        ),
+        pytest.param(
+            lambda root: make_sprint_repo(root, config=CONFIG + "  fast: true\n"),
+            lambda repo, root: "fast: true" in (repo / ".xp" / "config.yml").read_text(),
+            id="sprint-config",
+        ),
+    ],
+)
+def test_a_non_default_call_is_never_served_the_finished_template(
+    tmp_path, build, served_what_was_asked_for
+):
+    """The other direction, and the one that fails SILENTLY. Each helper decides
+    copy-vs-build by hand-restating its own defaults, and only the default
+    direction was guarded — so a caller asking for a non-default fixture could be
+    served the finished one and never know. Measured on this tree: delete `and
+    system` from close_helpers.py's predicate and make_repo(system=False) copies
+    close-full, which HAS .xp/system.md, while the whole fast tier stays green,
+    because test_a_missing_system_file_is_the_no_teardown_arm only asserts rc==0
+    and a removed worktree. The arm it names goes unexecuted while looking covered.
+
+    Asserted as "the option took effect", never as "HEAD differs from the
+    template": over-specifying a predicate costs speed and the wrong assertion
+    would forbid ever fixing that.
+
+    THREE PREDICATE TERMS ARE DELIBERATELY UNARMED, because they are written to
+    the data-root plan BEFORE the copy-vs-build fork and are therefore honored on
+    both paths — close's `verify`, spawn's `executor` and sprint's `plan`. Dropping
+    any of them leaves the fast tier green (measured, 830 passed) and costs nothing
+    but a rebuild. Spawn's `status` is unarmed for the opposite reason: it is
+    self-guarding, since the helper asserts its `spawn ready` mint exits 0 and a
+    non-[planned] card refuses it. And session_start_helpers.xp_repo takes NO
+    options at all, so it has no non-default call to make — the default-direction
+    test above is its whole guard, and giving it one is what would need an arm here.
+    """
+    repo, *_rest = build(tmp_path)
+    assert served_what_was_asked_for(repo, tmp_path), (
+        "a non-default option was silently served the finished template"
+    )
+
+
 def test_hostile_worktree_git_variables_cannot_reach_a_decoy(monkeypatch, tmp_path):
     decoy = tmp_path / "decoy"
     decoy.mkdir()
