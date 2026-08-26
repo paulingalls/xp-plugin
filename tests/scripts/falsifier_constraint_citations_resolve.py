@@ -10,6 +10,9 @@ loud; this resolves to a real rule and teaches it.
 CONSTRUCTED, not grepped for a token: scaffold a real consumer with setup.py,
 then resolve each citation against THAT file and compare the rule it lands on to
 the rule we meant. Reds while any citation resolves differently or not at all.
+CITE spans every spelling this tree has actually used — `constraint 10`,
+`constraints #6`, `constraints.md #10`, `constraints 12-15` — because a pattern
+narrower than the defect certifies the citations it cannot see.
 """
 
 import re
@@ -20,7 +23,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 PLUGIN = ROOT / "plugins" / "xp-plugin"
-CITE = re.compile(r"constraint (\d+)", re.I)
+CITE = re.compile(r"constraints?(?:\.md)? *#? *(\d+)", re.I)
 
 
 def headlines(path):

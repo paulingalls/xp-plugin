@@ -20,7 +20,8 @@ NOTE_CAP = 4000  # chars; measured: p90 of 392 records is 1,799, so this binds r
 
 
 STRUCTURAL = re.compile(
-    r"^(## |Claim:|Falsifier:|Resolves:|Archives:|Id:|Disposition:|Files:|Story:)", re.M
+    r"^(## |# Record |Claim:|Falsifier:|Resolves:|Archives:|Id:|Disposition:|Files:|Story:)",
+    re.M,
 )
 
 

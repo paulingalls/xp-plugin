@@ -69,7 +69,7 @@ def test_compact_preserves_the_executed_corpus_and_active_record(tmp_path):
     assert active in compacted
     for ref in refs:
         assert f"Id: {ref}" in compacted and f"# Record {ref}" in archived
-    assert "Disposition: superseded" in compacted
+    assert "Disposition: superseded\n" in compacted
     assert "printf resolved >/dev/null" in compacted
     assert "Disposition: resolved" in compacted
     assert "archived note claim and evidence" not in compacted
@@ -107,6 +107,19 @@ def test_retry_after_archive_write_does_not_duplicate_prose(tmp_path):
     assert run(retry, "compact").returncode == 0
     assert (retry / "archive.md").read_bytes() == (first / "archive.md").read_bytes()
     assert (retry / "work.md").read_bytes() == (first / "work.md").read_bytes()
+
+
+def test_a_second_disposal_of_a_compacted_record_still_compacts(tmp_path):
+    _active, refs = seed(tmp_path)
+    assert run(tmp_path, "compact").returncode == 0
+    assert (
+        run(tmp_path, "archive", "--ref", refs[0], "--disposition", "dropped later").returncode == 0
+    )
+    result = run(tmp_path, "compact")
+    assert result.returncode == 0, result.stderr
+    compacted = (tmp_path / "work.md").read_text()
+    assert "Disposition: dropped later\n" in compacted and "## archived " not in compacted
+    assert "dropped later" in (tmp_path / "archive.md").read_text()
 
 
 def test_only_active_records_is_a_no_op(tmp_path):

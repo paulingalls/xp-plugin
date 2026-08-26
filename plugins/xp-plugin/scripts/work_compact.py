@@ -44,7 +44,7 @@ def compact(root: Path, entry_id, record_summary) -> int:
                 " ".join(
                     line
                     for line in decision.splitlines()[1:]
-                    if not line.startswith(("Story: ", "Archives: "))
+                    if line.strip() and not line.startswith(("Story: ", "Archives: "))
                 )
                 if field == "Archives"
                 else "resolved"
@@ -57,18 +57,22 @@ def compact(root: Path, entry_id, record_summary) -> int:
             if falsifier := re.search(r"^Falsifier: `.+`$", source, re.M):
                 lines.append(falsifier.group(0))
             kept.append("\n".join(lines) + "\n\n")
-            sections.append((eid, f"# Record {eid}\n\n{block}{''.join(d[1] for d in decisions)}"))
+            prose = [] if re.search(r"^Id: ", block, re.M) else [f"# Record {eid}\n\n{block}"]
+            sections.append((eid, prose + [d[1] for d in decisions]))
         try:
             with (root / "archive.md").open("a+") as archived:
                 fcntl.flock(archived, fcntl.LOCK_EX)
                 archived.seek(0)
                 before = archived.read()
                 addition = ""
-                for eid, section in sections:
-                    if f"# Record {eid}\n" in before and section not in before:
-                        raise OSError(f"archive section {eid} does not match work.md")
-                    if section not in before:
-                        addition += section
+                for eid, parts in sections:
+                    archived_before = f"# Record {eid}\n" in before
+                    for part in parts:
+                        if part in before or part in addition:
+                            continue
+                        if archived_before and part.startswith("# Record "):
+                            raise OSError(f"archive section {eid} does not match work.md")
+                        addition += part
                 archived.write(addition)
                 archived.flush()
                 os.fsync(archived.fileno())
