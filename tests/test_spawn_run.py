@@ -1,4 +1,4 @@
-"""story-017: the teammate run — tee, wall clock, completion.
+"""story-017: the teammate run — tee, the reviewer bound, completion.
 Split from test_spawn.py at sprint-004 open."""
 
 import subprocess
@@ -29,30 +29,33 @@ class TestAgentWallClock:
     def test_the_reviewer_is_bounded(self, monkeypatch, tmp_path):
         import spawn
 
-        monkeypatch.setenv("XP_AGENT_TIMEOUT", "1")
+        monkeypatch.setenv("XP_AGENT_TIMEOUT", "0.01")
         with pytest.raises(subprocess.TimeoutExpired):
             spawn.run_agent(
-                ["/bin/sh", "-c", "sleep 5"], tmp_path, "", "reviewer", "claude", "story-042-review"
+                ["/bin/sh", "-c", "sleep 1"], tmp_path, "", "reviewer", "claude", "story-042-review"
             )
 
     def test_the_teammate_launch_is_not(self, monkeypatch, tmp_path):
         """Bounding cmd_spawn's launch call site kills a running story and
         abandons its worktree, so the teammate no longer runs through
         run_agent (that path is reviewer-only) — it runs through
-        teammate_tee.run_teammate, which this asserts is unbounded."""
+        teammate_tee.run_teammate, which this asserts is unbounded.
+
+        The sleep stays because only outliving the clock can prove the clock is
+        absent, and it shrank with it: 0.1s against XP_AGENT_TIMEOUT=0.01 is the
+        10x margin `sleep 2` against 1 was, and shell start-up only widens it.
+        """
         from teammate_tee import run_teammate
 
-        monkeypatch.setenv("XP_AGENT_TIMEOUT", "1")
+        monkeypatch.setenv("XP_AGENT_TIMEOUT", "0.01")
         rc = run_teammate(
-            # 2 against XP_AGENT_TIMEOUT=1 proves unbounded as well as 3 did, and
-            # this is the suite's one literal sleep (debt 15aec3fc named it).
-            ["/bin/sh", "-c", 'sleep 2; echo \'{"type": "result", "is_error": false}\''],
+            ["/bin/sh", "-c", 'sleep 0.1; echo \'{"type": "result", "is_error": false}\''],
             tmp_path,
             "",
             "story-042",
             tmp_path / "data",
         )
-        assert rc == 0, "a teammate story legitimately outruns any wall clock"
+        assert rc == 0, "a teammate story legitimately outruns any bound"
 
     @pytest.mark.parametrize("role", ["plan-reviewer", "reviewer"])
     def test_no_reviewer_launch_receives_a_git_credential(self, monkeypatch, tmp_path, role):

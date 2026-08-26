@@ -4,6 +4,29 @@ Release notes started at v0.6.0; earlier entries are summarized from their
 tag and merge messages. Full detail lives in the merge history and the
 per-sprint review reports.
 
+## v0.8.0 — the harness cannot silently fail to do the work
+
+Sprint 7. Milestone 3 closed: a consuming project ran a full sprint under released
+versions and reported it (AUDIT.md §9), hand-steps named as the deliverable.
+
+- A story-close round is refused unless the pipeline ran the card's Verify ITSELF,
+  on the tree the round would certify. `blocking: []` used to be the reviewer's own
+  word that Verify ran; a field report measured four rounds green with the build dead.
+- The reviewer's bound is SILENCE, not a wall clock. A productive reviewer was
+  killed twelve minutes after its last commit and the lead was told nothing happened.
+  The refusal now names the live log, the salvage route, and `XP_AGENT_TIMEOUT`.
+- A killed reviewer's round can be salvaged instead of re-bought.
+- A confirming sprint round reads only its delta and re-runs only the finders whose
+  paths moved, and the record says it was scoped rather than swept.
+- Every leg that FINISHES names the next step, the way a refusing leg already did.
+- Codex can spawn codex: DESIGN's "cannot on macOS" was measured against the wrong
+  variable and is retired. Codex now runs as executor, nested plan reviewer, and
+  story reviewer.
+- Test fixtures copy a finished repository instead of rebuilding it: 16.97x on
+  fixture cost, ~14% off the tier with six more tests.
+- Constraint 12 now says prose that instructs an agent to run something is itself a
+  path you must execute before shipping it.
+
 ## v0.7.7 — the fixer validates its own patch against the wall
 
 - Both reviewer charters now tell the fixer to EDIT, STAGE, run the repo's commit

@@ -5,6 +5,7 @@ import contextlib
 import json
 import os
 import re
+import shlex
 import subprocess
 import sys
 from pathlib import Path
@@ -233,7 +234,11 @@ def banner(root: Path) -> str:
     hooks = "lefthook" if (root / "lefthook.yml").exists() else ""
     hooks = hooks or (".githooks" if (root / ".githooks").is_dir() else "none detected")
     constraints_lines = len(read(root / ".xp" / "constraints.md").splitlines())
-    return f"xp-plugin {version} · git hooks: {hooks} · constraints.md: {constraints_lines} lines"
+    scripts = shlex.quote(str(PLUGIN_ROOT / "scripts") + "/")
+    return (
+        f"xp-plugin {version} · git hooks: {hooks} · constraints.md: {constraints_lines}"
+        f" lines · scripts: python3 {scripts}"
+    )
 
 
 def notice(lost: list[str], cut: list[str]) -> str:

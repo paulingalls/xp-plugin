@@ -3,6 +3,8 @@ Split at sprint-004 open: tests are production code
 (constraint 8), and test_close.py measured 2,059 lines."""
 
 import json
+import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -188,7 +190,21 @@ def make_repo(
     system=True,
 ):
     repo = tmp_path / "repo"
-    (repo / ".xp").mkdir(parents=True)
+    templates = Path(os.environ["XP_TEST_REPO_TEMPLATES"])
+    full = (
+        status == "in-progress"
+        and verify == "true"
+        and branch == "main"
+        and teardown is None
+        and bootstrap is None
+        and teardown_timeout is None
+        and system
+        and (templates / "close-full").is_dir()
+    )
+    shutil.copytree(templates / ("close-full" if full else "close"), repo)
+    if not full:
+        (repo / ".git" / "HEAD").write_text(f"ref: refs/heads/{branch}\n")
+        (repo / ".xp").mkdir(parents=True)
     env = {
         "PATH": f"{stub_reviewer(tmp_path)}:/usr/bin:/bin",
         "HOME": str(tmp_path),
@@ -197,9 +213,6 @@ def make_repo(
     g = lambda *a, **k: subprocess.run(  # noqa: E731
         ["git", *a], cwd=repo, env=env, capture_output=True, text=True, **k
     )
-    g("init", "-q", "-b", branch)
-    g("config", "user.email", "t@t")
-    g("config", "user.name", "t")
     plan = tmp_path / "data" / "plan.md"
     plan.parent.mkdir(parents=True, exist_ok=True)
     # [planned] first, then MINTED: land re-checks the credential before it
@@ -207,6 +220,9 @@ def make_repo(
     # walks past the one gate binding that line to the reviewed text.
     landing = status == "in-progress"
     plan.write_text(CARD.format(status="planned" if landing else status, verify=verify))
+    if full:
+        mint_ready(repo, env)
+        return repo, env, g
     timeout = f"teardown_timeout: {teardown_timeout}\n" if teardown_timeout is not None else ""
     (repo / ".xp" / "config.yml").write_text(CONFIG + timeout)
     (repo / ".xp" / "constraints.md").write_text("# Constraints\n1. CONSTRAINT-SENTINEL\n")

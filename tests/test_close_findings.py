@@ -387,7 +387,14 @@ class TestTheCardEndsUpSayingDone:
         in the window between that check and the flip, and land cannot refuse
         after a merge has landed — so it names the hand-step and exits nonzero.
         Constructed through Verify because that is the one hook inside the window."""
-        rewrite = "printf '#### story-042 — demo story   [done]\\n' > \"$XP_DATA/plan.md\""
+        # SECOND run only: story-036's review leg runs Verify too, and a rewrite
+        # there would destroy the card before land's own drift check reads it —
+        # the window this constructs is between that check and the flip.
+        rewrite = (
+            'if [ -e "$XP_DATA/verify-ran" ]; then'
+            " printf '#### story-042 — demo story   [done]\\n' > \"$XP_DATA/plan.md\";"
+            ' else touch "$XP_DATA/verify-ran"; fi'
+        )
         repo, env, g = make_repo(tmp_path, verify=rewrite)
         assert close(repo, env, "review").returncode == 0
         r = close(repo, env, "land")

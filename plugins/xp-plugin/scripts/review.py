@@ -90,17 +90,14 @@ def _cap(items: list, path: Path) -> list:
     return kept
 
 
-def read_report(path: Path) -> tuple[dict, str]:
-    """(report, error). This fixes PARSING, not forgery — a reviewer under bypass
-    writes any path it likes.
-    """
+def _report_data(path: Path) -> tuple[dict, str]:
     if not path.exists():
-        return {}, (
-            f"the reviewer wrote no report at {path} — its findings are above and"
-            " are all that survives. No report, no round"
-        )
+        message = f"the reviewer wrote no report at {path} — its findings are above"
+        return {}, message + " and are all that survives. No report, no round"
     try:
         data = json.loads(path.read_text())
+    except OSError as e:
+        return {}, f"could not read reviewer report {path} ({e})"
     except ValueError as e:
         return {}, f"the reviewer's report is not JSON ({e})"
     if not isinstance(data, dict):
@@ -108,7 +105,63 @@ def read_report(path: Path) -> tuple[dict, str]:
     missing = [k for k in REPORT_KEYS if not isinstance(data.get(k), list)]
     if missing:
         return {}, f"the reviewer's report is missing list keys: {', '.join(missing)}"
+    return data, ""
+
+
+def read_report(path: Path) -> tuple[dict, str]:
+    """Parse and cap a report; a reviewer under bypass can still forge its path."""
+    data, error = _report_data(path)
+    if error:
+        return {}, error
     return {k: _cap([str(i) for i in data[k]], path) for k in REPORT_KEYS}, ""
+
+
+def _spellings(p: str) -> set[str]:
+    """Every name that means p: the path, and each segment suffix that is not a
+    file of its own — `src.py` beside `nested/src.py` means the one at the root."""
+    cuts = p.split("/")
+    return {p, *(s for i in range(1, len(cuts)) if not Path(s := "/".join(cuts[i:])).exists())}
+
+
+def named_paths(path: Path, candidates: list[str]) -> tuple[set[str], str]:
+    if not path.exists():
+        return set(candidates), ""
+    data, error = _report_data(path)
+    findings = "\n".join(str(item) for item in data.get("blocking", []))
+    # `close.py:249` is how a finding names a file; a trailing `.` is the sentence's
+    named = set(re.findall(r"(?<![\w./-])[\w-]+(?:[./][\w-]+)+", findings))
+    return {p for p in candidates if named & _spellings(p)}, error
+
+
+def launch_marker(story_id: str) -> Path:
+    """What the review was launched AGAINST, on disk before it starts, because a
+    killed reviewer returns nothing on its way out and salvage needs it all."""
+    p = data_root() / "markers" / f"{story_id}.review-launch"
+    p.parent.mkdir(parents=True, exist_ok=True)
+    return p
+
+
+def stamp(path: Path, why: str) -> str:
+    """Record the refusal IN the report and return `why`; `why` of "" clears one.
+
+    close.py keeps a refused round's report on purpose, and the file a person
+    opens to ask "did this round pass" then answered `blocking: []` either way.
+    Writing only when the key MOVES is what leaves an accepted report byte-
+    identical. Only a report we could parse: unreadable is a different problem
+    and read_report already names it (constraint 15).
+    """
+    try:
+        report = json.loads(path.read_text())
+    except (OSError, ValueError):
+        return why
+    if not isinstance(report, dict):
+        return why
+    had = report.pop("refused", None)  # ours wins: a reviewer may write it too
+    if why:
+        path.write_text(json.dumps({"refused": why} | report, indent=2))
+    elif had is not None:
+        path.write_text(json.dumps(report, indent=2))
+    return why
 
 
 def marker_digest(path: Path) -> str:
@@ -139,12 +192,20 @@ def abort_text(reviewed_head: str, why: str) -> str:
 
 
 def check_reviewer_motion(
-    reviewed_head: str, marker: Path, digest_before: str, card: str = "", story_id: str = ""
+    reviewed_head: str,
+    marker: Path,
+    digest_before: str,
+    card: str = "",
+    story_id: str = "",
+    moved: str = "",
 ) -> str:
     """The complete refusal text, or "" if the reviewer behaved.
 
-    The dirty-tree case never says WHO left the files — a guard that blames the
-    reviewer for the lead's edit is worse than no guard.
+    Neither the dirty-tree case nor `moved` says WHO — a guard that blames the
+    reviewer for the lead's edit is worse than no guard. Only the completed leg
+    can attribute HEAD motion, because there the lead is blocked inside the
+    reviewer subprocess; salvage runs after unbounded lead time, so it passes
+    its own text.
     """
     from close import git
 
@@ -182,7 +243,7 @@ def check_reviewer_motion(
             " history, so commits it was handed are not in what would merge"
         )
     if git("rev-parse", "HEAD").stdout.strip() != reviewed_head:
-        return refuse("the read-only reviewer changed HEAD; no reviewer leg may commit")
+        return refuse(moved or "the read-only reviewer changed HEAD; no reviewer leg may commit")
     return ""
 
 
@@ -306,17 +367,31 @@ def diff_path(report: Path) -> Path:
     return report.with_suffix(".diff")
 
 
-def write_reviewer_diff(report: Path, reviewed_head: str) -> Path | None:
-    """The reviewer's work, on disk beside its report: stdout is lossy and it was
-    the only place the assent artifact lived."""
+def write_reviewer_diff(report: Path, reviewed_head: str, noun: str) -> str:
+    """Hand the script-applied fix over on disk, or say why no round may be
+    recorded: stdout is lossy and this was the only place the assent artifact
+    lived. The tree has ALREADY moved here, so a write that fails rolls back
+    rather than leave the lead accepting commits nothing showed them, and
+    abort_text covers a rollback that itself fails. `noun` is the caller's
+    `story <id>` / `sprint <id>`: one rule, one implementation, two legs."""
     from close import git
 
     summary = reviewer_range(reviewed_head, git("rev-parse", "HEAD").stdout.strip())
     if not summary:
-        return None
+        return ""
     diff = diff_path(report)
-    diff.write_text(summary + "\n" + git("diff", f"{reviewed_head}..HEAD").stdout)
-    return diff
+    try:
+        diff.write_text(summary + "\n" + git("diff", f"{reviewed_head}..HEAD").stdout)
+    except OSError as exc:
+        why = f"could not write reviewer handoff at {diff} ({exc})"
+        if git("reset", "--hard", reviewed_head, check=False).returncode:
+            return abort_text(reviewed_head, why)
+        return f"refused: {why}; rolled the fix back — fix that path, then `close.py {noun} review`"
+    print(
+        f"the script-applied review fix changed the tree. Read its commit and full"
+        f" diff at {diff} before `close.py {noun} land`; landing accepts it."
+    )
+    return ""
 
 
 def run(
@@ -352,10 +427,20 @@ def run(
     except OSError as e:  # claude absent from PATH
         return "", f"could not launch the reviewer: {e}"
     except subprocess.TimeoutExpired as e:
+        # Only the STORY leg has a salvage action. The plan and sprint legs share
+        # this text and write no launch marker for it to read, so naming it there
+        # spends the lead's next move on a command that refuses — at the one moment
+        # a review has just been lost.
+        salvage = (
+            " If it wrote its report and patch before dying, `close.py story <id>"
+            " salvage` records that round without paying for a second review."
+            if name == "story-reviewer"
+            else ""
+        )
         return "", (
-            f"the reviewer exceeded its {e.timeout:.0f}s wall clock and was killed"
-            f" — raise it with XP_AGENT_TIMEOUT=<seconds> and review again."
-            f" Live output remains in {e.stderr}; check the tree for commits"
+            f"the reviewer produced NO OUTPUT for {e.timeout:.0f}s and was killed."
+            f" Live output remains in {e.stderr}.{salvage} Widen the silence it may"
+            " keep with XP_AGENT_TIMEOUT=<seconds> and review again"
         )
     if proc.returncode != 0:
         detail = (proc.stderr or proc.stdout or "").strip()[:500]

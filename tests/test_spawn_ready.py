@@ -168,8 +168,11 @@ class TestReadyCredential:
         plan = tmp_path / "data" / "plan.md"
         sibling = "\n#### story-043 — sibling   [planned]\nVerify: true\n"
         plan.write_text(plan.read_text() + sibling)
-        self.mint(repo, env)
+        first = self.mint(repo, env).stdout.splitlines()[-1]
         assert sibling in plan.read_text(), plan.read_text()
+        second = self.mint(repo, env, "story-043").stdout.splitlines()[-1]
+        assert "spawn.py story-042" in first and "spawn.py story-043" in second
+        assert first != second
 
     def test_an_unreadable_marker_refuses_instead_of_crashing(self, tmp_path):
         """A torn write leaves half a marker; json.loads on it is a traceback, and

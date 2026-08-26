@@ -26,6 +26,15 @@ pre-commit:
 # commit, so the ACT is unverifiable after the fact — but every commit-stage gate
 # here is a pure function of the tree, so the OUTCOME still is (a8195145).
 pre-push:
+  # piped, for the same reason pre-commit is, plus one this hook learned the hard
+  # way: unpiped, lefthook runs ruff over the whole tree, gitleaks over every
+  # commit, the ratchet reading every file, and `pytest -n auto` — which already
+  # saturates the CPU — all at once. Measured at the sprint-7 land: two pushes of
+  # a green tree failed on two DIFFERENT wall-clock tests, both passing alone and
+  # in a direct full tier. A wall that manufactures the contention that reds its
+  # own timing tests teaches the lead to re-run until green, which is how
+  # --no-verify becomes tempting (debt 15aec3fc's risk, arriving sideways).
+  piped: true
   commands:
     lint:
       run: ruff check .

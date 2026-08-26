@@ -60,6 +60,19 @@ class TestFixingReviewer:
         assert m["shown_sha"] != m["reviewed_head"]
         assert g("show", "--format=", "--name-only", "HEAD").stdout.strip() == "src/thing.py"
 
+        outputs = [r.stdout.splitlines()[-1]]
+        other = tmp_path / "second"
+        other.mkdir()
+        repo, env, _g = make_repo(other)
+        self.fixing_stub(other)
+        result = close(repo, env, "review")
+        assert result.returncode == 0, result.stderr
+        outputs.append(result.stdout.splitlines()[-1])
+        assert all("commit and full diff" in line for line in outputs)
+        assert all("landing accepts" in line for line in outputs)
+        assert all("close.py story story-042 land" in line for line in outputs)
+        assert outputs[0] != outputs[1]
+
     def test_a_commit_made_while_the_reviewer_held_the_tree_is_refused(self, tmp_path):
         """AC 2, job B of the deleted guard. A lead commit made while the reviewer
         held the tree is otherwise absorbed into shown_sha, land's HEAD==shown_sha
@@ -243,6 +256,7 @@ class TestFixingReviewer:
         move this guard back below Verify and the sentinel appears."""
         sentinel = tmp_path / "verify-ran"
         repo, env, _g, tree, _b = self._worktree_land_setup(tmp_path, verify=f"touch {sentinel}")
+        sentinel.unlink()  # story-036: setup's own review leg runs Verify as well
         (repo / "dirt.txt").write_text("uncommitted\n")
         r = close(tree, env, "land", "--merge-mode", "local")
         assert r.returncode == 2 and "dirty" in r.stderr, r.stderr
@@ -254,6 +268,7 @@ class TestFixingReviewer:
         Verify, so the happy path pins its presence (story-014's AC 6 shape)."""
         sentinel = tmp_path / "verify-ran"
         _repo, env, _g, tree, _b = self._worktree_land_setup(tmp_path, verify=f"touch {sentinel}")
+        sentinel.unlink()  # or story-036's review leg greens this for land's reason
         assert close(tree, env, "land", "--merge-mode", "local").returncode == 0
         assert sentinel.exists()
 
@@ -463,14 +478,19 @@ class TestFixingReviewer:
         second = launches(tmp_path)[1]["stdin"]
         assert "renamed the flag" in second and "N1: punted on purpose" in second
 
-    def test_a_hung_reviewer_is_bounded_by_a_wall_clock(self, tmp_path):
-        """AC 7: review is now the only long-running command AND the only writer."""
+    def test_a_reviewer_that_produces_nothing_is_still_killed(self, tmp_path):
+        """story-012b: review is the only long-running command AND the only
+        writer. story-036 AC 8: the bound became IDLE rather than wall, and this
+        is the case it was written for — asserted at the close leg so the idle
+        rule cannot quietly remove the protection. The stub is silent by
+        construction, which is the whole signal the new bound reads.
+        """
         repo, env, _g = make_repo(tmp_path)
         bin_dir = tmp_path / "bin"
         (bin_dir / "claude").write_text("#!/bin/sh\nsleep 30\n")
         (bin_dir / "claude").chmod(0o755)
         r = close(repo, env | {"XP_AGENT_TIMEOUT": "1"}, "review")
-        assert r.returncode == 2 and "wall clock" in r.stderr
+        assert r.returncode == 2 and "produced NO OUTPUT" in r.stderr, r.stderr
         assert not marker_file(tmp_path).exists()
         # Field-reported: a lead read spawn.py to discover the bound was movable
         # at all, and concluded the tool could not do the job. CLAUDE.md's rule is

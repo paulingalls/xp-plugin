@@ -283,3 +283,85 @@ def test_the_LAST_codex_agent_message_is_the_result_not_the_first(tmp_path, monk
     )
     assert proc.returncode == 0
     assert proc.stdout == "the real findings"
+
+
+def test_a_reviewer_that_keeps_talking_outlives_the_bound(tmp_path, monkeypatch):
+    """story-036 AC 7: the bound is IDLE, not wall.
+
+    Measured in the field (25950c0d): a story reviewer made six fix commits over
+    29 minutes and was killed 12 minutes after the last one, inside its final
+    Verify. It was not hung. A wall clock passes this test only by being raised,
+    which is the answer the card rejects — so the run outlives the bound three
+    times over while never going quiet for it.
+    """
+    from spawn import run_agent
+
+    monkeypatch.setenv("XP_DATA", str(tmp_path / "data"))
+    monkeypatch.setenv("XP_AGENT_TIMEOUT", "0.5")
+    script = tmp_path / "chatty.py"
+    script.write_text(
+        "import sys, time\n"
+        "for _ in range(30):\n"
+        '    print(\'{"type":"system","session_id":"s"}\'); sys.stdout.flush()\n'
+        "    time.sleep(0.05)\n"
+        'print(\'{"type":"result","result":"still going"}\')\n'
+    )
+    proc = run_agent(
+        [sys.executable, str(script)], tmp_path, "", "reviewer", "claude", "story-042-review"
+    )
+    assert proc.returncode == 0, proc.stderr
+    assert json.loads(proc.stdout)["result"] == "still going"
+
+
+def test_the_bound_does_not_wait_on_the_killed_agent_s_own_children(tmp_path, monkeypatch):
+    """A real agent shells out constantly, and its children inherit the stdout
+    pipe — so killing only the process LEADER leaves the drain blocked reading a
+    pipe nobody will close. The bound then fires and buys nothing, which is the
+    hang it exists to prevent.
+
+    Constructed, not observed: the stub streams once so the clock is definitely
+    running, then sleeps in a child that outlives twenty bounds.
+    """
+    import time
+
+    from spawn import run_agent
+
+    monkeypatch.setenv("XP_DATA", str(tmp_path / "data"))
+    monkeypatch.setenv("XP_AGENT_TIMEOUT", "1")
+    script = tmp_path / "forks.sh"
+    script.write_text('#!/bin/sh\nprintf \'{"type":"system"}\\n\'\nsleep 20 &\nwait\n')
+    script.chmod(0o755)
+    started = time.monotonic()
+    with pytest.raises(subprocess.TimeoutExpired):
+        run_agent([str(script)], tmp_path, "", "reviewer", "claude", "story-042-review")
+    assert time.monotonic() - started < 10, "the bound fired and the leg waited anyway"
+
+
+def test_a_leader_that_exits_leaving_a_child_on_the_pipe_still_ends_at_the_bound(
+    tmp_path, monkeypatch
+):
+    """kill() polled the LEADER and killed nothing when it had already exited —
+    but the drain is blocked on the stdout pipe a child it BACKGROUNDED still
+    holds, so the bound fired and bought nothing, which is the hang it exists to
+    end. The sibling case above keeps its leader alive (`wait`); this one is the
+    ordinary shape of an agent that leaves a process behind on its way out.
+    """
+    import time
+
+    from spawn import run_agent
+
+    monkeypatch.setenv("XP_DATA", str(tmp_path / "data"))
+    # 5s, not 1: the bound is the fake agent's allowed SILENCE, not the property.
+    # At 1s a loaded box has not finished starting the shell, so poll() is still
+    # None, timed_out sets, and run_stream RAISES where this test asserts it
+    # returns — a race against process startup, not against the drain. The
+    # property is unchanged: the orphan holds the pipe for 20s and we return well
+    # inside 10.
+    monkeypatch.setenv("XP_AGENT_TIMEOUT", "5")
+    script = tmp_path / "orphans.sh"
+    script.write_text('#!/bin/sh\nprintf \'{"type":"system"}\\n\'\nsleep 20 &\nexit 0\n')
+    script.chmod(0o755)
+    started = time.monotonic()
+    proc = run_agent([str(script)], tmp_path, "", "reviewer", "claude", "story-042-review")
+    assert time.monotonic() - started < 10, "the drain waited on the orphaned child"
+    assert proc.returncode != 0, "a run whose terminal result never arrived reported success"

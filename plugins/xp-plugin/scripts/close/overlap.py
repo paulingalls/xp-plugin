@@ -86,6 +86,20 @@ def collision(ref: str, files: list[str]) -> str:
     )
 
 
+def run_one(label: str, cmd: str, where: str = "") -> str:
+    """One gate command's verdict, red distinguished from unrunnable. The shell's
+    own 127 is the difference between the lead's next action being a code fix and
+    being a harness fix; the two are the same nonzero otherwise (constraint 15)."""
+    rc = subprocess.run(cmd, shell=True).returncode
+    if rc == 127:
+        return (
+            f"refused: {label} could not be RUN{where}: {cmd}\nNothing was measured"
+            " — it is not on PATH where this ran, which is a harness or sandbox"
+            " problem, not a red tree. Fix where it runs"
+        )
+    return f"refused: {label} red{where}: {cmd}" if rc else ""
+
+
 def run_checks(verify: str, tier: str, where: str = "") -> str:
     if not tier:
         # SAYS SO rather than refusing: hook-lib.sh's run_tier refuses an unset
@@ -94,8 +108,8 @@ def run_checks(verify: str, tier: str, where: str = "") -> str:
         # legal; one the lead believes a tier gated is not.
         print("no tests.<tier> in .xp/config.yml — Verify alone gates this", file=sys.stderr)
     for label, cmd in (("Verify", verify), ("test tier", tier)):
-        if cmd and subprocess.run(cmd, shell=True).returncode != 0:
-            return f"refused: {label} red{where}: {cmd}"
+        if cmd and (red := run_one(label, cmd, where)):
+            return red
     return ""
 
 

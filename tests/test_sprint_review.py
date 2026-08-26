@@ -22,12 +22,56 @@ from sprint_helpers import (  # noqa: F401
     section,
     snapshot,
     sprint,
+    stage_key,
+    staged_stub,
     work,
 )
+
+CLEAN = {"fixed": [], "blocking": [], "noted": []}
+DELTA = "The delta since the last recorded round"
 
 
 class TestReviewLeg:
     """story-014, revised at story-022: the sprint close marshals ONE review."""
+
+    def test_an_applied_fix_handoff_names_the_leads_obligation(self, tmp_path):
+        lines = []
+        for root in (tmp_path / "first", tmp_path / "second"):
+            root.mkdir()
+            repo, env, _g = make_repo(root)
+            report = {"fixed": ["FIXED"], "blocking": [], "noted": []}
+            staged_stub(
+                root,
+                patches=[("fix", "src.py", "C = 2")],
+                find={"fixed": [], "blocking": ["FIXED"], "noted": []},
+                verify={"fixed": [], "blocking": ["FIXED"], "noted": []},
+                fix=report,
+            )
+            result = sprint(repo, env, "review")
+            assert result.returncode == 0, result.stderr
+            line = next(line for line in result.stdout.splitlines() if "full diff" in line)
+            diff = root / "data" / "reports" / "sprint" / "2.fix.round-1.diff"
+            assert str(diff) in line and diff.is_file()
+            assert "close.py sprint 2 land" in line and "landing accepts" in line
+            lines.append(line)
+        assert lines[0] != lines[1]
+
+    def test_a_round_is_not_recorded_without_its_handoff_diff(self, tmp_path):
+        repo, env, _g = make_repo(tmp_path)
+        before = head(repo, env)
+        staged_stub(
+            tmp_path,
+            patches=[("fix", "src.py", "C = 2")],
+            find={"fixed": [], "blocking": ["FIXED"], "noted": []},
+            verify={"fixed": [], "blocking": ["FIXED"], "noted": []},
+            fix={"fixed": ["FIXED"], "blocking": [], "noted": []},
+        )
+        diff = tmp_path / "data" / "reports" / "sprint" / "2.fix.round-1.diff"
+        diff.mkdir(parents=True)
+        result = sprint(repo, env, "review")
+        assert result.returncode == 2 and "could not write reviewer handoff" in result.stderr
+        assert head(repo, env) == before and not marker_path(tmp_path).exists()
+        assert sprint(repo, env, "land", "--dry-run").returncode == 2
 
     def test_the_bundle_diffs_against_the_DEFAULT_branch_not_the_integration_target(self, tmp_path):
         """Under `release: sprint`, integration_target() returns the SPRINT branch

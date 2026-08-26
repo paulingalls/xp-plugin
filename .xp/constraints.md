@@ -41,7 +41,10 @@ adding over the cap requires retiring one (the plan reviewer enforces).
    name.)
 12. **A path we do not execute is not verified.** We are the only user and our tests
    build their own fixtures, so shipped surfaces go unwalked. Before releasing a
-   surface a consuming project uses, walk it end to end. Walking it costs minutes.
+   surface a consuming project uses, walk it end to end. PROSE THAT INSTRUCTS AN
+   AGENT TO RUN SOMETHING IS SUCH A PATH — run it yourself before shipping the
+   instruction (measured: v0.7.7 told two fixers to run a gate that inspects
+   nothing over unstaged edits). Walking it costs minutes.
 13. **A claim about existing code is CHECKED before it is written down.** A card, a
    plan or a review that asserts what the code does, without running or reading it,
    spends a story on a premise. Cheap to check, expensive to inherit.

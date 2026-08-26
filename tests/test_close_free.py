@@ -163,8 +163,9 @@ class TestFreeReview:
         assert "--- reviewed" in landed.stderr and "+++ now" in landed.stderr
         plan_path = Path(env["XP_DATA"]) / "plan.md"
         plan_path.write_text(plan_path.read_text().replace("[in-progress]", "[planned]"))
-        assert free(repo, env, "fix-typo", "review").returncode == 0
-        verified = free(repo, env, "fix-typo", "land")
+        # story-036: the re-minted card's Verify is RUN by the review leg, so the
+        # red lands there rather than at the merge it would otherwise have reached
+        verified = free(repo, env, "fix-typo", "review")
         assert verified.returncode == 2 and "Verify red" in verified.stderr
 
     def test_a_deleted_free_card_cannot_drop_the_credential_it_minted(self, tmp_path):

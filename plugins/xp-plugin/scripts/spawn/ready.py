@@ -88,7 +88,7 @@ def mint(story_id: str) -> int:
     marker.parent.mkdir(parents=True, exist_ok=True)
     marker.write_text(json.dumps({"digest": digest, "card": card}, ensure_ascii=False))
     flip_card(story_id, "planned", "ready")
-    print(f"{story_id} [planned] -> [ready], digest {digest} — edit the card and spawn refuses")
+    print(f"{story_id} [planned] -> [ready], digest {digest} — next run `spawn.py {story_id}`")
     return 0
 
 

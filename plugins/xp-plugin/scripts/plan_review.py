@@ -105,7 +105,11 @@ def plan_bytes(path: Path) -> bytes | None:
 
 
 def normalized_whitespace(text: str) -> str:
-    return " ".join(text.split())
+    """Whitespace AND the markdown quote marker, because a blockquote is how a
+    reviewer sets a reason apart: it carries a `> ` on every wrapped line that
+    the reason string it also reports cannot (bug 6677e018 — six reasoned edits
+    landed in a plan and the whole round was discarded over the prefix)."""
+    return " ".join(w for ln in text.splitlines() for w in ln.lstrip("> ").split())
 
 
 def disposition(text: str, before: bytes | None, after: bytes | None) -> str:
@@ -256,7 +260,10 @@ def _wait(story_id: str, out: Path, pid: int, child: subprocess.Popen | None = N
             tail = ""
         return fail(f"{tail}\n(the plan review ended without a verdict; full output in {log})")
     print(out.read_text().strip() if out.is_file() else "")
-    print(f"findings: {out}", file=sys.stderr)
+    print(
+        f"findings: {out} — read the disposition and re-read the reviewed plan before coding",
+        file=sys.stderr,
+    )
     return 0
 
 

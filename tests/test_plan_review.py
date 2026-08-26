@@ -203,15 +203,22 @@ class TestTheLaunch:
         repo, env, draft = self.repo(tmp_path)
         first_report = '{"status":"clean","reasons":[],"summary":"round one"}'
         rec = stub_planner(tmp_path, findings=first_report)
-        assert plan_review(repo, env, "story-042", str(draft)).returncode == 0
+        first_run = plan_review(repo, env, "story-042", str(draft))
+        assert first_run.returncode == 0
         first = findings_of(rec)
         assert first.is_absolute() and first.name == "story-042.md"
         rec = stub_planner(
             tmp_path, findings='{"status":"clean","reasons":[],"summary":"round two"}'
         )
-        assert plan_review(repo, env, "story-042", str(draft)).returncode == 0
-        assert findings_of(rec).name == "story-042.round-2.md"
+        second_run = plan_review(repo, env, "story-042", str(draft))
+        second = findings_of(rec)
+        assert second_run.returncode == 0 and second.name == "story-042.round-2.md"
         assert first.read_text() == first_report
+        handoffs = [run.stderr.splitlines()[-1] for run in (first_run, second_run)]
+        assert all("read the disposition" in line for line in handoffs)
+        assert all("re-read the reviewed plan" in line for line in handoffs)
+        assert str(first) in handoffs[0] and str(second) in handoffs[1]
+        assert handoffs[0] != handoffs[1]
 
     def test_success_without_the_required_findings_file_refuses(self, tmp_path):
         repo, env, draft = self.repo(tmp_path)
@@ -409,6 +416,18 @@ class TestPlanEditsInPlace:
         report = json.dumps({"status": "edited", "reasons": [reason]})
         plan = b"Reason: the guard needs an executable\nacceptance check.\n"
         assert disposition_result(report, b"before", plan) == ""
+
+    def test_a_reason_set_apart_as_a_blockquote_is_present(self):
+        """bug 6677e018, measured on story-036's own round 1: six reasoned edits
+        landed in the plan and the verdict was discarded, because a blockquote
+        carries a `> ` on every WRAPPED line that the reason string cannot. A
+        one-line quote matches by luck — `>` only precedes the reason — so the
+        marker has to survive a wrap to model the defect at all.
+        """
+        reason = "Reason: Simplicity - one copy drifts from the other."
+        report = json.dumps({"status": "edited", "reasons": [reason]})
+        plan = b"# plan\n\n> Reason: Simplicity - one copy\n> drifts from the other.\n"
+        assert disposition_result(report, b"# plan\n", plan) == ""
 
     def test_a_reason_absent_under_whitespace_normalization_refuses(self):
         report = json.dumps({"status": "edited", "reasons": ["a missing reason"]})
