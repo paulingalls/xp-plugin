@@ -410,6 +410,18 @@ class TestPlanEditsInPlace:
         plan = b"Reason: the guard needs an executable\nacceptance check.\n"
         assert disposition_result(report, b"before", plan) == ""
 
+    def test_a_reason_set_apart_as_a_blockquote_is_present(self):
+        """bug 6677e018, measured on story-036's own round 1: six reasoned edits
+        landed in the plan and the verdict was discarded, because a blockquote
+        carries a `> ` on every WRAPPED line that the reason string cannot. A
+        one-line quote matches by luck — `>` only precedes the reason — so the
+        marker has to survive a wrap to model the defect at all.
+        """
+        reason = "Reason: Simplicity - one copy drifts from the other."
+        report = json.dumps({"status": "edited", "reasons": [reason]})
+        plan = b"# plan\n\n> Reason: Simplicity - one copy\n> drifts from the other.\n"
+        assert disposition_result(report, b"# plan\n", plan) == ""
+
     def test_a_reason_absent_under_whitespace_normalization_refuses(self):
         report = json.dumps({"status": "edited", "reasons": ["a missing reason"]})
         problem = disposition_result(report, b"before", b"Reason: a different reason\n")
