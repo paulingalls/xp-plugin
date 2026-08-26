@@ -105,7 +105,11 @@ def plan_bytes(path: Path) -> bytes | None:
 
 
 def normalized_whitespace(text: str) -> str:
-    return " ".join(text.split())
+    """Whitespace AND the markdown quote marker, because a blockquote is how a
+    reviewer sets a reason apart: it carries a `> ` on every wrapped line that
+    the reason string it also reports cannot (bug 6677e018 — six reasoned edits
+    landed in a plan and the whole round was discarded over the prefix)."""
+    return " ".join(w for ln in text.splitlines() for w in ln.lstrip("> ").split())
 
 
 def disposition(text: str, before: bytes | None, after: bytes | None) -> str:

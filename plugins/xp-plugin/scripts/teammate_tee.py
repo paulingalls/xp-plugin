@@ -7,9 +7,11 @@ One drain, two stream shapes — only the per-line parse differs by harness."""
 import contextlib
 import json
 import os
+import signal
 import subprocess
 import sys
 import threading
+import time
 from collections.abc import Callable, Iterable
 from datetime import datetime, timezone
 from pathlib import Path
@@ -139,6 +141,17 @@ def closing_line(story_id: str, result: dict) -> str:
     return f"{story_id}: {turns} turns, {duration_s}, {cost_s}, {status}"
 
 
+def kill_group(proc: subprocess.Popen) -> None:
+    """Kill the agent's whole session, never just its leader: a real agent shells
+    out constantly and its children inherit the stdout pipe, so killing the leader
+    alone leaves the drain reading a pipe nobody will close — the bound fires and
+    buys nothing (bug c9d9a98f). bookkeep._teardown takes the same route."""
+    try:
+        os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+    except OSError:  # already reaped, or it never got a session of its own
+        proc.kill()
+
+
 def _feed_stdin(proc: subprocess.Popen, prompt: str) -> None:
     """A child that dies before consuming the prompt breaks this pipe. That is
     not news — the missing result object already says it — and an unhandled
@@ -233,21 +246,38 @@ def run_stream(
         stderr=subprocess.STDOUT,
         text=True,
         env=env,
+        start_new_session=True,  # so kill_group has a group that is not ours
     )
     feeder = threading.Thread(target=_feed_stdin, args=(proc, prompt))
     feeder.start()
-    timed_out = threading.Event()
+    timed_out, finished, last = threading.Event(), threading.Event(), [time.monotonic()]
 
     def kill() -> None:
-        # poll FIRST: a timer that fires as the last line lands would otherwise
+        # poll FIRST: a watchdog that fires as the last line lands would otherwise
         # throw away a run that finished, and the review it carried with it.
         if proc.poll() is None:
             timed_out.set()
-            proc.kill()
+            kill_group(proc)
 
-    timer = threading.Timer(timeout, kill) if timeout is not None else None
-    if timer:
-        timer.start()
+    def watch() -> None:
+        """`timeout` is the longest SILENCE allowed, not a wall clock: a hung
+        agent is precisely the one producing no output, while a working reviewer
+        legitimately runs for hours (measured, note 25950c0d — a wall clock killed
+        one twelve minutes after its last commit, mid-Verify). Each wait is the
+        remainder of the current window, so output that arrived during it simply
+        pushes the deadline out; no polling, and no timer per line."""
+        while not finished.wait(timeout - (time.monotonic() - last[0])):
+            if time.monotonic() - last[0] >= timeout:
+                return kill()
+
+    def ticking(lines: Iterable[str]) -> Iterable[str]:
+        for line in lines:
+            last[0] = time.monotonic()
+            yield line
+
+    watcher = threading.Thread(target=watch, daemon=True) if timeout is not None else None
+    if watcher:
+        watcher.start()
     path = log_path(data_root, log_id)
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -279,10 +309,17 @@ def run_stream(
         except OSError as exc:
             err(f"warning: log write failed ({exc}); continuing without it")
         assert proc.stdout is not None
-        result = tee_stream(proc.stdout, log_write, out, parse)
+        result = tee_stream(ticking(proc.stdout), log_write, out, parse)
+    except BaseException:
+        # Ctrl-C no longer reaches the child, because it has its own session now.
+        # Only here: a run that DRAINED is already exiting, and killing on the way
+        # past would throw away the review it just finished.
+        kill_group(proc)
+        raise
     finally:
-        if timer:
-            timer.cancel()
+        finished.set()
+        if watcher:
+            watcher.join()
         feeder.join()
         proc.wait()
         if log:

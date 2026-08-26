@@ -111,6 +111,37 @@ def read_report(path: Path) -> tuple[dict, str]:
     return {k: _cap([str(i) for i in data[k]], path) for k in REPORT_KEYS}, ""
 
 
+def launch_marker(story_id: str) -> Path:
+    """What the review was launched AGAINST, on disk before it starts, because a
+    killed reviewer returns nothing on its way out and salvage needs it all."""
+    p = data_root() / "markers" / f"{story_id}.review-launch"
+    p.parent.mkdir(parents=True, exist_ok=True)
+    return p
+
+
+def stamp(path: Path, why: str) -> str:
+    """Record the refusal IN the report and return `why`; `why` of "" clears one.
+
+    close.py keeps a refused round's report on purpose, and the file a person
+    opens to ask "did this round pass" then answered `blocking: []` either way.
+    Writing only when the key MOVES is what leaves an accepted report byte-
+    identical. Only a report we could parse: unreadable is a different problem
+    and read_report already names it (constraint 15).
+    """
+    try:
+        report = json.loads(path.read_text())
+    except (OSError, ValueError):
+        return why
+    if not isinstance(report, dict):
+        return why
+    had = report.pop("refused", None)  # ours wins: a reviewer may write it too
+    if why:
+        path.write_text(json.dumps({"refused": why} | report, indent=2))
+    elif had is not None:
+        path.write_text(json.dumps(report, indent=2))
+    return why
+
+
 def marker_digest(path: Path) -> str:
     """Content hash of the file that GATES the merge. It lives outside the repo,
     so no diff shows it, and the reviewer's Bash can reach it — emptying its own
@@ -139,12 +170,20 @@ def abort_text(reviewed_head: str, why: str) -> str:
 
 
 def check_reviewer_motion(
-    reviewed_head: str, marker: Path, digest_before: str, card: str = "", story_id: str = ""
+    reviewed_head: str,
+    marker: Path,
+    digest_before: str,
+    card: str = "",
+    story_id: str = "",
+    moved: str = "",
 ) -> str:
     """The complete refusal text, or "" if the reviewer behaved.
 
-    The dirty-tree case never says WHO left the files — a guard that blames the
-    reviewer for the lead's edit is worse than no guard.
+    Neither the dirty-tree case nor `moved` says WHO — a guard that blames the
+    reviewer for the lead's edit is worse than no guard. Only the completed leg
+    can attribute HEAD motion, because there the lead is blocked inside the
+    reviewer subprocess; salvage runs after unbounded lead time, so it passes
+    its own text.
     """
     from close import git
 
@@ -182,7 +221,7 @@ def check_reviewer_motion(
             " history, so commits it was handed are not in what would merge"
         )
     if git("rev-parse", "HEAD").stdout.strip() != reviewed_head:
-        return refuse("the read-only reviewer changed HEAD; no reviewer leg may commit")
+        return refuse(moved or "the read-only reviewer changed HEAD; no reviewer leg may commit")
     return ""
 
 
@@ -352,10 +391,20 @@ def run(
     except OSError as e:  # claude absent from PATH
         return "", f"could not launch the reviewer: {e}"
     except subprocess.TimeoutExpired as e:
+        # Only the STORY leg has a salvage action. The plan and sprint legs share
+        # this text and write no launch marker for it to read, so naming it there
+        # spends the lead's next move on a command that refuses — at the one moment
+        # a review has just been lost.
+        salvage = (
+            " If it wrote its report and patch before dying, `close.py story <id>"
+            " salvage` records that round without paying for a second review."
+            if name == "story-reviewer"
+            else ""
+        )
         return "", (
-            f"the reviewer exceeded its {e.timeout:.0f}s wall clock and was killed"
-            f" — raise it with XP_AGENT_TIMEOUT=<seconds> and review again."
-            f" Live output remains in {e.stderr}; check the tree for commits"
+            f"the reviewer produced NO OUTPUT for {e.timeout:.0f}s and was killed."
+            f" Live output remains in {e.stderr}.{salvage} Widen the silence it may"
+            " keep with XP_AGENT_TIMEOUT=<seconds> and review again"
         )
     if proc.returncode != 0:
         detail = (proc.stderr or proc.stdout or "").strip()[:500]

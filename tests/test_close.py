@@ -111,9 +111,12 @@ class TestReviewed:
         assert r.returncode != 0 and "unrecognized arguments: --verdict" in r.stderr
 
     def test_red_verify_aborts_before_merge_naming_command(self, tmp_path):
+        """story-036 moved the first red one leg earlier: the REVIEW leg runs the
+        card's Verify now, so a red tree never reaches a recorded round and land
+        is never reached. land keeps its own copy — test_close_verify.py holds
+        that half, which is what stops this becoming the only assertion."""
         repo, env, g = make_repo(tmp_path, verify="false")
-        close(repo, env, "review")
-        r = close(repo, env, "land")
+        r = close(repo, env, "review")
         assert r.returncode != 0 and "false" in (r.stderr + r.stdout)
         assert g("log", "main", "--oneline").stdout.count("\n") == 1  # no merge
 
