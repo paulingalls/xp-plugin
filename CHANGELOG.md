@@ -4,6 +4,13 @@ Release notes started at v0.6.0; earlier entries are summarized from their
 tag and merge messages. Full detail lives in the merge history and the
 per-sprint review reports.
 
+## v0.7.5 — one batch verdict, and no silent internal entry points
+
+- Sprint close runs each distinct falsifier once and maps a red verdict back to
+  every record that cites it, including the bug Claim it appends.
+- Internal shebang-bearing modules refuse direct execution explicitly; the
+  sprint-close refusal names `close.py sprint <id> <action>` as its public route.
+
 ## v0.7.4 — a leg that stops says so, and one that finishes finishes
 
 - All three hooks share one advisory runner: malformed payloads and crashes remain

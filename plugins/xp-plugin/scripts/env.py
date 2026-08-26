@@ -37,6 +37,14 @@ def run_hook(main) -> None:
     raise SystemExit(rc)
 
 
+def refuse_direct_invocation(invocation: str) -> None:
+    print(
+        f"refused: {Path(sys.argv[0]).name} is an internal module; use `{invocation}`",
+        file=sys.stderr,
+    )
+    raise SystemExit(2)
+
+
 def data_root() -> Path:
     if env := os.environ.get("XP_DATA"):
         return Path(env)
@@ -141,3 +149,7 @@ def plugin_root() -> Path:
             f" is {found} — the pointer and the install disagree. {REFRESH}."
         )
     return root
+
+
+if __name__ == "__main__":
+    refuse_direct_invocation("work.py env")

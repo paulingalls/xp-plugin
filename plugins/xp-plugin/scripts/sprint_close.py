@@ -17,6 +17,7 @@ sys.path.insert(0, str(Path(__file__).parent / "close"))
 import overlap
 import stages
 from close import default_branch, fail, git, story_card
+from env import refuse_direct_invocation
 from release import cmd_post_merge as release_post_merge
 from release import next_version, refuse_unbumpable
 from review import reviewer_strays
@@ -269,21 +270,25 @@ def cmd_start(sprint_id: str) -> int:
 
     root = data_root()
     batch = corpus(root)
+    grouped = {}
+    for eid, head, falsifier in batch:
+        grouped.setdefault(falsifier, []).append((eid, head))
     # the red path is the re-run path, so re-file only what is not already a bug
     known = {f for _e, h, f in batch if h.startswith("bug ")}
-    for eid, head, falsifier in batch:
+    for falsifier, records in grouped.items():
         if not falsifier_is_green(falsifier):
+            citations = "; ".join(f"{eid} ({head})" for eid, head in records)
             if falsifier not in known:
                 append(
                     root,
                     f"## bug {stamp()}\nClaim: a falsifier in the sprint-close batch RED"
-                    f" for record {eid} ({head}). A debt or archived falsifier asserts the"
+                    f" for records {citations}. A debt or archived falsifier asserts the"
                     " system is still OK, so red means the latent problem materialised.\n"
                     f"Falsifier: `{falsifier}`\nFiles: unknown\n\n",
                 )
             filed = "already filed as a bug" if falsifier in known else "Re-filed as a bug"
             return fail(
-                f"refused: batch falsifier RED for {eid} ({head}):\n  {falsifier}\n"
+                f"refused: batch falsifier RED for records {citations}:\n  {falsifier}\n"
                 f"{filed}. Fix it, then run start again"
             )
 
@@ -435,3 +440,7 @@ def cmd_land(sprint_id: str, dry_run: bool) -> int:
 
 def cmd_post_merge(sprint_id: str) -> int:
     return release_post_merge(sprint_id)
+
+
+if __name__ == "__main__":
+    refuse_direct_invocation("close.py sprint <id> <action>")
