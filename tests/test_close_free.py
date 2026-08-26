@@ -62,6 +62,22 @@ def add_free_card(env, verify="true"):
     )
 
 
+def carded_free_patch(tmp_path):
+    """A carded free branch carrying one lead commit, minted [ready] for spawn."""
+    repo, env, g = free_repo(tmp_path)
+    config = repo / ".xp" / "config.yml"
+    config.write_text(
+        config.read_text().replace("roles:\n", "roles:\n  executor: claude/sonnet/medium\n")
+    )
+    g("add", "-A")
+    g("commit", "-qm", "executor role")
+    add_free_card(env)
+    assert free(repo, env, "fix-typo", "start").returncode == 0
+    commit_on_free(repo, g)
+    assert spawn(repo, env, "ready", KEY).returncode == 0
+    return repo, env, g
+
+
 class TestFreeStart:
     def test_start_cuts_the_dated_branch_off_the_default_branch(self, tmp_path):
         """AC 1: the branch is dated so two closes of the same slug never share
@@ -86,17 +102,7 @@ class TestFreeStart:
         assert result.returncode == 0 and "no card" in result.stdout
 
     def test_a_carded_spawn_reuses_the_free_branch_and_its_commits(self, tmp_path):
-        repo, env, g = free_repo(tmp_path)
-        config = repo / ".xp" / "config.yml"
-        config.write_text(
-            config.read_text().replace("roles:\n", "roles:\n  executor: claude/sonnet/medium\n")
-        )
-        g("add", "-A")
-        g("commit", "-qm", "executor role")
-        add_free_card(env)
-        assert free(repo, env, "fix-typo", "start").returncode == 0
-        commit_on_free(repo, g)
-        assert spawn(repo, env, "ready", KEY).returncode == 0
+        repo, env, g = carded_free_patch(tmp_path)
         (repo / "lead-left.txt").write_text("mine\n")
         refused = spawn(repo, env, KEY)
         assert refused.returncode == 2 and "commit your work" in refused.stderr
@@ -108,13 +114,22 @@ class TestFreeStart:
         tree = Path(env["XP_DATA"]) / "worktrees" / KEY
         assert in_tree(tree, env, "branch", "--show-current") == BRANCH
         assert (tree / "src" / "free.py").read_text() == "B = 1\n"
+        assert f"at {tree} (continued, not cut)" in result.stdout
+        assert "`close.py free fix-typo review` from that worktree" in result.stdout
+        assert "close.py story" not in result.stdout
+
+    def test_a_spawn_from_off_the_free_branch_names_the_checkout(self, tmp_path):
+        """The lead's own checkout is the only thing missing, and `git branch -D`
+        is the obvious recovery from a bare already-exists — it discards the
+        release commits `free start` left on that branch."""
+        repo, env, g = carded_free_patch(tmp_path)
+        g("checkout", "-q", "main")
+        refused = spawn(repo, env, KEY)
+        assert refused.returncode == 2 and f"git checkout {BRANCH}" in refused.stderr
+        assert g("rev-parse", "--verify", "-q", BRANCH).returncode == 0
 
     def test_a_carded_in_place_spawn_keeps_the_free_branch(self, tmp_path):
-        repo, env, g = free_repo(tmp_path)
-        add_free_card(env)
-        assert free(repo, env, "fix-typo", "start").returncode == 0
-        commit_on_free(repo, g)
-        assert spawn(repo, env, "ready", KEY).returncode == 0
+        repo, env, g = carded_free_patch(tmp_path)
         result = spawn(repo, env, KEY, "--in-place")
         assert result.returncode == 0, result.stderr
         assert g("branch", "--show-current").stdout.strip() == BRANCH

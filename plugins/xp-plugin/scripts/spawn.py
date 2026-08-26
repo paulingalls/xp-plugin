@@ -254,7 +254,7 @@ def cmd_in_place(story_id: str, card: str) -> int:
             " uncommitted work rides onto the story branch unreviewed"
         )
     branch = story_branch(card, story_id)
-    if branch == f"{user_ns()}/{story_id}" and current_branch() == branch:
+    if FREE_ID.fullmatch(story_id) and current_branch() == branch:
         flip_to_in_progress(story_id)
         print(f"{branch} already current — in place, nothing launched; you are the executor")
         return 0
@@ -269,8 +269,13 @@ def cmd_in_place(story_id: str, card: str) -> int:
     return 0
 
 
+# The shape close/free.py cuts and every free leg keys off; group 2 is the slug
+# those legs take as their argument.
+FREE_ID = re.compile(r"free-(\d{4}-\d\d-\d\d-(.+))")
+
+
 def story_branch(card: str, story_id: str) -> str:
-    if re.fullmatch(r"free-\d{4}-\d\d-\d\d-.+", story_id):
+    if FREE_ID.fullmatch(story_id):
         return f"{user_ns()}/{story_id}"
     return f"{user_ns()}/{story_id}-{slugify(card_title(card))}"
 
@@ -312,7 +317,7 @@ def cmd_spawn(
     branch = story_branch(card, story_id)
     tree = worktree_path(story_id)
     trunk = integration_target()
-    reuse = branch == f"{user_ns()}/{story_id}" and current_branch() == branch
+    reuse = bool(FREE_ID.fullmatch(story_id)) and current_branch() == branch
     argv = agent_argv(harness, model, effort, "stream-json", sandbox)
     handoff = inheritance(data_root(), story_id)
     if resuming and tree.is_dir():
@@ -373,7 +378,15 @@ def cmd_spawn(
             return fail(f"refused: {tree} already exists — {story_id} is already spawned")
         exists = git("rev-parse", "--verify", "-q", f"refs/heads/{branch}", check=False)
         if not reuse and exists.returncode == 0:
-            return fail(f"refused: branch {branch} already exists")
+            # Deleting the named branch is the obvious recovery, and on a free
+            # patch it discards the release commits `free start` left there.
+            stand = (
+                f" — `git checkout {branch}` first: it is this patch's free branch,"
+                " and spawn continues it rather than cutting a new one"
+                if FREE_ID.fullmatch(story_id)
+                else ""
+            )
+            return fail(f"refused: branch {branch} already exists{stand}")
         tree.parent.mkdir(parents=True, exist_ok=True)
         if reuse:
             moved = git("checkout", "-q", trunk, check=False)
@@ -400,7 +413,8 @@ def cmd_spawn(
     # make one. Left to fail, the model's own recovery is to draft inside the
     # worktree, which is exactly the loss this path exists to prevent.
     draft_path(data_root(), story_id).parent.mkdir(parents=True, exist_ok=True)
-    print(f"{branch} at {tree} ({'resumed' if resuming else f'off {trunk}'})")
+    cut = "resumed" if resuming else ("continued, not cut" if reuse else f"off {trunk}")
+    print(f"{branch} at {tree} ({cut})")
     handed_over = tree_state(tree)
     before = {eid for eid, _ in entries(data_root())}
     rc = run_teammate(argv, tree, prompt, story_id, data_root(), harness)
@@ -411,10 +425,14 @@ def cmd_spawn(
         result = report_handoff(data_root(), story_id, before, why, rc)
         held.close()
         return result
-    print(
-        f"{story_id} produced commit {tree_state(tree)[0]} at {tree}. Read it, then run"
-        f" `close.py story {story_id} review`."
+    # The story leg accepts a free id and writes the marker free land reads, so
+    # naming the wrong one here is a mis-based review that nothing refuses.
+    leg = (
+        f"`close.py free {free_id.group(2)} review` from that worktree"
+        if (free_id := FREE_ID.fullmatch(story_id))
+        else f"`close.py story {story_id} review`"
     )
+    print(f"{story_id} produced commit {tree_state(tree)[0]} at {tree}. Read it, then run {leg}.")
     marker_path(data_root(), story_id).unlink(missing_ok=True)
     held.close()
     return rc
