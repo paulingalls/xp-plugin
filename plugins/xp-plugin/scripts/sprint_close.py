@@ -338,7 +338,8 @@ def cmd_start(sprint_id: str) -> int:
     print("\n" + (PLUGIN_ROOT / "templates" / "retro.md").read_text())
     print(
         "Then write the sprint digest yourself — this leg emits facts, never a"
-        " narrative (constraint 7). First line: # Session digest — written <ISO-ts> at <short-sha>"
+        " narrative; judgment belongs only where an LLM is present. First line:"
+        " # Session digest — written <ISO-ts> at <short-sha>"
     )
     return 0
 

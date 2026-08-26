@@ -397,16 +397,25 @@ class TestStructuredGate:
         r = close(repo, env, "land")
         assert r.returncode == 2 and "did not cover" in r.stderr
 
-    def test_report_items_are_capped_at_the_write(self, tmp_path):
+    def test_report_items_keep_the_item_bound_and_list_cap_only_at_display(self, tmp_path):
+        import bookkeep
+        import review
+
         repo, env, _g = make_repo(tmp_path)
         stub_reviewer(
             tmp_path,
-            report={"fixed": ["x" * 5000], "blocking": [], "noted": [f"n{i}" for i in range(200)]},
+            report={
+                "fixed": ["x" * 5000],
+                "blocking": [],
+                "noted": [f"n{i}" for i in range(review.LIST_CAP + 5)],
+            },
         )
         assert close(repo, env, "review").returncode == 0
         round1 = marker(tmp_path)["rounds"][0]
         assert len(round1["fixed"][0]) <= 400
-        assert len(round1["noted"]) <= 20
+        assert len(round1["noted"]) == review.LIST_CAP + 5
+        body = bookkeep.render_merge_body([round1])
+        assert "n24" not in body and "more, in full" in body
 
     def test_a_prose_only_reviewer_is_refused_and_its_output_is_printed_first(self, tmp_path):
         repo, env, _g = make_repo(tmp_path)

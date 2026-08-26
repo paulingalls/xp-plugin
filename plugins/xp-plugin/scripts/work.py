@@ -1,10 +1,6 @@
 #!/usr/bin/env python3
-"""Append bug/debt/note records to work.md (the only writer — see PROCESS.md), and
-resolve the installed plugin root for anything that was not spawned from it (`env`).
-
-A bug's falsifier must red (exit nonzero) right now; a debt's must be green.
-The check runs at creation because that is the only cheap enforcement point;
-semantic review of falsifiers belongs to the story reviewer.
+"""Write work.md lifecycle records and resolve the installed plugin root (`env`).
+Bug/debt falsifier polarity is checked when each record is created.
 """
 
 import argparse
@@ -23,21 +19,15 @@ from env import data_root, plugin_root
 NOTE_CAP = 4000  # chars; measured: p90 of 392 records is 1,799, so this binds rarely
 
 
-STRUCTURAL = re.compile(r"^(## |Claim:|Falsifier:|Resolves:|Archives:|Files:|Story:)", re.M)
+STRUCTURAL = re.compile(
+    r"^(## |# Record |Claim:|Falsifier:|Resolves:|Archives:|Id:|Disposition:|Files:|Story:)",
+    re.M,
+)
 
 
 def neutralize(text: str) -> str:
-    """A record body must not mint a heading OR a field line.
-
-    work.md is a grammar now: the block boundary is the record's id, `## resolved`
-    substitutes another record's falsifier, and the batch EXECUTES the first
-    `Falsifier:` line in a block. So a field forged through any free-text argument
-    silences a live bug with the green check never having run.
-
-    Breaks are CANONICALISED first, because the writer and every reader must mean
-    the same thing by "line". re.M anchors on \n alone, while read_text() turns a
-    bare CR into one and splitlines() also breaks on VT, FF, NEL and U+2028 — so a
-    character invisible here is a line break downstream, and the guard misses it.
+    """Prevent free text from minting grammar fields that silence a falsifier.
+    Canonicalize every splitlines break before the re.M field scan.
     """
     return STRUCTURAL.sub(r" \1", "\n".join(text.splitlines()))
 
@@ -58,8 +48,7 @@ def plan_path() -> Path:
 
 
 def stale_plan() -> str:
-    """The migration sentence, or "" — folded into each tool's EXISTING missing-plan
-    refusal rather than added as a guard of its own."""
+    """The migration sentence, folded into each tool's missing-plan refusal."""
     if plan_path().exists() or not Path(".xp/plan.md").exists():
         return ""
     return (
@@ -74,28 +63,15 @@ def stale_plan() -> str:
 
 
 def missing_plan_refusal() -> str:
-    """What every leg says when this clone has no plan: the migration sentence
-    when a pre-move copy sits beside us, else the diagnosis. Five legs carried a
-    copy of it and the sixth had already lost the half naming what to check."""
+    """Use the migration when a pre-move copy exists, else the diagnosis."""
     return stale_plan() or f"no plan at {plan_path()} — is this an xp-managed repo?"
 
 
 def edit_plan(mutate) -> bool:
-    """Read-modify-write the clone's plan under a lock; True when it changed.
+    """Read-modify-write inside a sibling lock; True when changed.
 
-    The read is INSIDE the lock: the current writers read-mutate-write unlocked,
-    and a read outside means the loser writes a plan that never saw the winner's
-    edit. Two lanes flipping two cards is the normal case, not the rare one.
-
-    temp+rename so an interrupted write leaves the PREVIOUS plan whole: the plan is
-    not git-versioned (DESIGN §3b cost 1), so a torn one is unrecoverable. Untested
-    by design — rename and in-place are indistinguishable to a reader here, so a
-    test telling them apart would certify. It forces the lock onto a SIBLING file:
-    rename swaps the inode, so flocking plan.md would leave the next writer
-    locking a ghost.
-
-    Serialises OUR writers only — the lead's Edit tool takes no lock, so
-    lead-vs-lane stays last-writer-wins (DESIGN §3b cost 5).
+    Temp+rename preserves the previous unversioned plan after interruption. The
+    sibling lock survives that inode swap. The lead's editor does not take it.
     """
     path = plan_path()
     lock = data_root() / "locks" / "plan.lock"
@@ -110,19 +86,12 @@ def edit_plan(mutate) -> bool:
 
 
 def strip_comment(line: str) -> str:
-    """A YAML comment opens at a `#` starting the line or after whitespace, never
-    one inside a word: cutting at any `#` truncated a tier whose inline env var held
-    one to a bare assignment — exits 0, runs no test. Third reader: tier_cmd."""
+    """A YAML comment opens only at line start or after whitespace."""
     return re.sub(r"(?:^|(?<=\s))#.*", "", line)
 
 
 def config_block_value(block: str, key: str, missing: str = "") -> str:
-    """`key:` nested under `block:` in the project config.
-
-    Comments are stripped BEFORE the header compare. Shared by the roles and
-    tests lookups so the pair cannot drift: they were separate copies of this
-    parser, and only one of them got fixed.
-    """
+    """Read `key:` under `block:` after stripping comments."""
     cfg = Path(".xp/config.yml")
     if not cfg.exists():
         return missing
@@ -145,12 +114,7 @@ def card_title(card: str) -> str:
 
 
 def card_lines(card: str) -> list[str]:
-    """The card as the credential sees it: the whole block, minus what moves for
-    reasons that are not drift — TestCardDigest holds which, and why.
-
-    What the refusal DIFFS is this same list, so a diff of anything else would
-    name lines the digest forgave.
-    """
+    """The card lines that its credential hashes and drift refusal diffs."""
     lines = [ln.rstrip() for ln in card.splitlines()]
     head = lines[0]
     if head.endswith("]"):
@@ -165,12 +129,7 @@ def card_digest(card: str) -> str:
 
 
 def flip_status(text: str, story_id: str, frm: str, to: str) -> str:
-    """Rewrite the card's TRAILING status bracket only.
-
-    A bare str.replace over the heading rewrites a TITLE carrying the same text
-    (measured at story-023's own spawn), and here that also breaks the digest
-    minted a line earlier — the leg's own edit then reads as the lead's.
-    """
+    """Rewrite only the card heading's trailing status, never matching title text."""
     out = []
     for ln in text.splitlines(keepends=True):
         head, sep, tail = ln.rstrip().rpartition(f"[{frm}]")
@@ -187,7 +146,7 @@ def flip_card(story_id: str, frm: str, to: str) -> bool:
 
 
 def ready_marker_path(story_id: str) -> Path:
-    """Story-scoped (constraint 10). No mkdir: a refused mint writes nothing."""
+    """Story-scoped. No mkdir: a refused mint writes nothing."""
     return data_root() / "markers" / f"{story_id}.ready.json"
 
 
@@ -196,8 +155,7 @@ def slugify(s: str) -> str:
 
 
 def user_ns() -> str:
-    """The branch-naming namespace: git identity, slugified. The "user" fallback
-    is unreachable in any repo that can commit — a default, not a case to guard."""
+    """The slugified git identity used as the branch namespace."""
     for key, take_local_part in (("user.email", True), ("user.name", False)):
         r = subprocess.run(["git", "config", key], capture_output=True, text=True)
         value = r.stdout.strip()
@@ -224,27 +182,21 @@ def stamp() -> str:
 
 
 def entry_id(text: str) -> str:
-    """A record's name, DERIVED from its text rather than stored in it: the
-    heading is an ISO second, and 48 concurrent appends share one."""
+    """A compacted record's stored id, else one derived from the full record."""
+    if explicit := re.search(r"^Id: ([0-9a-f]{8})$", text, re.M):
+        return explicit.group(1)
     return hashlib.sha256(text.strip().encode()).hexdigest()[:8]
 
 
 def record_summary(text: str) -> tuple[str, str]:
-    """(heading, claim line) — `Story:` is PROVENANCE and never the record's own
-    words, so every reader that summarises a record drops it here rather than
-    each re-deriving the rule and one of them forgetting (constraint 15's shape:
-    two implementations, and the stale one shows a stamp where a claim belongs).
-    """
+    """Return heading and body line, excluding the optional `Story:` provenance."""
     kept = [ln for ln in text.splitlines() if not ln.startswith("Story: ")]
     return (kept[0] if kept else ""), (kept[1] if len(kept) > 1 else "")
 
 
 def entries(root: Path) -> list[tuple[str, str]]:
     """(id, text) per record, in file order."""
-    # errors="replace": every reader of this is a REPORTER — the session banner,
-    # the escalation seam — and a byte nobody can decode must cost one mangled
-    # character, never the whole report (the hook degrades a raising builder to
-    # silence, so a traceback here deletes the recovery block wholesale).
+    # Reporters lose one undecodable byte, never the whole recovery block.
     path = root / "work.md"
     text = path.read_text(errors="replace") if path.exists() else ""
     blocks = re.split(r"^(?=## )", text, flags=re.M)
@@ -327,15 +279,7 @@ def resolve(root: Path, args: argparse.Namespace) -> int:
 
 
 def archive(root: Path, args: argparse.Namespace) -> int:
-    """Record a triage DECISION. Without it a decision has nowhere to live, so
-    cmd_start re-emits every note ever filed and the pile only grows.
-
-    The block stays in work.md rather than moving to archive.md: sprint_close's
-    corpus() keys a debt's falsifier off its own `## debt ` heading, so leaving
-    the block where it is keeps archived falsifiers running for zero new lines —
-    and archive.md is read with FALSIFIER.finditer over the WHOLE file, so text
-    landing there would be executed by the batch.
-    """
+    """Record a disposition; `compact` later moves its record's durable prose."""
     if (kind := _kind_of(root, args.ref)) is None:
         return 2
     if kind not in ("debt", "note"):
@@ -365,6 +309,7 @@ def main() -> int:
         p.add_argument("--files", required=True, help="comma-separated paths")
     sub.add_parser("note").add_argument("text")
     sub.add_parser("list")
+    sub.add_parser("compact")
     sub.add_parser("env", help="print the installed plugin root recorded in the data root")
     a = sub.add_parser("archive")
     a.add_argument("--ref", required=True, help="record id from `list`")
@@ -378,6 +323,10 @@ def main() -> int:
         print(plugin_root())
         return 0
     root = data_root()
+    if args.kind == "compact":
+        from work_compact import compact
+
+        return compact(root, entry_id, record_summary)
     if args.kind == "list":
         for eid, text in entries(root):
             heading, body = record_summary(text)

@@ -364,7 +364,7 @@ def main() -> int:
     s.add_argument("--merge-mode", choices=["pr", "local"], default=None)
     s.add_argument("--dry-run", action="store_true")
     a = p.parse_args()
-    # The gate the teammate profile only DECLARES (constraints #5): a self-close is
+    # The gate the teammate profile only DECLARES: a self-close is
     # an unreviewed merge. Any non-lead role, so an unknown one fails safe. It bounds
     # the /story-close path, NOT a teammate who types XP_ROLE=lead.
     role = os.environ.get("XP_ROLE", "lead")

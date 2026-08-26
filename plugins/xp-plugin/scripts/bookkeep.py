@@ -15,6 +15,7 @@ from contextlib import suppress
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
+import review
 from env import refuse_direct_invocation
 from work import card_title, data_root
 
@@ -29,23 +30,20 @@ def git(*args: str, check: bool = False) -> subprocess.CompletedProcess:
 
 def delete_story_markers(story_id: str) -> None:
     """Clear the story's test-status markers rather than writing a green into them:
-    a green close.py never measured is a forged measurement (constraints #6). The
+    a green close.py never measured is forged telemetry, never a record. The
     [done] flip releases the Stop gate; this only stops dead files accumulating."""
     for path in (data_root() / "markers").glob(f"*.{story_id}.test-status"):
         path.unlink(missing_ok=True)
 
 
 def render_merge_body(rounds: list[dict]) -> str:
-    """Every round, labelled by its TRUE round number.
-
-    Index IS the round: a round is recorded only with a valid report, so there
-    are no gaps to renumber over.
-    """
+    """Every recorded round, labelled by its true gapless list index."""
     out = []
     for i, r in enumerate(rounds, 1):
         counts = " · ".join(f"{len(r[k])} {k}" for k in ("fixed", "blocking", "noted"))
         out.append(f"Review round {i}: {counts}")
-        out += [f"  {k}: {item}" for k in ("fixed", "blocking", "noted") for item in r[k]]
+        for k in ("fixed", "blocking", "noted"):
+            out += [f"  {k}: {item}" for item in review.cap_display(r[k], data_root() / "reports")]
     return "\n".join(out)
 
 
@@ -116,7 +114,7 @@ def render_noted(rounds: list[dict]) -> str:
 
 def log_close(story_id: str, card: str, rounds: list[dict], merge_sha: str) -> None:
     """APPEND one line per close. An overwritten file would be the project-global
-    mutable marker constraints #10 forbids; a log survives two closes in one
+    mutable marker the marker-scoping rule forbids; a log survives two closes in one
     sprint and the retro gets the history."""
     from datetime import datetime, timezone
 

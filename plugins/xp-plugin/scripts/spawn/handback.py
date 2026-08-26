@@ -1,7 +1,7 @@
 """What the teammate handed back: the tree's state, and whether it is a story.
 
 Extracted from spawn.py when the codex-posture patch took that file to 503 of the
-500-line cap — over-cap means extract, not scroll (constraint 8). These two are
+500-line cap — over-cap means extract, not scroll. These two are
 one thing: the second is the only caller of the first that judges, and both
 measure the worktree AS HANDED OVER rather than as it stands.
 """

@@ -89,7 +89,7 @@ def collision(ref: str, files: list[str]) -> str:
 def run_one(label: str, cmd: str, where: str = "") -> str:
     """One gate command's verdict, red distinguished from unrunnable. The shell's
     own 127 is the difference between the lead's next action being a code fix and
-    being a harness fix; the two are the same nonzero otherwise (constraint 15)."""
+    being a harness fix; absent and unreadable are the same nonzero otherwise."""
     rc = subprocess.run(cmd, shell=True).returncode
     if rc == 127:
         return (

@@ -7,7 +7,7 @@ description: >-
 # Sprint Close
 
 `close.py sprint <id>` runs the mechanical steps. Two of them are yours and a
-script cannot absorb them (constraint 7).
+script cannot absorb them (judgment belongs only where an LLM is present).
 
 0. **Open the sprint first** (once, before its stories): `git switch -c sprint-00N`
    and set `sprint_branch: sprint-00N` in `.xp/config.yml`. Step 5 retires the key,
@@ -18,7 +18,7 @@ script cannot absorb them (constraint 7).
 2. **Note triage, then the retro — YOURS, and they come FIRST.**
    Each note is promoted to constraints.md/system.md via the retro diff, or
    archived. A learning that changes nothing executable is not recorded, and every
-   promotion must displace something (constraint 1). Then write the retro
+   promotion must displace something (every new rule displaces one). Then write the retro
    narrative and REPLACE the digest: the pipeline emits facts, the
    narrative is the part with judgment in it.
    BEFORE the review, not after. Land refuses when code moved since the review,
