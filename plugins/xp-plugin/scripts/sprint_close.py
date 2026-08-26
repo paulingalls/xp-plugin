@@ -110,7 +110,7 @@ def _sprint_records(root: Path, since_epoch: int) -> tuple[str, str]:
 
 
 def build_sprint_bundle(
-    sprint_id: str, cards: str, base: str, report: Path, charter: str, extra: list
+    sprint_id: str, cards: str, base: str, report: Path, charter: str, extra: list, diff_base=""
 ) -> str:
     """Built once per LEG, at launch: the closing pass must diff the tree the
     fixer left, and a bundle composed up front would hand it the pre-fix one."""
@@ -124,7 +124,7 @@ def build_sprint_bundle(
         ("Your report", f"REPORT_PATH: {report}"),
         *extra,
         (f"The stories in sprint {sprint_id}", cards),
-        ("Cumulative sprint diff", git("diff", f"{base}..HEAD").stdout),
+        ("Cumulative sprint diff", git("diff", f"{diff_base or base}..HEAD").stdout),
         ("Resolutions filed during the sprint", resolutions),
         ("work.md entries filed during the sprint", work_md),
         ("PROCESS", _read(str(PLUGIN_ROOT / "PROCESS.md"))),
@@ -136,9 +136,7 @@ def build_sprint_bundle(
 
 
 def cmd_review(sprint_id: str, dry_run: bool) -> int:
-    """One review, four stages: N blind finders, batched verifiers, one fixer,
-    one blockers-only closing pass. The recorded round is the fixer's report
-    plus whatever the closing pass still blocks on."""
+    """Run the full first review or a delta-scoped confirming round."""
     import review
     from bookkeep import render_sprint_prior
 
@@ -168,11 +166,29 @@ def cmd_review(sprint_id: str, dry_run: bool) -> int:
     marker = sprint_marker(sprint_id)
     state = json.loads(marker.read_text()) if marker.exists() else {}
     round_n = len(state.get("rounds", [])) + 1
-    # BOTH before the launch: recording a post-run head would make anything the
-    # stages moved count as reviewed by the stage that moved it.
     head = git("rev-parse", "HEAD").stdout.strip()
     base = git("merge-base", f"refs/heads/{trunk}", "HEAD").stdout.strip()
     digest_before = review.marker_digest(marker)
+    scoped, unnamed, diff_base = found, [], base
+    if round_n > 1:
+        diff_base = state["shown_sha"]
+        changed = git("diff", "--name-only", "--no-renames", f"{diff_base}..").stdout.splitlines()
+        scoped, unnamed = [], set(changed)
+        for slug, prose in found:
+            path = review.sprint_report_path(sprint_id, f"find-{slug}", 1)
+            absent = not path.exists()
+            named, err = review.named_paths(path, changed)
+            if err:
+                return fail(err)
+            if named:
+                scoped.append((slug, prose))
+                why = "round-1 report absent; " if absent else ""
+                print(f"re-run {slug}: {why}" + ", ".join(sorted(named)))
+            else:
+                print(f"skip {slug}: no round-1 finding named a changed path")
+            unnamed -= named
+        if unnamed:
+            print("closer covers unnamed delta paths: " + ", ".join(sorted(unnamed)))
 
     def leg(stage: str, key: str, extra: list) -> tuple[dict, str]:
         path = review.sprint_report_path(sprint_id, key, round_n)
@@ -181,7 +197,9 @@ def cmd_review(sprint_id: str, dry_run: bool) -> int:
             review.patch_path(path).unlink(missing_ok=True)
         if stage == "fixer":
             extra = [("Your patch", f"PATCH_PATH: {review.patch_path(path)}"), *extra]
-        bundle = build_sprint_bundle(sprint_id, cards, base, path, charters[stage], extra)
+        bundle = build_sprint_bundle(
+            sprint_id, cards, base, path, charters[stage], extra, diff_base
+        )
         stage_head = git("rev-parse", "HEAD").stdout.strip()
         result, err = review.run(bundle, Path.cwd(), dry_run, name=f"sprint {key}")
         if dry_run or err:  # an EMPTY report, not a shapeless one: a preview walks
@@ -197,31 +215,39 @@ def cmd_review(sprint_id: str, dry_run: bool) -> int:
 
     prior = [("Findings from earlier rounds", render_sprint_prior(state.get("rounds", [])))]
     candidates = []
-    for slug, prose in found:
+    for slug, prose in scoped:
         report, err = leg("finder", f"find-{slug}", [("Your angle", prose), *prior])
         if err:
             return fail(err)
         candidates += report["blocking"]
     if dry_run:
-        print("(then: batched verification, the fixer, and the blockers-only closing pass)")
+        tail = "the closer" if round_n > 1 else "verifiers, optional fixer, and closer"
+        print(f"(then: {tail})")
         return 0
 
-    survivors = []
-    for n, batch in enumerate(stages.batches(candidates, cap), 1):
-        judged = [("The candidates you are judging", "\n".join(f"- {c}" for c in batch))]
-        report, err = leg("verifier", f"verify-{n}", judged)
-        if err:
-            return fail(err)
-        survivors += report["blocking"]
-    print(f"{len(candidates)} candidates, {len(survivors)} survived refutation")
-
     fixed = {"fixed": [], "blocking": [], "noted": []}
-    if survivors:
-        told = [("The findings you must fix", "\n".join(f"- {s}" for s in survivors))]
-        fixed, err = leg("fixer", "fix", told)
-        if err:
-            return fail(err)
-    closing, err = leg("closer", "close", [("What the fixer reported", json.dumps(fixed))])
+    if round_n == 1:
+        survivors = []
+        for n, batch in enumerate(stages.batches(candidates, cap), 1):
+            judged = [("The candidates you are judging", "\n".join(f"- {c}" for c in batch))]
+            report, err = leg("verifier", f"verify-{n}", judged)
+            if err:
+                return fail(err)
+            survivors += report["blocking"]
+        print(f"{len(candidates)} candidates, {len(survivors)} survived refutation")
+        if survivors:
+            told = [("The findings you must fix", "\n".join(f"- {s}" for s in survivors))]
+            fixed, err = leg("fixer", "fix", told)
+            if err:
+                return fail(err)
+        closing_extra = [("What the fixer reported", json.dumps(fixed))]
+    else:
+        closing_extra = [
+            ("Confirmation candidates", "\n".join(f"- {c}" for c in candidates) or "none"),
+            ("Delta paths only you cover", "\n".join(sorted(unnamed)) or "none"),
+            *prior,
+        ]
+    closing, err = leg("closer", "close", closing_extra)
     if err:
         return fail(err)
 
@@ -232,8 +258,6 @@ def cmd_review(sprint_id: str, dry_run: bool) -> int:
         return fail(
             review.abort_text(head, f"sprint {sprint_id}'s cards changed during the review")
         )
-    # Refuted candidates are recorded nowhere: the filter is the point, and a
-    # report that carries what the verifiers killed is the long one Paul cut.
     round_ = {
         "fixed": fixed["fixed"],
         "blocking": fixed["blocking"] + closing["blocking"],
