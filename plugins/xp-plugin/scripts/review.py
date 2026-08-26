@@ -90,17 +90,14 @@ def _cap(items: list, path: Path) -> list:
     return kept
 
 
-def read_report(path: Path) -> tuple[dict, str]:
-    """(report, error). This fixes PARSING, not forgery — a reviewer under bypass
-    writes any path it likes.
-    """
+def _report_data(path: Path) -> tuple[dict, str]:
     if not path.exists():
-        return {}, (
-            f"the reviewer wrote no report at {path} — its findings are above and"
-            " are all that survives. No report, no round"
-        )
+        message = f"the reviewer wrote no report at {path} — its findings are above"
+        return {}, message + " and are all that survives. No report, no round"
     try:
         data = json.loads(path.read_text())
+    except OSError as e:
+        return {}, f"could not read reviewer report {path} ({e})"
     except ValueError as e:
         return {}, f"the reviewer's report is not JSON ({e})"
     if not isinstance(data, dict):
@@ -108,7 +105,25 @@ def read_report(path: Path) -> tuple[dict, str]:
     missing = [k for k in REPORT_KEYS if not isinstance(data.get(k), list)]
     if missing:
         return {}, f"the reviewer's report is missing list keys: {', '.join(missing)}"
+    return data, ""
+
+
+def read_report(path: Path) -> tuple[dict, str]:
+    """Parse and cap a report; a reviewer under bypass can still forge its path."""
+    data, error = _report_data(path)
+    if error:
+        return {}, error
     return {k: _cap([str(i) for i in data[k]], path) for k in REPORT_KEYS}, ""
+
+
+def named_paths(path: Path, candidates: list[str]) -> tuple[set[str], str]:
+    if not path.exists():
+        return set(candidates), ""
+    data, error = _report_data(path)
+    findings = "\n".join(str(item) for item in data.get("blocking", []))
+    return {
+        p for p in candidates if re.search(rf"(?<![\w./-]){re.escape(p)}(?![\w./-])", findings)
+    }, error
 
 
 def launch_marker(story_id: str) -> Path:
