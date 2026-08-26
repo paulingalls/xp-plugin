@@ -4,6 +4,18 @@ Release notes started at v0.6.0; earlier entries are summarized from their
 tag and merge messages. Full detail lives in the merge history and the
 per-sprint review reports.
 
+## v0.7.6 — card review and plan review are two things with two owners
+
+- The lead's review of the sprint slate is the **card review**; `spawn.py ready`
+  is the lead's per-card commitment, not a review. The executor's review of its
+  own implementation plan keeps the name **plan review**.
+- PROCESS.md, TEAMMATE.md and CLAUDE.md now say the lead never writes an
+  implementation plan. One word had covered both artifacts, and the lead read it
+  as his — measured twice in one week.
+- No script, CLI verb or gate changed. `plan_review.py` still serves both.
+- AUDIT.md §9 records the field walk: a consuming project ran a full sprint under
+  released versions, closing Milestone 3.
+
 ## v0.7.5 — one batch verdict, and no silent internal entry points
 
 - Sprint close runs each distinct falsifier once and maps a red verdict back to
