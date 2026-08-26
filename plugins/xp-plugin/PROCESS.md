@@ -7,12 +7,12 @@ One page. The values (VALUES.md) cover what this page doesn't.
 **`/xp-setup`**, **`/story-close`** and **`/sprint-close`** carry judgment scripts
 cannot. Run the skill when one exists; the script owns only its mechanics.
 
-1. **Plan** — any multi-file change.
-   - Draft it, then run the **plan-reviewer**. It edits addressable problems into
-     the plan with reasons and stops on human-only questions.
-   - Re-read it, then `spawn.py ready <story-id>` mints the card digest. Later
-     edits refuse with a diff: the bracket is display; the digest is the
-     credential — it binds the text you reviewed, it cannot know you read it.
+1. **Card review** — the lead reviews the sprint slate at sprint open.
+   - `spawn.py ready <story-id>` is the lead committing to this card now, not a
+     review. It mints the digest binding the text reviewed; later edits refuse.
+   - **Plan review** — executor, over its implementation plan. The lead never
+     writes one. The plan-reviewer edits problems with reasons and stops on
+     human-only questions; executor re-reads it before code.
 2. **Story** — red → green → refactor, small commits.
    - Done = ACs verified against the running system at its surface (the story
      loop), not "tests green" (the commit loop). Two loops, two clocks.
