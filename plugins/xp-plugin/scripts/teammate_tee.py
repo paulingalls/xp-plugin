@@ -14,6 +14,8 @@ from collections.abc import Callable, Iterable
 from datetime import datetime, timezone
 from pathlib import Path
 
+from env import refuse_direct_invocation
+
 LogWrite = Callable[[str], None]
 OutWrite = Callable[[str], None]
 
@@ -326,3 +328,7 @@ def run_teammate(
     if proc.returncode == 0 and harness == "claude" and proc.stdout:
         out(closing_line(story_id, json.loads(proc.stdout)))
     return proc.returncode
+
+
+if __name__ == "__main__":
+    refuse_direct_invocation("spawn.py <story-id>")

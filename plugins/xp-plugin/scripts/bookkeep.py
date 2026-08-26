@@ -15,6 +15,7 @@ from contextlib import suppress
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
+from env import refuse_direct_invocation
 from work import card_title, data_root
 
 # templates/config.yml ships this number commented out, and test_dogfood pins the two
@@ -300,3 +301,7 @@ def remove_story_worktree(tree: str, timeout_value: str = "") -> list[str]:
         suffix = " — worktree removed; inspect external state manually" if removed else ""
         failed.insert(0, issue + suffix)
     return failed
+
+
+if __name__ == "__main__":
+    refuse_direct_invocation("close.py <mode> <id> <action>")

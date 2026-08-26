@@ -1,0 +1,169 @@
+"""The sprint-close falsifier batch executes and reports by distinct command."""
+
+import inspect
+import shlex
+from pathlib import Path
+
+import work as work_module
+from sprint_helpers import make_repo, snapshot, sprint, work
+
+
+class TestFalsifierBatch:
+    def test_a_red_falsifier_aborts_and_is_refiled_as_a_bug(self, tmp_path):
+        """Constructed, never observed: the fixture files a debt whose falsifier is
+        green now and makes it red before the batch runs."""
+        repo, env, _g = make_repo(tmp_path)
+        flag = tmp_path / "flag"
+        flag.write_text("ok")
+        work(
+            repo,
+            env,
+            "debt",
+            "--claim",
+            "latent",
+            "--falsifier",
+            f"test -f {flag}",
+            "--files",
+            "a.py",
+        )
+        flag.unlink()
+        root = tmp_path / "data"
+        before = snapshot(root)
+        r = sprint(repo, env, "start")
+        assert r.returncode == 2, r.stdout
+        assert "latent" in r.stderr or "latent" in r.stdout
+        after = snapshot(root)
+        assert "## bug " in after[Path("work.md")].decode()
+        # the append branch of the read-only property, which the green path
+        # cannot reach: this is the only leg that writes anything at all
+        assert after[Path("work.md")].startswith(before[Path("work.md")]), "work.md was rewritten"
+        assert {k: v for k, v in after.items() if k != Path("work.md")} == {
+            k: v for k, v in before.items() if k != Path("work.md")
+        }
+
+    def test_re_running_against_an_unfixed_red_files_one_bug_not_one_per_run(self, tmp_path):
+        """The red path is the one that actually gets re-run — you fix, then run
+        again. Each run appended a fresh duplicate, and every duplicate is itself
+        a live record needing its own resolution, so the debris self-perpetuates."""
+        repo, env, _g = make_repo(tmp_path)
+        flag = tmp_path / "flag"
+        flag.write_text("ok")
+        work(
+            repo,
+            env,
+            "debt",
+            "--claim",
+            "latent",
+            "--falsifier",
+            f"test -f {flag}",
+            "--files",
+            "a.py",
+        )
+        flag.unlink()
+        for _ in range(3):
+            assert sprint(repo, env, "start").returncode == 2
+        filed = (tmp_path / "data" / "work.md").read_text().count("## bug ")
+        assert filed == 1, f"three runs filed {filed} bugs for one unfixed red"
+
+    def test_a_resolved_record_runs_the_RESOLUTION_falsifier_not_nothing(self, tmp_path):
+        """A resolution that was wrong must red later and reopen the record."""
+        repo, env, _g = make_repo(tmp_path)
+        flag = tmp_path / "fixed"
+        flag.write_text("ok")
+        work(repo, env, "bug", "--claim", "broken", "--falsifier", "false", "--files", "a.py")
+        ref = work(repo, env, "list").stdout.split()[0]
+        assert (
+            work(repo, env, "resolve", "--ref", ref, "--falsifier", f"test -f {flag}").returncode
+            == 0
+        )
+        assert sprint(repo, env, "start").returncode == 0, "a green resolution should pass"
+        flag.unlink()  # the fix regressed
+        r = sprint(repo, env, "start")
+        assert r.returncode == 2, "a resolved record was skipped instead of re-checked"
+
+    def test_only_a_resolved_record_can_substitute_a_falsifier(self, tmp_path):
+        """Keyed off the heading `resolve` writes, never off a `Resolves:` line
+        anywhere in a block: a record that merely REFERENCES an id would
+        substitute its own green falsifier, silencing a live bug with the
+        green-check that resolve exists to enforce never having run."""
+        repo, env, _g = make_repo(tmp_path)
+        work(repo, env, "bug", "--claim", "live", "--falsifier", "false", "--files", "a.py")
+        victim = work(repo, env, "list").stdout.split()[0]
+        work(
+            repo,
+            env,
+            "debt",
+            "--claim",
+            f"partial cleanup\nResolves: {victim}",
+            "--falsifier",
+            "true",
+            "--files",
+            "a.py",
+        )
+        r = sprint(repo, env, "start")
+        assert r.returncode == 2, "a record that only referenced an id silenced a live bug"
+
+
+def file_debt(repo, env, claim, command):
+    result = work(
+        repo,
+        env,
+        "debt",
+        "--claim",
+        claim,
+        "--falsifier",
+        command,
+        "--files",
+        "a.py",
+    )
+    assert result.returncode == 0, result.stderr
+    return result.stdout.strip()
+
+
+def test_a_shared_falsifier_executes_once(tmp_path):
+    repo, env, _g = make_repo(tmp_path)
+    counter = tmp_path / "shared"
+    command = f"printf x >> {shlex.quote(str(counter))}"
+    file_debt(repo, env, "first citation", command)
+    file_debt(repo, env, "second citation", command)
+    before = counter.read_text()
+    assert sprint(repo, env, "start").returncode == 0
+    assert counter.read_text() == before + "x"
+
+
+def test_different_falsifiers_both_execute(tmp_path):
+    repo, env, _g = make_repo(tmp_path)
+    counters = [tmp_path / "first", tmp_path / "second"]
+    for n, counter in enumerate(counters):
+        file_debt(repo, env, f"citation {n}", f"printf x >> {shlex.quote(str(counter))}")
+    assert sprint(repo, env, "start").returncode == 0
+    assert [counter.read_text() for counter in counters] == ["xx", "xx"]
+
+
+def shared_red_batch(tmp_path):
+    repo, env, _g = make_repo(tmp_path)
+    flag = tmp_path / "shared-red"
+    flag.write_text("ok")
+    command = f"test -f {shlex.quote(str(flag))}"
+    ids = [file_debt(repo, env, claim, command) for claim in ("first", "second")]
+    flag.unlink()
+    return ids, sprint(repo, env, "start"), tmp_path / "data" / "work.md"
+
+
+def test_a_shared_red_falsifier_refusal_names_every_record(tmp_path):
+    ids, result, _work_md = shared_red_batch(tmp_path)
+    assert result.returncode == 2
+    assert all(eid in result.stderr for eid in ids)
+
+
+def test_a_shared_red_falsifier_bug_claim_names_every_record(tmp_path):
+    ids, result, work_md = shared_red_batch(tmp_path)
+    assert result.returncode == 2
+    bug = work_md.read_text().rsplit("## bug ", 1)[1]
+    claims = [line for line in bug.splitlines() if line.startswith("Claim: ")]
+    assert len(claims) == 1
+    assert all(eid in claims[0] for eid in ids)
+
+
+def test_falsifier_execution_has_no_per_record_context():
+    assert list(inspect.signature(work_module.falsifier_is_green).parameters) == ["command"]

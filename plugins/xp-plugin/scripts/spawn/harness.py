@@ -10,6 +10,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
+from env import refuse_direct_invocation
 from work import data_root
 
 PLUGIN_ROOT = Path(__file__).parent.parent.parent
@@ -102,3 +103,7 @@ def agent_argv(
     if harness == "codex":
         return codex_argv(model, effort, sandbox)
     return claude_argv(model, effort, output_format)
+
+
+if __name__ == "__main__":
+    refuse_direct_invocation("spawn.py <story-id>")

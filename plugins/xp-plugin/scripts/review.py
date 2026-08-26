@@ -10,6 +10,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 # Module level: importers must reach env.py's 3.11 floor before the `Path | None` below
+from env import refuse_direct_invocation
 from work import data_root
 
 PLUGIN_ROOT = Path(__file__).parent.parent
@@ -352,3 +353,7 @@ def result_text(harness: str, proc: subprocess.CompletedProcess) -> tuple[str, s
         return json.loads(proc.stdout)["result"], ""
     except (ValueError, KeyError, TypeError):
         return "", f"reviewer output was not the expected JSON: {proc.stdout.strip()[:300]}"
+
+
+if __name__ == "__main__":
+    refuse_direct_invocation("close.py <mode> <id> review")
