@@ -208,6 +208,13 @@ def reviewer_strays(start: str, end: str) -> list[str]:
     ]
 
 
+ANSI = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
+
+
+def _plain(text: str) -> str:
+    return ANSI.sub("", text).strip()
+
+
 def apply_patch(report: Path, card: str) -> str:
     from close import git
 
@@ -238,7 +245,20 @@ def apply_patch(report: Path, card: str) -> str:
         ["git", "commit", "-qm", "reviewer patch"], capture_output=True, text=True, env=env
     )
     if committed.returncode:
-        return f"the reviewer patch did not commit: {committed.stderr.strip()}"
+        # The commit gate is the caller here, so its output is a hook transcript:
+        # ANSI frames and colour put the one line that matters screens deep inside
+        # a box (field-reported, Legacy 0.7.4). Strip and tail to the cause.
+        lines = (_plain(committed.stderr) or _plain(committed.stdout)).splitlines()
+        # abort_text appends `git reset --hard` right under this, which discards the
+        # staged patch this text just told the human to commit. Naming the patch file
+        # is what keeps the two from reading as opposite instructions.
+        return (
+            "the reviewer patch did not commit — the commit gate refused it. The"
+            " fixer is gone, so this is yours: fix what the gate names, commit the"
+            f" staged tree yourself, then re-run — the patch is also at {path}, so"
+            f" discarding the staged tree loses nothing. The gate's last"
+            f" {min(12, len(lines))} of {len(lines)} lines:\n  " + "\n  ".join(lines[-12:])
+        )
     return ""
 
 
