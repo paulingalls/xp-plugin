@@ -207,6 +207,60 @@ def _preflight(story_id: str, action: str, free: bool = False) -> tuple[str, str
     return card, trunk, ""
 
 
+def verify_on_reviewed_tree(story_id: str, card: str) -> str:
+    """Why the tree this round would certify fails its own Verify, or "".
+
+    Otherwise `blocking: []` is the MODEL's word that Verify ran, and a reviewer
+    whose sandbox could not reach a leg reports green in good faith (note
+    1b45d1c7). land keeps its own call: that one protects the MERGE, this the
+    DIFF. A card-less free diff declares no Verify, so there is none to run.
+    """
+    if not card:
+        return ""
+    if refusal := verify_refusal(story_id, card):
+        return refusal.removeprefix("refused: ")
+    sys.path.insert(0, str(Path(__file__).parent / "close"))
+    import overlap
+
+    red = overlap.run_one("Verify", verify_commands(card), " on the reviewed tree")
+    return red.removeprefix("refused: ")
+
+
+def _record_round(story_id: str, card: str, path: Path, marker: Path, state: dict, at: dict) -> int:
+    """The guards and the bookkeeping both review and salvage run. `at` is what
+    the leg was launched AGAINST, which salvage reads off the launch marker.
+    Routing salvage through here is what closes the timeout door — it is the one
+    path by which a reviewer that committed could reach a recorded round."""
+    import review
+
+    head = at["head"]
+    motion = review.check_reviewer_motion(
+        head, marker, at["digest"], card, story_id, at.get("moved", "")
+    )
+    if motion:
+        return fail(review.stamp(path, motion))
+    report, err = review.read_report(path)
+    if err:
+        return fail(review.stamp(path, review.abort_text(head, err)))
+    if err := review.apply_patch(path, card):
+        return fail(review.stamp(path, review.abort_text(head, err)))
+    if err := verify_on_reviewed_tree(story_id, card):
+        return fail(review.stamp(path, review.abort_text(head, err)))
+    review.stamp(path, "")  # a salvaged round clears the kill's own refusal
+    state.setdefault("rounds", []).append(report)
+    state["reviewed_head"] = head  # the tree the REVIEWER was shown
+    diff = review.write_reviewer_diff(path, head)
+    if diff:
+        print(f"the reviewer changed the tree. Its commits and full diff: {diff}")
+    # AFTER the leg: the reviewer's own fixes are part of what the lead is shown.
+    state["shown_sha"] = git("rev-parse", "HEAD").stdout.strip()
+    state["review_base"] = at["base"]
+    state["branch"] = git("rev-parse", "--abbrev-ref", "HEAD").stdout.strip()
+    marker.write_text(json.dumps(state))
+    review.launch_marker(story_id).unlink(missing_ok=True)
+    return 0
+
+
 def cmd_review(story_id: str, dry_run: bool = False, free: bool = False) -> int:
     import review
 
@@ -221,7 +275,7 @@ def cmd_review(story_id: str, dry_run: bool = False, free: bool = False) -> int:
         review.patch_path(path).unlink(missing_ok=True)
     head = git("rev-parse", "HEAD").stdout.strip()
     base = git("merge-base", f"refs/heads/{trunk}", "HEAD").stdout.strip()
-    digest_before = review.marker_digest(marker)
+    at = {"head": head, "digest": review.marker_digest(marker), "base": base, "card": card}
     prior = render_prior_rounds(state.get("rounds", []))
     notices = [review.plan_review_notice(story_id)]
     if free and not card:
@@ -235,33 +289,48 @@ def cmd_review(story_id: str, dry_run: bool = False, free: bool = False) -> int:
     if notice:
         print("warning: " + notice, file=sys.stderr)
     bundle = build_bundle(card, base, path, prior, notice)
+    if not dry_run:
+        review.launch_marker(story_id).write_text(json.dumps(at))
     result, err = review.run(bundle, Path.cwd(), dry_run, card=card)
     if dry_run:
         return 0
     if err:  # crash, timeout, absent binary — it may still have committed first
-        return fail(review.abort_text(head, err))
+        return fail(review.stamp(path, review.abort_text(head, err)))
     # BEFORE any refusal below: a report the pipeline rejects still cost a full
     # review, and its findings exist nowhere else.
     print(result)
-    motion = review.check_reviewer_motion(head, marker, digest_before, card, story_id)
-    if motion:
-        return fail(motion)
-    report, err = review.read_report(path)
+    return _record_round(story_id, card, path, marker, state, at)
+
+
+def cmd_salvage(story_id: str) -> int:
+    """Record the round a KILLED reviewer's own artifacts already earned — the
+    patch and report it wrote, never its commits: reviewers have been read-only
+    since v0.7.0, so salvaging commits names what our own guard refuses."""
+    import review
+
+    _card, _trunk, err = _preflight(story_id, "salvage")
     if err:
-        return fail(review.abort_text(head, err))
-    if err := review.apply_patch(path, card):
-        return fail(review.abort_text(head, err))
-    state.setdefault("rounds", []).append(report)
-    state["reviewed_head"] = head  # the tree the REVIEWER was shown
-    diff = review.write_reviewer_diff(path, head)
-    if diff:
-        print(f"the reviewer changed the tree. Its commits and full diff: {diff}")
-    # AFTER the leg: the reviewer's own fixes are part of what the lead is shown.
-    state["shown_sha"] = git("rev-parse", "HEAD").stdout.strip()
-    state["review_base"] = base
-    state["branch"] = git("rev-parse", "--abbrev-ref", "HEAD").stdout.strip()
-    marker.write_text(json.dumps(state))
-    return 0
+        return fail(err)
+    launch = review.launch_marker(story_id)
+    if not launch.exists():
+        return fail(
+            f"refused: no unrecorded review for {story_id} — salvage records what a"
+            " killed reviewer already wrote, and nothing was left behind. Run review"
+        )
+    try:
+        at = json.loads(launch.read_text())
+    except ValueError as e:
+        return fail(f"refused: {launch} is not readable ({e}) — delete it and review again")
+    at["moved"] = (
+        f"HEAD is no longer {at['head'][:8]}, the tree the killed review was launched"
+        " against. Either the reviewer committed, which no reviewer leg may do, or you"
+        " did since the kill — a reviewer runs with the git credentials stripped, so"
+        " authorship says YOU either way. Reset to that sha, or review again"
+    )
+    marker = marker_path(story_id)
+    state = json.loads(marker.read_text()) if marker.exists() else {}
+    path = review.report_path(story_id, len(state.get("rounds", [])) + 1)
+    return _record_round(story_id, at["card"], path, marker, state, at)
 
 
 def _read(path: str) -> str:
@@ -289,7 +358,7 @@ def main() -> int:
     f.add_argument("--dry-run", action="store_true")
     s = sub.add_parser("story")
     s.add_argument("story_id")
-    s.add_argument("action", choices=["review", "land"])
+    s.add_argument("action", choices=["review", "salvage", "land"])
     # DERIVED, not chosen: pr mode is refused whenever the integration target is not
     # the default branch, and `merge-mode` appeared in no shipped prose — so the
     # documented invocation was the one that refuses.
@@ -330,6 +399,8 @@ def main() -> int:
         return sprint_close.cmd_post_merge(a.sprint_id)
     if a.action == "review":
         return cmd_review(a.story_id, a.dry_run)
+    if a.action == "salvage":
+        return cmd_salvage(a.story_id)
     mode = a.merge_mode or ("local" if integration_target() != default_branch() else "pr")
     return cmd_land(a.story_id, mode, a.dry_run)
 
