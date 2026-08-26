@@ -335,3 +335,27 @@ def test_the_bound_does_not_wait_on_the_killed_agent_s_own_children(tmp_path, mo
     with pytest.raises(subprocess.TimeoutExpired):
         run_agent([str(script)], tmp_path, "", "reviewer", "claude", "story-042-review")
     assert time.monotonic() - started < 10, "the bound fired and the leg waited anyway"
+
+
+def test_a_leader_that_exits_leaving_a_child_on_the_pipe_still_ends_at_the_bound(
+    tmp_path, monkeypatch
+):
+    """kill() polled the LEADER and killed nothing when it had already exited —
+    but the drain is blocked on the stdout pipe a child it BACKGROUNDED still
+    holds, so the bound fired and bought nothing, which is the hang it exists to
+    end. The sibling case above keeps its leader alive (`wait`); this one is the
+    ordinary shape of an agent that leaves a process behind on its way out.
+    """
+    import time
+
+    from spawn import run_agent
+
+    monkeypatch.setenv("XP_DATA", str(tmp_path / "data"))
+    monkeypatch.setenv("XP_AGENT_TIMEOUT", "1")
+    script = tmp_path / "orphans.sh"
+    script.write_text('#!/bin/sh\nprintf \'{"type":"system"}\\n\'\nsleep 20 &\nexit 0\n')
+    script.chmod(0o755)
+    started = time.monotonic()
+    proc = run_agent([str(script)], tmp_path, "", "reviewer", "claude", "story-042-review")
+    assert time.monotonic() - started < 10, "the drain waited on the orphaned child"
+    assert proc.returncode != 0, "a run whose terminal result never arrived reported success"

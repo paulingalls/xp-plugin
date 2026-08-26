@@ -138,3 +138,23 @@ class TestConfirmingRoundScope:
         report.mkdir()
         result = sprint(repo, env, "review")
         assert result.returncode == 2 and "could not read reviewer report" in result.stderr
+
+    def test_a_finding_names_a_file_the_way_a_reader_writes_it(self, tmp_path):
+        """`close.py:12` and a path that ENDS A SENTENCE are how findings name
+        files; the match demanded the whole repo-relative path mid-sentence, so a
+        confirming round skipped the very finder whose round-1 finding named the
+        changed file — and handed it to the closer as if nobody had named it.
+        """
+        repo, env, g, split = self._round_one(tmp_path, "thing.py:12 drops the marker")
+        self._commit(repo, g, "pkg/thing.py")
+        staged_stub(tmp_path)
+        assert sprint(repo, env, "review").returncode == 0
+        assert stage_key(launches(tmp_path)[split:][0]["stdin"]) == "find-security"
+
+        ends = tmp_path / "ends"
+        ends.mkdir()
+        repo, env, g, split = self._round_one(ends, "the marker is silently lost in src.py.")
+        self._commit(repo, g)
+        staged_stub(ends)
+        assert sprint(repo, env, "review").returncode == 0
+        assert stage_key(launches(ends)[split:][0]["stdin"]) == "find-security"

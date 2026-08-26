@@ -10,6 +10,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
+sys.path.insert(0, str(Path(__file__).parent / "close"))
 from bookkeep import render_prior_rounds
 from work import (
     chdir_repo_root,
@@ -219,8 +220,7 @@ def verify_on_reviewed_tree(story_id: str, card: str) -> str:
         return ""
     if refusal := verify_refusal(story_id, card):
         return refusal.removeprefix("refused: ")
-    sys.path.insert(0, str(Path(__file__).parent / "close"))
-    import overlap
+    import overlap  # a cycle at module level: it imports close
 
     red = overlap.run_one("Verify", verify_commands(card), " on the reviewed tree")
     return red.removeprefix("refused: ")
@@ -249,12 +249,8 @@ def _record_round(story_id: str, card: str, path: Path, marker: Path, state: dic
     review.stamp(path, "")  # a salvaged round clears the kill's own refusal
     state.setdefault("rounds", []).append(report)
     state["reviewed_head"] = head  # the tree the REVIEWER was shown
-    diff = review.write_reviewer_diff(path, head)
-    if diff:
-        print(
-            f"the script-applied review fix changed the tree. Read its commit and full diff"
-            f" at {diff} before `close.py story {story_id} land`; landing accepts it."
-        )
+    if err := review.write_reviewer_diff(path, head, f"story {story_id}"):
+        return fail(review.stamp(path, err))
     # AFTER the leg: the reviewer's own fixes are part of what the lead is shown.
     state["shown_sha"] = git("rev-parse", "HEAD").stdout.strip()
     state["review_base"] = at["base"]
@@ -380,7 +376,6 @@ def main() -> int:
     if not chdir_repo_root():
         return fail("refused: not inside a git repository")
     if a.kind == "free":
-        sys.path.insert(0, str(Path(__file__).parent / "close"))
         import free
 
         if a.action == "start":

@@ -8,7 +8,15 @@ import json
 import pathlib
 
 from close import story_card
-from close_helpers import CLEAN, close, make_repo, ready_marker
+from close_helpers import (
+    CLEAN,
+    FIX_PATCH,
+    close,
+    make_repo,
+    marker_file,
+    ready_marker,
+    stub_reviewer,
+)
 
 
 class TestVerifyGate:
@@ -176,3 +184,29 @@ class TestTheRoundIsRecordedOnlyIfVerifyRan:
         landed = close(repo, env, "land")
         assert landed.returncode != 0, landed.stdout
         assert "Verify red" in landed.stderr, landed.stderr
+
+
+class TestTheRoundNeedsItsHandoffDiff:
+    """One rule, two implementations, and only story-047's sprint half was told.
+
+    The story leg calls write_reviewer_diff with no arm for a write that fails —
+    and the reviewer's fix is already COMMITTED by the time it runs, so the lead
+    is left holding reviewer commits nothing handed over, no round recording
+    them, and a next review that refuses on the HEAD this one moved.
+    """
+
+    def test_a_round_is_not_recorded_without_its_handoff_diff(self, tmp_path):
+        """Constructed the same way test_sprint_review.py asserts it of the sprint
+        leg: the handoff path is a DIRECTORY, so writing it raises."""
+        repo, env, g = make_repo(tmp_path)
+        before = g("rev-parse", "HEAD").stdout.strip()
+        stub_reviewer(tmp_path, patch=FIX_PATCH)
+        (pathlib.Path(env["XP_DATA"]) / "reports" / "story-042.round-1.diff").mkdir(parents=True)
+
+        r = close(repo, env, "review")
+        assert r.returncode == 2, r.stdout
+        assert "could not write reviewer handoff" in r.stderr, r.stderr
+        assert "close.py story story-042 review" in r.stderr, r.stderr
+        assert g("rev-parse", "HEAD").stdout.strip() == before, "the applied fix was not undone"
+        assert not marker_file(tmp_path).exists(), "a round was recorded without its handoff"
+        assert close(repo, env, "land").returncode != 0

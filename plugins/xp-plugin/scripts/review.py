@@ -116,14 +116,21 @@ def read_report(path: Path) -> tuple[dict, str]:
     return {k: _cap([str(i) for i in data[k]], path) for k in REPORT_KEYS}, ""
 
 
+def _spellings(p: str) -> set[str]:
+    """Every name that means p: the path, and each segment suffix that is not a
+    file of its own — `src.py` beside `nested/src.py` means the one at the root."""
+    cuts = p.split("/")
+    return {p, *(s for i in range(1, len(cuts)) if not Path(s := "/".join(cuts[i:])).exists())}
+
+
 def named_paths(path: Path, candidates: list[str]) -> tuple[set[str], str]:
     if not path.exists():
         return set(candidates), ""
     data, error = _report_data(path)
     findings = "\n".join(str(item) for item in data.get("blocking", []))
-    return {
-        p for p in candidates if re.search(rf"(?<![\w./-]){re.escape(p)}(?![\w./-])", findings)
-    }, error
+    # `close.py:249` is how a finding names a file; a trailing `.` is the sentence's
+    named = set(re.findall(r"(?<![\w./-])[\w-]+(?:[./][\w-]+)+", findings))
+    return {p for p in candidates if named & _spellings(p)}, error
 
 
 def launch_marker(story_id: str) -> Path:
@@ -360,17 +367,31 @@ def diff_path(report: Path) -> Path:
     return report.with_suffix(".diff")
 
 
-def write_reviewer_diff(report: Path, reviewed_head: str) -> Path | None:
-    """The reviewer's work, on disk beside its report: stdout is lossy and it was
-    the only place the assent artifact lived."""
+def write_reviewer_diff(report: Path, reviewed_head: str, noun: str) -> str:
+    """Hand the script-applied fix over on disk, or say why no round may be
+    recorded: stdout is lossy and this was the only place the assent artifact
+    lived. The tree has ALREADY moved here, so a write that fails rolls back
+    rather than leave the lead accepting commits nothing showed them, and
+    abort_text covers a rollback that itself fails. `noun` is the caller's
+    `story <id>` / `sprint <id>`: one rule, one implementation, two legs."""
     from close import git
 
     summary = reviewer_range(reviewed_head, git("rev-parse", "HEAD").stdout.strip())
     if not summary:
-        return None
+        return ""
     diff = diff_path(report)
-    diff.write_text(summary + "\n" + git("diff", f"{reviewed_head}..HEAD").stdout)
-    return diff
+    try:
+        diff.write_text(summary + "\n" + git("diff", f"{reviewed_head}..HEAD").stdout)
+    except OSError as exc:
+        why = f"could not write reviewer handoff at {diff} ({exc})"
+        if git("reset", "--hard", reviewed_head, check=False).returncode:
+            return abort_text(reviewed_head, why)
+        return f"refused: {why}; rolled the fix back — fix that path, then `close.py {noun} review`"
+    print(
+        f"the script-applied review fix changed the tree. Read its commit and full"
+        f" diff at {diff} before `close.py {noun} land`; landing accepts it."
+    )
+    return ""
 
 
 def run(

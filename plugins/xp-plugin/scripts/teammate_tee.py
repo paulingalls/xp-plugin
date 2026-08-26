@@ -146,9 +146,9 @@ def kill_group(proc: subprocess.Popen) -> None:
     out constantly and its children inherit the stdout pipe, so killing the leader
     alone leaves the drain reading a pipe nobody will close — the bound fires and
     buys nothing (bug c9d9a98f). bookkeep._teardown takes the same route."""
-    try:
-        os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
-    except OSError:  # already reaped, or it never got a session of its own
+    try:  # by pid, not getpgid: start_new_session makes them equal, and a leader
+        os.killpg(proc.pid, signal.SIGKILL)  # already reaped has no pgid to ask for
+    except OSError:  # already gone, or it never got a session of its own
         proc.kill()
 
 
@@ -253,11 +253,13 @@ def run_stream(
     timed_out, finished, last = threading.Event(), threading.Event(), [time.monotonic()]
 
     def kill() -> None:
-        # poll FIRST: a watchdog that fires as the last line lands would otherwise
-        # throw away a run that finished, and the review it carried with it.
+        # poll FIRST, but kill EITHER WAY: a watchdog that fires as the last line
+        # lands must not throw away a run that finished, and a LEADER that exited
+        # while a child it backgrounded still holds the stdout pipe is the drain
+        # this bound exists to end — the case where killing the leader is a no-op.
         if proc.poll() is None:
             timed_out.set()
-            kill_group(proc)
+        kill_group(proc)
 
     def watch() -> None:
         """`timeout` is the longest SILENCE allowed, not a wall clock: a hung
