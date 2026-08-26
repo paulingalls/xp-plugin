@@ -122,16 +122,20 @@ class TestCodexExecutor:
         r = spawn(repo, env, "story-042")
         assert r.returncode == 0, r.stderr
         argv = json.loads(rec.read_text())["argv"]
-        assert argv[argv.index("--sandbox") + 1] == posture
-        assert f"codex sandbox: {posture}" in r.stderr
-        if posture == "workspace-write":
-            expected = (
+        expected = {
+            "workspace-write": (
                 "codex sandbox: workspace-write — no outbound network — DNS, loopback,"
                 " docker and a nested harness are all denied, so TEAMMATE.md's mandatory"
                 " plan_review.py cannot reach an API from a teammate's shell;"
                 " danger-full-access lifts them"
-            )
-            assert expected in r.stderr.splitlines(), r.stderr
+            ),
+            "danger-full-access": (
+                "codex sandbox: danger-full-access — no OS confinement — network, docker"
+                " and nested codex all reachable"
+            ),
+        }
+        assert argv[argv.index("--sandbox") + 1] == posture
+        assert expected[posture] in r.stderr.splitlines(), r.stderr
 
     @pytest.mark.parametrize("posture", ["unknown-posture", "read-only"])
     def test_invalid_posture_refuses_before_cutting_a_worktree(self, tmp_path, posture):
