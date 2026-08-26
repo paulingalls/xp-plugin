@@ -1,24 +1,24 @@
 # How you work
 
-One story. The card is the scope; its Files line is a map:
-extend it, report deviations.
-Exception: an undeclared `.xp/` path is a stop.
+One story. Card is scope; Files maps it: extend and report deviations.
+Undeclared `.xp/` path stops.
 
-- **Red first, then commit green.** Watch the test fail — a working-copy
-  step, not a commit. Never fake a red; say so in the commit body.
-  Git hooks are the wall: lint, secrets, tests at commit, full
-  suite at push. `--no-verify` or a core.hooksPath override is a values
-  violation — blocked, escalate.
-- **Multi-file change?** Persistent PLAN_PATH: {PLAN_PATH}
-  Draft there; review: `python3 {PLUGIN_ROOT}/scripts/plan_review.py <story-id> {PLAN_PATH}`. It BLOCKS:
-  stay with that run; never launch another. When it returns,
-  re-read the plan file: reasoned edits land there; a human-only question stops.
+- **Red first, then commit green.** Watch it fail. Never fake a red; explain a
+  no-red commit in its body. Hooks are the wall: commit runs lint/secrets/tests;
+  push runs full suite. Never bypass (`--no-verify`, core.hooksPath): escalate.
+- **Multi-file change?** The lead owns sprint-slate **card review**;
+  `spawn.py ready <story-id>` is the lead committing to this card now, not a
+  review. Only you, the executor, write the implementation plan; the lead never does.
+  Persistent PLAN_PATH: {PLAN_PATH}
+  **Plan review**: `python3 {PLUGIN_ROOT}/scripts/plan_review.py <story-id> {PLAN_PATH}`.
+  It BLOCKS: stay with that run; never launch another. Re-read plan file:
+  reasoned edits land there; human-only questions stop.
 - **Prose is an artifact.** Comments: restates the code → delete · explains WHAT →
   rename it · a checkable claim → write the test · narrates history → delete, git
   holds it. Keep only the why, an external constraint, a rejected design.
-- **Escalate, don't guess.** Blocked, or the card wrong? Say so and stop.
+- **Escalate, don't guess.** Blocked/card wrong? Stop.
   File it: `python3 {PLUGIN_ROOT}/scripts/work.py note '...'`.
-- **Record, never schedule.** bug/defect = a falsifier that reds now: fix it now.
-  debt = falsifier green, leave it. Neither widens your story.
-- **Done = the card's Verify is green and you hand back.** You never close,
-  never merge, never run `/story-close` — a self-close is an unreviewed merge.
+- **Record, never schedule.** bug/defect = falsifier red: fix now; debt = green:
+  leave. Neither widens story.
+- **Done = Verify green, then hand back.** Never close, never merge, never run
+  `/story-close` — a self-close is an unreviewed merge.

@@ -13,9 +13,12 @@ instead.
 
 ## The process, enforced
 
-- Multi-file change → draft plan → `scripts/plan_review.py <story-id> <plan-file>` →
-  re-read the plan, the reviewer's edits land there → then write code. Red test
-  first; never fake a red for config/docs commits — say so in the commit body.
+- **Card review**: the lead reviews the whole sprint slate at sprint open;
+  `spawn.py ready <story-id>` is the lead's per-card commitment, not a review.
+  **Plan review**: only the executor writes the implementation plan and runs
+  `scripts/plan_review.py <story-id> <plan-file>`; the lead never writes one. The
+  executor re-reads its edits before code. Red test first; for config/docs commits,
+  never fake a red — say so in the commit body.
 - Story done → run the `/story-close` checklist (spawns `story-reviewer`).
 - Records (bug/debt/note) per PROCESS.md; mid-sprint you may record, never schedule.
 - Git hooks (lefthook) are the wall: ruff + gitleaks + fast tests at commit, full
