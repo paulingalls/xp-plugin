@@ -390,10 +390,16 @@ def cmd_spawn(
     before = {eid for eid, _ in entries(data_root())}
     rc = run_teammate(argv, tree, prompt, story_id, data_root(), harness)
     # A crashed teammate is the likeliest one to leave work uncommitted.
-    if err := unclean_teammate_result(tree, handed_over, story_id, resuming):
-        result = report_handoff(data_root(), story_id, before, err, rc)
+    err = unclean_teammate_result(tree, handed_over, story_id, resuming)
+    if err or rc:
+        why = err or f"the teammate left a clean commit in {tree} before its harness failed"
+        result = report_handoff(data_root(), story_id, before, why, rc)
         held.close()
         return result
+    print(
+        f"{story_id} produced commit {tree_state(tree)[0]} at {tree}. Read it, then run"
+        f" `close.py story {story_id} review`."
+    )
     marker_path(data_root(), story_id).unlink(missing_ok=True)
     held.close()
     return rc

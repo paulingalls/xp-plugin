@@ -95,6 +95,14 @@ def records(env):
 
 
 class TestDeliberateStop:
+    def test_a_dead_teammate_with_a_clean_commit_is_not_reported_as_finished(self, tmp_path):
+        repo, env, _g = make_repo(tmp_path)
+        stub_escalating(tmp_path, commit=True, note=False, crash=True)
+        result = spawn(repo, env, "story-042")
+        assert result.returncode == 3 and "DIED" in result.stderr, result.stderr
+        assert "produced commit" not in result.stdout
+        assert (tmp_path / "data" / "plans" / "story-042.handoff.json").exists()
+
     def test_a_teammate_that_filed_a_record_and_stopped_is_an_escalation(self, tmp_path):
         repo, env, _g = make_repo(tmp_path)
         stub_escalating(tmp_path)

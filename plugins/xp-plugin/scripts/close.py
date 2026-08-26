@@ -251,7 +251,10 @@ def _record_round(story_id: str, card: str, path: Path, marker: Path, state: dic
     state["reviewed_head"] = head  # the tree the REVIEWER was shown
     diff = review.write_reviewer_diff(path, head)
     if diff:
-        print(f"the reviewer changed the tree. Its commits and full diff: {diff}")
+        print(
+            f"the script-applied review fix changed the tree. Read its commit and full diff"
+            f" at {diff} before `close.py story {story_id} land`; landing accepts it."
+        )
     # AFTER the leg: the reviewer's own fixes are part of what the lead is shown.
     state["shown_sha"] = git("rev-parse", "HEAD").stdout.strip()
     state["review_base"] = at["base"]
