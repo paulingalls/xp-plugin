@@ -12,6 +12,7 @@ import sys
 from pathlib import Path
 
 import pytest
+import review
 from close_helpers import (
     CLOSE,
     CONFIG_PATCH,
@@ -24,6 +25,7 @@ from close_helpers import (
     marker_file,
     stub_reviewer,
 )
+from spawn_helpers import in_tree, spawn, stub_claude
 
 TODAY = datetime.date.today().isoformat()
 BRANCH = f"t/free-{TODAY}-fix-typo"
@@ -61,6 +63,20 @@ def add_free_card(env, verify="true"):
     )
 
 
+def test_reviewer_motion_is_only_dirty_state_added_during_the_round(tmp_path, monkeypatch):
+    repo, _env, g = make_repo(tmp_path)
+    monkeypatch.chdir(repo)
+    (repo / "lead-left.txt").write_text("mine\n")
+    before = g("status", "--porcelain").stdout.strip()
+    head = g("rev-parse", "HEAD").stdout.strip()
+    marker = tmp_path / "marker.json"
+    marker.write_text('{"rounds": []}')
+    args = (head, marker, review.marker_digest(marker))
+    assert review.check_reviewer_motion(*args, dirty_before=before) == ""
+    (repo / "reviewer-left.txt").write_text("theirs\n")
+    assert "dirty" in review.check_reviewer_motion(*args, dirty_before=before)
+
+
 class TestFreeStart:
     def test_start_cuts_the_dated_branch_off_the_default_branch(self, tmp_path):
         """AC 1: the branch is dated so two closes of the same slug never share
@@ -83,6 +99,41 @@ class TestFreeStart:
         repo, env, _g = free_repo(tmp_path)
         result = free(repo, env, "fix-typo", "start")
         assert result.returncode == 0 and "no card" in result.stdout
+
+    def test_a_carded_spawn_reuses_the_free_branch_and_its_commits(self, tmp_path):
+        repo, env, g = free_repo(tmp_path)
+        config = repo / ".xp" / "config.yml"
+        config.write_text(
+            config.read_text().replace("roles:\n", "roles:\n  executor: claude/sonnet/medium\n")
+        )
+        g("add", "-A")
+        g("commit", "-qm", "executor role")
+        add_free_card(env)
+        assert free(repo, env, "fix-typo", "start").returncode == 0
+        commit_on_free(repo, g)
+        assert spawn(repo, env, "ready", KEY).returncode == 0
+        (repo / "lead-left.txt").write_text("mine\n")
+        refused = spawn(repo, env, KEY)
+        assert refused.returncode == 2 and "commit your work" in refused.stderr
+        assert g("branch", "--show-current").stdout.strip() == BRANCH
+        (repo / "lead-left.txt").unlink()
+        stub_claude(tmp_path)
+        result = spawn(repo, env, KEY)
+        assert result.returncode == 0, result.stderr
+        tree = Path(env["XP_DATA"]) / "worktrees" / KEY
+        assert in_tree(tree, env, "branch", "--show-current") == BRANCH
+        assert (tree / "src" / "free.py").read_text() == "B = 1\n"
+
+    def test_a_carded_in_place_spawn_keeps_the_free_branch(self, tmp_path):
+        repo, env, g = free_repo(tmp_path)
+        add_free_card(env)
+        assert free(repo, env, "fix-typo", "start").returncode == 0
+        commit_on_free(repo, g)
+        assert spawn(repo, env, "ready", KEY).returncode == 0
+        result = spawn(repo, env, KEY, "--in-place")
+        assert result.returncode == 0, result.stderr
+        assert g("branch", "--show-current").stdout.strip() == BRANCH
+        assert (repo / "src" / "free.py").read_text() == "B = 1\n"
 
     def test_start_anywhere_but_the_default_branch_refuses_naming_it(self, tmp_path):
         """AC 2: a free branch cut off a story branch carries that story's

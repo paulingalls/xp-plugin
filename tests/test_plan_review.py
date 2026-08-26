@@ -165,6 +165,7 @@ class TestTheLaunch:
 
     def test_the_charter_the_plan_and_the_card_reach_the_reviewer(self, tmp_path):
         repo, env, draft = self.repo(tmp_path)
+        (repo / "lead-left.txt").write_text("mine\n")
         rec = stub_planner(tmp_path)
         r = plan_review(repo, env, "story-042", str(draft))
         assert r.returncode == 0, r.stderr

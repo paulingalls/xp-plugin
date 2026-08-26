@@ -78,6 +78,7 @@ def review_state(plan_file: Path, story_id: str) -> tuple[str, str, str]:
     — so a whole-file digest refuses a review that did nothing wrong, and blames
     the reviewer by name for it (bug 5a1abadb, which cost story-032 a full run).
     close.review.check_reviewer_motion already scopes its card check this way.
+    Porcelain is a baseline too: unchanged ambient dirt passes; only a delta refuses.
     """
 
     head, porcelain = tree_state(Path.cwd())

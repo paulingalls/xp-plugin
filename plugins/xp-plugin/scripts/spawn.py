@@ -3,6 +3,7 @@
 
 import argparse
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -253,6 +254,10 @@ def cmd_in_place(story_id: str, card: str) -> int:
             " uncommitted work rides onto the story branch unreviewed"
         )
     branch = story_branch(card, story_id)
+    if branch == f"{user_ns()}/{story_id}" and current_branch() == branch:
+        flip_to_in_progress(story_id)
+        print(f"{branch} already current — in place, nothing launched; you are the executor")
+        return 0
     if git("rev-parse", "--verify", "-q", f"refs/heads/{branch}", check=False).returncode == 0:
         return fail(f"refused: branch {branch} already exists")
     trunk = integration_target()
@@ -265,7 +270,13 @@ def cmd_in_place(story_id: str, card: str) -> int:
 
 
 def story_branch(card: str, story_id: str) -> str:
+    if re.fullmatch(r"free-\d{4}-\d\d-\d\d-.+", story_id):
+        return f"{user_ns()}/{story_id}"
     return f"{user_ns()}/{story_id}-{slugify(card_title(card))}"
+
+
+def current_branch() -> str:
+    return git("branch", "--show-current").stdout.strip()
 
 
 def cmd_spawn(
@@ -301,6 +312,7 @@ def cmd_spawn(
     branch = story_branch(card, story_id)
     tree = worktree_path(story_id)
     trunk = integration_target()
+    reuse = branch == f"{user_ns()}/{story_id}" and current_branch() == branch
     argv = agent_argv(harness, model, effort, "stream-json", sandbox)
     handoff = inheritance(data_root(), story_id)
     if resuming and tree.is_dir():
@@ -314,14 +326,10 @@ def cmd_spawn(
         print(" ".join(argv))
         print(prompt)
         return 0
-    # AFTER --dry-run, like review.run: inspecting the argv a harness would take is
-    # exactly what a lead does before installing it. BEFORE the worktree, though — a
-    # missing binary must not cost a tree and a branch to unwind.
+    # Check the harness before creating a tree that a failed launch would strand.
     if gone := missing_harness(harness):
         return fail("refused: " + gone)
-    # Parsed here and RUN below: reading the line needs no tree, and refusing
-    # after `worktree add` leaves a tree and a branch whose only effect is that
-    # the corrected retry refuses with "already spawned" instead.
+    # Parse bootstrap before creating a tree that a bad command would strand.
     system = Path(".xp/system.md")
     if not resuming and not system.parent.exists():
         # NOT a `mkdir -p .xp && cp`: that half-scaffold locks setup.py out for good.
@@ -343,10 +351,8 @@ def cmd_spawn(
             return fail(f"refused: {system} is not UTF-8 ({exc}) — rewrite it as UTF-8 text")
         if problem:
             return fail("refused: " + problem)
-    # The worktree is cut from a COMMIT, so anything uncommitted — including the
-    # scaffold itself on a fresh repo — is simply absent from the teammate's tree.
-    # Without this the first spawn after xp-setup tracebacks on a missing plan.md
-    # and leaves the worktree behind.
+    # A commit-cut worktree omits dirt, including a fresh scaffold, and then the
+    # teammate fails on the missing plan.
     if not resuming and (dirty := git("status", "--porcelain", check=False).stdout.strip()):
         return fail(
             "refused: commit your work before spawning — the teammate's worktree is"
@@ -365,10 +371,19 @@ def cmd_spawn(
     else:
         if tree.exists():
             return fail(f"refused: {tree} already exists — {story_id} is already spawned")
-        if git("rev-parse", "--verify", "-q", f"refs/heads/{branch}", check=False).returncode == 0:
+        exists = git("rev-parse", "--verify", "-q", f"refs/heads/{branch}", check=False)
+        if not reuse and exists.returncode == 0:
             return fail(f"refused: branch {branch} already exists")
         tree.parent.mkdir(parents=True, exist_ok=True)
-        added = git("worktree", "add", "-b", branch, str(tree), trunk, check=False)
+        if reuse:
+            moved = git("checkout", "-q", trunk, check=False)
+            if moved.returncode:
+                return fail(f"git checkout {trunk} failed: {moved.stderr.strip()}")
+            print(f"lead checkout moved to {trunk}")
+        args = ("worktree", "add", str(tree), branch)
+        if not reuse:
+            args = ("worktree", "add", "-b", branch, str(tree), trunk)
+        added = git(*args, check=False)
         if added.returncode != 0:
             return fail(f"git worktree add failed: {added.stderr.strip()}")
         if command:

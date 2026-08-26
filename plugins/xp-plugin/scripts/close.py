@@ -235,7 +235,7 @@ def _record_round(story_id: str, card: str, path: Path, marker: Path, state: dic
 
     head = at["head"]
     motion = review.check_reviewer_motion(
-        head, marker, at["digest"], card, story_id, at.get("moved", "")
+        head, marker, at["digest"], card, story_id, at.get("moved", ""), at.get("dirty")
     )
     if motion:
         return fail(review.stamp(path, motion))
@@ -275,6 +275,7 @@ def cmd_review(story_id: str, dry_run: bool = False, free: bool = False) -> int:
     head = git("rev-parse", "HEAD").stdout.strip()
     base = git("merge-base", f"refs/heads/{trunk}", "HEAD").stdout.strip()
     at = {"head": head, "digest": review.marker_digest(marker), "base": base, "card": card}
+    at["dirty"] = git("status", "--porcelain").stdout.strip()
     prior = render_prior_rounds(state.get("rounds", []))
     notices = [review.plan_review_notice(story_id)]
     if free and not card:

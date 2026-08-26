@@ -203,12 +203,15 @@ def cmd_review(sprint_id: str, dry_run: bool) -> int:
             sprint_id, cards, base, path, charters[stage], extra, diff_base
         )
         stage_head = git("rev-parse", "HEAD").stdout.strip()
+        dirty_before = git("status", "--porcelain").stdout.strip()
         result, err = review.run(bundle, Path.cwd(), dry_run, name=f"sprint {key}")
         if dry_run or err:  # an EMPTY report, not a shapeless one: a preview walks
             empty = {k: [] for k in review.REPORT_KEYS}
             return empty, review.abort_text(head, err) if err else ""
         print(result)  # before any refusal: the findings exist nowhere else yet
-        if motion := review.check_reviewer_motion(stage_head, marker, digest_before, cards):
+        if motion := review.check_reviewer_motion(
+            stage_head, marker, digest_before, cards, dirty_before=dirty_before
+        ):
             return {k: [] for k in review.REPORT_KEYS}, motion
         report, err = review.read_report(path)
         if not err and stage == "fixer":

@@ -200,22 +200,16 @@ def check_reviewer_motion(
     card: str = "",
     story_id: str = "",
     moved: str = "",
+    dirty_before: str | None = None,
 ) -> str:
-    """The complete refusal text, or "" if the reviewer behaved.
-
-    Neither the dirty-tree case nor `moved` says WHO — a guard that blames the
-    reviewer for the lead's edit is worse than no guard. Only the completed leg
-    can attribute HEAD motion, because there the lead is blocked inside the
-    reviewer subprocess; salvage runs after unbounded lead time, so it passes
-    its own text.
-    """
+    """The refusal; `dirty_before` attributes dirt, `moved` attributes later HEAD motion."""
     from close import git
 
     def refuse(why: str) -> str:
         return abort_text(reviewed_head, why)
 
     dirty = git("status", "--porcelain").stdout.strip()
-    if dirty:
+    if dirty_before is not None and dirty != dirty_before:
         return refuse(
             "the working tree is dirty at the end of the review; uncommitted:\n  " + dirty
         )
