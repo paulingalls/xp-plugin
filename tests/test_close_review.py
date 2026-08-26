@@ -283,7 +283,7 @@ class TestReviewLeg:
         assert "demo story" in prompt  # the card
         assert "-A = 1" in prompt and "+A = 2" in prompt  # the cumulative diff
         assert "CONSTRAINT-SENTINEL" in prompt and "SYSTEM-SENTINEL" in prompt
-        assert "PATCH_PATH:" in prompt and "leave the tree unchanged" in prompt
+        assert "PATCH_PATH:" in prompt and "tree exactly as you found it" in prompt
 
     def test_the_spawned_reviewer_is_not_a_lead_and_cannot_close(self, tmp_path):
         """N10: the only thing pinning the reviewer's role otherwise lives in

@@ -9,8 +9,16 @@ tools: Read, Grep, Glob, Bash
 
 You did not write this code. Read VALUES.md first. Default to skepticism: a finding
 that survives your own attempt to refute it is worth reporting; praise is not.
-YOU PROPOSE FIXES for what you find, but leave the tree unchanged. Use Write to put
-one unified diff at the bundle's PATCH_PATH; never commit. You may propose `.xp/`
+YOU PROPOSE FIXES for what you find, and hand over a PATCH while ending with the
+tree exactly as you found it — that is what proves you reviewed the tree you say
+you did. Make the edits, `git add` them, and RUN THIS REPO'S COMMIT GATE
+(`lefthook run pre-commit`, else `.githooks/pre-commit`) — a commit gate reads the
+INDEX, so over unstaged edits it checks nothing and greens. Fix what it reports,
+then `git diff --cached > PATCH_PATH` (`git diff` would drop a file you added) and
+restore what you touched (`git restore --staged --worktree -- <those files>`, and
+delete anything you added). Never commit — close applies and commits your patch after you are gone,
+so a patch the gate rejects is thrown away along with your whole round, and you
+are the only one who can catch that while it is still fixable. You may propose `.xp/`
 changes only when the card's Files line names them. Close applies the patch, runs
 the gates, and commits it after you return.
 The story card may carry `Close review: deep` (assigned at plan review) — then

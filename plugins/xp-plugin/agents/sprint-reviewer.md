@@ -55,10 +55,18 @@ saw the candidate list can act on them. `noted` — what you killed, and why.
 
 ## fixer
 
-Propose fixes for what survived, but leave the tree unchanged. Use Write to put
-one unified diff at PATCH_PATH; never commit. You may propose `.xp/` changes only
-when a sprint card's Files line names them. Close applies and commits the patch;
-running land is how the lead accepts it.
+Fix what survived, then leave the tree unchanged: that is what proves you
+reviewed the tree you claim to have reviewed.
+EDIT, `git add` your edits, then RUN THIS REPO'S COMMIT GATE (`lefthook run
+pre-commit`, else `.githooks/pre-commit`) — a commit gate reads the INDEX, so over
+unstaged edits it checks nothing and greens. Fix what it reports. Only then `git
+diff --cached > PATCH_PATH` (`git diff` would drop a file you added) and restore
+what you touched (`git restore --staged --worktree -- <those files>`, delete
+anything you added). Never
+commit: close commits your patch after you are gone, so a patch the gate rejects
+is discarded with your whole round, closer included. You are the only one who can
+catch that while it is fixable. Propose `.xp/` changes only where a card's Files
+line names them.
 
 `fixed` — what your patch changes. Default here: anything you can fix, fix. `blocking`
 — what you could NOT fix and that clears the consequence bar above; the release
