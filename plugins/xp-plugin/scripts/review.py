@@ -80,8 +80,12 @@ def patch_path(report: Path) -> Path:
     return report.with_suffix(".patch")
 
 
-def _cap(items: list, path: Path) -> list:
-    kept = [i if len(i) <= ITEM_CAP else i[: ITEM_CAP - 1] + "…" for i in items[:LIST_CAP]]
+def cap_items(items: list) -> list:
+    return [i if len(i) <= ITEM_CAP else i[: ITEM_CAP - 1] + "…" for i in items]
+
+
+def cap_display(items: list, path: Path) -> list:
+    kept = cap_items(items[:LIST_CAP])
     if len(items) > LIST_CAP:
         # A display elision must point to the full durable report.
         kept[-1] = f"(+{len(items) - LIST_CAP + 1} more, in full at {path})"
@@ -111,7 +115,7 @@ def read_report(path: Path) -> tuple[dict, str]:
     data, error = _report_data(path)
     if error:
         return {}, error
-    return {k: _cap([str(i) for i in data[k]], path) for k in REPORT_KEYS}, ""
+    return {k: cap_items([str(i) for i in data[k]]) for k in REPORT_KEYS}, ""
 
 
 def _spellings(p: str) -> set[str]:

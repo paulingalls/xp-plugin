@@ -15,6 +15,7 @@ from contextlib import suppress
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
+import review
 from env import refuse_direct_invocation
 from work import card_title, data_root
 
@@ -36,16 +37,13 @@ def delete_story_markers(story_id: str) -> None:
 
 
 def render_merge_body(rounds: list[dict]) -> str:
-    """Every round, labelled by its TRUE round number.
-
-    Index IS the round: a round is recorded only with a valid report, so there
-    are no gaps to renumber over.
-    """
+    """Every recorded round, labelled by its true gapless list index."""
     out = []
     for i, r in enumerate(rounds, 1):
         counts = " · ".join(f"{len(r[k])} {k}" for k in ("fixed", "blocking", "noted"))
         out.append(f"Review round {i}: {counts}")
-        out += [f"  {k}: {item}" for k in ("fixed", "blocking", "noted") for item in r[k]]
+        for k in ("fixed", "blocking", "noted"):
+            out += [f"  {k}: {item}" for item in review.cap_display(r[k], data_root() / "reports")]
     return "\n".join(out)
 
 
