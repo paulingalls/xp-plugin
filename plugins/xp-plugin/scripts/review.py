@@ -356,4 +356,4 @@ def result_text(harness: str, proc: subprocess.CompletedProcess) -> tuple[str, s
 
 
 if __name__ == "__main__":
-    refuse_direct_invocation("close.py story <id> review")
+    refuse_direct_invocation("close.py <mode> <id> review")

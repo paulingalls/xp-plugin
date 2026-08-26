@@ -48,8 +48,13 @@ def test_the_derived_class_has_a_nonzero_floor():
 
 
 @pytest.mark.parametrize("path", DIRECTLY_RUNNABLE, ids=lambda path: path.stem)
-def test_a_directly_runnable_script_does_not_succeed_silently(path, tmp_path):
-    assert invoke(path, tmp_path).returncode != 0
+def test_a_directly_runnable_script_answers_with_a_refusal(path, tmp_path):
+    """Nonzero alone passes against a broken refusal import: an ImportError is
+    nonzero too, and is the same "does not work when run" the silent zero was."""
+    result = invoke(path, tmp_path)
+    assert result.returncode != 0, "exited 0 having done nothing"
+    assert result.stderr.strip(), "exited nonzero in silence"
+    assert "Traceback" not in result.stderr, result.stderr
 
 
 def test_sprint_close_names_its_real_entry_point(tmp_path):
