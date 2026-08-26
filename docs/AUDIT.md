@@ -168,6 +168,47 @@ Emerging from the evidence, proposed as the successor's razor:
 7. **Teammate model/effort selection.** Can the 6-branch tier table become one sentence of guidance to the lead agent ("pick the cheapest model you'd trust with this story; say why in the spawn prompt")?
 8. **Declarative-not-budgeted state writes.** Design the record shapes so that necessary-and-sufficient is enforced by *structure* rather than character counts (concern = claim + falsifier; decision = choice + because; status = file list). Which records genuinely need a free-text field at all, and for those, is truncate-with-notice acceptable?
 
+## 9. The field walk — someone else ran it (Milestone 3's done-condition)
+
+Milestone 3 asked for a consuming project to run a full story end to end under a
+released version and report the result, "checkable by someone who is not us."
+**It happened, and it went further than the card asked: Legacy ran a whole
+sprint** — sprint-052, six stories plus the sprint close — reporting throughout.
+Paul's judgment on it, 2026-08-26: "it worked."
+
+VERSIONS: mixed, across 0.6.2 and 0.7.x — three in one day at the end. The exact
+numbers were NOT read from their `env.json`, which the card originally required
+(constraint 14's instrument, from the v0.6.0 failure where a consuming project ran
+"0.3.0" while we recorded otherwise). Paul waived it: a walk spanning three
+versions cannot be the single-stale-copy failure that AC guarded. Recorded at note
+54da21bc — **this section is not evidence that constraint 14's instrument was
+exercised.** It was not.
+
+WHAT THE WALK FOUND, each filed as its own record with their evidence:
+
+| leg | finding |
+|---|---|
+| story-001 | the 3600s wall clock killed a productive reviewer and discarded its round; the refusal named the bound, never `XP_AGENT_TIMEOUT`, the knob that moves it |
+| story-002 | a codex story-reviewer whose sandbox denied Docker could not run Verify — and reported the round non-blocking anyway |
+| story-004 | the profile-size warning blamed the project for a file the plugin generates; `plan_review` exited 2 having already written its round file |
+| story-005 | disposition matched each findings reason VERBATIM against hard-wrapped prose: 0 of 7 verbatim, 7 of 7 normalized. A good review reported as one that never ran |
+| story-006 | three defects from one dependency, each invisible in-process — four times bun+tsc green with the native build dead |
+| close | `sprint_close.py` exited 0 having done nothing when invoked directly, which is how a falsifier batch reports as passed without running |
+
+Four are fixed and released: the codex plan-review timeout (v0.6.4), disposition's
+verbatim match (v0.7.3), sprint_close's silent exit and the one-execution-per-record
+batch (both v0.7.5). Two remain open records; one became story-036.
+
+**The verdict: Milestone 3 is met.** Not because the walk was clean — it was not —
+but because the deliverable was always the measurement. Every defect above was
+invisible from inside this repo and obvious from outside it, which is the thesis
+the milestone states.
+
+**The caveat, which no amount of walking fixes retroactively:** the four releases
+above landed AFTER the walk that found them. No released version has been walked
+end to end with those fixes in it. That is Milestone 4's problem, not evidence
+against this one.
+
 ---
 
 *Next step: `docs/DESIGN.md` — the successor's shape, driven by §7's razor and resolving §8's questions.*
