@@ -12,7 +12,6 @@ import sys
 from pathlib import Path
 
 import pytest
-import review
 from close_helpers import (
     CLOSE,
     CONFIG_PATCH,
@@ -61,20 +60,6 @@ def add_free_card(env, verify="true"):
         + f"\n### Free\n#### {KEY} — fix typo   [planned]\n"
         + f"Context: small release.\nVerify: {verify}\n"
     )
-
-
-def test_reviewer_motion_is_only_dirty_state_added_during_the_round(tmp_path, monkeypatch):
-    repo, _env, g = make_repo(tmp_path)
-    monkeypatch.chdir(repo)
-    (repo / "lead-left.txt").write_text("mine\n")
-    before = g("status", "--porcelain").stdout.strip()
-    head = g("rev-parse", "HEAD").stdout.strip()
-    marker = tmp_path / "marker.json"
-    marker.write_text('{"rounds": []}')
-    args = (head, marker, review.marker_digest(marker))
-    assert review.check_reviewer_motion(*args, dirty_before=before) == ""
-    (repo / "reviewer-left.txt").write_text("theirs\n")
-    assert "dirty" in review.check_reviewer_motion(*args, dirty_before=before)
 
 
 class TestFreeStart:

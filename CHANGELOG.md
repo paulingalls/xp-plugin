@@ -4,17 +4,21 @@ Release notes started at v0.6.0; earlier entries are summarized from their
 tag and merge messages. Full detail lives in the merge history and the
 per-sprint review reports.
 
-## v0.8.2 — two guards that punished work done correctly
+## v0.8.2 — a carded free patch lands where the free legs look for it
 
 - A free patch WITH a card is now spawned onto the branch `free start` cut. Spawn
   derived its own name from the card title and branched from the integration
   target, so the executor's work landed where the free legs refuse it — and the
   lead's own commits on the free branch were absent from it, which made `reset`
   the obvious recovery and a silent way to lose them.
-- A review no longer loses its round to a file the lead left before it started.
-  The dirty-tree guard refused on any uncommitted path and could not say who left
-  it, so a reviewer that wrote its report, wrote its patch and restored the tree
-  had the whole round discarded. It now refuses on the delta it can attribute.
+- The branch rule lives in `story_branch`, the one function both spawn and resume
+  call, so a stopped free patch still resumes into its own worktree.
+
+Bug 3dc03ed1 — a review losing its round to a file the lead left before it
+started — is NOT fixed here. The attempted narrowing was inert: `close._preflight`
+refuses a dirty tree before the reviewer launches, so the baseline is always empty
+and the comparison collapses to the old check. Folded into story-054, where
+recording the round from the artifacts already on disk is the shape that works.
 
 ## v0.8.1 — three checks that could not red, and a record that stops growing
 
