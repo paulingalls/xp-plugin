@@ -195,17 +195,17 @@ WHAT THE WALK FOUND, each filed as its own record with their evidence:
 | story-006 | three defects from one dependency, each invisible in-process — four times bun+tsc green with the native build dead |
 | close | `sprint_close.py` exited 0 having done nothing when invoked directly, which is how a falsifier batch reports as passed without running |
 
-Four are fixed and released: the codex plan-review timeout (v0.6.4), disposition's
+Fixed and released since: the codex plan-review timeout (v0.6.4), disposition's
 verbatim match (v0.7.3), sprint_close's silent exit and the one-execution-per-record
-batch (both v0.7.5). Two remain open records; one became story-036.
+batch (both v0.7.5). The rest remain open records; one became story-036.
 
 **The verdict: Milestone 3 is met.** Not because the walk was clean — it was not —
 but because the deliverable was always the measurement. Every defect above was
 invisible from inside this repo and obvious from outside it, which is the thesis
 the milestone states.
 
-**The caveat, which no amount of walking fixes retroactively:** the four releases
-above landed AFTER the walk that found them. No released version has been walked
+**The caveat, which no amount of walking fixes retroactively:** the fixes above
+landed AFTER the walk that found them. No released version has been walked
 end to end with those fixes in it. That is Milestone 4's problem, not evidence
 against this one.
 

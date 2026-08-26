@@ -49,7 +49,7 @@ cannot. Run the skill when one exists; the script owns only its mechanics.
      everything is fail-loud, so a never that later matters returns as a red. Never
      is a decision, not a backlog — schedule under budget or drop; nothing carries.
 5. **Free** — one patch outside a sprint.
-   - Plan it, then `free start`. Execute through `spawn.py`, as a story: a spawned
+   - Scope it, then `free start`. Execute through `spawn.py`, as a story: a spawned
      teammate owns a worktree and returns a commit for the free branch. The
      worktree and its log in the data root prove the spawn; commit authorship cannot.
    - Cut the project's release artifacts, then run the free `review`, `land` and
