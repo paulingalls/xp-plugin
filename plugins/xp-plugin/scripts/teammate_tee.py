@@ -7,6 +7,7 @@ One drain, two stream shapes — only the per-line parse differs by harness."""
 import contextlib
 import json
 import os
+import signal
 import subprocess
 import sys
 import threading
@@ -140,6 +141,17 @@ def closing_line(story_id: str, result: dict) -> str:
     return f"{story_id}: {turns} turns, {duration_s}, {cost_s}, {status}"
 
 
+def kill_group(proc: subprocess.Popen) -> None:
+    """Kill the agent's whole session, never just its leader: a real agent shells
+    out constantly and its children inherit the stdout pipe, so killing the leader
+    alone leaves the drain reading a pipe nobody will close — the bound fires and
+    buys nothing (bug c9d9a98f). bookkeep._teardown takes the same route."""
+    try:
+        os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+    except OSError:  # already reaped, or it never got a session of its own
+        proc.kill()
+
+
 def _feed_stdin(proc: subprocess.Popen, prompt: str) -> None:
     """A child that dies before consuming the prompt breaks this pipe. That is
     not news — the missing result object already says it — and an unhandled
@@ -234,6 +246,7 @@ def run_stream(
         stderr=subprocess.STDOUT,
         text=True,
         env=env,
+        start_new_session=True,  # so kill_group has a group that is not ours
     )
     feeder = threading.Thread(target=_feed_stdin, args=(proc, prompt))
     feeder.start()
@@ -244,7 +257,7 @@ def run_stream(
         # throw away a run that finished, and the review it carried with it.
         if proc.poll() is None:
             timed_out.set()
-            proc.kill()
+            kill_group(proc)
 
     def watch() -> None:
         """`timeout` is the longest SILENCE allowed, not a wall clock: a hung
@@ -297,6 +310,12 @@ def run_stream(
             err(f"warning: log write failed ({exc}); continuing without it")
         assert proc.stdout is not None
         result = tee_stream(ticking(proc.stdout), log_write, out, parse)
+    except BaseException:
+        # Ctrl-C no longer reaches the child, because it has its own session now.
+        # Only here: a run that DRAINED is already exiting, and killing on the way
+        # past would throw away the review it just finished.
+        kill_group(proc)
+        raise
     finally:
         finished.set()
         if watcher:

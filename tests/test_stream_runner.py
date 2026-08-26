@@ -311,3 +311,27 @@ def test_a_reviewer_that_keeps_talking_outlives_the_bound(tmp_path, monkeypatch)
     )
     assert proc.returncode == 0, proc.stderr
     assert json.loads(proc.stdout)["result"] == "still going"
+
+
+def test_the_bound_does_not_wait_on_the_killed_agent_s_own_children(tmp_path, monkeypatch):
+    """A real agent shells out constantly, and its children inherit the stdout
+    pipe — so killing only the process LEADER leaves the drain blocked reading a
+    pipe nobody will close. The bound then fires and buys nothing, which is the
+    hang it exists to prevent.
+
+    Constructed, not observed: the stub streams once so the clock is definitely
+    running, then sleeps in a child that outlives twenty bounds.
+    """
+    import time
+
+    from spawn import run_agent
+
+    monkeypatch.setenv("XP_DATA", str(tmp_path / "data"))
+    monkeypatch.setenv("XP_AGENT_TIMEOUT", "1")
+    script = tmp_path / "forks.sh"
+    script.write_text('#!/bin/sh\nprintf \'{"type":"system"}\\n\'\nsleep 20 &\nwait\n')
+    script.chmod(0o755)
+    started = time.monotonic()
+    with pytest.raises(subprocess.TimeoutExpired):
+        run_agent([str(script)], tmp_path, "", "reviewer", "claude", "story-042-review")
+    assert time.monotonic() - started < 10, "the bound fired and the leg waited anyway"
