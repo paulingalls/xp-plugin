@@ -420,7 +420,7 @@ def main() -> int:
         return cmd_spawn(a.story_id, a.executor, a.dry_run, resuming=True)
     p = argparse.ArgumentParser(
         description=__doc__,
-        epilog="ready <story-id>: after the plan review, mint the card's digest and"
+        epilog="ready <story-id>: after the card review, mint the card's digest and"
         " flip [planned] -> [ready]. Editing the card afterwards refuses the spawn."
         " resume <story-id>: hand a STOPPED story's own worktree to a fresh teammate.",
     )

@@ -61,6 +61,23 @@ class TestShippedProseMatchesTheMechanism:
         for path in (PLUGIN / "PROCESS.md", PLUGIN / "TEAMMATE.md"):
             assert rubric in prose(path), f"{path.name} has drifted from the rubric"
 
+    def test_both_shipped_copies_name_the_two_reviews_and_who_owns_the_plan(self):
+        """The lead drafted the executor's implementation plan twice in one week
+        (bug 898ad9e1, note c3d8e2a7): one word covered two artifacts and no
+        lead-facing sentence said whose each was. Pinned in both copies rather
+        than read-and-judged because TEAMMATE.md sits AT its enforced cap
+        (`spawn.PLUGIN_SHIPPED_CAP`, 1200/1200 today) — the next component that
+        lands forces a cut there, and the newest sentence is the one that looks
+        least load-bearing. "sprint review" is excluded by name: `close.py sprint
+        <id> review` already holds that phrase.
+        """
+        for path in (PLUGIN / "PROCESS.md", PLUGIN / "TEAMMATE.md"):
+            text = prose(path).lower()
+            assert "card review" in text, f"{path.name}: the lead's review is unnamed"
+            assert "plan review" in text, f"{path.name}: the executor's review is unnamed"
+            assert "the lead never" in text, f"{path.name}: the plan's owner is unnamed"
+            assert "sprint review" not in text, f"{path.name}: close.py owns that phrase"
+
     def test_the_story_bundle_carries_PROCESS_md(self, tmp_path):
         """What replaces the two pins. Both charters point at PROCESS.md now, so a
         bundle without it hands the reviewer a pointer to nothing."""
