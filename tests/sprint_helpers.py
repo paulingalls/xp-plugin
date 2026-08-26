@@ -2,7 +2,9 @@
 Split at sprint-004 open: tests are production code (constraint 8)."""
 
 import json
+import os
 import re
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -46,7 +48,12 @@ SPRINT_ID = "2"
 
 def make_repo(tmp_path, plan=PLAN, config=CONFIG):
     repo = tmp_path / "repo"
-    (repo / ".xp").mkdir(parents=True)
+    templates = Path(os.environ["XP_TEST_REPO_TEMPLATES"])
+    full = plan == PLAN and config == CONFIG and (templates / "sprint-full").is_dir()
+    shutil.copytree(templates / ("sprint-full" if full else "sprint"), repo)
+    if not full:
+        (repo / ".git" / "HEAD").write_text("ref: refs/heads/main\n")
+        (repo / ".xp").mkdir(parents=True)
     env = {
         "PATH": f"{stub_reviewer(tmp_path)}:/usr/bin:/bin",
         "HOME": str(tmp_path),
@@ -55,12 +62,11 @@ def make_repo(tmp_path, plan=PLAN, config=CONFIG):
     g = lambda *a: subprocess.run(  # noqa: E731
         ["git", *a], cwd=repo, env=env, capture_output=True, text=True
     )
-    g("init", "-q", "-b", "main")
-    g("config", "user.email", "t@t")
-    g("config", "user.name", "t")
     state_plan = tmp_path / "data" / "plan.md"
     state_plan.parent.mkdir(parents=True, exist_ok=True)
     state_plan.write_text(plan)
+    if full:
+        return repo, env, g
     (repo / ".xp" / "config.yml").write_text(config)
     (repo / ".xp" / "constraints.md").write_text("# Constraints\n1. CONSTRAINT-SENTINEL\n")
     (repo / ".xp" / "system.md").write_text("# System\nSYSTEM-SENTINEL\n")

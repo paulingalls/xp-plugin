@@ -1,0 +1,160 @@
+import os
+import subprocess
+import time
+from pathlib import Path
+
+import pytest
+from close_helpers import make_repo as make_close_repo
+from session_start_helpers import xp_repo
+from spawn_helpers import make_repo as make_spawn_repo
+from sprint_helpers import CONFIG, PLAN, stub_reviewer
+from sprint_helpers import make_repo as make_sprint_repo
+
+TIMING_RUNS = 5
+
+
+def make_close_skeleton(root):
+    return make_close_repo(root, status="planned")
+
+
+@pytest.mark.parametrize(
+    ("template_name", "build", "tracked"),
+    [
+        ("close-full", make_close_repo, Path("src/thing.py")),
+        ("close", make_close_skeleton, Path("src/thing.py")),
+        ("spawn-full", make_spawn_repo, Path("drift.txt")),
+        ("session-start-full", xp_repo, Path("f.py")),
+        ("sprint-full", make_sprint_repo, Path("src.py")),
+    ],
+)
+def test_a_mutated_repo_cannot_change_the_template_or_next_copy(
+    tmp_path, template_name, build, tracked
+):
+    template = Path(os.environ["XP_TEST_REPO_TEMPLATES"]) / template_name
+    template_config = (template / ".git" / "config").read_bytes()
+    first_root = tmp_path / "first"
+    first_root.mkdir()
+    first, *_rest = build(first_root)
+    original = (first / tracked).read_text()
+    with (first / ".git" / "config").open("a") as config:
+        config.write("[test]\n\tshared = mutated\n")
+    (first / tracked).write_text("MUTATED = True\n")
+
+    second_root = tmp_path / "second"
+    second_root.mkdir()
+    second, *rest = build(second_root)
+    second_git = rest[-1]
+
+    assert second_git("config", "--get", "test.shared").returncode != 0
+    assert (second / tracked).read_text() == original
+    assert (template / ".git" / "config").read_bytes() == template_config
+    assert first / ".git" != second / ".git" != template / ".git"
+
+
+def test_hostile_worktree_git_variables_cannot_reach_a_decoy(monkeypatch, tmp_path):
+    decoy = tmp_path / "decoy"
+    decoy.mkdir()
+    clean_env = {"PATH": "/usr/bin:/bin", "HOME": str(tmp_path)}
+    subprocess.run(["git", "init", "-q", "-b", "main"], cwd=decoy, env=clean_env, check=True)
+    (decoy / "sentinel").write_text("untouched\n")
+    subprocess.run(["git", "add", "sentinel"], cwd=decoy, env=clean_env, check=True)
+    subprocess.run(
+        [
+            "git",
+            "-c",
+            "user.name=decoy",
+            "-c",
+            "user.email=decoy@example.com",
+            "commit",
+            "-qm",
+            "decoy base",
+        ],
+        cwd=decoy,
+        env=clean_env,
+        check=True,
+    )
+    decoy_head = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=decoy,
+        env=clean_env,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    for name, value in {
+        "GIT_DIR": decoy / ".git",
+        "GIT_WORK_TREE": decoy,
+        "GIT_COMMON_DIR": decoy / ".git",
+        "GIT_INDEX_FILE": decoy / ".git" / "index",
+    }.items():
+        monkeypatch.setenv(name, str(value))
+
+    fixture_root = tmp_path / "fixture"
+    fixture_root.mkdir()
+    repo, env, git = make_close_repo(fixture_root)
+
+    assert git("log", "-1", "--pretty=%s").stdout.strip() == "story work"
+    assert (
+        subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=decoy,
+            env=clean_env,
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+        == decoy_head
+    )
+    assert (decoy / "sentinel").read_text() == "untouched\n"
+    assert repo != decoy and env["HOME"] == str(fixture_root)
+
+
+def build_sprint_repo_with_git(root):
+    repo = root / "repo"
+    (repo / ".xp").mkdir(parents=True)
+    env = {
+        "PATH": f"{stub_reviewer(root)}:/usr/bin:/bin",
+        "HOME": str(root),
+        "XP_DATA": str(root / "data"),
+    }
+    git = lambda *args: subprocess.run(  # noqa: E731
+        ["git", *args], cwd=repo, env=env, capture_output=True, text=True, check=True
+    )
+    git("init", "-q", "-b", "main")
+    git("config", "user.email", "t@t")
+    git("config", "user.name", "t")
+    state_plan = root / "data" / "plan.md"
+    state_plan.parent.mkdir(parents=True)
+    state_plan.write_text(PLAN)
+    (repo / ".xp" / "config.yml").write_text(CONFIG)
+    (repo / ".xp" / "constraints.md").write_text("# Constraints\n1. CONSTRAINT-SENTINEL\n")
+    (repo / ".xp" / "system.md").write_text("# System\nSYSTEM-SENTINEL\n")
+    (repo / "src.py").write_text("A = 1\n")
+    git("add", "-A")
+    git("commit", "-qm", "base")
+    git("checkout", "-qb", "sprint-002")
+    (repo / "src.py").write_text("A = 1\nB = 'SPRINT-ONLY-SENTINEL'\n")
+    git("add", "-A")
+    git("commit", "-qm", "story work on the sprint branch")
+
+
+@pytest.mark.slow
+def test_finished_fixture_copy_cost_against_git_build(tmp_path):
+    copy_seconds = 0.0
+    git_seconds = 0.0
+    for index in range(TIMING_RUNS):
+        copy_root = tmp_path / f"copy-{index}"
+        copy_root.mkdir()
+        started = time.perf_counter()
+        make_sprint_repo(copy_root)
+        copy_seconds += time.perf_counter() - started
+
+        git_root = tmp_path / f"git-{index}"
+        git_root.mkdir()
+        started = time.perf_counter()
+        build_sprint_repo_with_git(git_root)
+        git_seconds += time.perf_counter() - started
+
+    copy_ms = copy_seconds * 1000 / TIMING_RUNS
+    git_ms = git_seconds * 1000 / TIMING_RUNS
+    print(f"fixture cost {copy_ms:.2f}ms copy / {git_ms:.2f}ms git = {git_ms / copy_ms:.2f}x")

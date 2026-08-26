@@ -29,10 +29,10 @@ class TestAgentWallClock:
     def test_the_reviewer_is_bounded(self, monkeypatch, tmp_path):
         import spawn
 
-        monkeypatch.setenv("XP_AGENT_TIMEOUT", "1")
+        monkeypatch.setenv("XP_AGENT_TIMEOUT", "0.01")
         with pytest.raises(subprocess.TimeoutExpired):
             spawn.run_agent(
-                ["/bin/sh", "-c", "sleep 5"], tmp_path, "", "reviewer", "claude", "story-042-review"
+                ["/bin/sh", "-c", "sleep 1"], tmp_path, "", "reviewer", "claude", "story-042-review"
             )
 
     def test_the_teammate_launch_is_not(self, monkeypatch, tmp_path):
@@ -42,11 +42,9 @@ class TestAgentWallClock:
         teammate_tee.run_teammate, which this asserts is unbounded."""
         from teammate_tee import run_teammate
 
-        monkeypatch.setenv("XP_AGENT_TIMEOUT", "1")
+        monkeypatch.setenv("XP_AGENT_TIMEOUT", "0.01")
         rc = run_teammate(
-            # 2 against XP_AGENT_TIMEOUT=1 proves unbounded as well as 3 did, and
-            # this is the suite's one literal sleep (debt 15aec3fc named it).
-            ["/bin/sh", "-c", 'sleep 2; echo \'{"type": "result", "is_error": false}\''],
+            ["/bin/sh", "-c", 'sleep 0.1; echo \'{"type": "result", "is_error": false}\''],
             tmp_path,
             "",
             "story-042",

@@ -2,6 +2,8 @@
 Split at sprint-004 open: tests are production code (constraint 8)."""
 
 import json
+import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -37,7 +39,17 @@ def make_repo(tmp_path, status="ready", executor="(default)", trunk="main"):
     """A repo whose HEAD is NOT the integration target, with a divergent commit:
     a spawn that omits the base argument branches off HEAD and the test reds."""
     repo = tmp_path / "repo"
-    (repo / ".xp").mkdir(parents=True)
+    templates = Path(os.environ["XP_TEST_REPO_TEMPLATES"])
+    full = (
+        status == "ready"
+        and executor == "(default)"
+        and trunk == "main"
+        and (templates / "spawn-full").is_dir()
+    )
+    shutil.copytree(templates / ("spawn-full" if full else "spawn"), repo)
+    if not full:
+        (repo / ".git" / "HEAD").write_text(f"ref: refs/heads/{trunk}\n")
+        (repo / ".xp").mkdir(parents=True)
     env = {
         "PATH": f"{tmp_path / 'bin'}:/usr/bin:/bin",
         "HOME": str(tmp_path),
@@ -46,14 +58,15 @@ def make_repo(tmp_path, status="ready", executor="(default)", trunk="main"):
     g = lambda *a: subprocess.run(  # noqa: E731
         ["git", *a], cwd=repo, env=env, capture_output=True, text=True
     )
-    g("init", "-q", "-b", trunk)
-    g("config", "user.email", "ada@example.com")
-    g("config", "user.name", "Ada L")
     plan = tmp_path / "data" / "plan.md"
     plan.parent.mkdir(parents=True, exist_ok=True)
     plan.write_text(
         CARD.format(status="planned" if status == "ready" else status, executor=executor)
     )
+    if full:
+        minted = spawn(repo, env, "ready", "story-042")
+        assert minted.returncode == 0, minted.stderr
+        return repo, env, g
     (repo / ".xp" / "config.yml").write_text(CONFIG.format(trunk=trunk))
     if status == "ready":
         # MINTED, never typed: a fixture that writes [ready] by hand hands out the
