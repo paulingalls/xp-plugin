@@ -39,7 +39,12 @@ class TestAgentWallClock:
         """Bounding cmd_spawn's launch call site kills a running story and
         abandons its worktree, so the teammate no longer runs through
         run_agent (that path is reviewer-only) — it runs through
-        teammate_tee.run_teammate, which this asserts is unbounded."""
+        teammate_tee.run_teammate, which this asserts is unbounded.
+
+        The sleep stays because only outliving the clock can prove the clock is
+        absent, and it shrank with it: 0.1s against XP_AGENT_TIMEOUT=0.01 is the
+        10x margin `sleep 2` against 1 was, and shell start-up only widens it.
+        """
         from teammate_tee import run_teammate
 
         monkeypatch.setenv("XP_AGENT_TIMEOUT", "0.01")

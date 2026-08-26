@@ -11,6 +11,9 @@ from sprint_helpers import CONFIG, PLAN, stub_reviewer
 from sprint_helpers import make_repo as make_sprint_repo
 
 TIMING_RUNS = 5
+# The lead measured 13.5x over 25 iterations; 5x is the floor a revert to the git
+# build (measured 1.0x) cannot clear and ambient load cannot fake.
+MIN_SPEEDUP = 5.0
 
 
 def make_close_skeleton(root):
@@ -48,7 +51,37 @@ def test_a_mutated_repo_cannot_change_the_template_or_next_copy(
     assert second_git("config", "--get", "test.shared").returncode != 0
     assert (second / tracked).read_text() == original
     assert (template / ".git" / "config").read_bytes() == template_config
-    assert first / ".git" != second / ".git" != template / ".git"
+    # by INODE, not by path: distinct paths are true by construction and assert
+    # nothing, while a hand-out that hard-links or symlinks shares the inode and
+    # every write above reaches the template through it.
+    inodes = {(p / ".git" / "config").stat().st_ino for p in (first, second, template)}
+    assert len(inodes) == 3
+
+
+@pytest.mark.parametrize(
+    ("template_name", "build"),
+    [
+        ("close-full", make_close_repo),
+        ("spawn-full", make_spawn_repo),
+        ("session-start-full", xp_repo),
+        ("sprint-full", make_sprint_repo),
+    ],
+)
+def test_a_default_call_is_served_by_the_finished_template(tmp_path, template_name, build):
+    """Each helper decides copy-vs-build by comparing its arguments against a
+    hand-written copy of its own defaults. Change a default without changing that
+    comparison and every default call silently falls back to the git build: green
+    suite, no warning, the whole story reverted. Identical HEAD proves the repo IS
+    the copy, since a rebuild re-commits and gets its own sha."""
+    template = Path(os.environ["XP_TEST_REPO_TEMPLATES"]) / template_name
+    root = tmp_path / "built"
+    root.mkdir()
+    repo, *_rest = build(root)
+    env = {"PATH": "/usr/bin:/bin", "HOME": str(tmp_path)}
+    head = lambda where: subprocess.run(  # noqa: E731
+        ["git", "rev-parse", "HEAD"], cwd=where, env=env, capture_output=True, text=True
+    ).stdout.strip()
+    assert head(repo) and head(repo) == head(template)
 
 
 def test_hostile_worktree_git_variables_cannot_reach_a_decoy(monkeypatch, tmp_path):
@@ -136,6 +169,14 @@ def build_sprint_repo_with_git(root):
     (repo / "src.py").write_text("A = 1\nB = 'SPRINT-ONLY-SENTINEL'\n")
     git("add", "-A")
     git("commit", "-qm", "story work on the sprint branch")
+    return repo
+
+
+def tracked_content(repo):
+    env = {"PATH": "/usr/bin:/bin", "HOME": str(repo.parent)}
+    return subprocess.run(
+        ["git", "ls-tree", "-r", "HEAD"], cwd=repo, env=env, capture_output=True, text=True
+    ).stdout
 
 
 @pytest.mark.slow
@@ -146,15 +187,20 @@ def test_finished_fixture_copy_cost_against_git_build(tmp_path):
         copy_root = tmp_path / f"copy-{index}"
         copy_root.mkdir()
         started = time.perf_counter()
-        make_sprint_repo(copy_root)
+        copied, *_rest = make_sprint_repo(copy_root)
         copy_seconds += time.perf_counter() - started
 
         git_root = tmp_path / f"git-{index}"
         git_root.mkdir()
         started = time.perf_counter()
-        build_sprint_repo_with_git(git_root)
+        built = build_sprint_repo_with_git(git_root)
         git_seconds += time.perf_counter() - started
 
     copy_ms = copy_seconds * 1000 / TIMING_RUNS
     git_ms = git_seconds * 1000 / TIMING_RUNS
     print(f"fixture cost {copy_ms:.2f}ms copy / {git_ms:.2f}ms git = {git_ms / copy_ms:.2f}x")
+    # The git leg is a frozen copy of what make_repo used to do, so nothing but
+    # this ties the two halves to the same repo: let them drift and the ratio
+    # keeps printing while it has stopped comparing like with like.
+    assert tracked_content(copied) == tracked_content(built)
+    assert git_ms / copy_ms >= MIN_SPEEDUP, f"{git_ms / copy_ms:.2f}x is under {MIN_SPEEDUP}x"

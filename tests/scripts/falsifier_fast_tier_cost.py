@@ -1,4 +1,24 @@
 #!/usr/bin/env python3
+"""Falsifier for the fast-tier cost debt (records 15aec3fc, 2b5a456d, 8fde7e83,
+which share this one script). Two arms, and they guard different things.
+
+THE RATCHET is the fixture arm: one session-scoped template repo copied per test
+against the six git invocations it replaced. That comparison is CONSTRUCTED and
+its effect is huge and stable — the lead measured 13.5x over 25 iterations, a
+revert to the git build measures 1.0x — so no ambient load closes the gap. The
+bound lives with the assertion, in tests/test_repo_templates.py (MIN_SPEEDUP).
+
+THE SUITE BOUNDS BELOW ARE NOT THE RATCHET and must not be read as one. They are
+the unusability guard the debt actually asked for: 'a commit gate slow enough
+that someone stops running it, which is how --no-verify becomes tempting'. They
+have moved once already (04f4a71e, total-only -> both, after a total-only bound
+fired on healthy growth of 258 -> 691 tests at flat per-test cost). DO NOT MOVE
+THEM AGAIN, in EITHER direction: raising them to make a red pass is the move the
+debt forbids, and tightening them to prove a speed-up makes a load detector —
+the populations are ~16% apart and this box's own measurement noise is ~10%.
+Measure what a story CHANGED, in an arm of its own, as the fixture arm does.
+"""
+
 import re
 import subprocess
 import sys
@@ -6,7 +26,6 @@ import time
 
 MAX_SECONDS = 120
 MAX_SECONDS_PER_TEST = 0.15
-MIN_FIXTURE_SPEEDUP = 5.0
 FIXTURE_NODE = "tests/test_repo_templates.py::test_finished_fixture_copy_cost_against_git_build"
 FIXTURE_PATTERN = re.compile(r"fixture cost ([0-9.]+)ms copy / ([0-9.]+)ms git = ([0-9.]+)x")
 
@@ -24,9 +43,6 @@ def fixture_cost_is_bounded() -> bool:
         return False
     copy_ms, git_ms, speedup = (float(value) for value in match.groups())
     print(f"fixture cost {copy_ms:.2f}ms copy / {git_ms:.2f}ms git = {speedup:.2f}x")
-    if speedup < MIN_FIXTURE_SPEEDUP:
-        print(f"fixture copy must be at least {MIN_FIXTURE_SPEEDUP:.1f}x faster than git build")
-        return False
     return True
 
 
