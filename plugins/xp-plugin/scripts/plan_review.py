@@ -260,7 +260,10 @@ def _wait(story_id: str, out: Path, pid: int, child: subprocess.Popen | None = N
             tail = ""
         return fail(f"{tail}\n(the plan review ended without a verdict; full output in {log})")
     print(out.read_text().strip() if out.is_file() else "")
-    print(f"findings: {out}", file=sys.stderr)
+    print(
+        f"findings: {out} — read the disposition and re-read the reviewed plan before coding",
+        file=sys.stderr,
+    )
     return 0
 
 

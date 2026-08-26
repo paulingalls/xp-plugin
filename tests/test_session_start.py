@@ -11,6 +11,24 @@ from session_start_close_cases import LastCloseCases
 from session_start_helpers import HOOK, HOOKS_JSON, run_hook, run_hook_as, xp_repo
 
 
+def run_banner_script(output, cwd, data_dir):
+    prefix = next(
+        line.partition(" · scripts: ")[2] for line in output.splitlines() if " · scripts: " in line
+    )
+    return subprocess.run(
+        prefix + "work.py env",
+        shell=True,
+        cwd=cwd,
+        capture_output=True,
+        text=True,
+        env={
+            "PATH": f"{Path(sys.executable).resolve().parent}:/usr/bin:/bin",
+            "HOME": str(data_dir),
+            "XP_DATA": str(data_dir / "xp"),
+        },
+    )
+
+
 class TestLastClose(LastCloseCases):
     pass
 
@@ -72,6 +90,8 @@ class TestInjection:
         version = json.loads(manifest.read_text())["version"]
         assert "xp-plugin" in r.stdout and version in r.stdout
         assert "git hooks: none detected" in r.stdout  # fixture has no lefthook/.githooks
+        invoked = run_banner_script(r.stdout, repo, tmp_path)
+        assert invoked.returncode == 0 and invoked.stdout.strip() == str(HOOK.parent.parent)
 
     def test_liveness_touchfile_session_scoped(self, tmp_path):
         repo, _g = xp_repo(tmp_path)
@@ -304,7 +324,7 @@ class TestCodexSessionStart:
         path = tmp_path / "xp" / "env.json"
         path.write_text(json.dumps({"plugin_root": "/gone", "plugin_version": "0.0.1"}))
 
-        self.codex_run(
+        result = self.codex_run(
             repo,
             tmp_path,
             {"session_id": "codex", "hook_event_name": "SessionStart", "source": "startup"},
@@ -316,6 +336,8 @@ class TestCodexSessionStart:
             "plugin_root": str(HOOK.parent.parent),
             "plugin_version": manifest["version"],
         }
+        invoked = run_banner_script(result.stdout, repo, tmp_path)
+        assert invoked.returncode == 0 and invoked.stdout.strip() == str(HOOK.parent.parent)
 
 
 class TestOneHooksFileServesBothHarnesses:

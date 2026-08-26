@@ -60,6 +60,19 @@ class TestFixingReviewer:
         assert m["shown_sha"] != m["reviewed_head"]
         assert g("show", "--format=", "--name-only", "HEAD").stdout.strip() == "src/thing.py"
 
+        outputs = [r.stdout.splitlines()[-1]]
+        other = tmp_path / "second"
+        other.mkdir()
+        repo, env, _g = make_repo(other)
+        self.fixing_stub(other)
+        result = close(repo, env, "review")
+        assert result.returncode == 0, result.stderr
+        outputs.append(result.stdout.splitlines()[-1])
+        assert all("commit and full diff" in line for line in outputs)
+        assert all("landing accepts" in line for line in outputs)
+        assert all("close.py story story-042 land" in line for line in outputs)
+        assert outputs[0] != outputs[1]
+
     def test_a_commit_made_while_the_reviewer_held_the_tree_is_refused(self, tmp_path):
         """AC 2, job B of the deleted guard. A lead commit made while the reviewer
         held the tree is otherwise absorbed into shown_sha, land's HEAD==shown_sha

@@ -152,10 +152,10 @@ class TestWorktree:
     def test_branch_is_namespaced_per_identity_so_clones_cannot_collide(self, tmp_path):
         repo, env, _g = make_repo(tmp_path)
         stub_claude(tmp_path)
-        assert spawn(repo, env, "story-042").returncode == 0
-        first = in_tree(
-            tmp_path / "data" / "worktrees" / "story-042", env, "branch", "--show-current"
-        )
+        first_run = spawn(repo, env, "story-042")
+        assert first_run.returncode == 0
+        first_tree = tmp_path / "data" / "worktrees" / "story-042"
+        first = in_tree(first_tree, env, "branch", "--show-current")
         assert first == "ada/story-042-demo-story"
 
         other = tmp_path / "clone2"
@@ -164,22 +164,25 @@ class TestWorktree:
         for k, v in (("user.email", "grace@example.com"), ("user.name", "Grace H")):
             subprocess.run(["git", "config", k, v], cwd=other, env=env2, check=True)
         subprocess.run(["git", "checkout", "-q", "main"], cwd=other, env=env2)
-        # the clone gets its OWN plan -- that is the point of a per-clone plan, and
-        # the git clone no longer carries one
         plan2 = tmp_path / "data2" / "plan.md"
         plan2.parent.mkdir(parents=True, exist_ok=True)
-        # and its own credential: the digest is minted per data root, so a plan
-        # copied between clones arrives uncleared rather than pre-approved
         plan2.write_text(
             (tmp_path / "data" / "plan.md").read_text().replace("[in-progress]", "[planned]")
         )
         assert spawn(other, env2, "ready", "story-042").returncode == 0
-        assert spawn(other, env2, "story-042").returncode == 0
-        second = in_tree(
-            tmp_path / "data2" / "worktrees" / "story-042", env2, "branch", "--show-current"
-        )
+        second_run = spawn(other, env2, "story-042")
+        assert second_run.returncode == 0
+        second_tree = tmp_path / "data2" / "worktrees" / "story-042"
+        second = in_tree(second_tree, env2, "branch", "--show-current")
         assert second == "grace/story-042-demo-story"
         assert first != second
+        handoffs = [run.stdout.splitlines()[-1] for run in (first_run, second_run)]
+        for line, tree, run_env in zip(
+            handoffs, (first_tree, second_tree), (env, env2), strict=True
+        ):
+            assert str(tree) in line and in_tree(tree, run_env, "rev-parse", "HEAD") in line
+            assert "close.py story story-042 review" in line
+        assert handoffs[0] != handoffs[1]
 
     def test_the_flip_lands_in_the_clones_plan_and_commits_nothing(self, tmp_path):
         """Was "the flip is committed in the worktree", where the lead's tree kept

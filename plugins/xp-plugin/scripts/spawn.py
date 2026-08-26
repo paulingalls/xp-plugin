@@ -394,6 +394,10 @@ def cmd_spawn(
         result = report_handoff(data_root(), story_id, before, err, rc)
         held.close()
         return result
+    print(
+        f"{story_id} produced commit {tree_state(tree)[0]} at {tree}. Read it, then run"
+        f" `close.py story {story_id} review`."
+    )
     marker_path(data_root(), story_id).unlink(missing_ok=True)
     held.close()
     return rc

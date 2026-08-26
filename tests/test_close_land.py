@@ -44,6 +44,8 @@ class TestLandBookkeeping:
         close(repo, env, "review")
         r = close(repo, env, "land")
         assert r.returncode == 0, r.stderr + r.stdout
+        assert "story-042 closed. REPLACE the session digest" in r.stdout
+        assert "first line must be: # Session digest" in r.stdout
         assert "story-042-branch" not in g("branch", "--list").stdout
         assert "story-042-branch" not in g("ls-remote", "--heads", "origin").stdout
         local_main = g("rev-parse", "main").stdout.strip()
