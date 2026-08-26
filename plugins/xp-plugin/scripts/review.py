@@ -148,7 +148,7 @@ def stamp(path: Path, why: str) -> str:
     opens to ask "did this round pass" then answered `blocking: []` either way.
     Writing only when the key MOVES is what leaves an accepted report byte-
     identical. Only a report we could parse: unreadable is a different problem
-    and read_report already names it (constraint 15).
+    and read_report already distinguishes unreadable from absent.
     """
     try:
         report = json.loads(path.read_text())
@@ -226,8 +226,8 @@ def check_reviewer_motion(
         )
     # `git diff` below cannot see the plan any more. Scoped to this story's OWN
     # card, never the whole file: it is shared, so a whole-file digest would let a
-    # sibling lane's flip refuse THIS review (constraint 10). Cross-lane rewrites
-    # stay uncaught by mechanism — note 1bcb794f.
+    # sibling lane's flip refuse THIS review. Cross-lane rewrites stay uncaught by
+    # mechanism — note 1bcb794f.
     if story_id and card_now(story_id) != card:
         return refuse(
             f"{story_id}'s own card changed during the review. The plan lives outside"

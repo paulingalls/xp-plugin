@@ -25,7 +25,7 @@ READ_THEM = " Read them (`work.py list`), then fix the card or take the work ove
 def _state(root: Path, story_id: str) -> dict | None:
     """The marker as a dict, {} for ABSENT, None for present-but-unreadable.
 
-    Absent and unreadable are different problems (constraint 15) and this is the
+    Absent and unreadable are different problems with different fixes, and this is the
     one file where conflating them is silent: {} means "first spawn ever", so a
     truncated marker threw away a draft, its findings and the escalation record
     that were all readable on disk beside it — the whole inheritance, and no

@@ -187,7 +187,7 @@ def flip_card(story_id: str, frm: str, to: str) -> bool:
 
 
 def ready_marker_path(story_id: str) -> Path:
-    """Story-scoped (constraint 10). No mkdir: a refused mint writes nothing."""
+    """Story-scoped. No mkdir: a refused mint writes nothing."""
     return data_root() / "markers" / f"{story_id}.ready.json"
 
 
@@ -232,7 +232,7 @@ def entry_id(text: str) -> str:
 def record_summary(text: str) -> tuple[str, str]:
     """(heading, claim line) — `Story:` is PROVENANCE and never the record's own
     words, so every reader that summarises a record drops it here rather than
-    each re-deriving the rule and one of them forgetting (constraint 15's shape:
+    each re-deriving the absent/unreadable distinction and one of them forgetting:
     two implementations, and the stale one shows a stamp where a claim belongs).
     """
     kept = [ln for ln in text.splitlines() if not ln.startswith("Story: ")]

@@ -76,7 +76,7 @@ DIGEST_CAP = 30  # lines; the story-close SKILL's copy is pinned to this by a te
 def digest_refusal() -> str:
     """The bound, measured — the whole of it. Three prose statements said the size
     and none said the lifecycle, so ours was APPENDED to 380 lines, took the
-    profile to 40,311 chars against OUTPUT_CAP and evicted constraints 12-15
+    profile to 40,311 chars against OUTPUT_CAP and evicted the four newest constraints
     (bug 597c32db). Names the path, the count and the bound: a refusal that says
     only "too long" leaves the lead guessing which file.
 
@@ -89,7 +89,7 @@ def digest_refusal() -> str:
     path = data_root() / "session.md"
     try:
         count = len(read(path).splitlines())
-    except OSError as exc:  # UNREADABLE is not ABSENT (constraint 15), and this
+    except OSError as exc:  # UNREADABLE is not ABSENT, and this
         # runs INSIDE recovery_block: raising costs the lead that whole layer.
         return f"session digest UNREADABLE: {path} — {exc}"
     if count <= DIGEST_CAP:
@@ -163,7 +163,7 @@ def _fit(parts: list) -> str:
 def last_close() -> str:
     """The most recent close, from close.py's append-only log — the story list
     below filters [done] out, so what was just finished would appear only in the
-    digest, the layer that goes stale. Facts only (constraints #7).
+    digest, the layer that goes stale. Facts only; judgment requires an LLM.
     """
     path = data_root() / "closes.jsonl"
     if not path.exists():
@@ -258,7 +258,7 @@ def truncated(out: str, rules: str, static: list[tuple[str, str]]) -> str:
     cut region — which is what makes the answer independent of section order, the
     one property here that must survive a reordering. PROCESS.md carries four
     `N. **` lines of its own, the same shape a constraint has, so a scan of the
-    cut region reports constraints 1-4 missing whenever PROCESS is what was cut.
+    cut region reports the first four constraints missing whenever PROCESS was cut.
 
     Room is reserved for the WORST-CASE notice, so the result is within cap
     without a second pass that could report a stale set.

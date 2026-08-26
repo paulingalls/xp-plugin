@@ -29,7 +29,7 @@ def git(*args: str, check: bool = False) -> subprocess.CompletedProcess:
 
 def delete_story_markers(story_id: str) -> None:
     """Clear the story's test-status markers rather than writing a green into them:
-    a green close.py never measured is a forged measurement (constraints #6). The
+    a green close.py never measured is forged telemetry, never a record. The
     [done] flip releases the Stop gate; this only stops dead files accumulating."""
     for path in (data_root() / "markers").glob(f"*.{story_id}.test-status"):
         path.unlink(missing_ok=True)
@@ -116,7 +116,7 @@ def render_noted(rounds: list[dict]) -> str:
 
 def log_close(story_id: str, card: str, rounds: list[dict], merge_sha: str) -> None:
     """APPEND one line per close. An overwritten file would be the project-global
-    mutable marker constraints #10 forbids; a log survives two closes in one
+    mutable marker the marker-scoping rule forbids; a log survives two closes in one
     sprint and the retro gets the history."""
     from datetime import datetime, timezone
 

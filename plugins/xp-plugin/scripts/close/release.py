@@ -89,7 +89,7 @@ def cmd_post_merge(
     config.write_text("".join(kept))
     suffix = "; sprint_branch retired" if retire_sprint else ""
     # version_files ships COMMENTED, so the DEFAULT project cuts every tag with
-    # nothing walling it — and a silent pass read identically (constraint 14).
+    # no wall; a release's tag, manifest and CHANGELOG must name one version.
     walled = (
         f"manifests matching {version}: {', '.join(checked)}"
         if (checked := version_files())

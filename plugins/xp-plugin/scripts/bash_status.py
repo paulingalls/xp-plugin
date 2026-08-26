@@ -10,7 +10,7 @@ so green is written only where it is PROVEN, never inferred from an event.
 Matching: the command must contain a shell segment that STARTS WITH an
 in-progress story's config-known Verify string — a mention (commit message,
 grep) is not an invocation. One marker per STORY, not per verify string
-(constraint 10): two stories can carry byte-identical Verify commands — sprint-1
+(markers are always story-scoped): two stories can carry byte-identical Verify commands — sprint-1
 shipped a pair — and a verify-keyed marker cannot tell whose status it holds.
 """
 
