@@ -4,6 +4,21 @@ Release notes started at v0.6.0; earlier entries are summarized from their
 tag and merge messages. Full detail lives in the merge history and the
 per-sprint review reports.
 
+## v0.8.1 — three checks that could not red, and a record that stops growing
+
+- Shipped comments no longer cite constraints by INDEX. Indices are project-local:
+  `xp-setup` seeds a starter list and every project grows its own, so our
+  "constraint 10" landed in a tree where 10 governs something else entirely.
+- A plan review that produced findings is no longer reported as one nobody signed.
+  Absent, unreadable and unsigned are three states; the notice enumerated two, and
+  a consuming project lost a complete review to it.
+- Report list caps now bound the DISPLAY, not the data. Past the cap, findings
+  reached no verifier and the "(+N more)" placeholder was judged as if it were one.
+- `work.py compact` moves disposed records' prose to `archive.md`, keeping their id,
+  disposition and falsifier in `work.md`. The sprint-close corpus is unchanged —
+  same falsifiers, same commands — and the archive is written and verified before
+  `work.md` is touched. Measured on this repo: 528KB to 350KB.
+
 ## v0.8.0 — the harness cannot silently fail to do the work
 
 Sprint 7. Milestone 3 closed: a consuming project ran a full sprint under released
