@@ -14,6 +14,7 @@ sys.path.insert(0, str(Path(__file__).parent / "spawn"))
 # (close -> spawn -> close) and fails before fail/git exist (story-008).
 from bookkeep import bootstrap_command
 from close import config_flat, fail, git, integration_target, story_card
+from env import plugin_version
 from handback import tree_state, unclean_teammate_result
 from handoff import draft_path, inheritance, marker_path, report_handoff
 from harness import (
@@ -40,6 +41,7 @@ from work import (
 )
 
 PLUGIN_ROOT = Path(__file__).parent.parent
+PROJECT_PLUGIN = Path("plugins/xp-plugin")
 
 # Tokens (chars//4). The cap covers prose WE ship — VALUES, TEAMMATE.md, the
 # seed constraints file and always-on component metadata — because ownership is
@@ -146,7 +148,9 @@ def build_prompt(sections: list[tuple[str, str]]) -> str:
     return "\n".join(f"## {title}\n\n{body}\n" for title, body in sections)
 
 
-def teammate_sections(card: str, story_id: str, handoff: str) -> list[tuple[str, str]]:
+def teammate_sections(
+    card: str, story_id: str, handoff: str, plugin_root: Path = PLUGIN_ROOT
+) -> list[tuple[str, str]]:
     sections = [
         ("VALUES", _read_shipped(PLUGIN_ROOT / "VALUES.md")),
         # the escalation command must be runnable: work.py is not on PATH, and
@@ -155,7 +159,7 @@ def teammate_sections(card: str, story_id: str, handoff: str) -> list[tuple[str,
         (
             "How you work",
             _read_shipped(PLUGIN_ROOT / "TEAMMATE.md")
-            .replace("{PLUGIN_ROOT}", str(PLUGIN_ROOT))
+            .replace("{PLUGIN_ROOT}", str(plugin_root))
             .replace("{PLAN_PATH}", str(draft_path(data_root(), story_id))),
         ),
         ("Your story card", card),
@@ -223,6 +227,12 @@ def common_dir_widening(cwd: Path) -> list[str]:
 
 def worktree_path(story_id: str) -> Path:
     return data_root() / "worktrees" / story_id
+
+
+def execution_root(tree: Path, trunk: str) -> Path:
+    source = PROJECT_PLUGIN / "scripts" / "spawn.py"
+    exists = git("cat-file", "-e", f"{trunk}:{source}", check=False)
+    return tree / PROJECT_PLUGIN if exists.returncode == 0 else PLUGIN_ROOT
 
 
 def flip_to_in_progress(story_id: str) -> None:
@@ -317,12 +327,13 @@ def cmd_spawn(
     branch = story_branch(card, story_id)
     tree = worktree_path(story_id)
     trunk = integration_target()
+    plugin_root = execution_root(tree, trunk)
     reuse = bool(FREE_ID.fullmatch(story_id)) and current_branch() == branch
     argv = agent_argv(harness, model, effort, "stream-json", sandbox)
     handoff = inheritance(data_root(), story_id)
     if resuming and tree.is_dir():
         handoff += resume().inherited_evidence(tree, trunk)
-    prompt = build_prompt(teammate_sections(card, story_id, handoff))
+    prompt = build_prompt(teammate_sections(card, story_id, handoff, plugin_root))
     report, warning = profile_report(card, prompt, handoff)
     print(report)
     if warning:
@@ -427,11 +438,15 @@ def cmd_spawn(
         return result
     # The story leg accepts a free id and writes the marker free land reads, so
     # naming the wrong one here is a mis-based review that nothing refuses.
-    leg = (
-        f"`close.py free {free_id.group(2)} review` from that worktree"
+    scope = (
+        f"free {free_id.group(2)}"
         if (free_id := FREE_ID.fullmatch(story_id))
-        else f"`close.py story {story_id} review`"
+        else f"story {story_id}"
     )
+    leg = f"`close.py {scope} review`" + (" from that worktree" if free_id else "")
+    if plugin_root != PLUGIN_ROOT:
+        command = plugin_root / "scripts" / "close.py"
+        leg = f"`python3 {command} {scope} review` (xp-plugin {plugin_version(plugin_root)})"
     print(f"{story_id} produced commit {tree_state(tree)[0]} at {tree}. Read it, then run {leg}.")
     marker_path(data_root(), story_id).unlink(missing_ok=True)
     held.close()
