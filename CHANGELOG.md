@@ -4,6 +4,18 @@ Release notes started at v0.6.0; earlier entries are summarized from their
 tag and merge messages. Full detail lives in the merge history and the
 per-sprint review reports.
 
+## v0.7.7 — the fixer validates its own patch against the wall
+
+- Both reviewer charters now tell the fixer to EDIT, run the repo's commit gate
+  over its edits, fix what it reports, then diff-and-restore. It still leaves the
+  tree unchanged and still never commits, so the motion guard is untouched — but
+  a patch that the gate would reject is now caught by the agent that wrote it.
+- When the gate refuses anyway, the refusal names the gate, quotes the cause with
+  ANSI stripped, and tells the human what to do — instead of a colour-framed hook
+  transcript with the reason twelve lines up.
+- Field-reported by a consuming project: a formatter disagreeing about array
+  wrapping discarded a whole sprint-review round, closer included.
+
 ## v0.7.6 — card review and plan review are two things with two owners
 
 - The lead's review of the sprint slate is the **card review**; `spawn.py ready`

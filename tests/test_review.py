@@ -334,6 +334,48 @@ class TestTheFixerFixes:
         assert "gate file" in land.stdout and ".xp/system.md" in land.stdout, land.stdout
 
 
+class TestTheCommitGateRefusalIsActionable:
+    """Field-reported by Legacy at 0.7.4, and it cost them a whole sprint-review
+    round: a biome pre-commit hook rejected the fixer's hand-authored JSON, the
+    commit failed, and the round was discarded with the closer never reached.
+
+    The prevention is in both reviewer charters (the fixer now runs the commit
+    gate over its own edits before writing the patch). This pins the SECOND half:
+    when the gate refuses anyway, the human who inherits it is told what refused
+    and what to do, not handed a hook transcript wrapped in ANSI box-drawing with
+    the cause twelve lines up inside a colour frame.
+    """
+
+    def test_the_refusal_names_the_gate_and_the_humans_next_action(self, tmp_path):
+        repo, env, _g = make_repo(tmp_path)
+        hook = repo / ".git" / "hooks" / "pre-commit"
+        hook.parent.mkdir(parents=True, exist_ok=True)
+        # A real refusing gate, framed the way lefthook frames one: the cause is
+        # the LAST line, behind escape codes. Constructed, never observed.
+        hook.write_text(
+            "#!/bin/sh\n"
+            "printf '\\033[1m\\033[38;2;0;0;0m│ lefthook │\\033[0m\\n'\n"
+            "printf 'summary: (done)\\n'\n"
+            "printf '\\033[31mformat: src.py would be reformatted\\033[0m\\n'\n"
+            "exit 1\n"
+        )
+        hook.chmod(0o755)
+        staged_stub(
+            tmp_path,
+            find=CANDIDATES,
+            verify=SURVIVES,
+            fix={"fixed": ["a fix the gate rejects"], "blocking": [], "noted": []},
+            patches=[("fix", "src.py", "FIX")],
+        )
+        r = sprint(repo, {**env, **LEAD_CREDS}, "review")
+        assert r.returncode == 2, r.stdout + r.stderr
+        out = r.stdout + r.stderr
+        assert "commit gate refused" in out, out
+        assert "commit the staged tree yourself" in out, "no next action for the human"
+        assert "would be reformatted" in out, "the cause the gate named is not in the refusal"
+        assert "\x1b[" not in out, "ANSI escapes survived into the refusal"
+
+
 class TestTheGateIsNotHalfFixed:
     """Bug 93a5717b, migrated to the single-marker shape: a review may not move
     its own gate. The sibling-lens attack has no sibling any more; the marker is
