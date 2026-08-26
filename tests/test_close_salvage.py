@@ -171,3 +171,27 @@ class TestSalvage:
         assert broken.returncode == 2
         assert "not readable" in broken.stderr, broken.stderr
         assert "no unrecorded review" not in broken.stderr, broken.stderr
+
+    def test_the_kill_names_salvage_only_on_the_leg_that_has_one(self, tmp_path, monkeypatch):
+        """review.run's kill text is shared by four legs and only story close has a
+        salvage action to offer. Plan and sprint reviews write no launch marker, so
+        salvage there answers `no unrecorded review — Run review`, sending the lead
+        to a STORY close review after a PLAN review died. Both halves asserted:
+        dropping the advice from every leg would satisfy the second alone.
+        """
+        import review
+
+        repo, env, _ = make_repo(tmp_path)
+        (repo / ".xp" / "config.yml").write_text(
+            "roles:\n  reviewer: claude/opus\n  plan-reviewer: claude/opus\n"
+        )
+        (tmp_path / "bin" / "claude").write_text("#!/bin/sh\nsleep 30\n")  # silent by design
+        monkeypatch.chdir(repo)
+        for key, value in (env | {"XP_AGENT_TIMEOUT": "1"}).items():
+            monkeypatch.setenv(key, value)
+        # the COMMAND, never the bare word: pytest names tmp_path after the test, so
+        # `salvage` is in the log path this text quotes and matches whatever it says
+        for name, offered in (("story-reviewer", True), ("plan-reviewer", False)):
+            _result, err = review.run("bundle", repo, name=name)
+            assert "produced NO OUTPUT" in err and "XP_AGENT_TIMEOUT" in err, err
+            assert ("story <id> salvage" in err) is offered, (name, err)

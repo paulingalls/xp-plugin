@@ -95,7 +95,7 @@ class TestLaunchContract:
         argv = json.loads(rec.read_text())["argv"]
         assert argv[argv.index("--sandbox") + 1] == "danger-full-access", argv
 
-    def test_plan_reviewer_role_has_a_wall_clock(self, tmp_path, monkeypatch):
+    def test_plan_reviewer_role_is_bounded_too(self, tmp_path, monkeypatch):
         from spawn import run_agent
 
         monkeypatch.setenv("XP_AGENT_TIMEOUT", "0.01")
@@ -110,7 +110,7 @@ class TestLaunchContract:
             )
         except subprocess.TimeoutExpired:
             return
-        raise AssertionError("the plan-reviewer role ran without a wall clock")
+        raise AssertionError("the plan-reviewer role ran unbounded")
 
     def test_a_respawn_inherits_the_stopped_teammates_artifacts_only(self, tmp_path):
         repo, env, g = make_repo(tmp_path)

@@ -391,12 +391,20 @@ def run(
     except OSError as e:  # claude absent from PATH
         return "", f"could not launch the reviewer: {e}"
     except subprocess.TimeoutExpired as e:
+        # Only the STORY leg has a salvage action. The plan and sprint legs share
+        # this text and write no launch marker for it to read, so naming it there
+        # spends the lead's next move on a command that refuses — at the one moment
+        # a review has just been lost.
+        salvage = (
+            " If it wrote its report and patch before dying, `close.py story <id>"
+            " salvage` records that round without paying for a second review."
+            if name == "story-reviewer"
+            else ""
+        )
         return "", (
             f"the reviewer produced NO OUTPUT for {e.timeout:.0f}s and was killed."
-            f" Live output remains in {e.stderr}. If it wrote its report and patch"
-            " before dying, `close.py story <id> salvage` records that round without"
-            " paying for a second review; otherwise widen the silence it may keep"
-            " with XP_AGENT_TIMEOUT=<seconds> and review again"
+            f" Live output remains in {e.stderr}.{salvage} Widen the silence it may"
+            " keep with XP_AGENT_TIMEOUT=<seconds> and review again"
         )
     if proc.returncode != 0:
         detail = (proc.stderr or proc.stdout or "").strip()[:500]

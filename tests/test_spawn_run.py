@@ -1,4 +1,4 @@
-"""story-017: the teammate run — tee, wall clock, completion.
+"""story-017: the teammate run — tee, the reviewer bound, completion.
 Split from test_spawn.py at sprint-004 open."""
 
 import subprocess
@@ -55,7 +55,7 @@ class TestAgentWallClock:
             "story-042",
             tmp_path / "data",
         )
-        assert rc == 0, "a teammate story legitimately outruns any wall clock"
+        assert rc == 0, "a teammate story legitimately outruns any bound"
 
     @pytest.mark.parametrize("role", ["plan-reviewer", "reviewer"])
     def test_no_reviewer_launch_receives_a_git_credential(self, monkeypatch, tmp_path, role):
