@@ -16,9 +16,6 @@ from work import data_root
 PLUGIN_ROOT = Path(__file__).parent.parent
 
 REPORT_KEYS = ("fixed", "blocking", "noted")
-# Bounded AT THE WRITE, not at each read: the report rides into the merge body,
-# closes.jsonl and the recovery block, and that section has evicted constraints.md
-# before.
 ITEM_CAP = 400
 LIST_CAP = 20
 
@@ -27,12 +24,7 @@ REVIEWER_EMAIL = "story-reviewer@xp.local"
 
 
 def charter(name: str = "story-reviewer") -> str:
-    """agents/<name>.md, frontmatter stripped.
-
-    It runs as a top-level headless session, not a subagent, so the harness never
-    loads the agent file: inlining is the mechanism, the path is the fallback —
-    and it is why the file's `tools:` line bounds nothing at all here.
-    """
+    """Inline a top-level headless agent's charter; its harness loads no agent file."""
     from spawn import _read_shipped
 
     text = _read_shipped(PLUGIN_ROOT / "agents" / f"{name}.md")
@@ -44,34 +36,41 @@ def charter(name: str = "story-reviewer") -> str:
 
 
 def plan_review_notice(story_id: str) -> str:
-    """The teammate's plan review left its marker behind, or "".
-
-    A gate that did not run leaves no artifact of its own, so the marker is
-    written at launch and removed on findings (plan_review.incomplete_marker).
-    Measured twice in the field, neither visible from here: a review killed at the
-    harness's own timeout guess, and one orphaned when its teammate yielded.
-    """
     marker = data_root() / "markers" / f"{story_id}.plan-review-incomplete"
     if not marker.exists():
         return ""
+    try:
+        detail = marker.read_text().strip()
+        state = json.loads(detail)
+    except OSError as exc:
+        return f"{story_id}'s plan-review marker is UNREADABLE at {marker} ({exc})"
+    except ValueError:
+        state = {}
+    default = data_root() / "plans" / f"{story_id}.md"
+    findings = Path(state.get("findings") or default) if isinstance(state, dict) else default
+    try:
+        written = findings.read_text().strip()
+    except FileNotFoundError:
+        written = ""
+    except OSError as exc:
+        return f"{story_id}'s plan-review findings are UNREADABLE at {findings} ({exc})"
+    if written:
+        return f"{story_id}'s plan review PRODUCED FINDINGS at {findings}; its marker remains"
     return (
-        f"{story_id}'s plan review DID NOT COMPLETE — {marker.read_text().strip()}."
+        f"{story_id}'s plan review DID NOT COMPLETE — {detail}."
         " The story was written against a plan no reviewer signed off"
     )
 
 
 def report_path(story_id: str, round_n: int) -> Path:
-    """Where this round's report goes. ROUND-scoped: the index advances only on a
-    RECORDED round, so failed attempts at round N share N's path and a leftover
-    would certify a round that produced nothing. The caller unlinks first."""
+    """Round-scoped; the caller unlinks leftovers before an unrecorded retry."""
     p = data_root() / "reports" / f"{story_id}.round-{round_n}.json"
     p.parent.mkdir(parents=True, exist_ok=True)
     return p
 
 
 def sprint_report_path(sprint_id: str, stage: str, round_n: int) -> Path:
-    """Its own DIRECTORY, not a prefix: story ids are free text, so any separator
-    a sprint key uses is one a story can spell (constraints.md #10)."""
+    """Use a directory because free-text story ids can spell any prefix separator."""
     d = data_root() / "reports" / "sprint"
     d.mkdir(parents=True, exist_ok=True)
     return d / f"{sprint_id}.{stage}.round-{round_n}.json"
@@ -84,8 +83,7 @@ def patch_path(report: Path) -> Path:
 def _cap(items: list, path: Path) -> list:
     kept = [i if len(i) <= ITEM_CAP else i[: ITEM_CAP - 1] + "…" for i in items[:LIST_CAP]]
     if len(items) > LIST_CAP:
-        # name the FILE: the merge body is where this is read, and without a path
-        # the reader knows only that something was elided, not where it survives
+        # A display elision must point to the full durable report.
         kept[-1] = f"(+{len(items) - LIST_CAP + 1} more, in full at {path})"
     return kept
 
