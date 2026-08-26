@@ -4,6 +4,31 @@ Release notes started at v0.6.0; earlier entries are summarized from their
 tag and merge messages. Full detail lives in the merge history and the
 per-sprint review reports.
 
+## v0.8.2 — a carded free patch lands where the free legs look for it
+
+- A free patch WITH a card is now spawned onto the branch `free start` cut. Spawn
+  derived its own name from the card title and branched from the integration
+  target, so the executor's work landed where the free legs refuse it — and the
+  lead's own commits on the free branch were absent from it, which made `reset`
+  the obvious recovery and a silent way to lose them.
+- The branch rule lives in `story_branch`, the one function both spawn and resume
+  call, so a stopped free patch still resumes into its own worktree.
+- Spawn now reports where that branch went: it says the tree CONTINUES the free
+  branch rather than claiming it was cut off the integration target, it names the
+  free review leg and the worktree to run it from — the story leg accepts a free
+  id and writes the same marker free land reads — and if the lead is standing
+  somewhere else, the refusal asks for `git checkout <branch>` instead of leaving
+  `git branch -D` as the obvious way past it.
+
+Bug 3dc03ed1 — a review losing its round to a file the lead left before it
+started — is NOT fixed here. The attempted narrowing was inert: `close._preflight`
+refuses a dirty tree before the reviewer launches, so the baseline is always empty
+and the comparison collapses to the old check. Folded into story-054, where
+recording the round from the artifacts already on disk is the shape that works.
+Its plan-review twin needed no change: that leg compares the tree before and
+after, so a file the lead left BEFORE it starts already costs no round, while one
+left DURING it still refuses. Constructed both directions to check.
+
 ## v0.8.1 — three checks that could not red, and a record that stops growing
 
 - Shipped comments no longer cite constraints by INDEX. Indices are project-local:

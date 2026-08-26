@@ -31,6 +31,8 @@ class TestFreeTeardown:
         g("add", "-A")
         g("commit", "-qm", "spawn fixture")
         add_free_card(env)
+        assert free(repo, env, "fix-typo", "start").returncode == 0
+        commit_on_free(repo, g)
         ready = subprocess.run(
             [sys.executable, str(SPAWN), "ready", KEY],
             cwd=repo,
@@ -51,12 +53,9 @@ class TestFreeTeardown:
         tree = Path(env["XP_DATA"]) / "worktrees" / KEY
         spawned_branch = g("-C", str(tree), "branch", "--show-current").stdout.strip()
         stub_reviewer(tmp_path)
-        assert free(repo, env, "fix-typo", "start").returncode == 0
-        g("merge", "-q", spawned_branch)
-        commit_on_free(repo, g)
         plan = Path(env["XP_DATA"]) / "plan.md"
         plan.write_text(plan.read_text().replace("— fix typo", "— renamed after spawn"))
-        assert free(repo, env, "fix-typo", "review").returncode == 0
+        assert free(tree, env, "fix-typo", "review").returncode == 0
         g("checkout", "-q", "main")
         g("merge", "-q", "--no-ff", BRANCH, "-m", "merge free release")
         return repo, env, g, tree, spawned_branch
