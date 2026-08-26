@@ -22,9 +22,13 @@ from sprint_helpers import (  # noqa: F401
     section,
     snapshot,
     sprint,
+    stage_key,
     staged_stub,
     work,
 )
+
+CLEAN = {"fixed": [], "blocking": [], "noted": []}
+DELTA = "The delta since the last recorded round"
 
 
 class TestReviewLeg:
