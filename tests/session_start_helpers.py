@@ -2,6 +2,8 @@
 test_session_start.py hit constraint 8's 500-line cap."""
 
 import json
+import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -24,18 +26,21 @@ def run_hook(cwd, data_dir, session_id="sess-abc123"):
 
 def xp_repo(tmp_path):
     repo = tmp_path / "repo"
-    (repo / ".xp").mkdir(parents=True)
+    templates = Path(os.environ["XP_TEST_REPO_TEMPLATES"])
+    full = (templates / "session-start-full").is_dir()
+    shutil.copytree(templates / ("session-start-full" if full else "session-start"), repo)
+    if not full:
+        (repo / ".xp").mkdir(parents=True)
     env = {"PATH": "/usr/bin:/bin", "HOME": str(tmp_path)}
     g = lambda *a: subprocess.run(  # noqa: E731
         ["git", *a], cwd=repo, env=env, capture_output=True, text=True
     )
-    g("init", "-q", "-b", "main")
-    g("config", "user.email", "t@t")
-    g("config", "user.name", "t")
     (tmp_path / "xp").mkdir(parents=True, exist_ok=True)
     (tmp_path / "xp" / "plan.md").write_text(
         "# plan\n#### story-042 — demo   [in-progress]\nVerify: true\n"
     )
+    if full:
+        return repo, g
     (repo / ".xp" / "constraints.md").write_text("# Constraints\nCONSTRAINT-SENTINEL\n")
     (repo / "f.py").write_text("A = 1\n")
     g("add", "-A")
