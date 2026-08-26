@@ -89,13 +89,13 @@ so a Codex teammate can nest its own plan review.
 
 **What teammates are launched with.** Every Codex teammate and reviewer runs
 `--sandbox danger-full-access`, and every launch prints the posture it took.
-**This is not yet configurable**: if you need Codex confined, this release cannot
-give you that. It is a decision, not an oversight — a Claude teammate already
-runs with no OS sandbox because Claude Code exposes none, and under
-`workspace-write` a Codex teammate reaches neither the Docker socket, nor
-loopback TCP, nor a nested `codex exec`. What bounds both harnesses is the same
-either way: a throwaway worktree, the git-hook wall, and `close.py` running your
-`Verify` itself.
+**That is the default, not the only choice**: `codex_sandbox: workspace-write`
+in `.xp/config.yml` confines them, and the launch line names the cost — no
+Docker socket, no loopback TCP, no nested `codex exec`, so a teammate's
+mandatory plan review cannot reach an API. Unconfined by default is a decision,
+not an oversight: a Claude teammate already runs with no OS sandbox because
+Claude Code exposes none. What bounds both harnesses is the same either way: a
+throwaway worktree, the git-hook wall, and `close.py` running your `Verify`.
 
 **What a Codex lead does not get.** None of these is a correctness gap — the
 wall, the completion contract and the review-report contract are shared code:
