@@ -283,3 +283,31 @@ def test_the_LAST_codex_agent_message_is_the_result_not_the_first(tmp_path, monk
     )
     assert proc.returncode == 0
     assert proc.stdout == "the real findings"
+
+
+def test_a_reviewer_that_keeps_talking_outlives_the_bound(tmp_path, monkeypatch):
+    """story-036 AC 7: the bound is IDLE, not wall.
+
+    Measured in the field (25950c0d): a story reviewer made six fix commits over
+    29 minutes and was killed 12 minutes after the last one, inside its final
+    Verify. It was not hung. A wall clock passes this test only by being raised,
+    which is the answer the card rejects — so the run outlives the bound three
+    times over while never going quiet for it.
+    """
+    from spawn import run_agent
+
+    monkeypatch.setenv("XP_DATA", str(tmp_path / "data"))
+    monkeypatch.setenv("XP_AGENT_TIMEOUT", "0.5")
+    script = tmp_path / "chatty.py"
+    script.write_text(
+        "import sys, time\n"
+        "for _ in range(30):\n"
+        '    print(\'{"type":"system","session_id":"s"}\'); sys.stdout.flush()\n'
+        "    time.sleep(0.05)\n"
+        'print(\'{"type":"result","result":"still going"}\')\n'
+    )
+    proc = run_agent(
+        [sys.executable, str(script)], tmp_path, "", "reviewer", "claude", "story-042-review"
+    )
+    assert proc.returncode == 0, proc.stderr
+    assert json.loads(proc.stdout)["result"] == "still going"

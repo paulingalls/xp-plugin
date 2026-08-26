@@ -186,13 +186,15 @@ def run_agent(
     harness: str,
     log_id: str,
 ) -> subprocess.CompletedProcess:
-    """Run one role with its prompt off argv and reviewer wall clock applied."""
+    """Run one role with its prompt off argv and the reviewer silence bound on."""
     env = os.environ | {"XP_ROLE": role}
     # BOTH reviewer legs: a review is the one launch both long-running AND
     # writing, and a hung one owns the lead's tree, with edit rights, forever. A
-    # teammate legitimately outruns any wall clock, and cmd_spawn's call site has
-    # no except — bounding it would kill a whole story and abandon its worktree.
-    # Read from the environment because every test drives these as subprocesses.
+    # teammate legitimately outruns any bound, and cmd_spawn's call site has no
+    # except — bounding it would kill a whole story and abandon its worktree.
+    # The number is the longest SILENCE tolerated, not a total budget: run_stream
+    # restarts it on every streamed line. Read from the environment because every
+    # test drives these as subprocesses.
     timeout = None
     if role.endswith("reviewer"):
         timeout = float(os.environ.get("XP_AGENT_TIMEOUT", 3600))
