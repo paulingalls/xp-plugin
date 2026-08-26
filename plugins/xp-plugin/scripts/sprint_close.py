@@ -119,12 +119,13 @@ def build_sprint_bundle(
     resolutions, work_md = _sprint_records(
         data_root(), int(git("show", "-s", "--format=%ct", base).stdout.strip())
     )
+    title = "The delta since the last recorded round" if diff_base else "Cumulative sprint diff"
     sections = [
         ("Your charter", charter),
         ("Your report", f"REPORT_PATH: {report}"),
         *extra,
         (f"The stories in sprint {sprint_id}", cards),
-        ("Cumulative sprint diff", git("diff", f"{diff_base or base}..HEAD").stdout),
+        (title, git("diff", f"{diff_base or base}..HEAD").stdout),
         ("Resolutions filed during the sprint", resolutions),
         ("work.md entries filed during the sprint", work_md),
         ("PROCESS", _read(str(PLUGIN_ROOT / "PROCESS.md"))),
@@ -169,24 +170,25 @@ def cmd_review(sprint_id: str, dry_run: bool) -> int:
     head = git("rev-parse", "HEAD").stdout.strip()
     base = git("merge-base", f"refs/heads/{trunk}", "HEAD").stdout.strip()
     digest_before = review.marker_digest(marker)
-    scoped, unnamed, diff_base = found, [], base
+    scoped, unnamed, diff_base, scope = found, [], "", []
     if round_n > 1:
         diff_base = state["shown_sha"]
         changed = git("diff", "--name-only", "--no-renames", f"{diff_base}..").stdout.splitlines()
         scoped, unnamed = [], set(changed)
         for slug, prose in found:
             path = review.sprint_report_path(sprint_id, f"find-{slug}", 1)
-            absent = not path.exists()
             named, err = review.named_paths(path, changed)
             if err:
                 return fail(err)
             if named:
                 scoped.append((slug, prose))
-                why = "round-1 report absent; " if absent else ""
+                why = "" if path.exists() else "round-1 report absent; "
                 print(f"re-run {slug}: {why}" + ", ".join(sorted(named)))
             else:
                 print(f"skip {slug}: no round-1 finding named a changed path")
             unnamed -= named
+        # in the RECORD, not only stdout: two counts cannot tell a scoped round from a sweep
+        scope = [f"scoped: read {diff_base[:8]}..HEAD, {len(scoped)}/{len(found)} finders re-run"]
         if unnamed:
             print("closer covers unnamed delta paths: " + ", ".join(sorted(unnamed)))
 
@@ -221,8 +223,7 @@ def cmd_review(sprint_id: str, dry_run: bool) -> int:
             return fail(err)
         candidates += report["blocking"]
     if dry_run:
-        tail = "the closer" if round_n > 1 else "verifiers, optional fixer, and closer"
-        print(f"(then: {tail})")
+        print("(then: the closer)" if round_n > 1 else "(then: verifiers, the fixer, the closer)")
         return 0
 
     fixed = {"fixed": [], "blocking": [], "noted": []}
@@ -261,7 +262,7 @@ def cmd_review(sprint_id: str, dry_run: bool) -> int:
     round_ = {
         "fixed": fixed["fixed"],
         "blocking": fixed["blocking"] + closing["blocking"],
-        "noted": fixed["noted"],
+        "noted": fixed["noted"] + scope,
     }
     state.setdefault("rounds", []).append(round_)
     state["reviewed_head"] = head

@@ -28,6 +28,7 @@ from sprint_helpers import (  # noqa: F401
 )
 
 CLEAN = {"fixed": [], "blocking": [], "noted": []}
+DELTA = "The delta since the last recorded round"
 
 
 class TestReviewLeg:
@@ -244,16 +245,18 @@ class TestConfirmingRoundScope:
         second = launches(tmp_path)[split:]
         assert len(second) < len(first), "a one-commit confirmation repeated the full fan-out"
         assert [stage_key(r["stdin"]) for r in second] == ["close"]
+        delta = section(second[0]["stdin"], DELTA, "Resolutions filed during the sprint")
+        assert "+ROUND_2" in delta and "+B = 'SPRINT-ONLY-SENTINEL'" not in delta, "re-swept"
 
-    def test_a_finder_reruns_only_when_its_round_one_finding_named_the_delta(self, tmp_path):
+    def test_a_rerun_finders_candidates_are_named_to_the_closer_that_judges_them(self, tmp_path):
+        again = "src.py loses state still"
         repo, env, g, split = self._round_one(tmp_path, "src.py may silently lose state")
         self._commit(repo, g)
-        staged_stub(tmp_path)
+        staged_stub(tmp_path, find_security=CLEAN | {"blocking": [again]})
         assert sprint(repo, env, "review").returncode == 0
-        assert [stage_key(r["stdin"]) for r in launches(tmp_path)[split:]] == [
-            "find-security",
-            "close",
-        ]
+        second = launches(tmp_path)[split:]
+        assert [stage_key(r["stdin"]) for r in second] == ["find-security", "close"]
+        assert again in second[1]["stdin"], "the closer judges a candidate it was never handed"
 
     def test_scoping_reads_uncapped_findings_and_matches_the_whole_path(self, tmp_path):
         repo, env, g = make_repo(tmp_path)
@@ -290,7 +293,8 @@ class TestConfirmingRoundScope:
         result = sprint(repo, env, "review")
         assert result.returncode == 0, result.stderr
         close = launches(tmp_path)[split:][0]["stdin"]
-        assert "new.py" in close and "closer" in close.lower()
+        mine = section(close, "Delta paths only you cover", "Findings from earlier rounds")
+        assert mine.strip() == "new.py", "the diff mentions it; nothing ASSIGNS it to the closer"
         assert "new.py" in result.stdout and "unnamed delta paths" in result.stdout
 
     def test_a_confirmation_finding_is_recorded_and_blocks_land(self, tmp_path):
@@ -301,6 +305,7 @@ class TestConfirmingRoundScope:
         assert sprint(repo, env, "review").returncode == 0
         state = json.loads(marker_path(tmp_path).read_text())
         assert state["rounds"][-1]["blocking"] == [blocker]
+        assert "0/3 finders re-run" in state["rounds"][-1]["noted"][0], "the record hides the scope"
         land = sprint(repo, env, "land", "--dry-run")
         assert land.returncode == 2 and blocker in land.stderr
 
