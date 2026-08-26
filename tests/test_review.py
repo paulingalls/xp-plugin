@@ -300,9 +300,8 @@ class TestTheFixerFixes:
         )
         r = sprint(repo, env, "review")
         assert r.returncode == 0, r.stderr
-        line = next((ln for ln in r.stdout.splitlines() if "full diff" in ln), "")
-        assert line, r.stdout
-        assert "FIX" in Path(line.rsplit(": ", 1)[1].strip()).read_text()
+        diff = tmp_path / "data" / "reports" / "sprint" / "2.fix.round-1.diff"
+        assert str(diff) in r.stdout and "FIX" in diff.read_text()
 
     def test_LAND_shows_the_lead_the_commits_it_is_merging(self, tmp_path):
         """Assent is given by RUNNING land, and SKILL.md says so — but the review

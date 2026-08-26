@@ -22,12 +22,35 @@ from sprint_helpers import (  # noqa: F401
     section,
     snapshot,
     sprint,
+    staged_stub,
     work,
 )
 
 
 class TestReviewLeg:
     """story-014, revised at story-022: the sprint close marshals ONE review."""
+
+    def test_an_applied_fix_handoff_names_the_leads_obligation(self, tmp_path):
+        lines = []
+        for root in (tmp_path / "first", tmp_path / "second"):
+            root.mkdir()
+            repo, env, _g = make_repo(root)
+            report = {"fixed": ["FIXED"], "blocking": [], "noted": []}
+            staged_stub(
+                root,
+                patches=[("fix", "src.py", "C = 2")],
+                find={"fixed": [], "blocking": ["FIXED"], "noted": []},
+                verify={"fixed": [], "blocking": ["FIXED"], "noted": []},
+                fix=report,
+            )
+            result = sprint(repo, env, "review")
+            assert result.returncode == 0, result.stderr
+            line = next(line for line in result.stdout.splitlines() if "full diff" in line)
+            diff = root / "data" / "reports" / "sprint" / "2.fix.round-1.diff"
+            assert str(diff) in line and diff.is_file()
+            assert "close.py sprint 2 land" in line and "landing accepts" in line
+            lines.append(line)
+        assert lines[0] != lines[1]
 
     def test_the_bundle_diffs_against_the_DEFAULT_branch_not_the_integration_target(self, tmp_path):
         """Under `release: sprint`, integration_target() returns the SPRINT branch

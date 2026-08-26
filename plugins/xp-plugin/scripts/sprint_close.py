@@ -245,7 +245,10 @@ def cmd_review(sprint_id: str, dry_run: bool) -> int:
     marker.write_text(json.dumps(state))
     fix_report = review.sprint_report_path(sprint_id, "fix", round_n)
     if diff := review.write_reviewer_diff(fix_report, head):
-        print(f"the reviewer changed the tree. Its commits and full diff: {diff}")
+        print(
+            f"the script-applied sprint review fix changed the tree. Read its commit and"
+            f" full diff at {diff} before `close.py sprint {sprint_id} land`; landing accepts it."
+        )
     print(
         f"round {round_n} recorded at {state['shown_sha'][:8]}:"
         f" {len(round_['fixed'])} fixed, {len(round_['blocking'])} blocking"
