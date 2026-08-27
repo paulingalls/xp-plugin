@@ -182,8 +182,8 @@ def last_close() -> str:
 
 def recovery_block() -> str:
     """Computed fresh from always-current sources — the layer that can't go stale."""
-    # TERMINAL states are enumerated, never "not [done]" (constraint 15): the same
-    # inference in sprint_close blocked this sprint's own close over a [retired]
+    # TERMINAL states are enumerated, never "not [done]": Distinct states stay distinct.
+    # The same inference in sprint_close blocked this sprint's own close over a [retired]
     # card, and here it lists folded work back to the lead as still owed.
     terminal = ("[done]", "[retired]")
     stories = [
