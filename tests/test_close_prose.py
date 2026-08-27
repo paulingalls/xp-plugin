@@ -249,11 +249,10 @@ class TestShippedProseMatchesTheMechanism:
         )
 
     def test_the_plan_reviewer_charter_has_five_checks(self):
-        """story-016: check 4 absorbs the CUT duty (moved out of Output's
-        standing-to-cut sentence) and the old check 5's "really three stories"
-        clause; check 5's sprint-cap clause folds into check 1. A structural
-        count, not a token grep — it certifies the count only, not that the
-        duty is followed."""
+        """A structural count, not a token grep — it certifies the count only,
+        not that the duty is followed. The sprint-cap clause is NOT one of the
+        five: capacity is the lead's card review, and the charter says so in its
+        own paragraph (story-052). Restoring it here would keep this green."""
         charter = (PLUGIN / "agents" / "plan-reviewer.md").read_text()
         section = charter.split("## Checks, in order of payoff")[1]
         section = section.split("## Close-review depth")[0]

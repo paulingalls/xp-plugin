@@ -285,6 +285,10 @@ def test_the_LAST_codex_agent_message_is_the_result_not_the_first(tmp_path, monk
     assert proc.stdout == "the real findings"
 
 
+# 7.3s, and the cost is structural: the window must be wide enough not to measure
+# scheduling, and the run must outlive it several times over. The pre-commit tier
+# is bounded (15aec3fc) and that bound may not move, so this one leaves it.
+@pytest.mark.slow
 def test_a_reviewer_that_keeps_talking_outlives_the_bound(tmp_path, monkeypatch):
     """story-036 AC 7: the bound is IDLE, not wall.
 
@@ -297,11 +301,13 @@ def test_a_reviewer_that_keeps_talking_outlives_the_bound(tmp_path, monkeypatch)
     from spawn import run_agent
 
     monkeypatch.setenv("XP_DATA", str(tmp_path / "data"))
-    monkeypatch.setenv("XP_AGENT_TIMEOUT", "0.5")
+    # Sub-second windows measure xdist scheduling pauses, not agent silence. Keep
+    # the child alive for more than three wider windows so a wall clock still reds.
+    monkeypatch.setenv("XP_AGENT_TIMEOUT", "2")
     script = tmp_path / "chatty.py"
     script.write_text(
         "import sys, time\n"
-        "for _ in range(30):\n"
+        "for _ in range(130):\n"
         '    print(\'{"type":"system","session_id":"s"}\'); sys.stdout.flush()\n'
         "    time.sleep(0.05)\n"
         'print(\'{"type":"result","result":"still going"}\')\n'

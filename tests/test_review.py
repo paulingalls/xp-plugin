@@ -245,9 +245,6 @@ class TestTheFixerFixes:
             assert not [k for k in launch["env"] if k.startswith(("GIT_AUTHOR_", "GIT_COMMITTER_"))]
 
     def test_a_STAGE_THAT_COMMITS_AT_ALL_is_refused(self, tmp_path):
-        """The bound INVERTED here: it was authorship, because run_agent signed
-        every review launch. It signs nothing now, so motion is the whole rule and
-        the identity a stage forges is beside the point."""
         repo, env, _g = make_repo(tmp_path)
         committing_stub(
             tmp_path,
@@ -257,7 +254,7 @@ class TestTheFixerFixes:
         r = sprint(repo, env, "review")
         assert r.returncode == 2, r.stdout
         assert "read-only reviewer changed HEAD" in r.stderr, r.stderr
-        assert not marker_path(tmp_path).exists(), "recorded a round it refused"
+        assert json.loads(marker_path(tmp_path).read_text())["rounds"][-1]["incomplete"]
 
     def test_a_fixer_patch_touching_an_UNDECLARED_xp_file_is_refused(self, tmp_path):
         """The `.xp/` scope moved from the committed range to patch apply, and the
@@ -275,14 +272,16 @@ class TestTheFixerFixes:
         assert r.returncode == 2, r.stdout
         assert ".xp/constraints.md" in r.stderr and "Files line" in r.stderr, r.stderr
         assert "sneaky" not in (repo / ".xp" / "constraints.md").read_text()
-        assert not marker_path(tmp_path).exists(), "recorded a round it refused"
+        assert json.loads(marker_path(tmp_path).read_text())["rounds"][-1]["incomplete"]
 
     def test_a_reviewer_that_leaves_the_tree_DIRTY_is_refused(self, tmp_path):
         repo, env, _g = make_repo(tmp_path)
-        committing_stub(tmp_path, "open('src.py','a').write('# edited\\n')")
+        committing_stub(tmp_path, "open('src.py','a').write('# edited\\n')", report=CANDIDATES)
         r = sprint(repo, env, "review")
         assert r.returncode == 2 and "dirty" in r.stderr
-        assert not marker_path(tmp_path).exists()
+        round_ = json.loads(marker_path(tmp_path).read_text())["rounds"][-1]
+        assert round_["blocking"] == ["a silent one"] and round_["stages"] == ["find-security"]
+        assert "IS recorded" in round_["incomplete"] and "No round was" not in round_["incomplete"]
 
     def test_no_survivors_means_no_fixer_is_launched(self, tmp_path):
         repo, env, _g = make_repo(tmp_path)
@@ -343,16 +342,6 @@ class TestTheFixerFixes:
 
 
 class TestTheCommitGateRefusalIsActionable:
-    """Field-reported by Legacy at 0.7.4, and it cost them a whole sprint-review
-    round: a biome pre-commit hook rejected the fixer's hand-authored JSON, the
-    commit failed, and the round was discarded with the closer never reached.
-
-    The prevention is in both reviewer charters (the fixer stages and runs the
-    commit gate before writing the patch). This pins the SECOND half: when the
-    gate refuses anyway, the human inheriting it is told what refused, what of it
-    survives, and what to do — not handed an ANSI-framed hook transcript.
-    """
-
     def refusal(self, tmp_path, gate):
         """What the pipeline prints when the commit gate refuses the fixer's patch.
         `gate` is the lines the gate emits before exiting 1."""
@@ -370,10 +359,15 @@ class TestTheCommitGateRefusalIsActionable:
         )
         r = sprint(repo, {**env, **LEAD_CREDS}, "review")
         assert r.returncode == 2, r.stdout + r.stderr
-        return r.stdout + r.stderr
+        round_ = json.loads(marker_path(tmp_path).read_text())["rounds"][-1]
+        assert round_["fixed"] == ["a fix the gate rejects"] and round_["stages"][-1] == "fix"
+        assert round_["blocking"] == ["a silent one"], "one finding, once per stage that saw it"
+        land = sprint(repo, env, "land", "--dry-run")
+        assert land.returncode == 2 and "incomplete" in land.stderr
+        return repo, env, _g, r.stdout + r.stderr
 
     def test_the_refusal_names_the_gate_and_the_humans_next_action(self, tmp_path):
-        out = self.refusal(tmp_path, LEFTHOOK)
+        *_context, out = self.refusal(tmp_path, LEFTHOOK)
         assert "commit gate refused" in out, out
         assert "commit the staged tree yourself" in out, "no next action for the human"
         assert "would be reformatted" in out, "the cause the gate named is not in the refusal"
@@ -383,7 +377,7 @@ class TestTheCommitGateRefusalIsActionable:
         """abort_text appends `git reset --hard`, which discards the staged patch
         the sentence above it says to commit. The two read as opposite orders
         unless the refusal names a copy of the patch that the reset cannot reach."""
-        out = self.refusal(tmp_path, LEFTHOOK)
+        *_context, out = self.refusal(tmp_path, LEFTHOOK)
         m = re.search(r"the patch is also at (\S+?),", out)
         assert m, f"the refusal offers an undo but names no surviving patch:\n{out}"
         assert "FIX" in Path(m.group(1)).read_text(), "the named patch is not the fixer's"
@@ -392,17 +386,22 @@ class TestTheCommitGateRefusalIsActionable:
         """A bounded tail can cut the cause off the top — the same "reason twelve
         lines up" this refusal exists to end, re-created inside it. Say the count."""
         gate = ["CAUSE-ABOVE-THE-CUT"] + [f"noise {n}" for n in range(14)]
-        out = self.refusal(tmp_path, gate)
+        *_context, out = self.refusal(tmp_path, gate)
         assert "CAUSE-ABOVE-THE-CUT" not in out, "the fixture no longer truncates"
         assert "last 12 of 15 lines" in out, f"the refusal hid its own truncation:\n{out}"
 
+    def test_the_humans_commit_is_followed_by_round_two_without_erasing_round_one(self, tmp_path):
+        repo, env, g, _out = self.refusal(tmp_path, LEFTHOOK)
+        (repo / ".git" / "hooks" / "pre-commit").unlink()
+        assert g("commit", "-qm", "human accepts fixer patch").returncode == 0
+        staged_stub(tmp_path)
+        assert sprint(repo, env, "review").returncode == 0
+        rounds = json.loads(marker_path(tmp_path).read_text())["rounds"]
+        assert len(rounds) == 2 and rounds[0]["incomplete"] and "incomplete" not in rounds[1]
+        assert (tmp_path / "data/reports/sprint/2.fix.round-1.json").exists()
+
 
 class TestTheGateIsNotHalfFixed:
-    """Bug 93a5717b, migrated to the single-marker shape: a review may not move
-    its own gate. The sibling-lens attack has no sibling any more; the marker is
-    still outside the repo, still invisible to every diff, and still the file
-    land reads for rounds and blocking findings."""
-
     def test_a_reviewer_that_rewrites_the_MARKER_is_refused(self, tmp_path):
         repo, env, _g = make_repo(tmp_path)
         path = marker_path(tmp_path)
