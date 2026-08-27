@@ -149,7 +149,7 @@ def build_prompt(sections: list[tuple[str, str]]) -> str:
 
 
 def teammate_sections(
-    card: str, story_id: str, handoff: str, plugin_root: Path = PLUGIN_ROOT
+    card: str, story_id: str, handoff: str, plugin_root: Path
 ) -> list[tuple[str, str]]:
     sections = [
         ("VALUES", _read_shipped(PLUGIN_ROOT / "VALUES.md")),
@@ -230,6 +230,8 @@ def worktree_path(story_id: str) -> Path:
 
 
 def execution_root(tree: Path, trunk: str) -> Path:
+    # Asked of TRUNK, not of `tree`: the prompt is built before the worktree is cut,
+    # so an is_dir() check here answers False and silently re-ships the installed copy.
     source = PROJECT_PLUGIN / "scripts" / "spawn.py"
     exists = git("cat-file", "-e", f"{trunk}:{source}", check=False)
     return tree / PROJECT_PLUGIN if exists.returncode == 0 else PLUGIN_ROOT
@@ -438,15 +440,14 @@ def cmd_spawn(
         return result
     free_id = FREE_ID.fullmatch(story_id)
     scope = f"free {free_id.group(2)}" if free_id else f"story {story_id}"
-    leg = f"`close.py {scope} review`" + (" from that worktree" if free_id else "")
+    # The free leg reads its branch off HEAD, and spawn just moved the lead to trunk.
+    where = " from that worktree" if free_id else ""
+    leg = f"run `close.py {scope} review`{where}"
     if plugin_root != PLUGIN_ROOT:
-        command = plugin_root / "scripts" / "close.py"
         leg = (
             f"use xp-plugin {plugin_version(plugin_root)} at {plugin_root} for every close.py"
-            f" leg, starting with `python3 {command} {scope} review`"
+            f" leg, starting with `python3 {plugin_root}/scripts/close.py {scope} review`{where}"
         )
-    else:
-        leg = "run " + leg
     print(f"{story_id} produced commit {tree_state(tree)[0]} at {tree}. Read it, then {leg}.")
     marker_path(data_root(), story_id).unlink(missing_ok=True)
     held.close()

@@ -18,9 +18,8 @@ def test_consuming_project_keeps_installed_root_and_output(tmp_path):
     )
 
 
-def test_self_hosting_commands_execute_and_disclose_worktree_root(tmp_path):
-    repo, env, g = make_repo(tmp_path)
-    g("checkout", "-q", "main")
+def write_plugin_source(repo):
+    """A tree that ships plugins/xp-plugin; work.py names the copy that ran."""
     plugin = repo / "plugins" / "xp-plugin"
     scripts = plugin / "scripts"
     scripts.mkdir(parents=True)
@@ -33,6 +32,12 @@ def test_self_hosting_commands_execute_and_disclose_worktree_root(tmp_path):
     manifest = plugin / ".claude-plugin" / "plugin.json"
     manifest.parent.mkdir()
     manifest.write_text('{"version": "9.8.7"}\n')
+
+
+def test_self_hosting_commands_execute_and_disclose_worktree_root(tmp_path):
+    repo, env, g = make_repo(tmp_path)
+    g("checkout", "-q", "main")
+    write_plugin_source(repo)
     g("add", "-A")
     assert g("commit", "-qm", "fixture plugin source").returncode == 0
     g("checkout", "-q", "elsewhere")
@@ -49,3 +54,25 @@ def test_self_hosting_commands_execute_and_disclose_worktree_root(tmp_path):
     assert "for every close.py leg" in handback
     assert f"python3 {worktree_plugin}/scripts/close.py story story-042 review" in handback
     assert "xp-plugin 9.8.7" in handback
+
+
+def test_self_hosting_free_leg_still_names_the_worktree_it_must_run_from(tmp_path):
+    """`close.py free` reads its branch off HEAD and spawn moves the lead to trunk,
+    so the long spelling drops the lead onto a checkout that refuses the leg."""
+    from test_close_free import KEY, carded_free_patch
+
+    repo, env, g = carded_free_patch(tmp_path)
+    branch = g("rev-parse", "--abbrev-ref", "HEAD").stdout.strip()
+    g("checkout", "-q", "main")
+    write_plugin_source(repo)
+    g("add", "-A")
+    assert g("commit", "-qm", "fixture plugin source").returncode == 0
+    g("checkout", "-q", branch)
+    assert g("merge", "-q", "main").returncode == 0
+    stub_claude(tmp_path)
+
+    result = spawn(repo, env, KEY)
+    assert result.returncode == 0, result.stderr
+    handback = result.stdout.splitlines()[-1]
+    assert "for every close.py leg" in handback
+    assert handback.endswith("close.py free fix-typo review` from that worktree.")
