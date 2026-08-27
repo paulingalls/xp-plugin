@@ -5,10 +5,12 @@ needs an over-budget fixture the rest of that file has no use for.
 
 Verify: pytest -q tests/test_session_start_cut.py"""
 
+import os
 import re
+import subprocess
 
 from session_start import OUTPUT_CAP, PLUGIN_ROOT
-from session_start_helpers import run_hook, xp_repo
+from session_start_helpers import run_hook, run_recovery, xp_repo
 
 VALUES = (PLUGIN_ROOT / "VALUES.md").read_text()
 PROCESS = (PLUGIN_ROOT / "PROCESS.md").read_text()
@@ -48,6 +50,23 @@ class TestWhatTheProfileLeadsWith:
     def test_neither_is_dropped_by_a_cut(self, tmp_path):
         r = self.over_budget(tmp_path)
         assert VALUES in r.stdout and PROCESS in r.stdout
+
+    def test_process_recovery_instruction_runs_the_banner_command(self, tmp_path):
+        repo, _g = xp_repo(tmp_path)
+        profile = run_hook(repo, tmp_path).stdout
+        assert "exact `recover:` command" in PROCESS
+        line = next(ln for ln in profile.splitlines() if " · recover: " in ln)
+        command = line.split(" · recover: ", 1)[1].split(" · scripts: ", 1)[0]
+        recovered = subprocess.run(
+            command,
+            shell=True,
+            cwd=repo,
+            env=dict(os.environ) | {"XP_DATA": str(tmp_path / "xp")},
+            capture_output=True,
+            text=True,
+        )
+        assert recovered.returncode == 0 and "branch: main" in recovered.stdout
+        assert "story-042" in recovered.stdout and "session digest" in recovered.stdout
 
 
 class TestWhatTheCutSaysItTook:
@@ -92,15 +111,10 @@ class TestWhatTheCutSaysItTook:
         survives every cut that reaches them. Asking whether "N. **" is in the
         surviving text would therefore report constraints 1-5 present while they
         are gone: a mechanism that lies about which rules the lead is missing.
-        Constructed by inflating the recovery block until NO constraint fits.
+        Constructed by inflating the first rule until NO constraint fits.
         """
         repo, _g = xp_repo(tmp_path)
-        (repo / ".xp" / "constraints.md").write_text(constraints(15, 40))
-        plan = tmp_path / "xp" / "plan.md"
-        plan.write_text(
-            plan.read_text()
-            + "".join(f"#### story-{i:03d} — filler {'y' * 90}   [ready]\n" for i in range(300))
-        )
+        (repo / ".xp" / "constraints.md").write_text(constraints(15, 9_000))
         r = run_hook(repo, tmp_path)
         notice = r.stdout[r.stdout.index("[truncated") :]
         assert "Rule 1**" not in r.stdout, "the fixture did not cut the constraints"
@@ -120,20 +134,29 @@ class TestWhatTheCutSaysItTook:
         silently, since nothing outside this assertion re-measures it.
         """
         repo, _g = xp_repo(tmp_path)
-        (repo / ".xp" / "constraints.md").write_text(constraints(60, 40))
-        plan = tmp_path / "xp" / "plan.md"
-        plan.write_text(
-            plan.read_text()
-            + "".join(f"#### story-{i:03d} — filler {'y' * 90}   [ready]\n" for i in range(300))
-        )
+        (repo / ".xp" / "constraints.md").write_text(constraints(100, 100))
         r = run_hook(repo, tmp_path)
         notice = r.stdout[r.stdout.index("[truncated") :]
         assert len(notice) > 300, f"the fixture no longer forces a long notice: {len(notice)}"
-        assert len(r.stdout) <= OUTPUT_CAP, f"the profile is {len(r.stdout)} against {OUTPUT_CAP}"
+        assert len(r.stdout.encode()) <= OUTPUT_CAP
 
-    def test_recovery_block_survives_the_cap(self, tmp_path):
+    def test_multibyte_content_is_capped_in_bytes(self, tmp_path):
         repo, _g = xp_repo(tmp_path)
-        (repo / ".xp" / "constraints.md").write_text("HUGE\n" * 5000)
+        (repo / ".xp" / "constraints.md").write_text("😀" * 5000)
         r = run_hook(repo, tmp_path)
-        assert len(r.stdout) <= OUTPUT_CAP and "truncated" in r.stdout
-        assert "story-042" in r.stdout
+        assert len(r.stdout.encode()) <= OUTPUT_CAP and "truncated" in r.stdout
+
+    def test_recovery_overflow_names_regions_and_dropped_work_titles(self, tmp_path):
+        repo, _g = xp_repo(tmp_path)
+        data = tmp_path / "xp"
+        (data / "session.md").write_text("# digest\n" + "d" * 20_000)
+        (data / "work.md").write_text(
+            "".join(f"## note 2026-01-01T00:00:0{i}Z\nWORK-TITLE-{i}\n\n" for i in range(8))
+        )
+        r = run_recovery(repo, tmp_path)
+        assert len(r.stdout.encode()) <= OUTPUT_CAP
+        marker = r.stdout.split("[truncated", 1)[1]
+        for region in ("digest", "recovery block", "sprint slice"):
+            assert region in marker, f"the cut omitted region {region}: {marker}"
+        for i in range(8):
+            assert f"WORK-TITLE-{i}" in marker, f"the cut hid work title {i}: {marker}"

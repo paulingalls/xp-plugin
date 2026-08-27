@@ -20,7 +20,29 @@ secrets_scan() {
   fi
   gitleaks protect --staged --no-banner --redact || exit 1
 }
+constraints_size() {
+  cap="$(sed -n 's/^constraints_chars_cap:[[:space:]]*//p' .xp/config.yml | head -1 | sed 's/[[:space:]][[:space:]]*#.*$//')"
+  if [ -z "$cap" ]; then
+    echo "xp wall: constraints_chars_cap is missing in .xp/config.yml — refusing." >&2
+    exit 1
+  fi
+  case "$cap" in *[!0-9]*|0)
+    echo "xp wall: constraints_chars_cap '$cap' is invalid in .xp/config.yml — use a positive integer." >&2
+    exit 1;;
+  esac
+  if [ ! -f .xp/constraints.md ]; then
+    echo "xp wall: .xp/constraints.md is missing — refusing." >&2
+    exit 1
+  fi
+  count="$(python3 -c 'from pathlib import Path; print(len(Path(".xp/constraints.md").read_text(errors="replace")))')"
+  if [ "$count" -gt "$cap" ]; then
+    echo "xp wall: .xp/constraints.md is $count characters against constraints_chars_cap $cap." >&2
+    echo "  retire or shorten a constraint, then retry." >&2
+    exit 1
+  fi
+}
 run_tier() {
+  [ "$1" != "fast" ] || constraints_size
   cmd="$(tier_cmd "$1")"
   if [ -z "$cmd" ] || [ "$cmd" = "EDIT-ME" ]; then
     echo "xp wall: tests.$1 is unset or still EDIT-ME in .xp/config.yml — refusing to" >&2

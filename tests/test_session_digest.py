@@ -7,7 +7,7 @@ test_session_start_profile.py, where every other real-artifact check lives.
 
 Verify: pytest -q tests/test_session_digest.py"""
 
-from session_start_helpers import run_hook, xp_repo
+from session_start_helpers import run_recovery, xp_repo
 
 
 class TestTheDigestLayer:
@@ -17,7 +17,7 @@ class TestTheDigestLayer:
         data = tmp_path / "xp"
         data.mkdir(exist_ok=True)
         (data / "session.md").write_text(f"# Session digest — written x at {head}\nDIGEST-BODY\n")
-        r = run_hook(repo, tmp_path)
+        r = run_recovery(repo, tmp_path)
         assert "DIGEST-BODY" in r.stdout and "STALE" not in r.stdout
 
     def test_stale_digest_prefixed_with_distance(self, tmp_path):
@@ -32,7 +32,7 @@ class TestTheDigestLayer:
         (repo / "f.py").write_text("A = 3\n")
         g("add", "-A")
         g("commit", "-qm", "two")
-        r = run_hook(repo, tmp_path)
+        r = run_recovery(repo, tmp_path)
         assert "STALE" in r.stdout and "2 commit" in r.stdout
 
     def test_stampless_digest_reads_stale_unknown(self, tmp_path):
@@ -40,12 +40,12 @@ class TestTheDigestLayer:
         data = tmp_path / "xp"
         data.mkdir(exist_ok=True)
         (data / "session.md").write_text("no stamp here\nDIGEST-BODY\n")
-        r = run_hook(repo, tmp_path)
+        r = run_recovery(repo, tmp_path)
         assert "STALE" in r.stdout and "unknown" in r.stdout
 
     def test_no_digest_recovery_block_only(self, tmp_path):
         repo, _g = xp_repo(tmp_path)
-        r = run_hook(repo, tmp_path)
+        r = run_recovery(repo, tmp_path)
         assert r.returncode == 0
         assert "STALE" not in r.stdout and "story-042" in r.stdout
 
@@ -63,7 +63,7 @@ class TestTheDigestLayer:
         data.mkdir(exist_ok=True)
         digest = data / "session.md"
         digest.write_text("# Session digest — written x at y\n" + "DIGEST-BODY\n" * 40)
-        out = run_hook(repo, tmp_path).stdout
+        out = run_recovery(repo, tmp_path).stdout
         assert str(digest) in out and "41 lines" in out and "30-line" in out, out
         assert "DIGEST-BODY" not in out, "the oversized digest was injected anyway"
 
@@ -77,7 +77,7 @@ class TestTheDigestLayer:
         (data / "session.md").write_text(
             f"# Session digest — written x at {head}\n" + "DIGEST-BODY\n" * 29
         )
-        out = run_hook(repo, tmp_path).stdout
+        out = run_recovery(repo, tmp_path).stdout
         assert "DIGEST-BODY" in out and "NOT INJECTED" not in out, out
 
     def test_an_unreadable_digest_costs_the_digest_and_not_the_recovery_block(self, tmp_path):
@@ -92,6 +92,6 @@ class TestTheDigestLayer:
         repo, _g = xp_repo(tmp_path)
         (tmp_path / "xp").mkdir(exist_ok=True)
         (tmp_path / "xp" / "session.md").mkdir()
-        out = run_hook(repo, tmp_path).stdout
+        out = run_recovery(repo, tmp_path).stdout
         assert "story-042" in out, "the unreadable digest ate the whole recovery block"
         assert "UNREADABLE" in out, out

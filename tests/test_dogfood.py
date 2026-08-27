@@ -7,6 +7,8 @@ These pin the SHAPE the code parses, never the content: a project's tiers,
 constraints and stories are legitimately its own.
 """
 
+import os
+import subprocess
 from pathlib import Path
 from unittest.mock import patch
 
@@ -48,6 +50,68 @@ class TestDogfoodMatchesTheScaffold:
             (self.SHIPPED / "config.yml").read_text(), (self.OURS / "config.yml").read_text()
         )
         assert not missing, f"we never exercise the shipped keys: {missing}"
+
+    def test_constraints_character_cap_is_the_same_in_both_configs(self):
+        def value(path):
+            line = next(
+                ln
+                for ln in path.read_text().splitlines()
+                if ln.startswith("constraints_chars_cap:")
+            )
+            return int(line.split(":", 1)[1].split("#", 1)[0])
+
+        assert value(self.OURS / "config.yml") == value(self.SHIPPED / "config.yml") == 4_500
+
+    def run_constraints_wall(self, tmp_path, cap, size, character="x"):
+        xp = tmp_path / ".xp"
+        xp.mkdir(exist_ok=True)
+        setting = "" if cap is None else f"constraints_chars_cap: {cap}\n"
+        (xp / "config.yml").write_text(f"{setting}tests:\n  fast: true\n")
+        (xp / "constraints.md").write_text(character * size)
+        hook_lib = self.SHIPPED / "hook-lib.sh"
+        return subprocess.run(
+            ["sh", "-c", '. "$HOOK_LIB"; run_tier fast'],
+            cwd=tmp_path,
+            env=dict(os.environ) | {"HOOK_LIB": str(hook_lib), "LC_ALL": "C"},
+            capture_output=True,
+            text=True,
+        )
+
+    def test_scaffolded_wall_refuses_constraints_over_the_character_cap(self, tmp_path):
+        red = self.run_constraints_wall(tmp_path, 4_500, 4_501)
+        assert red.returncode != 0
+        for claim in ("constraints.md", "4501", "4500", "retire", "shorten"):
+            assert claim in red.stderr, red.stderr
+
+        green = self.run_constraints_wall(tmp_path, 4_502, 4_501)
+        assert green.returncode == 0, green.stderr
+
+    def test_constraints_wall_distinguishes_missing_and_invalid_caps(self, tmp_path):
+        missing = self.run_constraints_wall(tmp_path, None, 1)
+        assert missing.returncode != 0 and "missing" in missing.stderr
+        invalid = self.run_constraints_wall(tmp_path, "many", 1)
+        assert invalid.returncode != 0 and "invalid" in invalid.stderr
+
+    def test_constraints_wall_counts_unicode_characters_independent_of_locale(self, tmp_path):
+        red = self.run_constraints_wall(tmp_path, 4_500, 4_501, "😀")
+        assert red.returncode != 0 and "4501 characters" in red.stderr, red.stderr
+
+    def test_ascii_constraints_at_the_full_cap_fit_the_byte_profile(self, tmp_path):
+        from session_start import OUTPUT_CAP
+        from session_start_helpers import run_hook
+
+        repo = tmp_path / "repo"
+        xp = repo / ".xp"
+        xp.mkdir(parents=True)
+        (xp / "config.yml").write_text((self.SHIPPED / "config.yml").read_text())
+        seed = (self.SHIPPED / "constraints.md").read_text()
+        constraints = seed + "x" * (4_500 - len(seed))
+        assert len(constraints) == 4_500
+        (xp / "constraints.md").write_text(constraints)
+        subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
+        out = run_hook(repo, tmp_path).stdout
+        assert len(out.encode()) <= OUTPUT_CAP
+        assert constraints in out, "the full ASCII character ceiling does not reach the lead"
 
     def test_the_scaffold_ships_no_key_we_invented_without_seeding(self):
         """The reverse drift: a key we rely on that a scaffolded repo never gets.
