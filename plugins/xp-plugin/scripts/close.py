@@ -247,7 +247,7 @@ def _record_round(story_id: str, card: str, path: Path, marker: Path, state: dic
     verify_err = verify_on_reviewed_tree(story_id, card)
     if verify_err and not report["blocking"]:
         return fail(review.stamp(path, review.abort_text(head, verify_err)))
-    kept = "The round IS recorded, over the sha below — reset and it names no tree."
+    kept = "The round IS recorded, and it names this tree — a reset here orphans it."
     refusal = review.abort_text(head, verify_err, kept) if verify_err else ""
     review.stamp(path, refusal)
     if err := review.write_reviewer_diff(path, head, f"story {story_id}"):

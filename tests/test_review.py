@@ -361,6 +361,7 @@ class TestTheCommitGateRefusalIsActionable:
         assert r.returncode == 2, r.stdout + r.stderr
         round_ = json.loads(marker_path(tmp_path).read_text())["rounds"][-1]
         assert round_["fixed"] == ["a fix the gate rejects"] and round_["stages"][-1] == "fix"
+        assert round_["blocking"] == ["a silent one"], "one finding, once per stage that saw it"
         land = sprint(repo, env, "land", "--dry-run")
         assert land.returncode == 2 and "incomplete" in land.stderr
         return repo, env, _g, r.stdout + r.stderr

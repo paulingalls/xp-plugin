@@ -162,6 +162,32 @@ class TestReviewLeg:
         assert launches(tmp_path) == []
         assert not marker_path(tmp_path).exists()
 
+    def test_a_dry_run_still_refuses_what_would_stop_the_real_one(self, tmp_path):
+        """A preview exists to say what the real run does. review.run resolves the
+        harness BEFORE it honours dry_run, so its error is the one thing a preview
+        can know; swallowing it greens the command whose whole job is the warning."""
+        bad = CONFIG.replace("reviewer: claude/opus", "reviewer: codex/gpt-5.6-terra/high")
+        repo, env, _g = make_repo(tmp_path, config=bad + "codex_sandbox: broken\n")
+        r = sprint(repo, env, "review", "--dry-run")
+        assert r.returncode == 2, r.stdout
+        assert "codex_sandbox" in r.stderr and "broken" in r.stderr, r.stderr
+
+    def test_a_stage_that_wrote_NO_report_is_not_named_among_the_stages_that_ran(self, tmp_path):
+        """`stages` is what the lead reads to see what the round covers, and the
+        closer is the stage that exists to catch the fixer. A closer that produced
+        nothing is exactly the coverage the lead must not be told it has."""
+        repo, env, _g = make_repo(tmp_path)
+        staged_stub(tmp_path)
+        claude = tmp_path / "bin" / "claude"
+        write = "open(m.group(1).strip(), 'w').write(json.dumps(report))"
+        claude.write_text(claude.read_text().replace(write, f"None if key == 'close' else {write}"))
+        claude.chmod(0o755)
+        r = sprint(repo, env, "review")
+        assert r.returncode == 2 and "wrote no report" in r.stderr, r.stderr
+        assert "no round" not in r.stderr.lower(), "the refusal denies the round beside it"
+        round_ = json.loads(marker_path(tmp_path).read_text())["rounds"][-1]
+        assert "close" not in round_["stages"] and round_["stages"], round_["stages"]
+
 
 class TestResolutionsAreCarried:
     """AC 5. Three of three resolutions that needed independent reading were

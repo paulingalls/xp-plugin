@@ -199,8 +199,8 @@ def cmd_review(sprint_id: str, dry_run: bool) -> int:
     def stop(err: str) -> int:
         if reports:
             err = err.replace(review.NO_ROUND, f"Round {round_n} IS recorded, incomplete.")
-            round_ = {k: [i for r in reports for i in r[k]] for k in review.REPORT_KEYS}
-            round_.update(incomplete=err, stages=ran)
+            seen = {k: dict.fromkeys(i for r in reports for i in r[k]) for k in review.REPORT_KEYS}
+            round_ = {k: list(v) for k, v in seen.items()} | {"incomplete": err, "stages": ran}
             review.write_round(marker, state, round_)
             print(f"round {round_n} recorded incomplete after {', '.join(ran)}")
         return fail(err)
@@ -216,13 +216,13 @@ def cmd_review(sprint_id: str, dry_run: bool) -> int:
             sprint_id, cards, base, path, charters[stage], extra, diff_base
         )
         stage_head = git("rev-parse", "HEAD").stdout.strip()
-        ran.append(key)
         result, err = review.run(bundle, Path.cwd(), dry_run, name=f"sprint {key}")
         if dry_run:  # an EMPTY report, not a shapeless one: a preview walks
             empty = {k: [] for k in review.REPORT_KEYS}
-            return empty, ""
+            return empty, review.abort_text(head, err) if err else ""
         report, report_err = review.read_report(path)
-        if not report_err:
+        if not report_err:  # `ran` is what the round CONTAINS: a stage that wrote
+            ran.append(key)  # nothing did not cover it, whatever it was launched for
             reports.append(report)
         if err:
             return {k: [] for k in review.REPORT_KEYS}, review.abort_text(head, err)

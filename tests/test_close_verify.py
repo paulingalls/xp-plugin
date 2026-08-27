@@ -266,3 +266,16 @@ class TestTheReviewersOwnFixIsUnderTheGateItPasses:
         assert r.returncode != 0 and "git reset --hard" in r.stderr, r.stderr
         assert "No round was" not in r.stderr and "IS recorded" in r.stderr, r.stderr
         assert marker(tmp_path)["rounds"][-1]["blocking"] == ["B"]
+
+    def test_a_recorded_round_says_so_even_when_no_undo_is_offered(self, tmp_path):
+        """The same recording, with the reviewer writing NO patch: the tree never
+        moves, abort_text takes its short path, and the round's fate rode in the
+        undo sentence the short path drops. Exit 2 over a silently recorded round
+        sends the lead to re-review a story that already has one."""
+        repo, env, _g = make_repo(tmp_path, verify="false")
+        stub_reviewer(tmp_path, report={"fixed": [], "blocking": ["B"], "noted": []})
+
+        r = close(repo, env, "review")
+        assert r.returncode != 0 and "git reset --hard" not in r.stderr, r.stderr
+        assert "IS recorded" in r.stderr, r.stderr
+        assert marker(tmp_path)["rounds"][-1]["blocking"] == ["B"]

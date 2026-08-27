@@ -96,7 +96,7 @@ def cap_display(items: list, path: Path) -> list:
 def _report_data(path: Path) -> tuple[dict, str]:
     if not path.exists():
         message = f"the reviewer wrote no report at {path} — its findings are above"
-        return {}, message + " and are all that survives. No report, no round"
+        return {}, f"{message} and are all that survives. {NO_ROUND}"
     try:
         data = json.loads(path.read_text())
     except OSError as e:
@@ -194,7 +194,7 @@ def abort_text(reviewed_head: str, why: str, recorded: str = NO_ROUND) -> str:
 
     moved = git("rev-parse", "HEAD").stdout.strip() != reviewed_head
     if not (moved or git("status", "--porcelain").stdout.strip()):
-        return f"refused: {why}"
+        return f"refused: {why}" if recorded == NO_ROUND else f"refused: {why}\n\n{recorded}"
     stat = git("diff", "--stat", f"{reviewed_head}..HEAD").stdout
     return (
         f"refused: {why}\n\n{stat}\n{recorded} The reviewer's work is in your tree —"
