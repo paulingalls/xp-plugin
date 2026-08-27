@@ -11,6 +11,13 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parents[2] / "plugins" / "xp-plugin" / "scripts"))
 
 
+def red(why: str) -> int:
+    """A batch falsifier that reds in silence names no next action: sprint close
+    files the bug from the COMMAND, so the message here is all the fixer gets."""
+    print(why, file=sys.stderr)
+    return 1
+
+
 def refused(call) -> str:
     error = io.StringIO()
     with contextlib.redirect_stderr(error):
@@ -50,21 +57,22 @@ def main() -> int:
         first.mkdir()
         (first / "sprint_branch").write_text("sprint-one\n")
         os.environ["XP_DATA"] = str(first)
-        if close.integration_target() != "sprint-one":
-            return 1
+        if (got := close.integration_target()) != "sprint-one":
+            return red(f"clone one's recorded sprint branch was ignored: {got!r}")
 
         second = tmp / "clone-two"
         second.mkdir()
         os.environ["XP_DATA"] = str(second)
-        if close.integration_target() != "main":
-            return 1
+        if (got := close.integration_target()) != "main":
+            return red(f"clone two records nothing, yet the target is not trunk: {got!r}")
         (second / "sprint_branch").write_text("sprint-missing\n")
         if "sprint-missing" not in refused(close.integration_target):
-            return 1
+            return red("a recorded branch naming no ref did not refuse — it may merge to trunk")
 
-        (tmp / ".xp" / "config.yml").write_text("release: sprint\ntrunk: main\nsprint_branch:\n")
+        cfg = "release: sprint\ntrunk: main\nsprint_branch: sprint-one\n"
+        (tmp / ".xp" / "config.yml").write_text(cfg)
         if "remove sprint_branch" not in refused(close.integration_target):
-            return 1
+            return red("a tracked sprint_branch: was read instead of refused")
     return 0
 
 

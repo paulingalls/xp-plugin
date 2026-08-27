@@ -292,9 +292,11 @@ def cmd_start(sprint_id: str) -> int:
     branch = git("branch", "--show-current").stdout.strip()
     if not branch or branch == default_branch():
         return fail("refused: open the sprint from its freshly cut branch, not trunk")
-    record_sprint_branch(branch)
+    opening = record_sprint_branch(branch)
     print(f"sprint branch: {branch}")
     if unfinished := [m for m in members if not m.endswith(("[done]", "[retired]"))]:
+        if not opening:
+            return fail(f"refused: sprint {sprint_id} is unfinished:\n  " + "\n  ".join(unfinished))
         print(f"recorded; {len(unfinished)} stories unfinished — close checks wait")
         return 0
 

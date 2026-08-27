@@ -78,16 +78,17 @@ def sprint_branch() -> str:
     return branch
 
 
-def record_sprint_branch(branch: str) -> None:
+def record_sprint_branch(branch: str) -> bool:
     path = sprint_branch_path()
     if recorded := sprint_branch():
         if recorded != branch:
             _refuse_env(
                 f"{path} records {recorded}, not {branch} — clear it only after that sprint lands"
             )
-        return
+        return False
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(branch + "\n")
+    return True
 
 
 def clear_sprint_branch() -> None:

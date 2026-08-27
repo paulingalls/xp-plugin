@@ -71,6 +71,21 @@ class TestMembership:
             assert (root / "data" / "sprint_branch").read_text().strip() == branch
             assert branch in r.stdout
 
+    def test_a_rerun_over_an_unfinished_sprint_refuses_instead_of_skipping_the_checks(
+        self, tmp_path
+    ):
+        """The close leg exits 0 at OPEN, when every story is unfinished by
+        definition. Without the re-run split that exit 0 is also what a premature
+        close gets — falsifier batch, full tier and triage all silently skipped."""
+        repo, env, _g = make_repo(
+            tmp_path,
+            plan=PLAN.replace(
+                "#### story-043 — also done   [done]", "#### story-043 — also done   [in-progress]"
+            ),
+        )
+        r = sprint(repo, env, "start")
+        assert r.returncode == 2 and "story-043" in r.stderr
+
     def test_start_refuses_to_overwrite_another_active_sprint(self, tmp_path):
         repo, env, _g = make_repo(tmp_path)
         path = tmp_path / "data" / "sprint_branch"
@@ -79,12 +94,21 @@ class TestMembership:
         assert r.returncode == 2 and "clear" in r.stderr
         assert path.read_text().strip() == "sprint-other"
 
-    def test_start_refuses_trunk_without_changing_the_active_branch(self, tmp_path):
+    def test_start_refuses_trunk_and_never_records_it(self, tmp_path):
+        """Both halves, because they are stopped by different code: with a sprint
+        already recorded the mismatch refusal fires anyway, so only the SECOND —
+        nothing recorded, the sprint's first start — reaches this guard. Recording
+        trunk would point integration_target at trunk, merging every story there."""
         repo, env, g = make_repo(tmp_path)
         g("checkout", "-q", "main")
+        path = tmp_path / "data" / "sprint_branch"
         r = sprint(repo, env, "start")
-        assert r.returncode == 2 and "trunk" in r.stderr
-        assert (tmp_path / "data" / "sprint_branch").read_text().strip() == "sprint-002"
+        assert r.returncode == 2 and "freshly cut branch" in r.stderr
+        assert path.read_text().strip() == "sprint-002"
+        path.unlink()
+        r = sprint(repo, env, "start")
+        assert r.returncode == 2 and "freshly cut branch" in r.stderr
+        assert not path.exists()
 
     def test_unreadable_branch_state_is_not_treated_as_missing(self, tmp_path):
         repo, env, _g = make_repo(tmp_path)

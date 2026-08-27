@@ -96,8 +96,9 @@ def integration_target() -> str:
         if config_has("sprint_branch"):
             raise SystemExit(
                 fail(
-                    "refused: remove sprint_branch: from .xp/config.yml — the active"
-                    " sprint branch is recorded per clone by `close.py sprint <id> start`"
+                    "refused: remove sprint_branch: from .xp/config.yml, THEN record"
+                    " this clone's branch with `close.py sprint <id> start` — without"
+                    " that record every story merge falls back to the default branch"
                 )
             )
         branch = sprint_branch()
