@@ -5,10 +5,12 @@ import sys
 from test_work import run
 
 
-def pytest_k(tmp_path, expression, module=True, flag="-k ", runner="pytest"):
+def pytest_k(tmp_path, expression, flag="-k ", runner=None):
+    # `runner` is what the guard reads, so it is a single knob: a second parameter
+    # overriding it would let a runner-spelling case silently test the default one.
     test_file = tmp_path / "test_selection.py"
     test_file.write_text("def test_selected():\n    pass\n")
-    runner = f"{sys.executable} -m pytest" if module else runner
+    runner = runner or f"{sys.executable} -m pytest"
     return f"{runner} -q {test_file} {flag}{expression}"
 
 
@@ -25,7 +27,7 @@ def test_bug_with_unmatched_pytest_k_is_refused_before_filing(tmp_path):
             "--claim",
             "x",
             "--falsifier",
-            pytest_k(tmp_path, "absent", module=False),
+            pytest_k(tmp_path, "absent", runner="pytest"),
             "--files",
             "a",
         ],
@@ -64,7 +66,7 @@ def test_resolution_with_pytest_k_is_refused_before_append(tmp_path):
 def test_the_py_test_alias_is_refused_too(tmp_path):
     """pytest still installs `py.test`, so a guard that knows only one of the two
     names lets the whole rule be spelled around."""
-    falsifier = pytest_k(tmp_path, "selected", module=False, runner="py.test")
+    falsifier = pytest_k(tmp_path, "selected", runner="py.test")
     assert_node_id_refusal(
         run(["debt", "--claim", "x", "--falsifier", falsifier, "--files", "a"], tmp_path)
     )

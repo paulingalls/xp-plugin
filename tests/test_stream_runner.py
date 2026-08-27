@@ -285,6 +285,10 @@ def test_the_LAST_codex_agent_message_is_the_result_not_the_first(tmp_path, monk
     assert proc.stdout == "the real findings"
 
 
+# 7.3s, and the cost is structural: the window must be wide enough not to measure
+# scheduling, and the run must outlive it several times over. The pre-commit tier
+# is bounded (15aec3fc) and that bound may not move, so this one leaves it.
+@pytest.mark.slow
 def test_a_reviewer_that_keeps_talking_outlives_the_bound(tmp_path, monkeypatch):
     """story-036 AC 7: the bound is IDLE, not wall.
 
