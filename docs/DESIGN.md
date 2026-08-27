@@ -173,7 +173,7 @@ Planning constraints (stated in `config.yml`):
 
 - **Sprint cap** (default ~6 stories) — card review counts consumed capacity; work already shipped in a free patch consumes no slot. Smaller sprints make the test tiers work and stop the doubling; debt budget is a share of the cap.
 - The plan reviewer treats story `Files:` lists as declarations for the cross-story **collision check** (the one cheap structural check that survives from file_domain; its lane-policing does not). Two stories claiming the same file must name the shared contract.
-- The plan reviewer requires every story to have runnable `Verify:` commands; every milestone has an executable "Done when".
+- The plan reviewer requires the story under review to have runnable `Verify:` commands; every milestone has an executable "Done when".
 
 ## 5b. Memory between sessions
 
