@@ -20,8 +20,8 @@ driving them as subprocesses (tests/test_*.py) — exit codes, stdout, filesyste
 Story ACs must be executed by a test named in the story's Verify.
 
 **Conventions**:
-- Test tiers: `fast` (pre-commit) / `story` (pre-push, story close) / `full`
-  (sprint close). Declared in .xp/config.yml.
 - Size budgets are acceptance criteria (DESIGN.md §9, rationale and numbers); run
   `tests/scripts/ratchet.py` for the live table — pre-push runs it too.
 - **Worktree bootstrap**: none needed (stdlib only, no install step).
+- **Concurrency**: at most two review/analysis streams, but only one `pytest -n auto`
+  gate. Reviews have no wall-clock limit; rejoin the same task instead of relaunching it.
