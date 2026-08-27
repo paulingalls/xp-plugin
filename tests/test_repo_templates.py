@@ -133,7 +133,7 @@ def branches(repo):
         ),
         pytest.param(
             lambda root: make_spawn_repo(root, trunk="dev"),
-            lambda repo, root: "sprint_branch: dev" in (repo / ".xp" / "config.yml").read_text(),
+            lambda repo, root: (root / "data" / "sprint_branch").read_text().strip() == "dev",
             id="spawn-trunk",
         ),
         pytest.param(

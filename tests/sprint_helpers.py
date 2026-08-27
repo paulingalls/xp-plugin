@@ -36,10 +36,7 @@ Verify: true
 Verify: true
 """
 
-CONFIG = (
-    "release: sprint\nsprint_branch: sprint-002\n"
-    "roles:\n  reviewer: claude/opus\ntests:\n  full: true\n"
-)
+CONFIG = "release: sprint\nroles:\n  reviewer: claude/opus\ntests:\n  full: true\n"
 
 WORK_SECTION = "work.md entries filed during the sprint"
 
@@ -65,6 +62,7 @@ def make_repo(tmp_path, plan=PLAN, config=CONFIG):
     state_plan = tmp_path / "data" / "plan.md"
     state_plan.parent.mkdir(parents=True, exist_ok=True)
     state_plan.write_text(plan)
+    (state_plan.parent / "sprint_branch").write_text("sprint-002\n")
     if full:
         return repo, env, g
     (repo / ".xp" / "config.yml").write_text(config)

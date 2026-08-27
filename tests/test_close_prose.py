@@ -128,6 +128,10 @@ class TestShippedProseMatchesTheMechanism:
         skill = prose(PLUGIN / "skills" / "sprint-close" / "SKILL.md")
         assert "close.py sprint <id> review" in skill, "the review is still hand-composed"
 
+    def test_sprint_opening_has_no_tracked_branch_ritual(self):
+        skill = prose(PLUGIN / "skills" / "sprint-close" / "SKILL.md")
+        assert "sprint_branch" not in skill and "retire" not in skill
+
     def test_the_sprint_close_skill_orders_the_retro_BEFORE_the_reviews(self):
         """Measured against the last real close: sprint-002's retro commit touched
         CHANGELOG.md, docs/DESIGN.md, PROCESS.md and story-close/SKILL.md — five of

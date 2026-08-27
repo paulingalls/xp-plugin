@@ -53,15 +53,46 @@ class TestMembership:
         assert r.returncode == 0, r.stderr
         assert "story-900" not in r.stdout + r.stderr
 
-    def test_an_unfinished_story_in_THIS_sprint_refuses(self, tmp_path):
-        repo, env, _g = make_repo(
-            tmp_path,
-            plan=PLAN.replace(
-                "#### story-043 — also done   [done]", "#### story-043 — also done   [in-progress]"
-            ),
-        )
+    def test_start_records_and_prints_each_clones_own_branch_before_stories(self, tmp_path):
+        for name, branch in (("one", "sprint-one"), ("two", "sprint-two")):
+            root = tmp_path / name
+            root.mkdir()
+            repo, env, g = make_repo(
+                root,
+                plan=PLAN.replace(
+                    "#### story-043 — also done   [done]",
+                    "#### story-043 — also done   [in-progress]",
+                ),
+            )
+            g("branch", "-m", branch)
+            (root / "data" / "sprint_branch").unlink()
+            r = sprint(repo, env, "start")
+            assert r.returncode == 0, r.stderr
+            assert (root / "data" / "sprint_branch").read_text().strip() == branch
+            assert branch in r.stdout
+
+    def test_start_refuses_to_overwrite_another_active_sprint(self, tmp_path):
+        repo, env, _g = make_repo(tmp_path)
+        path = tmp_path / "data" / "sprint_branch"
+        path.write_text("sprint-other\n")
         r = sprint(repo, env, "start")
-        assert r.returncode == 2 and "story-043" in r.stderr
+        assert r.returncode == 2 and "clear" in r.stderr
+        assert path.read_text().strip() == "sprint-other"
+
+    def test_start_refuses_trunk_without_changing_the_active_branch(self, tmp_path):
+        repo, env, g = make_repo(tmp_path)
+        g("checkout", "-q", "main")
+        r = sprint(repo, env, "start")
+        assert r.returncode == 2 and "trunk" in r.stderr
+        assert (tmp_path / "data" / "sprint_branch").read_text().strip() == "sprint-002"
+
+    def test_unreadable_branch_state_is_not_treated_as_missing(self, tmp_path):
+        repo, env, _g = make_repo(tmp_path)
+        path = tmp_path / "data" / "sprint_branch"
+        path.unlink()
+        path.mkdir()
+        r = sprint(repo, env, "start")
+        assert r.returncode == 2 and "not readable" in r.stderr and "Traceback" not in r.stderr
 
     def test_a_retired_story_in_this_sprint_does_not_refuse(self, tmp_path):
         repo, env, _g = make_repo(
@@ -324,10 +355,7 @@ class TestLandCoverage:
 
 class TestLandPromisesOnlyWhatPostMergeDoes:
     def test_land_does_not_promise_a_manifest_bump(self):
-        """Bug 732b2610. land printed "post-merge — bump, tag, retire the key" and
-        post_merge only tags and strips sprint_branch. Three releases bumped the
-        manifest by hand while the message claimed the pipeline owned it.
-
+        """Land once promised a manifest bump that post-merge never performed.
         The fix is the message, not the missing bump: a version scheme belongs to
         the consuming project, and post-merge runs AFTER the PR merges — which is
         exactly where a bump must not happen, since the manifest is not .xp/-exempt

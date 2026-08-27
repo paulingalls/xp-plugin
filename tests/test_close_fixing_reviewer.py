@@ -278,10 +278,10 @@ class TestFixingReviewer:
         os.chdir(held) above both merge arms on a plan review's advice, which put
         gh in the tree holding trunk — so it would infer `main` and refuse.
 
-        THIS IS THE OUT-OF-THE-BOX PATH: templates/config.yml leaves sprint_branch
-        commented, so integration_target() == default_branch() and close.py:489
-        derives pr mode; spawn's default puts trunk in the lead's tree, so `held`
-        is set. Every consuming project's first land. Untested because every
+        THIS IS THE OUT-OF-THE-BOX PATH: no sprint is recorded, so
+        integration_target() == default_branch() and close derives pr mode;
+        spawn's default puts trunk in the lead's tree, so `held` is set. Every
+        consuming project's first land. Untested because every
         worktree test here passes --merge-mode local and every pr test runs from
         the non-worktree repo."""
         _repo, env, g, tree, branch = self._worktree_land_setup(tmp_path)

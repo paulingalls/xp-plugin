@@ -61,6 +61,39 @@ def env_path() -> Path:
     return data_root() / "env.json"
 
 
+def sprint_branch_path() -> Path:
+    return data_root() / "sprint_branch"
+
+
+def sprint_branch() -> str:
+    path = sprint_branch_path()
+    try:
+        branch = path.read_text().strip()
+    except FileNotFoundError:
+        return ""
+    except OSError as exc:
+        _refuse_env(f"{path} is not readable ({exc}) — repair or remove it.")
+    if not branch:
+        _refuse_env(f"{path} is empty — remove it, then open the sprint again.")
+    return branch
+
+
+def record_sprint_branch(branch: str) -> None:
+    path = sprint_branch_path()
+    if recorded := sprint_branch():
+        if recorded != branch:
+            _refuse_env(
+                f"{path} records {recorded}, not {branch} — clear it only after that sprint lands"
+            )
+        return
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(branch + "\n")
+
+
+def clear_sprint_branch() -> None:
+    sprint_branch_path().unlink(missing_ok=True)
+
+
 def plugin_version(root: Path) -> str:
     try:
         manifest = json.loads((root / ".claude-plugin" / "plugin.json").read_text())

@@ -1,6 +1,5 @@
 # xp project config — EDIT the tiers for your stack, then re-run your first commit
 release: sprint      # sprint = stories integrate on a sprint branch, sprint close PRs trunk
-# sprint_branch: sprint-001   # create it; otherwise stories land on the default branch
 # codex_sandbox: danger-full-access  # Codex only: workspace-write | danger-full-access
 # trunk: develop            # UNCOMMENT where releases do NOT land on git's default
 #                           # branch (a repo integrating on develop, main behind).

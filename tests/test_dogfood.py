@@ -131,8 +131,7 @@ class TestDogfoodMatchesTheScaffold:
         assert constraints in out, "the full ASCII character ceiling does not reach the lead"
 
     def test_the_scaffold_ships_no_key_we_invented_without_seeding(self):
-        """The reverse drift: a key we rely on that a scaffolded repo never gets.
-        sprint_branch is seeded COMMENTED, so it counts as shipped."""
+        """The reverse drift: a key we rely on that a scaffolded repo never gets."""
         shipped = self.SHIPPED / "config.yml"
         text = shipped.read_text()
         extra = {k for k in self.keys(self.OURS / "config.yml") - self.keys(shipped)}

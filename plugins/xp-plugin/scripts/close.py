@@ -12,6 +12,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 sys.path.insert(0, str(Path(__file__).parent / "close"))
 from bookkeep import render_prior_rounds
+from env import sprint_branch
 from work import (
     chdir_repo_root,
     data_root,
@@ -84,20 +85,31 @@ def config_flat(key: str) -> str:
     return ""
 
 
+def config_has(key: str) -> bool:
+    cfg = Path(".xp/config.yml")
+    return cfg.exists() and any(ln.startswith(f"{key}:") for ln in cfg.read_text().splitlines())
+
+
 def integration_target() -> str:
-    """The branch this story integrates into: the sprint branch under
-    release: sprint (when it exists), else the default branch."""
+    """The recorded sprint branch under release: sprint, else the default."""
     if config_flat("release") == "sprint":
-        branch = config_flat("sprint_branch")
+        if config_has("sprint_branch"):
+            raise SystemExit(
+                fail(
+                    "refused: remove sprint_branch: from .xp/config.yml — the active"
+                    " sprint branch is recorded per clone by `close.py sprint <id> start`"
+                )
+            )
+        branch = sprint_branch()
         if branch:
             # refs/heads explicitly: a tag with the same name wins plain rev-parse
             # and would freeze every guard on a ref that never moves
             ok = git("rev-parse", "--verify", "-q", f"refs/heads/{branch}", check=False)
             if ok.returncode != 0:
                 print(
-                    f"sprint_branch is configured but refs/heads/{branch} does not exist —"
+                    f"recorded sprint branch refs/heads/{branch} does not exist —"
                     " refusing to fall back to the default branch (a fresh clone must"
-                    " create the sprint branch, not silently merge to trunk)",
+                    " open its sprint, not silently merge to trunk)",
                     file=sys.stderr,
                 )
                 raise SystemExit(2)
@@ -110,7 +122,7 @@ def default_branch() -> str:
 
     `trunk:` overrides git's own default, for a repo integrating on develop while
     origin/HEAD still names main — every caller here means the former. Absent-but-
-    configured REFUSES rather than falling back, as sprint_branch does: silently
+    configured REFUSES rather than falling back, as the sprint branch does: silently
     releasing to main is the failure this key exists to prevent. Deliberately ONE
     branch; the develop->main release cut stays the project's own process.
     """
