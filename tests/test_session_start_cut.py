@@ -56,15 +56,29 @@ class TestWhatTheCutSaysItTook:
         return run_hook(repo, tmp_path)
 
     def test_the_constraints_it_names_are_genuinely_absent(self, tmp_path):
+        """Keyed on the fixture's OWN title, never on `N. **`: PROCESS.md ships
+        four headings of that shape ahead of the rules, so the bare pattern
+        answers about PROCESS whenever the cut reaches constraint 1."""
         r = self.overflowing(tmp_path)
         body, notice = r.stdout.split("[truncated", 1)
         assert "ARE NOT ABOVE" in notice, notice
         assert named(notice), notice
-        constraints_body = body.rsplit("# Constraints", 1)[-1]
         for n in named(notice):
-            assert not re.search(rf"^{n}\. \*\*", constraints_body, re.M), (
-                f"{n} named dropped but present"
-            )
+            assert f"**Rule {n}**" not in body, f"{n} named dropped but present"
+
+    def test_a_half_shown_rule_is_dropped_whole(self, tmp_path):
+        """The cut lands mid-rule, and a heading is not a rule: leave the head
+        of one in and the notice reports it delivered while the lead holds half
+        of it — the one lie the notice cannot be allowed to tell, since half a
+        rule reads as a whole one. Backing up to the heading is what keeps
+        "named as dropped" and "genuinely absent" the same set.
+        """
+        r = self.overflowing(tmp_path)
+        body, notice = r.stdout.split("[truncated", 1)
+        kept = [n for n in range(1, 21) if f"**Rule {n}**" in body]
+        assert kept and named(notice), "the fixture no longer cuts inside the rules"
+        for n in kept:
+            assert f"**Rule {n}** {'x' * 1500}" in body, f"rule {n} is shown in half"
 
     def test_process_own_numbering_cannot_mask_a_dropped_rule(self, tmp_path):
         """PROCESS.md carries `1. **Plan**` through `4. **Sprint close**` — the

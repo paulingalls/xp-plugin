@@ -32,6 +32,13 @@ class TestTheRealProfileAgainstTheRealCap:
         prints its 121-char teammate line and returns before a profile is built.
         Both tests below then took their early `return` and asserted NOTHING —
         vacuous exactly when a review is what would have caught it (constraint 2).
+
+        EMPTY IS ITS OWN STATE, and the one measured live: `run_hook` is advisory,
+        so a hook that raises exits 0 with the traceback on STDERR and nothing on
+        stdout. That output passes the marker check above and then sends the two
+        early-return tests home green. Measured in the Sprint-8 Codex-lead
+        transcript, where the sandbox denied the data root and this script's
+        sibling falsifier died on `out.index` instead (AUDIT.md §10).
         """
         repo = Path(__file__).parent.parent
         payload = {"hook_event_name": "SessionStart", "cwd": str(repo)}
@@ -44,6 +51,7 @@ class TestTheRealProfileAgainstTheRealCap:
             env=dict(os.environ) | {"XP_ROLE": "lead"},
         ).stdout
         assert "teammate session" not in out, "the role gate ate the profile; this asserts nothing"
+        assert out.strip(), "the hook printed nothing (stderr holds the traceback); nothing asserts"
         return out
 
     def test_our_own_digest_is_within_the_bound_the_hook_enforces(self):
@@ -105,8 +113,8 @@ class TestTheRealProfileAgainstTheRealCap:
         claim = marker.split("ARE NOT ABOVE")[0].split("CONSTRAINTS", 1)[-1]
         named = [int(n) for n in re.findall(r"\b(\d+)\b", claim)]
         assert named, marker
-        constraints_body = body.rsplit("# Constraints", 1)[-1]
+        rules_on = body.split("BEGIN project content", 1)[-1]  # PROCESS ships `N. **` too
         for n in named:
-            assert not re.search(rf"^{n}\. \*\*", constraints_body, re.M), (
+            assert not re.search(rf"^{n}\. \*\*", rules_on, re.M), (
                 f"constraint {n} is named as dropped but IS in the profile"
             )

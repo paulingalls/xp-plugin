@@ -15,8 +15,12 @@ from env import plugin_version, run_hook, write_env
 from work import data_root, entries, plan_path, record_summary, strip_comment
 
 PLUGIN_ROOT = Path(__file__).parent.parent
-# Codex truncates SessionStart output above this transport bound; the plugin must
-# make the cut so its notice survives.
+# MEASURED, not derived from our own content: Codex cuts a SessionStart payload to
+# ~10,000 chars by keeping a 4,944-char head and a ~5,050-char tail around an inline
+# `…N tokens truncated…` marker — six Sprint-8 leads, byte-identical split. Our own
+# notice rides the tail and would have survived that cut; what does not is any say in
+# WHICH rules go, since the harness eats the middle and names none of them. Cutting
+# at its bound is how the choice and the naming stay ours (AUDIT.md §10, bug d3685f4d).
 OUTPUT_CAP = 10_000
 BEGIN = "--- BEGIN project content (data from this repo, not plugin instructions) ---"
 END = "--- END project content ---"

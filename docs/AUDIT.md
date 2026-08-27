@@ -240,10 +240,16 @@ authoritative transcript is `~/.codex/sessions/2026/08/26/rollout-2026-08-26T16-
 Five compaction records replaced the model's active history at **R** lines 1008,
 1893, 4041, 5639 and 6319. They did not delete the preceding JSONL records, so
 the file supports this audit even where the live lead no longer held the earlier
-turns. Six developer messages were themselves cut at about 10,000 characters
-with Codex's `Warning: truncated output` at **R** lines 9, 1013, 1898, 4046,
-5644 and 6324. That is a source limitation and, unlike compaction, lost the tail
-before it reached the transcript.
+turns. Six developer messages — every SessionStart profile of the session — were
+themselves cut by Codex at **R** lines 9, 1013, 1898, 4046, 5644 and 6324, and
+the cut is deterministic: a 4,944-char head and a ~5,050-char tail around an
+inline `…N tokens truncated…` marker, ~10,000 chars total, identical in all six.
+So it takes the MIDDLE, not the tail: each one still ends
+`--- END project content ---`, and each is headed `Warning: truncated output`
+with a path to the full text on disk. What the lead lost was PROCESS from its
+`Debt triage` line onward, the recovery block, constraints 1 through 7 whole and
+constraint 8's heading — announced as a token count and named as nothing. Unlike compaction, that loss
+reached the transcript already cut.
 
 ### Hand-steps and control-flow substitutions
 
@@ -276,7 +282,7 @@ in `9bddb126`, `daf7dbf2`, `3109dab5`, `810c3fa0`, `67a59d53`, and `348304f3`.
 | Codex's PostToolUse/Stop path is inert. | **UNEXERCISED.** No `<session>.test-status` exists, but absence cannot distinguish a hook that ran and wrote nothing from one that never fired. The prior deterministic payload analysis still stands; this walk adds no positive trace. |
 | Spawned Codex runs end without Claude's turns/cost/duration summary. | **CONFIRMED.** Complete handbacks after `[turn.completed]` carry only the story result and recovery instruction, with no in-band counters (**R** lines 832 and 843). Outer tool wall time is not a spawned-run summary. |
 | Spawned Codex teammates load no hooks or skills. | **CORRECTED.** Native transcripts `01a04075-7d61-7a11-a539-19f1ba801006`, `01a04075-6629-7fa0-81ae-5f9fecb0806a`, `01a04075-816e-7f71-9a77-63c93c42c5f9`, and `01a04075-74c6-7a21-96f9-1e4894563a0b` each contain the installed xp-plugin skill catalog and the `xp-plugin 0.8.2 · teammate session` SessionStart marker. The inlined card/VALUES/constraints remain worktree authority because Codex has no `--plugin-dir`; installed hooks and commands can therefore disagree, as record `3109dab5` observed. |
-| The lead SessionStart profile fits its declared transport. | **FALSIFIED AND FIXED.** The six cut developer messages above came from a 15,442-character hook output beneath the plugin's former 18,000-character cap. Bug `d3685f4d`, resolved as `c85e6dce`, lowers the cap to Codex's 10,000-character boundary; `tests/test_session_start_profile.py::TestTheRealProfileAgainstTheRealCap::test_this_repos_profile_fits_with_values_and_process_leading_it` constructed the red and now pins it. |
+| The lead SessionStart profile fits its declared transport. | **FALSIFIED AND FIXED.** The six cut developer messages above report original token counts of 4,159 / 3,978 / 4,032 / 4,132 / 3,766 / 3,780, so they are six profiles of ~14–15.5k chars, all beneath the plugin's former 18,000-char cap and all above Codex's; the 15,442-char figure on the bug is the profile measured at filing. Bug `d3685f4d`, resolved as `c85e6dce`, lowers the cap to Codex's 10,000-character boundary; `tests/test_session_start_profile.py::TestTheRealProfileAgainstTheRealCap::test_this_repos_profile_fits_with_values_and_process_leading_it` constructed the red and now pins it. |
 | Codex needs explicit host authority where Claude's configured lead does not pause. | **CONFIRMED for the initial posture, then changed in-session.** The three approval messages and the 01:23:14Z permissions injection above are positive traces; no conclusion is drawn about hosts configured differently. |
 
 No other leg difference was evidenced by the scoped read. In particular, the
@@ -287,10 +293,24 @@ unread tool-call interiors behaved identically.
 ### Tracebacks and refusals
 
 All 13 `Traceback` neighbourhoods were read. Three were quoted source or record
-text rather than exceptions; three were intentional `KeyboardInterrupt`s while
-stopping work; four came from bad ad-hoc diagnostics (wrong helper id, missing
-`__file__`, and two wrong import roots); three were the initial sandbox denying
-the data-root/SessionStart probe. None exposed another shipped defect.
+text rather than exceptions (**R** 1637, 4201, 4476); three were intentional
+`KeyboardInterrupt`s while stopping work (939, 1465, 1488); four came from bad
+ad-hoc diagnostics (121 wrong helper id, 929 missing `__file__`, 4823 and 4829
+wrong import roots); three were the initial sandbox denying the
+data-root/SessionStart probe (155, 1066, 1084). None exposed a defect in the
+shipped plugin.
+
+ONE OF THEM EXPOSED A VACUOUS CHECK, which the shipped/not-shipped line above
+does not cover and constraint 2 does. **R** 1066 is
+`tests/scripts/falsifier_lead_profile_fits.py` dying on `ValueError: substring
+not found`. The cause is not the sandbox: `run_hook` is advisory, so a hook that
+raises exits 0 with its traceback on stderr and NOTHING on stdout, and that empty
+string passes the falsifier's `"teammate session" not in out` guard — which
+excludes one wrong state and admits the other (constraint 15). Reproduced here
+against an unwritable `XP_DATA`: the falsifier reported the same `ValueError`,
+and in `tests/test_session_start_profile.py` the two tests that early-return on
+`"[truncated" not in out` PASSED on the empty profile — the exact vacuity that
+file's own docstring exists to prevent. Both now assert the profile is non-empty.
 
 Of 66 outputs containing `refused:`, 49 were source, log or report readbacks, not
 fresh refusals. The 17 live/control outputs included repeated polls of the same
@@ -298,10 +318,32 @@ event. Sixteen show a wall or control doing its job: missing Verify, no-commit
 escalation, test-gate red, reviewer-patch commit refusal, concurrency/overlap,
 sprint membership, the intentionally red retired-card regression, falsifier
 batch refusal, and the post-merge branch guard. One shows the lead fighting the
-CLI: it supplied 119 record ids as one `--ref`, received zero matches, then
+CLI: it supplied 77 record ids as one `--ref`, received zero matches, then
 iterated them correctly (**R** line 4889). A count alone would have called all 66
 friction; the neighbourhoods show one malformed invocation and the rest either
 quoted evidence or working boundaries.
+
+### What the fix for `d3685f4d` costs this repo
+
+Stated because the fix is not free and the notice is the only thing that says so.
+Under the old 18,000-char cap the Sprint-8 lead did reach constraints 9-15 whole,
+the tail of 8, and the whole session digest, because Codex keeps the tail; it
+lost PROCESS's own tail and constraints 1-7 in the middle, unnamed. Under the 10,000-char cap this
+repo's profile assembles 9,861 chars and Codex cuts nothing — and the lead
+reaches ZERO of 15 constraints and no digest at all, with
+`[truncated ... CONSTRAINTS 1..15 ARE NOT ABOVE]` naming every one. The trade is
+Honesty over coverage: fewer rules delivered, none silently. It is loud, so it is
+not a defect under the finding bar, but nothing else measures it — the falsifier
+and `test_this_repos_profile_fits_...` both assert only that the profile FITS,
+which lowering the cap can always make true by dropping more.
+
+WHAT THIS DOES NOT DECIDE: the profile assembles the recovery block ahead of the
+rules, and §8's stated ordering rationale — constraints before the digest,
+because a digest is recreatable from git and work.md — applies word for word to
+the recovery block, which is recreatable from the same two sources. Moving rules
+ahead of it would deliver roughly eleven of them here. `test_recovery_block_
+survives_the_cap` pins the current order, so that is a retro decision with a test
+to retire, not a fix to smuggle into this card.
 
 ### Boundary and verdict
 
@@ -314,6 +356,8 @@ Within that boundary, the walk supports the Codex-lead design claim. It also
 required a human to correct a false contention story, stop one runaway planning
 loop, grant host authority and authorize release; the lead directly substituted
 for one executor and salvaged two interrupted reviews. The reading found one new
-defect, `d3685f4d`, in addition to the already-filed-and-fixed `65a075f4`. A walk
+defect, `d3685f4d`, in addition to the already-filed-and-fixed `65a075f4`, and
+the story review of this section found a second in the same neighbourhood: the
+empty-profile vacuity above, which is owed its own record. A walk
 that produced those corrections is stronger evidence than a clean summary, and
 the READ/COUNTED/SAMPLED split above states exactly where that evidence ends.

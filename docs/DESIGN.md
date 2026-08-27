@@ -273,14 +273,23 @@ Every agent, on every spawn path, gets **VALUES.md** — the spawn CLI and the a
 | Reviewer (plan & story) | VALUES + its review charter (in the agent definition) + the diff/plan under review + constraints.md + **system.md** (the WHERE layer — a reviewer judging approach needs it, and a file nothing reads is the audit's dead-pillar mistake reborn) | < 2.5k tokens |
 
 **The lead budget is Codex's measured 10,000-character SessionStart transport
-bound (bug d3685f4d).** Sprint 8 emitted six 15,442-character profiles; Codex cut
-each one without the plugin's own omission notice because the former 18,000-char
-budget was derived from profile size, not the receiving harness. **ORDER IS PART
-OF THE CONTRACT, not an implementation detail (Paul, 2026-08-24): VALUES first,
-PROCESS second, and neither may be dropped or moved.** They define the plugin and
-get primacy; constraints precede the recreatable digest. A project past the bound
-therefore loses the tail, but `session_start.truncated` names every dropped rule
-and where to read it. Dropped constraints are computed against the surviving
+bound (bug d3685f4d).** Sprint 8 emitted six ~14-15.5k profiles under the former
+18,000-char budget, which was derived from our own content and not from the
+receiving harness; Codex cut all six the same way — 4,944 chars of head, ~5,050
+of tail, an inline `…N tokens truncated…` marker between them. It takes the
+MIDDLE, so our notice, which rides the tail, would have survived either cap. What
+does not survive is any say in WHICH rules go: the harness announces a token
+count and names nothing. Cutting at its bound is how the choice and the naming
+stay ours. **ORDER IS PART OF THE CONTRACT, not an implementation detail (Paul,
+2026-08-24): VALUES first, PROCESS second, and neither may be dropped or moved.**
+They define the plugin and get primacy; constraints precede the recreatable
+digest. A project past the bound therefore loses the tail — and the halving is
+not free: THIS repo now assembles 9,861 chars and delivers ZERO of its 15
+constraints, where the 18,000-char profile did reach the lead with seven of them
+whole plus the tail of an eighth (AUDIT §10). Loud, since `session_start.truncated` names every dropped rule and
+where to read it, but no gate measures it: both fit checks assert only that the
+profile FITS, which dropping more always satisfies. Dropped constraints are
+computed against the surviving
 PREFIX of `constraints.md`, not by searching the whole kept profile: PROCESS has
 four lines shaped like constraint headings. The cut also re-appends
 `--- END project content ---` before its notice so the notice cannot render as
