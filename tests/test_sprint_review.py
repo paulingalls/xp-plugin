@@ -56,7 +56,7 @@ class TestReviewLeg:
             lines.append(line)
         assert lines[0] != lines[1]
 
-    def test_a_round_is_not_recorded_without_its_handoff_diff(self, tmp_path):
+    def test_a_round_without_its_handoff_diff_is_incomplete(self, tmp_path):
         repo, env, _g = make_repo(tmp_path)
         before = head(repo, env)
         staged_stub(
@@ -70,7 +70,8 @@ class TestReviewLeg:
         diff.mkdir(parents=True)
         result = sprint(repo, env, "review")
         assert result.returncode == 2 and "could not write reviewer handoff" in result.stderr
-        assert head(repo, env) == before and not marker_path(tmp_path).exists()
+        assert head(repo, env) == before
+        assert json.loads(marker_path(tmp_path).read_text())["rounds"][-1]["incomplete"]
         assert sprint(repo, env, "land", "--dry-run").returncode == 2
 
     def test_the_bundle_diffs_against_the_DEFAULT_branch_not_the_integration_target(self, tmp_path):
@@ -263,7 +264,7 @@ class TestMotionIsBoundedByAMechanism:
     claude session that never loads the agent file, which is why charter() inlines
     it, and why authorship rather than a tool list is the bound."""
 
-    def test_a_reviewer_that_COMMITS_is_refused_and_records_nothing(self, tmp_path):
+    def test_a_reviewer_that_COMMITS_is_refused_and_recorded_incomplete(self, tmp_path):
         """This is ALSO where the pre-launch head capture is pinned. A stub that
         never commits cannot tell a pre-launch head from a post-run one, so the
         test that asserted the ordering directly was vacuous and was deleted in
@@ -278,14 +279,14 @@ class TestMotionIsBoundedByAMechanism:
         r = sprint(repo, env, "review")
         assert r.returncode == 2, r.stdout
         assert before[:8] in r.stderr, "the undo names no sha to reset to"
-        assert not marker_path(tmp_path).exists(), "recorded a round it refused"
+        assert json.loads(marker_path(tmp_path).read_text())["rounds"][-1]["incomplete"]
 
     def test_a_reviewer_that_leaves_the_tree_DIRTY_is_refused(self, tmp_path):
         repo, env, _g = make_repo(tmp_path)
         committing_stub(tmp_path, "open('src.py','a').write('# edited\\n')\n")
         r = sprint(repo, env, "review")
         assert r.returncode == 2 and "dirty" in r.stderr
-        assert not marker_path(tmp_path).exists()
+        assert json.loads(marker_path(tmp_path).read_text())["rounds"][-1]["incomplete"]
 
     def test_a_reviewer_that_rewrites_the_MARKER_is_refused(self, tmp_path):
         """The marker is outside the repo, no diff shows it, and it is the file
@@ -322,7 +323,7 @@ class TestMotionIsBoundedByAMechanism:
         self._plan_rewriting_stub(tmp_path, "story-042 — done thing", "story-042 — REWRITTEN")
         r = sprint(repo, env, "review")
         assert r.returncode == 2 and "cards changed" in r.stderr
-        assert not marker_path(tmp_path).exists(), "recorded a round it refused"
+        assert json.loads(marker_path(tmp_path).read_text())["rounds"][-1]["incomplete"]
 
     def test_a_reviewer_is_NOT_refused_over_ANOTHER_sprints_card(self, tmp_path):
         """The green twin, and the reason the digest is sprint-scoped: the plan is

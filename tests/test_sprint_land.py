@@ -1,5 +1,6 @@
 """Sprint land and post-merge. Split from test_sprint_close.py at sprint-004 open."""
 
+import json
 import subprocess
 
 from close_helpers import launches, stub_reviewer  # noqa: F401
@@ -23,6 +24,16 @@ from sprint_helpers import (  # noqa: F401
 
 
 class TestLandAndPostMerge:
+    def test_an_incomplete_round_refuses_before_its_blocking_findings(self, tmp_path):
+        repo, env, _g = make_repo(tmp_path)
+        path = marker_path(tmp_path)
+        path.parent.mkdir(parents=True)
+        round_ = {"fixed": [], "blocking": ["B1"], "noted": [], "incomplete": "DIRT"}
+        path.write_text(json.dumps({"rounds": [round_], "shown_sha": head(repo, env)}))
+        r = sprint(repo, env, "land", "--dry-run")
+        assert r.returncode == 2 and "incomplete" in r.stderr
+        assert "blocking findings" not in r.stderr
+
     def test_land_dry_run_previews_the_commands_it_would_run(self, tmp_path):
         repo, env, _g = make_repo(tmp_path)
         record_reviews(tmp_path, repo, env)  # land now refuses without a covering review
