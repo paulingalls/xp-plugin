@@ -159,8 +159,12 @@ def cmd_review(sprint_id: str, dry_run: bool) -> int:
     rounds = state.get("rounds", [])
     round_n = len(rounds) + 1
     complete_n = max((n for n, r in enumerate(rounds, 1) if not r.get("incomplete")), default=0)
-    found, cap, charters = [], 0, {}
-    if not complete_n:
+    found, cap, charters, altitude = [], 0, {}, ""
+    if complete_n:
+        altitude, err = stages.altitude()
+        if err:
+            return fail(err)
+    else:
         found, err = stages.angles()
         if err:
             return fail(err)
@@ -216,11 +220,6 @@ def cmd_review(sprint_id: str, dry_run: bool) -> int:
 
     prior = [("Findings from earlier rounds", render_sprint_prior(rounds if complete_n else []))]
     if complete_n:
-        altitude = (
-            "Every story was reviewed at its own close, so restating a story-level finding is"
-            " noise. What earns effort is a seam between stories, a rule fixed in one of its"
-            " two implementations, or an invariant one story set and another dropped."
-        )
         fixed, err = leg("fixer", "fix", [("Sprint altitude", altitude), *prior], review.charter())
         if err:
             return stop(err)

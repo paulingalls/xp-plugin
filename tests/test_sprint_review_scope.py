@@ -1,7 +1,17 @@
 import json
+import shutil
 
 from close_helpers import launches
-from sprint_helpers import head, make_repo, marker_path, section, sprint, stage_key, staged_stub
+from sprint_helpers import (
+    PLUGIN,
+    head,
+    make_repo,
+    marker_path,
+    section,
+    sprint,
+    stage_key,
+    staged_stub,
+)
 
 CLEAN = {"fixed": [], "blocking": [], "noted": []}
 DELTA = "The delta since the last recorded round"
@@ -75,3 +85,20 @@ class TestConfirmingRound:
         assert [stage_key(r["stdin"]) for r in launches(tmp_path)[split:]] == ["fix"]
         state = json.loads(marker_path(tmp_path).read_text())
         assert state["rounds"][-1] == CLEAN
+
+    def test_an_unreadable_ALTITUDE_refuses_before_the_reviewer_is_launched(self, tmp_path):
+        """The sprint rule lives in the charter this round does NOT carry, so it
+        is read out of that file rather than copied here. Unguarded, a charter
+        edit that moves the paragraph hands the confirming reviewer an empty
+        altitude section — a story-altitude pass no artifact distinguishes from
+        this one. Injected against a COPY, so the real reader is what refuses.
+        """
+        repo, env, g, split = self._round_one(tmp_path)
+        self._commit(repo, g)
+        plugin = tmp_path / "plugin-copy"
+        shutil.copytree(PLUGIN, plugin)
+        agent = plugin / "agents" / "sprint-reviewer.md"
+        agent.write_text(agent.read_text().replace("ALTITUDE, every stage:", "At altitude,"))
+        r = sprint(repo, env, "review", close=plugin / "scripts" / "close.py")
+        assert r.returncode == 2 and "ALTITUDE" in r.stderr, r.stderr
+        assert len(launches(tmp_path)) == split, "launched a reviewer with no altitude"
