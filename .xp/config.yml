@@ -1,5 +1,6 @@
 # xp-plugin project config (dogfood instance)
 release: sprint
+sprint_branch: sprint-008   # retired at sprint close; every sprint sets it again
 codex_sandbox: danger-full-access  # Codex only: workspace-write | danger-full-access
 sprint_cap: 6          # max stories per sprint
 debt_budget: 0.2       # max share of sprint stories that are scheduled debt

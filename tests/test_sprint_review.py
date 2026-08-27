@@ -56,7 +56,11 @@ class TestReviewLeg:
             lines.append(line)
         assert lines[0] != lines[1]
 
-    def test_a_round_is_not_recorded_without_its_handoff_diff(self, tmp_path):
+    def test_a_round_without_its_handoff_diff_is_incomplete(self, tmp_path):
+        """And the round does NOT claim the fix. That write rolls the fixer's
+        commit back when it fails, so a round naming it in `fixed` — in the marker
+        AND in the git-versioned merge body — outlives every artifact a later
+        reader could check it against. The findings that survive still must."""
         repo, env, _g = make_repo(tmp_path)
         before = head(repo, env)
         staged_stub(
@@ -70,8 +74,33 @@ class TestReviewLeg:
         diff.mkdir(parents=True)
         result = sprint(repo, env, "review")
         assert result.returncode == 2 and "could not write reviewer handoff" in result.stderr
-        assert head(repo, env) == before and not marker_path(tmp_path).exists()
+        assert head(repo, env) == before
+        round_ = json.loads(marker_path(tmp_path).read_text())["rounds"][-1]
+        assert round_["incomplete"] and round_["blocking"] == ["FIXED"]
+        assert round_["fixed"] == [] and "fix" not in round_["stages"], round_
         assert sprint(repo, env, "land", "--dry-run").returncode == 2
+
+    def test_a_stage_that_DIES_offers_no_undo_spanning_the_applied_fix(self, tmp_path):
+        """A harness error is refused from the STAGE's head, like every other
+        refusal in the leg. Measured from the round's start instead, a closer that
+        touched nothing prints `git reset --hard <round base>` — an undo that
+        discards the fixer commit the same round records under `fixed`."""
+        repo, env, _g = make_repo(tmp_path)
+        before = head(repo, env)
+        staged_stub(
+            tmp_path,
+            patches=[("fix", "src.py", "C = 2")],
+            find={"fixed": [], "blocking": ["F"], "noted": []},
+            verify={"fixed": [], "blocking": ["F"], "noted": []},
+            fix={"fixed": ["F"], "blocking": [], "noted": []},
+        )
+        claude = tmp_path / "bin" / "claude"
+        claude.write_text(claude.read_text() + "sys.exit(1 if key == 'close' else 0)\n")
+        claude.chmod(0o755)
+        r = sprint(repo, env, "review")
+        assert r.returncode == 2 and "reviewer exited 1" in r.stderr, r.stderr
+        assert head(repo, env) != before, "no applied fix for an undo to span"
+        assert "git reset --hard" not in r.stderr and before[:8] not in r.stderr, r.stderr
 
     def test_the_bundle_diffs_against_the_DEFAULT_branch_not_the_integration_target(self, tmp_path):
         """Under `release: sprint`, integration_target() returns the SPRINT branch
@@ -160,6 +189,32 @@ class TestReviewLeg:
         assert r.returncode == 0, r.stderr
         assert launches(tmp_path) == []
         assert not marker_path(tmp_path).exists()
+
+    def test_a_dry_run_still_refuses_what_would_stop_the_real_one(self, tmp_path):
+        """A preview exists to say what the real run does. review.run resolves the
+        harness BEFORE it honours dry_run, so its error is the one thing a preview
+        can know; swallowing it greens the command whose whole job is the warning."""
+        bad = CONFIG.replace("reviewer: claude/opus", "reviewer: codex/gpt-5.6-terra/high")
+        repo, env, _g = make_repo(tmp_path, config=bad + "codex_sandbox: broken\n")
+        r = sprint(repo, env, "review", "--dry-run")
+        assert r.returncode == 2, r.stdout
+        assert "codex_sandbox" in r.stderr and "broken" in r.stderr, r.stderr
+
+    def test_a_stage_that_wrote_NO_report_is_not_named_among_the_stages_that_ran(self, tmp_path):
+        """`stages` is what the lead reads to see what the round covers, and the
+        closer is the stage that exists to catch the fixer. A closer that produced
+        nothing is exactly the coverage the lead must not be told it has."""
+        repo, env, _g = make_repo(tmp_path)
+        staged_stub(tmp_path)
+        claude = tmp_path / "bin" / "claude"
+        write = "open(m.group(1).strip(), 'w').write(json.dumps(report))"
+        claude.write_text(claude.read_text().replace(write, f"None if key == 'close' else {write}"))
+        claude.chmod(0o755)
+        r = sprint(repo, env, "review")
+        assert r.returncode == 2 and "wrote no report" in r.stderr, r.stderr
+        assert "no round" not in r.stderr.lower(), "the refusal denies the round beside it"
+        round_ = json.loads(marker_path(tmp_path).read_text())["rounds"][-1]
+        assert "close" not in round_["stages"] and round_["stages"], round_["stages"]
 
 
 class TestResolutionsAreCarried:
@@ -263,7 +318,7 @@ class TestMotionIsBoundedByAMechanism:
     claude session that never loads the agent file, which is why charter() inlines
     it, and why authorship rather than a tool list is the bound."""
 
-    def test_a_reviewer_that_COMMITS_is_refused_and_records_nothing(self, tmp_path):
+    def test_a_reviewer_that_COMMITS_is_refused_and_recorded_incomplete(self, tmp_path):
         """This is ALSO where the pre-launch head capture is pinned. A stub that
         never commits cannot tell a pre-launch head from a post-run one, so the
         test that asserted the ordering directly was vacuous and was deleted in
@@ -278,14 +333,29 @@ class TestMotionIsBoundedByAMechanism:
         r = sprint(repo, env, "review")
         assert r.returncode == 2, r.stdout
         assert before[:8] in r.stderr, "the undo names no sha to reset to"
-        assert not marker_path(tmp_path).exists(), "recorded a round it refused"
+        assert json.loads(marker_path(tmp_path).read_text())["rounds"][-1]["incomplete"]
 
     def test_a_reviewer_that_leaves_the_tree_DIRTY_is_refused(self, tmp_path):
         repo, env, _g = make_repo(tmp_path)
         committing_stub(tmp_path, "open('src.py','a').write('# edited\\n')\n")
         r = sprint(repo, env, "review")
         assert r.returncode == 2 and "dirty" in r.stderr
-        assert not marker_path(tmp_path).exists()
+        assert json.loads(marker_path(tmp_path).read_text())["rounds"][-1]["incomplete"]
+
+    def test_an_incomplete_round_is_LABELLED_where_the_next_round_reads_it(self, tmp_path):
+        """render_merge_body feeds the next round's bundle and the merge body both.
+        Unlabelled, this round's finder candidates — which no verifier ever judged,
+        because the abort came first — read there as findings a full pass confirmed.
+        """
+        import bookkeep
+
+        repo, env, _g = make_repo(tmp_path)
+        candidates = {"fixed": [], "blocking": ["a silent one"], "noted": []}
+        committing_stub(tmp_path, "open('src.py','a').write('# edited\\n')\n", report=candidates)
+        assert sprint(repo, env, "review").returncode == 2
+        rounds = json.loads(marker_path(tmp_path).read_text())["rounds"]
+        assert "a silent one" in (body := bookkeep.render_merge_body(rounds))
+        assert "INCOMPLETE after find-security" in body, body
 
     def test_a_reviewer_that_rewrites_the_MARKER_is_refused(self, tmp_path):
         """The marker is outside the repo, no diff shows it, and it is the file
@@ -322,7 +392,7 @@ class TestMotionIsBoundedByAMechanism:
         self._plan_rewriting_stub(tmp_path, "story-042 — done thing", "story-042 — REWRITTEN")
         r = sprint(repo, env, "review")
         assert r.returncode == 2 and "cards changed" in r.stderr
-        assert not marker_path(tmp_path).exists(), "recorded a round it refused"
+        assert json.loads(marker_path(tmp_path).read_text())["rounds"][-1]["incomplete"]
 
     def test_a_reviewer_is_NOT_refused_over_ANOTHER_sprints_card(self, tmp_path):
         """The green twin, and the reason the digest is sprint-scoped: the plan is

@@ -193,10 +193,10 @@ def section(bundle, title, until):
     return bundle[start : bundle.index(f"## {until}\n\n", start)]
 
 
-def committing_stub(tmp_path, body):
+def committing_stub(tmp_path, body, **stub):
     """A stub that writes a valid report and then moves the tree. A stub that
     never moves it certifies nothing (constraint 2)."""
-    bin_dir = stub_reviewer(tmp_path)
+    bin_dir = stub_reviewer(tmp_path, **stub)
     claude = bin_dir / "claude"
     claude.write_text(claude.read_text().replace("sys.stdout.write(", body + "\nsys.stdout.write("))
     claude.chmod(0o755)

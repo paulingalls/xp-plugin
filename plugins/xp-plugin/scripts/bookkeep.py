@@ -41,7 +41,11 @@ def render_merge_body(rounds: list[dict]) -> str:
     out = []
     for i, r in enumerate(rounds, 1):
         counts = " · ".join(f"{len(r[k])} {k}" for k in ("fixed", "blocking", "noted"))
-        out.append(f"Review round {i}: {counts}")
+        # Unlabelled, an aborted round's candidates read as findings a full pass confirmed.
+        stopped = (
+            f" — INCOMPLETE after {', '.join(r.get('stages', []))}" if r.get("incomplete") else ""
+        )
+        out.append(f"Review round {i}: {counts}{stopped}")
         for k in ("fixed", "blocking", "noted"):
             out += [f"  {k}: {item}" for item in review.cap_display(r[k], data_root() / "reports")]
     return "\n".join(out)

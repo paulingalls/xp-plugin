@@ -306,9 +306,16 @@ class TestReviewLeg:
         r = close(repo, env, "review")
         assert r.returncode == 2 and "Traceback" not in r.stderr
 
+    def test_a_blocking_report_is_recorded_when_verify_is_red(self, tmp_path):
+        repo, env, _g = make_repo(tmp_path, verify="false")
+        finding = "the retry flag is inverted"
+        stub_reviewer(tmp_path, report={"fixed": [], "blocking": [finding], "noted": []})
+        assert close(repo, env, "review").returncode == 2
+        assert marker(tmp_path)["rounds"][-1]["blocking"] == [finding]
+        land = close(repo, env, "land")
+        assert land.returncode == 2 and finding in land.stderr and "blocking" in land.stderr
+
     def test_dry_run_review_launches_nothing(self, tmp_path):
-        """N4: --dry-run is on the shared parser; silently spawning a real opus
-        session on a dry run is an expensive surprise."""
         repo, env, _g = make_repo(tmp_path)
         r = close(repo, env, "review", "--dry-run")
         assert r.returncode == 0 and launches(tmp_path) == []

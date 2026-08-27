@@ -186,12 +186,16 @@ class TestTrustBoundary:
 
 
 class TestSprintCloseFindings:
-    def test_done_stories_excluded_from_recovery_block(self, tmp_path):
+    def test_terminal_stories_excluded_from_recovery_block(self, tmp_path):
+        """BOTH terminal states, because "not [done]" is the inference constraint
+        15 forbids: a folded card listed here is work the lead is told it owes."""
         repo, _g = xp_repo(tmp_path)
         plan = tmp_path / "xp" / "plan.md"
-        plan.write_text(plan.read_text() + "#### story-001 — ancient   [done]\nVerify: true\n")
+        cards = "#### story-001 — ancient   [done]\n#### story-002 — folded   [retired]\n"
+        plan.write_text(plan.read_text() + cards)
         r = run_hook(repo, tmp_path)
         assert "story-042" in r.stdout and "ancient" not in r.stdout
+        assert "folded" not in r.stdout
 
 
 class TestRoleProfile:

@@ -17,6 +17,11 @@ THEM AGAIN, in EITHER direction: raising them to make a red pass is the move the
 debt forbids, and tightening them to prove a speed-up makes a load detector —
 the populations are ~16% apart and this box's own measurement noise is ~10%.
 Measure what a story CHANGED, in an arm of its own, as the fixture arm does.
+DELETING THEM WAS TRIED AT THE v0.9.0 RELEASE AND REVERTED at that sprint's
+review: the 129.13s red that motivated it was two gates sharing -n auto, and
+re-measured alone this tree runs 84.4s / 873 tests = 97ms each. A deletion is
+the widest possible raise, and it left three live records (the ones above)
+certifying a wall-clock claim with a check that never starts a clock.
 """
 
 import re

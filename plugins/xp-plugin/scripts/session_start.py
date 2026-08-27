@@ -182,8 +182,14 @@ def last_close() -> str:
 
 def recovery_block() -> str:
     """Computed fresh from always-current sources — the layer that can't go stale."""
+    # TERMINAL states are enumerated, never "not [done]": Distinct states stay distinct.
+    # The same inference in sprint_close blocked this sprint's own close over a [retired]
+    # card, and here it lists folded work back to the lead as still owed.
+    terminal = ("[done]", "[retired]")
     stories = [
-        ln for ln in read(plan_path()).splitlines() if ln.startswith("#### ") and "[done]" not in ln
+        ln
+        for ln in read(plan_path()).splitlines()
+        if ln.startswith("#### ") and not any(state in ln for state in terminal)
     ]
     # Through work.py's own summariser, never a second line-scan here: it is the
     # writer, so it is where the `Story:` stamp is known not to be the claim.

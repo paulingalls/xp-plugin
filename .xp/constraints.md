@@ -55,7 +55,6 @@ adding over the cap requires retiring one (the plan reviewer enforces).
    by a field report still running "0.3.0"). Bump the manifest and write the entry
    in the release commit, before the tag; tests/test_release.py is the wall, because
    a step mandated in prose and enforced by nothing is a step that gets skipped.
-15. **Absent and unreadable are different problems with different fixes.** A
-   tolerant read where the thing read is NOT optional conflates them, and the
-   refusal then sends the reader to fix something that is not there — usually an
-   `except (OSError, ...)` or an `if not x` spanning both states.
+15. **Distinct states stay distinct.** Never infer one state only from the absence
+   of another. Missing is not unreadable; retired is not unfinished. Enumerate
+   terminal and active states, and fault-inject every refusal boundary between them.

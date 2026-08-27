@@ -63,6 +63,17 @@ class TestMembership:
         r = sprint(repo, env, "start")
         assert r.returncode == 2 and "story-043" in r.stderr
 
+    def test_a_retired_story_in_this_sprint_does_not_refuse(self, tmp_path):
+        repo, env, _g = make_repo(
+            tmp_path,
+            plan=PLAN.replace(
+                "#### story-043 — also done   [done]",
+                "#### story-043 — folded elsewhere   [retired]",
+            ),
+        )
+        r = sprint(repo, env, "start")
+        assert r.returncode == 0, r.stderr
+
 
 class TestFullTier:
     def test_a_red_full_tier_refuses(self, tmp_path):

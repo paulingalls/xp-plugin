@@ -4,6 +4,28 @@ Release notes started at v0.6.0; earlier entries are summarized from their
 tag and merge messages. Full detail lives in the merge history and the
 per-sprint review reports.
 
+## v0.9.0 — completed work is kept, and the pipeline can close itself
+
+Sprint 8. Four deliberately disjoint stories opened Milestone 4 by preserving work
+that a completed leg had already paid for.
+
+- Plan review now stops at its finding bar: addressable findings edit the executor's
+  plan, while loud findings remain visible without forcing invented edits or another
+  round. Sprint-slate and capacity judgment stay with the lead's card review.
+- A sprint-review stage that refuses no longer erases the reports earlier stages
+  wrote. The round records that it is incomplete, which stages actually reported,
+  and the findings that survive; land refuses that truthful state.
+- Pytest falsifiers using `-k` are rejected at filing. Live records were migrated to
+  exact node IDs, so renames fail loudly instead of certifying an unrelated test.
+- A spawned story can run the plugin copy in its future worktree, including resume
+  and free-branch paths. Consuming projects without plugin sources keep the installed
+  copy, and the handback tells the lead which root and version every close leg uses.
+- Codex now receives this repository's conventions through `AGENTS.md`, which points
+  to the shared `CLAUDE.md` rather than duplicating it.
+- Sprint close now treats a retired card as terminal. The old done-only check called
+  folded work unfinished and stopped this release; an exact regression test holds
+  both the retired and active-state arms.
+
 ## v0.8.2 — a carded free patch lands where the free legs look for it
 
 - A free patch WITH a card is now spawned onto the branch `free start` cut. Spawn
