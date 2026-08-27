@@ -297,11 +297,13 @@ def test_a_reviewer_that_keeps_talking_outlives_the_bound(tmp_path, monkeypatch)
     from spawn import run_agent
 
     monkeypatch.setenv("XP_DATA", str(tmp_path / "data"))
-    monkeypatch.setenv("XP_AGENT_TIMEOUT", "0.5")
+    # Sub-second windows measure xdist scheduling pauses, not agent silence. Keep
+    # the child alive for more than three wider windows so a wall clock still reds.
+    monkeypatch.setenv("XP_AGENT_TIMEOUT", "2")
     script = tmp_path / "chatty.py"
     script.write_text(
         "import sys, time\n"
-        "for _ in range(30):\n"
+        "for _ in range(130):\n"
         '    print(\'{"type":"system","session_id":"s"}\'); sys.stdout.flush()\n'
         "    time.sleep(0.05)\n"
         'print(\'{"type":"result","result":"still going"}\')\n'
