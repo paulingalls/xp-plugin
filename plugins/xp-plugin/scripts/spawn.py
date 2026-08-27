@@ -229,11 +229,11 @@ def worktree_path(story_id: str) -> Path:
     return data_root() / "worktrees" / story_id
 
 
-def execution_root(tree: Path, trunk: str) -> Path:
-    # Asked of TRUNK, not of `tree`: the prompt is built before the worktree is cut,
-    # so an is_dir() check here answers False and silently re-ships the installed copy.
+def execution_root(tree: Path, cut_from: str) -> Path:
+    # Asked of the ref the tree is CUT FROM, never `tree`: the prompt precedes the worktree.
+    # NOT the integration target — free cuts off the default branch, resume re-enters one.
     source = PROJECT_PLUGIN / "scripts" / "spawn.py"
-    exists = git("cat-file", "-e", f"{trunk}:{source}", check=False)
+    exists = git("cat-file", "-e", f"{cut_from}:{source}", check=False)
     return tree / PROJECT_PLUGIN if exists.returncode == 0 else PLUGIN_ROOT
 
 
@@ -329,8 +329,8 @@ def cmd_spawn(
     branch = story_branch(card, story_id)
     tree = worktree_path(story_id)
     trunk = integration_target()
-    plugin_root = execution_root(tree, trunk)
     reuse = bool(FREE_ID.fullmatch(story_id)) and current_branch() == branch
+    plugin_root = execution_root(tree, branch if reuse or resuming else trunk)
     argv = agent_argv(harness, model, effort, "stream-json", sandbox)
     handoff = inheritance(data_root(), story_id)
     if resuming and tree.is_dir():

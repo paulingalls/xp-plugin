@@ -76,3 +76,27 @@ def test_self_hosting_free_leg_still_names_the_worktree_it_must_run_from(tmp_pat
     handback = result.stdout.splitlines()[-1]
     assert "for every close.py leg" in handback
     assert handback.endswith("close.py free fix-typo review` from that worktree.")
+
+
+def test_a_branch_lacking_the_plugin_keeps_the_installed_root(tmp_path):
+    """`free start` cuts off the DEFAULT branch and the integration target may be the
+    sprint branch, so the target is not the ref the worktree comes from. Asking it
+    hands the executor — and every close leg — a path its own worktree does not have."""
+    from test_close_free import KEY, carded_free_patch
+
+    repo, env, g = carded_free_patch(tmp_path)
+    branch = g("rev-parse", "--abbrev-ref", "HEAD").stdout.strip()
+    g("checkout", "-q", "main")
+    write_plugin_source(repo)
+    g("add", "-A")
+    assert g("commit", "-qm", "fixture plugin source").returncode == 0
+    g("checkout", "-q", branch)
+    rec = stub_claude(tmp_path)
+
+    result = spawn(repo, env, KEY)
+    assert result.returncode == 0, result.stderr
+    assert not (Path(env["XP_DATA"]) / "worktrees" / KEY / "plugins").exists()
+    assert str(SPAWN.parent / "work.py") in json.loads(rec.read_text())["stdin"]
+    assert result.stdout.splitlines()[-1].endswith(
+        "Read it, then run `close.py free fix-typo review` from that worktree."
+    )

@@ -60,10 +60,14 @@ existence alone passes on a cache that keeps old versions. One case is out of it
 and is bounded by the refresh instead: a kept old directory whose manifest still matches
 the recorded version is self-consistent. The version line is also the skew signal — two
 harnesses can hold two installs, and the last SessionStart wins the pointer. **`spawn.py`
-never reads env.json.** A consumer without `plugins/xp-plugin` keeps the invoked installed
-root and unchanged output. When the integration target carries that path, spawn
-substitutes its future worktree root into the executor's commands and tells the lead to
-use that root and manifest version for every review and land leg.
+never reads env.json** — it runs FROM the plugin and knows `Path(__file__)`, and the
+pointer can be a frozen codex cache, so reading it would put a stale, refusable lookup in
+front of the one path that never needs one. A consumer without `plugins/xp-plugin` keeps
+the invoked installed root and unchanged output. When THE REF THE WORKTREE IS CUT FROM
+carries that path — the integration target for a story, the branch itself for a free
+patch or a resume, and they differ — spawn substitutes its future worktree root into the
+executor's commands and tells the lead to use that root and manifest version for every
+review and land leg.
 Resolving in `close.py` was rejected as a consumer change; a card-only walk leaves other
 plugin changes silent. The COMMANDS move; the executor's SESSION does not. Its
 `--plugin-dir` (and codex's cache) still load the installed hooks, skills and charters,
