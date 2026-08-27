@@ -300,7 +300,7 @@ def cmd_start(sprint_id: str) -> int:
     members = sprint_stories(plan.read_text(), sprint_id)
     if not members:
         return fail(f"refused: no `### Sprint {sprint_id}` section in {plan}")
-    if unfinished := [m for m in members if "[done]" not in m]:
+    if unfinished := [m for m in members if not m.endswith(("[done]", "[retired]"))]:
         return fail(
             "refused: sprint "
             + sprint_id
