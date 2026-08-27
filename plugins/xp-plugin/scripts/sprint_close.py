@@ -1,10 +1,5 @@
 #!/usr/bin/env python3
-"""Sprint close: the falsifier batch, the triage emission, and the release.
-
-`start` is read-and-emit — it runs checks and prints what the human must judge,
-and mutates nothing but appends. `land` opens the release PR. `post-merge` cuts
-the bump and the tag on the sha that actually shipped, and retires the key.
-"""
+"""Sprint opening and close: branch state, checks, review, release."""
 
 import json
 import re
@@ -17,7 +12,7 @@ sys.path.insert(0, str(Path(__file__).parent / "close"))
 import overlap
 import stages
 from close import default_branch, fail, git, story_card
-from env import refuse_direct_invocation
+from env import record_sprint_branch, refuse_direct_invocation
 from release import cmd_post_merge as release_post_merge
 from release import next_version, refuse_unbumpable
 from review import reviewer_strays
@@ -294,13 +289,16 @@ def cmd_start(sprint_id: str) -> int:
     members = sprint_stories(plan.read_text(), sprint_id)
     if not members:
         return fail(f"refused: no `### Sprint {sprint_id}` section in {plan}")
+    branch = git("branch", "--show-current").stdout.strip()
+    if not branch or branch == default_branch():
+        return fail("refused: open the sprint from its freshly cut branch, not trunk")
+    opening = record_sprint_branch(branch)
+    print(f"sprint branch: {branch}")
     if unfinished := [m for m in members if not m.endswith(("[done]", "[retired]"))]:
-        return fail(
-            "refused: sprint "
-            + sprint_id
-            + " has unfinished stories:\n  "
-            + "\n  ".join(unfinished)
-        )
+        if not opening:
+            return fail(f"refused: sprint {sprint_id} is unfinished:\n  " + "\n  ".join(unfinished))
+        print(f"recorded; {len(unfinished)} stories unfinished — close checks wait")
+        return 0
 
     root = data_root()
     batch = corpus(root)

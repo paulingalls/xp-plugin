@@ -23,8 +23,6 @@ Executor: {executor}
 """
 
 CONFIG = """release: sprint
-sprint_branch: {trunk}
-
 roles:
   lead: claude/opus
   executor: claude/sonnet/medium
@@ -63,11 +61,12 @@ def make_repo(tmp_path, status="ready", executor="(default)", trunk="main"):
     plan.write_text(
         CARD.format(status="planned" if status == "ready" else status, executor=executor)
     )
+    (plan.parent / "sprint_branch").write_text(f"{trunk}\n")
     if full:
         minted = spawn(repo, env, "ready", "story-042")
         assert minted.returncode == 0, minted.stderr
         return repo, env, g
-    (repo / ".xp" / "config.yml").write_text(CONFIG.format(trunk=trunk))
+    (repo / ".xp" / "config.yml").write_text(CONFIG)
     if status == "ready":
         # MINTED, never typed: a fixture that writes [ready] by hand hands out the
         # forgery story-023 removed, and every test below it stops walking the real

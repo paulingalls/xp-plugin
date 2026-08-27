@@ -53,7 +53,30 @@ class TestMembership:
         assert r.returncode == 0, r.stderr
         assert "story-900" not in r.stdout + r.stderr
 
-    def test_an_unfinished_story_in_THIS_sprint_refuses(self, tmp_path):
+    def test_start_records_and_prints_each_clones_own_branch_before_stories(self, tmp_path):
+        for name, branch in (("one", "sprint-one"), ("two", "sprint-two")):
+            root = tmp_path / name
+            root.mkdir()
+            repo, env, g = make_repo(
+                root,
+                plan=PLAN.replace(
+                    "#### story-043 — also done   [done]",
+                    "#### story-043 — also done   [in-progress]",
+                ),
+            )
+            g("branch", "-m", branch)
+            (root / "data" / "sprint_branch").unlink()
+            r = sprint(repo, env, "start")
+            assert r.returncode == 0, r.stderr
+            assert (root / "data" / "sprint_branch").read_text().strip() == branch
+            assert branch in r.stdout
+
+    def test_a_rerun_over_an_unfinished_sprint_refuses_instead_of_skipping_the_checks(
+        self, tmp_path
+    ):
+        """The close leg exits 0 at OPEN, when every story is unfinished by
+        definition. Without the re-run split that exit 0 is also what a premature
+        close gets — falsifier batch, full tier and triage all silently skipped."""
         repo, env, _g = make_repo(
             tmp_path,
             plan=PLAN.replace(
@@ -62,6 +85,38 @@ class TestMembership:
         )
         r = sprint(repo, env, "start")
         assert r.returncode == 2 and "story-043" in r.stderr
+
+    def test_start_refuses_to_overwrite_another_active_sprint(self, tmp_path):
+        repo, env, _g = make_repo(tmp_path)
+        path = tmp_path / "data" / "sprint_branch"
+        path.write_text("sprint-other\n")
+        r = sprint(repo, env, "start")
+        assert r.returncode == 2 and "clear" in r.stderr
+        assert path.read_text().strip() == "sprint-other"
+
+    def test_start_refuses_trunk_and_never_records_it(self, tmp_path):
+        """Both halves, because they are stopped by different code: with a sprint
+        already recorded the mismatch refusal fires anyway, so only the SECOND —
+        nothing recorded, the sprint's first start — reaches this guard. Recording
+        trunk would point integration_target at trunk, merging every story there."""
+        repo, env, g = make_repo(tmp_path)
+        g("checkout", "-q", "main")
+        path = tmp_path / "data" / "sprint_branch"
+        r = sprint(repo, env, "start")
+        assert r.returncode == 2 and "freshly cut branch" in r.stderr
+        assert path.read_text().strip() == "sprint-002"
+        path.unlink()
+        r = sprint(repo, env, "start")
+        assert r.returncode == 2 and "freshly cut branch" in r.stderr
+        assert not path.exists()
+
+    def test_unreadable_branch_state_is_not_treated_as_missing(self, tmp_path):
+        repo, env, _g = make_repo(tmp_path)
+        path = tmp_path / "data" / "sprint_branch"
+        path.unlink()
+        path.mkdir()
+        r = sprint(repo, env, "start")
+        assert r.returncode == 2 and "not readable" in r.stderr and "Traceback" not in r.stderr
 
     def test_a_retired_story_in_this_sprint_does_not_refuse(self, tmp_path):
         repo, env, _g = make_repo(
@@ -324,10 +379,7 @@ class TestLandCoverage:
 
 class TestLandPromisesOnlyWhatPostMergeDoes:
     def test_land_does_not_promise_a_manifest_bump(self):
-        """Bug 732b2610. land printed "post-merge — bump, tag, retire the key" and
-        post_merge only tags and strips sprint_branch. Three releases bumped the
-        manifest by hand while the message claimed the pipeline owned it.
-
+        """Land once promised a manifest bump that post-merge never performed.
         The fix is the message, not the missing bump: a version scheme belongs to
         the consuming project, and post-merge runs AFTER the PR merges — which is
         exactly where a bump must not happen, since the manifest is not .xp/-exempt

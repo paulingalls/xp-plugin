@@ -5,6 +5,7 @@ import re
 from pathlib import Path
 
 from close import config_flat, default_branch, fail, git
+from env import clear_sprint_branch, sprint_branch
 
 
 def next_version(part: str = "minor", ref: str = "HEAD") -> str:
@@ -61,7 +62,9 @@ def cmd_post_merge(
         trunk := default_branch()
     ):
         return fail(f"refused: on {head}, not {trunk} — the release tag names the MERGED sha")
-    release_branch = merged_branch or config_flat("sprint_branch")
+    release_branch = merged_branch or sprint_branch()
+    if retire_sprint and not release_branch:
+        return fail("refused: no sprint branch recorded — open the sprint before releasing it")
     if (
         release_branch
         and git("merge-base", "--is-ancestor", release_branch, "HEAD", check=False).returncode
@@ -79,15 +82,11 @@ def cmd_post_merge(
         return fail("refused: no .xp/config.yml here — is this an xp-managed repo?")
     if refusal := version_refusal(version):
         return fail(refusal)
-    kept = [
-        line
-        for line in config.read_text().splitlines(keepends=True)
-        if not retire_sprint or not line.startswith("sprint_branch:")
-    ]
     if git("tag", version, check=False).returncode:
         return fail(f"refused: could not create tag {version}")
-    config.write_text("".join(kept))
-    suffix = "; sprint_branch retired" if retire_sprint else ""
+    if retire_sprint:
+        clear_sprint_branch()
+    suffix = "; sprint branch cleared" if retire_sprint else ""
     # version_files ships COMMENTED, so the DEFAULT project cuts every tag with
     # no wall; a release's tag, manifest and CHANGELOG must name one version.
     walled = (
@@ -96,6 +95,6 @@ def cmd_post_merge(
         else "NO manifest was checked — set version_files: in .xp/config.yml to wall it"
     )
     print(f"tagged {version} at {git('rev-parse', 'HEAD').stdout.strip()[:8]}{suffix}; {walled}")
-    next_step = "commit the config change, push the tag, and open the next sprint"
+    next_step = "push the tag and open the next sprint"
     print(next_step if retire_sprint else "push the tag")
     return 0

@@ -1,15 +1,8 @@
-"""Falsifier for the checked-in sprint_branch key (supersedes 37187713's INVERTED
-one, which grepped for the key and so went green BECAUSE the flaw was present).
+"""Falsify per-clone sprint routing, fallback, and refusal boundaries."""
 
-The claim stands: .xp/config.yml is tracked, so every clone reads one clone's
-sprint branch. What makes that TOLERABLE is the insulation the claim itself
-names — nothing reaches the integration branch except close.integration_target(),
-which honours the key when the branch exists and REFUSES rather than silently
-falling back when it does not. This asserts that, so it is green while the
-insulation holds and reds if anything starts reading the key directly or the
-refusal turns back into a fallback.
-"""
-
+import contextlib
+import io
+import os
 import subprocess
 import sys
 import tempfile
@@ -18,48 +11,69 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parents[2] / "plugins" / "xp-plugin" / "scripts"))
 
 
+def red(why: str) -> int:
+    """A batch falsifier that reds in silence names no next action: sprint close
+    files the bug from the COMMAND, so the message here is all the fixer gets."""
+    print(why, file=sys.stderr)
+    return 1
+
+
+def refused(call) -> str:
+    error = io.StringIO()
+    with contextlib.redirect_stderr(error):
+        try:
+            call()
+        except SystemExit as exc:
+            if exc.code == 2:
+                return error.getvalue()
+    return ""
+
+
 def main() -> int:
     import close
 
-    tmp = Path(tempfile.mkdtemp())
-    (tmp / ".xp").mkdir()
-    run = lambda *a: subprocess.run(a, cwd=tmp, capture_output=True)  # noqa: E731
-    run("git", "init", "-q", "-b", "main")
-    run(
-        "git",
-        "-c",
-        "user.email=l@x",
-        "-c",
-        "user.name=l",
-        "commit",
-        "-q",
-        "--allow-empty",
-        "-m",
-        "x",
-    )
-    run("git", "branch", "sprint-999")
-    cfg = tmp / ".xp" / "config.yml"
-    import os
+    with tempfile.TemporaryDirectory() as folder:
+        tmp = Path(folder)
+        (tmp / ".xp").mkdir()
+        run = lambda *a: subprocess.run(a, cwd=tmp, check=True, capture_output=True)  # noqa: E731
+        run("git", "init", "-q", "-b", "main")
+        run(
+            "git",
+            "-c",
+            "user.email=l@x",
+            "-c",
+            "user.name=l",
+            "commit",
+            "-q",
+            "--allow-empty",
+            "-m",
+            "x",
+        )
+        run("git", "branch", "sprint-one")
+        (tmp / ".xp" / "config.yml").write_text("release: sprint\ntrunk: main\n")
+        os.chdir(tmp)
 
-    os.chdir(tmp)
+        first = tmp / "clone-one"
+        first.mkdir()
+        (first / "sprint_branch").write_text("sprint-one\n")
+        os.environ["XP_DATA"] = str(first)
+        if (got := close.integration_target()) != "sprint-one":
+            return red(f"clone one's recorded sprint branch was ignored: {got!r}")
 
-    cfg.write_text("release: sprint\ntrunk: main\nsprint_branch: sprint-999\n")
-    if (got := close.integration_target()) != "sprint-999":
-        print(f"the configured sprint branch was ignored: {got!r}", file=sys.stderr)
-        return 1
-    cfg.write_text("release: sprint\ntrunk: main\n")
-    if (got := close.integration_target()) != "main":
-        print(f"no key set, yet the target is not trunk: {got!r}", file=sys.stderr)
-        return 1
-    # The half that matters most: a key naming a branch that does not exist must
-    # REFUSE, never silently merge a fresh clone's work to trunk.
-    cfg.write_text("release: sprint\ntrunk: main\nsprint_branch: sprint-nope\n")
-    try:
-        got = close.integration_target()
-    except SystemExit:  # the refusal is a hard stop, not a return value
-        return 0
-    print(f"a sprint_branch naming no ref returned {got!r} instead of refusing", file=sys.stderr)
-    return 1
+        second = tmp / "clone-two"
+        second.mkdir()
+        os.environ["XP_DATA"] = str(second)
+        if (got := close.integration_target()) != "main":
+            return red(f"clone two records nothing, yet the target is not trunk: {got!r}")
+        (second / "sprint_branch").write_text("sprint-missing\n")
+        if "sprint-missing" not in refused(close.integration_target):
+            return red("a recorded branch naming no ref did not refuse — it may merge to trunk")
+
+        cfg = "release: sprint\ntrunk: main\nsprint_branch: sprint-one\n"
+        (tmp / ".xp" / "config.yml").write_text(cfg)
+        if "remove sprint_branch" not in refused(close.integration_target):
+            return red("a tracked sprint_branch: was read instead of refused")
+    return 0
 
 
 if __name__ == "__main__":

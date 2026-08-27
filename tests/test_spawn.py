@@ -18,7 +18,6 @@ from spawn_helpers import (  # noqa: F401
     stub_claude,
     stub_claude_requiring_verbose,
     stub_codex,
-    trunk_sha,
 )
 from test_spawn_escalation import ESCALATION, stub_escalating
 
@@ -137,20 +136,15 @@ def reset_to_ready(tmp_path):
 
 
 class TestWorktree:
-    def test_worktree_branches_off_the_integration_target_not_head(self, tmp_path):
-        """HEAD carries a divergent commit the trunk does not have, so a
-        `worktree add` that omits the base argument reds here instead of
-        passing because HEAD happened to be the trunk (constraints.md #2)."""
-        repo, env, _g = make_repo(tmp_path)
-        stub_claude(tmp_path)
-        assert spawn(repo, env, "story-042").returncode == 0
-        tree = tmp_path / "data" / "worktrees" / "story-042"
-        assert tree.is_dir()
-        assert not (tree / "drift.txt").exists()  # the divergent commit is absent
-        assert trunk_sha(repo, env) in in_tree(tree, env, "log", "--format=%H")
-
-    def test_branch_is_namespaced_per_identity_so_clones_cannot_collide(self, tmp_path):
-        repo, env, _g = make_repo(tmp_path)
+    def test_each_clone_spawns_from_its_own_recorded_branch(self, tmp_path):
+        repo, env, g = make_repo(tmp_path)
+        g("branch", "sprint-one", "main")
+        g("checkout", "-q", "sprint-one")
+        (repo / "base-one.txt").write_text("one\n")
+        g("add", "-A")
+        g("commit", "-qm", "first sprint base")
+        g("checkout", "-q", "elsewhere")
+        (tmp_path / "data" / "sprint_branch").write_text("sprint-one\n")
         stub_claude(tmp_path)
         first_run = spawn(repo, env, "story-042")
         assert first_run.returncode == 0
@@ -164,8 +158,13 @@ class TestWorktree:
         for k, v in (("user.email", "grace@example.com"), ("user.name", "Grace H")):
             subprocess.run(["git", "config", k, v], cwd=other, env=env2, check=True)
         subprocess.run(["git", "checkout", "-q", "main"], cwd=other, env=env2)
+        subprocess.run(["git", "checkout", "-qb", "sprint-two"], cwd=other, env=env2)
+        (other / "base-two.txt").write_text("two\n")
+        subprocess.run(["git", "add", "-A"], cwd=other, env=env2, check=True)
+        subprocess.run(["git", "commit", "-qm", "second sprint base"], cwd=other, env=env2)
         plan2 = tmp_path / "data2" / "plan.md"
         plan2.parent.mkdir(parents=True, exist_ok=True)
+        (plan2.parent / "sprint_branch").write_text("sprint-two\n")
         plan2.write_text(
             (tmp_path / "data" / "plan.md").read_text().replace("[in-progress]", "[planned]")
         )
@@ -176,6 +175,10 @@ class TestWorktree:
         second = in_tree(second_tree, env2, "branch", "--show-current")
         assert second == "grace/story-042-demo-story"
         assert first != second
+        assert (first_tree / "base-one.txt").exists() and not (first_tree / "base-two.txt").exists()
+        assert (second_tree / "base-two.txt").exists() and not (
+            second_tree / "base-one.txt"
+        ).exists()
         handoffs = [run.stdout.splitlines()[-1] for run in (first_run, second_run)]
         for line, tree, run_env in zip(
             handoffs, (first_tree, second_tree), (env, env2), strict=True
@@ -407,8 +410,7 @@ class TestConfigRoleParsing:
 
 
 def test_spawn_reaches_the_integration_target_only_through_close():
-    """A filed debt (story-009 retires config.yml sprint_branch) rests on spawn
-    never reading the key itself — a comment cannot rot loudly, a test can."""
+    """One resolver owns the clone-local record, its fallback, and its refusals."""
     assert "sprint_branch" not in SPAWN.read_text()
 
 

@@ -65,9 +65,8 @@ class TestStart:
         repo, env, g = make_repo(tmp_path)
         g("checkout", "-qb", "sprint-001", "main")
         (repo / "earlier_story.py").write_text("EARLIER_STORY_SENTINEL = 1\n")
-        (repo / ".xp" / "config.yml").write_text(
-            CONFIG + "\nrelease: sprint\nsprint_branch: sprint-001\n"
-        )
+        (repo / ".xp" / "config.yml").write_text(CONFIG + "\nrelease: sprint\n")
+        (tmp_path / "data" / "sprint_branch").write_text("sprint-001\n")
         g("add", "-A")
         g("commit", "-qm", "an earlier story, integrated on the sprint branch")
         g("checkout", "-q", "story-042-branch")
