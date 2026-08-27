@@ -69,10 +69,13 @@ patch or a resume, and they differ — spawn substitutes its future worktree roo
 executor's commands and tells the lead to use that root and manifest version for every
 review and land leg.
 Resolving in `close.py` was rejected as a consumer change; a card-only walk leaves other
-plugin changes silent. The COMMANDS move; the executor's SESSION does not. Its
-`--plugin-dir` (and codex's cache) still load the installed hooks, skills and charters,
-and the prompt reads installed VALUES and TEAMMATE prose before the worktree exists — so
-a story changing any of those is still unwalked by the leg that closes it.
+plugin changes silent. The price of that rejection is that the handback is the only
+carrier: every later close.py refusal and land message re-spells a bare `close.py`, so a
+lead following the newest line on screen is back on the installed pipeline. The COMMANDS
+move; the executor's SESSION does not. Its `--plugin-dir` (and codex's cache) still load
+the installed hooks, skills and charters, and the prompt reads installed VALUES and
+TEAMMATE prose before the worktree exists — so a story changing any of those is still
+unwalked by the leg that closes it.
 
 Two harness adapters over one shared core:
 

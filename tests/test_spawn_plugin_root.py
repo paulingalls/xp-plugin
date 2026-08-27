@@ -13,6 +13,9 @@ def test_consuming_project_keeps_installed_root_and_output(tmp_path):
     result = spawn(repo, env, "story-042")
     assert result.returncode == 0, result.stderr
     assert str(SPAWN.parent / "work.py") in json.loads(rec.read_text())["stdin"]
+    # nothing NEW printed, not just the right last line: a root or version disclosure
+    # leaking anywhere into a consuming project's console is the design's failure arm.
+    assert "xp-plugin" not in result.stdout + result.stderr
     assert result.stdout.splitlines()[-1].endswith(
         "Read it, then run `close.py story story-042 review`."
     )
@@ -99,4 +102,28 @@ def test_a_branch_lacking_the_plugin_keeps_the_installed_root(tmp_path):
     assert str(SPAWN.parent / "work.py") in json.loads(rec.read_text())["stdin"]
     assert result.stdout.splitlines()[-1].endswith(
         "Read it, then run `close.py free fix-typo review` from that worktree."
+    )
+
+
+def test_resume_asks_the_stopped_branch_not_the_moved_integration_target(tmp_path):
+    """A resume re-enters an EXISTING tree, so the integration target is not where that
+    tree came from either: a trunk that adopts the plugin after the stop would hand the
+    successor — and every close leg — a path its own worktree has never had."""
+    from test_spawn_resume import stopped_story
+
+    repo, env, g, tree, _marker = stopped_story(tmp_path)
+    g("checkout", "-q", "main")
+    write_plugin_source(repo)
+    g("add", "-A")
+    assert g("commit", "-qm", "trunk adopts the plugin after the stop").returncode == 0
+    g("checkout", "-q", "elsewhere")
+    rec = stub_claude(tmp_path)
+    rec.unlink()  # else the stopped spawn's own record answers for the resume's
+
+    result = spawn(repo, env, "resume", "story-042")
+    assert result.returncode == 0, result.stderr
+    assert not (tree / "plugins").exists()
+    assert str(SPAWN.parent / "work.py") in json.loads(rec.read_text())["stdin"]
+    assert result.stdout.splitlines()[-1].endswith(
+        "Read it, then run `close.py story story-042 review`."
     )
