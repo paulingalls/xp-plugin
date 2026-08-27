@@ -21,9 +21,9 @@ roles:               # harness/model[/effort]; the lead overrides per story in p
   executor: claude/sonnet/medium
   reviewer: claude/opus
   plan-reviewer: claude/opus   # scripts/plan_review.py; a teammate runs it itself
-  finder: claude/opus
-  verifier: claude/opus
-  fixer: claude/opus
+  finder: claude/opus     # the four round-1 stages of `close.py sprint <id> review`;
+  verifier: claude/opus   # each falls back to `reviewer` when its key is absent, so
+  fixer: claude/opus      # an older config keeps working untouched
   closer: claude/opus
 
 tests:

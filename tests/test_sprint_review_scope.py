@@ -27,9 +27,9 @@ def model(launch):
     return argv[argv.index("--model") + 1]
 
 
-def stage_config(role, spec):
+def stage_config(role, spec, base=CONFIG):
     roles = f"  reviewer: claude/opus\n  {role}: {spec}\n"
-    return CONFIG.replace("  reviewer: claude/opus\n", roles)
+    return base.replace("  reviewer: claude/opus\n", roles)
 
 
 def test_the_config_template_carries_every_round_one_stage_role(tmp_path, monkeypatch):
@@ -79,6 +79,20 @@ class TestRoundOneRoles:
         }
         others = [item for item in ran if not stage_key(item["stdin"]).startswith("find-")]
         assert {model(item) for item in others} == {"opus"}
+
+    def test_every_stage_resolves_its_own_key_not_only_the_finder(self, tmp_path):
+        """Measured vacuity: dropping verifier, fixer and closer back to `reviewer`
+        while the finder keeps its key passes every other test in this file, so
+        nothing held DESIGN's "resolves finder, verifier, fixer and closer
+        independently" — a consuming project's `closer:` would be silently ignored."""
+        want = {"find": "finder", "verify": "verifier", "fix": "fixer", "close": "closer"}
+        config = CONFIG
+        for role in want.values():
+            config = stage_config(role, f"claude/{role}-only", config)
+        result, ran = self._review(tmp_path, config=config)
+        assert result.returncode == 0, result.stderr
+        got = {stage_key(i["stdin"]).split("-", 1)[0]: model(i) for i in ran}
+        assert got == {stage: f"{role}-only" for stage, role in want.items()}
 
     def test_a_card_finder_override_reaches_its_sprints_finders(self, tmp_path):
         plan = PLAN.replace("Verify: true", "Finder: claude/haiku\nVerify: true", 1)
@@ -131,8 +145,8 @@ class TestRoundOneRoles:
 
 
 class TestConfirmingRound:
-    def _round_one(self, tmp_path):
-        repo, env, g = make_repo(tmp_path)
+    def _round_one(self, tmp_path, config=CONFIG):
+        repo, env, g = make_repo(tmp_path, config=config)
         staged_stub(tmp_path)
         first = sprint(repo, env, "review")
         assert first.returncode == 0, first.stderr
@@ -145,7 +159,10 @@ class TestConfirmingRound:
         assert g("commit", "-qm", "round two delta").returncode == 0
 
     def test_one_story_shaped_reviewer_reads_the_delta_and_round_one_is_unchanged(self, tmp_path):
-        repo, env, g, split = self._round_one(tmp_path)
+        # `fixer` set away from `reviewer` because the assertion below is the one
+        # pinning round 2 to the story shape: on a config where the two agree, a
+        # confirming round resolving the FIXER key looks identical.
+        repo, env, g, split = self._round_one(tmp_path, stage_config("fixer", "claude/haiku"))
         first = [stage_key(r["stdin"]) for r in launches(tmp_path)]
         assert first == ["find-security", "find-state-lifecycle", "find-test-vacuity", "close"]
         self._commit(repo, g)
