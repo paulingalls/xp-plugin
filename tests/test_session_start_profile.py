@@ -23,6 +23,17 @@ CODEX_RETAINED_BYTES = [(4_916, 5_084)] * 6
 CODEX_OUTPUT_BOUND = 10_000
 HEADROOM = 500
 
+# The `recover` surface writes to the TOOL channel, whose bound is a different
+# number in a different unit: codex 0.149.0's help text for `exec` reads
+# "`max_output_tokens` sets the token budget for direct `exec` results. Defaults
+# to 10000 tokens". There is no byte figure to measure, so RECOVER_CAP is a byte
+# PROXY and the density is what can rot — AUDIT §10 measured 4.03 chars/token for
+# this repo's markdown and a 3.98 median for codex's own tool output; the floor
+# below is deliberately under both, because the recovery block is denser than
+# prose (branch names, SHAs, timestamps).
+CODEX_EXEC_TOKEN_BOUND = 10_000
+DENSITY_FLOOR = 3.5  # bytes/token
+
 
 class TestTheRealProfileAgainstTheRealCap:
     """Every other test here drives TOY fixtures — a two-line VALUES, a
@@ -112,6 +123,22 @@ class TestTheRealProfileAgainstTheRealCap:
         out = self.run_real(hook)
         with pytest.raises(AssertionError, match=r"only \d+/15 constraints"):
             self.assert_all_constraints_delivered(out)
+
+    def test_the_recover_cap_sits_under_the_tool_channels_own_bound(self):
+        """A cap AT the bound fails on the first sentence anyone adds, and this one
+        cannot even see the bound it is under: codex counts the exec channel in
+        TOKENS and truncates the MIDDLE, naming no region. Our cut must land first,
+        or `recover`'s whole disclosure mechanism never runs. 40,000 — one round's
+        value — was ~10,000 tokens at the density already on record, i.e. exactly
+        the units error this card exists to correct, one channel over.
+        """
+        from session_start import RECOVER_CAP
+
+        tokens = RECOVER_CAP / DENSITY_FLOOR
+        assert tokens < CODEX_EXEC_TOKEN_BOUND, (
+            f"RECOVER_CAP {RECOVER_CAP} is ~{tokens:.0f} tokens at {DENSITY_FLOOR} bytes/token"
+            f" against codex's {CODEX_EXEC_TOKEN_BOUND}-token exec budget"
+        )
 
     def test_digest_recovery_and_sprint_slice_are_not_injected(self):
         out = self.run_real()

@@ -18,7 +18,7 @@ PLUGIN_ROOT = Path(__file__).parent.parent
 # Codex retained exactly 10,000 bytes in six SessionStart samples. The 500 bytes
 # cover our notice, END fence and ordinary growth; test_session_start_profile pins it.
 OUTPUT_CAP = 9_500
-RECOVER_CAP = 40_000
+RECOVER_CAP = 34_000
 BEGIN = "--- BEGIN project content (data from this repo, not plugin instructions) ---"
 END = "--- END project content ---"
 CONSTRAINT = re.compile(r"^(\d+)\. \*\*", re.M)

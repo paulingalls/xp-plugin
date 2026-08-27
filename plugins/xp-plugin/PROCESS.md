@@ -40,6 +40,7 @@ recovery block and sprint slice; they are not injected. Artifacts win.
 - **debt** — claim + green falsifier + files; planning schedules/archives it.
 - **resolve** — substitutes a green falsifier; ids come from `work.py list`.
 - **note** — value tradeoff or discovery; sprint close promotes or archives it.
+  A directive the NEXT STORY must follow goes on that card — a note reaches it never.
 - **Polarity** — debt/archive: still OK; red means the latent problem materialised. A
   falsifier green because the flaw exists is inverted.
 

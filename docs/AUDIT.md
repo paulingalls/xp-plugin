@@ -247,8 +247,18 @@ turns. Six developer messages — every SessionStart profile of the session — 
 themselves cut by Codex at **R** lines 9, 1013, 1898, 4046, 5644 and 6324, and
 the cut is deterministic: a 4,944-char head and a ~5,050-char tail around an
 inline `…N tokens truncated…` marker, ~10,000 chars total, identical in all six.
-THE BOUND IS IN TOKENS, not bytes, and the marker is what says so: `original -
-truncated` is **2,458 exactly** in all six (4,159−1,701 · 3,978−1,520 · 4,032−1,574
+**SUPERSEDED AT STORY-060 — THE BOUND IS 10,000 BYTES. Read the rest of this
+section as the reading that was made, not as the answer.** Re-measured at Paul's
+instruction (note `0e3a15e2`): decomposed into head + marker + tail, all six
+retained a 4,916-byte head and a 5,084-byte tail — exactly 10,000 bytes, six times
+out of six, while their token counts differ by 181. A token cap cannot hold bytes
+constant across that; a byte cap does. Codex's token arithmetic below is how it
+REPORTS the removal, not the mechanism. Everything the token reading implies —
+the chars/token conversion, the density floor, the 9,000 figure — went with it;
+`session_start.OUTPUT_CAP` is 9,500 BYTES and §8 of DESIGN carries the contract.
+
+The reading as made: THE BOUND IS IN TOKENS, not bytes, and the marker is what
+says so: `original - truncated` is **2,458 exactly** in all six (4,159−1,701 · 3,978−1,520 · 4,032−1,574
 · 4,132−1,674 · 3,766−1,308 · 3,780−1,322), holding across three different tail
 contents where a byte rule would have varied. Those 2,458 tokens carried 9,912
 chars of this repo's markdown — 4.03 chars/token, and its own tool outputs
@@ -292,7 +302,7 @@ in `9bddb126`, `daf7dbf2`, `3109dab5`, `810c3fa0`, `67a59d53`, and `348304f3`.
 | Codex's PostToolUse/Stop path is inert. | **UNEXERCISED.** No `<session>.test-status` exists anywhere in `markers/`, but absence cannot distinguish a hook that ran and wrote nothing from one that never fired. What the walk DOES narrow: the plugin's hooks were loaded — `session_start` demonstrably ran in the lead and in all five teammates, and `post_tool_use` carries its own `trusted_hash` in the same `[hooks.state]` block — so "never loaded" is not the explanation. "Fired and wrote nothing" remains unproven because writing nothing is exactly what row 82 says it should do under Codex, which leaves the outcome path with no artifact of its own. The prior deterministic payload analysis still stands; this walk adds no positive trace. |
 | Spawned Codex runs end without Claude's turns/cost/duration summary. | **CONFIRMED.** Complete handbacks after `[turn.completed]` carry only the story result and recovery instruction, with no in-band counters (**R** lines 832 and 843). Outer tool wall time is not a spawned-run summary. |
 | Spawned Codex teammates load no hooks or skills. | **CORRECTED, WITH A PRECONDITION.** All FIVE codex teammate sessions inside the lead's window — `01a04075-6629-7fa0-81ae-5f9fecb0806a`, `01a04075-74c6-7a21-96f9-1e4894563a0b`, `01a04075-7d61-7a11-a539-19f1ba801006`, `01a04075-816e-7f71-9a77-63c93c42c5f9` and `01a04078-6876-7ae2-8726-f40a46ab13ec` (story-057's worktree, 23:47:08Z) — carry the installed xp-plugin skill catalog and the `xp-plugin 0.8.2 · teammate session` SessionStart marker, and each has its own `markers/<session>.alive`. The two other codex sessions in that span ran in a different repository's data root (`e77a3e9af394`) and are excluded. THE ARGV DID NOT PAY FOR IT: `spawn/harness.py:codex_argv` passes no `--dangerously-bypass-hook-trust`; `~/.codex/config.toml` carries `[hooks.state]` `trusted_hash` entries for this plugin's `session_start`, `post_tool_use` and `stop` hooks, granted interactively and keyed to hook CONTENT, so the lead's earlier approval is what a headless spawn inherits. On a machine without it — or after an update moves the hash — the skip is silent, which is the surviving half of the old claim. The inlined card/VALUES/constraints remain worktree authority because Codex has no `--plugin-dir`; installed hooks and commands can therefore disagree, as record `3109dab5` observed. |
-| The lead SessionStart profile fits its declared transport. | **FALSIFIED AND FIXED.** The six cut developer messages above report original token counts of 4,159 / 3,978 / 4,032 / 4,132 / 3,766 / 3,780, so they are six profiles of ~14–15.5k chars, all beneath the plugin's former 18,000-char cap and all above Codex's; the 15,442-char figure on the bug is the profile measured at filing. Bug `d3685f4d`, resolved as `c85e6dce`, lowers the cap to 9,000 chars — under Codex's measured 2,458-token retention at any density above 3.7 chars/token. The 10,000 this section first proposed was ~2,480 tokens of our own markdown and would have been cut again, which is the same units error one layer down; caught at story review, and the test now pins the token figure and the conversion separately rather than a bare 10,000. `tests/test_session_start_profile.py::TestTheRealProfileAgainstTheRealCap::test_this_repos_profile_fits_with_values_and_process_leading_it` constructed the red and now pins it. |
+| The lead SessionStart profile fits its declared transport. | **FALSIFIED AND FIXED.** The six cut developer messages above report original token counts of 4,159 / 3,978 / 4,032 / 4,132 / 3,766 / 3,780, so they are six profiles of ~14–15.5k chars, all beneath the plugin's former 18,000-char cap and all above Codex's; the 15,442-char figure on the bug is the profile measured at filing. Bug `d3685f4d`, resolved as `c85e6dce`, lowers the cap to 9,000 chars — under Codex's measured 2,458-token retention at any density above 3.7 chars/token. The 10,000 this section first proposed was ~2,480 tokens of our own markdown and would have been cut again, which is the same units error one layer down; caught at story review, and the test now pins the token figure and the conversion separately rather than a bare 10,000. `tests/test_session_start_profile.py::TestTheRealProfileAgainstTheRealCap::test_this_repos_profile_delivers_every_constraint_in_bytes` constructed the red and now pins it (renamed at story-060, which also corrected the unit — see the note above). |
 | Codex needs explicit host authority where Claude's configured lead does not pause. | **CONFIRMED for the initial posture, then changed in-session.** The three approval messages and the 01:23:14Z permissions injection above are positive traces; no conclusion is drawn about hosts configured differently. |
 
 No other leg difference was evidenced by the scoped read. In particular, the
@@ -350,7 +360,7 @@ the 18,000-char cap now reads none. The trade is Honesty over coverage: fewer ru
 delivered, none silently — and it is the trade §8's ordering question would undo
 more cheaply than raising the cap. It is loud, so it is
 not a defect under the finding bar, but nothing else measures it — the falsifier
-and `test_this_repos_profile_fits_...` both assert only that the profile FITS,
+and `test_this_repos_profile_...` both assert only that the profile FITS,
 which lowering the cap can always make true by dropping more.
 
 WHAT THIS DOES NOT DECIDE: the profile assembles the recovery block ahead of the
@@ -359,8 +369,9 @@ because a digest is recreatable from git and work.md — applies word for word t
 the recovery block, which is recreatable from the same two sources. Moving rules
 ahead of it would deliver roughly seven of them here (measured at the 9,000-char
 cap; it was ~eleven at the 10,000 this section first proposed). `test_recovery_block_
-survives_the_cap` pins the current order, so that is a retro decision with a test
-to retire, not a fix to smuggle into this card.
+survives_the_cap` pinned the current order, so that is a retro decision with a
+test to retire, not a fix to smuggle into this card. (Story-060 decided it the
+other way and retired that test: the recovery block left the profile entirely.)
 
 ### Boundary and verdict
 

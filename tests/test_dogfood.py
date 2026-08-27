@@ -12,6 +12,11 @@ import subprocess
 from pathlib import Path
 from unittest.mock import patch
 
+# LC_ALL=C ALONE PROVES NOTHING: PEP 538 silently coerces a C locale to C.UTF-8, so
+# the character count came out right for a reason the wall did not own. Disabling
+# coercion and UTF-8 mode is what makes the locale test able to red.
+C_LOCALE = {"LC_ALL": "C", "LANG": "C", "PYTHONCOERCECLOCALE": "0", "PYTHONUTF8": "0"}
+
 
 class TestDogfoodMatchesTheScaffold:
     """The stale-marketplace-build bug is this class: we tested what we were not
@@ -61,17 +66,18 @@ class TestDogfoodMatchesTheScaffold:
         ours = self.cap_value(self.OURS / "config.yml")
         assert ours == self.cap_value(self.SHIPPED / "config.yml") == 4_500
 
-    def run_constraints_wall(self, tmp_path, cap, size, character="x"):
+    def run_constraints_wall(self, tmp_path, cap, size, character="x", tier="fast"):
         xp = tmp_path / ".xp"
         xp.mkdir(exist_ok=True)
         setting = "" if cap is None else f"constraints_chars_cap: {cap}\n"
-        (xp / "config.yml").write_text(f"{setting}tests:\n  fast: true\n")
-        (xp / "constraints.md").write_text(character * size)
+        tiers = "".join(f"  {name}: true\n" for name in ("fast", "story", "full"))
+        (xp / "config.yml").write_text(f"{setting}tests:\n{tiers}")
+        (xp / "constraints.md").write_text(character * size, encoding="utf-8")
         hook_lib = self.SHIPPED / "hook-lib.sh"
         return subprocess.run(
-            ["sh", "-c", '. "$HOOK_LIB"; run_tier fast'],
+            ["sh", "-c", f'. "$HOOK_LIB"; run_tier {tier}'],
             cwd=tmp_path,
-            env=dict(os.environ) | {"HOOK_LIB": str(hook_lib), "LC_ALL": "C"},
+            env=dict(os.environ) | {"HOOK_LIB": str(hook_lib)} | C_LOCALE,
             capture_output=True,
             text=True,
         )
@@ -92,8 +98,19 @@ class TestDogfoodMatchesTheScaffold:
         assert invalid.returncode != 0 and "invalid" in invalid.stderr
 
     def test_constraints_wall_counts_unicode_characters_independent_of_locale(self, tmp_path):
-        red = self.run_constraints_wall(tmp_path, 4_500, 4_501, "😀")
+        red = self.run_constraints_wall(tmp_path, 4_500, 4_501, "\N{GRINNING FACE}")
         assert red.returncode != 0 and "4501 characters" in red.stderr, red.stderr
+        under = self.run_constraints_wall(tmp_path, 4_500, 4_499, "\N{GRINNING FACE}")
+        assert under.returncode == 0, under.stderr  # 17,996 BYTES, and still under cap
+
+    def test_every_tier_re_checks_the_character_cap(self, tmp_path):
+        """pre-commit is not the only gate that runs it: a scaffolded pre-push runs
+        `run_tier story`, and `git merge` fires no pre-commit at all. Wired to fast
+        alone, story and full both exited 0 over a cap they were meant to hold."""
+        for tier in ("fast", "story", "full"):
+            red = self.run_constraints_wall(tmp_path, 4_500, 4_501, tier=tier)
+            assert red.returncode != 0, f"run_tier {tier} passed an over-cap constraints.md"
+            assert "4500" in red.stderr, red.stderr
 
     def test_ascii_constraints_at_the_full_cap_fit_the_byte_profile(self, tmp_path):
         from session_start import OUTPUT_CAP

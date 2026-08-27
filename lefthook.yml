@@ -43,6 +43,8 @@ pre-push:
       run: ruff check .
     secrets:
       run: gitleaks git --no-banner --redact
+    constraints-size:
+      run: sh -c '. plugins/xp-plugin/templates/hook-lib.sh; constraints_size'
     full-tests:
       run: sh -c 'pytest -q -n auto; s=$?; [ $s -eq 5 ] && exit 0; exit $s'
     ratchet:

@@ -288,8 +288,20 @@ VALUES and PROCESS lead and cannot move or drop. Constraints follow inside the
 project-data fence. The real-profile test asserts every numbered constraint
 individually and reds when the cap is fault-injected to 7,500; fit alone is not a
 delivery check. Truncation measures UTF-8 bytes, backs up from partial constraints,
-restores the END fence and names every cut region. The separately invoked recovery
-surface uses the same cap and also names work.md titles it drops.
+restores the END fence and names every cut region.
+
+The separately invoked `recover` surface has its OWN cap, because it writes to a
+different channel with a different bound in a different unit: codex 0.149.0
+budgets a direct `exec` result at **10,000 TOKENS** by default (its own help text
+says so), where the SessionStart hook was measured in bytes. No byte figure exists
+to measure there, so `RECOVER_CAP = 34_000` is a PROXY — 10,000 tokens at 3.5
+bytes/token, under the 4.03 chars/token AUDIT §10 measured for this repo's
+markdown and under codex's own 3.98 median, because the recovery block is denser
+than prose. `test_the_recover_cap_sits_under_the_tool_channels_own_bound` pins the
+proxy and the floor separately, the same shape the character proxy needed and did
+not get. Cutting first is the whole point: codex truncates the MIDDLE and names
+nothing, so a `recover` that overruns loses the sprint slice silently — the cap it
+would have hit is what runs our region-and-work-title notice instead.
 
 `constraints_chars_cap` is a hard pre-commit wall beside the 15-item
 `constraints_cap`; its refusal names retiring or shortening a rule. The character
