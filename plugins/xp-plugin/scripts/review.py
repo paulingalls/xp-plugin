@@ -16,6 +16,7 @@ from work import data_root
 PLUGIN_ROOT = Path(__file__).parent.parent
 
 REPORT_KEYS = ("fixed", "blocking", "noted")
+NO_ROUND = "No round was recorded."
 ITEM_CAP = 400
 LIST_CAP = 20
 
@@ -95,7 +96,7 @@ def cap_display(items: list, path: Path) -> list:
 def _report_data(path: Path) -> tuple[dict, str]:
     if not path.exists():
         message = f"the reviewer wrote no report at {path} — its findings are above"
-        return {}, message + " and are all that survives. No report, no round"
+        return {}, f"{message} and are all that survives. {NO_ROUND}"
     try:
         data = json.loads(path.read_text())
     except OSError as e:
@@ -175,21 +176,29 @@ def marker_digest(path: Path) -> str:
     return sha256(path.read_bytes()).hexdigest() if path.exists() else ""
 
 
-def abort_text(reviewed_head: str, why: str) -> str:
+def write_round(marker: Path, state: dict, round_: dict, **coverage: str) -> None:
+    state.setdefault("rounds", []).append(round_)
+    state.update(coverage)
+    marker.write_text(json.dumps(state))
+
+
+def abort_text(reviewed_head: str, why: str, recorded: str = NO_ROUND) -> str:
     """EVERY abort in the review leg, not only the motion checks: a refused run can
     still have left commits behind. The undo is offered only when something
     actually moved — offered on an untouched tree, it teaches the lead to skip it
-    on the run where it is real.
+    on the run where it is real. `recorded` is what became of the round, because a
+    leg that records one before refusing must not offer the undo under a sentence
+    saying it did not — and the reset may be what orphans the sha it names.
     """
     from close import git
 
     moved = git("rev-parse", "HEAD").stdout.strip() != reviewed_head
     if not (moved or git("status", "--porcelain").stdout.strip()):
-        return f"refused: {why}"
+        return f"refused: {why}" if recorded == NO_ROUND else f"refused: {why}\n\n{recorded}"
     stat = git("diff", "--stat", f"{reviewed_head}..HEAD").stdout
     return (
-        f"refused: {why}\n\n{stat}\nNo round was recorded, and the reviewer's work is"
-        f" in your tree — yours to keep or undo: git reset --hard {reviewed_head[:8]}"
+        f"refused: {why}\n\n{stat}\n{recorded} The reviewer's work is in your tree —"
+        f" yours to keep or undo: git reset --hard {reviewed_head[:8]}"
     )
 
 

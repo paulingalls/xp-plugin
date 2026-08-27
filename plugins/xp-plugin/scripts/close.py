@@ -244,20 +244,25 @@ def _record_round(story_id: str, card: str, path: Path, marker: Path, state: dic
         return fail(review.stamp(path, review.abort_text(head, err)))
     if err := review.apply_patch(path, card):
         return fail(review.stamp(path, review.abort_text(head, err)))
-    if err := verify_on_reviewed_tree(story_id, card):
-        return fail(review.stamp(path, review.abort_text(head, err)))
-    review.stamp(path, "")  # a salvaged round clears the kill's own refusal
-    state.setdefault("rounds", []).append(report)
-    state["reviewed_head"] = head  # the tree the REVIEWER was shown
+    verify_err = verify_on_reviewed_tree(story_id, card)
+    if verify_err and not report["blocking"]:
+        return fail(review.stamp(path, review.abort_text(head, verify_err)))
+    kept = "The round IS recorded, and it names this tree — a reset here orphans it."
+    refusal = review.abort_text(head, verify_err, kept) if verify_err else ""
+    review.stamp(path, refusal)
     if err := review.write_reviewer_diff(path, head, f"story {story_id}"):
-        return fail(review.stamp(path, err))
-    # AFTER the leg: the reviewer's own fixes are part of what the lead is shown.
-    state["shown_sha"] = git("rev-parse", "HEAD").stdout.strip()
-    state["review_base"] = at["base"]
-    state["branch"] = git("rev-parse", "--abbrev-ref", "HEAD").stdout.strip()
-    marker.write_text(json.dumps(state))
+        return fail(review.stamp(path, err))  # already a whole refusal, prefix and all
+    review.write_round(
+        marker,
+        state,
+        report,
+        reviewed_head=head,
+        shown_sha=git("rev-parse", "HEAD").stdout.strip(),
+        review_base=at["base"],
+        branch=git("rev-parse", "--abbrev-ref", "HEAD").stdout.strip(),
+    )
     review.launch_marker(story_id).unlink(missing_ok=True)
-    return 0
+    return fail(refusal) if refusal else 0
 
 
 def cmd_review(story_id: str, dry_run: bool = False, free: bool = False) -> int:
