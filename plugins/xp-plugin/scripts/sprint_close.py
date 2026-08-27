@@ -224,8 +224,8 @@ def cmd_review(sprint_id: str, dry_run: bool) -> int:
         if not report_err:  # `ran` is what the round CONTAINS: a stage that wrote
             ran.append(key)  # nothing did not cover it, whatever it was launched for
             reports.append(report)
-        if err:
-            return {k: [] for k in review.REPORT_KEYS}, review.abort_text(head, err)
+        if err:  # stage_head, not head: an undo from the ROUND's start spans an applied fix
+            return {k: [] for k in review.REPORT_KEYS}, review.abort_text(stage_head, err)
         print(result)  # before any refusal: the findings exist nowhere else yet
         if motion := review.check_reviewer_motion(stage_head, marker, digest_before, cards):
             return {k: [] for k in review.REPORT_KEYS}, motion
@@ -284,6 +284,13 @@ def cmd_review(sprint_id: str, dry_run: bool) -> int:
     shown_sha = git("rev-parse", "HEAD").stdout.strip()
     fix_report = review.sprint_report_path(sprint_id, "fix", round_n)
     if err := review.write_reviewer_diff(fix_report, head, f"sprint {sprint_id}"):
+        # That write rolls the applied fix back when it fails, and `ran` is what the
+        # round CONTAINS: a reset fix is contained in nothing, so a round still
+        # claiming it — in the marker and in the git-versioned merge body — outlives
+        # every artifact that could correct it.
+        if "fix" in ran and git("rev-parse", "HEAD").stdout.strip() == head:
+            reports.pop(ran.index("fix"))
+            ran.remove("fix")
         return stop(err)
     review.write_round(marker, state, round_, reviewed_head=head, shown_sha=shown_sha)
     print(

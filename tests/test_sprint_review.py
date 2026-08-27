@@ -57,6 +57,10 @@ class TestReviewLeg:
         assert lines[0] != lines[1]
 
     def test_a_round_without_its_handoff_diff_is_incomplete(self, tmp_path):
+        """And the round does NOT claim the fix. That write rolls the fixer's
+        commit back when it fails, so a round naming it in `fixed` — in the marker
+        AND in the git-versioned merge body — outlives every artifact a later
+        reader could check it against. The findings that survive still must."""
         repo, env, _g = make_repo(tmp_path)
         before = head(repo, env)
         staged_stub(
@@ -71,8 +75,32 @@ class TestReviewLeg:
         result = sprint(repo, env, "review")
         assert result.returncode == 2 and "could not write reviewer handoff" in result.stderr
         assert head(repo, env) == before
-        assert json.loads(marker_path(tmp_path).read_text())["rounds"][-1]["incomplete"]
+        round_ = json.loads(marker_path(tmp_path).read_text())["rounds"][-1]
+        assert round_["incomplete"] and round_["blocking"] == ["FIXED"]
+        assert round_["fixed"] == [] and "fix" not in round_["stages"], round_
         assert sprint(repo, env, "land", "--dry-run").returncode == 2
+
+    def test_a_stage_that_DIES_offers_no_undo_spanning_the_applied_fix(self, tmp_path):
+        """A harness error is refused from the STAGE's head, like every other
+        refusal in the leg. Measured from the round's start instead, a closer that
+        touched nothing prints `git reset --hard <round base>` — an undo that
+        discards the fixer commit the same round records under `fixed`."""
+        repo, env, _g = make_repo(tmp_path)
+        before = head(repo, env)
+        staged_stub(
+            tmp_path,
+            patches=[("fix", "src.py", "C = 2")],
+            find={"fixed": [], "blocking": ["F"], "noted": []},
+            verify={"fixed": [], "blocking": ["F"], "noted": []},
+            fix={"fixed": ["F"], "blocking": [], "noted": []},
+        )
+        claude = tmp_path / "bin" / "claude"
+        claude.write_text(claude.read_text() + "sys.exit(1 if key == 'close' else 0)\n")
+        claude.chmod(0o755)
+        r = sprint(repo, env, "review")
+        assert r.returncode == 2 and "reviewer exited 1" in r.stderr, r.stderr
+        assert head(repo, env) != before, "no applied fix for an undo to span"
+        assert "git reset --hard" not in r.stderr and before[:8] not in r.stderr, r.stderr
 
     def test_the_bundle_diffs_against_the_DEFAULT_branch_not_the_integration_target(self, tmp_path):
         """Under `release: sprint`, integration_target() returns the SPRINT branch

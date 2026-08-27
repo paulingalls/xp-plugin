@@ -1,18 +1,36 @@
 #!/usr/bin/env python3
 """Falsifier for the fast-tier cost debt (records 15aec3fc, 2b5a456d, 8fde7e83,
-which share this one script).
+which share this one script). Two arms, and they guard different things.
 
 THE RATCHET is the fixture arm: one session-scoped template repo copied per test
 against the six git invocations it replaced. That comparison is CONSTRUCTED and
 its effect is huge and stable — the lead measured 13.5x over 25 iterations, a
 revert to the git build measures 1.0x — so no ambient load closes the gap. The
 bound lives with the assertion, in tests/test_repo_templates.py (MIN_SPEEDUP).
+
+THE SUITE BOUNDS BELOW ARE NOT THE RATCHET and must not be read as one. They are
+the unusability guard the debt actually asked for: 'a commit gate slow enough
+that someone stops running it, which is how --no-verify becomes tempting'. They
+have moved once already (04f4a71e, total-only -> both, after a total-only bound
+fired on healthy growth of 258 -> 691 tests at flat per-test cost). DO NOT MOVE
+THEM AGAIN, in EITHER direction: raising them to make a red pass is the move the
+debt forbids, and tightening them to prove a speed-up makes a load detector —
+the populations are ~16% apart and this box's own measurement noise is ~10%.
+Measure what a story CHANGED, in an arm of its own, as the fixture arm does.
+DELETING THEM WAS TRIED AT THE v0.9.0 RELEASE AND REVERTED at that sprint's
+review: the 129.13s red that motivated it was two gates sharing -n auto, and
+re-measured alone this tree runs 84.4s / 873 tests = 97ms each. A deletion is
+the widest possible raise, and it left three live records (the ones above)
+certifying a wall-clock claim with a check that never starts a clock.
 """
 
 import re
 import subprocess
 import sys
+import time
 
+MAX_SECONDS = 120
+MAX_SECONDS_PER_TEST = 0.15
 FIXTURE_NODE = "tests/test_repo_templates.py::test_finished_fixture_copy_cost_against_git_build"
 FIXTURE_PATTERN = re.compile(r"fixture cost ([0-9.]+)ms copy / ([0-9.]+)ms git = ([0-9.]+)x")
 
@@ -34,7 +52,24 @@ def fixture_cost_is_bounded() -> bool:
 
 
 def main() -> int:
-    return int(not fixture_cost_is_bounded())
+    if not fixture_cost_is_bounded():
+        return 1
+    started = time.monotonic()
+    result = subprocess.run(
+        ["pytest", "-q", "-n", "auto", "-m", "not slow"],
+        capture_output=True,
+        text=True,
+    )
+    elapsed = time.monotonic() - started
+    match = re.search(r"(\d+) passed", result.stdout)
+    count = int(match.group(1)) if match else 0
+    per_test = elapsed / count if count else float("inf")
+    print(f"fast tier {elapsed:.1f}s / {count} tests = {per_test * 1000:.0f}ms each")
+    if result.returncode or not count:
+        sys.stdout.write(result.stdout)
+        sys.stderr.write(result.stderr)
+        return 1
+    return int(elapsed > MAX_SECONDS or per_test > MAX_SECONDS_PER_TEST)
 
 
 if __name__ == "__main__":
