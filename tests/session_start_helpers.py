@@ -24,6 +24,16 @@ def run_hook(cwd, data_dir, session_id="sess-abc123"):
     )
 
 
+def run_recovery(cwd, data_dir):
+    return subprocess.run(
+        [sys.executable, str(HOOK), "recover"],
+        env={"PATH": "/usr/bin:/bin", "HOME": str(data_dir), "XP_DATA": str(data_dir / "xp")},
+        cwd=cwd,
+        capture_output=True,
+        text=True,
+    )
+
+
 def xp_repo(tmp_path):
     repo = tmp_path / "repo"
     templates = Path(os.environ["XP_TEST_REPO_TEMPLATES"])

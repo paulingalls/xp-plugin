@@ -11,19 +11,28 @@ repo's own profile outgrew the budget.
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 from pathlib import Path
 
+import pytest
 from session_start_helpers import HOOK
 
-# `original - truncated` in every one of the six Sprint-8 cuts, exactly, across three
-# different tails: Codex bounds a hook payload in TOKENS. OUTPUT_CAP is a character
-# proxy for it, so the conversion is the assumption that can rot — those 2,458 tokens
-# carried 9,912 chars of this repo's markdown, and its own tool outputs measure 3.98
-# chars/token, so the floor below is where the proxy stops holding (AUDIT.md §10).
-CODEX_RETAINED_TOKENS = 2_458
-DENSITY_FLOOR = 3.7  # chars/token
+CODEX_RETAINED_BYTES = [(4_916, 5_084)] * 6
+CODEX_OUTPUT_BOUND = 10_000
+HEADROOM = 500
+
+# The `recover` surface writes to the TOOL channel, whose bound is a different
+# number in a different unit: codex 0.149.0's help text for `exec` reads
+# "`max_output_tokens` sets the token budget for direct `exec` results. Defaults
+# to 10000 tokens". There is no byte figure to measure, so RECOVER_CAP is a byte
+# PROXY and the density is what can rot — AUDIT §10 measured 4.03 chars/token for
+# this repo's markdown and a 3.98 median for codex's own tool output; the floor
+# below is deliberately under both, because the recovery block is denser than
+# prose (branch names, SHAs, timestamps).
+CODEX_EXEC_TOKEN_BOUND = 10_000
+DENSITY_FLOOR = 3.5  # bytes/token
 
 
 class TestTheRealProfileAgainstTheRealCap:
@@ -34,7 +43,7 @@ class TestTheRealProfileAgainstTheRealCap:
     caused by the retro that added constraint 15 so the lead would read it.
     """
 
-    def run_real(self):
+    def run_real(self, hook=HOOK):
         """XP_ROLE PINNED, and the marker asserted absent: the whole suite runs
         under a reviewer role at every sprint review, where the hook's role gate
         prints its 121-char teammate line and returns before a profile is built.
@@ -51,7 +60,7 @@ class TestTheRealProfileAgainstTheRealCap:
         repo = Path(__file__).parent.parent
         payload = {"hook_event_name": "SessionStart", "cwd": str(repo)}
         out = subprocess.run(
-            [sys.executable, str(HOOK)],
+            [sys.executable, str(hook)],
             input=json.dumps(payload),
             capture_output=True,
             text=True,
@@ -78,7 +87,14 @@ class TestTheRealProfileAgainstTheRealCap:
         count = len(digest.read_text().splitlines()) if digest.exists() else 0
         assert count <= DIGEST_CAP, f"{digest} is {count} lines against {DIGEST_CAP}"
 
-    def test_this_repos_profile_fits_with_values_and_process_leading_it(self):
+    def assert_all_constraints_delivered(self, out):
+        rules = (Path(__file__).parent.parent / ".xp" / "constraints.md").read_text()
+        headings = re.findall(r"^(\d+\. \*\*[^\n]+)", rules, re.M)
+        assert len(headings) == 15, "the fixture is no longer at constraints_cap"
+        delivered = [heading for heading in headings if heading in out]
+        assert len(delivered) == 15, f"only {len(delivered)}/15 constraints reached the lead"
+
+    def test_this_repos_profile_delivers_every_constraint_in_bytes(self):
         """Bug ab6a1354, on the HOOK'S OWN STDOUT — not on a sum of parts, which
         misses the joins and the trust markers by 117 chars.
 
@@ -87,19 +103,47 @@ class TestTheRealProfileAgainstTheRealCap:
         """
         from session_start import OUTPUT_CAP
 
-        assert OUTPUT_CAP <= CODEX_RETAINED_TOKENS * DENSITY_FLOOR, (
-            f"OUTPUT_CAP {OUTPUT_CAP} is ~{OUTPUT_CAP / 4.03:.0f} tokens of this repo's"
-            f" markdown against Codex's measured {CODEX_RETAINED_TOKENS}-token retention"
-            " — the harness would eat the middle again and name none of it"
-        )
+        assert all(head + tail == CODEX_OUTPUT_BOUND for head, tail in CODEX_RETAINED_BYTES)
+        assert CODEX_OUTPUT_BOUND - OUTPUT_CAP == HEADROOM
         out = self.run_real()
-        assert len(out) <= OUTPUT_CAP, f"the profile assembles {len(out)} against {OUTPUT_CAP}"
+        assert len(out.encode()) <= OUTPUT_CAP
+        self.assert_all_constraints_delivered(out)
         plugin = Path(__file__).parent.parent / "plugins" / "xp-plugin"
         values = (plugin / "VALUES.md").read_text()[:60]
         process = (plugin / "PROCESS.md").read_text()[:60]
         assert out.index(values) < out.index(process) < out.index("BEGIN project content"), (
             "VALUES sets the stage and PROCESS is the loop; they lead the profile"
         )
+
+    def test_lowering_the_real_hook_cap_reds_the_delivery_check(self, tmp_path):
+        plugin = tmp_path / "xp-plugin"
+        shutil.copytree(HOOK.parent.parent, plugin)
+        hook = plugin / "scripts" / "session_start.py"
+        hook.write_text(hook.read_text().replace("OUTPUT_CAP = 9_500", "OUTPUT_CAP = 7_500"))
+        out = self.run_real(hook)
+        with pytest.raises(AssertionError, match=r"only \d+/15 constraints"):
+            self.assert_all_constraints_delivered(out)
+
+    def test_the_recover_cap_sits_under_the_tool_channels_own_bound(self):
+        """A cap AT the bound fails on the first sentence anyone adds, and this one
+        cannot even see the bound it is under: codex counts the exec channel in
+        TOKENS and truncates the MIDDLE, naming no region. Our cut must land first,
+        or `recover`'s whole disclosure mechanism never runs. 40,000 — one round's
+        value — was ~10,000 tokens at the density already on record, i.e. exactly
+        the units error this card exists to correct, one channel over.
+        """
+        from session_start import RECOVER_CAP
+
+        tokens = RECOVER_CAP / DENSITY_FLOOR
+        assert tokens < CODEX_EXEC_TOKEN_BOUND, (
+            f"RECOVER_CAP {RECOVER_CAP} is ~{tokens:.0f} tokens at {DENSITY_FLOOR} bytes/token"
+            f" against codex's {CODEX_EXEC_TOKEN_BOUND}-token exec budget"
+        )
+
+    def test_digest_recovery_and_sprint_slice_are_not_injected(self):
+        out = self.run_real()
+        for removed in ("branch:", "recent work.md entries:", "stories:", "Session digest"):
+            assert removed not in out, f"{removed!r} still spends the SessionStart payload"
 
     def test_a_truncated_profile_names_the_constraints_it_dropped(self):
         """The budget is allowed not to fit. It is NOT allowed to hide which

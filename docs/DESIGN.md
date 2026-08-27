@@ -192,13 +192,13 @@ Planning constraints (stated in `config.yml`):
 
 `session.md` is a **digest, not a record**: ≤30 lines, overwritten not appended, holding only what the artifacts can't say — in-flight intent ("story-004 red tests written, green half done"), surprises, the recommended next step. Digest content requires judgment, so it is written only at **LLM-present moments**: the close scripts' last step has the lead write it at story close and sprint close. SessionEnd is *not* relied on for it — a hook is deterministic Python with no judgment, and the predecessor's own code records that SessionEnd misfires anyway (`/exit` emits none; worktree teammates each fire their own). No manual end-session skill, no rolling session_history.
 
-The gap that leaves — a session dying mid-story — is covered mechanically, and at the *start* rather than the end: the SessionStart hook deterministically assembles a **recovery block** from sources that are always current (current branch, dirty files, story states from plan.md, last test result, open work.md items) and injects it beside the digest. The digest is stamped with written-at + git HEAD; the injector prefixes **"STALE — HEAD has moved N commits since this was written"** when it has, so old intent can't masquerade as current. The lead is `session.md`'s sole writer — teammate story closes never touch it. A stale digest plus a fresh recovery block is enough to resume; the artifacts win on conflict. The existing Stop binding (§7) additionally gives a soft nudge — never a block — when plan.md shows an in-progress story whose last commit postdates session.md, reminding the lead to jot the one-line next-step before stopping (a timestamp comparison, no judgment needed).
+The gap that leaves — a session dying mid-story — is covered mechanically at the next start. The banner's `recover` command assembles a **recovery block** from current branch, dirty files, open plan cards, last close and work.md titles, beside the digest and sprint slice. PROCESS tells the lead to run it first. The digest is stamped with written-at + git HEAD; recovery prefixes **"STALE — HEAD has moved N commits since this was written"** when it has, so old intent cannot masquerade as current. The lead is `session.md`'s sole writer — teammate story closes never touch it. The artifacts win on conflict. The existing Stop binding (§7) additionally gives a soft nudge — never a block — when plan.md shows an in-progress story whose last commit postdates session.md, reminding the lead to jot the one-line next-step before stopping (a timestamp comparison, no judgment needed).
 
 Mid-sprint durable learnings go to work.md notes as they happen; sprint close promotes or archives them (§6).
 
 ## 6. Process flows
 
-**Session start** (hook, not a skill): inject the lead profile from §8 (VALUES + one-page PROCESS + constraints.md + session.md + current sprint slice). No retro, no housekeeper, no gate marker dance. Target injection: **≤ 2.4k tokens** — Codex's measured SessionStart retention (`session_start.OUTPUT_CAP` = 9,000 chars, the character proxy for it).
+**Session start** (hook, not a skill): inject VALUES + one-page PROCESS + constraints.md. The digest, derived recovery block and sprint slice are read first through the byte-capped `session_start.py recover` command printed in the banner and named at PROCESS's head. Target injection: **≤9,500 bytes**, below Codex's measured 10,000-byte SessionStart retention.
 
 **Card review** (the lead's, over the sprint slate at sprint open, including its capacity) → `spawn.py ready <story-id>` mints a digest of the whole card block and flips [planned] → [ready]; it is the lead COMMITTING to this card, not a second review. **Plan review** (the executor's, over its own implementation plan for multi-file work; the LEAD NEVER DRAFTS ONE — measured twice in one week, bug 898ad9e1 and note c3d8e2a7): draft plan → **fresh-context plan reviewer** (checks TDD ordering — red before green, real-behavior-not-reachability — artifact coherence: plan vs stories vs Verify commands vs collision declarations, and constraint conflicts; edits only silent/corrupting problems into the plan with adjacent reasons, reports loud/addressable problems without another round, stops on human-only questions, and writes its disposition to `<data-root>/plans/<story-id>.md`, then `<story-id>.round-N.md`) → re-read plan and disposition → execute; spawn recomputes that digest and refuses, naming the drift, when the card was edited after its review (the bracket alone was a credential with a reader and no writer — measured three times in sprint-003). The reviewer prompt is a page, not 3,153 words.
 
@@ -275,45 +275,44 @@ Every agent, on every spawn path, gets **VALUES.md** — the spawn CLI and the a
 
 | Audience | Injected | Target |
 |---|---|---|
-| Lead / orchestrator | VALUES + `PROCESS.md` (one page: the flows in §6, nothing else) + `constraints.md` + `session.md` + recovery block + current sprint slice of plan.md | ≤ 2.4k tokens, ENFORCED as `session_start.OUTPUT_CAP` = 9,000 chars |
+| Lead / orchestrator | VALUES + `PROCESS.md` + `constraints.md`; banner points to the separate digest/recovery/sprint command | ≤9,500 bytes, enforced by `session_start.OUTPUT_CAP` |
 | Teammate | VALUES + `TEAMMATE.md` (one page: TDD loop, commit conventions, escalate-don't-guess, done = Verify green) + its story card + constraints.md | plugin-shipped ≤ 1,200 tokens, ENFORCED (`spawn.plugin_shipped_chars`); the composed total is reported, never capped — the card and the project's own constraints belong to the consuming project. The original "< 2k" was measured unmeetable: story cards alone run 2,193–2,305. |
 | Reviewer (plan & story) | VALUES + its review charter (in the agent definition) + the diff/plan under review + constraints.md + **system.md** (the WHERE layer — a reviewer judging approach needs it, and a file nothing reads is the audit's dead-pillar mistake reborn) | < 2.5k tokens |
 
-**The lead budget is Codex's measured SessionStart retention: 2,458 TOKENS, for
-which `OUTPUT_CAP` = 9,000 chars is the proxy (bug d3685f4d).** Sprint 8 emitted
-six ~14-15.5k profiles under the former 18,000-char budget, which was derived from
-our own content and not from the receiving harness; Codex cut all six the same way
-— 4,944 chars of head, ~5,050 of tail, an inline `…N tokens truncated…` marker
-between them. THE UNITS ARE THE POINT, and the marker states them: `original -
-truncated` is 2,458 in every one of the six, across three different tails, so the
-budget is counted in tokens and the ~10,000 chars is only what 2,458 tokens of THIS
-repo's markdown happens to measure (4.03 chars/token). A cap set at that observed
-character figure is therefore already over — which is why 9,000 and not 10,000, and
-why a project whose prose runs denser than 3.7 chars/token can still be cut by a
-bound we cannot enforce in characters. Codex takes the MIDDLE, so our notice, which
-rides the tail, would have survived either cap. What does not survive is any say in
-WHICH rules go: the harness announces a token count and names nothing. Cutting under
-its bound is how the choice and the naming stay ours. **ORDER IS PART OF THE CONTRACT, not an implementation detail (Paul,
-2026-08-24): VALUES first, PROCESS second, and neither may be dropped or moved.**
-They define the plugin and get primacy; constraints precede the recreatable
-digest. A project past the bound therefore loses the tail — and the halving is
-not free, NOR IS THE COST ONLY CODEX'S: this repo assembles ~8.9k chars (8,871 at
-story-055's close, and it MOVES with every open card) and now delivers ZERO of its
-15 constraints to EITHER harness, where the 18,000-char profile delivered all 15
-to a CLAUDE lead and seven whole plus the tail of an eighth to a Codex one after
-its own cut (AUDIT §10). One cap serves both harnesses, so sizing it to the
-stricter transport charges the harness that never truncated. Loud, since `session_start.truncated` names every dropped rule and
-where to read it, but no gate measures it: both fit checks assert only that the
-profile FITS, which dropping more always satisfies. Dropped constraints are
-computed against the surviving
-PREFIX of `constraints.md`, not by searching the whole kept profile: PROCESS has
-five lines shaped like constraint headings. The cut also re-appends
-`--- END project content ---` before its notice so the notice cannot render as
-repo data. Re-measure with
-`python3 tests/scripts/falsifier_lead_profile_fits.py`; never infer fit from the
-size of the parts.
+**The lead budget is a measured byte bound.** All six Sprint-8 cuts retained a
+4,916-byte head and 5,084-byte tail: exactly 10,000 bytes despite differing
+character and token counts. `OUTPUT_CAP = 9_500` leaves 500 bytes for the notice,
+the END terminator and the next rule. One global cap serves both harnesses.
 
-Injection budgets are enforced outward too: `config.yml` caps constraints.md's size, the SessionStart banner prints current-size-vs-cap, and **card review refuses a sprint whose injection profile exceeds budget** — the consuming project gets the same displace-one-to-add-one pressure the plugin's own CI ratchet applies to the plugin (§9), otherwise the sprint-close retro quietly rebuilds the unread pillar one promoted note at a time.
+VALUES and PROCESS lead and cannot move or drop. Constraints follow inside the
+project-data fence. The real-profile test asserts every numbered constraint
+individually and reds when the cap is fault-injected to 7,500; fit alone is not a
+delivery check. Truncation measures UTF-8 bytes, backs up from partial constraints,
+restores the END fence and names every cut region.
+
+The separately invoked `recover` surface has its OWN cap, because it writes to a
+different channel with a different bound in a different unit: codex 0.149.0
+budgets a direct `exec` result at **10,000 TOKENS** by default (its own help text
+says so), where the SessionStart hook was measured in bytes. No byte figure exists
+to measure there, so `RECOVER_CAP = 34_000` is a PROXY — 10,000 tokens at 3.5
+bytes/token, under the 4.03 chars/token AUDIT §10 measured for this repo's
+markdown and under codex's own 3.98 median, because the recovery block is denser
+than prose. `test_the_recover_cap_sits_under_the_tool_channels_own_bound` pins the
+proxy and the floor separately, the same shape the character proxy needed and did
+not get. Cutting first is the whole point: codex truncates the MIDDLE and names
+nothing, so a `recover` that overruns loses the sprint slice silently — the cap it
+would have hit is what runs our region-and-work-title notice instead.
+
+`constraints_chars_cap` is a hard pre-commit wall beside the 15-item
+`constraints_cap`; its refusal names retiring or shortening a rule. The character
+unit is deliberate for authoring pressure, while the profile remains byte-capped:
+the full-ceiling fit assumes the normal ASCII-shaped Markdown measured here. A
+project whose rules run multibyte can pass the character wall and still overflow
+the byte cap, and NOTHING SHIPPED REDS ON THAT — the delivery check is this repo's
+own, over its own constraints; what a consuming project gets is `truncated`
+naming the rules it dropped. A fresh scaffold at the full ceiling fits mechanically.
+Re-measure the dogfood profile with
+`python3 tests/scripts/falsifier_lead_profile_fits.py`.
 
 ## 9. Size budget (the 80–90% cut, made falsifiable)
 
@@ -324,7 +323,7 @@ Injection budgets are enforced outward too: `config.yml` caps constraints.md's s
 | Agent prose | ~13,500 words | ≤ 2,500 words | ~81% |
 | Hook bindings | 34 | 4 CLI + 2 git | ~82% |
 | State stores | 6 JSON + event log + 15 CLIs | 4 markdown in-repo + 2 out + 1 config | — |
-| Per-session injection | ~10k+ tokens | ≤ 2.4k tokens | ~76% |
+| Per-session injection | ~10k+ tokens | ≤9,500 bytes | transport-bound |
 | Kickoff subagent tax | ~115k tokens measured | 0 | 100% |
 
 These are acceptance criteria for the build, not aspirations: `ratchet.py` measures the Python line and prose-density budgets at pre-push and fails if they are exceeded; the prose-word and test-ratio budgets below are read-and-judge, unmeasured so far. The sub-allocation below is the only other copy of the sub-budget numbers, and a test pins it to ratchet.py's constants; README, CLAUDE.md and system.md point here and to the command, never restate a number. Meta-tests are budgeted too: test lines ≤ 2× code lines (1.7× at sprint-003, down from 3.6× at sprint-001 — hand-measured, which is why it is the next thing the ratchet should count).

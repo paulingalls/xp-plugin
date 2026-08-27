@@ -9,6 +9,7 @@ release: sprint      # sprint = stories integrate on a sprint branch, sprint clo
 sprint_cap: 6        # max stories per sprint
 debt_budget: 0.2     # max share of sprint stories that are scheduled debt
 constraints_cap: 15  # constraints.md line-items; add-over-cap requires a retire
+constraints_chars_cap: 4500  # hard character ceiling; retire or shorten a rule
 # version_files: path/to/manifest.json  # comma-separated JSON manifests
 # teardown_timeout: 60  # seconds before close kills worktree teardown
 # review:
