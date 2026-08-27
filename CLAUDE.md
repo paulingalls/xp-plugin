@@ -31,6 +31,14 @@ instead.
 - Lint: `ruff check --fix . && ruff format .`
 - Hooks: `lefthook install` (once per clone)
 
+## Running the close legs (this repo's lead, learned at Sprint 9)
+
+NEVER PIPE a `close.py` leg. A pipe reports the PIPE's exit status, so the leg's own
+refusal reads as success, and block buffering swallows its last line — measured: two
+completed review rounds died mid-commit reading as "exit code 0", and the note I filed
+blamed the pipeline before I proved it was mine (75842bb4, corrected by de7bc1aa).
+Redirect to a file and read it: `close.py ... > /tmp/leg.txt 2>&1; echo "rc=$?"`.
+
 ## Size discipline
 
 Budgets and rationale live in DESIGN.md §9; `tests/scripts/ratchet.py` measures the
