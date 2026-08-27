@@ -17,6 +17,14 @@ from pathlib import Path
 
 from session_start_helpers import HOOK
 
+# `original - truncated` in every one of the six Sprint-8 cuts, exactly, across three
+# different tails: Codex bounds a hook payload in TOKENS. OUTPUT_CAP is a character
+# proxy for it, so the conversion is the assumption that can rot — those 2,458 tokens
+# carried 9,912 chars of this repo's markdown, and its own tool outputs measure 3.98
+# chars/token, so the floor below is where the proxy stops holding (AUDIT.md §10).
+CODEX_RETAINED_TOKENS = 2_458
+DENSITY_FLOOR = 3.7  # chars/token
+
 
 class TestTheRealProfileAgainstTheRealCap:
     """Every other test here drives TOY fixtures — a two-line VALUES, a
@@ -79,7 +87,11 @@ class TestTheRealProfileAgainstTheRealCap:
         """
         from session_start import OUTPUT_CAP
 
-        assert OUTPUT_CAP <= 10_000, "Codex truncates hook output above 10,000 characters"
+        assert OUTPUT_CAP <= CODEX_RETAINED_TOKENS * DENSITY_FLOOR, (
+            f"OUTPUT_CAP {OUTPUT_CAP} is ~{OUTPUT_CAP / 4.03:.0f} tokens of this repo's"
+            f" markdown against Codex's measured {CODEX_RETAINED_TOKENS}-token retention"
+            " — the harness would eat the middle again and name none of it"
+        )
         out = self.run_real()
         assert len(out) <= OUTPUT_CAP, f"the profile assembles {len(out)} against {OUTPUT_CAP}"
         plugin = Path(__file__).parent.parent / "plugins" / "xp-plugin"

@@ -198,7 +198,7 @@ Mid-sprint durable learnings go to work.md notes as they happen; sprint close pr
 
 ## 6. Process flows
 
-**Session start** (hook, not a skill): inject the lead profile from §8 (VALUES + one-page PROCESS + constraints.md + session.md + current sprint slice). No retro, no housekeeper, no gate marker dance. Target injection: **≤ 2.5k tokens** (`session_start.OUTPUT_CAP` = 10,000 chars, Codex's measured transport bound).
+**Session start** (hook, not a skill): inject the lead profile from §8 (VALUES + one-page PROCESS + constraints.md + session.md + current sprint slice). No retro, no housekeeper, no gate marker dance. Target injection: **≤ 2.4k tokens** — Codex's measured SessionStart retention (`session_start.OUTPUT_CAP` = 9,000 chars, the character proxy for it).
 
 **Card review** (the lead's, over the sprint slate at sprint open, including its capacity) → `spawn.py ready <story-id>` mints a digest of the whole card block and flips [planned] → [ready]; it is the lead COMMITTING to this card, not a second review. **Plan review** (the executor's, over its own implementation plan for multi-file work; the LEAD NEVER DRAFTS ONE — measured twice in one week, bug 898ad9e1 and note c3d8e2a7): draft plan → **fresh-context plan reviewer** (checks TDD ordering — red before green, real-behavior-not-reachability — artifact coherence: plan vs stories vs Verify commands vs collision declarations, and constraint conflicts; edits only silent/corrupting problems into the plan with adjacent reasons, reports loud/addressable problems without another round, stops on human-only questions, and writes its disposition to `<data-root>/plans/<story-id>.md`, then `<story-id>.round-N.md`) → re-read plan and disposition → execute; spawn recomputes that digest and refuses, naming the drift, when the card was edited after its review (the bracket alone was a credential with a reader and no writer — measured three times in sprint-003). The reviewer prompt is a page, not 3,153 words.
 
@@ -268,23 +268,29 @@ Every agent, on every spawn path, gets **VALUES.md** — the spawn CLI and the a
 
 | Audience | Injected | Target |
 |---|---|---|
-| Lead / orchestrator | VALUES + `PROCESS.md` (one page: the flows in §6, nothing else) + `constraints.md` + `session.md` + recovery block + current sprint slice of plan.md | ≤ 2.5k tokens, ENFORCED (`session_start.OUTPUT_CAP` = 10,000 chars) |
+| Lead / orchestrator | VALUES + `PROCESS.md` (one page: the flows in §6, nothing else) + `constraints.md` + `session.md` + recovery block + current sprint slice of plan.md | ≤ 2.4k tokens, ENFORCED as `session_start.OUTPUT_CAP` = 9,000 chars |
 | Teammate | VALUES + `TEAMMATE.md` (one page: TDD loop, commit conventions, escalate-don't-guess, done = Verify green) + its story card + constraints.md | plugin-shipped ≤ 1,200 tokens, ENFORCED (`spawn.plugin_shipped_chars`); the composed total is reported, never capped — the card and the project's own constraints belong to the consuming project. The original "< 2k" was measured unmeetable: story cards alone run 2,193–2,305. |
 | Reviewer (plan & story) | VALUES + its review charter (in the agent definition) + the diff/plan under review + constraints.md + **system.md** (the WHERE layer — a reviewer judging approach needs it, and a file nothing reads is the audit's dead-pillar mistake reborn) | < 2.5k tokens |
 
-**The lead budget is Codex's measured 10,000-character SessionStart transport
-bound (bug d3685f4d).** Sprint 8 emitted six ~14-15.5k profiles under the former
-18,000-char budget, which was derived from our own content and not from the
-receiving harness; Codex cut all six the same way — 4,944 chars of head, ~5,050
-of tail, an inline `…N tokens truncated…` marker between them. It takes the
-MIDDLE, so our notice, which rides the tail, would have survived either cap. What
-does not survive is any say in WHICH rules go: the harness announces a token
-count and names nothing. Cutting at its bound is how the choice and the naming
-stay ours. **ORDER IS PART OF THE CONTRACT, not an implementation detail (Paul,
+**The lead budget is Codex's measured SessionStart retention: 2,458 TOKENS, for
+which `OUTPUT_CAP` = 9,000 chars is the proxy (bug d3685f4d).** Sprint 8 emitted
+six ~14-15.5k profiles under the former 18,000-char budget, which was derived from
+our own content and not from the receiving harness; Codex cut all six the same way
+— 4,944 chars of head, ~5,050 of tail, an inline `…N tokens truncated…` marker
+between them. THE UNITS ARE THE POINT, and the marker states them: `original -
+truncated` is 2,458 in every one of the six, across three different tails, so the
+budget is counted in tokens and the ~10,000 chars is only what 2,458 tokens of THIS
+repo's markdown happens to measure (4.03 chars/token). A cap set at that observed
+character figure is therefore already over — which is why 9,000 and not 10,000, and
+why a project whose prose runs denser than 3.7 chars/token can still be cut by a
+bound we cannot enforce in characters. Codex takes the MIDDLE, so our notice, which
+rides the tail, would have survived either cap. What does not survive is any say in
+WHICH rules go: the harness announces a token count and names nothing. Cutting under
+its bound is how the choice and the naming stay ours. **ORDER IS PART OF THE CONTRACT, not an implementation detail (Paul,
 2026-08-24): VALUES first, PROCESS second, and neither may be dropped or moved.**
 They define the plugin and get primacy; constraints precede the recreatable
 digest. A project past the bound therefore loses the tail — and the halving is
-not free: THIS repo now assembles 9,861 chars and delivers ZERO of its 15
+not free: THIS repo now assembles 8,975 chars and delivers ZERO of its 15
 constraints, where the 18,000-char profile did reach the lead with seven of them
 whole plus the tail of an eighth (AUDIT §10). Loud, since `session_start.truncated` names every dropped rule and
 where to read it, but no gate measures it: both fit checks assert only that the
@@ -308,7 +314,7 @@ Injection budgets are enforced outward too: `config.yml` caps constraints.md's s
 | Agent prose | ~13,500 words | ≤ 2,500 words | ~81% |
 | Hook bindings | 34 | 4 CLI + 2 git | ~82% |
 | State stores | 6 JSON + event log + 15 CLIs | 4 markdown in-repo + 2 out + 1 config | — |
-| Per-session injection | ~10k+ tokens | ≤ 2.5k tokens | ~75% |
+| Per-session injection | ~10k+ tokens | ≤ 2.4k tokens | ~76% |
 | Kickoff subagent tax | ~115k tokens measured | 0 | 100% |
 
 These are acceptance criteria for the build, not aspirations: `ratchet.py` measures the Python line and prose-density budgets at pre-push and fails if they are exceeded; the prose-word and test-ratio budgets below are read-and-judge, unmeasured so far. The sub-allocation below is the only other copy of the sub-budget numbers, and a test pins it to ratchet.py's constants; README, CLAUDE.md and system.md point here and to the command, never restate a number. Meta-tests are budgeted too: test lines ≤ 2× code lines (1.7× at sprint-003, down from 3.6× at sprint-001 — hand-measured, which is why it is the next thing the ratchet should count).

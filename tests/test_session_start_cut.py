@@ -21,6 +21,9 @@ def constraints(items: int, pad: int) -> str:
     return f"# Constraints\n\n{body}"
 
 
+PAD = 300  # chars per fixture rule; see TestWhatTheCutSaysItTook.overflowing
+
+
 def named(notice: str) -> list[int]:
     claim = notice.split("ARE NOT ABOVE")[0].split("CONSTRAINTS", 1)[-1]
     return [int(n) for n in re.findall(r"\b(\d+)\b", claim)]
@@ -50,9 +53,12 @@ class TestWhatTheProfileLeadsWith:
 class TestWhatTheCutSaysItTook:
     def overflowing(self, tmp_path):
         """The project's own content past the cap: the cut lands inside
-        constraints.md, which is what the notice exists for."""
+        constraints.md, which is what the notice exists for. The pad is sized so
+        the cut lands MID-RULE with whole rules on either side of it — the three
+        tests below all assert against that boundary, and each guards its own
+        fixture rather than passing when the boundary drifts off the rules."""
         repo, _g = xp_repo(tmp_path)
-        (repo / ".xp" / "constraints.md").write_text(constraints(20, 1500))
+        (repo / ".xp" / "constraints.md").write_text(constraints(20, PAD))
         return run_hook(repo, tmp_path)
 
     def test_the_constraints_it_names_are_genuinely_absent(self, tmp_path):
@@ -78,7 +84,7 @@ class TestWhatTheCutSaysItTook:
         kept = [n for n in range(1, 21) if f"**Rule {n}**" in body]
         assert kept and named(notice), "the fixture no longer cuts inside the rules"
         for n in kept:
-            assert f"**Rule {n}** {'x' * 1500}" in body, f"rule {n} is shown in half"
+            assert f"**Rule {n}** {'x' * PAD}" in body, f"rule {n} is shown in half"
 
     def test_process_own_numbering_cannot_mask_a_dropped_rule(self, tmp_path):
         """PROCESS.md carries `1. **Plan**` through `4. **Sprint close**` — the
