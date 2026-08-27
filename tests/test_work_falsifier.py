@@ -5,10 +5,10 @@ import sys
 from test_work import run
 
 
-def pytest_k(tmp_path, expression, module=True, flag="-k "):
+def pytest_k(tmp_path, expression, module=True, flag="-k ", runner="pytest"):
     test_file = tmp_path / "test_selection.py"
     test_file.write_text("def test_selected():\n    pass\n")
-    runner = f"{sys.executable} -m pytest" if module else "pytest"
+    runner = f"{sys.executable} -m pytest" if module else runner
     return f"{runner} -q {test_file} {flag}{expression}"
 
 
@@ -45,7 +45,7 @@ def test_debt_with_matching_pytest_k_is_refused_before_filing(tmp_path):
 
 
 def test_pytest_k_attached_or_clustered_is_refused(tmp_path):
-    for flag in ("-k", "-k=", "-xk ", "-vxk"):
+    for flag in ("-k", "-k=", "-xk ", "-vxk", "-dk "):
         falsifier = pytest_k(tmp_path, "selected", flag=flag)
         result = run(["debt", "--claim", "x", "--falsifier", falsifier, "--files", "a"], tmp_path)
         assert_node_id_refusal(result)
@@ -59,6 +59,16 @@ def test_resolution_with_pytest_k_is_refused_before_append(tmp_path):
     result = run(["resolve", "--ref", ref, "--falsifier", pytest_k(tmp_path, "selected")], tmp_path)
     assert_node_id_refusal(result)
     assert (tmp_path / "work.md").read_text() == before
+
+
+def test_the_py_test_alias_is_refused_too(tmp_path):
+    """pytest still installs `py.test`, so a guard that knows only one of the two
+    names lets the whole rule be spelled around."""
+    falsifier = pytest_k(tmp_path, "selected", module=False, runner="py.test")
+    assert_node_id_refusal(
+        run(["debt", "--claim", "x", "--falsifier", falsifier, "--files", "a"], tmp_path)
+    )
+    assert not (tmp_path / "work.md").exists()
 
 
 def test_non_pytest_falsifier_with_k_is_untouched(tmp_path):

@@ -478,3 +478,15 @@ class TestArchive:
             run(["archive", "--ref", ref, "--disposition", f"d{ch}{attack}{ch}tail"], tmp_path)
         forged = [ln for ln in self.filed(tmp_path).splitlines() if ln.startswith("Falsifier:")]
         assert forged == [], forged
+
+
+def test_a_pytest_k_falsifier_is_refused_naming_the_node_id_form(tmp_path):
+    """story-057's guard, reached from the file this story's Verify names — the
+    rest of its cases live in tests/test_work_falsifier.py, which Verify omits."""
+    r = run(
+        ["debt", "--claim", "x", "--falsifier", "pytest -q tests/t.py -k name", "--files", "a"],
+        tmp_path,
+    )
+    assert r.returncode == 2, r.stdout
+    assert "path/to/test.py::TestClass::test_name" in r.stderr, r.stderr
+    assert not (tmp_path / "work.md").exists()
