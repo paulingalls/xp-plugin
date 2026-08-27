@@ -8,6 +8,7 @@ import fcntl
 import hashlib
 import os
 import re
+import shlex
 import subprocess
 import sys
 from datetime import datetime, timezone
@@ -207,6 +208,21 @@ def falsifier_is_green(command: str) -> bool:
     return subprocess.run(command, shell=True, capture_output=True).returncode == 0
 
 
+def refuse_pytest_k(command: str) -> bool:
+    try:
+        words = shlex.split(command)
+    except ValueError:
+        return False
+    if "-k" not in words or not any(Path(word).name == "pytest" for word in words):
+        return False
+    print(
+        "refused: a pytest falsifier must name an exact node id such as "
+        "path/to/test.py::TestClass::test_name; replace the -k selector with that node id.",
+        file=sys.stderr,
+    )
+    return True
+
+
 def entry(kind: str, args: argparse.Namespace) -> str:
     return (
         f"## {kind} {stamp()}\n"
@@ -250,6 +266,8 @@ def resolve(root: Path, args: argparse.Namespace) -> int:
     runs it, so a wrong resolution reds later and the record reopens.
     """
     if not _single_line(args.falsifier, "falsifier"):
+        return 2
+    if refuse_pytest_k(args.falsifier):
         return 2
     if (kind := _kind_of(root, args.ref)) is None:
         return 2
@@ -346,6 +364,8 @@ def main() -> int:
         return 0
 
     if not _single_line(args.falsifier, "falsifier"):
+        return 2
+    if refuse_pytest_k(args.falsifier):
         return 2
     green = falsifier_is_green(args.falsifier)  # outside the lock: may be slow
     if args.kind == "bug" and green:
