@@ -48,6 +48,19 @@ def charters() -> tuple[dict[str, str], str]:
     return found, ""
 
 
+def altitude() -> tuple[str, str]:
+    """The sprint's ALTITUDE paragraph, or a refusal. A confirming round carries
+    the rule without being one of the stages under it, so it reads the paragraph
+    the charter already ships: a second copy at the caller drifts silently the
+    day this one moves, and no test can see prose disagree with prose."""
+    import review
+
+    shared = review.charter("sprint-reviewer").partition("\n## ")[0]
+    if para := next((p for p in shared.split("\n\n") if p.startswith("ALTITUDE")), ""):
+        return para, ""
+    return "", "refused: agents/sprint-reviewer.md has no ALTITUDE paragraph"
+
+
 def batches(items: list, cap: int) -> list[list]:
     """At most `cap` non-empty chunks, whatever the item count. Sprint-003 ran
     one refuter per LOCATION: 22 agents to kill 3 candidates, ~80% of the spend

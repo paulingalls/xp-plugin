@@ -119,23 +119,6 @@ def read_report(path: Path) -> tuple[dict, str]:
     return {k: cap_items([str(i) for i in data[k]]) for k in REPORT_KEYS}, ""
 
 
-def _spellings(p: str) -> set[str]:
-    """Every name that means p: the path, and each segment suffix that is not a
-    file of its own — `src.py` beside `nested/src.py` means the one at the root."""
-    cuts = p.split("/")
-    return {p, *(s for i in range(1, len(cuts)) if not Path(s := "/".join(cuts[i:])).exists())}
-
-
-def named_paths(path: Path, candidates: list[str]) -> tuple[set[str], str]:
-    if not path.exists():
-        return set(candidates), ""
-    data, error = _report_data(path)
-    findings = "\n".join(str(item) for item in data.get("blocking", []))
-    # `close.py:249` is how a finding names a file; a trailing `.` is the sentence's
-    named = set(re.findall(r"(?<![\w./-])[\w-]+(?:[./][\w-]+)+", findings))
-    return {p for p in candidates if named & _spellings(p)}, error
-
-
 def launch_marker(story_id: str) -> Path:
     """What the review was launched AGAINST, on disk before it starts, because a
     killed reviewer returns nothing on its way out and salvage needs it all."""

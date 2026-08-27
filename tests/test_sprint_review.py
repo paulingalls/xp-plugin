@@ -417,6 +417,8 @@ class TestSprintCharter:
         assert len(shared.split()) <= 150, f"{len(shared.split())} words: a preamble, not a charter"
         assert "report-only" not in shared.lower(), "the fixer commits; this leg is not report-only"
         assert "PROCESS.md" in shared, "the bar and the rubric are POINTED at, never restated"
+        assert "Round 1" in shared and "Later rounds use one" in shared
+        assert "story-shaped reviewer" in shared and "fix inside its round" in shared
         # the report SHAPE as the stage must write it, not the bucket names in
         # prose: `noted` reads fine in a sentence that never states the JSON
         for token in ('"fixed"', '"blocking"', '"noted"'):
