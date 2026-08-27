@@ -280,8 +280,8 @@ class TestTheFixerFixes:
         r = sprint(repo, env, "review")
         assert r.returncode == 2 and "dirty" in r.stderr
         round_ = json.loads(marker_path(tmp_path).read_text())["rounds"][-1]
-        assert round_["blocking"] == ["a silent one"]
-        assert round_["stages"] == ["find-security"]
+        assert round_["blocking"] == ["a silent one"] and round_["stages"] == ["find-security"]
+        assert "IS recorded" in round_["incomplete"] and "No round was" not in round_["incomplete"]
 
     def test_no_survivors_means_no_fixer_is_launched(self, tmp_path):
         repo, env, _g = make_repo(tmp_path)

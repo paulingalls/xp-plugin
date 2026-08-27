@@ -16,6 +16,7 @@ from work import data_root
 PLUGIN_ROOT = Path(__file__).parent.parent
 
 REPORT_KEYS = ("fixed", "blocking", "noted")
+NO_ROUND = "No round was recorded."
 ITEM_CAP = 400
 LIST_CAP = 20
 
@@ -181,11 +182,13 @@ def write_round(marker: Path, state: dict, round_: dict, **coverage: str) -> Non
     marker.write_text(json.dumps(state))
 
 
-def abort_text(reviewed_head: str, why: str) -> str:
+def abort_text(reviewed_head: str, why: str, recorded: str = NO_ROUND) -> str:
     """EVERY abort in the review leg, not only the motion checks: a refused run can
     still have left commits behind. The undo is offered only when something
     actually moved — offered on an untouched tree, it teaches the lead to skip it
-    on the run where it is real.
+    on the run where it is real. `recorded` is what became of the round, because a
+    leg that records one before refusing must not offer the undo under a sentence
+    saying it did not — and the reset may be what orphans the sha it names.
     """
     from close import git
 
@@ -194,8 +197,8 @@ def abort_text(reviewed_head: str, why: str) -> str:
         return f"refused: {why}"
     stat = git("diff", "--stat", f"{reviewed_head}..HEAD").stdout
     return (
-        f"refused: {why}\n\n{stat}\nNo round was recorded, and the reviewer's work is"
-        f" in your tree — yours to keep or undo: git reset --hard {reviewed_head[:8]}"
+        f"refused: {why}\n\n{stat}\n{recorded} The reviewer's work is in your tree —"
+        f" yours to keep or undo: git reset --hard {reviewed_head[:8]}"
     )
 
 

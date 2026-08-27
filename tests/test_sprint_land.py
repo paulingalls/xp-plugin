@@ -33,6 +33,7 @@ class TestLandAndPostMerge:
         r = sprint(repo, env, "land", "--dry-run")
         assert r.returncode == 2 and "incomplete" in r.stderr
         assert "blocking findings" not in r.stderr
+        assert "close.py sprint 2 review" in r.stderr, "the refusal names no next action"
 
     def test_land_dry_run_previews_the_commands_it_would_run(self, tmp_path):
         repo, env, _g = make_repo(tmp_path)

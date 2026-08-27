@@ -288,6 +288,21 @@ class TestMotionIsBoundedByAMechanism:
         assert r.returncode == 2 and "dirty" in r.stderr
         assert json.loads(marker_path(tmp_path).read_text())["rounds"][-1]["incomplete"]
 
+    def test_an_incomplete_round_is_LABELLED_where_the_next_round_reads_it(self, tmp_path):
+        """render_merge_body feeds the next round's bundle and the merge body both.
+        Unlabelled, this round's finder candidates — which no verifier ever judged,
+        because the abort came first — read there as findings a full pass confirmed.
+        """
+        import bookkeep
+
+        repo, env, _g = make_repo(tmp_path)
+        candidates = {"fixed": [], "blocking": ["a silent one"], "noted": []}
+        committing_stub(tmp_path, "open('src.py','a').write('# edited\\n')\n", report=candidates)
+        assert sprint(repo, env, "review").returncode == 2
+        rounds = json.loads(marker_path(tmp_path).read_text())["rounds"]
+        assert "a silent one" in (body := bookkeep.render_merge_body(rounds))
+        assert "INCOMPLETE after find-security" in body, body
+
     def test_a_reviewer_that_rewrites_the_MARKER_is_refused(self, tmp_path):
         """The marker is outside the repo, no diff shows it, and it is the file
         land reads for rounds and blocking[] — a review may not move its own gate."""

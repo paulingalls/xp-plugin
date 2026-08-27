@@ -168,7 +168,7 @@ def cmd_review(sprint_id: str, dry_run: bool) -> int:
     state = json.loads(marker.read_text()) if marker.exists() else {}
     rounds = state.get("rounds", [])
     round_n = len(rounds) + 1
-    complete_n = max((n for n, r in enumerate(rounds, 1) if "incomplete" not in r), default=0)
+    complete_n = max((n for n, r in enumerate(rounds, 1) if not r.get("incomplete")), default=0)
     head = git("rev-parse", "HEAD").stdout.strip()
     base = git("merge-base", f"refs/heads/{trunk}", "HEAD").stdout.strip()
     digest_before = review.marker_digest(marker)
@@ -198,6 +198,7 @@ def cmd_review(sprint_id: str, dry_run: bool) -> int:
 
     def stop(err: str) -> int:
         if reports:
+            err = err.replace(review.NO_ROUND, f"Round {round_n} IS recorded, incomplete.")
             round_ = {k: [i for r in reports for i in r[k]] for k in review.REPORT_KEYS}
             round_.update(incomplete=err, stages=ran)
             review.write_round(marker, state, round_)
@@ -376,7 +377,10 @@ def _coverage_refusal(sprint_id: str, head: str) -> str:
         return f"refused: no recorded review for sprint {sprint_id} — {rerun}"
     if incomplete := rounds[-1].get("incomplete"):
         detail = incomplete.replace("\n", "\n  ")
-        return f"refused: the last review round is incomplete:\n  {detail}"
+        return (
+            f"refused: the last review round is incomplete:\n  {detail}\n"
+            f"Its findings are recorded and stand; clear what it names, then {rerun}"
+        )
     if blocking := rounds[-1]["blocking"]:
         return (
             "refused: the last round left blocking findings:\n  "

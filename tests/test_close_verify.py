@@ -13,6 +13,7 @@ from close_helpers import (
     FIX_PATCH,
     close,
     make_repo,
+    marker,
     marker_file,
     ready_marker,
     stub_reviewer,
@@ -206,6 +207,7 @@ class TestTheRoundNeedsItsHandoffDiff:
         r = close(repo, env, "review")
         assert r.returncode == 2, r.stdout
         assert "could not write reviewer handoff" in r.stderr, r.stderr
+        assert "refused: refused:" not in r.stderr, "the refusal was wrapped twice"
         assert "close.py story story-042 review" in r.stderr, r.stderr
         assert g("rev-parse", "HEAD").stdout.strip() == before, "the applied fix was not undone"
         assert not marker_file(tmp_path).exists(), "a round was recorded without its handoff"
@@ -251,3 +253,16 @@ class TestTheReviewersOwnFixIsUnderTheGateItPasses:
         # that never applied would red Verify only by failing to apply.
         assert "BROKEN" in thing.read_text(), "the reviewer's patch never reached the tree"
         assert not marker_file(tmp_path).exists(), "a round certified a tree Verify never saw"
+
+    def test_a_recorded_round_is_not_offered_an_undo_that_denies_it(self, tmp_path):
+        """The same red tree, but with findings, so story-054 records the round.
+        The `git reset --hard` this refusal still offers would orphan the sha that
+        round names, and the sentence above it used to say no round existed."""
+        repo, env, _g = make_repo(tmp_path, verify=self.VERIFY)
+        report = {"fixed": [], "blocking": ["B"], "noted": []}
+        stub_reviewer(tmp_path, patch=self.BREAKS_VERIFY, report=report)
+
+        r = close(repo, env, "review")
+        assert r.returncode != 0 and "git reset --hard" in r.stderr, r.stderr
+        assert "No round was" not in r.stderr and "IS recorded" in r.stderr, r.stderr
+        assert marker(tmp_path)["rounds"][-1]["blocking"] == ["B"]
