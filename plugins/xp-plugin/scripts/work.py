@@ -213,7 +213,10 @@ def refuse_pytest_k(command: str) -> bool:
         words = shlex.split(command)
     except ValueError:
         return False
-    if "-k" not in words or not any(Path(word).name == "pytest" for word in words):
+    # Pytest also accepts an attached expression and clusters `-k` after its
+    # argument-free short flags; a spelling that evades the guard certifies.
+    selects = any(word.startswith("-k") or re.fullmatch(r"-[lqsvx]+k.*", word) for word in words)
+    if not selects or not any(Path(word).name == "pytest" for word in words):
         return False
     print(
         "refused: a pytest falsifier must name an exact node id such as "

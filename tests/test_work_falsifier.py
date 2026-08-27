@@ -5,11 +5,11 @@ import sys
 from test_work import run
 
 
-def pytest_k(tmp_path, expression, module=True):
+def pytest_k(tmp_path, expression, module=True, flag="-k "):
     test_file = tmp_path / "test_selection.py"
     test_file.write_text("def test_selected():\n    pass\n")
     runner = f"{sys.executable} -m pytest" if module else "pytest"
-    return f"{runner} -q {test_file} -k {expression}"
+    return f"{runner} -q {test_file} {flag}{expression}"
 
 
 def assert_node_id_refusal(result):
@@ -42,6 +42,14 @@ def test_debt_with_matching_pytest_k_is_refused_before_filing(tmp_path):
     )
     assert_node_id_refusal(result)
     assert not (tmp_path / "work.md").exists()
+
+
+def test_pytest_k_attached_or_clustered_is_refused(tmp_path):
+    for flag in ("-k", "-k=", "-xk ", "-vxk"):
+        falsifier = pytest_k(tmp_path, "selected", flag=flag)
+        result = run(["debt", "--claim", "x", "--falsifier", falsifier, "--files", "a"], tmp_path)
+        assert_node_id_refusal(result)
+        assert not (tmp_path / "work.md").exists()
 
 
 def test_resolution_with_pytest_k_is_refused_before_append(tmp_path):
