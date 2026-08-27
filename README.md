@@ -108,11 +108,16 @@ shared code:
 - **CONFIRMED — no turns/cost/duration line** when a spawned run ends. The exit
   code is the whole in-band verdict, which is why spawn re-checks the *tree*
   rather than believing either harness's report.
-- **CORRECTED — spawned Codex teammates do load installed hooks and skills.** All
-  four Sprint 8 teammates received the installed SessionStart hook and skill
-  catalog. `codex exec` still has no `--plugin-dir`, so the worktree's authoritative
-  teammate profile is inlined; an older user install can therefore disagree with
-  the commands the prompt names.
+- **CORRECTED — spawned Codex teammates do load installed hooks and skills, once
+  you have trusted them.** All five Sprint 8 teammate sessions received the
+  installed SessionStart hook and skill catalog. The trust you granted above is
+  what carries: Codex stores it per hook content hash in `~/.codex/config.toml`,
+  not per session, and the spawn passes no `--dangerously-bypass-hook-trust` of
+  its own — so without that approval, or after an update changes the hash, a
+  spawned teammate's hooks are skipped as silently as a lead's. `codex exec` still
+  has no `--plugin-dir`, so the worktree's authoritative teammate profile is
+  inlined; an older user install can therefore disagree with the commands the
+  prompt names.
 
 **Requirements:** Python 3.11+, git. [lefthook](https://github.com/evilmartians/lefthook)
 and [gitleaks](https://github.com/gitleaks/gitleaks) for the enforcement wall

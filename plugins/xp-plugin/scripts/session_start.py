@@ -259,9 +259,9 @@ def truncated(out: str, rules: str, static: list[tuple[str, str]]) -> str:
 
     DROPPED CONSTRAINTS ARE FOUND IN THE CONSTRAINTS FILE, never by scanning the
     cut region — which is what makes the answer independent of section order, the
-    one property here that must survive a reordering. PROCESS.md carries four
+    one property here that must survive a reordering. PROCESS.md carries five
     `N. **` lines of its own, the same shape a constraint has, so a scan of the
-    cut region reports the first four constraints missing whenever PROCESS was cut.
+    cut region reports the first five constraints missing whenever PROCESS was cut.
 
     Room is reserved for the WORST-CASE notice, so the result is within cap
     without a second pass that could report a stale set.

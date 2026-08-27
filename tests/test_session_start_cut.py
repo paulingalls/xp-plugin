@@ -63,7 +63,7 @@ class TestWhatTheCutSaysItTook:
 
     def test_the_constraints_it_names_are_genuinely_absent(self, tmp_path):
         """Keyed on the fixture's OWN title, never on `N. **`: PROCESS.md ships
-        four headings of that shape ahead of the rules, so the bare pattern
+        five headings of that shape ahead of the rules, so the bare pattern
         answers about PROCESS whenever the cut reaches constraint 1."""
         r = self.overflowing(tmp_path)
         body, notice = r.stdout.split("[truncated", 1)
@@ -87,10 +87,10 @@ class TestWhatTheCutSaysItTook:
             assert f"**Rule {n}** {'x' * PAD}" in body, f"rule {n} is shown in half"
 
     def test_process_own_numbering_cannot_mask_a_dropped_rule(self, tmp_path):
-        """PROCESS.md carries `1. **Plan**` through `4. **Sprint close**` — the
+        """PROCESS.md carries `1. **Card review**` through `5. **Free**` — the
         same shape a constraint has — and it is assembled BEFORE the rules, so it
         survives every cut that reaches them. Asking whether "N. **" is in the
-        surviving text would therefore report constraints 1-4 present while they
+        surviving text would therefore report constraints 1-5 present while they
         are gone: a mechanism that lies about which rules the lead is missing.
         Constructed by inflating the recovery block until NO constraint fits.
         """

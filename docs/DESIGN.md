@@ -248,14 +248,21 @@ The economic shape: **an expensive model orchestrates; cheaper or different mode
 
 **A Codex teammate is not at parity with a Claude one (story-021 ships the spawn; story-025 owns the rest).** Stated here so a reader does not infer parity from "both harnesses spawn":
 
-- **Installed hooks and skills load; worktree authority does not.** Sprint 8
-  falsified the old claim that spawned Codex teammates have no CLI-gate surface:
-  all four received the installed SessionStart marker and skill catalog. Codex
-  still has no `--plugin-dir`; commands and the teammate profile therefore come
-  from the inlined worktree prompt while hooks and skills come from the user
-  install, which may be stale. The walk did not exercise the PostToolUse/Stop
-  outcome path: no test-status marker cannot distinguish a hook that ran and
-  wrote nothing from one that never ran (`AUDIT.md` §10).
+- **Installed hooks and skills load ONCE TRUSTED; worktree authority does not.**
+  Sprint 8 falsified the old claim that spawned Codex teammates have no CLI-gate
+  surface: all five received the installed SessionStart marker and skill catalog,
+  and each left its own liveness touchfile. WHAT PAID FOR IT WAS NOT THE ARGV —
+  `codex_argv` still carries no `--dangerously-bypass-hook-trust` — but the human
+  lead's earlier interactive `/hooks` approval, which Codex stores per hook
+  CONTENT HASH in `~/.codex/config.toml` and therefore honours in a headless
+  spawn too. Untrusted, or after a plugin update moves the hash, the teammate's
+  hooks are skipped SILENTLY (trust row above) and no refusal says so; that half
+  of the old claim stands and remains open. Codex still has no `--plugin-dir`;
+  commands and the teammate profile therefore come from the inlined worktree
+  prompt while hooks and skills come from the user install, which may be stale.
+  The walk did not exercise the PostToolUse/Stop outcome path: no test-status
+  marker cannot distinguish a hook that ran and wrote nothing from one that never
+  ran (`AUDIT.md` §10).
 - ~~**And no subagents, which costs one PROCESS step**~~ — **CLOSED at story-026.** TEAMMATE.md used to tell a teammate to spawn the `plan-reviewer`; with no `--plugin-dir`, `agents/plan-reviewer.md` is not even present in a Codex teammate's tree, so that step had no mechanism and was skipped or invented. The profile now carries the INVOCATION — `scripts/plan_review.py <story-id> <plan-file>` — never the charter body (3693 tokens against a 2500 target): the script reads `agents/plan-reviewer.md` beside itself, so reaching the script implies reaching the charter, and launches the `plan-reviewer` role headlessly through the same runner every other leg uses. No subagent call rides a harness Agent tool any more, which is what makes plan review a ROLE with a harness/model/effort rather than a Claude-only step.
 - **The sandbox was asymmetric; v0.7.1 removed it, and v0.7.2 hands the choice to the project.** EVERY codex leg — executor, story reviewer, plan reviewer — launches the SAME posture, `danger-full-access` unless `.xp/config.yml` sets `codex_sandbox: workspace-write`, and `teammate_tee.sandbox_line` prints the posture it reads back off the argv at every launch, because an invisible relaxation is the same defect as the invisible restriction it replaced. **Measured 0.149.0** (walk: `<data-root>/walks/free-2026-08-24-codex/`, three arms with a control): under `workspace-write` the docker socket, loopback TCP and a nested `codex exec` are each denied, and this one string lifts all three — `--add-dir` does not, it grants path writes, not socket-connect capability. It removes an inconsistency rather than introducing a risk class: the Claude legs already run `--dangerously-skip-permissions` with no OS sandbox, since claude 2.1.241 exposes none, so Codex was the only harness we confined and never on the merits. **THE OPT-OUT SHIPPED FIRST, v0.7.2's `codex_sandbox`: the default does not move, so a project naming nothing launches v0.7.1's argv byte-for-byte, and `read-only` is refused BY NAME because every role here must write its deliverable (measured 2026-08-25). WHAT WORKSPACE-WRITE COSTS the project that opts in: no outbound network at all — DNS and loopback both denied, re-measured 0.149.0 against a danger-full-access control on 2026-08-25 — so TEAMMATE.md's mandatory `plan_review.py` cannot reach an API from that teammate's shell. `sandbox_line` names it at launch rather than leaving it to arrive as an app-server error. story-040 still owes the CROSS-HARNESS word and the default it would flip; naming the harness in this key is what keeps that word free.** Gone with it: the role-keyed `network` argument, which is how the REVIEWER leg came to run with no network at all — true, unprinted, and believed backwards in writing. `agent_argv` no longer takes a role, and each leg's posture is asserted at its own call site, since through the builder the two legs are now one expression. HISTORY, true of the posture it describes: story-026 walked `workspace-write` in both directions — with `-c sandbox_workspace_write.network_access=true` a codex session ran `plan_review.py`, whose nested `claude -p` reached the API on its own credentials and wrote findings to the data root through `--add-dir`; without it the nested harness died (`is_error`, `duration_api_ms: 0`, zero turns) and the leg refused with exit 2 rather than reporting an empty review. `sandbox_workspace_write.network_access` is still passed on NO argv, which is exactly why the workspace-write opt-in has none; story-040 is where restoring a confining DEFAULT gets argued, those flags included.
 - **Both harnesses stream natively now; the residue is the COUNTERS.** Claude's `stream-json` result envelope and Codex's `--json` last completed `agent_message` are both reassembled for callers while the raw JSONL tees live, and once the first event carries a session id the log points at the harness-native transcript (`~/.claude/projects/`, `~/.codex/sessions/`). What Codex still has no equivalent of is the result ENVELOPE: `turn.completed` carries usage, but nothing summarizes a turns/cost/duration closing line from it, so a codex run closes without the counters a claude one prints. The exit code stays the whole in-band verdict, which is why `spawn` re-checks the *tree* rather than believing any harness's own report.
@@ -290,14 +297,17 @@ its bound is how the choice and the naming stay ours. **ORDER IS PART OF THE CON
 2026-08-24): VALUES first, PROCESS second, and neither may be dropped or moved.**
 They define the plugin and get primacy; constraints precede the recreatable
 digest. A project past the bound therefore loses the tail — and the halving is
-not free: THIS repo now assembles 8,975 chars and delivers ZERO of its 15
-constraints, where the 18,000-char profile did reach the lead with seven of them
-whole plus the tail of an eighth (AUDIT §10). Loud, since `session_start.truncated` names every dropped rule and
+not free, NOR IS THE COST ONLY CODEX'S: this repo assembles ~8.9k chars (8,871 at
+story-055's close, and it MOVES with every open card) and now delivers ZERO of its
+15 constraints to EITHER harness, where the 18,000-char profile delivered all 15
+to a CLAUDE lead and seven whole plus the tail of an eighth to a Codex one after
+its own cut (AUDIT §10). One cap serves both harnesses, so sizing it to the
+stricter transport charges the harness that never truncated. Loud, since `session_start.truncated` names every dropped rule and
 where to read it, but no gate measures it: both fit checks assert only that the
 profile FITS, which dropping more always satisfies. Dropped constraints are
 computed against the surviving
 PREFIX of `constraints.md`, not by searching the whole kept profile: PROCESS has
-four lines shaped like constraint headings. The cut also re-appends
+five lines shaped like constraint headings. The cut also re-appends
 `--- END project content ---` before its notice so the notice cannot render as
 repo data. Re-measure with
 `python3 tests/scripts/falsifier_lead_profile_fits.py`; never infer fit from the
