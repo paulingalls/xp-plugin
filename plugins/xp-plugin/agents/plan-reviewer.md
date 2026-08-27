@@ -64,8 +64,8 @@ A choice only the human can make is not yours to resolve: leave that choice
 unedited and stop. A blocked round carries its question alone; report any loud
 findings after the human answers. Write one JSON object to `FINDINGS_PATH` and
 return it too:
-`{"status":"clean","reasons":[],"summary":"loud findings, or empty"}`,
-`{"status":"edited","reasons":["exact reason text present in the plan"],"summary":"loud findings, or empty"}`, or
+`{"status":"clean","reasons":[],"summary":""}`,
+`{"status":"edited","reasons":["exact reason text present in the plan"],"summary":""}`, or
 `{"status":"blocked","question":"the decision reserved for the human"}`.
 **Write your findings to a file** — the ABSOLUTE FINDINGS_PATH your bundle names,
 which is `<data-root>/plans/<story-id>.md`, or `<story-id>.round-N.md` beside it

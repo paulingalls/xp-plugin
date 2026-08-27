@@ -8,11 +8,11 @@ Undeclared `.xp/` path stops.
   push runs full suite. Never bypass (`--no-verify`, core.hooksPath): escalate.
 - **Multi-file change?** The lead owns sprint-slate **card review**;
   `spawn.py ready <story-id>` is the lead committing to this card now, not a
-  review. Only you, the executor, write the implementation plan; the lead never does.
+  review. You write the implementation plan; the lead never does.
   Persistent PLAN_PATH: {PLAN_PATH}
   **Plan review**: `python3 {PLUGIN_ROOT}/scripts/plan_review.py <story-id> {PLAN_PATH}`.
-  It BLOCKS: stay with that run; never launch another. Re-read plan file:
-  reasoned edits land there; human-only questions stop.
+  It BLOCKS: stay with that run; never launch another. Re-read its disposition
+  and plan file: reasoned edits land there; human-only questions stop.
 - **Prose is an artifact.** Comments: restates the code → delete · explains WHAT →
   rename it · a checkable claim → write the test · narrates history → delete, git
   holds it. Keep only the why, an external constraint, a rejected design.
