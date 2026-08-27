@@ -51,16 +51,15 @@ class TestDogfoodMatchesTheScaffold:
         )
         assert not missing, f"we never exercise the shipped keys: {missing}"
 
-    def test_constraints_character_cap_is_the_same_in_both_configs(self):
-        def value(path):
-            line = next(
-                ln
-                for ln in path.read_text().splitlines()
-                if ln.startswith("constraints_chars_cap:")
-            )
-            return int(line.split(":", 1)[1].split("#", 1)[0])
+    def cap_value(self, path):
+        line = next(
+            ln for ln in path.read_text().splitlines() if ln.startswith("constraints_chars_cap:")
+        )
+        return int(line.split(":", 1)[1].split("#", 1)[0])
 
-        assert value(self.OURS / "config.yml") == value(self.SHIPPED / "config.yml") == 4_500
+    def test_constraints_character_cap_is_the_same_in_both_configs(self):
+        ours = self.cap_value(self.OURS / "config.yml")
+        assert ours == self.cap_value(self.SHIPPED / "config.yml") == 4_500
 
     def run_constraints_wall(self, tmp_path, cap, size, character="x"):
         xp = tmp_path / ".xp"
@@ -104,9 +103,10 @@ class TestDogfoodMatchesTheScaffold:
         xp = repo / ".xp"
         xp.mkdir(parents=True)
         (xp / "config.yml").write_text((self.SHIPPED / "config.yml").read_text())
-        seed = (self.SHIPPED / "constraints.md").read_text()
-        constraints = seed + "x" * (4_500 - len(seed))
-        assert len(constraints) == 4_500
+        cap = self.cap_value(self.SHIPPED / "config.yml")  # never a literal: the
+        seed = (self.SHIPPED / "constraints.md").read_text()  # cap is what moves
+        constraints = seed + "x" * (cap - len(seed))
+        assert len(constraints) == cap
         (xp / "constraints.md").write_text(constraints)
         subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
         out = run_hook(repo, tmp_path).stdout

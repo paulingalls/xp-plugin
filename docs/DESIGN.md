@@ -294,9 +294,11 @@ surface uses the same cap and also names work.md titles it drops.
 `constraints_chars_cap` is a hard pre-commit wall beside the 15-item
 `constraints_cap`; its refusal names retiring or shortening a rule. The character
 unit is deliberate for authoring pressure, while the profile remains byte-capped:
-the full-ceiling fit assumes the normal ASCII-shaped Markdown measured here, and
-the real-profile delivery check catches a multibyte project that violates that
-assumption. A fresh scaffold at the full character ceiling fits mechanically.
+the full-ceiling fit assumes the normal ASCII-shaped Markdown measured here. A
+project whose rules run multibyte can pass the character wall and still overflow
+the byte cap, and NOTHING SHIPPED REDS ON THAT — the delivery check is this repo's
+own, over its own constraints; what a consuming project gets is `truncated`
+naming the rules it dropped. A fresh scaffold at the full ceiling fits mechanically.
 Re-measure the dogfood profile with
 `python3 tests/scripts/falsifier_lead_profile_fits.py`.
 

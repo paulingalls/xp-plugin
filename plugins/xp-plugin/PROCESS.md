@@ -23,7 +23,8 @@ recovery block and sprint slice; they are not injected. Artifacts win.
    why, an external constraint, a rejected design.
 3. **Story close** — Review, Verify, merge; one full review always. A reviewer fix
    is inside the round that found it; a lead fix moves HEAD past what the review
-   covered and costs a confirming round. Generalization is a deviation.
+   covered and costs a confirming round. A deviation — generalizing a
+   prescription, uncovered behavior, a conflict you resolved — is owed a round.
    The bar: silent or corrupting (false green, corrupted record, unreviewed merge)
    earns a round; loud does not.
 4. **Sprint close** — Falsifiers and full tier precede note

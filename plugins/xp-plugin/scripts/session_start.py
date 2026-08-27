@@ -74,11 +74,8 @@ def digest_refusal() -> str:
     (bug 597c32db). Names the path, the count and the bound: a refusal that says
     only "too long" leaves the lead guessing which file.
 
-    Read by `recovery_block`, NOT emitted from the digest's own slot: the refusal
-    must outrank the thing it is refusing, and the recovery block is the one
-    section the cut may never reach. (It first said "the digest is last" — true
-    until the same patch reordered the profile, and a rationale that expires is
-    how a mechanism gets moved back.)
+    It LEADS the digest's own region, which `recover` prints first: a refusal
+    that rides behind the thing it refuses is one the cut can take.
     """
     path = data_root() / "session.md"
     try:
@@ -173,17 +170,21 @@ def last_close() -> str:
     )
 
 
-def recovery_block() -> str:
-    """Computed fresh from always-current sources — the layer that can't go stale."""
+def open_cards(text: str) -> list[str]:
     # TERMINAL states are enumerated, never "not [done]": Distinct states stay distinct.
     # The same inference in sprint_close blocked this sprint's own close over a [retired]
     # card, and here it lists folded work back to the lead as still owed.
     terminal = ("[done]", "[retired]")
-    stories = [
+    return [
         ln
-        for ln in read(plan_path()).splitlines()
+        for ln in text.splitlines()
         if ln.startswith("#### ") and not any(state in ln for state in terminal)
     ]
+
+
+def recovery_block() -> str:
+    """Computed fresh from always-current sources — the layer that can't go stale."""
+    stories = open_cards(read(plan_path()))
     # Through work.py's own summariser, never a second line-scan here: it is the
     # writer, so it is where the `Story:` stamp is known not to be the claim.
     # A TITLE, not an excerpt: three long notes were ~6,000 chars and pushed
@@ -223,16 +224,10 @@ def digest_output() -> str:
 
 
 def sprint_slice() -> str:
-    text = read(plan_path())
-    sections = re.split(r"(?=^### Sprint )", text, flags=re.M)
-    terminal = ("[done]", "[retired]")
-    for section in reversed(sections):
-        if any(
-            line.startswith("#### ") and not any(state in line for state in terminal)
-            for line in section.splitlines()
-        ):
-            return section.strip()
-    return ""
+    """The LAST sprint section still holding an open card — never the first, which
+    is where a project's oldest sprint lives forever."""
+    sections = re.split(r"(?=^### Sprint )", read(plan_path()), flags=re.M)
+    return next((s.strip() for s in reversed(sections) if open_cards(s)), "")
 
 
 def work_titles() -> list[str]:

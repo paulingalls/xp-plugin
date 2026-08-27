@@ -68,6 +68,26 @@ class TestWhatTheProfileLeadsWith:
         assert recovered.returncode == 0 and "branch: main" in recovered.stdout
         assert "story-042" in recovered.stdout and "session digest" in recovered.stdout
 
+    def test_the_recovery_surface_delivers_the_open_sprints_slice(self, tmp_path):
+        """MEASURED VACUOUS without this: `sprint_slice` could `return ""` and the
+        whole suite plus the falsifier stayed green, because the recovery block's
+        `stories:` list already carries the headings and every other assertion here
+        matches those. The slice's own BODIES are what nothing read."""
+        repo, _g = xp_repo(tmp_path)
+        (tmp_path / "xp" / "plan.md").write_text(
+            "# plan\n"
+            "### Sprint 8\n#### story-041 — early   [in-progress]\nEARLY-BODY\n"
+            "### Sprint 9\n#### story-042 — demo   [in-progress]\nSLICE-BODY\n"
+            "### Sprint 10\n#### story-050 — folded   [retired]\nFOLDED-BODY\n"
+        )
+        out = run_recovery(repo, tmp_path).stdout
+        assert "[truncated" not in out, "the fixture must fit; this asserts delivery"
+        shown = out.split("## sprint slice", 1)[1]
+        assert shown.startswith("\n### Sprint 9"), shown[:200]
+        assert "SLICE-BODY" in shown, "the open sprint's card bodies never reached the lead"
+        assert "EARLY-BODY" not in shown, "an older open sprint won over the current one"
+        assert "FOLDED-BODY" not in shown, "a wholly terminal sprint counted as open"
+
 
 class TestWhatTheCutSaysItTook:
     def overflowing(self, tmp_path):
