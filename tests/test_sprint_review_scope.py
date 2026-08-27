@@ -1,12 +1,16 @@
 import json
 import shutil
 
-from close_helpers import launches
+from close_helpers import LEAD_CREDS, launches
 from sprint_helpers import (
+    CONFIG,
+    PLAN,
     PLUGIN,
+    bundles,
     head,
     make_repo,
     marker_path,
+    record_reviews,
     section,
     sprint,
     stage_key,
@@ -15,11 +19,134 @@ from sprint_helpers import (
 
 CLEAN = {"fixed": [], "blocking": [], "noted": []}
 DELTA = "The delta since the last recorded round"
+SURVIVES = {"fixed": [], "blocking": ["silent defect"], "noted": []}
+
+
+def model(launch):
+    argv = launch["argv"]
+    return argv[argv.index("--model") + 1]
+
+
+def stage_config(role, spec, base=CONFIG):
+    roles = f"  reviewer: claude/opus\n  {role}: {spec}\n"
+    return base.replace("  reviewer: claude/opus\n", roles)
+
+
+def test_the_config_template_carries_every_round_one_stage_role(tmp_path, monkeypatch):
+    from work import config_block_value
+
+    template = (PLUGIN / "templates" / "config.yml").read_text()
+    repo, _env, _g = make_repo(tmp_path, config=template)
+    monkeypatch.chdir(repo)
+    for role in ("finder", "verifier", "fixer", "closer"):
+        assert config_block_value("roles", role, "\0") != "\0", role
+
+
+class TestRoundOneRoles:
+    def _review(self, tmp_path, config=CONFIG, plan=PLAN, env_extra=None):
+        repo, env, _g = make_repo(tmp_path, config=config, plan=plan)
+        staged_stub(tmp_path, find=SURVIVES, verify=SURVIVES, fix=CLEAN)
+        result = sprint(repo, env | (env_extra or {}), "review")
+        return result, launches(tmp_path)
+
+    def test_a_legacy_config_resolves_every_stage_to_reviewer(self, tmp_path):
+        result, ran = self._review(tmp_path, env_extra=LEAD_CREDS)
+        assert result.returncode == 0, result.stderr
+        assert {stage_key(item["stdin"]).split("-", 1)[0] for item in ran} == {
+            "find",
+            "verify",
+            "fix",
+            "close",
+        }
+        assert {model(item) for item in ran} == {"opus"}
+        assert {item["env"]["XP_ROLE"] for item in ran} == {"reviewer"}
+        assert not [
+            key
+            for item in ran
+            for key in item["env"]
+            if key.startswith(("GIT_AUTHOR_", "GIT_COMMITTER_"))
+        ]
+        for item in ran:
+            key = stage_key(item["stdin"])
+            assert (tmp_path / "data" / "logs" / f"sprint-{key}-review.log").exists()
+
+    def test_only_finders_use_the_finder_role(self, tmp_path):
+        config = stage_config("finder", "claude/haiku")
+        result, ran = self._review(tmp_path, config=config)
+        assert result.returncode == 0, result.stderr
+        assert {model(item) for item in ran if stage_key(item["stdin"]).startswith("find-")} == {
+            "haiku"
+        }
+        others = [item for item in ran if not stage_key(item["stdin"]).startswith("find-")]
+        assert {model(item) for item in others} == {"opus"}
+
+    def test_every_stage_resolves_its_own_key_not_only_the_finder(self, tmp_path):
+        """Measured vacuity: dropping verifier, fixer and closer back to `reviewer`
+        while the finder keeps its key passes every other test in this file, so
+        nothing held DESIGN's "resolves finder, verifier, fixer and closer
+        independently" — a consuming project's `closer:` would be silently ignored."""
+        want = {"find": "finder", "verify": "verifier", "fix": "fixer", "close": "closer"}
+        config = CONFIG
+        for role in want.values():
+            config = stage_config(role, f"claude/{role}-only", config)
+        result, ran = self._review(tmp_path, config=config)
+        assert result.returncode == 0, result.stderr
+        got = {stage_key(i["stdin"]).split("-", 1)[0]: model(i) for i in ran}
+        assert got == {stage: f"{role}-only" for stage, role in want.items()}
+
+    def test_a_card_finder_override_reaches_its_sprints_finders(self, tmp_path):
+        plan = PLAN.replace("Verify: true", "Finder: claude/haiku\nVerify: true", 1)
+        config = stage_config("finder", "claude/sonnet")
+        result, ran = self._review(tmp_path, config=config, plan=plan)
+        assert result.returncode == 0, result.stderr
+        assert {model(item) for item in ran if stage_key(item["stdin"]).startswith("find-")} == {
+            "haiku"
+        }
+
+    def test_a_malformed_finder_role_refuses_instead_of_falling_back(self, tmp_path):
+        config = stage_config("finder", "claude")
+        result, ran = self._review(tmp_path, config=config)
+        assert result.returncode == 2
+        assert "roles.finder" in result.stderr and "Traceback" not in result.stderr
+        assert ran == []
+
+    def test_a_late_stages_bad_role_refuses_before_any_stage_spends(self, tmp_path):
+        result, ran = self._review(tmp_path, config=stage_config("closer", "claude"))
+        assert result.returncode == 2
+        assert "roles.closer" in result.stderr and "Traceback" not in result.stderr
+        assert ran == []
+
+    def test_a_cards_reviewer_line_does_not_retarget_the_sprint_stages(self, tmp_path):
+        plan = PLAN.replace("Verify: true", "Reviewer: claude/haiku\nVerify: true", 1)
+        result, ran = self._review(tmp_path, plan=plan)
+        assert result.returncode == 0, result.stderr
+        assert {model(item) for item in ran} == {"opus"}
+
+    def test_stage_launches_keep_the_reviewer_silence_bound(self, tmp_path):
+        repo, env, _g = make_repo(tmp_path)
+        bin_dir = staged_stub(tmp_path)
+        claude = bin_dir / "claude"
+        sleepy = "import time\ntime.sleep(0.2)\nsys.stdout.write("
+        claude.write_text(claude.read_text().replace("sys.stdout.write(", sleepy))
+        result = sprint(repo, env | {"XP_AGENT_TIMEOUT": "0.05"}, "review")
+        assert result.returncode == 2 and "NO OUTPUT" in result.stderr
+
+    def test_review_and_land_share_the_missing_shown_sha_refusal(self, tmp_path):
+        repo, env, _g = make_repo(tmp_path)
+        missing = "f" * 40
+        record_reviews(tmp_path, repo, env, shown=missing)
+        review = sprint(repo, env, "review")
+        land = sprint(repo, env, "land", "--dry-run")
+        assert review.returncode == land.returncode == 2
+        assert review.stderr == land.stderr
+        assert missing[:8] in review.stderr and str(marker_path(tmp_path)) in review.stderr
+        assert "move" in review.stderr and "Traceback" not in review.stderr
+        assert bundles(tmp_path) == []
 
 
 class TestConfirmingRound:
-    def _round_one(self, tmp_path):
-        repo, env, g = make_repo(tmp_path)
+    def _round_one(self, tmp_path, config=CONFIG):
+        repo, env, g = make_repo(tmp_path, config=config)
         staged_stub(tmp_path)
         first = sprint(repo, env, "review")
         assert first.returncode == 0, first.stderr
@@ -32,7 +159,10 @@ class TestConfirmingRound:
         assert g("commit", "-qm", "round two delta").returncode == 0
 
     def test_one_story_shaped_reviewer_reads_the_delta_and_round_one_is_unchanged(self, tmp_path):
-        repo, env, g, split = self._round_one(tmp_path)
+        # `fixer` set away from `reviewer` because the assertion below is the one
+        # pinning round 2 to the story shape: on a config where the two agree, a
+        # confirming round resolving the FIXER key looks identical.
+        repo, env, g, split = self._round_one(tmp_path, stage_config("fixer", "claude/haiku"))
         first = [stage_key(r["stdin"]) for r in launches(tmp_path)]
         assert first == ["find-security", "find-state-lifecycle", "find-test-vacuity", "close"]
         self._commit(repo, g)
@@ -47,6 +177,7 @@ class TestConfirmingRound:
         assert sprint(repo, env, "review").returncode == 0
         second = launches(tmp_path)[split:]
         assert [stage_key(r["stdin"]) for r in second] == ["fix"]
+        assert model(second[0]) == "opus" and second[0]["env"]["XP_ROLE"] == "reviewer"
         bundle = second[0]["stdin"]
         delta = section(bundle, DELTA, "Resolutions filed during the sprint")
         assert "+ROUND_2" in delta and "+B = 'SPRINT-ONLY-SENTINEL'" not in delta

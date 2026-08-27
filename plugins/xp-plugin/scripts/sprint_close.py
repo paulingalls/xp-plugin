@@ -174,10 +174,13 @@ def cmd_review(sprint_id: str, dry_run: bool) -> int:
         charters, err = stages.charters()
         if err:
             return fail(err)
+        stages.check_roles(cards)
     head = git("rev-parse", "HEAD").stdout.strip()
     base = git("merge-base", f"refs/heads/{trunk}", "HEAD").stdout.strip()
     digest_before = review.marker_digest(marker)
     diff_base = state["shown_sha"] if complete_n else ""
+    if diff_base and (missing := _shown_diff(sprint_id, diff_base, head)[1]):
+        return fail(missing)
 
     ran, reports = [], []
 
@@ -201,7 +204,10 @@ def cmd_review(sprint_id: str, dry_run: bool) -> int:
             sprint_id, cards, base, path, charter or charters[stage], extra, diff_base
         )
         stage_head = git("rev-parse", "HEAD").stdout.strip()
-        result, err = review.run(bundle, Path.cwd(), dry_run, name=f"sprint {key}")
+        role = stage if not complete_n else ""
+        result, err = review.run(
+            bundle, Path.cwd(), dry_run, f"sprint {key}", cards if role else "", role
+        )
         if dry_run:  # an EMPTY report, not a shapeless one: a preview walks
             empty = {k: [] for k in review.REPORT_KEYS}
             return empty, review.abort_text(head, err) if err else ""
@@ -351,6 +357,18 @@ def _is_retro_prose(path: str) -> bool:
     return path.startswith(".xp/") and path not in overlap.GATE_FILES
 
 
+def _shown_diff(sprint_id: str, shown: str, head: str) -> tuple[subprocess.CompletedProcess, str]:
+    moved = git("diff", "--name-only", shown, head, check=False)
+    if moved.returncode:
+        action = (
+            f"move {sprint_marker(sprint_id)} aside — it holds this sprint's recorded"
+            f" rounds and moving it forfeits them — then run `close.py sprint"
+            f" {sprint_id} review`"
+        )
+        return moved, f"refused: the review recorded {shown[:8]}, which no longer exists — {action}"
+    return moved, ""
+
+
 def _coverage_refusal(sprint_id: str, head: str) -> str:
     """ "" if a recorded round covers HEAD, else why not. Bug c9b48a66.
 
@@ -379,9 +397,9 @@ def _coverage_refusal(sprint_id: str, head: str) -> str:
         return ""
     # check=False: a rebased, reset or gc'd sha must refuse, never raise
     # CalledProcessError from inside the gate that guards the release
-    moved = git("diff", "--name-only", shown, head, check=False)
-    if moved.returncode != 0:
-        return f"refused: the review recorded {shown[:8]}, which no longer exists — {rerun}"
+    moved, missing = _shown_diff(sprint_id, shown, head)
+    if missing:
+        return missing
     # BEFORE the authorship branch: an empty range reads there as "no strays"
     if git("merge-base", "--is-ancestor", shown, head, check=False).returncode:
         return (
