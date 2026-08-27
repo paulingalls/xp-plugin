@@ -67,11 +67,11 @@ class TestTheRealProfileAgainstTheRealCap:
         misses the joins and the trust markers by 117 chars.
 
         ORDER is asserted alongside size, and it is the half a size check cannot
-        carry: nothing truncates at 18,000 against an assembled 15,574, so a
-        size-only assertion passes under any arrangement at all.
+        carry: a size-only assertion passes under any arrangement at all.
         """
         from session_start import OUTPUT_CAP
 
+        assert OUTPUT_CAP <= 10_000, "Codex truncates hook output above 10,000 characters"
         out = self.run_real()
         assert len(out) <= OUTPUT_CAP, f"the profile assembles {len(out)} against {OUTPUT_CAP}"
         plugin = Path(__file__).parent.parent / "plugins" / "xp-plugin"
@@ -105,7 +105,8 @@ class TestTheRealProfileAgainstTheRealCap:
         claim = marker.split("ARE NOT ABOVE")[0].split("CONSTRAINTS", 1)[-1]
         named = [int(n) for n in re.findall(r"\b(\d+)\b", claim)]
         assert named, marker
+        constraints_body = body.rsplit("# Constraints", 1)[-1]
         for n in named:
-            assert not re.search(rf"^{n}\. \*\*", body, re.M), (
+            assert not re.search(rf"^{n}\. \*\*", constraints_body, re.M), (
                 f"constraint {n} is named as dropped but IS in the profile"
             )

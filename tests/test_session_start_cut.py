@@ -60,8 +60,11 @@ class TestWhatTheCutSaysItTook:
         body, notice = r.stdout.split("[truncated", 1)
         assert "ARE NOT ABOVE" in notice, notice
         assert named(notice), notice
+        constraints_body = body.rsplit("# Constraints", 1)[-1]
         for n in named(notice):
-            assert not re.search(rf"^{n}\. \*\*", body, re.M), f"{n} named dropped but present"
+            assert not re.search(rf"^{n}\. \*\*", constraints_body, re.M), (
+                f"{n} named dropped but present"
+            )
 
     def test_process_own_numbering_cannot_mask_a_dropped_rule(self, tmp_path):
         """PROCESS.md carries `1. **Plan**` through `4. **Sprint close**` — the
@@ -93,8 +96,8 @@ class TestWhatTheCutSaysItTook:
     def test_the_notice_itself_cannot_push_the_output_past_the_cap(self, tmp_path):
         """The reserve is the WORST-CASE notice, not a constant, and only a long
         notice can tell the two apart: 60 dropped rules cost ~330 chars, so the
-        fixed 160 this replaced emitted ~200 OVER the budget it enforces —
-        measured 18,204 against 18,000, and silent, since nothing re-measures.
+        fixed 160 this replaced can emit ~200 OVER the budget it enforces,
+        silently, since nothing outside this assertion re-measures it.
         """
         repo, _g = xp_repo(tmp_path)
         (repo / ".xp" / "constraints.md").write_text(constraints(60, 40))
