@@ -54,17 +54,28 @@ plugin — but they can derive the data root from git alone, so that is where th
 installed plugin root goes. Project-scoped, never global: two projects may pin two
 plugin versions. `setup.py` seeds it; `session_start.py` refreshes it every session, on
 both harnesses and both roles. The refresh is load-bearing rather than belt-and-braces:
-the codex cache is version-keyed (`~/.codex/plugins/cache/xp-plugin/xp-plugin/<version>`),
-so every release moves the path and staleness is the EXPECTED state. The reader
-(`env.plugin_root()`, `work.py env`) therefore refuses loudly instead of guessing —
-naming the file, the recorded value and the refresh route — and checks the manifest and
-the recorded version, because `is_dir()` alone passes on a cache that KEEPS old version
-directories. One case is out of its reach and is bounded by the refresh instead: a kept
-old directory whose manifest still matches the recorded version is self-consistent. The
-version line is also the skew signal — two harnesses can hold two installs, and the last
-SessionStart wins the pointer. **`spawn.py` is deliberately NOT a consumer**: spawn runs
-FROM the plugin and knows `Path(__file__)`, so reading the pointer for tidiness would put
-a refusable lookup in front of the one path that never needs one.
+the codex cache is version-keyed, so every release makes staleness expected. The reader
+therefore names the bad file/value and refresh route, and checks its manifest version;
+existence alone passes on a cache that keeps old versions. One case is out of its reach
+and is bounded by the refresh instead: a kept old directory whose manifest still matches
+the recorded version is self-consistent. The version line is also the skew signal — two
+harnesses can hold two installs, and the last SessionStart wins the pointer. **`spawn.py`
+never reads env.json** — it runs FROM the plugin and knows `Path(__file__)`, and the
+pointer can be a frozen codex cache, so reading it would put a stale, refusable lookup in
+front of the one path that never needs one. A consumer without `plugins/xp-plugin` keeps
+the invoked installed root and unchanged output. When THE REF THE WORKTREE IS CUT FROM
+carries that path — the integration target for a story, the branch itself for a free
+patch or a resume, and they differ — spawn substitutes its future worktree root into the
+executor's commands and tells the lead to use that root and manifest version for every
+review and land leg.
+Resolving in `close.py` was rejected as a consumer change; a card-only walk leaves other
+plugin changes silent. The price of that rejection is that the handback is the only
+carrier: every later close.py refusal and land message re-spells a bare `close.py`, so a
+lead following the newest line on screen is back on the installed pipeline. The COMMANDS
+move; the executor's SESSION does not. Its `--plugin-dir` (and codex's cache) still load
+the installed hooks, skills and charters, and the prompt reads installed VALUES and
+TEAMMATE prose before the worktree exists — so a story changing any of those is still
+unwalked by the leg that closes it.
 
 Two harness adapters over one shared core:
 

@@ -86,7 +86,13 @@ def make_repo(tmp_path, status="ready", executor="(default)", trunk="main"):
 
 
 def stub_claude(
-    tmp_path, commit=True, emit_result=True, write_file=False, add_all=True, break_git=False
+    tmp_path,
+    commit=True,
+    emit_result=True,
+    write_file=False,
+    add_all=True,
+    break_git=False,
+    execute_escalation=False,
 ):
     """A fake `claude` that records argv, env and stdin, then (by default)
     commits its own "work" and emits a stream-json terminal result object —
@@ -101,12 +107,18 @@ def stub_claude(
     rec = tmp_path / "launch.json"
     body = [
         "#!/usr/bin/env python3",
-        "import json, os, subprocess, sys",
+        "import json, os, shlex, subprocess, sys",
         "argv = sys.argv[1:]",
         "stdin = sys.stdin.read()",
         f"json.dump({{'argv': argv, 'env': dict(os.environ), 'stdin': stdin}},"
         f" open({str(rec)!r}, 'w'))",
     ]
+    if execute_escalation:
+        body += [
+            "line = next(ln for ln in stdin.splitlines() if ln.startswith('  File it: `'))",
+            "command = line.split('`', 2)[1].replace(\"'...'\", \"'fixture'\")",
+            f"subprocess.run([{sys.executable!r}, *shlex.split(command)[1:]], check=True)",
+        ]
     if write_file:
         body.append("open('teammate-left-this-uncommitted.txt', 'w').write('oops')")
     if commit:
