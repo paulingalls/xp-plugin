@@ -174,6 +174,7 @@ def cmd_review(sprint_id: str, dry_run: bool) -> int:
         charters, err = stages.charters()
         if err:
             return fail(err)
+        stages.check_roles(cards)
     head = git("rev-parse", "HEAD").stdout.strip()
     base = git("merge-base", f"refs/heads/{trunk}", "HEAD").stdout.strip()
     digest_before = review.marker_digest(marker)
@@ -360,7 +361,9 @@ def _shown_diff(sprint_id: str, shown: str, head: str) -> tuple[subprocess.Compl
     moved = git("diff", "--name-only", shown, head, check=False)
     if moved.returncode:
         action = (
-            f"move {sprint_marker(sprint_id)} aside, then run `close.py sprint {sprint_id} review`"
+            f"move {sprint_marker(sprint_id)} aside — it holds this sprint's recorded"
+            f" rounds and moving it forfeits them — then run `close.py sprint"
+            f" {sprint_id} review`"
         )
         return moved, f"refused: the review recorded {shown[:8]}, which no longer exists — {action}"
     return moved, ""

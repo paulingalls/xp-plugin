@@ -96,6 +96,18 @@ class TestRoundOneRoles:
         assert "roles.finder" in result.stderr and "Traceback" not in result.stderr
         assert ran == []
 
+    def test_a_late_stages_bad_role_refuses_before_any_stage_spends(self, tmp_path):
+        result, ran = self._review(tmp_path, config=stage_config("closer", "claude"))
+        assert result.returncode == 2
+        assert "roles.closer" in result.stderr and "Traceback" not in result.stderr
+        assert ran == []
+
+    def test_a_cards_reviewer_line_does_not_retarget_the_sprint_stages(self, tmp_path):
+        plan = PLAN.replace("Verify: true", "Reviewer: claude/haiku\nVerify: true", 1)
+        result, ran = self._review(tmp_path, plan=plan)
+        assert result.returncode == 0, result.stderr
+        assert {model(item) for item in ran} == {"opus"}
+
     def test_stage_launches_keep_the_reviewer_silence_bound(self, tmp_path):
         repo, env, _g = make_repo(tmp_path)
         bin_dir = staged_stub(tmp_path)
