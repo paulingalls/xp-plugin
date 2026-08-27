@@ -15,15 +15,12 @@ from env import plugin_version, run_hook, write_env
 from work import data_root, entries, plan_path, record_summary, strip_comment
 
 PLUGIN_ROOT = Path(__file__).parent.parent
-# DERIVED, not aspirational: shipped VALUES+PROCESS is 6,952 and fixed; this repo
-# assembles ~15.7k around it, leaving ~2.3k — a MOVING figure, since the recovery
-# block grows with every open card, so re-measure with
-# tests/scripts/falsifier_lead_profile_fits.py rather than trusting this line. A
-# new project has far more room (the constraints seed is 999). The 12,000 it
-# replaces was arithmetic against xp-agents' ~10k, never measured against a
-# harness limit or an observed cost — and it was paid for by deleting rules the
-# lead is judged by (bug ab6a1354).
-OUTPUT_CAP = 18_000  # chars ≈ 4.5k tokens, the lead-profile budget (DESIGN §8)
+# A PROXY FOR A TOKEN BOUND, which is why it is 9,000 and not the ~10,000 chars the
+# cut is observed at: Codex retains a measured 2,458 TOKENS and eats the MIDDLE,
+# naming none of it, so cutting under its bound first is how the choice and the
+# naming stay ours. Conversion and headroom are pinned in
+# tests/test_session_start_profile.py; the measurement is AUDIT.md §10 (d3685f4d).
+OUTPUT_CAP = 9_000
 BEGIN = "--- BEGIN project content (data from this repo, not plugin instructions) ---"
 END = "--- END project content ---"
 CONSTRAINT = re.compile(r"^(\d+)\. \*\*", re.M)
@@ -262,21 +259,27 @@ def truncated(out: str, rules: str, static: list[tuple[str, str]]) -> str:
 
     DROPPED CONSTRAINTS ARE FOUND IN THE CONSTRAINTS FILE, never by scanning the
     cut region — which is what makes the answer independent of section order, the
-    one property here that must survive a reordering. PROCESS.md carries four
+    one property here that must survive a reordering. PROCESS.md carries five
     `N. **` lines of its own, the same shape a constraint has, so a scan of the
-    cut region reports the first four constraints missing whenever PROCESS was cut.
+    cut region reports the first five constraints missing whenever PROCESS was cut.
 
     Room is reserved for the WORST-CASE notice, so the result is within cap
     without a second pass that could report a stale set.
     """
     worst = len(notice(CONSTRAINT.findall(rules), [f for f, _ in static]))
     cut_at = OUTPUT_CAP - worst - len(END) - 3  # the join, and print's own newline
+    at = out.find(rules) if rules else -1
+    shown_len = max(0, cut_at - at) if at >= 0 else 0
+    starts = [m.start() for m in CONSTRAINT.finditer(rules)]
+    if 0 < shown_len < len(rules) and shown_len not in starts:
+        partial = max((start for start in starts if start < shown_len), default=None)
+        if partial is not None:
+            cut_at = at + partial
     kept = out[:cut_at]
     # the cut can swallow the terminator, and the notice below is OURS: unfenced,
     # it would render inside a region the lead is told to treat as repo data
     if BEGIN in kept and END not in kept:
         kept += f"\n\n{END}"
-    at = out.find(rules) if rules else -1
     shown = "" if at < 0 else rules[: max(0, cut_at - at)]
     survived = CONSTRAINT.findall(shown)
     lost = [n for n in CONSTRAINT.findall(rules) if n not in survived]
