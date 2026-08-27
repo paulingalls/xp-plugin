@@ -24,6 +24,9 @@ out = subprocess.run(
     env=dict(os.environ) | {"XP_ROLE": "lead"},
 ).stdout
 assert "teammate session" not in out, "the role gate ate the profile; this asserts nothing"
+# advisory hook: a raise exits 0 with stdout empty, and every check below then
+# reads as satisfied or dies on `.index`. Measured in Sprint 8 (AUDIT.md §10).
+assert out.strip(), "the hook printed no profile at all — its traceback is on stderr"
 assert len(out) <= OUTPUT_CAP, (
     f"the lead profile assembles {len(out)} chars against OUTPUT_CAP {OUTPUT_CAP}"
     " — the cut lands inside constraints.md and the tail rules never reach the lead"

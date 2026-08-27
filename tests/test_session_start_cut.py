@@ -21,6 +21,9 @@ def constraints(items: int, pad: int) -> str:
     return f"# Constraints\n\n{body}"
 
 
+PAD = 300  # chars per fixture rule; see TestWhatTheCutSaysItTook.overflowing
+
+
 def named(notice: str) -> list[int]:
     claim = notice.split("ARE NOT ABOVE")[0].split("CONSTRAINTS", 1)[-1]
     return [int(n) for n in re.findall(r"\b(\d+)\b", claim)]
@@ -50,24 +53,44 @@ class TestWhatTheProfileLeadsWith:
 class TestWhatTheCutSaysItTook:
     def overflowing(self, tmp_path):
         """The project's own content past the cap: the cut lands inside
-        constraints.md, which is what the notice exists for."""
+        constraints.md, which is what the notice exists for. The pad is sized so
+        the cut lands MID-RULE with whole rules on either side of it — the three
+        tests below all assert against that boundary, and each guards its own
+        fixture rather than passing when the boundary drifts off the rules."""
         repo, _g = xp_repo(tmp_path)
-        (repo / ".xp" / "constraints.md").write_text(constraints(20, 1500))
+        (repo / ".xp" / "constraints.md").write_text(constraints(20, PAD))
         return run_hook(repo, tmp_path)
 
     def test_the_constraints_it_names_are_genuinely_absent(self, tmp_path):
+        """Keyed on the fixture's OWN title, never on `N. **`: PROCESS.md ships
+        five headings of that shape ahead of the rules, so the bare pattern
+        answers about PROCESS whenever the cut reaches constraint 1."""
         r = self.overflowing(tmp_path)
         body, notice = r.stdout.split("[truncated", 1)
         assert "ARE NOT ABOVE" in notice, notice
         assert named(notice), notice
         for n in named(notice):
-            assert not re.search(rf"^{n}\. \*\*", body, re.M), f"{n} named dropped but present"
+            assert f"**Rule {n}**" not in body, f"{n} named dropped but present"
+
+    def test_a_half_shown_rule_is_dropped_whole(self, tmp_path):
+        """The cut lands mid-rule, and a heading is not a rule: leave the head
+        of one in and the notice reports it delivered while the lead holds half
+        of it — the one lie the notice cannot be allowed to tell, since half a
+        rule reads as a whole one. Backing up to the heading is what keeps
+        "named as dropped" and "genuinely absent" the same set.
+        """
+        r = self.overflowing(tmp_path)
+        body, notice = r.stdout.split("[truncated", 1)
+        kept = [n for n in range(1, 21) if f"**Rule {n}**" in body]
+        assert kept and named(notice), "the fixture no longer cuts inside the rules"
+        for n in kept:
+            assert f"**Rule {n}** {'x' * PAD}" in body, f"rule {n} is shown in half"
 
     def test_process_own_numbering_cannot_mask_a_dropped_rule(self, tmp_path):
-        """PROCESS.md carries `1. **Plan**` through `4. **Sprint close**` — the
+        """PROCESS.md carries `1. **Card review**` through `5. **Free**` — the
         same shape a constraint has — and it is assembled BEFORE the rules, so it
         survives every cut that reaches them. Asking whether "N. **" is in the
-        surviving text would therefore report constraints 1-4 present while they
+        surviving text would therefore report constraints 1-5 present while they
         are gone: a mechanism that lies about which rules the lead is missing.
         Constructed by inflating the recovery block until NO constraint fits.
         """
@@ -93,8 +116,8 @@ class TestWhatTheCutSaysItTook:
     def test_the_notice_itself_cannot_push_the_output_past_the_cap(self, tmp_path):
         """The reserve is the WORST-CASE notice, not a constant, and only a long
         notice can tell the two apart: 60 dropped rules cost ~330 chars, so the
-        fixed 160 this replaced emitted ~200 OVER the budget it enforces —
-        measured 18,204 against 18,000, and silent, since nothing re-measures.
+        fixed 160 this replaced can emit ~200 OVER the budget it enforces,
+        silently, since nothing outside this assertion re-measures it.
         """
         repo, _g = xp_repo(tmp_path)
         (repo / ".xp" / "constraints.md").write_text(constraints(60, 40))

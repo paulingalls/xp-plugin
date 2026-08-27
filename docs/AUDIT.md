@@ -209,6 +209,172 @@ landed AFTER the walk that found them. No released version has been walked
 end to end with those fixes in it. That is Milestone 4's problem, not evidence
 against this one.
 
----
+## 10. Sprint 8 — the Codex lead walk
 
-*Next step: `docs/DESIGN.md` — the successor's shape, driven by §7's razor and resolving §8's questions.*
+Sprint 8 was led through the real repository by Codex, from card review through
+four story lands, sprint close, release PR, merge and post-merge. This section's
+authoritative transcript is `~/.codex/sessions/2026/08/26/rollout-2026-08-26T16-36-17-01a0406e-7bdd-7cb1-85c2-5635e9e0257f.jsonl`, abbreviated **R** below; citations give its UTC timestamp and, where useful, its JSONL line. The other records are `<data-root>/work.md`, `<data-root>/archive.md`, `<data-root>/logs/`, `<data-root>/closes.jsonl`, `<data-root>/markers/sprint/8.json`, and git range `fce14be~1..d473198`.
+
+### What was and was not read
+
+- **READ:** all 22 real user turns and the assistant responses answering them;
+  all 13 developer messages; all 31 notes and the one bug filed during the
+  session window; and all 32 commit bodies in `fce14be~1..d473198`. The three
+  user-role `<environment_context>` injections were counted but are not user
+  turns. The work-file window also held 15 resolved and 123 archived disposition
+  blocks; 58 further blocks had been compacted into `archive.md`. Those counts
+  are not relabelled as 31 decisions.
+- **READ:** every one of the 13 output neighbourhoods containing `Traceback`, all
+  66 containing `refused:`, all 47 direct `apply_patch` calls, all 11
+  `update_plan` calls, all three web calls, and the seven native wait calls.
+- **READ, outside the rollout:** the SessionStart and skill-catalog regions of all
+  five spawned-teammate transcripts named in the claims table, and
+  `~/.codex/config.toml`'s `[hooks.state]` block. Their tool calls were not read.
+- **COUNTED, NOT READ:** 1,092 custom calls, all named outer `exec`. Their nested
+  invocations overlap: 445 `exec_command`, 608 `write_stdin`, 47 `apply_patch`,
+  11 `update_plan`, and three web calls. The card's substring command totals are
+  therefore an index, not a partition of work performed.
+- **SAMPLED:** first, midpoint and last calls from the remaining deterministic
+  substring pools: inspection (179 candidates), git (87), story review (15),
+  story land (8), sprint close (20), plus the sole literal `spawn.py resume`.
+  The samples crossed kickoff, story work, close and release; no random or
+  favourable sample was substituted.
+
+Five compaction records replaced the model's active history at **R** lines 1008,
+1893, 4041, 5639 and 6319. They did not delete the preceding JSONL records, so
+the file supports this audit even where the live lead no longer held the earlier
+turns. Six developer messages — every SessionStart profile of the session — were
+themselves cut by Codex at **R** lines 9, 1013, 1898, 4046, 5644 and 6324, and
+the cut is deterministic: a 4,944-char head and a ~5,050-char tail around an
+inline `…N tokens truncated…` marker, ~10,000 chars total, identical in all six.
+THE BOUND IS IN TOKENS, not bytes, and the marker is what says so: `original -
+truncated` is **2,458 exactly** in all six (4,159−1,701 · 3,978−1,520 · 4,032−1,574
+· 4,132−1,674 · 3,766−1,308 · 3,780−1,322), holding across three different tail
+contents where a byte rule would have varied. Those 2,458 tokens carried 9,912
+chars of this repo's markdown — 4.03 chars/token, and its own tool outputs
+measure a 3.98 median — so the character figure below is a PROXY for the bound,
+not the bound.
+So it takes the MIDDLE, not the tail: each one still ends
+`--- END project content ---`, and each is headed `Warning: truncated output`
+with a path to the full text on disk. What the lead lost was PROCESS from its
+`Debt triage` line onward, the recovery block, constraints 1 through 7 whole and
+constraint 8's heading — announced as a token count and named as nothing. Unlike compaction, that loss
+reached the transcript already cut.
+
+### Hand-steps and control-flow substitutions
+
+This table is exhaustive for material interventions found in the read sets.
+Status questions that changed no state were read but are not hand-steps.
+
+| step | evidence and disposition |
+|---|---|
+| Repository guidance was missing at entry. Codex natively read `AGENTS.md`, found none, and began without `CLAUDE.md`; the lead then added a pointer. | Initial profile, **R** 2026-08-26T23:39:29Z; record `e1585048`; commit `0948926`. This was a repository integration gap, fixed during the sprint. |
+| The human granted three command-prefix approvals and then changed the lead from the initial sandbox to danger-full access. | Developer messages at **R** 23:43:58Z (cached `spawn.py`), 01:12:25Z (`git commit`), 01:21:15Z (`close.py`), and the permissions injection at 01:23:14Z. These were Codex host-authority hand-steps, not pipeline work. |
+| Card review required the lead to add missing `Verify:` lines to all four cards, then correct story-057's false `-k` premise and remint story-059 after its Verify/depth mismatch. | **R** direct edits 1–6; records `1713f853` and `4b8ad70b`. This is lead judgment the card-review step owns; it was not hidden automation. |
+| The story-052 executor entered a nine-round plan-review loop. The human stopped it and asked the lead to work in its tree; the lead deleted the stale incomplete marker, wrote the story's prose deliverable and committed it itself. | User turns at **R** 00:25:25Z and 00:28:38Z; direct edits 7–15; records `11d13714`, `0336fbab`, `7687b057`; commits `d798f73` and `43535f3`. This is the clearest pipeline substitution: the lead became the executor. It wrote NO test doing it — both lead commits touch only `DESIGN.md`, `PROCESS.md`, `TEAMMATE.md` and `agents/plan-reviewer.md`, `d798f73`'s body says so ("No deterministic unit test substitutes for reviewer judgment"), and the one test change in story-052 (`tests/test_close_prose.py`) came from a story-reviewer patch. |
+| The lead interrupted story-054 and story-059 reviews after attributing delay to machine contention. The human rejected that diagnosis, required each interrupted tree to be completed, replaced the 30-minute policy with unbounded waits, and later allowed two streams. The lead inspected and salvaged staged reviewer edits before relaunching. | User turns at **R** 01:29:32Z–02:31:24Z; records `6cf4f66b`, `9acbe026`, `89a19e70`, `8c864027`; story merge commits `de2b274`, `3f1d32e`, `a2a4acb`, `5e81116`. The correction was human; salvage and relaunch were lead hand-work forced by the interrupts. |
+| The lead repeatedly rewrote `session.md` from current artifacts. | Direct-edit read, including calls 16–18 and the close/release edits; final cleanup commit `d473198`. This is the intended LLM-present digest judgment, not a missing script step. |
+| Sprint close exposed a retired card as unfinished. The lead filed and fixed the defect, then moved deferred cards into Sprint 9 on the human's direction. | User turns at **R** 05:04:03Z and 05:05:33Z; bug `65a075f4`; fix `dea86ea`; direct edits 30–40. The defect was fixed in the audited sprint; regrouping remained lead plan judgment. |
+| The human authorized the release merge and post-merge. The first post-merge attempt correctly refused off `main`; the lead changed branches and reran it. | User turn at **R** 15:58:01Z; refusal neighbourhood **R** line 6573; merge `835f7e2`; cleanup `d473198`. This was the explicit human release boundary and a working branch guard. |
+
+The other material lead corrections are recorded rather than inferred: the
+initial backup claim was false (`32d21ffd`), the cached-plugin path mattered
+(`4c34a506`), story-054's concurrency and reviewer decisions are in `5cb6dcdc`,
+`c4637e0d`, `ea1c1589`, `523fbfe1`, `f2c571ff`, and `a1990b2c`; story-057's
+falsifier, timing and card corrections are in `1b3f8b35`, `a8dc210d`,
+`63797df4`, `dd3a1d00`, and `168ab415`; story-059's launch/install boundary is
+in `9bddb126`, `daf7dbf2`, `3109dab5`, `810c3fa0`, `67a59d53`, and `348304f3`.
+
+### Codex-vs-Claude claims
+
+| shipped claim | Sprint 8 result |
+|---|---|
+| Codex's PostToolUse/Stop path is inert. | **UNEXERCISED.** No `<session>.test-status` exists anywhere in `markers/`, but absence cannot distinguish a hook that ran and wrote nothing from one that never fired. What the walk DOES narrow: the plugin's hooks were loaded — `session_start` demonstrably ran in the lead and in all five teammates, and `post_tool_use` carries its own `trusted_hash` in the same `[hooks.state]` block — so "never loaded" is not the explanation. "Fired and wrote nothing" remains unproven because writing nothing is exactly what row 82 says it should do under Codex, which leaves the outcome path with no artifact of its own. The prior deterministic payload analysis still stands; this walk adds no positive trace. |
+| Spawned Codex runs end without Claude's turns/cost/duration summary. | **CONFIRMED.** Complete handbacks after `[turn.completed]` carry only the story result and recovery instruction, with no in-band counters (**R** lines 832 and 843). Outer tool wall time is not a spawned-run summary. |
+| Spawned Codex teammates load no hooks or skills. | **CORRECTED, WITH A PRECONDITION.** All FIVE codex teammate sessions inside the lead's window — `01a04075-6629-7fa0-81ae-5f9fecb0806a`, `01a04075-74c6-7a21-96f9-1e4894563a0b`, `01a04075-7d61-7a11-a539-19f1ba801006`, `01a04075-816e-7f71-9a77-63c93c42c5f9` and `01a04078-6876-7ae2-8726-f40a46ab13ec` (story-057's worktree, 23:47:08Z) — carry the installed xp-plugin skill catalog and the `xp-plugin 0.8.2 · teammate session` SessionStart marker, and each has its own `markers/<session>.alive`. The two other codex sessions in that span ran in a different repository's data root (`e77a3e9af394`) and are excluded. THE ARGV DID NOT PAY FOR IT: `spawn/harness.py:codex_argv` passes no `--dangerously-bypass-hook-trust`; `~/.codex/config.toml` carries `[hooks.state]` `trusted_hash` entries for this plugin's `session_start`, `post_tool_use` and `stop` hooks, granted interactively and keyed to hook CONTENT, so the lead's earlier approval is what a headless spawn inherits. On a machine without it — or after an update moves the hash — the skip is silent, which is the surviving half of the old claim. The inlined card/VALUES/constraints remain worktree authority because Codex has no `--plugin-dir`; installed hooks and commands can therefore disagree, as record `3109dab5` observed. |
+| The lead SessionStart profile fits its declared transport. | **FALSIFIED AND FIXED.** The six cut developer messages above report original token counts of 4,159 / 3,978 / 4,032 / 4,132 / 3,766 / 3,780, so they are six profiles of ~14–15.5k chars, all beneath the plugin's former 18,000-char cap and all above Codex's; the 15,442-char figure on the bug is the profile measured at filing. Bug `d3685f4d`, resolved as `c85e6dce`, lowers the cap to 9,000 chars — under Codex's measured 2,458-token retention at any density above 3.7 chars/token. The 10,000 this section first proposed was ~2,480 tokens of our own markdown and would have been cut again, which is the same units error one layer down; caught at story review, and the test now pins the token figure and the conversion separately rather than a bare 10,000. `tests/test_session_start_profile.py::TestTheRealProfileAgainstTheRealCap::test_this_repos_profile_fits_with_values_and_process_leading_it` constructed the red and now pins it. |
+| Codex needs explicit host authority where Claude's configured lead does not pause. | **CONFIRMED for the initial posture, then changed in-session.** The three approval messages and the 01:23:14Z permissions injection above are positive traces; no conclusion is drawn about hosts configured differently. |
+
+No other leg difference was evidenced by the scoped read. In particular, the
+four story-review/land sequences, sprint review, release and post-merge all
+reached their shared artifact or commit contracts; that is not a claim that
+unread tool-call interiors behaved identically.
+
+### Tracebacks and refusals
+
+All 13 `Traceback` neighbourhoods were read. Three were quoted source or record
+text rather than exceptions (**R** 1637, 4201, 4476); three were intentional
+`KeyboardInterrupt`s while stopping work (939, 1465, 1488); four came from bad
+ad-hoc diagnostics (121 wrong helper id, 929 missing `__file__`, 4823 and 4829
+wrong import roots); three were the initial sandbox denying the
+data-root/SessionStart probe (155, 1066, 1084). None exposed a defect in the
+shipped plugin.
+
+ONE OF THEM EXPOSED A VACUOUS CHECK, which the shipped/not-shipped line above
+does not cover and constraint 2 does. **R** 1066 is
+`tests/scripts/falsifier_lead_profile_fits.py` dying on `ValueError: substring
+not found`. The cause is not the sandbox: `run_hook` is advisory, so a hook that
+raises exits 0 with its traceback on stderr and NOTHING on stdout, and that empty
+string passes the falsifier's `"teammate session" not in out` guard — which
+excludes one wrong state and admits the other (constraint 15). Reproduced here
+against an unwritable `XP_DATA`: the falsifier reported the same `ValueError`,
+and in `tests/test_session_start_profile.py` the two tests that early-return on
+`"[truncated" not in out` PASSED on the empty profile — the exact vacuity that
+file's own docstring exists to prevent. Both now assert the profile is non-empty.
+
+Of 66 outputs containing `refused:`, 49 were source, log or report readbacks, not
+fresh refusals. The 17 live/control outputs included repeated polls of the same
+event. Sixteen show a wall or control doing its job: missing Verify, no-commit
+escalation, test-gate red, reviewer-patch commit refusal, concurrency/overlap,
+sprint membership, the intentionally red retired-card regression, falsifier
+batch refusal, and the post-merge branch guard. One shows the lead fighting the
+CLI: it supplied 77 record ids as one `--ref`, received zero matches, then
+iterated them correctly (**R** line 4889). A count alone would have called all 66
+friction; the neighbourhoods show one malformed invocation and the rest either
+quoted evidence or working boundaries.
+
+### What the fix for `d3685f4d` costs this repo
+
+Stated because the fix is not free and the notice is the only thing that says so.
+Under the old 18,000-char cap the Sprint-8 lead did reach constraints 9-15 whole,
+the tail of 8, and the whole session digest, because Codex keeps the tail; it
+lost PROCESS's own tail and constraints 1-7 in the middle, unnamed. Under the
+9,000-char cap this repo's profile assembles ~8.9k chars — 8,871 measured at this
+story's close, a MOVING figure since the recovery block grows with every open card,
+and about 2,200 tokens against the measured 2,458, so Codex cuts nothing — and the
+lead reaches ZERO of 15 constraints and no digest at all, with
+`[truncated ... CONSTRAINTS 1..15 ARE NOT ABOVE]` naming every one. AND THE CLAUDE
+LEAD PAYS THE SAME PRICE for a bound only Codex imposes: `OUTPUT_CAP` is one
+constant for both harnesses, so a Claude lead that read all 15 constraints under
+the 18,000-char cap now reads none. The trade is Honesty over coverage: fewer rules
+delivered, none silently — and it is the trade §8's ordering question would undo
+more cheaply than raising the cap. It is loud, so it is
+not a defect under the finding bar, but nothing else measures it — the falsifier
+and `test_this_repos_profile_fits_...` both assert only that the profile FITS,
+which lowering the cap can always make true by dropping more.
+
+WHAT THIS DOES NOT DECIDE: the profile assembles the recovery block ahead of the
+rules, and §8's stated ordering rationale — constraints before the digest,
+because a digest is recreatable from git and work.md — applies word for word to
+the recovery block, which is recreatable from the same two sources. Moving rules
+ahead of it would deliver roughly seven of them here (measured at the 9,000-char
+cap; it was ~eleven at the 10,000 this section first proposed). `test_recovery_block_
+survives_the_cap` pins the current order, so that is a retro decision with a test
+to retire, not a fix to smuggle into this card.
+
+### Boundary and verdict
+
+This was not a first run. The repository already had `.xp/` state and the user
+installation already carried xp-plugin 0.8.2. Installation, trust, scaffolding,
+and first SessionStart behavior in a never-configured repository remain
+**UNCOVERED**; the live sprint is not evidence for them.
+
+Within that boundary, the walk supports the Codex-lead design claim. It also
+required a human to correct a false contention story, stop one runaway planning
+loop, grant host authority and authorize release; the lead directly substituted
+for one executor and salvaged two interrupted reviews. The reading found one new
+defect, `d3685f4d`, in addition to the already-filed-and-fixed `65a075f4`, and
+the story review of this section found a second in the same neighbourhood: the
+empty-profile vacuity above, which is owed its own record. A walk
+that produced those corrections is stronger evidence than a clean summary, and
+the READ/COUNTED/SAMPLED split above states exactly where that evidence ends.

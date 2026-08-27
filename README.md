@@ -97,19 +97,27 @@ not an oversight: a Claude teammate already runs with no OS sandbox because
 Claude Code exposes none. What bounds both harnesses is the same either way: a
 throwaway worktree, the git-hook wall, and `close.py` running your `Verify`.
 
-**What a Codex lead does not get.** None of these is a correctness gap — the
-wall, the completion contract and the review-report contract are shared code:
+**What a Codex lead does not get.** Sprint 8's live Codex-lead walk classifies
+each claim; the wall, completion contract and review-report contract remain
+shared code:
 
-- **The Stop gate is inert.** Codex's `PostToolUse` payload carries no
-  success-or-failure field, so nothing writes the test status that gate reads and
-  it never blocks. Your `Verify` guarantee is the one it always was: `close.py`
-  runs it at close.
-- **No turns/cost/duration line** when a spawned run ends. The exit code is the
-  whole in-band verdict, which is why the spawn re-checks the *tree* rather than
-  believing any harness's own report.
-- **A spawned Codex teammate loads no hooks or skills at all** — `codex exec` has
-  no `--plugin-dir`, so its whole profile is inlined into the prompt instead. The
-  install above is for the lead; teammates need nothing.
+- **UNEXERCISED — the Stop gate's Codex path.** The walk left no test-status
+  marker, which cannot distinguish a hook that ran and wrote nothing from one
+  that never ran. The deterministic payload analysis still says Codex provides
+  no success-or-failure field; `close.py` remains the `Verify` guarantee.
+- **CONFIRMED — no turns/cost/duration line** when a spawned run ends. The exit
+  code is the whole in-band verdict, which is why spawn re-checks the *tree*
+  rather than believing either harness's report.
+- **CORRECTED — spawned Codex teammates do load installed hooks and skills, once
+  you have trusted them.** All five Sprint 8 teammate sessions received the
+  installed SessionStart hook and skill catalog. The trust you granted above is
+  what carries: Codex stores it per hook content hash in `~/.codex/config.toml`,
+  not per session, and the spawn passes no `--dangerously-bypass-hook-trust` of
+  its own — so without that approval, or after an update changes the hash, a
+  spawned teammate's hooks are skipped as silently as a lead's. `codex exec` still
+  has no `--plugin-dir`, so the worktree's authoritative teammate profile is
+  inlined; an older user install can therefore disagree with the commands the
+  prompt names.
 
 **Requirements:** Python 3.11+, git. [lefthook](https://github.com/evilmartians/lefthook)
 and [gitleaks](https://github.com/gitleaks/gitleaks) for the enforcement wall
