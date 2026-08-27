@@ -269,19 +269,19 @@ def cmd_review(sprint_id: str, dry_run: bool) -> int:
     closing, err = leg("closer", "close", closing_extra)
     if err:
         return stop(err)
+    shown_sha = git("rev-parse", "HEAD").stdout.strip()
 
     # No diff covers the plan now. Cross-lane BY CONSTRUCTION here, safe only
     # because a sprint review runs when every member is [done]: a mid-sprint run
     # would refuse and blame itself for a lane's flip.
     if sprint_cards(plan.read_text(), sprint_id) != cards:
         changed = f"sprint {sprint_id}'s cards changed during the review"
-        return stop(review.abort_text(head, changed))
+        return stop(review.abort_text(shown_sha, changed))
     round_ = {
         "fixed": fixed["fixed"],
         "blocking": fixed["blocking"] + closing["blocking"],
         "noted": fixed["noted"] + scope,
     }
-    shown_sha = git("rev-parse", "HEAD").stdout.strip()
     fix_report = review.sprint_report_path(sprint_id, "fix", round_n)
     if err := review.write_reviewer_diff(fix_report, head, f"sprint {sprint_id}"):
         # That write rolls the applied fix back when it fails, and `ran` is what the
