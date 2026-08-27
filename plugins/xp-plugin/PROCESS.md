@@ -7,14 +7,14 @@ One page. The values (VALUES.md) cover what this page doesn't.
 **`/xp-setup`**, **`/story-close`** and **`/sprint-close`** carry judgment scripts
 cannot. Run the skill when one exists; the script owns only its mechanics.
 
-1. **Card review** — lead checks consumed sprint capacity at open; shipped free
-   work consumes no slot.
-   - `spawn.py ready <story-id>` commits the lead and binds the reviewed card in
-     a digest; later edits refuse.
+1. **Card review** — lead reviews the sprint slate at open; work shipped
+   free spends no slot.
+   - `spawn.py ready <story-id>` commits the lead and binds the card; later
+     edits refuse.
    - **Plan review** — executor over its plan; the lead never writes one. Only
-     silent/corrupting problems are edited. Loud/addressable ones stay in the
-     disposition without another round; human-only questions stop. Executor
-     re-reads plan and disposition before code.
+     silent/corrupting problems are edited; loud ones stay in the disposition,
+     owed no round. Human-only questions stop. Executor re-reads both
+     before code.
 2. **Story** — red → green → refactor, small commits.
    - Done = ACs verified against the running system at its surface (the story
      loop), not "tests green" (the commit loop). Two loops, two clocks.

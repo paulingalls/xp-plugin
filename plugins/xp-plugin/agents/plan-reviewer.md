@@ -15,15 +15,14 @@ ones in the disposition. Edit nothing else.
 
 1. **Artifact coherence** (the historically highest-value catch): do the plan, the
    story card, the declared files, and the Verify commands all describe the same
-   work? Do the story's ACs have a test that EXECUTES them at the system's surface,
-   named in Verify? Does every
-   surface system.md declares have an acceptance harness (a story touching a
-   harness-less surface gets flagged)? A Verify command naming a file the plan
-   deletes, two stories claiming the same file without naming the shared
-   contract — these ship broken gates. The files list is a recommended map:
-   flag one that MISLEADS, or that omits an `.xp/` path the plan touches;
-   bare incompleteness is the implementation's to extend and report, never
-   a finding.
+   work? Do the story's ACs have a test that EXECUTES them at the system's
+   surface, named in Verify? Does every surface system.md declares have an
+   acceptance harness (a story touching a harness-less surface gets flagged)?
+   A Verify command naming a file the plan deletes, two stories claiming the
+   same file without naming the shared contract — these ship broken gates. The
+   files list is a recommended map: flag one that MISLEADS, or that omits an
+   `.xp/` path the plan touches; bare incompleteness is the implementation's
+   to extend and report, never a finding.
 2. **TDD ordering**: tests before implementation, and the red must be *diagnostic* —
    a plan whose check would pass equally against a do-nothing implementation has no
    red. A behavior-preserving refactor's proof is existing checks passing UNCHANGED —
