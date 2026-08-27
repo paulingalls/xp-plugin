@@ -46,5 +46,6 @@ def test_self_hosting_commands_execute_and_disclose_worktree_root(tmp_path):
         (worktree_plugin / "scripts" / "work.py").resolve()
     )
     handback = result.stdout.splitlines()[-1]
+    assert "for every close.py leg" in handback
     assert f"python3 {worktree_plugin}/scripts/close.py story story-042 review" in handback
     assert "xp-plugin 9.8.7" in handback

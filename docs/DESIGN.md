@@ -63,7 +63,8 @@ version line is also the skew signal — two harnesses can hold two installs, an
 SessionStart wins the pointer. **`spawn.py` never reads env.json.** A consumer without
 `plugins/xp-plugin` keeps the invoked installed root and unchanged output. When the
 integration target carries that path, spawn substitutes its future worktree root into
-the executor's commands and gives the lead that root and manifest version before close.
+the executor's commands and tells the lead to use that root and manifest version for
+every review and land leg.
 Resolving in `close.py` was rejected as a consumer change; a card-only walk leaves other
 plugin changes silent. The prompt still reads installed VALUES and TEAMMATE prose before
 the worktree exists, so a story changing that prose remains unwalked.

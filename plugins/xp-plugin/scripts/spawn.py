@@ -436,18 +436,18 @@ def cmd_spawn(
         result = report_handoff(data_root(), story_id, before, why, rc)
         held.close()
         return result
-    # The story leg accepts a free id and writes the marker free land reads, so
-    # naming the wrong one here is a mis-based review that nothing refuses.
-    scope = (
-        f"free {free_id.group(2)}"
-        if (free_id := FREE_ID.fullmatch(story_id))
-        else f"story {story_id}"
-    )
+    free_id = FREE_ID.fullmatch(story_id)
+    scope = f"free {free_id.group(2)}" if free_id else f"story {story_id}"
     leg = f"`close.py {scope} review`" + (" from that worktree" if free_id else "")
     if plugin_root != PLUGIN_ROOT:
         command = plugin_root / "scripts" / "close.py"
-        leg = f"`python3 {command} {scope} review` (xp-plugin {plugin_version(plugin_root)})"
-    print(f"{story_id} produced commit {tree_state(tree)[0]} at {tree}. Read it, then run {leg}.")
+        leg = (
+            f"use xp-plugin {plugin_version(plugin_root)} at {plugin_root} for every close.py"
+            f" leg, starting with `python3 {command} {scope} review`"
+        )
+    else:
+        leg = "run " + leg
+    print(f"{story_id} produced commit {tree_state(tree)[0]} at {tree}. Read it, then {leg}.")
     marker_path(data_root(), story_id).unlink(missing_ok=True)
     held.close()
     return rc
