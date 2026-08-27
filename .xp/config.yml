@@ -12,6 +12,19 @@ roles:                 # harness/model[/effort]; lead overrides per story in pla
   executor: codex/gpt-5.6-sol/high  # Sprint-5 retro, Paul: codex authoring proven at 028 — opus reviews, codex writes
   reviewer: claude/opus/high  # Sprint-5 retro, Paul: the inverse pairing — codex authors, opus reviews (its 028 round was the sprint's best). /high at Sprint-6 open (Paul): the segment had never been set, so every round to date ran at the harness default — unknown, and unknowable from here
   plan-reviewer: claude/opus/high  # Codex authors; Claude supplies independent model and harness pressure before code exists
+  # Sprint-9 open (lead): the four review STAGES, added because story-053 ships the
+  # keys and test_dogfood requires us to carry every key the scaffold ships. All four
+  # hold today's behaviour — claude/opus/high, what `reviewer` already resolved to —
+  # so this sprint's own close is unchanged by the card that enables the choice.
+  # WHERE VARIETY WOULD PAY IS `finder` (card 053's constraint-3 argument: three blind
+  # finders on ONE model are three samples of one model's blind spots), and that is
+  # Paul's call at the retro, not a lead's under release pressure — his Sprint-5
+  # pairing is codex authors / claude reviews, and flipping finders to codex inverts
+  # it for the stage that feeds every other one.
+  finder: claude/opus/high
+  verifier: claude/opus/high
+  fixer: claude/opus/high
+  closer: claude/opus/high
 
 tests:
   fast: pytest -q -n auto -m "not slow"     # pre-commit

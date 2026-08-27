@@ -389,19 +389,26 @@ def write_reviewer_diff(report: Path, reviewed_head: str, noun: str) -> str:
 
 
 def run(
-    prompt: str, cwd: Path, dry_run: bool = False, name: str = "", card: str = ""
+    prompt: str, cwd: Path, dry_run: bool = False, name: str = "", card: str = "", role: str = ""
 ) -> tuple[str, str]:
-    """Launch a reviewer; `name` doubles as the role key, so the two charters are
-    the two roles. Returns (result_text, error) — never raises on a reviewer that
-    crashes, prints prose, or is missing from PATH.
-
-    Function-local imports: spawn -> close -> review would close a cycle.
-    """
+    """Launch a configured reviewer, returning (result text, error).
+    Function-local imports avoid spawn -> close -> review cycling at import time."""
     from close import config_flat
-    from spawn import agent_argv, missing_harness, resolve_codex_sandbox, resolve_role, run_agent
+    from spawn import (
+        agent_argv,
+        card_role,
+        config_role,
+        missing_harness,
+        resolve_codex_sandbox,
+        resolve_role,
+        run_agent,
+    )
 
     name = name or "story-reviewer"
-    role = name if name == "plan-reviewer" else "reviewer"
+    stage_role = role
+    role = role or (name if name == "plan-reviewer" else "reviewer")
+    if stage_role and not card_role(card, role) and config_role(role, "\0") == "\0":
+        role = "reviewer"
     harness, model, effort = resolve_role(role, card)
     sandbox, problem = resolve_codex_sandbox(harness, config_flat("codex_sandbox"))
     if problem:
@@ -413,11 +420,12 @@ def run(
         return "", ""
     if missing := missing_harness(harness):
         return "", missing
-    log_id = ((re.search(r"#### (story-\d+)", card) or [None, name])[1] + "-review").replace(
+    log_card = "" if stage_role else card
+    log_id = ((re.search(r"#### (story-\d+)", log_card) or [None, name])[1] + "-review").replace(
         " ", "-"
     )
     try:
-        proc = run_agent(argv, cwd, prompt, role, harness, log_id)
+        proc = run_agent(argv, cwd, prompt, "reviewer" if stage_role else role, harness, log_id)
     except OSError as e:  # claude absent from PATH
         return "", f"could not launch the reviewer: {e}"
     except subprocess.TimeoutExpired as e:

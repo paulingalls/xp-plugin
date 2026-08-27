@@ -21,6 +21,10 @@ roles:               # harness/model[/effort]; the lead overrides per story in p
   executor: claude/sonnet/medium
   reviewer: claude/opus
   plan-reviewer: claude/opus   # scripts/plan_review.py; a teammate runs it itself
+  finder: claude/opus
+  verifier: claude/opus
+  fixer: claude/opus
+  closer: claude/opus
 
 tests:
   fast: EDIT-ME      # pre-commit: seconds (e.g. `pytest -q -m "not slow"` or `bun test --changed`)
