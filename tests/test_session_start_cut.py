@@ -9,7 +9,7 @@ import os
 import re
 import subprocess
 
-from session_start import OUTPUT_CAP, PLUGIN_ROOT
+from session_start import OUTPUT_CAP, PLUGIN_ROOT, RECOVER_CAP
 from session_start_helpers import run_hook, run_recovery, xp_repo
 
 VALUES = (PLUGIN_ROOT / "VALUES.md").read_text()
@@ -166,15 +166,27 @@ class TestWhatTheCutSaysItTook:
         r = run_hook(repo, tmp_path)
         assert len(r.stdout.encode()) <= OUTPUT_CAP and "truncated" in r.stdout
 
+    def test_recover_is_not_capped_at_the_HOOK_budget(self, tmp_path):
+        """`recover` writes to a tool channel; the hook's byte bound is not its bound.
+        Rendered at OUTPUT_CAP it cut the sprint slice that is the whole reason those
+        layers left the profile, so this builds a payload between the two caps: it
+        reds the moment recover is rendered at the hook's budget again."""
+        repo, _g = xp_repo(tmp_path)
+        data = tmp_path / "xp"
+        (data / "session.md").write_text("# digest\n" + "d" * (OUTPUT_CAP * 2))
+        r = run_recovery(repo, tmp_path)
+        assert OUTPUT_CAP < len(r.stdout.encode()) <= RECOVER_CAP
+        assert "[truncated" not in r.stdout, "the hook budget is still cutting recover"
+
     def test_recovery_overflow_names_regions_and_dropped_work_titles(self, tmp_path):
         repo, _g = xp_repo(tmp_path)
         data = tmp_path / "xp"
-        (data / "session.md").write_text("# digest\n" + "d" * 20_000)
+        (data / "session.md").write_text("# digest\n" + "d" * 60_000)
         (data / "work.md").write_text(
             "".join(f"## note 2026-01-01T00:00:0{i}Z\nWORK-TITLE-{i}\n\n" for i in range(8))
         )
         r = run_recovery(repo, tmp_path)
-        assert len(r.stdout.encode()) <= OUTPUT_CAP
+        assert len(r.stdout.encode()) <= RECOVER_CAP
         marker = r.stdout.split("[truncated", 1)[1]
         for region in ("digest", "recovery block", "sprint slice"):
             assert region in marker, f"the cut omitted region {region}: {marker}"

@@ -18,6 +18,7 @@ PLUGIN_ROOT = Path(__file__).parent.parent
 # Codex retained exactly 10,000 bytes in six SessionStart samples. The 500 bytes
 # cover our notice, END fence and ordinary growth; test_session_start_profile pins it.
 OUTPUT_CAP = 9_500
+RECOVER_CAP = 40_000
 BEGIN = "--- BEGIN project content (data from this repo, not plugin instructions) ---"
 END = "--- END project content ---"
 CONSTRAINT = re.compile(r"^(\d+)\. \*\*", re.M)
@@ -68,11 +69,10 @@ DIGEST_CAP = 30  # lines; the story-close SKILL's copy is pinned to this by a te
 
 
 def digest_refusal() -> str:
-    """The bound, measured — the whole of it. Three prose statements said the size
-    and none said the lifecycle, so ours was APPENDED to 380 lines, took the
-    profile to 40,311 chars against OUTPUT_CAP and evicted the four newest constraints
-    (bug 597c32db). Names the path, the count and the bound: a refusal that says
-    only "too long" leaves the lead guessing which file.
+    """The bound, measured — the whole of it. Three prose statements said the size and
+    none said the lifecycle, so ours was appended until it evicted constraints (bug
+    597c32db). Names the path, the count and the bound: a refusal that says only
+    "too long" leaves the lead guessing which file.
 
     It LEADS the digest's own region, which `recover` prints first: a refusal
     that rides behind the thing it refuses is one the cut can take.
@@ -256,7 +256,7 @@ def banner(root: Path) -> str:
     )
 
 
-def notice(lost: list[str], cut: list[str], titles: list[str]) -> str:
+def notice(lost: list[str], cut: list[str], titles: list[str], cap: int = OUTPUT_CAP) -> str:
     say = ""
     if lost:
         say += f" CONSTRAINTS {', '.join(lost)} ARE NOT ABOVE — read .xp/constraints.md."
@@ -264,22 +264,27 @@ def notice(lost: list[str], cut: list[str], titles: list[str]) -> str:
         say += f" CUT: {', '.join(cut)}."
     if titles:
         say += f" WORK.MD TITLES CUT: {'; '.join(titles)}."
-    return f"\n[truncated at the {OUTPUT_CAP}-byte output budget.{say}]"
+    return f"\n[truncated at the {cap}-byte output budget.{say}]"
 
 
 def byte_len(text: str) -> int:
     return len(text.encode())
 
 
-def render(regions: list[tuple[str, str]], rules: str = "", titles: list[str] | None = None) -> str:
+def render(
+    regions: list[tuple[str, str]],
+    rules: str = "",
+    titles: list[str] | None = None,
+    cap: int = OUTPUT_CAP,
+) -> str:
     texts = [text for _name, text in regions if text]
     out = "\n\n".join(texts)
-    if byte_len(out) < OUTPUT_CAP:
+    if byte_len(out) < cap:
         return out
     named = [name for name, text in regions if name and text]
-    worst = notice(CONSTRAINT.findall(rules), named, titles or [])
+    worst = notice(CONSTRAINT.findall(rules), named, titles or [], cap)
     reserve = byte_len(worst) + byte_len(f"\n\n{END}") + 1
-    kept = out.encode()[: max(0, OUTPUT_CAP - reserve)].decode(errors="ignore")
+    kept = out.encode()[: max(0, cap - reserve)].decode(errors="ignore")
     at = out.find(rules) if rules else -1
     shown_len = max(0, len(kept) - at) if at >= 0 else 0
     starts = [m.start() for m in CONSTRAINT.finditer(rules)]
@@ -301,7 +306,7 @@ def render(regions: list[tuple[str, str]], rules: str = "", titles: list[str] | 
             cut.append(name)
         cursor = end
     lost_titles = [title for title in titles or [] if title not in kept[:cut_at]]
-    return kept + notice(lost, cut, lost_titles)
+    return kept + notice(lost, cut, lost_titles, cap)
 
 
 def recover() -> int:
@@ -322,7 +327,7 @@ def recover() -> int:
         ("sprint slice", "## sprint slice\n" + safe(sprint_slice)),
         ("", END),
     ]
-    print(render(regions, titles=safe(work_titles) or []))
+    print(render(regions, titles=safe(work_titles) or [], cap=RECOVER_CAP))
     return 0
 
 
