@@ -93,14 +93,18 @@ class TestVerifyGate:
         assert not sentinel.exists(), "land substituted the refused Verify"
 
     def test_verify_keeps_both_commands_in_an_and_chain(self, tmp_path):
+        """A chain through a MOVE, not two touches: reading the same line as one
+        ARGV — the change most likely to retire chaining — still creates both
+        names, because touch takes many operands, so `touch a && touch b` greens
+        against exactly the regression this test exists to catch. Only two
+        commands run in order leave the source gone and the target there."""
         first, second = tmp_path / "first", tmp_path / "second"
-        repo, env, _g = make_repo(tmp_path, verify=f"touch {first} && touch {second}")
+        repo, env, _g = make_repo(tmp_path, verify=f"touch {first} && mv {first} {second}")
         assert close(repo, env, "review").returncode == 0
-        assert first.exists() and second.exists()
-        first.unlink()
+        assert second.exists() and not first.exists()
         second.unlink()
         assert close(repo, env, "land").returncode == 0
-        assert first.exists() and second.exists()
+        assert second.exists() and not first.exists()
 
 
 class TestIncompletePlanReviewReachesTheLead:

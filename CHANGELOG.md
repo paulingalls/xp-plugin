@@ -16,8 +16,10 @@ Free patch. Both defects are consumer-facing and v0.10.0 shipped the first one.
   a ceiling the project never chose and treating it as "no cap" would disable, on
   upgrade, the only enforcement that constraints still reach the lead.
 - A `Verify:` line carrying backticks or `$(...)` is refused before ready, review and
-  land instead of reaching `/bin/sh` as command substitution (GitHub #14). Accepted
-  lines keep the shell grammar every card relies on, `&&` chains included.
+  land instead of reaching `/bin/sh` as command substitution. Accepted lines keep the
+  shell grammar every card relies on, `&&` chains included. This is the substitution
+  half of GitHub #14 only: that report's `&&`-chain symptoms are still undiagnosed and
+  the issue stays open.
 
 ## v0.10.0 — the profile fits the transport, and the sprint branch is per clone
 

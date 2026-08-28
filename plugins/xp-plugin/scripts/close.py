@@ -215,7 +215,10 @@ def _preflight(story_id: str, action: str, free: bool = False) -> tuple[str, str
         command = verify_commands(card)
         if command and (refusal := verify_refusal(story_id, card)):
             return "", "", refusal
-        try:  # 3e2ad94b: an annotated Verify line reached /bin/sh at LAND, post-review
+        # /bin/sh RUNS the line, so it owns the grammar and this split only pre-checks
+        # quote balance (3e2ad94b: an annotated Verify died on /bin/sh at LAND) — never
+        # read it as the argv the command is executed as, because it is not.
+        try:
             shlex.split(command)
         except ValueError as e:
             return "", "", f"refused: {story_id}'s Verify: line is not runnable ({e})"
