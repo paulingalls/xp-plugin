@@ -215,9 +215,8 @@ def make_repo(
     )
     plan = tmp_path / "data" / "plan.md"
     plan.parent.mkdir(parents=True, exist_ok=True)
-    # [planned] first, then MINTED: land re-checks the credential before it
-    # shell-executes the card's Verify: line, so a fixture that types the bracket
-    # walks past the one gate binding that line to the reviewed text.
+    # [planned] first, then MINTED: a typed bracket walks past the one gate binding
+    # the card's Verify commands to the reviewed text.
     landing = status == "in-progress"
     plan.write_text(CARD.format(status="planned" if landing else status, verify=verify))
     if full:

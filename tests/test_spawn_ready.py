@@ -7,6 +7,7 @@ import re
 import subprocess
 import sys
 
+import pytest
 from spawn_helpers import SPAWN, make_repo, spawn, stub_claude
 
 
@@ -55,6 +56,37 @@ class TestReadyCredential:
         assert r.returncode != 0, r.stdout
         assert "Verify:" in r.stderr and "same line" in r.stderr.lower(), r.stderr
         assert not self.marker(tmp_path).exists(), "a refused mint must write nothing"
+
+    @pytest.mark.parametrize(
+        ("verify", "reason"),
+        [
+            ("printf injected > {sentinel}", "shell syntax"),
+            ("printf $HOME", "shell syntax"),
+            ("printf x | true", "shell syntax"),
+            ("true & wait", "shell syntax"),
+            ("cat <(printf x)", "shell syntax"),
+            ("printf `whoami`", "shell syntax"),
+            ("printf $(whoami)", "shell syntax"),
+            ("true # an old template comment", "shell syntax"),
+            ("true 'unterminated", "not runnable"),
+            ("none — prose", "not runnable"),
+        ],
+    )
+    def test_ready_refuses_non_argv_verify_before_minting(self, tmp_path, verify, reason):
+        repo, env, _g = make_repo(tmp_path, status="planned")
+        sentinel = tmp_path / "shell-ran"
+        if "> {sentinel}" in verify:
+            shell_line = verify.format(sentinel=sentinel)
+            subprocess.run(["/bin/sh", "-c", shell_line], check=True)
+            assert sentinel.read_text() == "injected"
+            sentinel.unlink()
+        self.edit_card(tmp_path, "Verify: true", "Verify: " + verify.format(sentinel=sentinel))
+
+        r = spawn(repo, env, "ready", "story-042")
+
+        assert r.returncode == 2 and "story-042" in r.stderr and reason in r.stderr
+        assert not sentinel.exists() and not self.marker(tmp_path).exists()
+        assert "[planned]" in (tmp_path / "data" / "plan.md").read_text()
 
     def test_an_ac_edited_after_the_mint_refuses_and_names_the_drift(self, tmp_path):
         repo, env, _g = make_repo(tmp_path, status="planned")

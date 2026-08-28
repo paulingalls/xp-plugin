@@ -63,9 +63,12 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool, free_slug: str = "")
         rerun = f"Put the heading back to [planned] and run `close.py free {free_slug} review`."
         if drift := ready.drift(story_id, card, rerun if free else ""):
             return close.fail(drift)
-        if refusal := close.verify_refusal(story_id, card):
-            return close.fail(refusal)
-    verify = close.verify_commands(card) if card else ""
+        try:
+            verify = close.verify_commands(story_id, card)[1]
+        except ValueError as e:
+            return close.fail(str(e))
+    else:
+        verify = []
     tier_key = "full" if free else "story"
     tier = work.config_block_value("tests", tier_key)
     branch = close.git("rev-parse", "--abbrev-ref", "HEAD").stdout.strip()

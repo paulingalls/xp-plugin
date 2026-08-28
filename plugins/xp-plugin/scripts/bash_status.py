@@ -35,7 +35,7 @@ def in_progress_stories() -> list[tuple[str, str]]:
         if ln.startswith("#### ") and "[in-progress]" in ln:
             story_id = ln.removeprefix("#### ").split(" ", 1)[0]
             card, _ = story_card(plan, story_id)
-            if v := verify_commands(card):
+            if v := verify_commands(story_id, card, False)[0]:
                 stories.append((story_id, v))
     return stories
 

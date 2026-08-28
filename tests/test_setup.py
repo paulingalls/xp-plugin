@@ -9,7 +9,7 @@ from pathlib import Path
 
 SCRIPTS = Path(__file__).parent.parent / "plugins" / "xp-plugin" / "scripts"
 sys.path.insert(0, str(SCRIPTS))
-from close import config_flat, story_card, verify_commands  # noqa: E402
+from close import config_flat, story_card  # noqa: E402
 from work import config_block_value  # noqa: E402
 
 SHIPPED_TEMPLATES = Path(__file__).parent.parent / "plugins" / "xp-plugin" / "templates"
@@ -89,7 +89,7 @@ class TestScaffold:
         # SEEDED [planned], not [ready]: a scaffolded project's first card must not
         # be spawnable before its plan review. Both sprint-003 misses were forgetting,
         # and a state nothing defaults to cannot catch forgetting.
-        assert status == "planned" and verify_commands(card)
+        assert status == "planned" and "Verify: EDIT-ME" in card
 
     def test_an_existing_state_root_plan_refuses_and_leaves_no_half_made_xp(self, tmp_path):
         """F10: the check must sit with the OTHER preflight, before .xp/.mkdir().
