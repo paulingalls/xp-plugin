@@ -4,6 +4,28 @@ Release notes started at v0.6.0; earlier entries are summarized from their
 tag and merge messages. Full detail lives in the merge history and the
 per-sprint review reports.
 
+## v0.10.0 — the profile fits the transport, and the sprint branch is per clone
+
+Sprint 9. Five stories, two of them scheduled mid-sprint: one to unblock the close,
+one on a bug that surfaced trying to run two sprints at once.
+
+- A confirming sprint round is one story-shaped reviewer over the delta that can FIX
+  inside its own round, not a scoped fanout that could only find. `named_paths` is
+  deleted; round 1 keeps its four stages.
+- The Sprint-8 Codex-lead walk is written down (`docs/AUDIT.md` §10), read from the
+  recorded session rather than re-driven. It found that Codex truncates SessionStart
+  hook output at 10,000 BYTES — head 4,916 + tail 5,084, identical across six samples
+  — with no notice of its own and the middle removed.
+- The lead profile is measured and capped in BYTES and now delivers every constraint.
+  The digest, recovery block and sprint slice left the profile; `session_start.py
+  recover` prints them on a tool channel with its own budget, and PROCESS.md's head
+  names it. `constraints_chars_cap` is enforced by the scaffolded git wall.
+- Each sprint-review stage resolves its own role (`finder`, `verifier`, `fixer`,
+  `closer`), falling back to `reviewer` so a config predating the keys still runs.
+- The sprint branch is recorded per clone in the state root, not in tracked config, so
+  two clones can run two sprints; a stale tracked key refuses instead of retargeting
+  a merge to trunk.
+
 ## v0.9.0 — completed work is kept, and the pipeline can close itself
 
 Sprint 8. Four deliberately disjoint stories opened Milestone 4 by preserving work

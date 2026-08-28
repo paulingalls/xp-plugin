@@ -9,10 +9,11 @@ description: >-
 `close.py sprint <id>` runs the mechanical steps. Two of them are yours and a
 script cannot absorb them (judgment belongs only where an LLM is present).
 
-0. **Open the sprint first** (once, before its stories): `git switch -c sprint-00N`
-   and set `sprint_branch: sprint-00N` in `.xp/config.yml`. Step 5 retires the key,
-   so every sprint needs this again.
-1. **`close.py sprint <id> start`** — appends only; re-running it is a no-op.
+0. **Open the sprint first** (once, before its stories): `git switch -c sprint-00N`,
+   then `close.py sprint <id> start`. It records and prints this clone's branch;
+   unfinished output says close checks wait.
+1. **Re-run `close.py sprint <id> start` at close** — the same recorded branch is
+   a no-op; now it runs the batch and emits the close material.
    A red falsifier ABORTS the close and is re-filed as a bug (PROCESS.md carries
    the polarity contract).
 2. **Note triage, then the retro — YOURS, and they come FIRST.**
@@ -29,7 +30,7 @@ script cannot absorb them (judgment belongs only where an LLM is present).
    command; what reaches you is what it could not fix. Fix that, then re-run.
    Read the reviewer's diff before you land: running land is how you accept it.
 4. **`close.py sprint <id> land`** opens the release PR. Not releasable? Don't run
-   it — the branch carries, the key stays.
-5. **`close.py sprint <id> post-merge`**, AFTER the PR merges — it tags and
-   retires the `sprint_branch` key step 0 sets. Your release artifacts are yours;
+   it — the branch carries.
+5. **`close.py sprint <id> post-merge`**, AFTER the PR merges — it tags. Your
+   release artifacts are yours;
    cut them at step 2, before review, because later code motion invalidates it.

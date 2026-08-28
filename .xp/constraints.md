@@ -8,7 +8,9 @@ adding over the cap requires retiring one (the plan reviewer enforces).
 2. **Fault-inject every guard.** A check that cannot red against its target defect is
    vacuous and worse than no check — it certifies. This applies to the plugin's own
    gates, tests, and filed falsifiers. (The predecessor's audit: 7 vacuous guards
-   shipped by one agent in one session, zero found by reading.)
+   shipped by one agent in one session, zero found by reading.) The inverse also breaks a
+   gate: a wall-clock bound measures the machine, so a timeout is a HANG GUARD —
+   generous, or assert the event.
 3. **Independent adversarial pressure, not bookkeeping.** A mechanism must be able to
    tell us something we didn't already believe, or it doesn't ship.
 4. **Stdlib only.** No external Python packages, ever. Each dependency is a failure
@@ -25,10 +27,9 @@ adding over the cap requires retiring one (the plan reviewer enforces).
    worth writing). Large files eat agent context on every read; over-cap means
    extract, not scroll.
 9. **Comments exist only for what neither a test nor a name can carry** — the why,
-   an external constraint, a rejected design. Restates the code → delete. Narrates
-   history → delete (git holds it). Checkable claim → convert to a test, where it
-   rots loudly. (xp-agents reached 33% prose-in-code with no counter-pressure;
-   the rubric is necessary-but-sufficient, same as all prose.)
+   an external constraint, a rejected design; PROCESS.md carries the rubric and the
+   lead receives it every session. Prose in code is budgeted like any other prose
+   because a comment is the one artifact no test checks, so it rots silently.
 10. **Markers are always scoped** (story/plan/session) — a project-global mutable
    marker is a design error (measured: marker bleed between parallel stories).
 11. **A falsifier must CONSTRUCT the condition it claims** — never observe ambient

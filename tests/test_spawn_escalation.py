@@ -94,6 +94,14 @@ def records(env):
     return [ln for ln in out.stdout.splitlines() if ln.strip()]
 
 
+# A HANG GUARD, NOT A DEADLINE: nothing here asserts how FAST a teammate files, so
+# this bound exists only so a wedged subprocess fails instead of hanging the suite.
+# At 10s it measured the machine rather than the code — twice under `-n auto` with
+# ~900 siblings it red a land and then a sprint close, green in isolation in 1.04s
+# (note a389de42). Generous costs nothing when the record arrives; tight costs a gate.
+LAUNCH_POLLS = 6_000  # x 10ms
+
+
 class TestDeliberateStop:
     def test_a_dead_teammate_with_a_clean_commit_is_not_reported_as_finished(self, tmp_path):
         repo, env, _g = make_repo(tmp_path)
@@ -211,7 +219,7 @@ class TestDeliberateStop:
             stderr=subprocess.PIPE,
             text=True,
         )
-        for _ in range(1000):
+        for _ in range(LAUNCH_POLLS):
             if rec.exists():
                 break
             time.sleep(0.01)
@@ -236,7 +244,7 @@ class TestDeliberateStop:
             stderr=subprocess.PIPE,
             text=True,
         )
-        for _ in range(1000):
+        for _ in range(LAUNCH_POLLS):
             if rec.exists() and len(records(env)) == 1:
                 break
             time.sleep(0.01)

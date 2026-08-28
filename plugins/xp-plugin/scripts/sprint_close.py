@@ -1,10 +1,5 @@
 #!/usr/bin/env python3
-"""Sprint close: the falsifier batch, the triage emission, and the release.
-
-`start` is read-and-emit — it runs checks and prints what the human must judge,
-and mutates nothing but appends. `land` opens the release PR. `post-merge` cuts
-the bump and the tag on the sha that actually shipped, and retires the key.
-"""
+"""Sprint opening and close: branch state, checks, review, release."""
 
 import json
 import re
@@ -17,7 +12,7 @@ sys.path.insert(0, str(Path(__file__).parent / "close"))
 import overlap
 import stages
 from close import default_branch, fail, git, story_card
-from env import refuse_direct_invocation
+from env import record_sprint_branch, refuse_direct_invocation
 from release import cmd_post_merge as release_post_merge
 from release import next_version, refuse_unbumpable
 from review import reviewer_strays
@@ -137,7 +132,7 @@ def build_sprint_bundle(
 
 
 def cmd_review(sprint_id: str, dry_run: bool) -> int:
-    """Run the full first review or a delta-scoped confirming round."""
+    """Run the full first review or one story-shaped confirming review."""
     import review
     from bookkeep import render_sprint_prior
 
@@ -154,45 +149,33 @@ def cmd_review(sprint_id: str, dry_run: bool) -> int:
         )
     if not (cards := sprint_cards(plan.read_text(), sprint_id)):
         return fail(f"refused: no `### Sprint {sprint_id}` section in {plan}")
-    found, err = stages.angles()
-    if err:
-        return fail(err)
-    cap, err = stages.batch_cap()
-    if err:
-        return fail(err)
-    charters, err = stages.charters()
-    if err:
-        return fail(err)
-
     marker = sprint_marker(sprint_id)
     state = json.loads(marker.read_text()) if marker.exists() else {}
     rounds = state.get("rounds", [])
     round_n = len(rounds) + 1
     complete_n = max((n for n, r in enumerate(rounds, 1) if not r.get("incomplete")), default=0)
+    found, cap, charters, altitude = [], 0, {}, ""
+    if complete_n:
+        altitude, err = stages.altitude()
+        if err:
+            return fail(err)
+    else:
+        found, err = stages.angles()
+        if err:
+            return fail(err)
+        cap, err = stages.batch_cap()
+        if err:
+            return fail(err)
+        charters, err = stages.charters()
+        if err:
+            return fail(err)
+        stages.check_roles(cards)
     head = git("rev-parse", "HEAD").stdout.strip()
     base = git("merge-base", f"refs/heads/{trunk}", "HEAD").stdout.strip()
     digest_before = review.marker_digest(marker)
-    scoped, unnamed, diff_base, scope = found, [], "", []
-    if complete_n:
-        diff_base = state["shown_sha"]
-        changed = git("diff", "--name-only", "--no-renames", f"{diff_base}..").stdout.splitlines()
-        scoped, unnamed = [], set(changed)
-        for slug, prose in found:
-            path = review.sprint_report_path(sprint_id, f"find-{slug}", complete_n)
-            named, err = review.named_paths(path, changed)
-            if err:
-                return fail(err)
-            if named:
-                scoped.append((slug, prose))
-                why = "" if path.exists() else f"round-{complete_n} report absent; "
-                print(f"re-run {slug}: {why}" + ", ".join(sorted(named)))
-            else:
-                print(f"skip {slug}: no round-{complete_n} finding named a changed path")
-            unnamed -= named
-        # in the RECORD, not only stdout: two counts cannot tell a scoped round from a sweep
-        scope = [f"scoped: read {diff_base[:8]}..HEAD, {len(scoped)}/{len(found)} finders re-run"]
-        if unnamed:
-            print("closer covers unnamed delta paths: " + ", ".join(sorted(unnamed)))
+    diff_base = state["shown_sha"] if complete_n else ""
+    if diff_base and (missing := _shown_diff(sprint_id, diff_base, head)[1]):
+        return fail(missing)
 
     ran, reports = [], []
 
@@ -205,7 +188,7 @@ def cmd_review(sprint_id: str, dry_run: bool) -> int:
             print(f"round {round_n} recorded incomplete after {', '.join(ran)}")
         return fail(err)
 
-    def leg(stage: str, key: str, extra: list) -> tuple[dict, str]:
+    def leg(stage: str, key: str, extra: list, charter: str = "") -> tuple[dict, str]:
         path = review.sprint_report_path(sprint_id, key, round_n)
         if not dry_run:  # a preview must not delete the findings of a refused round
             path.unlink(missing_ok=True)
@@ -213,10 +196,13 @@ def cmd_review(sprint_id: str, dry_run: bool) -> int:
         if stage == "fixer":
             extra = [("Your patch", f"PATCH_PATH: {review.patch_path(path)}"), *extra]
         bundle = build_sprint_bundle(
-            sprint_id, cards, base, path, charters[stage], extra, diff_base
+            sprint_id, cards, base, path, charter or charters[stage], extra, diff_base
         )
         stage_head = git("rev-parse", "HEAD").stdout.strip()
-        result, err = review.run(bundle, Path.cwd(), dry_run, name=f"sprint {key}")
+        role = stage if not complete_n else ""
+        result, err = review.run(
+            bundle, Path.cwd(), dry_run, f"sprint {key}", cards if role else "", role
+        )
         if dry_run:  # an EMPTY report, not a shapeless one: a preview walks
             empty = {k: [] for k in review.REPORT_KEYS}
             return empty, review.abort_text(head, err) if err else ""
@@ -234,18 +220,24 @@ def cmd_review(sprint_id: str, dry_run: bool) -> int:
         return report, review.abort_text(stage_head, report_err) if report_err else ""
 
     prior = [("Findings from earlier rounds", render_sprint_prior(rounds if complete_n else []))]
-    candidates = []
-    for slug, prose in scoped:
-        report, err = leg("finder", f"find-{slug}", [("Your angle", prose), *prior])
+    if complete_n:
+        fixed, err = leg("fixer", "fix", [("Sprint altitude", altitude), *prior], review.charter())
         if err:
             return stop(err)
-        candidates += report["blocking"]
-    if dry_run:
-        print("(then: the closer)" if complete_n else "(then: verifiers, the fixer, the closer)")
-        return 0
-
-    fixed = {"fixed": [], "blocking": [], "noted": []}
-    if not complete_n:
+        if dry_run:
+            return 0
+        closing = {k: [] for k in review.REPORT_KEYS}
+    else:
+        fixed = {k: [] for k in review.REPORT_KEYS}
+        candidates = []
+        for slug, prose in found:
+            report, err = leg("finder", f"find-{slug}", [("Your angle", prose), *prior])
+            if err:
+                return stop(err)
+            candidates += report["blocking"]
+        if dry_run:
+            print("(then: verifiers, the fixer, the closer)")
+            return 0
         survivors = []
         for n, batch in enumerate(stages.batches(candidates, cap), 1):
             judged = [("The candidates you are judging", "\n".join(f"- {c}" for c in batch))]
@@ -259,16 +251,9 @@ def cmd_review(sprint_id: str, dry_run: bool) -> int:
             fixed, err = leg("fixer", "fix", told)
             if err:
                 return stop(err)
-        closing_extra = [("What the fixer reported", json.dumps(fixed))]
-    else:
-        closing_extra = [
-            ("Confirmation candidates", "\n".join(f"- {c}" for c in candidates) or "none"),
-            ("Delta paths only you cover", "\n".join(sorted(unnamed)) or "none"),
-            *prior,
-        ]
-    closing, err = leg("closer", "close", closing_extra)
-    if err:
-        return stop(err)
+        closing, err = leg("closer", "close", [("What the fixer reported", json.dumps(fixed))])
+        if err:
+            return stop(err)
     shown_sha = git("rev-parse", "HEAD").stdout.strip()
 
     # No diff covers the plan now. Cross-lane BY CONSTRUCTION here, safe only
@@ -277,11 +262,8 @@ def cmd_review(sprint_id: str, dry_run: bool) -> int:
     if sprint_cards(plan.read_text(), sprint_id) != cards:
         changed = f"sprint {sprint_id}'s cards changed during the review"
         return stop(review.abort_text(shown_sha, changed))
-    round_ = {
-        "fixed": fixed["fixed"],
-        "blocking": fixed["blocking"] + closing["blocking"],
-        "noted": fixed["noted"] + scope,
-    }
+    round_ = {k: fixed[k] for k in review.REPORT_KEYS}
+    round_["blocking"] += closing["blocking"]
     fix_report = review.sprint_report_path(sprint_id, "fix", round_n)
     if err := review.write_reviewer_diff(fix_report, head, f"sprint {sprint_id}"):
         # That write rolls the applied fix back when it fails, and `ran` is what the
@@ -307,13 +289,16 @@ def cmd_start(sprint_id: str) -> int:
     members = sprint_stories(plan.read_text(), sprint_id)
     if not members:
         return fail(f"refused: no `### Sprint {sprint_id}` section in {plan}")
+    branch = git("branch", "--show-current").stdout.strip()
+    if not branch or branch == default_branch():
+        return fail("refused: open the sprint from its freshly cut branch, not trunk")
+    opening = record_sprint_branch(branch)
+    print(f"sprint branch: {branch}")
     if unfinished := [m for m in members if not m.endswith(("[done]", "[retired]"))]:
-        return fail(
-            "refused: sprint "
-            + sprint_id
-            + " has unfinished stories:\n  "
-            + "\n  ".join(unfinished)
-        )
+        if not opening:
+            return fail(f"refused: sprint {sprint_id} is unfinished:\n  " + "\n  ".join(unfinished))
+        print(f"recorded; {len(unfinished)} stories unfinished — close checks wait")
+        return 0
 
     root = data_root()
     batch = corpus(root)
@@ -370,6 +355,18 @@ def _is_retro_prose(path: str) -> bool:
     return path.startswith(".xp/") and path not in overlap.GATE_FILES
 
 
+def _shown_diff(sprint_id: str, shown: str, head: str) -> tuple[subprocess.CompletedProcess, str]:
+    moved = git("diff", "--name-only", shown, head, check=False)
+    if moved.returncode:
+        action = (
+            f"move {sprint_marker(sprint_id)} aside — it holds this sprint's recorded"
+            f" rounds and moving it forfeits them — then run `close.py sprint"
+            f" {sprint_id} review`"
+        )
+        return moved, f"refused: the review recorded {shown[:8]}, which no longer exists — {action}"
+    return moved, ""
+
+
 def _coverage_refusal(sprint_id: str, head: str) -> str:
     """ "" if a recorded round covers HEAD, else why not. Bug c9b48a66.
 
@@ -398,9 +395,9 @@ def _coverage_refusal(sprint_id: str, head: str) -> str:
         return ""
     # check=False: a rebased, reset or gc'd sha must refuse, never raise
     # CalledProcessError from inside the gate that guards the release
-    moved = git("diff", "--name-only", shown, head, check=False)
-    if moved.returncode != 0:
-        return f"refused: the review recorded {shown[:8]}, which no longer exists — {rerun}"
+    moved, missing = _shown_diff(sprint_id, shown, head)
+    if missing:
+        return missing
     # BEFORE the authorship branch: an empty range reads there as "no strays"
     if git("merge-base", "--is-ancestor", shown, head, check=False).returncode:
         return (

@@ -76,13 +76,24 @@ class TestLandAndPostMerge:
         assert "v0.3.0" in tags, tags
         assert g("rev-list", "-n1", "v0.3.0").stdout.strip() == merged
 
-    def test_post_merge_retires_the_sprint_branch_key(self, tmp_path):
+    def test_post_merge_clears_the_recorded_sprint_branch(self, tmp_path):
         repo, env, g = make_repo(tmp_path)
         g("tag", "v0.2.1")
         g("checkout", "-q", "main")
         g("merge", "-q", "--no-ff", "sprint-002", "-m", "release")
+        config = (repo / ".xp" / "config.yml").read_text()
         assert sprint(repo, env, "post-merge").returncode == 0
-        assert "sprint_branch:" not in (repo / ".xp" / "config.yml").read_text()
+        assert not (tmp_path / "data" / "sprint_branch").exists()
+        assert (repo / ".xp" / "config.yml").read_text() == config
+
+    def test_post_merge_without_a_recorded_branch_refuses(self, tmp_path):
+        repo, env, g = make_repo(tmp_path)
+        (tmp_path / "data" / "sprint_branch").unlink()
+        g("tag", "v0.2.1")
+        g("checkout", "-q", "main")
+        g("merge", "-q", "--no-ff", "sprint-002", "-m", "release")
+        r = sprint(repo, env, "post-merge")
+        assert r.returncode == 2 and "no sprint branch recorded" in r.stderr
 
     def test_post_merge_on_the_unmerged_sprint_branch_refuses(self, tmp_path):
         """The leg exists to cut the tag on the sha that SHIPPED. Nothing made
@@ -96,7 +107,7 @@ class TestLandAndPostMerge:
         r = sprint(repo, env, "post-merge")
         assert r.returncode == 2, "tagged a release on an unmerged branch"
         assert "v0.3.0" not in g("tag").stdout.split()
-        assert "sprint_branch:" in (repo / ".xp" / "config.yml").read_text()
+        assert (tmp_path / "data" / "sprint_branch").read_text().strip() == "sprint-002"
 
     def test_post_merge_on_trunk_without_the_merge_refuses(self, tmp_path):
         """On trunk, but the sprint branch never landed: the tag would name a
@@ -140,7 +151,7 @@ class TestLandAndPostMerge:
         g("merge", "-q", "--no-ff", "sprint-002", "-m", "release")
         r = sprint(repo, env, "post-merge")
         assert r.returncode == 2 and "v0.3.0" in r.stderr
-        assert "sprint_branch:" in (repo / ".xp" / "config.yml").read_text()
+        assert (tmp_path / "data" / "sprint_branch").read_text().strip() == "sprint-002"
 
 
 class TestLandRunsTheTierItReleasesOn:

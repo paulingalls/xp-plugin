@@ -1,6 +1,5 @@
 # xp project config — EDIT the tiers for your stack, then re-run your first commit
 release: sprint      # sprint = stories integrate on a sprint branch, sprint close PRs trunk
-# sprint_branch: sprint-001   # create it; otherwise stories land on the default branch
 # codex_sandbox: danger-full-access  # Codex only: workspace-write | danger-full-access
 # trunk: develop            # UNCOMMENT where releases do NOT land on git's default
 #                           # branch (a repo integrating on develop, main behind).
@@ -9,6 +8,7 @@ release: sprint      # sprint = stories integrate on a sprint branch, sprint clo
 sprint_cap: 6        # max stories per sprint
 debt_budget: 0.2     # max share of sprint stories that are scheduled debt
 constraints_cap: 15  # constraints.md line-items; add-over-cap requires a retire
+constraints_chars_cap: 4500  # hard character ceiling; retire or shorten a rule
 # version_files: path/to/manifest.json  # comma-separated JSON manifests
 # teardown_timeout: 60  # seconds before close kills worktree teardown
 # review:
@@ -21,6 +21,10 @@ roles:               # harness/model[/effort]; the lead overrides per story in p
   executor: claude/sonnet/medium
   reviewer: claude/opus
   plan-reviewer: claude/opus   # scripts/plan_review.py; a teammate runs it itself
+  finder: claude/opus     # the four round-1 stages of `close.py sprint <id> review`;
+  verifier: claude/opus   # each falls back to `reviewer` when its key is absent, so
+  fixer: claude/opus      # an older config keeps working untouched
+  closer: claude/opus
 
 tests:
   fast: EDIT-ME      # pre-commit: seconds (e.g. `pytest -q -m "not slow"` or `bun test --changed`)

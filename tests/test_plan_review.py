@@ -20,8 +20,6 @@ CHARTER_MARK = "Checks, in order of payoff"
 CLEAN = '{"status":"clean","reasons":[]}'
 
 CONFIG = """release: sprint
-sprint_branch: main
-
 roles:
   executor: claude/opus
   reviewer: codex/gpt-5.6-terra/high

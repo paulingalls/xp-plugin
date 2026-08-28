@@ -147,14 +147,13 @@ class TestFreePostMerge:
         assert result.returncode == 2 and BRANCH in result.stderr
         assert "v0.2.1" not in g("tag").stdout.split()
 
-    def test_a_free_release_leaves_the_sprint_branch_key_alone(self, tmp_path):
-        """A patch release lands MID-SPRINT. Retiring `sprint_branch:` here would
-        redirect every later story close from the sprint branch to main, silently:
-        integration_target falls back to trunk the moment the key is gone."""
-        repo, env, g = self.reviewed(tmp_path, extra="sprint_branch: sprint-001\n")
+    def test_a_free_release_leaves_the_recorded_sprint_branch_alone(self, tmp_path):
+        repo, env, g = self.reviewed(tmp_path)
+        path = Path(env["XP_DATA"]) / "sprint_branch"
+        path.write_text("sprint-001\n")
         self.merge_pr(g)
         assert free(repo, env, "fix-typo", "post-merge").returncode == 0
-        assert "sprint_branch: sprint-001" in (repo / ".xp" / "config.yml").read_text()
+        assert path.read_text().strip() == "sprint-001"
 
     @pytest.mark.parametrize("manifest,rc", [("0.2.0", 2), ("0.2.1", 0)], ids=["behind", "level"])
     def test_the_manifest_must_name_the_tag_being_cut(self, tmp_path, manifest, rc):

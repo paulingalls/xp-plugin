@@ -30,18 +30,15 @@ from spawn_helpers import stub_codex
 
 
 class TestSprintIntegration:
-    """story-005: release: sprint — stories integrate on the sprint branch."""
-
-    def sprint_repo(self, tmp_path):
+    def sprint_repo(self, tmp_path, branch="sprint-001"):
         repo, env, g = make_repo(tmp_path)
-        (repo / ".xp" / "config.yml").write_text(
-            "release: sprint\nsprint_branch: sprint-001\n" + CONFIG
-        )
+        (repo / ".xp" / "config.yml").write_text("release: sprint\n" + CONFIG)
+        (tmp_path / "data" / "sprint_branch").write_text(branch + "\n")
         g("checkout", "-q", "main")
         g("add", "-A")
         g("commit", "-qm", "sprint config")
         # real mid-sprint shape: sprint-001 has DIVERGED from main before the story
-        g("checkout", "-qb", "sprint-001")
+        g("checkout", "-qb", branch)
         (repo / "sprint-work.txt").write_text("earlier story landed here\n")
         g("add", "-A")
         g("commit", "-qm", "earlier sprint story")
@@ -53,16 +50,16 @@ class TestSprintIntegration:
         g("commit", "-qm", "story work")
         return repo, env, g
 
-    def test_close_merges_into_sprint_branch_not_main(self, tmp_path):
-        repo, env, g = self.sprint_repo(tmp_path)
-        r = close(repo, env, "review")
-        # bundle diff is story-only: already-landed sprint work must not appear (B1)
-        assert "earlier story landed here" not in r.stdout
-        r = close(repo, env, "land")
-        assert r.returncode == 0, r.stderr
-        assert "Review round 1" in g("log", "sprint-001", "-1", "--format=%B").stdout
-        assert "[done]" in (tmp_path / "data" / "plan.md").read_text()
-        assert "Review round" not in g("log", "main", "--format=%B").stdout  # main untouched
+    def test_two_clone_roots_merge_only_into_their_recorded_sprint_branch(self, tmp_path):
+        for name, branch in (("one", "sprint-one"), ("two", "sprint-two")):
+            root = tmp_path / name
+            root.mkdir()
+            repo, env, g = self.sprint_repo(root, branch)
+            assert "earlier story landed here" not in close(repo, env, "review").stdout
+            landed = close(repo, env, "land")
+            assert landed.returncode == 0, landed.stderr
+            assert "Review round 1" in g("log", branch, "-1", "--format=%B").stdout
+            assert "Review round" not in g("log", "main", "--format=%B").stdout
 
     def test_sprint_release_without_branch_key_falls_back_to_default(self, tmp_path):
         repo, env, g = make_repo(tmp_path)
@@ -148,15 +145,19 @@ class TestSprintIntegration:
         r = close(repo, env, "review")
         assert r.returncode == 2
 
-    def test_configured_sprint_branch_missing_refused(self, tmp_path):
+    def test_stale_tracked_sprint_branch_refuses_with_removal(self, tmp_path):
         repo, env, g = make_repo(tmp_path)
-        (repo / ".xp" / "config.yml").write_text(
-            "release: sprint\nsprint_branch: sprint-001\n" + CONFIG
-        )
+        (repo / ".xp" / "config.yml").write_text("release: sprint\nsprint_branch:\n" + CONFIG)
         g("add", "-A")
         g("commit", "-qm", "config names a branch that does not exist")
         r = close(repo, env, "review")
-        assert r.returncode == 2 and "sprint-001" in r.stderr  # fail-safe, never fall back to main
+        assert r.returncode == 2 and "remove" in r.stderr and "sprint_branch" in r.stderr
+
+    def test_recorded_sprint_branch_missing_refused(self, tmp_path):
+        repo, env, _g = self.sprint_repo(tmp_path)
+        (tmp_path / "data" / "sprint_branch").write_text("sprint-missing\n")
+        r = close(repo, env, "review")
+        assert r.returncode == 2 and "sprint-missing" in r.stderr
 
     def test_tag_named_like_sprint_branch_cannot_freeze_the_guard(self, tmp_path):
         repo, env, g = self.sprint_repo(tmp_path)

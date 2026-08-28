@@ -1,7 +1,7 @@
 """`trunk:` — the branch releases are tagged on, when it is not git's default.
 
 A git-flow consumer (field report, Legacy) integrates on develop with main
-hundreds of commits behind. Story close targeted sprint_branch correctly, then
+hundreds of commits behind. Story close targeted the recorded sprint branch, then
 sprint close insisted on tagging default_branch() — a branch containing none of
 the sprint — and there was no way to say otherwise.
 
@@ -51,7 +51,7 @@ def test_a_configured_trunk_is_what_the_release_targets(tmp_path):
 
 
 def test_a_configured_trunk_that_does_not_exist_refuses_rather_than_falling_back(tmp_path):
-    """sprint_branch's discipline, for the same reason: silently releasing to
+    """The sprint branch's discipline, for the same reason: silently releasing to
     main because the configured branch is missing is what this key prevents."""
     repo, env, _g = make_repo(tmp_path, config=GITFLOW)  # develop never created
     r = resolved(repo, env)

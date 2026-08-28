@@ -7,6 +7,7 @@ the wrong side to be wrong on for a bound.
 
 import json
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -24,10 +25,16 @@ out = subprocess.run(
     env=dict(os.environ) | {"XP_ROLE": "lead"},
 ).stdout
 assert "teammate session" not in out, "the role gate ate the profile; this asserts nothing"
-assert len(out) <= OUTPUT_CAP, (
-    f"the lead profile assembles {len(out)} chars against OUTPUT_CAP {OUTPUT_CAP}"
-    " — the cut lands inside constraints.md and the tail rules never reach the lead"
+# advisory hook: a raise exits 0 with stdout empty, and every check below then
+# reads as satisfied or dies on `.index`. Measured in Sprint 8 (AUDIT.md §10).
+assert out.strip(), "the hook printed no profile at all — its traceback is on stderr"
+assert len(out.encode()) <= OUTPUT_CAP, (
+    f"the lead profile assembles {len(out.encode())} bytes against OUTPUT_CAP {OUTPUT_CAP}"
 )
+constraints = (repo / ".xp" / "constraints.md").read_text()
+headings = re.findall(r"^(\d+\. \*\*[^\n]+)", constraints, re.M)
+missing = [heading for heading in headings if heading not in out]
+assert not missing, f"SessionStart omitted constraints: {missing}"
 values = (repo / "plugins/xp-plugin/VALUES.md").read_text()[:60]
 process = (repo / "plugins/xp-plugin/PROCESS.md").read_text()[:60]
 assert out.index(values) < out.index(process) < out.index("BEGIN project content"), (

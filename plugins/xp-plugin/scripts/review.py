@@ -119,23 +119,6 @@ def read_report(path: Path) -> tuple[dict, str]:
     return {k: cap_items([str(i) for i in data[k]]) for k in REPORT_KEYS}, ""
 
 
-def _spellings(p: str) -> set[str]:
-    """Every name that means p: the path, and each segment suffix that is not a
-    file of its own — `src.py` beside `nested/src.py` means the one at the root."""
-    cuts = p.split("/")
-    return {p, *(s for i in range(1, len(cuts)) if not Path(s := "/".join(cuts[i:])).exists())}
-
-
-def named_paths(path: Path, candidates: list[str]) -> tuple[set[str], str]:
-    if not path.exists():
-        return set(candidates), ""
-    data, error = _report_data(path)
-    findings = "\n".join(str(item) for item in data.get("blocking", []))
-    # `close.py:249` is how a finding names a file; a trailing `.` is the sentence's
-    named = set(re.findall(r"(?<![\w./-])[\w-]+(?:[./][\w-]+)+", findings))
-    return {p for p in candidates if named & _spellings(p)}, error
-
-
 def launch_marker(story_id: str) -> Path:
     """What the review was launched AGAINST, on disk before it starts, because a
     killed reviewer returns nothing on its way out and salvage needs it all."""
@@ -405,21 +388,33 @@ def write_reviewer_diff(report: Path, reviewed_head: str, noun: str) -> str:
     return ""
 
 
-def run(
-    prompt: str, cwd: Path, dry_run: bool = False, name: str = "", card: str = ""
-) -> tuple[str, str]:
-    """Launch a reviewer; `name` doubles as the role key, so the two charters are
-    the two roles. Returns (result_text, error) — never raises on a reviewer that
-    crashes, prints prose, or is missing from PATH.
+def stage_role(stage: str, card: str) -> tuple[str, str, str]:
+    """(harness, model, effort) for one round-1 review stage. A config predating
+    these keys falls back to `reviewer` AND DROPS THE CARD: `Reviewer:` is the
+    story leg's per-story twin of `Executor:`, and one card carrying it must not
+    retarget a whole sprint's review. Resolving REFUSES on a bad spec, which is
+    why cmd_review walks every stage before the first launch."""
+    from spawn import card_role, config_role, resolve_role
 
-    Function-local imports: spawn -> close -> review would close a cycle.
-    """
+    if card_role(card, stage) or config_role(stage, "\0") != "\0":
+        return resolve_role(stage, card)
+    return resolve_role("reviewer", "")
+
+
+def run(
+    prompt: str, cwd: Path, dry_run: bool = False, name: str = "", card: str = "", role: str = ""
+) -> tuple[str, str]:
+    """Launch a configured reviewer, returning (result text, error).
+    Function-local imports avoid spawn -> close -> review cycling at import time."""
     from close import config_flat
     from spawn import agent_argv, missing_harness, resolve_codex_sandbox, resolve_role, run_agent
 
     name = name or "story-reviewer"
-    role = name if name == "plan-reviewer" else "reviewer"
-    harness, model, effort = resolve_role(role, card)
+    if stage := role:
+        harness, model, effort = stage_role(stage, card)
+    else:
+        role = name if name == "plan-reviewer" else "reviewer"
+        harness, model, effort = resolve_role(role, card)
     sandbox, problem = resolve_codex_sandbox(harness, config_flat("codex_sandbox"))
     if problem:
         return "", problem
@@ -430,11 +425,12 @@ def run(
         return "", ""
     if missing := missing_harness(harness):
         return "", missing
-    log_id = ((re.search(r"#### (story-\d+)", card) or [None, name])[1] + "-review").replace(
+    log_card = "" if stage else card
+    log_id = ((re.search(r"#### (story-\d+)", log_card) or [None, name])[1] + "-review").replace(
         " ", "-"
     )
     try:
-        proc = run_agent(argv, cwd, prompt, role, harness, log_id)
+        proc = run_agent(argv, cwd, prompt, "reviewer" if stage else role, harness, log_id)
     except OSError as e:  # claude absent from PATH
         return "", f"could not launch the reviewer: {e}"
     except subprocess.TimeoutExpired as e:

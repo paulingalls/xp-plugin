@@ -9,7 +9,7 @@ import sys
 from pathlib import Path
 
 from session_start_close_cases import LastCloseCases
-from session_start_helpers import HOOK, HOOKS_JSON, run_hook, run_hook_as, xp_repo
+from session_start_helpers import HOOK, HOOKS_JSON, run_hook, run_hook_as, run_recovery, xp_repo
 
 
 def run_banner_script(output, cwd, data_dir, script="work.py env"):
@@ -80,9 +80,9 @@ class TestInjection:
         repo, _g = xp_repo(tmp_path)
         r = run_hook(repo, tmp_path)
         assert r.returncode == 0, r.stderr
-        for sentinel in ("XP Values", "CONSTRAINT-SENTINEL", "story-042", "main"):
+        for sentinel in ("XP Values", "CONSTRAINT-SENTINEL"):
             assert sentinel in r.stdout, f"missing {sentinel}"
-        assert "is a hook" not in r.stdout  # the tty nudge never reaches the harness channel
+        assert all(item not in r.stdout for item in ("story-042", "branch: main", "is a hook"))
 
     def test_banner_names_version_and_gates(self, tmp_path):
         repo, _g = xp_repo(tmp_path)
@@ -158,12 +158,12 @@ class TestReviewFindings:
             env={"PATH": "/usr/bin:/bin", "XP_DATA": str(tmp_path / "xp")},
             check=True,
         )
-        r = run_hook(repo, tmp_path)
+        r = run_recovery(repo, tmp_path)
         assert "OPEN-ITEM-CLAIM" in r.stdout  # content, not just timestamps
 
     def test_branch_line_pinned(self, tmp_path):
         repo, _g = xp_repo(tmp_path)
-        r = run_hook(repo, tmp_path)
+        r = run_recovery(repo, tmp_path)
         assert "branch: main" in r.stdout
 
     def test_scope_refusals_leave_no_marker(self, tmp_path):
@@ -193,9 +193,10 @@ class TestSprintCloseFindings:
         plan = tmp_path / "xp" / "plan.md"
         cards = "#### story-001 — ancient   [done]\n#### story-002 — folded   [retired]\n"
         plan.write_text(plan.read_text() + cards)
-        r = run_hook(repo, tmp_path)
-        assert "story-042" in r.stdout and "ancient" not in r.stdout
-        assert "folded" not in r.stdout
+        r = run_recovery(repo, tmp_path)
+        recovery = r.stdout.split("## recovery block", 1)[1].split("## sprint slice", 1)[0]
+        assert "story-042" in recovery and "ancient" not in recovery
+        assert "folded" not in recovery
 
 
 class TestRoleProfile:
@@ -263,7 +264,7 @@ class TestConstraintsSurviveTheBudget:
     def test_the_recovery_block_still_reports_the_entries_it_truncates(self, tmp_path):
         """Bounded, not dropped — the lead must still see that work was filed."""
         repo = self.repo_with_long_work_entries(tmp_path)
-        out = run_hook(repo, tmp_path).stdout
+        out = run_recovery(repo, tmp_path).stdout
         assert out.count("## note 2026-08-20T0") == 3
 
     def test_the_lead_sees_more_than_three_records(self, tmp_path):
@@ -271,7 +272,7 @@ class TestConstraintsSurviveTheBudget:
         decision survives a session, and at ~1 record per 20 minutes of sprint the
         lead re-learned each morning that almost nothing had ever been recorded."""
         repo = self.repo_with_long_work_entries(tmp_path, entries=10, body=50)
-        out = run_hook(repo, tmp_path).stdout
+        out = run_recovery(repo, tmp_path).stdout
         assert out.count("## note 2026-08-20T0") + out.count("## note 2026-08-20T1") == 8
 
     def test_an_injected_record_is_cut_to_a_title(self, tmp_path):
@@ -279,7 +280,7 @@ class TestConstraintsSurviveTheBudget:
         knows to go read it, and reading it is `work.py list` away. A 240-char
         excerpt is neither the whole record nor a name."""
         repo = self.repo_with_long_work_entries(tmp_path, entries=1, body=500)
-        out = run_hook(repo, tmp_path).stdout
+        out = run_recovery(repo, tmp_path).stdout
         # "xxx", not "x": the banner line starts `xp-plugin 0.6.5` and matched a
         # single-x prefix, so this assertion passed against a 267-char body.
         shown = [ln for ln in out.splitlines() if ln.strip().startswith("xxx")]
@@ -483,7 +484,7 @@ class TestTheStoryStampIsProvenanceNotContent:
         return repo
 
     def test_a_stamped_record_shows_its_claim_and_not_its_stamp(self, tmp_path):
-        out = run_hook(self.repo(tmp_path), tmp_path).stdout
+        out = run_recovery(self.repo(tmp_path), tmp_path).stdout
         block = out.split("recent work.md entries:")[1]
         assert "THE-CLAIM-THE-LEAD-NEEDS" in block, block
         assert "Story: story-042" not in block, block
@@ -495,5 +496,5 @@ class TestTheStoryStampIsProvenanceNotContent:
         repo = self.repo(tmp_path)
         work = tmp_path / "xp" / "work.md"
         work.write_bytes(work.read_bytes() + b"## note 2026-08-20T02:00:00Z\ncaf\xe9\n\n")
-        out = run_hook(repo, tmp_path).stdout
+        out = run_recovery(repo, tmp_path).stdout
         assert "recent work.md entries:" in out and "THE-CLAIM-THE-LEAD-NEEDS" in out, out

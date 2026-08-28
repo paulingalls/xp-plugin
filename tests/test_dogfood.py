@@ -7,8 +7,16 @@ These pin the SHAPE the code parses, never the content: a project's tiers,
 constraints and stories are legitimately its own.
 """
 
+import os
+import shutil
+import subprocess
 from pathlib import Path
 from unittest.mock import patch
+
+# LC_ALL=C ALONE PROVES NOTHING: PEP 538 silently coerces a C locale to C.UTF-8, so
+# the character count came out right for a reason the wall did not own. Disabling
+# coercion and UTF-8 mode is what makes the locale test able to red.
+C_LOCALE = {"LC_ALL": "C", "LANG": "C", "PYTHONCOERCECLOCALE": "0", "PYTHONUTF8": "0"}
 
 
 class TestDogfoodMatchesTheScaffold:
@@ -49,9 +57,118 @@ class TestDogfoodMatchesTheScaffold:
         )
         assert not missing, f"we never exercise the shipped keys: {missing}"
 
+    def cap_value(self, path):
+        line = next(
+            ln for ln in path.read_text().splitlines() if ln.startswith("constraints_chars_cap:")
+        )
+        return int(line.split(":", 1)[1].split("#", 1)[0])
+
+    def test_constraints_character_cap_is_the_same_in_both_configs(self):
+        ours = self.cap_value(self.OURS / "config.yml")
+        assert ours == self.cap_value(self.SHIPPED / "config.yml") == 4_500
+
+    def run_constraints_wall(
+        self, tmp_path, cap, size, character="x", tier="fast", path=None, write=True
+    ):
+        xp = tmp_path / ".xp"
+        xp.mkdir(exist_ok=True)
+        setting = "" if cap is None else f"constraints_chars_cap: {cap}\n"
+        tiers = "".join(f"  {name}: true\n" for name in ("fast", "story", "full"))
+        (xp / "config.yml").write_text(f"{setting}tests:\n{tiers}")
+        if write:
+            (xp / "constraints.md").write_text(character * size, encoding="utf-8")
+        hook_lib = self.SHIPPED / "hook-lib.sh"
+        env = dict(os.environ) | {"HOOK_LIB": str(hook_lib)} | C_LOCALE
+        if path is not None:
+            env["PATH"] = path
+        return subprocess.run(
+            ["sh", "-c", f'. "$HOOK_LIB"; run_tier {tier}'],
+            cwd=tmp_path,
+            env=env,
+            capture_output=True,
+            text=True,
+        )
+
+    def test_the_wall_refuses_when_the_MEASUREMENT_itself_fails(self, tmp_path):
+        """A gate that reports green having run nothing is worse than no gate —
+        hook-lib.sh opens with that rule and constraints_size used to break it: an
+        empty `count` makes `[ "" -gt N ]` error, which reads as under-cap. One
+        injection per guard: no python3 on PATH, and a constraints.md the reader
+        cannot open. The first matches the STANZA'S OWN SENTENCE rather than the
+        bare word `python3`, because the shell prints `python3: command not found`
+        itself — measured: with the `command -v` guard deleted the looser match
+        still saw `python3` and `nothing measured`, so it pinned nothing.
+        """
+        bin_dir = tmp_path / "bin"
+        bin_dir.mkdir()
+        for tool in ("sed", "head", "sh", "cat"):
+            found = shutil.which(tool)
+            if found:
+                (bin_dir / tool).symlink_to(found)
+        blind = self.run_constraints_wall(tmp_path, 4_500, 10, path=str(bin_dir))
+        assert blind.returncode != 0, blind.stdout
+        assert "python3 not installed" in blind.stderr, blind.stderr
+        assert "nothing measured" in blind.stderr and "then retry" in blind.stderr, blind.stderr
+
+        (tmp_path / ".xp" / "constraints.md").chmod(0o000)
+        try:
+            unreadable = self.run_constraints_wall(tmp_path, 4_500, 10, write=False)
+        finally:
+            (tmp_path / ".xp" / "constraints.md").chmod(0o644)
+        assert unreadable.returncode != 0, unreadable.stdout
+        assert "could not measure" in unreadable.stderr, unreadable.stderr
+        assert "then retry" in unreadable.stderr, unreadable.stderr
+
+    def test_scaffolded_wall_refuses_constraints_over_the_character_cap(self, tmp_path):
+        red = self.run_constraints_wall(tmp_path, 4_500, 4_501)
+        assert red.returncode != 0
+        for claim in ("constraints.md", "4501", "4500", "retire", "shorten"):
+            assert claim in red.stderr, red.stderr
+
+        green = self.run_constraints_wall(tmp_path, 4_502, 4_501)
+        assert green.returncode == 0, green.stderr
+
+    def test_constraints_wall_distinguishes_missing_and_invalid_caps(self, tmp_path):
+        missing = self.run_constraints_wall(tmp_path, None, 1)
+        assert missing.returncode != 0 and "missing" in missing.stderr
+        invalid = self.run_constraints_wall(tmp_path, "many", 1)
+        assert invalid.returncode != 0 and "invalid" in invalid.stderr
+
+    def test_constraints_wall_counts_unicode_characters_independent_of_locale(self, tmp_path):
+        red = self.run_constraints_wall(tmp_path, 4_500, 4_501, "\N{GRINNING FACE}")
+        assert red.returncode != 0 and "4501 characters" in red.stderr, red.stderr
+        under = self.run_constraints_wall(tmp_path, 4_500, 4_499, "\N{GRINNING FACE}")
+        assert under.returncode == 0, under.stderr  # 17,996 BYTES, and still under cap
+
+    def test_every_tier_re_checks_the_character_cap(self, tmp_path):
+        """pre-commit is not the only gate that runs it: a scaffolded pre-push runs
+        `run_tier story`, and `git merge` fires no pre-commit at all. Wired to fast
+        alone, story and full both exited 0 over a cap they were meant to hold."""
+        for tier in ("fast", "story", "full"):
+            red = self.run_constraints_wall(tmp_path, 4_500, 4_501, tier=tier)
+            assert red.returncode != 0, f"run_tier {tier} passed an over-cap constraints.md"
+            assert "4500" in red.stderr, red.stderr
+
+    def test_ascii_constraints_at_the_full_cap_fit_the_byte_profile(self, tmp_path):
+        from session_start import OUTPUT_CAP
+        from session_start_helpers import run_hook
+
+        repo = tmp_path / "repo"
+        xp = repo / ".xp"
+        xp.mkdir(parents=True)
+        (xp / "config.yml").write_text((self.SHIPPED / "config.yml").read_text())
+        cap = self.cap_value(self.SHIPPED / "config.yml")  # never a literal: the
+        seed = (self.SHIPPED / "constraints.md").read_text()  # cap is what moves
+        constraints = seed + "x" * (cap - len(seed))
+        assert len(constraints) == cap
+        (xp / "constraints.md").write_text(constraints)
+        subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
+        out = run_hook(repo, tmp_path).stdout
+        assert len(out.encode()) <= OUTPUT_CAP
+        assert constraints in out, "the full ASCII character ceiling does not reach the lead"
+
     def test_the_scaffold_ships_no_key_we_invented_without_seeding(self):
-        """The reverse drift: a key we rely on that a scaffolded repo never gets.
-        sprint_branch is seeded COMMENTED, so it counts as shipped."""
+        """The reverse drift: a key we rely on that a scaffolded repo never gets."""
         shipped = self.SHIPPED / "config.yml"
         text = shipped.read_text()
         extra = {k for k in self.keys(self.OURS / "config.yml") - self.keys(shipped)}

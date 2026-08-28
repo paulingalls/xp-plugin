@@ -41,18 +41,11 @@ def main(data: dict) -> int:
         return 0
     session = str(data.get("session_id", "unknown"))[:64]
     if red := red_verify_in_play(session):
-        print(
-            json.dumps(
-                {
-                    "decision": "block",
-                    "reason": (
-                        f"story Verify last ran red: {red} — fix it, or mark its story"
-                        " done/deferred in the plan if the red is accepted"
-                    ),
-                }
-            )
+        reason = (
+            f"story Verify last ran red: {red} — fix it, or mark its story"
+            " done/deferred in the plan if the red is accepted"
         )
-        return 0
+        print(json.dumps({"decision": "block", "reason": reason}))
     return 0
 
 
