@@ -5,6 +5,7 @@ import shlex
 import subprocess
 import sys
 
+import pytest
 from close import verify_commands
 from close_helpers import CLOSE, free, free_repo, make_repo
 from close_helpers import close as story
@@ -139,3 +140,11 @@ def test_the_shared_grammar_still_teaches_the_two_ways_it_is_got_wrong():
             assert wanted in str(e), str(e)
         else:
             raise AssertionError(f"{line!r} was accepted")
+
+
+def test_cd_is_refused_even_when_the_platform_puts_it_on_path(monkeypatch):
+    import lifecycle
+
+    monkeypatch.setattr(lifecycle.shutil, "which", lambda command: f"/usr/bin/{command}")
+    with pytest.raises(ValueError, match="no shell, no `cd`"):
+        verify_commands("story-042", "Verify: cd sub && pytest -q")

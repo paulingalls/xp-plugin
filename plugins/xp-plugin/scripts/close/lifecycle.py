@@ -1,5 +1,3 @@
-"""Shell-free project lifecycle commands and the shared Verify grammar."""
-
 import shlex
 import shutil
 import subprocess
@@ -33,7 +31,9 @@ def _commands(raw: str, owner: str, runnable: bool, chained: bool) -> list[list[
         raise ValueError(f"refused: {owner} is not runnable ({e})") from e
     if any(not argv for argv in commands):
         raise ValueError(f"refused: {owner} has an empty command around &&")
-    if runnable and (missing := next((a[0] for a in commands if not shutil.which(a[0])), "")):
+    if runnable and (
+        missing := next((a[0] for a in commands if a[0] == "cd" or not shutil.which(a[0])), "")
+    ):
         raise ValueError(
             f"refused: {owner} command {missing!r} is not runnable on PATH — no shell, no `cd`"
         )
