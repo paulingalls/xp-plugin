@@ -22,7 +22,7 @@ def _is_authored(text: str, story_id: str) -> bool:
 READ_THEM = " Read them (`work.py list`), then fix the card or take the work over."
 
 
-def _state(root: Path, story_id: str) -> dict | None:
+def handoff_state(root: Path, story_id: str) -> dict | None:
     """The marker as a dict, {} for ABSENT, None for present-but-unreadable.
 
     Absent and unreadable are different problems with different fixes, and this is the
@@ -41,6 +41,14 @@ def _state(root: Path, story_id: str) -> dict | None:
     return state if isinstance(state, dict) else None
 
 
+def _write(root: Path, story_id: str, state: dict) -> None:
+    path = marker_path(root, story_id)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temp = path.with_suffix(".json.part")
+    temp.write_text(json.dumps(state))
+    temp.replace(path)
+
+
 def record_handoff(
     root: Path, story_id: str, before: set[str], why: str, rc: int
 ) -> tuple[int, str]:
@@ -49,14 +57,11 @@ def record_handoff(
     # Records ACCUMULATE, because the draft and the findings do: one filed at stop
     # 1 is in `before` at stop 2 and can never be `during` again, so overwriting
     # hands stop 3 only stop 2's words. story-028 stopped five times.
-    kept = [eid for eid in (_state(root, story_id) or {}).get("records", []) if eid not in authored]
-    path = marker_path(root, story_id)
-    path.parent.mkdir(parents=True, exist_ok=True)
+    previous = handoff_state(root, story_id) or {}
+    kept = [eid for eid in previous.get("records", []) if eid not in authored]
     # Written whole and MOVED into place: a stop interrupted mid-write is how the
     # unreadable marker above gets made, and this is its one producer.
-    temp = path.with_suffix(".json.part")
-    temp.write_text(json.dumps({"why": why, "records": kept + authored}))
-    temp.replace(path)
+    _write(root, story_id, {"state": "STOPPED", "why": why, "records": kept + authored})
     recovery = f"\nWhat the handback guard saw: {why}"
     if rc:
         if authored:
@@ -74,6 +79,12 @@ def record_handoff(
     )
 
 
+def finish_handoff(root: Path, story_id: str) -> None:
+    state = handoff_state(root, story_id) or {}
+    state.update(state="FINISHED", why="the teammate finished cleanly")
+    _write(root, story_id, state)
+
+
 def _findings(root: Path, story_id: str) -> list[Path]:
     plans = root / "plans"
     first = plans / f"{story_id}.md"
@@ -85,19 +96,22 @@ def _findings(root: Path, story_id: str) -> list[Path]:
 
 
 def inheritance(root: Path, story_id: str) -> str:
-    state = _state(root, story_id)
-    if state == {}:
+    marker = marker_path(root, story_id)
+    state = handoff_state(root, story_id)
+    if state == {} and not marker.exists():
         return ""  # no marker: a first spawn inherits nothing and says nothing
     if state is None:
+        label = "UNREADABLE"
         why = (
-            f"{marker_path(root, story_id)} is unreadable, so the records the predecessor"
+            f"{marker} is unreadable, so the records the predecessor"
             " filed cannot be listed here — read them with `work.py list`."
             " What survived on disk follows."
         )
         state = {}
     else:
+        label = str(state.get("state", "INVALID"))
         why = str(state.get("why", ""))
-    parts = [("Why the predecessor stopped", why)]
+    parts = [(f"Predecessor handback — {label}", why)]
     draft = draft_path(root, story_id)
     if draft.is_file():
         parts.append(("Predecessor plan draft", draft.read_text()))
