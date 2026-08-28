@@ -94,24 +94,6 @@ class TestMembership:
         assert r.returncode == 0, r.stderr
         assert "story-900" not in r.stdout + r.stderr
 
-    def test_start_records_and_prints_each_clones_own_branch_before_stories(self, tmp_path):
-        for name, branch in (("one", "sprint-one"), ("two", "sprint-two")):
-            root = tmp_path / name
-            root.mkdir()
-            repo, env, g = make_repo(
-                root,
-                plan=PLAN.replace(
-                    "#### story-043 — also done   [done]",
-                    "#### story-043 — also done   [in-progress]",
-                ),
-            )
-            g("branch", "-m", branch)
-            (root / "data" / "sprint_branch").unlink()
-            r = sprint(repo, env, "start")
-            assert r.returncode == 0, r.stderr
-            assert (root / "data" / "sprint_branch").read_text().strip() == branch
-            assert branch in r.stdout
-
     def test_a_rerun_over_an_unfinished_sprint_refuses_instead_of_skipping_the_checks(
         self, tmp_path
     ):

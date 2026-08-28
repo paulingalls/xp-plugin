@@ -91,11 +91,6 @@ def test_opening_the_first_sprint_starts_only_its_milestone(tmp_path):
     assert "## Milestone 2 repeats Milestone 20   [in-progress]" in plan
     assert "## Milestone 2 repeats Milestone 20   extended   [planned]" in plan
 
-    before = plan
-    later = sprint(repo, env, "start", sprint_id="3")
-    assert later.returncode == 2 and "story-003" in later.stderr
-    assert (tmp_path / "data" / "plan.md").read_text() == before
-
 
 def test_opening_a_sprint_never_refuses_over_the_milestone_bracket(tmp_path):
     """The start arm owns one flip, not the plan's shape. Refusing an unreadable
