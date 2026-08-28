@@ -132,7 +132,7 @@ Stated as decisions, not discovered later:
    runs and what the reviewer was shown, with no diff to record it. CLOSED at the
    sprint-4 review, by the credential story-023 shipped after this cost was written:
    `land` re-checks the ready digest and refuses, naming the drift, because the
-   card's `Verify:` line is a gate it SHELL-EXECUTES. What is left is the window
+   card's `Verify:` line is a gate it parses and executes. What is left is the window
    between spawn and that review, where the edited card at least reaches a fresh
    reviewer in its bundle.
 5. **Two residual write hazards, both practice rather than property.** `edit_plan`
@@ -177,7 +177,7 @@ Files: apps/site/src/well-known.ts, apps/site/src/__tests__/well-known.test.ts
 AC:
 - Given buildAasa with a team id, When the AASA doc is built, Then components include {"/": "/invite/*"}
 - Given APPLE_TEAM_ID unset, When buildAasa runs, Then it stays fail-soft
-Verify: bun test apps/site/src/__tests__/well-known.test.ts && cd apps/site && bunx playwright test e2e/well-known.e2e.ts
+Verify: bun test apps/site/src/__tests__/well-known.test.ts && bun test apps/site/e2e/well-known.e2e.ts
 Executor: sonnet/medium (or omit → config default)
 ```
 
@@ -185,7 +185,7 @@ Planning constraints (stated in `config.yml`):
 
 - **Sprint cap** (default ~6 stories) — card review counts consumed capacity; work already shipped in a free patch consumes no slot. Smaller sprints make the test tiers work and stop the doubling; debt budget is a share of the cap.
 - The plan reviewer treats story `Files:` lists as declarations for the cross-story **collision check** (the one cheap structural check that survives from file_domain; its lane-policing does not). Two stories claiming the same file must name the shared contract.
-- The plan reviewer requires the story under review to have runnable `Verify:` commands; every milestone has an executable "Done when".
+- The plan reviewer requires runnable `Verify:` commands on the lead's PATH: one or more argv commands separated by unquoted `&&`, with quoted argv legal and shell expansion, redirection, pipes, backgrounding, and process substitution refused. Ready, review and land use this parser and run each argv sequentially without a shell; every milestone has an executable "Done when".
 
 ## 5b. Memory between sessions
 

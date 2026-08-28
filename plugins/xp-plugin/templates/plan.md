@@ -11,5 +11,5 @@ Context: <what this story owns, and only this story>
 Files: <the files it will touch>
 AC:
 - Given <precondition>, When <action>, Then <observable result>
-Verify: EDIT-ME  # commands that execute the ACs at the surface, ON THIS LINE (a list below parses empty), exit 0 = done
+Verify: EDIT-ME
 Executor: (default)

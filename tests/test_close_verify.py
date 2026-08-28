@@ -59,14 +59,17 @@ class TestVerifyGate:
         assert "no Verify:" in absent.stderr, absent.stderr
         assert "same line" not in absent.stderr.lower(), absent.stderr
 
-    @pytest.mark.parametrize("substitution", ["`touch {path}`", "$(touch {path})"])
-    def test_command_substitution_is_refused_before_review_and_land(self, tmp_path, substitution):
+    @pytest.mark.parametrize(
+        ("verify", "reason"),
+        [("printf injected > {path}", "shell syntax"), ("none — prose", "not runnable")],
+    )
+    def test_the_same_parser_refuses_before_review_and_land(self, tmp_path, verify, reason):
         from work import card_digest
 
         def rewrite_card(root, sentinel):
             plan = root / "data" / "plan.md"
             text = plan.read_text().replace(
-                "Verify: true", f"Verify: {substitution.format(path=sentinel)}"
+                "Verify: true", f"Verify: {verify.format(path=sentinel)}"
             )
             plan.write_text(text)
             card = story_card(text, "story-042")[0]
@@ -74,23 +77,23 @@ class TestVerifyGate:
 
         review_root = tmp_path / "review"
         review_root.mkdir()
-        sentinel = review_root / "substituted"
+        sentinel = review_root / "shell-ran"
         repo, env, _g = make_repo(review_root)
         rewrite_card(review_root, sentinel)
         refused = close(repo, env, "review")
-        assert refused.returncode == 2 and "command substitution" in refused.stderr
-        assert "remove" in refused.stderr.lower() and not sentinel.exists()
+        assert refused.returncode == 2 and reason in refused.stderr
+        assert "story-042" in refused.stderr and not sentinel.exists()
         assert launches(review_root) == [], "spent a reviewer on a refused Verify"
 
         land_root = tmp_path / "land"
         land_root.mkdir()
-        sentinel = land_root / "substituted"
+        sentinel = land_root / "shell-ran"
         repo, env, _g = make_repo(land_root)
         assert close(repo, env, "review").returncode == 0
         rewrite_card(land_root, sentinel)
         refused = close(repo, env, "land")
-        assert refused.returncode == 2 and "command substitution" in refused.stderr
-        assert not sentinel.exists(), "land substituted the refused Verify"
+        assert refused.returncode == 2 and reason in refused.stderr
+        assert not sentinel.exists(), "land executed the refused Verify"
 
     def test_verify_keeps_both_commands_in_an_and_chain(self, tmp_path):
         """A chain through a MOVE, not two touches: reading the same line as one
@@ -98,8 +101,9 @@ class TestVerifyGate:
         names, because touch takes many operands, so `touch a && touch b` greens
         against exactly the regression this test exists to catch. Only two
         commands run in order leave the source gone and the target there."""
-        first, second = tmp_path / "first", tmp_path / "second"
-        repo, env, _g = make_repo(tmp_path, verify=f"touch {first} && mv {first} {second}")
+        first, second = tmp_path / "first path", tmp_path / "second && # path"
+        verify = f"touch '{first}' && mv '{first}' '{second}'"
+        repo, env, _g = make_repo(tmp_path, verify=verify)
         assert close(repo, env, "review").returncode == 0
         assert second.exists() and not first.exists()
         second.unlink()
@@ -167,14 +171,23 @@ class TestTheRoundIsRecordedOnlyIfVerifyRan:
         assert "Verify red" in r.stderr, r.stderr
         assert not marker_file(tmp_path).exists(), "a refused round was recorded anyway"
 
-    def test_a_verify_that_cannot_run_is_not_a_verify_that_failed(self, tmp_path):
-        """AC 2: the lead's next action differs — one is a code fix, the other is
-        a harness or posture problem, and the shell's own 127 is the difference."""
-        repo, env, _g = make_repo(tmp_path, verify="xp-no-such-command-036")
+    def test_the_reviewed_tree_verify_does_not_report_the_tier_unset(self, tmp_path):
+        """The fixture's config.yml SETS tests.story. Routing this leg through the
+        gate runner made it claim otherwise on every round — telling the lead their
+        config is broken, about a tier this leg was never asked to run."""
+        repo, env, _g = make_repo(tmp_path)
         r = close(repo, env, "review")
-        assert r.returncode != 0, r.stdout
-        assert "could not be RUN" in r.stderr, r.stderr
-        assert "Verify red" not in r.stderr, r.stderr
+        assert r.returncode == 0 and "no tests.<tier>" not in r.stderr, r.stderr
+
+    def test_a_verify_that_cannot_run_is_not_a_verify_that_failed(self):
+        """AC 2 of story-036, whose only cover the argv cut deleted: the lead's next
+        action differs — one is a code fix, the other a harness problem. A shell
+        reported that as 127; an argv RAISES, and nothing else walks that arm (the
+        PATH pre-check cannot, since it refuses before anything runs)."""
+        import overlap
+
+        verdict = overlap.run_one("Verify", ["xp-no-such-command-036"])
+        assert "could not be RUN" in verdict and "Verify red" not in verdict, verdict
 
     def test_a_refused_round_says_so_in_the_file_a_reader_opens(self, tmp_path):
         """AC 3: close.py keeps a refused round's report on purpose — its findings
@@ -280,7 +293,10 @@ class TestTheReviewersOwnFixIsUnderTheGateItPasses:
     """
 
     # green on the reviewed tree (`A = 2`), red on the tree the reviewer leaves
-    VERIFY = "! grep -q BROKEN src/thing.py"
+    VERIFY = (
+        'python3 -c "from pathlib import Path; '
+        "raise SystemExit('BROKEN' in Path('src/thing.py').read_text())\""
+    )
     BREAKS_VERIFY = """diff --git a/src/thing.py b/src/thing.py
 --- a/src/thing.py
 +++ b/src/thing.py

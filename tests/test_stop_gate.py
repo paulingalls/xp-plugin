@@ -270,6 +270,18 @@ class TestStoryScopedMarkers:
         names = sorted(p.name for p in (tmp_path / "xp" / "markers").glob("*.test-status"))
         assert names == ["sess-1.story-042.test-status", "sess-1.story-043.test-status"]
 
+    def test_a_sibling_card_the_parser_rejects_still_leaves_the_gate_armed(self, tmp_path):
+        """One parser now reads every Verify line, and it REFUSES by raising. The
+        plan is read whole, so a card this session never touched — the pre-062
+        template put a `#` comment on that line — took every other story's
+        telemetry with it, and the Stop gate then had no red to block on."""
+        mine = "pytest -q tests/test_mine.py"
+        repo = self.two_stories(tmp_path, mine, "pytest -q x.py  # the old template's shape")
+        run_script("bash_status.py", failure_payload(mine), repo, tmp_path)
+        assert [m["story"] for m in markers(tmp_path)] == ["story-042"]
+        r = run_script("stop_gate.py", self_payload(), repo, tmp_path)
+        assert json.loads(r.stdout)["decision"] == "block", r.stdout or r.stderr
+
     def test_distinct_verifies_still_scope_per_story(self, tmp_path):
         repo = self.two_stories(tmp_path, "pytest -q a.py", "bun test x")
         run_script("bash_status.py", failure_payload("pytest -q a.py"), repo, tmp_path)

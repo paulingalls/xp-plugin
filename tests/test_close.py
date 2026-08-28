@@ -1,6 +1,7 @@
 """story-002 + successors: the story-close pipeline's start and review legs.
 Verify: pytest -q tests/test_close.py"""
 
+import shlex
 import subprocess
 import sys
 
@@ -229,13 +230,15 @@ class TestSecondReviewRound:
         reds this and test_a_flip_that_matched_nothing_is_reported_not_swallowed
         — the same window from the other side — and nothing else.
 
-        printf SUBSTITUTES the story id rather than spelling it: the Verify line
+        Python ASSEMBLES the story id rather than spelling it: the Verify line
         is itself a line of the plan, so an assertion on a string the command
         contains verbatim passes whether or not the append ever ran."""
-        sibling = "#### %s — sibling lane   [done]\\nVerify: true\\n"
-        repo, env, _g = make_repo(
-            tmp_path, verify=f"printf '{sibling}' story-043 >> \"$XP_DATA/plan.md\""
+        code = (
+            "import os; from pathlib import Path; "
+            "s='#### story-'+'043 — sibling lane   [done]\\nVerify: true\\n'; "
+            "p=Path(os.environ['XP_DATA'])/'plan.md'; p.write_text(p.read_text()+s)"
         )
+        repo, env, _g = make_repo(tmp_path, verify=f"python3 -c {shlex.quote(code)}")
         close(repo, env, "review")
         r = close(repo, env, "land")
         assert r.returncode == 0, r.stderr
@@ -338,7 +341,8 @@ class TestOverlapNotMotion:
         The trunk file is DISJOINT on purpose: with an overlapping one the collision
         refusal fires first and this test greens with the trial merge deleted.
         """
-        repo, env, g = make_repo(tmp_path, verify="! ls probe.py")
+        code = "from pathlib import Path; raise SystemExit(Path('probe.py').exists())"
+        repo, env, g = make_repo(tmp_path, verify=f"python3 -c {shlex.quote(code)}")
         assert close(repo, env, "review").returncode == 0
         tip = g("rev-parse", "HEAD").stdout.strip()
         self.trunk_lands(repo, g, "probe.py")

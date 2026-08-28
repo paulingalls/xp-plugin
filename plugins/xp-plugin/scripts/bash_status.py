@@ -14,6 +14,7 @@ grep) is not an invocation. One marker per STORY, not per verify string
 shipped a pair — and a verify-keyed marker cannot tell whose status it holds.
 """
 
+import contextlib
 import json
 import re
 import sys
@@ -26,7 +27,6 @@ from work import chdir_repo_root, data_root, plan_path
 
 
 def in_progress_stories() -> list[tuple[str, str]]:
-    """(story_id, verify) for every [in-progress] story that declares a Verify."""
     if not (path := plan_path()).exists():
         return []
     plan = path.read_text(errors="replace")
@@ -35,8 +35,8 @@ def in_progress_stories() -> list[tuple[str, str]]:
         if ln.startswith("#### ") and "[in-progress]" in ln:
             story_id = ln.removeprefix("#### ").split(" ", 1)[0]
             card, _ = story_card(plan, story_id)
-            if v := verify_commands(card):
-                stories.append((story_id, v))
+            with contextlib.suppress(ValueError):  # one bad card must not blind the rest
+                stories.append((story_id, verify_commands(story_id, card, runnable=False)[0]))
     return stories
 
 

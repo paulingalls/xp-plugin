@@ -6,6 +6,7 @@ merge and overlap buys a round: something EXECUTED the merge result is a differe
 property from someone REVIEWED it.
 """
 
+import shlex
 import subprocess
 import sys
 from pathlib import Path
@@ -86,34 +87,36 @@ def collision(ref: str, files: list[str]) -> str:
     )
 
 
-def run_one(label: str, cmd: str, where: str = "") -> str:
-    """One gate command's verdict, red distinguished from unrunnable. The shell's
-    own 127 is the difference between the lead's next action being a code fix and
-    being a harness fix; absent and unreadable are the same nonzero otherwise."""
-    rc = subprocess.run(cmd, shell=True).returncode
+def run_one(label: str, cmd: str | list[str], where: str = "") -> str:
+    shown = cmd if isinstance(cmd, str) else shlex.join(cmd)
+    try:
+        rc = subprocess.run(cmd, shell=isinstance(cmd, str)).returncode
+    except OSError:
+        rc = 127
     if rc == 127:
         return (
-            f"refused: {label} could not be RUN{where}: {cmd}\nNothing was measured"
+            f"refused: {label} could not be RUN{where}: {shown}\nNothing was measured"
             " — it is not on PATH where this ran, which is a harness or sandbox"
             " problem, not a red tree. Fix where it runs"
         )
-    return f"refused: {label} red{where}: {cmd}" if rc else ""
+    return f"refused: {label} red{where}: {shown}" if rc else ""
 
 
-def run_checks(verify: str, tier: str, where: str = "") -> str:
-    if not tier:
+def run_checks(verify: list[list[str]], tier: str | None, where: str = "") -> str:
+    if tier == "":
         # SAYS SO rather than refusing: hook-lib.sh's run_tier refuses an unset
         # tier, and the two legs disagreeing is worth a card (f6c00b18) — but the
         # defect worth fixing now is the SILENCE. A merge gated by Verify alone is
-        # legal; one the lead believes a tier gated is not.
+        # legal; one the lead believes a tier gated is not. None = no tier applies.
         print("no tests.<tier> in .xp/config.yml — Verify alone gates this", file=sys.stderr)
-    for label, cmd in (("Verify", verify), ("test tier", tier)):
-        if cmd and (red := run_one(label, cmd, where)):
-            return red
+    for label, commands in (("Verify", verify), ("test tier", [tier] if tier else [])):
+        for cmd in commands:
+            if red := run_one(label, cmd, where):
+                return red
     return ""
 
 
-def gates(ref: str, verify: str, tier_key: str, pending: bool) -> str:
+def gates(ref: str, verify: list[list[str]], tier_key: str, pending: bool) -> str:
     """Verify and the tier, run on the tree that will EXIST. Merging INTO the story
     branch rather than in the tree holding trunk: same merged content either way,
     and this arm needs no second worktree and strands no foreign tree mid-merge.
