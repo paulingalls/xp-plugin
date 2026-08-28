@@ -456,6 +456,7 @@ class TestSharedLandGuards:
         g("checkout", "-q", BRANCH)
         r = free(repo, env, "fix-typo", "land")
         assert r.returncode == expected, r.stderr
+        assert ("test tier red on the tree merged" in r.stderr) is (expected == 2), r.stderr
         assert bool(gh_calls(tmp_path)) is (expected == 0)
 
     def test_identical_tiers_run_one_gate_and_dry_run_names_it(self, tmp_path):
