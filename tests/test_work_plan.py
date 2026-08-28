@@ -299,7 +299,7 @@ class TestOneFlipRule:
         from work import flip_status
 
         plan = f"#### story-x — [{frm}] is a credential   [{frm}]\n"
-        out = flip_status(plan, "story-x", frm, to)
+        out = flip_status(plan, "#### story-x ", frm, to)
         assert out == f"#### story-x — [{frm}] is a credential   [{to}]\n", out
 
 

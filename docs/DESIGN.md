@@ -20,7 +20,7 @@ XP values (unchanged, already right-sized at 1KB): Communication, Simplicity, Fe
 | Planning decomposition | plan.md: milestones with executable "done" → sprints of stories with executable ACs (§5) |
 | Values as decision rubric | VALUES.md injected at session start |
 | Parallel teammates, right-sized | spawn CLI, harness+model+effort per story (§8) |
-| Executable acceptance | `verify` commands per story/milestone, run at close |
+| Executable acceptance | `Verify:` per story; `Done when:` at explicit milestone completion |
 | Fault-injection norm | One constraint line + reviewer checklist item (the audit's highest value-per-byte) |
 | Lane-keeping consistency | Small enforcement floor that fires every time (§7) |
 
@@ -166,9 +166,9 @@ Concerns as a distinct stored type disappear: review findings are fixed on the s
 `plan.md` carries the two layers that proved themselves (milestone → story), losing the ceremony around them:
 
 ```markdown
-## Milestone 3 — The Invite & Deep-Link Chain   [in-progress]
+## Milestone 3 — The Invite & Deep-Link Chain   [planned]
 Goal: one canonical /invite/<token> that AASA, site, app, and API agree on.
-Done when: `bash scripts/verify-site-deploy.sh` exits 0 (every minted URL 200, in-app paths AASA-covered).
+Done when: bash scripts/verify-site-deploy.sh
 Change zones: apps/site/src/well-known.ts, apps/site/src/story-routes.ts, ...
 
 ### story-001 — AASA advertises /invite/*   [ready]
@@ -185,7 +185,8 @@ Planning constraints (stated in `config.yml`):
 
 - **Sprint cap** (default ~6 stories) — card review counts consumed capacity; work already shipped in a free patch consumes no slot. Smaller sprints make the test tiers work and stop the doubling; debt budget is a share of the cap.
 - The plan reviewer treats story `Files:` lists as declarations for the cross-story **collision check** (the one cheap structural check that survives from file_domain; its lane-policing does not). Two stories claiming the same file must name the shared contract.
-- The plan reviewer requires runnable `Verify:` commands on the lead's PATH: one or more argv commands separated by unquoted `&&`, with quoted argv legal and shell expansion, redirection, pipes, backgrounding, and process substitution refused. Ready, review and land use this parser and run each argv sequentially without a shell; every milestone has an executable "Done when".
+- The plan reviewer requires runnable `Verify:` and `Done when:` commands on the lead's PATH: one or more argv commands separated by unquoted `&&`, with quoted argv legal and shell expansion, redirection, pipes, backgrounding, `cd`, and process substitution refused. The pipeline runs each argv sequentially without a shell.
+- Milestone brackets are pipeline-owned. Opening its first sprint atomically flips `[planned]` → `[in-progress]`. Sprint close only proposes `close.py sprint <id> milestone-done` when every card under every `### Sprint ...` section in that milestone is `[done]` or `[retired]`; unscheduled sections do not count. The lead decides whether another card belongs, then runs that action. It rechecks membership, runs the milestone's one-line `Done when:`, and atomically flips `[in-progress]` → `[done]`; refusal leaves the plan unchanged.
 
 ## 5b. Memory between sessions
 

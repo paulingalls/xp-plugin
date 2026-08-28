@@ -21,7 +21,7 @@ def _commands(raw: str, owner: str, runnable: bool, chained: bool) -> list[list[
             else:
                 raise ValueError(
                     f"refused: {owner} contains shell syntax {char!r} — no shell runs it:"
-                    " quote it and drop any trailing # comment (only Verify chains, on unquoted &&)"
+                    " quote it and drop any trailing # comment (checks chain on unquoted &&)"
                 )
         i += 1
     parts.append(raw[start:])
@@ -40,13 +40,18 @@ def _commands(raw: str, owner: str, runnable: bool, chained: bool) -> list[list[
     return commands
 
 
-def verify_commands(story_id: str, card: str, runnable: bool = True) -> tuple[str, list[list[str]]]:
-    raw = next((ln[7:].strip() for ln in card.splitlines() if ln.startswith("Verify:")), None)
+def declared_commands(
+    owner: str, block: str, runnable: bool = True, label: str = "Verify"
+) -> tuple[str, list[list[str]]]:
+    field = f"{label}:"
+    raw = next(
+        (ln[len(field) :].strip() for ln in block.splitlines() if ln.startswith(field)), None
+    )
     if raw is None:
-        raise ValueError(f"refused: {story_id} has no Verify: line")
+        raise ValueError(f"refused: {owner} has no {field} line")
     if not raw:
-        raise ValueError(f"refused: {story_id}'s Verify: line is empty — put it on the SAME line")
-    return raw, _commands(raw, f"{story_id}'s Verify: line", runnable=runnable, chained=True)
+        raise ValueError(f"refused: {owner}'s {field} line is empty — put it on the SAME line")
+    return raw, _commands(raw, f"{owner}'s {field} line", runnable=runnable, chained=True)
 
 
 def run(command: str, event: str, identity: str) -> str:
