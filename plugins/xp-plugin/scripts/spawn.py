@@ -16,7 +16,7 @@ from bookkeep import bootstrap_command
 from close import config_flat, fail, git, integration_target, story_card
 from env import plugin_version
 from handback import tree_state, unclean_teammate_result
-from handoff import draft_path, finish_handoff, inheritance, report_handoff
+from handoff import draft_path, inheritance, mark_handoff, report_handoff
 from harness import (
     HARNESS_INSTALL,
     agent_argv,
@@ -430,6 +430,7 @@ def cmd_spawn(
     print(f"{branch} at {tree} ({cut})")
     handed_over = tree_state(tree)
     before = {eid for eid, _ in entries(data_root())}
+    mark_handoff(data_root(), story_id)
     rc = run_teammate(argv, tree, prompt, story_id, data_root(), harness)
     # A crashed teammate is the likeliest one to leave work uncommitted.
     err = unclean_teammate_result(tree, handed_over, story_id, resuming)
@@ -449,7 +450,7 @@ def cmd_spawn(
             f" leg, starting with `python3 {plugin_root}/scripts/close.py {scope} review`{where}"
         )
     print(f"{story_id} produced commit {tree_state(tree)[0]} at {tree}. Read it, then {leg}.")
-    finish_handoff(data_root(), story_id)
+    mark_handoff(data_root(), story_id, True)
     held.close()
     return rc
 

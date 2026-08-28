@@ -29,7 +29,7 @@ def remint_route(story_id: str) -> str:
 
 def handback_recovery(tree: Path, story_id: str) -> str:
     return (
-        f" Recover by reviewing and committing the remaining predecessor diff in {tree},"
+        f" Recover by reviewing and committing the remaining work in {tree},"
         f" then run `spawn.py resume {story_id}`; do not remove the inherited tree."
     )
 

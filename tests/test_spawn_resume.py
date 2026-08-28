@@ -95,6 +95,26 @@ class TestResume:
         commits = in_tree(tree, env, "log", "--format=%H")
         assert predecessor in commits and len(commits.splitlines()) >= 3
 
+    def test_a_killed_successor_does_not_leave_a_finished_credential(self, tmp_path):
+        repo, env, _g, _tree, marker = finished_story(tmp_path)
+        killer = tmp_path / "bin" / "claude"
+        killer.write_text(
+            "#!/usr/bin/env python3\n"
+            "import os, signal, sys\n"
+            "sys.stdin.read()\n"
+            "os.kill(os.getppid(), signal.SIGKILL)\n"
+        )
+        killer.chmod(0o755)
+
+        killed = resume(repo, env)
+
+        assert killed.returncode < 0
+        assert json.loads(marker.read_text())["state"] == "RUNNING"
+        rec, _nested, _second = stub_takeover(tmp_path)
+        refused = resume(repo, env)
+        assert refused.returncode == 2 and "RUNNING" in refused.stderr
+        assert not rec.exists(), "resume trusted a FINISHED state from the earlier run"
+
     def test_fresh_teammate_reuses_the_tree_commit_branch_and_draft(self, tmp_path):
         repo, env, _g, tree, _marker = stopped_story(tmp_path)
         predecessor = commit(tree, env)
@@ -238,6 +258,15 @@ class TestResume:
         assert result.returncode == 2 and "already spawned" in result.stderr
         assert not rec.exists(), "plain spawn launched a second teammate"
 
+    def test_plain_spawn_refuses_a_finished_worktree_too(self, tmp_path):
+        repo, env, _g, _tree, _marker = finished_story(tmp_path)
+        plan = tmp_path / "data" / "plan.md"
+        plan.write_text(plan.read_text().replace("[in-progress]", "[ready]"))
+
+        result = spawn(repo, env, "story-042")
+
+        assert result.returncode == 2 and "already spawned" in result.stderr
+
     def test_card_drift_refuses_until_the_real_remint_route_runs(self, tmp_path):
         repo, env, _g, tree, _marker = stopped_story(tmp_path)
         plan = tmp_path / "data" / "plan.md"
@@ -293,6 +322,16 @@ class TestResume:
         assert result.returncode == 2, result.stderr
         assert "FINISHED" in result.stderr and "after-finish.txt" in result.stderr
         assert not rec.exists(), "resume inherited a changed clean-success tree"
+
+    def test_a_finished_successor_failure_names_its_own_remaining_work(self, tmp_path):
+        repo, env, _g, _tree, _marker = finished_story(tmp_path)
+        stub_claude(tmp_path, write_file=True, add_all=False)
+
+        result = resume(repo, env)
+
+        assert result.returncode == 2
+        assert "remaining work" in result.stderr
+        assert "remaining predecessor diff" not in result.stderr
 
     def test_resume_names_a_story_that_was_never_spawned(self, tmp_path):
         repo, env, _g = make_repo(tmp_path)
