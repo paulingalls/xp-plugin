@@ -15,8 +15,8 @@ import sys
 import tokenize
 from pathlib import Path
 
-SPAWN = 1425
-CLOSE = 2365
+SPAWN = 1415
+CLOSE = 2375
 HOOKS = 535
 MISC = 1175
 TOTAL = 5500
