@@ -43,8 +43,7 @@ def candidate(plan, sprint_id):
 
 
 def move(sprint_id, done=False):
-    """Flip under the plan lock. Only the `done` arm refuses: a bracket the start
-    arm cannot read is the lead's to write, never a reason to hold the sprint shut."""
+    """Only completion refuses; an unreadable bracket cannot hold sprint-open shut."""
 
     def mutate(text):
         found = candidate(text, sprint_id) if done else find(text, sprint_id)
@@ -69,9 +68,8 @@ def cmd_done(sprint_id):
             " names the milestone when there is one to close"
         )
     try:
-        commands = lifecycle.declared_commands(
-            found.heading.strip(), found.block, label="Done when"
-        )[1]
+        block = found.block.split("\n### ", 1)[0]
+        commands = lifecycle.declared_commands(found.heading.strip(), block, label="Done when")[1]
     except ValueError as error:
         return fail(str(error))
     for command in commands:

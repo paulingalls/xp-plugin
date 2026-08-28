@@ -266,11 +266,13 @@ def cmd_start(sprint_id: str) -> int:
     branch = git("branch", "--show-current").stdout.strip()
     if not branch or branch == default_branch():
         return fail("refused: open the sprint from its freshly cut branch, not trunk")
-    if not sprint_branch():
-        if red := lc.run(config_flat(lc.KEY), "sprint-open", sprint_id):
-            return fail(red)
-        milestone.move(sprint_id)
+    if not sprint_branch() and (red := lc.run(config_flat(lc.KEY), "sprint-open", sprint_id)):
+        return fail(red)
     opening = record_sprint_branch(branch)
+    resume = opening or branch == f"sprint-{sprint_id.lstrip('0').zfill(3)}"
+    owner = milestone.find(plan.read_text(), sprint_id)
+    if resume and owner and owner.status == "planned":
+        milestone.move(sprint_id)
     print(f"sprint branch: {branch}")
     if unfinished := [m for m in members if not m.endswith(("[done]", "[retired]"))]:
         if not opening:

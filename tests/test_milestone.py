@@ -76,6 +76,13 @@ def test_lookup_owns_the_exact_sprint_and_only_scheduled_cards():
 def test_opening_the_first_sprint_starts_only_its_milestone(tmp_path):
     repo, env, _g = make_repo(tmp_path, plan=PLAN)
     branch = tmp_path / "data" / "sprint_branch"
+    resumed = sprint(repo, env, "start")
+    assert resumed.returncode == 0, resumed.stderr
+    assert (
+        "## Milestone 2 repeats Milestone 20   [in-progress]"
+        in (tmp_path / "data" / "plan.md").read_text()
+    )
+    (tmp_path / "data" / "plan.md").write_text(PLAN)
     branch.unlink()
 
     opened = sprint(repo, env, "start")
@@ -156,6 +163,7 @@ def test_milestone_done_refuses_invalid_or_red_done_when(tmp_path):
         "cd /",
         "missing-milestone-command",
         "false",
+        "true && false",
     ]
     repo, env, _g = make_repo(tmp_path)
     path = tmp_path / "data" / "plan.md"
@@ -163,7 +171,10 @@ def test_milestone_done_refuses_invalid_or_red_done_when(tmp_path):
     for declared in declared_values:
         plan = active_plan(declared or "")
         if declared is None:
-            plan = plan.replace("Done when: \n", "")
+            plan = plan.replace("Done when: \n", "").replace(
+                "#### story-002 — shipped   [done]",
+                "#### story-002 — shipped   [done]\nDone when: true",
+            )
         elif declared == "":
             plan = plan.replace("Done when: \n", "Done when:\nThis prose is not a command.\n")
         path.write_text(plan)

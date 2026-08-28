@@ -187,6 +187,8 @@ def test_sprint_lifecycle_runs_after_validation_and_before_the_retryable_tag(tmp
     monkeypatch.setenv("PATH", env["PATH"])
     monkeypatch.setenv("XP_DATA", env["XP_DATA"])
 
+    assert release.cmd_post_merge("12") == 2
+    assert not log.exists() and state.exists()
     (repo / "manifest.json").write_text("{}\n")
     assert release.cmd_post_merge("11") == 2
     assert not log.exists(), "project code ran before manifest validation"

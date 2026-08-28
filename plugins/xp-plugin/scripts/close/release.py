@@ -66,6 +66,8 @@ def cmd_post_merge(
     release_branch = merged_branch or sprint_branch()
     if retire_sprint and not release_branch:
         return fail("refused: no sprint branch recorded — open the sprint before releasing it")
+    if retire_sprint and release_branch != f"sprint-{release_id.lstrip('0').zfill(3)}":
+        return fail(f"refused: sprint {release_id} does not own recorded branch {release_branch}")
     if (
         release_branch
         and git("merge-base", "--is-ancestor", release_branch, "HEAD", check=False).returncode
@@ -90,7 +92,6 @@ def cmd_post_merge(
     if retire_sprint:
         clear_sprint_branch()
     suffix = "; sprint branch cleared" if retire_sprint else ""
-    # The commented default checks no manifest, so the report must expose that.
     walled = (
         f"manifests matching {version}: {', '.join(checked)}"
         if (checked := version_files())

@@ -63,9 +63,12 @@ class TestMembership:
 
         branch.unlink()
         record.with_suffix(".exit").write_text("1")
+        plan = tmp_path / "data" / "plan.md"
+        plan.write_text(plan.read_text().replace("[in-progress]", "[planned]", 1))
         refused = sprint(repo, env, "start")
         assert refused.returncode == 2 and "sprint-open" in refused.stderr
         assert command.split()[0] in refused.stderr and not branch.exists()
+        assert "[planned]" in plan.read_text()
 
     def test_other_sprints_do_not_block_this_one(self, tmp_path):
         """The naive reading — no story in plan.md is non-done — refuses forever,
