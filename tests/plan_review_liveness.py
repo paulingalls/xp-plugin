@@ -12,6 +12,7 @@ from test_plan_review import CLEAN, CONFIG, PLAN_REVIEW, make_repo, plan_review
 # siblings — it red a sprint-9 RELEASE land. Generous costs nothing when the file
 # arrives, because the loop breaks on the file and not on the clock.
 FINISH_POLLS = 240  # x 0.25s
+LAUNCH_POLLS = 6_000  # x 0.01s
 
 
 class TestTheReviewOutlivesItsCaller:
@@ -21,6 +22,20 @@ class TestTheReviewOutlivesItsCaller:
         draft = tmp_path / "draft.md"
         draft.write_text("# draft plan\nstep 1\n")
         return repo, env, draft
+
+    def wait_for_launch(self, rec):
+        """Block until the review has LAUNCHED, so the kill below lands while it runs.
+
+        The sleep this replaced was a deadline on the machine (0.47s measured here
+        against 1.5s — tighter than either bound that already red this sprint), and
+        killing early is not loud: the joining test then starts the only reviewer
+        there ever was and its one-LAUNCH assertion still greens.
+        """
+        for _ in range(LAUNCH_POLLS):
+            if rec.exists():
+                return
+            time.sleep(0.01)
+        raise AssertionError("the plan review never launched its planner")
 
     def slow_planner(self, tmp_path, seconds=4, findings=CLEAN):
         bin_dir = tmp_path / "bin"
@@ -41,7 +56,7 @@ class TestTheReviewOutlivesItsCaller:
 
     def test_a_killed_caller_leaves_a_review_that_finishes(self, tmp_path):
         repo, env, draft = self.repo(tmp_path)
-        self.slow_planner(tmp_path, seconds=4)
+        rec = self.slow_planner(tmp_path, seconds=4)
         proc = subprocess.Popen(
             [sys.executable, str(PLAN_REVIEW), "story-042", str(draft)],
             cwd=repo,
@@ -51,7 +66,7 @@ class TestTheReviewOutlivesItsCaller:
             text=True,
             start_new_session=True,
         )
-        time.sleep(1.5)
+        self.wait_for_launch(rec)
         os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
         proc.wait()
         plans = tmp_path / "data" / "plans"
@@ -72,7 +87,7 @@ class TestTheReviewOutlivesItsCaller:
             stderr=subprocess.PIPE,
             text=True,
         )
-        time.sleep(1.5)
+        self.wait_for_launch(rec)
         first.kill()
         first.wait()
         again = plan_review(repo, env, "story-042", str(draft))
