@@ -43,6 +43,16 @@ def commit(tree, env, name="predecessor.py"):
     return in_tree(tree, env, "rev-parse", "HEAD")
 
 
+def stub_killer(tmp_path):
+    """A launch that dies without ever handing back — story-060's own incident."""
+    killer = tmp_path / "bin" / "claude"
+    killer.write_text(
+        "#!/usr/bin/env python3\nimport os, signal, sys\nsys.stdin.read()\n"
+        "os.kill(os.getppid(), signal.SIGKILL)\n"
+    )
+    killer.chmod(0o755)
+
+
 def stub_takeover(tmp_path, adopted=(), nested=False):
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir(exist_ok=True)
@@ -97,14 +107,7 @@ class TestResume:
 
     def test_a_killed_successor_does_not_leave_a_finished_credential(self, tmp_path):
         repo, env, _g, _tree, marker = finished_story(tmp_path)
-        killer = tmp_path / "bin" / "claude"
-        killer.write_text(
-            "#!/usr/bin/env python3\n"
-            "import os, signal, sys\n"
-            "sys.stdin.read()\n"
-            "os.kill(os.getppid(), signal.SIGKILL)\n"
-        )
-        killer.chmod(0o755)
+        stub_killer(tmp_path)
 
         killed = resume(repo, env)
 
@@ -113,7 +116,23 @@ class TestResume:
         rec, _nested, _second = stub_takeover(tmp_path)
         refused = resume(repo, env)
         assert refused.returncode == 2 and "RUNNING" in refused.stderr
+        assert "FINISHED" not in refused.stderr, "a dead launch was offered the credential"
         assert not rec.exists(), "resume trusted a FINISHED state from the earlier run"
+
+    def test_an_interrupted_launch_takes_the_repair_its_refusal_names(self, tmp_path):
+        """Constraint 12: the refusal prescribes a repair, so walk it rather than ship it
+        unrun. `spawn.py resume` is the only route back to a tree a dead launch left."""
+        repo, env, _g, _tree, marker = stopped_story(tmp_path)
+        stub_killer(tmp_path)
+        assert resume(repo, env).returncode < 0
+        refused = resume(repo, env)
+        assert refused.returncode == 2 and "INTERRUPTED" in refused.stderr, refused.stderr
+        rec, _nested, _second = stub_takeover(tmp_path)
+
+        marker.write_text(json.dumps(json.loads(marker.read_text()) | {"state": "STOPPED"}))
+
+        assert resume(repo, env).returncode == 0, "the prescribed repair does not resume"
+        assert "STOPPED" in json.loads(rec.read_text())["stdin"]
 
     def test_fresh_teammate_reuses_the_tree_commit_branch_and_draft(self, tmp_path):
         repo, env, _g, tree, _marker = stopped_story(tmp_path)

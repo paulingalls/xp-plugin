@@ -51,25 +51,27 @@ def acquire(root: Path, story_id: str):
 
 def validate(root: Path, story_id: str, tree: Path, branch: str) -> str:
     marker = marker_path(root, story_id)
-    if not marker.exists():
-        if tree.is_dir():
-            return (
-                f"refused: {story_id} left {tree} with no handback and nothing holds its launch"
-                f" lock — an INTERRUPTED spawn, not a RUNNING teammate; commit what it left,"
-                f" or remove that worktree and re-spawn"
-            )
-        return f"refused: {story_id} was NEVER SPAWNED — use `spawn.py {story_id}` first"
     state = handoff_state(root, story_id)
     if state is None:
         return (
             f"refused: {marker} is unreadable, so it cannot prove the teammate stopped —"
             " read `work.py list`, repair the handoff, then resume"
         )
-    kind = state.get("state")
-    if kind not in ("STOPPED", "FINISHED"):
+    # acquire() holds the launch lock one call earlier, so a RUNNING marker here means
+    # that launch DIED; repairing it to FINISHED would credential a clean success.
+    kind = state.get("state") if marker.exists() else "NEVER SPAWNED"
+    if kind == "NEVER SPAWNED" and not tree.is_dir():
+        return f"refused: {story_id} was NEVER SPAWNED — use `spawn.py {story_id}` first"
+    if kind not in ("STOPPED", "FINISHED", "RUNNING", "NEVER SPAWNED"):
         return f'refused: invalid handoff state {kind!r} in {marker} — set "STOPPED" or "FINISHED"'
     if not tree.is_dir():
         return f"refused: {kind} worktree {tree} is missing — recover it before resuming"
+    if kind in ("RUNNING", "NEVER SPAWNED"):
+        return (
+            f"refused: {story_id} left {tree} with no handback and nothing holds its launch"
+            f' lock — an INTERRUPTED spawn, not a RUNNING teammate. Write "STOPPED" into'
+            f" {marker} to take that tree over, or remove the worktree and re-spawn"
+        )
     actual = subprocess.run(
         ["git", "branch", "--show-current"], cwd=tree, capture_output=True, text=True
     )
