@@ -9,10 +9,12 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 sys.path.insert(0, str(Path(__file__).parent / "close"))
+import lifecycle as lc
+import milestone
 import overlap
 import stages
-from close import default_branch, fail, git, story_card
-from env import record_sprint_branch, refuse_direct_invocation
+from close import config_flat, default_branch, fail, git, story_card
+from env import record_sprint_branch, refuse_direct_invocation, sprint_branch
 from release import cmd_post_merge as release_post_merge
 from release import next_version, refuse_unbumpable
 from review import reviewer_strays
@@ -32,30 +34,11 @@ from work import (
 PLUGIN_ROOT = Path(__file__).parent.parent
 FALSIFIER = re.compile(r"^Falsifier: `(.+)`$", re.M)
 RESOLVES = re.compile(r"^Resolves: (\w+)$", re.M)
-
-
-def sprint_stories(plan: str, sprint_id: str) -> list[str]:
-    """The `####` cards under `### Sprint <id>`, and no others.
-
-    Membership is an ARGUMENT, never "every non-done card in plan.md": the next
-    sprint's stories are [ready] right now, so that reading refuses forever.
-    The id must END here — a prefix match makes sprint 2 own sprint 20's cards.
-    """
-    out, inside, head = [], False, f"### Sprint {sprint_id}"
-    for ln in plan.splitlines():
-        if ln.startswith("### "):
-            inside = ln.startswith(head) and not ln[len(head) : len(head) + 1].isdigit()
-        elif inside and ln.startswith("#### "):
-            out.append(ln)
-    return out
+sprint_stories = milestone.sprint_stories
 
 
 def corpus(root: Path) -> list[tuple[str, str, str]]:
-    """(id, headline, falsifier) for every record the batch must run — a resolved
-    record contributing its RESOLUTION's falsifier. Keyed off the `## resolved`
-    heading, never a `Resolves:` line anywhere in a block: a record that merely
-    REFERENCES an id would silence a live bug with resolve's green-check never
-    having run."""
+    """Use resolved headings, not references, to substitute batch falsifiers."""
     records, resolutions = {}, {}
     for eid, text in entries(root):
         head = text.splitlines()[0]
@@ -80,9 +63,7 @@ def sprint_marker(sprint_id: str) -> Path:
 
 
 def _sprint_records(root: Path, since_epoch: int) -> tuple[str, str]:
-    """(resolutions, the raw work.md section minus `## resolved`/`## archived`
-    blocks) from ONE split. corpus() cannot serve the first: substitution is
-    exactly where it discards the original falsifier a reader needs to judge."""
+    """Keep original falsifiers for review while corpus substitutes the batch copy."""
     originals = {e: t for e, t in entries(root) if t.startswith(("## bug ", "## debt "))}
     latest, kept = {}, []
     for block in re.split(r"^(?=## )", work_entries_since(since_epoch), flags=re.M):
@@ -107,8 +88,7 @@ def _sprint_records(root: Path, since_epoch: int) -> tuple[str, str]:
 def build_sprint_bundle(
     sprint_id: str, cards: str, base: str, report: Path, charter: str, extra: list, diff_base=""
 ) -> str:
-    """Built once per LEG, at launch: the closing pass must diff the tree the
-    fixer left, and a bundle composed up front would hand it the pre-fix one."""
+    """Build at launch so the closer sees the fixer's tree."""
     from close import _read
 
     resolutions, work_md = _sprint_records(
@@ -132,7 +112,6 @@ def build_sprint_bundle(
 
 
 def cmd_review(sprint_id: str, dry_run: bool) -> int:
-    """Run the full first review or one story-shaped confirming review."""
     import review
     from bookkeep import render_sprint_prior
 
@@ -256,9 +235,7 @@ def cmd_review(sprint_id: str, dry_run: bool) -> int:
             return stop(err)
     shown_sha = git("rev-parse", "HEAD").stdout.strip()
 
-    # No diff covers the plan now. Cross-lane BY CONSTRUCTION here, safe only
-    # because a sprint review runs when every member is [done]: a mid-sprint run
-    # would refuse and blame itself for a lane's flip.
+    # Plan drift is safe to reject only after every sprint member is terminal.
     if sprint_cards(plan.read_text(), sprint_id) != cards:
         changed = f"sprint {sprint_id}'s cards changed during the review"
         return stop(review.abort_text(shown_sha, changed))
@@ -266,10 +243,7 @@ def cmd_review(sprint_id: str, dry_run: bool) -> int:
     round_["blocking"] += closing["blocking"]
     fix_report = review.sprint_report_path(sprint_id, "fix", round_n)
     if err := review.write_reviewer_diff(fix_report, head, f"sprint {sprint_id}"):
-        # That write rolls the applied fix back when it fails, and `ran` is what the
-        # round CONTAINS: a reset fix is contained in nothing, so a round still
-        # claiming it — in the marker and in the git-versioned merge body — outlives
-        # every artifact that could correct it.
+        # A rolled-back fix must not remain in the recorded round.
         if "fix" in ran and git("rev-parse", "HEAD").stdout.strip() == head:
             reports.pop(ran.index("fix"))
             ran.remove("fix")
@@ -292,7 +266,13 @@ def cmd_start(sprint_id: str) -> int:
     branch = git("branch", "--show-current").stdout.strip()
     if not branch or branch == default_branch():
         return fail("refused: open the sprint from its freshly cut branch, not trunk")
+    if branch != (expected := f"sprint-{sprint_id.lstrip('0').zfill(3)}"):
+        return fail(f"refused: open sprint {sprint_id} from {expected}, not {branch}")
+    if not sprint_branch() and (red := lc.run(config_flat(lc.KEY), "sprint-open", sprint_id)):
+        return fail(red)
     opening = record_sprint_branch(branch)
+    if (owner := milestone.find(plan.read_text(), sprint_id)) and owner.status == "planned":
+        milestone.move(sprint_id)
     print(f"sprint branch: {branch}")
     if unfinished := [m for m in members if not m.endswith(("[done]", "[retired]"))]:
         if not opening:
@@ -305,7 +285,6 @@ def cmd_start(sprint_id: str) -> int:
     grouped = {}
     for eid, head, falsifier in batch:
         grouped.setdefault(falsifier, []).append((eid, head))
-    # the red path is the re-run path, so re-file only what is not already a bug
     known = {f for _e, h, f in batch if h.startswith("bug ")}
     for falsifier, records in grouped.items():
         if not falsifier_is_green(falsifier):
@@ -328,6 +307,10 @@ def cmd_start(sprint_id: str) -> int:
         print(f"running the full tier: {tier}")
         if subprocess.run(tier, shell=True).returncode != 0:
             return fail(f"refused: full tier red: {tier}")
+
+    if completion := milestone.candidate(plan.read_text(), sprint_id):
+        print(f"\n{completion.heading.rstrip()}")
+        print(f"close.py sprint {sprint_id} milestone-done")
 
     disposed = {
         m.group(1)
@@ -368,12 +351,6 @@ def _shown_diff(sprint_id: str, shown: str, head: str) -> tuple[subprocess.Compl
 
 
 def _coverage_refusal(sprint_id: str, head: str) -> str:
-    """ "" if a recorded round covers HEAD, else why not. Bug c9b48a66.
-
-    HEAD coverage only — deliberately no "trunk moved since the review" clause:
-    that is trunk motion, a different guard's business, and copying it here from
-    close.cmd_land is the wrong half of the symmetry.
-    """
     marker = sprint_marker(sprint_id)
     state = json.loads(marker.read_text()) if marker.exists() else {}
     rerun = f"run `close.py sprint {sprint_id} review`"
@@ -393,8 +370,6 @@ def _coverage_refusal(sprint_id: str, head: str) -> str:
         )
     if (shown := str(state.get("shown_sha"))) == head:
         return ""
-    # check=False: a rebased, reset or gc'd sha must refuse, never raise
-    # CalledProcessError from inside the gate that guards the release
     moved, missing = _shown_diff(sprint_id, shown, head)
     if missing:
         return missing
@@ -404,10 +379,6 @@ def _coverage_refusal(sprint_id: str, head: str) -> str:
             f"refused: HEAD does not contain {shown[:8]}, the tree the round covered"
             f" — the recorded round describes no tree that exists. {rerun}"
         )
-    # AUTHORSHIP, the story leg's rule: the review leg's fixer commits inside the
-    # range its round covers, so a bare sha compare refuses the release over the
-    # fixes the review exists to produce. Never over a GATE_FILE, whatever signed
-    # it — patch application permits any `.xp/` path a sprint card declares.
     strays = reviewer_strays(shown, head)
     if not strays and not any(f in overlap.GATE_FILES for f in moved.stdout.splitlines()):
         print(f"the delta since {shown[:8]} is the reviewer's own fixes")
@@ -453,16 +424,9 @@ def cmd_land(sprint_id: str, dry_run: bool) -> int:
             "refused: the working tree is dirty — the tier must judge the tree"
             " that ships, and these files are not in it:\n  " + dirty
         )
-    # start's tier is stale by construction: SKILL.md puts triage, the retro and the
-    # release artifacts BETWEEN it and here, so the tree that ships is never the one
-    # that was measured (sprint-003: four commits, one of them this file). And what
-    # ships is this branch MERGED into the default branch, which no leg here builds —
-    # so the tier judges a trial merge, through the story leg's own gates(). BELOW
-    # the dry-run return because a preview runs nothing, and ABOVE the gh check so a
-    # red tier is what you are told about, not a missing binary.
+    # Triage can stale start's tier, so land measures the shipping merge again.
     if red := overlap.gates(ref, "", "full", pending):
         return fail(red)
-    # Assent is given by RUNNING land, where close.cmd_land's rationale applies
     state = json.loads(sprint_marker(sprint_id).read_text())
     shown, rounds = state.get("shown_sha", ""), len(state.get("rounds", []))
     rng = f"{state.get('reviewed_head', shown)}..{shown}"

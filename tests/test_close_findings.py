@@ -378,7 +378,7 @@ class TestTheCardEndsUpSayingDone:
         repo, env, g = make_repo(tmp_path)
         assert close(repo, env, "review").returncode == 0
         plan = tmp_path / "data" / "plan.md"
-        plan.write_text(flip_status(plan.read_text(), "story-042", "in-progress", "done"))
+        plan.write_text(flip_status(plan.read_text(), "#### story-042 ", "in-progress", "done"))
         r = close(repo, env, "land")
         assert r.returncode == 2 and "[done]" in r.stderr, r.stderr
         assert "Review round" not in g("log", "main", "--format=%B").stdout, "it merged anyway"

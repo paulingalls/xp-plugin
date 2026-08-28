@@ -4,8 +4,6 @@
 import argparse
 import json
 import os
-import shlex
-import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -14,6 +12,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 sys.path.insert(0, str(Path(__file__).parent / "close"))
 from bookkeep import render_prior_rounds
 from env import sprint_branch
+from lifecycle import declared_commands as verify_commands
 from work import (
     chdir_repo_root,
     data_root,
@@ -34,7 +33,6 @@ def git(*args: str, check: bool = True) -> subprocess.CompletedProcess:
 
 
 def story_card(plan: str, story_id: str) -> tuple[str, str]:
-    """Return (card_text, status) for the story's block in plan.md."""
     lines = plan.splitlines(keepends=True)
     start = next((i for i, ln in enumerate(lines) if ln.startswith(f"#### {story_id} ")), None)
     if start is None:
@@ -53,58 +51,7 @@ def story_card(plan: str, story_id: str) -> tuple[str, str]:
     return card, status
 
 
-def verify_commands(story_id: str, card: str, runnable: bool = True) -> tuple[str, list[list[str]]]:
-    raw = None
-    for ln in card.splitlines():
-        if ln.startswith("Verify:"):
-            raw = ln.removeprefix("Verify:").strip()
-            break
-    if raw is None:
-        raise ValueError(
-            f"refused: {story_id} has no Verify: line — an unverifiable story cannot close"
-        )
-    if not raw:
-        raise ValueError(
-            f"refused: {story_id}'s Verify: line is empty — its commands must be on the"
-            " SAME line as the label (`Verify: pytest -q ...`), not a list below it"
-        )
-    parts, start, quote, i = [], 0, "", 0
-    while i < len(raw):
-        char = raw[i]
-        if char == "\\" and quote != "'":
-            i += 2
-            continue
-        if char in "'\"":
-            quote = "" if quote == char else quote if quote else char
-        elif char in "$`" or (not quote and char in "|&;<>()[#*?~{"):
-            if char == "&" and raw[i : i + 2] == "&&":
-                parts.append(raw[start:i])
-                start, i = i + 2, i + 1
-            else:
-                raise ValueError(
-                    f"refused: {story_id}'s Verify: line contains shell syntax {char!r}"
-                    " — no shell runs it: quote it, drop any trailing # comment, and"
-                    " separate commands with an unquoted &&"
-                )
-        i += 1
-    parts.append(raw[start:])
-    try:
-        commands = [shlex.split(part) for part in parts]
-    except ValueError as e:
-        raise ValueError(f"refused: {story_id}'s Verify: line is not runnable ({e})") from e
-    if any(not argv for argv in commands):
-        raise ValueError(f"refused: {story_id}'s Verify: line has an empty command around &&")
-    if runnable and (missing := next((a[0] for a in commands if not shutil.which(a[0])), "")):
-        raise ValueError(
-            f"refused: {story_id}'s Verify: command {missing!r} is not runnable on this PATH"
-            " — with no shell there are no builtins, so `cd` is not one of them; make a"
-            " real command available to the lead before `spawn.py ready`"
-        )
-    return raw, commands
-
-
 def config_flat(key: str) -> str:
-    """A flat top-level `key: value` from .xp/config.yml."""
     cfg = Path(".xp/config.yml")
     if not cfg.exists():
         return ""
@@ -120,7 +67,6 @@ def config_has(key: str) -> bool:
 
 
 def integration_target() -> str:
-    """The recorded sprint branch under release: sprint, else the default."""
     if config_flat("release") == "sprint":
         if config_has("sprint_branch"):
             raise SystemExit(
@@ -132,8 +78,6 @@ def integration_target() -> str:
             )
         branch = sprint_branch()
         if branch:
-            # refs/heads explicitly: a tag with the same name wins plain rev-parse
-            # and would freeze every guard on a ref that never moves
             ok = git("rev-parse", "--verify", "-q", f"refs/heads/{branch}", check=False)
             if ok.returncode != 0:
                 print(
@@ -148,14 +92,7 @@ def integration_target() -> str:
 
 
 def default_branch() -> str:
-    """The trunk: where sprints land and releases are tagged.
-
-    `trunk:` overrides git's own default, for a repo integrating on develop while
-    origin/HEAD still names main — every caller here means the former. Absent-but-
-    configured REFUSES rather than falling back, as the sprint branch does: silently
-    releasing to main is the failure this key exists to prevent. Deliberately ONE
-    branch; the develop->main release cut stays the project's own process.
-    """
+    """`trunk:` overrides git's default; a missing configured branch never falls back."""
     if name := config_flat("trunk"):
         if git("rev-parse", "--verify", "-q", f"refs/heads/{name}", check=False).returncode:
             raise SystemExit(
@@ -175,9 +112,7 @@ def default_branch() -> str:
 
 
 def origin_trunk_sha(trunk: str) -> str | None:
-    """Fetched origin/<trunk> sha, or None without a remote. pr mode merges on
-    origin; local mode merges the local trunk — each mode guards the ref it
-    actually integrates (recording both at start, since mode is unknown then)."""
+    """Fetch the PR-mode ref; local mode guards the local trunk instead."""
     if not git("remote", check=False).stdout.strip():
         return None
     git("fetch", "-q", "origin", trunk, check=False)
@@ -197,7 +132,6 @@ def build_bundle(card: str, base: str, report: Path, prior: str = "", notice: st
     base_epoch = int(git("show", "-s", "--format=%ct", base).stdout.strip())
     sections = [
         ("Your charter", review.charter()),
-        # One greppable line: the charter explains the shape, this is the address.
         ("Your report", f"REPORT_PATH: {report}\nPATCH_PATH: {review.patch_path(report)}"),
         ("Story card", card or "none — this is a free branch; judge the diff itself"),
         *([("Before you start", notice)] if notice else []),
@@ -213,7 +147,6 @@ def build_bundle(card: str, base: str, report: Path, prior: str = "", notice: st
 
 
 def _preflight(story_id: str, action: str, free: bool = False) -> tuple[str, str, str]:
-    """(card, trunk, error) — the checks every review leg shares."""
     if git("status", "--porcelain").stdout.strip():
         return "", "", "refused: working tree is dirty — commit or stash first"
     card, trunk = "", default_branch() if free else integration_target()
@@ -251,13 +184,7 @@ def _preflight(story_id: str, action: str, free: bool = False) -> tuple[str, str
 
 
 def verify_on_reviewed_tree(story_id: str, card: str) -> str:
-    """Why the tree this round would certify fails its own Verify, or "".
-
-    Otherwise `blocking: []` is the MODEL's word that Verify ran, and a reviewer
-    whose sandbox could not reach a leg reports green in good faith (note
-    1b45d1c7). land keeps its own call: that one protects the MERGE, this the
-    DIFF. A card-less free diff declares no Verify, so there is none to run.
-    """
+    """Run Verify on the reviewed diff; land separately protects the merged tree."""
     if not card:
         return ""
     import overlap  # a cycle at module level: it imports close
@@ -267,10 +194,7 @@ def verify_on_reviewed_tree(story_id: str, card: str) -> str:
 
 
 def _record_round(story_id: str, card: str, path: Path, marker: Path, state: dict, at: dict) -> int:
-    """The guards and the bookkeeping both review and salvage run. `at` is what
-    the leg was launched AGAINST, which salvage reads off the launch marker.
-    Routing salvage through here is what closes the timeout door — it is the one
-    path by which a reviewer that committed could reach a recorded round."""
+    """Share review and salvage guards; `at` is the tree the launch marker names."""
     import review
 
     head = at["head"]
@@ -340,16 +264,12 @@ def cmd_review(story_id: str, dry_run: bool = False, free: bool = False) -> int:
         return 0
     if err:  # crash, timeout, absent binary — it may still have committed first
         return fail(review.stamp(path, review.abort_text(head, err)))
-    # BEFORE any refusal below: a report the pipeline rejects still cost a full
-    # review, and its findings exist nowhere else.
     print(result)
     return _record_round(story_id, card, path, marker, state, at)
 
 
 def cmd_salvage(story_id: str) -> int:
-    """Record the round a KILLED reviewer's own artifacts already earned — the
-    patch and report it wrote, never its commits: reviewers have been read-only
-    since v0.7.0, so salvaging commits names what our own guard refuses."""
+    """Record a killed reviewer's patch and report, never reviewer commits."""
     import review
 
     _card, _trunk, err = _preflight(story_id, "salvage")
@@ -394,7 +314,7 @@ def main() -> int:
     sub = p.add_subparsers(dest="kind", required=True)
     sp = sub.add_parser("sprint")
     sp.add_argument("sprint_id")
-    sp.add_argument("action", choices=["start", "review", "land", "post-merge"])
+    sp.add_argument("action", choices=["start", "review", "land", "post-merge", "milestone-done"])
     sp.add_argument("--dry-run", action="store_true")
     f = sub.add_parser("free")
     f.add_argument("slug")
@@ -403,15 +323,11 @@ def main() -> int:
     s = sub.add_parser("story")
     s.add_argument("story_id")
     s.add_argument("action", choices=["review", "salvage", "land"])
-    # DERIVED, not chosen: pr mode is refused whenever the integration target is not
-    # the default branch, and `merge-mode` appeared in no shipped prose — so the
-    # documented invocation was the one that refuses.
+    # Derived: PR mode cannot integrate into a recorded sprint branch.
     s.add_argument("--merge-mode", choices=["pr", "local"], default=None)
     s.add_argument("--dry-run", action="store_true")
     a = p.parse_args()
-    # The gate the teammate profile only DECLARES: a self-close is
-    # an unreviewed merge. Any non-lead role, so an unknown one fails safe. It bounds
-    # the /story-close path, NOT a teammate who types XP_ROLE=lead.
+    # Unknown roles fail safe; this bounds the injected close path, not forged env.
     role = os.environ.get("XP_ROLE", "lead")
     if role != "lead":
         return fail(
@@ -439,6 +355,8 @@ def main() -> int:
             return sprint_close.cmd_review(a.sprint_id, a.dry_run)
         if a.action == "land":
             return sprint_close.cmd_land(a.sprint_id, a.dry_run)
+        if a.action == "milestone-done":
+            return sprint_close.milestone.cmd_done(a.sprint_id)
         return sprint_close.cmd_post_merge(a.sprint_id)
     if a.action == "review":
         return cmd_review(a.story_id, a.dry_run)

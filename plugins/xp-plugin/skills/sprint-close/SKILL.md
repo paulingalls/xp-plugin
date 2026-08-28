@@ -9,7 +9,7 @@ description: >-
 `close.py sprint <id>` runs the mechanical steps. Two of them are yours and a
 script cannot absorb them (judgment belongs only where an LLM is present).
 
-0. **Open the sprint first** (once, before its stories): `git switch -c sprint-00N`,
+0. **Open the sprint first** (once, before its stories): `git switch -c sprint-<id:03d>`,
    then `close.py sprint <id> start`. It records and prints this clone's branch;
    unfinished output says close checks wait.
 1. **Re-run `close.py sprint <id> start` at close** — the same recorded branch is

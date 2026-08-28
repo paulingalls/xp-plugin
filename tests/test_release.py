@@ -9,6 +9,7 @@ and consumers kept running the previous cached copy under the new name.
 
 import json
 import re
+import shlex
 import subprocess
 import sys
 from pathlib import Path
@@ -146,3 +147,62 @@ def test_a_release_that_DID_check_names_the_manifest_it_checked(tmp_path, monkey
     (xp / "config.yml").write_text("version_files: pkg/manifest.json, other.json\n")
     monkeypatch.chdir(tmp_path)
     assert release.version_files() == ["pkg/manifest.json", "other.json"]
+
+
+def test_sprint_lifecycle_runs_after_validation_and_before_the_retryable_tag(tmp_path, monkeypatch):
+    import release
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    env = {"PATH": "/usr/bin:/bin", "HOME": str(tmp_path), "XP_DATA": str(tmp_path / "data")}
+    git = lambda *a: subprocess.run(  # noqa: E731
+        ["git", *a], cwd=repo, env=env, capture_output=True, text=True, check=True
+    )
+    git("init", "-q", "-b", "main")
+    git("config", "user.email", "t@t")
+    git("config", "user.name", "t")
+    (repo / ".xp").mkdir()
+    (repo / "manifest.json").write_text('{"version": "1.2.0"}\n')
+    log = tmp_path / "released.jsonl"
+    hook = tmp_path / "release_hook.py"
+    hook.write_text(
+        "import json, pathlib, subprocess, sys\n"
+        f"p = pathlib.Path({str(log)!r})\n"
+        "tag = subprocess.run(['git','rev-parse','--verify','-q','refs/tags/v1.2.0']).returncode\n"
+        "with p.open('a') as f: f.write(json.dumps([sys.argv[1:], tag])+'\\n')\n"
+        "raise SystemExit(int(p.with_suffix('.exit').read_text()) "
+        "if p.with_suffix('.exit').exists() else 0)\n"
+    )
+    command = shlex.join([sys.executable, str(hook), "fixed value"])
+    config = repo / ".xp" / "config.yml"
+    config.write_text(f"lifecycle_command: {command}\nversion_files: manifest.json\n")
+    git("add", "-A")
+    git("commit", "-qm", "release tree")
+    git("tag", "v1.1.0")
+    git("branch", "sprint-011")
+    state = tmp_path / "data" / "sprint_branch"
+    state.parent.mkdir()
+    state.write_text("sprint-011\n")
+    monkeypatch.chdir(repo)
+    monkeypatch.setenv("PATH", env["PATH"])
+    monkeypatch.setenv("XP_DATA", env["XP_DATA"])
+
+    assert release.cmd_post_merge("12") == 2
+    assert not log.exists() and state.exists()
+    (repo / "manifest.json").write_text("{}\n")
+    assert release.cmd_post_merge("11") == 2
+    assert not log.exists(), "project code ran before manifest validation"
+    (repo / "manifest.json").write_text('{"version": "1.2.0"}\n')
+    log.with_suffix(".exit").write_text("1")
+    assert release.cmd_post_merge("11") == 2
+    assert git("tag", "--list", "v1.2.0").stdout.strip() == ""
+    assert state.exists(), "a refused lifecycle retired the sprint record"
+    log.with_suffix(".exit").write_text("0")
+    assert release.cmd_post_merge("11") == 0
+    calls = [json.loads(line) for line in log.read_text().splitlines()]
+    assert calls == [
+        [["fixed value", "sprint-close", "11"], 1],
+        [["fixed value", "sprint-close", "11"], 1],
+    ]
+    assert git("tag", "--list", "v1.2.0").stdout.strip() == "v1.2.0"
+    assert not state.exists()

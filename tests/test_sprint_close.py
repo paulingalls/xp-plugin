@@ -2,7 +2,9 @@
 Verify: pytest -q tests/test_sprint_close.py"""
 
 import json
+import shlex
 import subprocess
+import sys
 from pathlib import Path
 
 from close_helpers import launches, stub_reviewer  # noqa: F401
@@ -30,6 +32,44 @@ from sprint_helpers import (  # noqa: F401
 
 
 class TestMembership:
+    def test_lifecycle_runs_only_for_the_opening_and_before_the_branch_record(self, tmp_path):
+        repo, env, g = make_repo(tmp_path)
+        record = tmp_path / "opened.jsonl"
+        script = tmp_path / "open.py"
+        script.write_text(
+            "import json, os, pathlib, sys\n"
+            "branch = pathlib.Path(os.environ['XP_DATA'], 'sprint_branch')\n"
+            f"p = pathlib.Path({str(record)!r})\n"
+            "with p.open('a') as f: f.write(json.dumps([sys.argv[1:], branch.exists()])+'\\n')\n"
+            "raise SystemExit(int(p.with_suffix('.exit').read_text()) "
+            "if p.with_suffix('.exit').exists() else 0)\n"
+        )
+        command = shlex.join([sys.executable, str(script), "fixed value"])
+        config = repo / ".xp" / "config.yml"
+        config.write_text(f"lifecycle_command: {command}\n" + config.read_text())
+        g("add", "-A")
+        g("commit", "-qm", "configure lifecycle")
+        branch = tmp_path / "data" / "sprint_branch"
+        branch.unlink()
+
+        opened = sprint(repo, env, "start")
+        assert opened.returncode == 0, opened.stderr
+        assert [json.loads(line) for line in record.read_text().splitlines()] == [
+            [["fixed value", "sprint-open", "2"], False]
+        ]
+        assert branch.exists()
+        assert sprint(repo, env, "start").returncode == 0
+        assert len(record.read_text().splitlines()) == 1, "the close-time re-run reopened it"
+
+        branch.unlink()
+        record.with_suffix(".exit").write_text("1")
+        plan = tmp_path / "data" / "plan.md"
+        plan.write_text(plan.read_text().replace("[in-progress]", "[planned]", 1))
+        refused = sprint(repo, env, "start")
+        assert refused.returncode == 2 and "sprint-open" in refused.stderr
+        assert command.split()[0] in refused.stderr and not branch.exists()
+        assert "[planned]" in plan.read_text()
+
     def test_other_sprints_do_not_block_this_one(self, tmp_path):
         """The naive reading — no story in plan.md is non-done — refuses forever,
         because Sprint 3 is [ready] right now and always will be."""
@@ -37,6 +77,7 @@ class TestMembership:
         r = sprint(repo, env, "start")
         assert r.returncode == 0, r.stderr
         assert "story-099" not in r.stdout
+        assert "milestone" not in r.stdout.lower()
 
     def test_sprint_2_does_not_swallow_sprint_20(self, tmp_path):
         """Membership was a PREFIX match, so sprint 2 claimed sprint 20's cards:
@@ -53,38 +94,24 @@ class TestMembership:
         assert r.returncode == 0, r.stderr
         assert "story-900" not in r.stdout + r.stderr
 
-    def test_start_records_and_prints_each_clones_own_branch_before_stories(self, tmp_path):
-        for name, branch in (("one", "sprint-one"), ("two", "sprint-two")):
-            root = tmp_path / name
-            root.mkdir()
-            repo, env, g = make_repo(
-                root,
-                plan=PLAN.replace(
-                    "#### story-043 — also done   [done]",
-                    "#### story-043 — also done   [in-progress]",
-                ),
-            )
-            g("branch", "-m", branch)
-            (root / "data" / "sprint_branch").unlink()
-            r = sprint(repo, env, "start")
-            assert r.returncode == 0, r.stderr
-            assert (root / "data" / "sprint_branch").read_text().strip() == branch
-            assert branch in r.stdout
-
     def test_a_rerun_over_an_unfinished_sprint_refuses_instead_of_skipping_the_checks(
         self, tmp_path
     ):
         """The close leg exits 0 at OPEN, when every story is unfinished by
         definition. Without the re-run split that exit 0 is also what a premature
         close gets — falsifier batch, full tier and triage all silently skipped."""
-        repo, env, _g = make_repo(
-            tmp_path,
-            plan=PLAN.replace(
-                "#### story-043 — also done   [done]", "#### story-043 — also done   [in-progress]"
-            ),
-        )
-        r = sprint(repo, env, "start")
-        assert r.returncode == 2 and "story-043" in r.stderr
+        repo, env, _g = make_repo(tmp_path)
+        path = tmp_path / "data" / "plan.md"
+        for status in ("planned", "ready", "in-progress"):
+            path.write_text(
+                PLAN.replace(
+                    "#### story-043 — also done   [done]",
+                    f"#### story-043 — also done   [{status}]",
+                )
+            )
+            r = sprint(repo, env, "start")
+            assert r.returncode == 2 and "story-043" in r.stderr
+            assert "milestone" not in (r.stdout + r.stderr).lower()
 
     def test_start_refuses_to_overwrite_another_active_sprint(self, tmp_path):
         repo, env, _g = make_repo(tmp_path)
@@ -134,15 +161,29 @@ class TestMembership:
         assert r.returncode == 2 and "not readable" in r.stderr and "Traceback" not in r.stderr
 
     def test_a_retired_story_in_this_sprint_does_not_refuse(self, tmp_path):
-        repo, env, _g = make_repo(
-            tmp_path,
-            plan=PLAN.replace(
+        plan = (
+            PLAN.replace(
                 "#### story-043 — also done   [done]",
                 "#### story-043 — folded elsewhere   [retired]",
-            ),
+            )
+            .replace(
+                "### Sprint 3",
+                "### Pool — not scheduled\n#### story-098 — later   [planned]\n\n### Sprint 3",
+            )
+            .replace(
+                "#### story-099 — not this sprint   [ready]",
+                "#### story-099 — later terminal card   [done]",
+            )
+        )
+        repo, env, _g = make_repo(
+            tmp_path,
+            plan=plan,
         )
         r = sprint(repo, env, "start")
         assert r.returncode == 0, r.stderr
+        assert r.stdout.count("## Milestone 1") == 1
+        assert "close.py sprint 2 milestone-done" in r.stdout
+        assert (tmp_path / "data" / "plan.md").read_text() == plan
 
 
 class TestFullTier:

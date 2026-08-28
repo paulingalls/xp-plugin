@@ -1,8 +1,8 @@
 # Execution Plan
 
-## Milestone 1 — <name>   [in-progress]
+## Milestone 1 — <name>   [planned]
 Goal: <one sentence>
-Done when: <an EXECUTABLE check — a command that exits 0 when the milestone is real>
+Done when: EDIT-ME
 
 ### Sprint 1
 

@@ -148,7 +148,7 @@ class TestFreePostMerge:
         assert "v0.2.1" not in g("tag").stdout.split()
 
     def test_a_free_release_leaves_the_recorded_sprint_branch_alone(self, tmp_path):
-        repo, env, g = self.reviewed(tmp_path)
+        repo, env, g = self.reviewed(tmp_path, extra="lifecycle_command: false\n")
         path = Path(env["XP_DATA"]) / "sprint_branch"
         path.write_text("sprint-001\n")
         self.merge_pr(g)

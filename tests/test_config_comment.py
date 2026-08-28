@@ -43,6 +43,15 @@ class TestConfigCommentRule:
         assert config_block_value("tests", "full") == "pytest"
         assert config_flat("release") == "sprint"
 
+    def test_lifecycle_prefix_keeps_fixed_quoted_argv_before_its_comment(
+        self, tmp_path, monkeypatch
+    ):
+        from close import config_flat
+
+        body = 'lifecycle_command: python3 sync.py "fixed value"  # project hook\n'
+        monkeypatch.chdir(self.config(tmp_path, body))
+        assert config_flat("lifecycle_command") == 'python3 sync.py "fixed value"'
+
     def test_a_fully_commented_line_never_opens_or_closes_a_block(self, tmp_path, monkeypatch):
         """`# review:` must not read as the review block, and a commented-out tier
         inside `tests:` must not end it before the live tiers below."""
