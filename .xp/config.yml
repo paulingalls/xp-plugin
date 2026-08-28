@@ -27,6 +27,6 @@ roles:                 # harness/model[/effort]; lead overrides per story in pla
   closer: claude/opus/high
 
 tests:
-  fast: pytest -q -n auto -m "not slow"     # pre-commit
+  fast: pytest -q -n 8 -m "not slow"        # pre-commit; 16 workers oversubscribe this suite
   story: pytest -q -n auto          # pre-push + story close
   full: pytest -q -n auto           # sprint close (diverges when e2e/meta lands)
