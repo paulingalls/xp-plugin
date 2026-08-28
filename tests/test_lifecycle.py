@@ -107,3 +107,35 @@ def test_free_land_does_not_emit_a_story_event(tmp_path):
     result = free(repo, env, "fix-typo", "land")
     assert result.returncode == 0, result.stderr + result.stdout
     assert entries(log) == []
+
+
+def test_a_red_story_close_command_refuses_before_the_merge(tmp_path):
+    """The AC's middle transition: a red command must leave main where it was."""
+    command, log = recorder(tmp_path)
+    repo, env, g = make_repo(tmp_path)
+    configure(repo, g, command)
+    log.with_suffix(".exit").write_text("1")
+    before = g("rev-parse", "main").stdout.strip()
+    assert story(repo, env, "review").returncode == 0
+    result = story(repo, env, "land")
+    assert result.returncode == 2, result.stderr + result.stdout
+    assert "story-close" in result.stderr and command.split()[0] in result.stderr
+    assert g("rev-parse", "main").stdout.strip() == before
+    assert [entry["argv"] for entry in entries(log)] == [
+        ["fixed value", "story-close", "story-042"]
+    ]
+
+
+def test_the_shared_grammar_still_teaches_the_two_ways_it_is_got_wrong():
+    """These refusals are the only documentation of the grammar — nothing else ships
+    it — so the parser move must carry them, not just the words `shell syntax`."""
+    for line, wanted in (
+        ("Verify: pytest a; pytest b", "&&"),
+        ("Verify: no-such-runner-xyz -q", "`cd`"),
+    ):
+        try:
+            verify_commands("story-042", line)
+        except ValueError as e:
+            assert wanted in str(e), str(e)
+        else:
+            raise AssertionError(f"{line!r} was accepted")
