@@ -2,7 +2,9 @@
 Verify: pytest -q tests/test_sprint_close.py"""
 
 import json
+import shlex
 import subprocess
+import sys
 from pathlib import Path
 
 from close_helpers import launches, stub_reviewer  # noqa: F401
@@ -30,6 +32,41 @@ from sprint_helpers import (  # noqa: F401
 
 
 class TestMembership:
+    def test_lifecycle_runs_only_for_the_opening_and_before_the_branch_record(self, tmp_path):
+        repo, env, g = make_repo(tmp_path)
+        record = tmp_path / "opened.jsonl"
+        script = tmp_path / "open.py"
+        script.write_text(
+            "import json, os, pathlib, sys\n"
+            "branch = pathlib.Path(os.environ['XP_DATA'], 'sprint_branch')\n"
+            f"p = pathlib.Path({str(record)!r})\n"
+            "with p.open('a') as f: f.write(json.dumps([sys.argv[1:], branch.exists()])+'\\n')\n"
+            "raise SystemExit(int(p.with_suffix('.exit').read_text()) "
+            "if p.with_suffix('.exit').exists() else 0)\n"
+        )
+        command = shlex.join([sys.executable, str(script), "fixed value"])
+        config = repo / ".xp" / "config.yml"
+        config.write_text(f"lifecycle_command: {command}\n" + config.read_text())
+        g("add", "-A")
+        g("commit", "-qm", "configure lifecycle")
+        branch = tmp_path / "data" / "sprint_branch"
+        branch.unlink()
+
+        opened = sprint(repo, env, "start")
+        assert opened.returncode == 0, opened.stderr
+        assert [json.loads(line) for line in record.read_text().splitlines()] == [
+            [["fixed value", "sprint-open", "2"], False]
+        ]
+        assert branch.exists()
+        assert sprint(repo, env, "start").returncode == 0
+        assert len(record.read_text().splitlines()) == 1, "the close-time re-run reopened it"
+
+        branch.unlink()
+        record.with_suffix(".exit").write_text("1")
+        refused = sprint(repo, env, "start")
+        assert refused.returncode == 2 and "sprint-open" in refused.stderr
+        assert command.split()[0] in refused.stderr and not branch.exists()
+
     def test_other_sprints_do_not_block_this_one(self, tmp_path):
         """The naive reading — no story in plan.md is non-done — refuses forever,
         because Sprint 3 is [ready] right now and always will be."""

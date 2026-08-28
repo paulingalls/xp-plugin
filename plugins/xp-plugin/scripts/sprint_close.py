@@ -9,10 +9,11 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 sys.path.insert(0, str(Path(__file__).parent / "close"))
+import lifecycle as lc
 import overlap
 import stages
-from close import default_branch, fail, git, story_card
-from env import record_sprint_branch, refuse_direct_invocation
+from close import config_flat, default_branch, fail, git, story_card
+from env import record_sprint_branch, refuse_direct_invocation, sprint_branch
 from release import cmd_post_merge as release_post_merge
 from release import next_version, refuse_unbumpable
 from review import reviewer_strays
@@ -292,6 +293,8 @@ def cmd_start(sprint_id: str) -> int:
     branch = git("branch", "--show-current").stdout.strip()
     if not branch or branch == default_branch():
         return fail("refused: open the sprint from its freshly cut branch, not trunk")
+    if not sprint_branch() and (red := lc.run(config_flat(lc.KEY), "sprint-open", sprint_id)):
+        return fail(red)
     opening = record_sprint_branch(branch)
     print(f"sprint branch: {branch}")
     if unfinished := [m for m in members if not m.endswith(("[done]", "[retired]"))]:
@@ -368,12 +371,7 @@ def _shown_diff(sprint_id: str, shown: str, head: str) -> tuple[subprocess.Compl
 
 
 def _coverage_refusal(sprint_id: str, head: str) -> str:
-    """ "" if a recorded round covers HEAD, else why not. Bug c9b48a66.
-
-    HEAD coverage only — deliberately no "trunk moved since the review" clause:
-    that is trunk motion, a different guard's business, and copying it here from
-    close.cmd_land is the wrong half of the symmetry.
-    """
+    """ "" if a round covers HEAD. Trunk motion belongs to the overlap guard."""
     marker = sprint_marker(sprint_id)
     state = json.loads(marker.read_text()) if marker.exists() else {}
     rerun = f"run `close.py sprint {sprint_id} review`"
@@ -393,8 +391,7 @@ def _coverage_refusal(sprint_id: str, head: str) -> str:
         )
     if (shown := str(state.get("shown_sha"))) == head:
         return ""
-    # check=False: a rebased, reset or gc'd sha must refuse, never raise
-    # CalledProcessError from inside the gate that guards the release
+    # A missing rebased/reset sha must refuse, not raise inside the release gate.
     moved, missing = _shown_diff(sprint_id, shown, head)
     if missing:
         return missing
@@ -404,10 +401,7 @@ def _coverage_refusal(sprint_id: str, head: str) -> str:
             f"refused: HEAD does not contain {shown[:8]}, the tree the round covered"
             f" — the recorded round describes no tree that exists. {rerun}"
         )
-    # AUTHORSHIP, the story leg's rule: the review leg's fixer commits inside the
-    # range its round covers, so a bare sha compare refuses the release over the
-    # fixes the review exists to produce. Never over a GATE_FILE, whatever signed
-    # it — patch application permits any `.xp/` path a sprint card declares.
+    # Reviewer fixes are covered by their round; never exempt a gate file by author.
     strays = reviewer_strays(shown, head)
     if not strays and not any(f in overlap.GATE_FILES for f in moved.stdout.splitlines()):
         print(f"the delta since {shown[:8]} is the reviewer's own fixes")
@@ -453,13 +447,8 @@ def cmd_land(sprint_id: str, dry_run: bool) -> int:
             "refused: the working tree is dirty — the tier must judge the tree"
             " that ships, and these files are not in it:\n  " + dirty
         )
-    # start's tier is stale by construction: SKILL.md puts triage, the retro and the
-    # release artifacts BETWEEN it and here, so the tree that ships is never the one
-    # that was measured (sprint-003: four commits, one of them this file). And what
-    # ships is this branch MERGED into the default branch, which no leg here builds —
-    # so the tier judges a trial merge, through the story leg's own gates(). BELOW
-    # the dry-run return because a preview runs nothing, and ABOVE the gh check so a
-    # red tier is what you are told about, not a missing binary.
+    # Triage, retro and release commits stale start's tier; land measures the trial
+    # merge before checking gh so the shipping tree, not tool availability, decides.
     if red := overlap.gates(ref, "", "full", pending):
         return fail(red)
     # Assent is given by RUNNING land, where close.cmd_land's rationale applies

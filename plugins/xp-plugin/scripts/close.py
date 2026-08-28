@@ -4,8 +4,6 @@
 import argparse
 import json
 import os
-import shlex
-import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -14,6 +12,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 sys.path.insert(0, str(Path(__file__).parent / "close"))
 from bookkeep import render_prior_rounds
 from env import sprint_branch
+from lifecycle import verify_commands
 from work import (
     chdir_repo_root,
     data_root,
@@ -53,56 +52,6 @@ def story_card(plan: str, story_id: str) -> tuple[str, str]:
     return card, status
 
 
-def verify_commands(story_id: str, card: str, runnable: bool = True) -> tuple[str, list[list[str]]]:
-    raw = None
-    for ln in card.splitlines():
-        if ln.startswith("Verify:"):
-            raw = ln.removeprefix("Verify:").strip()
-            break
-    if raw is None:
-        raise ValueError(
-            f"refused: {story_id} has no Verify: line — an unverifiable story cannot close"
-        )
-    if not raw:
-        raise ValueError(
-            f"refused: {story_id}'s Verify: line is empty — its commands must be on the"
-            " SAME line as the label (`Verify: pytest -q ...`), not a list below it"
-        )
-    parts, start, quote, i = [], 0, "", 0
-    while i < len(raw):
-        char = raw[i]
-        if char == "\\" and quote != "'":
-            i += 2
-            continue
-        if char in "'\"":
-            quote = "" if quote == char else quote if quote else char
-        elif char in "$`" or (not quote and char in "|&;<>()[#*?~{"):
-            if char == "&" and raw[i : i + 2] == "&&":
-                parts.append(raw[start:i])
-                start, i = i + 2, i + 1
-            else:
-                raise ValueError(
-                    f"refused: {story_id}'s Verify: line contains shell syntax {char!r}"
-                    " — no shell runs it: quote it, drop any trailing # comment, and"
-                    " separate commands with an unquoted &&"
-                )
-        i += 1
-    parts.append(raw[start:])
-    try:
-        commands = [shlex.split(part) for part in parts]
-    except ValueError as e:
-        raise ValueError(f"refused: {story_id}'s Verify: line is not runnable ({e})") from e
-    if any(not argv for argv in commands):
-        raise ValueError(f"refused: {story_id}'s Verify: line has an empty command around &&")
-    if runnable and (missing := next((a[0] for a in commands if not shutil.which(a[0])), "")):
-        raise ValueError(
-            f"refused: {story_id}'s Verify: command {missing!r} is not runnable on this PATH"
-            " — with no shell there are no builtins, so `cd` is not one of them; make a"
-            " real command available to the lead before `spawn.py ready`"
-        )
-    return raw, commands
-
-
 def config_flat(key: str) -> str:
     """A flat top-level `key: value` from .xp/config.yml."""
     cfg = Path(".xp/config.yml")
@@ -132,8 +81,7 @@ def integration_target() -> str:
             )
         branch = sprint_branch()
         if branch:
-            # refs/heads explicitly: a tag with the same name wins plain rev-parse
-            # and would freeze every guard on a ref that never moves
+            # A same-named tag wins plain rev-parse and would freeze this guard.
             ok = git("rev-parse", "--verify", "-q", f"refs/heads/{branch}", check=False)
             if ok.returncode != 0:
                 print(
