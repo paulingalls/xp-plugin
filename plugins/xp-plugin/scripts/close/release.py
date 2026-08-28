@@ -4,6 +4,7 @@ import json
 import re
 from pathlib import Path
 
+import lifecycle as lc
 from close import config_flat, default_branch, fail, git
 from env import clear_sprint_branch, sprint_branch
 
@@ -82,13 +83,14 @@ def cmd_post_merge(
         return fail("refused: no .xp/config.yml here — is this an xp-managed repo?")
     if refusal := version_refusal(version):
         return fail(refusal)
+    if retire_sprint and (red := lc.run(config_flat(lc.KEY), "sprint-close", release_id)):
+        return fail(red)
     if git("tag", version, check=False).returncode:
         return fail(f"refused: could not create tag {version}")
     if retire_sprint:
         clear_sprint_branch()
     suffix = "; sprint branch cleared" if retire_sprint else ""
-    # version_files ships COMMENTED, so the DEFAULT project cuts every tag with
-    # no wall; a release's tag, manifest and CHANGELOG must name one version.
+    # The commented default checks no manifest, so the report must expose that.
     walled = (
         f"manifests matching {version}: {', '.join(checked)}"
         if (checked := version_files())

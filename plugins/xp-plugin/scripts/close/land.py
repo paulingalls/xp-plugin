@@ -8,6 +8,7 @@ from pathlib import Path
 
 import bookkeep
 import close
+import lifecycle as lc
 import overlap
 import ready
 import review
@@ -48,8 +49,7 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool, free_slug: str = "")
     minted = work.ready_marker_path(story_id).exists()
     text = work.plan_path().read_text() if work.plan_path().exists() else ""
     card, status = "", ""
-    # Optional ONLY on a free branch that minted no card: a minted one went to the
-    # reviewer, so losing it must refuse, not read as card-less and skip what follows.
+    # A minted free card reached review, so losing it cannot become card-less mode.
     if not free or minted or f"#### {story_id} " in text:
         if not text:
             return close.fail(f"refused: {work.missing_plan_refusal()}")
@@ -105,6 +105,8 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool, free_slug: str = "")
         )
         return 0
     if red := overlap.gates(ref, verify, tier_key, pending):
+        return close.fail(red)
+    if not free and (red := lc.run(close.config_flat(lc.KEY), "story-close", story_id)):
         return close.fail(red)
 
     review.disclose(state, head, review.diff_path(review.report_path(story_id, len(rounds))))
