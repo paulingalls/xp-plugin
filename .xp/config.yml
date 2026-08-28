@@ -21,9 +21,9 @@ roles:                 # harness/model[/effort]; lead overrides per story in pla
   # Paul's call at the retro, not a lead's under release pressure — his Sprint-5
   # pairing is codex authors / claude reviews, and flipping finders to codex inverts
   # it for the stage that feeds every other one.
-  finder: claude/opus/high
+  finder: codex/gpt-5.6-sol/high
   verifier: claude/opus/high
-  fixer: claude/opus/high
+  fixer: codex/gpt-5.6-sol/high
   closer: claude/opus/high
 
 tests:
