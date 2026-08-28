@@ -57,13 +57,13 @@ def validate(root: Path, story_id: str, tree: Path, branch: str) -> str:
             f"refused: {marker} is unreadable, so it cannot prove the teammate stopped —"
             " read `work.py list`, repair the handoff, then resume"
         )
-    # acquire() holds the launch lock one call earlier, so a RUNNING marker here means
-    # that launch DIED; repairing it to FINISHED would credential a clean success.
+    # A locked RUNNING marker proves a dead launch; FINISHED would forge clean success.
     kind = state.get("state") if marker.exists() else "NEVER SPAWNED"
     if kind == "NEVER SPAWNED" and not tree.is_dir():
         return f"refused: {story_id} was NEVER SPAWNED — use `spawn.py {story_id}` first"
     if kind not in ("STOPPED", "FINISHED", "RUNNING", "NEVER SPAWNED"):
-        return f'refused: invalid handoff state {kind!r} in {marker} — set "STOPPED" or "FINISHED"'
+        recovery = "discard/re-spawn or record a real STOPPED recovery; never forge FINISHED"
+        return f"refused: invalid handoff state {kind!r} in {marker} — {recovery}"
     if not tree.is_dir():
         return f"refused: {kind} worktree {tree} is missing — recover it before resuming"
     if kind in ("RUNNING", "NEVER SPAWNED"):

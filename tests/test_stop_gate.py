@@ -270,15 +270,14 @@ class TestStoryScopedMarkers:
         names = sorted(p.name for p in (tmp_path / "xp" / "markers").glob("*.test-status"))
         assert names == ["sess-1.story-042.test-status", "sess-1.story-043.test-status"]
 
-    def test_a_sibling_card_the_parser_rejects_still_leaves_the_gate_armed(self, tmp_path):
-        """One parser now reads every Verify line, and it REFUSES by raising. The
-        plan is read whole, so a card this session never touched — the pre-062
-        template put a `#` comment on that line — took every other story's
-        telemetry with it, and the Stop gate then had no red to block on."""
+    def test_a_red_story_the_parser_later_rejects_still_leaves_the_gate_armed(self, tmp_path):
+        """Liveness is the card status, not whether its edited Verify still parses."""
         mine = "pytest -q tests/test_mine.py"
-        repo = self.two_stories(tmp_path, mine, "pytest -q x.py  # the old template's shape")
+        repo = self.two_stories(tmp_path, mine, "bun test x")
         run_script("bash_status.py", failure_payload(mine), repo, tmp_path)
         assert [m["story"] for m in markers(tmp_path)] == ["story-042"]
+        plan = tmp_path / "xp" / "plan.md"
+        plan.write_text(plan.read_text().replace(mine, f"{mine}  # pre-062 template"))
         r = run_script("stop_gate.py", self_payload(), repo, tmp_path)
         assert json.loads(r.stdout)["decision"] == "block", r.stdout or r.stderr
 

@@ -262,6 +262,10 @@ class TestResume:
         result = resume(repo, env)
 
         assert result.returncode == 2 and "invalid handoff state" in result.stderr
+        assert all(
+            text in result.stderr
+            for text in ("discard", "real STOPPED recovery", "never forge FINISHED")
+        )
         assert not rec.exists(), "resume launched from an unenumerated marker state"
 
     def test_plain_spawn_still_refuses_a_running_teammates_worktree(self, tmp_path):

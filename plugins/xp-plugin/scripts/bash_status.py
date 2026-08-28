@@ -7,14 +7,12 @@ carrying its {stdout,stderr,...} dict PROVES success. Codex 0.147.0 fires
 PostToolUse for failures too and no field of that payload carries the outcome —
 so green is written only where it is PROVEN, never inferred from an event.
 
-Matching: the command must contain a shell segment that STARTS WITH an
-in-progress story's config-known Verify string — a mention (commit message,
-grep) is not an invocation. One marker per STORY, not per verify string
-(markers are always story-scoped): two stories can carry byte-identical Verify commands — sprint-1
-shipped a pair — and a verify-keyed marker cannot tell whose status it holds.
+Matching: a shell segment must START WITH an in-progress story's config-known Verify;
+a mention (commit message, grep) is not an invocation. Markers are story-scoped because
+two stories can carry byte-identical Verify commands, and a verify-keyed marker cannot
+tell whose status it holds.
 """
 
-import contextlib
 import json
 import re
 import sys
@@ -35,8 +33,10 @@ def in_progress_stories() -> list[tuple[str, str]]:
         if ln.startswith("#### ") and "[in-progress]" in ln:
             story_id = ln.removeprefix("#### ").split(" ", 1)[0]
             card, _ = story_card(plan, story_id)
-            with contextlib.suppress(ValueError):  # one bad card must not blind the rest
+            try:
                 stories.append((story_id, verify_commands(story_id, card, runnable=False)[0]))
+            except ValueError:
+                stories.append((story_id, ""))
     return stories
 
 
@@ -57,7 +57,7 @@ def invoked_stories(command: str, event_is_green: bool) -> list[tuple[str, str]]
     hits = []
     for story_id, verify in in_progress_stories():
         for i, tok in enumerate(tokens):
-            if tok == verify:
+            if verify and tok == verify:
                 rest_seps = [t for t in tokens[i + 1 :] if t in ("&&", "||", ";", "|", "")]
                 if not event_is_green or all(t == "&&" for t in rest_seps):
                     hits.append((story_id, verify))
