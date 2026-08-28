@@ -102,12 +102,12 @@ def run_one(label: str, cmd: str | list[str], where: str = "") -> str:
     return f"refused: {label} red{where}: {shown}" if rc else ""
 
 
-def run_checks(verify: list[list[str]], tier: str, where: str = "") -> str:
-    if not tier:
+def run_checks(verify: list[list[str]], tier: str | None, where: str = "") -> str:
+    if tier == "":
         # SAYS SO rather than refusing: hook-lib.sh's run_tier refuses an unset
         # tier, and the two legs disagreeing is worth a card (f6c00b18) — but the
         # defect worth fixing now is the SILENCE. A merge gated by Verify alone is
-        # legal; one the lead believes a tier gated is not.
+        # legal; one the lead believes a tier gated is not. None = no tier applies.
         print("no tests.<tier> in .xp/config.yml — Verify alone gates this", file=sys.stderr)
     for label, commands in (("Verify", verify), ("test tier", [tier] if tier else [])):
         for cmd in commands:
@@ -116,7 +116,7 @@ def run_checks(verify: list[list[str]], tier: str, where: str = "") -> str:
     return ""
 
 
-def gates(ref: str, verify: str, tier_key: str, pending: bool) -> str:
+def gates(ref: str, verify: list[list[str]], tier_key: str, pending: bool) -> str:
     """Verify and the tier, run on the tree that will EXIST. Merging INTO the story
     branch rather than in the tree holding trunk: same merged content either way,
     and this arm needs no second worktree and strands no foreign tree mid-merge.

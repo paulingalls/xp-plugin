@@ -261,10 +261,11 @@ class TestLandFailureModes:
     def test_local_dry_run_previews_the_destructive_steps_too(self, tmp_path):
         """R3F4: F4's rule was applied to the pr arm only, and local is the mode
         release: sprint forces — the un-fixed copy is the one in daily use."""
-        repo, env, _g = make_repo(tmp_path)
+        repo, env, _g = make_repo(tmp_path, verify="printf 'a b' && true")
         close(repo, env, "review")
         r = close(repo, env, "land", "--dry-run")
         assert r.returncode == 0
+        assert "would run: printf 'a b' && true\n" in r.stdout, "the preview must be RUNNABLE"
         assert "git branch -d story-042-branch" in r.stdout
         # make_repo has NO remote, and both pushes are runtime-guarded on one —
         # previewing them here is the same overstatement F4 was filed for

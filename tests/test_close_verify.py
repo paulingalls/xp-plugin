@@ -171,6 +171,24 @@ class TestTheRoundIsRecordedOnlyIfVerifyRan:
         assert "Verify red" in r.stderr, r.stderr
         assert not marker_file(tmp_path).exists(), "a refused round was recorded anyway"
 
+    def test_the_reviewed_tree_verify_does_not_report_the_tier_unset(self, tmp_path):
+        """The fixture's config.yml SETS tests.story. Routing this leg through the
+        gate runner made it claim otherwise on every round — telling the lead their
+        config is broken, about a tier this leg was never asked to run."""
+        repo, env, _g = make_repo(tmp_path)
+        r = close(repo, env, "review")
+        assert r.returncode == 0 and "no tests.<tier>" not in r.stderr, r.stderr
+
+    def test_a_verify_that_cannot_run_is_not_a_verify_that_failed(self):
+        """AC 2 of story-036, whose only cover the argv cut deleted: the lead's next
+        action differs — one is a code fix, the other a harness problem. A shell
+        reported that as 127; an argv RAISES, and nothing else walks that arm (the
+        PATH pre-check cannot, since it refuses before anything runs)."""
+        import overlap
+
+        verdict = overlap.run_one("Verify", ["xp-no-such-command-036"])
+        assert "could not be RUN" in verdict and "Verify red" not in verdict, verdict
+
     def test_a_refused_round_says_so_in_the_file_a_reader_opens(self, tmp_path):
         """AC 3: close.py keeps a refused round's report on purpose — its findings
         exist nowhere else — and the file then reads `blocking: []` whether the

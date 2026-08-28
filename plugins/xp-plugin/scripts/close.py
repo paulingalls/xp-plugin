@@ -83,7 +83,8 @@ def verify_commands(story_id: str, card: str, runnable: bool = True) -> tuple[st
             else:
                 raise ValueError(
                     f"refused: {story_id}'s Verify: line contains shell syntax {char!r}"
-                    " — use quoted argv and unquoted && between commands"
+                    " — no shell runs it: quote it, drop any trailing # comment, and"
+                    " separate commands with an unquoted &&"
                 )
         i += 1
     parts.append(raw[start:])
@@ -96,7 +97,8 @@ def verify_commands(story_id: str, card: str, runnable: bool = True) -> tuple[st
     if runnable and (missing := next((a[0] for a in commands if not shutil.which(a[0])), "")):
         raise ValueError(
             f"refused: {story_id}'s Verify: command {missing!r} is not runnable on this PATH"
-            " — make it available to the lead before `spawn.py ready`"
+            " — with no shell there are no builtins, so `cd` is not one of them; make a"
+            " real command available to the lead before `spawn.py ready`"
         )
     return raw, commands
 
@@ -260,7 +262,7 @@ def verify_on_reviewed_tree(story_id: str, card: str) -> str:
         return ""
     import overlap  # a cycle at module level: it imports close
 
-    red = overlap.run_checks(verify_commands(story_id, card)[1], "", " on the reviewed tree")
+    red = overlap.run_checks(verify_commands(story_id, card)[1], None, " on the reviewed tree")
     return red.removeprefix("refused: ")
 
 
