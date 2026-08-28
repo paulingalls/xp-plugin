@@ -91,10 +91,13 @@ class TestDogfoodMatchesTheScaffold:
 
     def test_the_wall_refuses_when_the_MEASUREMENT_itself_fails(self, tmp_path):
         """A gate that reports green having run nothing is worse than no gate —
-        secrets_scan says so twelve lines above this function, and this one used to
-        do exactly that: an empty `count` makes `[ "" -gt N ]` error, which reads as
-        under-cap. Injected two ways the sprint-9 closer named: no python3 on PATH,
-        and a constraints.md the reader cannot open. Both must REFUSE.
+        hook-lib.sh opens with that rule and constraints_size used to break it: an
+        empty `count` makes `[ "" -gt N ]` error, which reads as under-cap. One
+        injection per guard: no python3 on PATH, and a constraints.md the reader
+        cannot open. The first matches the STANZA'S OWN SENTENCE rather than the
+        bare word `python3`, because the shell prints `python3: command not found`
+        itself — measured: with the `command -v` guard deleted the looser match
+        still saw `python3` and `nothing measured`, so it pinned nothing.
         """
         bin_dir = tmp_path / "bin"
         bin_dir.mkdir()
@@ -104,7 +107,8 @@ class TestDogfoodMatchesTheScaffold:
                 (bin_dir / tool).symlink_to(found)
         blind = self.run_constraints_wall(tmp_path, 4_500, 10, path=str(bin_dir))
         assert blind.returncode != 0, blind.stdout
-        assert "python3" in blind.stderr and "nothing measured" in blind.stderr, blind.stderr
+        assert "python3 not installed" in blind.stderr, blind.stderr
+        assert "nothing measured" in blind.stderr and "then retry" in blind.stderr, blind.stderr
 
         (tmp_path / ".xp" / "constraints.md").chmod(0o000)
         try:
@@ -112,7 +116,8 @@ class TestDogfoodMatchesTheScaffold:
         finally:
             (tmp_path / ".xp" / "constraints.md").chmod(0o644)
         assert unreadable.returncode != 0, unreadable.stdout
-        assert "nothing measured" in unreadable.stderr, unreadable.stderr
+        assert "could not measure" in unreadable.stderr, unreadable.stderr
+        assert "then retry" in unreadable.stderr, unreadable.stderr
 
     def test_scaffolded_wall_refuses_constraints_over_the_character_cap(self, tmp_path):
         red = self.run_constraints_wall(tmp_path, 4_500, 4_501)
