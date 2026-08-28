@@ -4,6 +4,26 @@ Release notes started at v0.6.0; earlier entries are summarized from their
 tag and merge messages. Full detail lives in the merge history and the
 per-sprint review reports.
 
+## v0.12.0 — projects act, milestones move
+
+Sprint 11. Two stories held out of v0.11.0 until their product contracts were clear.
+
+- Projects can configure one shell-free `lifecycle_command`. It receives
+  `sprint-open`, `story-close` or `sprint-close` plus the id and runs before the
+  corresponding branch, merge or tag transition. A red command refuses; retries may
+  invoke it again, so idempotency and best-effort policy remain project-owned.
+- Opening the first scheduled sprint under a planned milestone atomically writes
+  `[in-progress]`. Sprint close proposes an explicit `milestone-done` action only
+  when every card under the milestone's Sprint sections is done or retired;
+  explicitly unscheduled pools do not block it.
+- `milestone-done` rechecks scheduled-card terminality, executes the milestone's
+  one-line `Done when:` through the shared argv grammar without a shell, and only then
+  writes `[done]`. Missing, prose, shell-bearing, non-runnable or red conditions
+  refuse without changing the plan.
+- Verify now rejects `cd` even on systems that expose `/usr/bin/cd`, preventing tests
+  from silently running in the wrong directory. Lifecycle commands also reject
+  chains instead of executing only their first argv command.
+
 ## v0.11.0 — commands are argv, handbacks are states
 
 Sprint 10. Two stories, plus release-gate repairs found by the durable falsifier

@@ -1,7 +1,6 @@
 import shlex
 import sys
 
-import pytest
 from sprint_helpers import PLUGIN, make_repo, sprint
 
 PLAN = """# plan
@@ -91,26 +90,27 @@ def test_opening_the_first_sprint_starts_only_its_milestone(tmp_path):
     assert (tmp_path / "data" / "plan.md").read_text() == before
 
 
-@pytest.mark.parametrize(
-    ("heading", "expected"),
-    [
+def test_opening_a_sprint_never_refuses_over_the_milestone_bracket(tmp_path):
+    """The start arm owns one flip, not the plan's shape. Refusing an unreadable
+    bracket shuts the sprint over bookkeeping the lead alone can write."""
+    cases = [
         ("", ""),
         ("## Milestone 1 — no bracket at all", "## Milestone 1 — no bracket at all"),
         ("## Milestone 1   [retired]", "## Milestone 1   [retired]"),
         ("## Milestone 1   [planned] ", "## Milestone 1   [in-progress] "),
-    ],
-)
-def test_opening_a_sprint_never_refuses_over_the_milestone_bracket(tmp_path, heading, expected):
-    """The start arm owns one flip, not the plan's shape. Refusing an unreadable
-    bracket shuts the sprint over bookkeeping the lead alone can write."""
-    plan = f"# plan\n{heading}\n### Sprint 2\n#### story-042 — done   [done]\nVerify: true\n"
-    repo, env, _g = make_repo(tmp_path, plan=plan)
-    (tmp_path / "data" / "sprint_branch").unlink()
+    ]
+    repo, env, _g = make_repo(tmp_path)
+    path = tmp_path / "data" / "plan.md"
+    branch = tmp_path / "data" / "sprint_branch"
 
-    opened = sprint(repo, env, "start")
+    for heading, expected in cases:
+        plan = f"# plan\n{heading}\n### Sprint 2\n#### story-042 — done   [done]\nVerify: true\n"
+        path.write_text(plan)
+        branch.unlink(missing_ok=True)
+        opened = sprint(repo, env, "start")
 
-    assert opened.returncode == 0, opened.stderr
-    assert (tmp_path / "data" / "plan.md").read_text() == plan.replace(heading, expected)
+        assert opened.returncode == 0, opened.stderr
+        assert path.read_text() == plan.replace(heading, expected)
 
 
 def test_a_finished_milestone_is_not_proposed_again(tmp_path):
@@ -148,27 +148,48 @@ def test_milestone_done_runs_declared_argv_then_flips_only_its_heading(tmp_path)
     assert "## Milestone 2 repeats Milestone 20   extended   [in-progress]" in changed
 
 
-@pytest.mark.parametrize(
-    "declared",
-    [None, "", "true; touch SHELL-PAYLOAD", "cd /", "missing-milestone-command", "false"],
-)
-def test_milestone_done_refuses_invalid_or_red_done_when(tmp_path, declared):
-    plan = active_plan(declared or "")
-    if declared is None:
-        plan = plan.replace("Done when: \n", "")
-    elif declared == "":
-        plan = plan.replace("Done when: \n", "Done when:\nThis prose is not a command.\n")
+def test_milestone_done_refuses_invalid_or_red_done_when(tmp_path):
+    declared_values = [
+        None,
+        "",
+        "true ; touch SHELL-PAYLOAD",
+        "cd /",
+        "missing-milestone-command",
+        "false",
+    ]
+    repo, env, _g = make_repo(tmp_path)
+    path = tmp_path / "data" / "plan.md"
+
+    for declared in declared_values:
+        plan = active_plan(declared or "")
+        if declared is None:
+            plan = plan.replace("Done when: \n", "")
+        elif declared == "":
+            plan = plan.replace("Done when: \n", "Done when:\nThis prose is not a command.\n")
+        path.write_text(plan)
+        result = sprint(repo, env, "milestone-done")
+
+        assert result.returncode == 2
+        assert "Done when:" in result.stderr
+        assert "## Milestone 2 repeats Milestone 20   [in-progress]" in path.read_text()
+        assert not (repo / "SHELL-PAYLOAD").exists()
+
+
+def test_milestone_done_never_infers_empty_membership_is_terminal(tmp_path):
+    plan = """# plan
+## Milestone 2   [in-progress]
+Done when: true
+### Sprint 2
+### Parking — not scheduled
+#### story-200 — later   [planned]
+"""
     repo, env, _g = make_repo(tmp_path, plan=plan)
 
     result = sprint(repo, env, "milestone-done")
 
     assert result.returncode == 2
-    assert "Done when:" in result.stderr
-    assert (
-        "## Milestone 2 repeats Milestone 20   [in-progress]"
-        in (tmp_path / "data" / "plan.md").read_text()
-    )
-    assert not (repo / "SHELL-PAYLOAD").exists()
+    assert "scheduled card" in result.stderr
+    assert (tmp_path / "data" / "plan.md").read_text() == plan
 
 
 def test_milestone_done_rechecks_terminal_cards_before_running(tmp_path):

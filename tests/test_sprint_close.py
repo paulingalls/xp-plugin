@@ -7,7 +7,6 @@ import subprocess
 import sys
 from pathlib import Path
 
-import pytest
 from close_helpers import launches, stub_reviewer  # noqa: F401
 from sprint_helpers import (  # noqa: F401
     CLOSE,
@@ -110,22 +109,24 @@ class TestMembership:
             assert (root / "data" / "sprint_branch").read_text().strip() == branch
             assert branch in r.stdout
 
-    @pytest.mark.parametrize("status", ["planned", "ready", "in-progress"])
     def test_a_rerun_over_an_unfinished_sprint_refuses_instead_of_skipping_the_checks(
-        self, tmp_path, status
+        self, tmp_path
     ):
         """The close leg exits 0 at OPEN, when every story is unfinished by
         definition. Without the re-run split that exit 0 is also what a premature
         close gets — falsifier batch, full tier and triage all silently skipped."""
-        repo, env, _g = make_repo(
-            tmp_path,
-            plan=PLAN.replace(
-                "#### story-043 — also done   [done]", f"#### story-043 — also done   [{status}]"
-            ),
-        )
-        r = sprint(repo, env, "start")
-        assert r.returncode == 2 and "story-043" in r.stderr
-        assert "milestone" not in (r.stdout + r.stderr).lower()
+        repo, env, _g = make_repo(tmp_path)
+        path = tmp_path / "data" / "plan.md"
+        for status in ("planned", "ready", "in-progress"):
+            path.write_text(
+                PLAN.replace(
+                    "#### story-043 — also done   [done]",
+                    f"#### story-043 — also done   [{status}]",
+                )
+            )
+            r = sprint(repo, env, "start")
+            assert r.returncode == 2 and "story-043" in r.stderr
+            assert "milestone" not in (r.stdout + r.stderr).lower()
 
     def test_start_refuses_to_overwrite_another_active_sprint(self, tmp_path):
         repo, env, _g = make_repo(tmp_path)
