@@ -69,7 +69,7 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool, free_slug: str = "")
             return close.fail(str(e))
     else:
         raw, verify = "", []
-    tier_key = "full" if free else "story"
+    tier_key = "story"
     tier = work.config_block_value("tests", tier_key)
     branch = close.git("rev-parse", "--abbrev-ref", "HEAD").stdout.strip()
     verdict = bookkeep.render_merge_body(rounds)
@@ -97,7 +97,7 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool, free_slug: str = "")
         if free:
             for command in pr_cmds:
                 print(" ".join(command))
-            print(f"(first the full tier; then `close.py free {free_slug} post-merge`)")
+            print(f"(first the story tier; then `close.py free {free_slug} post-merge`)")
             return 0
         print(
             bookkeep.render_land_preview(raw, tier, merge_mode, branch, trunk, pr_steps, pending),

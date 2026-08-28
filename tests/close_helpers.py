@@ -285,7 +285,7 @@ def prose(path: Path) -> str:
 
 def free_repo(tmp_path):
     """make_repo, plus what a RELEASE needs: an origin, a gh recorder, a semver
-    tag to bump off, and a full tier. HEAD is left on main — free start's own
+    tag to bump off, and both tier keys. HEAD is left on main — free start's own
     precondition, which make_repo does not leave."""
     repo, env, g = make_repo(tmp_path)
     origin = tmp_path / "origin.git"
@@ -294,7 +294,7 @@ def free_repo(tmp_path):
     g("checkout", "-q", "main")
     (repo / ".xp" / "config.yml").write_text(CONFIG + "  full: true\n")
     g("add", "-A")
-    g("commit", "-qm", "full tier")
+    g("commit", "-qm", "release setup")
     g("tag", "v0.2.0")
     g("push", "-q", "-u", "origin", "main")
     gh = tmp_path / "bin" / "gh"
