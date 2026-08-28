@@ -271,13 +271,15 @@ class TestStoryScopedMarkers:
         assert names == ["sess-1.story-042.test-status", "sess-1.story-043.test-status"]
 
     def test_a_red_story_the_parser_later_rejects_still_leaves_the_gate_armed(self, tmp_path):
-        """Liveness is the card status, not whether its edited Verify still parses."""
+        """Liveness is the card status; no parsed command means no telemetry match."""
         mine = "pytest -q tests/test_mine.py"
         repo = self.two_stories(tmp_path, mine, "bun test x")
         run_script("bash_status.py", failure_payload(mine), repo, tmp_path)
         assert [m["story"] for m in markers(tmp_path)] == ["story-042"]
         plan = tmp_path / "xp" / "plan.md"
         plan.write_text(plan.read_text().replace(mine, f"{mine}  # pre-062 template"))
+        run_script("bash_status.py", success_payload("git status\n"), repo, tmp_path)
+        assert {m["story"]: m["red"] for m in markers(tmp_path)} == {"story-042": True}
         r = run_script("stop_gate.py", self_payload(), repo, tmp_path)
         assert json.loads(r.stdout)["decision"] == "block", r.stdout or r.stderr
 
