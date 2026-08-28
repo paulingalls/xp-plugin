@@ -129,12 +129,13 @@ def card_digest(card: str) -> str:
     return hashlib.sha256("\n".join(card_lines(card)).encode()).hexdigest()[:16]
 
 
-def flip_status(text: str, story_id: str, frm: str, to: str) -> str:
-    """Rewrite only the card heading's trailing status, never matching title text."""
+def flip_status(text: str, heading: str, frm: str, to: str) -> str:
+    exact = heading.startswith("## ")
+    heading = heading if heading.startswith("#") else f"#### {heading} "
     out = []
     for ln in text.splitlines(keepends=True):
         head, sep, tail = ln.rstrip().rpartition(f"[{frm}]")
-        if sep and not tail and ln.startswith(f"#### {story_id} "):
+        if sep and not tail and (head == heading if exact else ln.startswith(heading)):
             ln = f"{head}[{to}]" + ln[len(ln.rstrip()) :]
         out.append(ln)
     return "".join(out)
@@ -143,7 +144,7 @@ def flip_status(text: str, story_id: str, frm: str, to: str) -> str:
 def flip_card(story_id: str, frm: str, to: str) -> bool:
     """Flip one card's status in the clone's plan, under the lock; True when it
     moved. Locked because a sibling lane may be flipping its own card right now."""
-    return edit_plan(lambda text: flip_status(text, story_id, frm, to))
+    return edit_plan(lambda text: flip_status(text, f"#### {story_id} ", frm, to))
 
 
 def ready_marker_path(story_id: str) -> Path:

@@ -7,6 +7,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
 from close_helpers import launches, stub_reviewer  # noqa: F401
 from sprint_helpers import (  # noqa: F401
     CLOSE,
@@ -74,6 +75,7 @@ class TestMembership:
         r = sprint(repo, env, "start")
         assert r.returncode == 0, r.stderr
         assert "story-099" not in r.stdout
+        assert "milestone" not in r.stdout.lower()
 
     def test_sprint_2_does_not_swallow_sprint_20(self, tmp_path):
         """Membership was a PREFIX match, so sprint 2 claimed sprint 20's cards:
@@ -108,8 +110,9 @@ class TestMembership:
             assert (root / "data" / "sprint_branch").read_text().strip() == branch
             assert branch in r.stdout
 
+    @pytest.mark.parametrize("status", ["planned", "ready", "in-progress"])
     def test_a_rerun_over_an_unfinished_sprint_refuses_instead_of_skipping_the_checks(
-        self, tmp_path
+        self, tmp_path, status
     ):
         """The close leg exits 0 at OPEN, when every story is unfinished by
         definition. Without the re-run split that exit 0 is also what a premature
@@ -117,11 +120,12 @@ class TestMembership:
         repo, env, _g = make_repo(
             tmp_path,
             plan=PLAN.replace(
-                "#### story-043 — also done   [done]", "#### story-043 — also done   [in-progress]"
+                "#### story-043 — also done   [done]", f"#### story-043 — also done   [{status}]"
             ),
         )
         r = sprint(repo, env, "start")
         assert r.returncode == 2 and "story-043" in r.stderr
+        assert "milestone" not in (r.stdout + r.stderr).lower()
 
     def test_start_refuses_to_overwrite_another_active_sprint(self, tmp_path):
         repo, env, _g = make_repo(tmp_path)
@@ -171,15 +175,29 @@ class TestMembership:
         assert r.returncode == 2 and "not readable" in r.stderr and "Traceback" not in r.stderr
 
     def test_a_retired_story_in_this_sprint_does_not_refuse(self, tmp_path):
-        repo, env, _g = make_repo(
-            tmp_path,
-            plan=PLAN.replace(
+        plan = (
+            PLAN.replace(
                 "#### story-043 — also done   [done]",
                 "#### story-043 — folded elsewhere   [retired]",
-            ),
+            )
+            .replace(
+                "### Sprint 3",
+                "### Pool — not scheduled\n#### story-098 — later   [planned]\n\n### Sprint 3",
+            )
+            .replace(
+                "#### story-099 — not this sprint   [ready]",
+                "#### story-099 — later terminal card   [done]",
+            )
+        )
+        repo, env, _g = make_repo(
+            tmp_path,
+            plan=plan,
         )
         r = sprint(repo, env, "start")
         assert r.returncode == 0, r.stderr
+        assert r.stdout.count("## Milestone 1") == 1
+        assert "close.py sprint 2 milestone-done" in r.stdout
+        assert (tmp_path / "data" / "plan.md").read_text() == plan
 
 
 class TestFullTier:

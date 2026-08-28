@@ -1,9 +1,5 @@
 #!/usr/bin/env python3
-"""Post-merge bookkeeping and rendering for close.py.
-
-Everything here takes a story and a branch, never a pipeline — that is the
-seam, and it is why these live outside cmd_land's control flow.
-"""
+"""Story-and-branch bookkeeping kept outside cmd_land's pipeline control flow."""
 
 import json
 import os
@@ -19,8 +15,7 @@ import review
 from env import refuse_direct_invocation
 from work import card_title, data_root
 
-# templates/config.yml ships this number commented out, and test_dogfood pins the two
-# together: a default a project reads in prose and never gets is worse than no default.
+# test_dogfood pins this to the template's commented default.
 TEARDOWN_TIMEOUT = 60
 
 
@@ -29,19 +24,15 @@ def git(*args: str, check: bool = False) -> subprocess.CompletedProcess:
 
 
 def delete_story_markers(story_id: str) -> None:
-    """Clear the story's test-status markers rather than writing a green into them:
-    a green close.py never measured is forged telemetry, never a record. The
-    [done] flip releases the Stop gate; this only stops dead files accumulating."""
+    """Delete dead telemetry; only the measured `[done]` flip releases Stop."""
     for path in (data_root() / "markers").glob(f"*.{story_id}.test-status"):
         path.unlink(missing_ok=True)
 
 
 def render_merge_body(rounds: list[dict]) -> str:
-    """Every recorded round, labelled by its true gapless list index."""
     out = []
     for i, r in enumerate(rounds, 1):
         counts = " · ".join(f"{len(r[k])} {k}" for k in ("fixed", "blocking", "noted"))
-        # Unlabelled, an aborted round's candidates read as findings a full pass confirmed.
         stopped = (
             f" — INCOMPLETE after {', '.join(r.get('stages', []))}" if r.get("incomplete") else ""
         )
@@ -52,11 +43,7 @@ def render_merge_body(rounds: list[dict]) -> str:
 
 
 def render_prior_rounds(rounds: list[dict]) -> str:
-    """Earlier rounds, for the next round's bundle — "" before round 2.
-
-    A fixing reviewer with no memory re-edits the last round's fixes and reverses
-    what it deliberately punted.
-    """
+    """Give later rounds enough memory not to reverse settled fixes."""
     body = render_merge_body(rounds)
     if not body:
         return ""
@@ -67,8 +54,6 @@ def render_prior_rounds(rounds: list[dict]) -> str:
 
 
 def render_sprint_prior(rounds: list[dict]) -> str:
-    """The MODE SWITCH (note bae0b87b): findings handed in bound the pass to
-    validating them, none means re-derive everything. Sprint-002 had neither."""
     body = render_merge_body(rounds)
     if not body:
         return "none — run the full pass yourself"
@@ -78,9 +63,6 @@ def render_sprint_prior(rounds: list[dict]) -> str:
 def render_land_preview(
     verify: str, tier: str, merge_mode: str, branch: str, trunk: str, pr_steps: tuple, pending: bool
 ) -> str:
-    """What land WOULD do. A preview that drifts from the real steps certifies a
-    plan nobody runs, so both arms read the command lists cmd_land executes.
-    """
     out = [f"would run: {verify}"] + ([f"would run: {tier}"] if tier else [])
     if pending:
         out.append(f"...on a trial merge with {trunk} — staged, then aborted either way")
@@ -104,10 +86,7 @@ def render_land_preview(
 
 
 def render_noted(rounds: list[dict]) -> str:
-    """The reviewer's deliberate punts, for the lead to file per PROCESS.md.
-
-    EVERY round's: an item punted in round 1 and never filed is still owed.
-    """
+    """Keep deliberate punts from every round visible to the lead."""
     noted = [n for r in rounds for n in r["noted"]]
     if not noted:
         return ""
@@ -117,9 +96,7 @@ def render_noted(rounds: list[dict]) -> str:
 
 
 def log_close(story_id: str, card: str, rounds: list[dict], merge_sha: str) -> None:
-    """APPEND one line per close. An overwritten file would be the project-global
-    mutable marker the marker-scoping rule forbids; a log survives two closes in one
-    sprint and the retro gets the history."""
+    """Append because two closes in one sprint must both reach the retro."""
     from datetime import datetime, timezone
 
     record = {
@@ -134,12 +111,7 @@ def log_close(story_id: str, card: str, rounds: list[dict], merge_sha: str) -> N
 
 
 def delete_story_branch(branch: str) -> list[str]:
-    """Delete the story branch, REMOTE FIRST: `-d` compares against the upstream ref
-    when one exists, so the reviewer's commits — never pushed to the story branch —
-    make it refuse a branch already merged to HEAD. With the remote gone it falls
-    back to the HEAD check and still refuses a genuinely unmerged one. ls-remote,
-    not a tracking ref: `git fetch` without --prune leaves stale ones.
-    """
+    """Delete remote first so `-d` checks HEAD, and use ls-remote over stale tracking refs."""
     on_origin = git("ls-remote", "--exit-code", "--heads", "origin", branch).returncode == 0
     if on_origin and git("push", "origin", "--delete", branch).returncode != 0:
         return [f"git push origin --delete {branch}"]
@@ -150,8 +122,7 @@ def delete_story_branch(branch: str) -> list[str]:
 
 
 def held_trunk_tree(trunk: str) -> tuple[str, str]:
-    """(path of ANOTHER worktree holding <trunk>, error). Cheap and structural, so
-    cmd_land asks BEFORE Verify rather than after ~2 min of tier."""
+    """Find another trunk worktree before spending the test tier."""
     path = ""
     for ln in git("worktree", "list", "--porcelain").stdout.splitlines():
         if ln.startswith("worktree "):
@@ -169,7 +140,6 @@ def held_trunk_tree(trunk: str) -> tuple[str, str]:
 
 
 def story_worktree(target: Path) -> tuple[str, str, list[str]]:
-    """The keyed worktree, its structurally paired branch, and lookup failures."""
     listed = git("worktree", "list", "--porcelain")
     if listed.returncode:
         return "", "", ["git worktree list --porcelain"]
@@ -186,7 +156,6 @@ def story_worktree(target: Path) -> tuple[str, str, list[str]]:
 
 
 def remove_story_checkout(tree: str, branch: str, timeout_value: str = "") -> list[str]:
-    """Remove an optional spawned tree and its branch, accumulating failures."""
     failed = remove_story_worktree(tree, timeout_value) if tree else []
     return failed + (delete_story_branch(branch) if branch else [])
 

@@ -24,7 +24,7 @@ WORK = Path(__file__).parent.parent / "plugins" / "xp-plugin" / "scripts" / "wor
 PLUGIN = Path(__file__).parent.parent / "plugins" / "xp-plugin"
 
 PLAN = """# plan
-## Milestone 1
+## Milestone 1   [in-progress]
 ### Sprint 2 — the one under test
 #### story-042 — done thing   [done]
 Verify: true
