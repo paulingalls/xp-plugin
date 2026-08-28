@@ -110,6 +110,21 @@ class TestMembership:
         assert r.returncode == 2 and "freshly cut branch" in r.stderr
         assert not path.exists()
 
+    def test_an_empty_branch_record_refuses_rather_than_reading_as_unset(self, tmp_path):
+        """The one branch-state boundary story-061 drew that nothing constructed.
+        EMPTY IS NOT ABSENT: absent falls back to the default branch on purpose, so
+        a truncated record read as absent silently retargets every story merge of
+        the sprint to trunk — the single failure this whole card refuses to risk.
+        The OTHER reader, close.integration_target, is walked by
+        falsifier_sprint_branch_insulation.py — `review` resolves trunk, not the
+        integration target, so this leg cannot stand in for it."""
+        repo, env, _g = make_repo(tmp_path)
+        path = tmp_path / "data" / "sprint_branch"
+        path.write_text("\n")
+        r = sprint(repo, env, "start")
+        assert r.returncode == 2 and "is empty" in r.stderr and "Traceback" not in r.stderr
+        assert path.read_text() == "\n", "the refusal rewrote the state it refused on"
+
     def test_unreadable_branch_state_is_not_treated_as_missing(self, tmp_path):
         repo, env, _g = make_repo(tmp_path)
         path = tmp_path / "data" / "sprint_branch"

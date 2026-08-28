@@ -9,7 +9,7 @@ import os
 import re
 import subprocess
 
-from session_start import OUTPUT_CAP, PLUGIN_ROOT, RECOVER_CAP
+from session_start import END, OUTPUT_CAP, PLUGIN_ROOT, RECOVER_CAP
 from session_start_helpers import run_hook, run_recovery, xp_repo
 
 VALUES = (PLUGIN_ROOT / "VALUES.md").read_text()
@@ -68,25 +68,34 @@ class TestWhatTheProfileLeadsWith:
         assert recovered.returncode == 0 and "branch: main" in recovered.stdout
         assert "story-042" in recovered.stdout and "session digest" in recovered.stdout
 
-    def test_the_recovery_surface_delivers_the_open_sprints_slice(self, tmp_path):
-        """MEASURED VACUOUS without this: `sprint_slice` could `return ""` and the
-        whole suite plus the falsifier stayed green, because the recovery block's
-        `stories:` list already carries the headings and every other assertion here
-        matches those. The slice's own BODIES are what nothing read."""
+    def test_the_recovery_surface_delivers_the_current_sprints_whole_slice(self, tmp_path):
+        """MEASURED VACUOUS without body assertions: `sprint_slice` could `return ""`
+        and the whole suite plus the falsifier stayed green, because the recovery
+        block's `stories:` list already carries the headings.
+
+        THE FIXTURE IS THIS REPO'S OWN PLAN, at the shape that broke it: the carried
+        POOL of [planned] cards lives under an old sprint's heading, and a shipped
+        sprint's cards are all [done]. Selecting the last section holding an open
+        card therefore delivered Sprint 8 while Sprint 9 was on trunk — measured
+        live, two releases stale. Selection is by sprint NUMBER now, so a wholly
+        terminal newest sprint IS the slice: it is the sprint the lead is in, and
+        `[done]` on every card says so, where a silently stale slice said nothing.
+        """
         repo, _g = xp_repo(tmp_path)
         (tmp_path / "xp" / "plan.md").write_text(
             "# plan\n"
-            "### Sprint 8\n#### story-041 — early   [in-progress]\nEARLY-BODY\n"
-            "### Sprint 9\n#### story-042 — demo   [in-progress]\nSLICE-BODY\n"
-            "### Sprint 10\n#### story-050 — folded   [retired]\nFOLDED-BODY\n"
+            "### Sprint 8\n#### story-041 — carried pool   [planned]\nPOOL-BODY\n"
+            "### Sprint 9\n#### story-042 — demo   [done]\nSLICE-BODY\n"
+            "### Sprint 9 — scheduled cards continued\n"
+            "#### story-043 — later   [done]\nCONTINUED-BODY\n"
         )
         out = run_recovery(repo, tmp_path).stdout
         assert "[truncated" not in out, "the fixture must fit; this asserts delivery"
         shown = out.split("## sprint slice", 1)[1]
         assert shown.startswith("\n### Sprint 9"), shown[:200]
-        assert "SLICE-BODY" in shown, "the open sprint's card bodies never reached the lead"
-        assert "EARLY-BODY" not in shown, "an older open sprint won over the current one"
-        assert "FOLDED-BODY" not in shown, "a wholly terminal sprint counted as open"
+        assert "SLICE-BODY" in shown, "the current sprint's card bodies never reached the lead"
+        assert "POOL-BODY" not in shown, "an old sprint's carried pool won over the current one"
+        assert "CONTINUED-BODY" in shown, "a sprint written in two sections delivered one"
 
 
 class TestWhatTheCutSaysItTook:
@@ -179,6 +188,13 @@ class TestWhatTheCutSaysItTook:
         assert "[truncated" not in r.stdout, "the hook budget is still cutting recover"
 
     def test_recovery_overflow_names_regions_and_dropped_work_titles(self, tmp_path):
+        """The notice names the REGIONS; the fenced tail names the work.md titles.
+        They are split by trust, not by taste: a title is a work.md body, free text
+        any agent writes through `work.py note`, while the notice is the plugin's
+        own voice. Carried in the notice — which renders AFTER `--- END project
+        content ---`, because the notice must not read as repo data — that free text
+        escapes the fence and speaks with the plugin's authority instead.
+        """
         repo, _g = xp_repo(tmp_path)
         data = tmp_path / "xp"
         (data / "session.md").write_text("# digest\n" + "d" * 60_000)
@@ -187,8 +203,11 @@ class TestWhatTheCutSaysItTook:
         )
         r = run_recovery(repo, tmp_path)
         assert len(r.stdout.encode()) <= RECOVER_CAP
-        marker = r.stdout.split("[truncated", 1)[1]
+        fenced, marker = r.stdout.split("[truncated", 1)
         for region in ("digest", "recovery block", "sprint slice"):
             assert region in marker, f"the cut omitted region {region}: {marker}"
         for i in range(8):
-            assert f"WORK-TITLE-{i}" in marker, f"the cut hid work title {i}: {marker}"
+            assert f"WORK-TITLE-{i}" not in marker, f"work title {i} escaped the fence: {marker}"
+            assert f"WORK-TITLE-{i}" in fenced, f"the cut hid work title {i}: {fenced[-400:]}"
+        titles = fenced.index("WORK.MD TITLES CUT:")
+        assert titles < fenced.index(END), "the dropped titles render outside the fence"

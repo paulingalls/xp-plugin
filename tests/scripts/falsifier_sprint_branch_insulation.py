@@ -65,6 +65,12 @@ def main() -> int:
         os.environ["XP_DATA"] = str(second)
         if (got := close.integration_target()) != "main":
             return red(f"clone two records nothing, yet the target is not trunk: {got!r}")
+        # EMPTY is not ABSENT: the fallback two lines up is the one this file
+        # exists to protect, so a truncated record reading as unset merges the
+        # sprint to trunk with nothing said.
+        (second / "sprint_branch").write_text("\n")
+        if "is empty" not in refused(close.integration_target):
+            return red("an empty branch record fell back to trunk instead of refusing")
         (second / "sprint_branch").write_text("sprint-missing\n")
         if "sprint-missing" not in refused(close.integration_target):
             return red("a recorded branch naming no ref did not refuse — it may merge to trunk")

@@ -289,7 +289,16 @@ VALUES and PROCESS lead and cannot move or drop. Constraints follow inside the
 project-data fence. The real-profile test asserts every numbered constraint
 individually and reds when the cap is fault-injected to 7,500; fit alone is not a
 delivery check. Truncation measures UTF-8 bytes, backs up from partial constraints,
-restores the END fence and names every cut region.
+restores the END fence and names every cut region. THE NOTICE IS THE PLUGIN'S OWN
+VOICE AND RENDERS OUTSIDE THAT FENCE, so it may name only what the plugin authored:
+the dropped work.md titles are record BODIES any agent writes through `work.py`, and
+they ride inside the fence instead. A cut is not a way for repo data to reach the
+lead wearing the plugin's authority.
+
+The `recover` sprint slice is EVERY section of the highest-NUMBERED sprint, never
+the last section holding an open card: a plan keeps its unscheduled pool under an
+older sprint's heading, so the open-card rule handed this repo `### Sprint 7` while
+Sprint 9 was on trunk, and it delivered one section of a sprint written in two.
 
 The separately invoked `recover` surface has its OWN cap, because it writes to a
 different channel with a different bound in a different unit: codex 0.149.0

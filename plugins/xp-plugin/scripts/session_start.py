@@ -80,7 +80,7 @@ def digest_refusal() -> str:
     path = data_root() / "session.md"
     try:
         count = len(read(path).splitlines())
-    except OSError as exc:  # UNREADABLE is not ABSENT, and this
+    except OSError as exc:  # UNREADABLE is not ABSENT (constraint 15)
         return f"session digest UNREADABLE: {path} — {exc}"
     if count <= DIGEST_CAP:
         return ""
@@ -187,10 +187,7 @@ def recovery_block() -> str:
     stories = open_cards(read(plan_path()))
     # Through work.py's own summariser, never a second line-scan here: it is the
     # writer, so it is where the `Story:` stamp is known not to be the claim.
-    # A TITLE, not an excerpt: three long notes were ~6,000 chars and pushed
-    # constraints.md off the end, so filing records evicted the rules that govern
-    # filing them. Naming more records in the same space beats quoting fewer —
-    # `work.py list` is what reads the rest.
+    # A TITLE, not an excerpt: `work.py list` is what reads the rest.
     summaries = []
     for _eid, text in entries(data_root()):
         heading, body = record_summary(text)
@@ -224,14 +221,22 @@ def digest_output() -> str:
 
 
 def sprint_slice() -> str:
-    """The LAST sprint section still holding an open card — never the first, which
-    is where a project's oldest sprint lives forever."""
+    """EVERY section of the highest-NUMBERED sprint. Selecting the last section
+    holding an open card read the carried POOL instead — ten [planned] cards under
+    `### Sprint 7` outranked a shipped Sprint 9 whose every card was [done] — and a
+    sprint written in two sections delivered one of them (measured on this plan)."""
     sections = re.split(r"(?=^### Sprint )", read(plan_path()), flags=re.M)
-    return next((s.strip() for s in reversed(sections) if open_cards(s)), "")
+    at = [(int(m[1]), s.strip()) for s in sections if (m := re.match(r"### Sprint (\d+)", s))]
+    current = max((n for n, _ in at), default=0)
+    return "\n\n".join(s for n, s in at if n == current)
 
 
 def work_titles() -> list[str]:
-    return [record_summary(text)[1][:ENTRY_CAP] for _eid, text in entries(data_root())][-8:]
+    try:  # its own guard, so `safe` stays str-only: a str reaching `titles` would
+        # be joined character by character into the fence (constraint 15, in types)
+        return [record_summary(t)[1][:ENTRY_CAP] for _e, t in entries(data_root())][-8:]
+    except Exception:
+        return []
 
 
 def teammate_marker() -> str:
@@ -256,15 +261,32 @@ def banner(root: Path) -> str:
     )
 
 
-def notice(lost: list[str], cut: list[str], titles: list[str], cap: int = OUTPUT_CAP) -> str:
+def safe(build, name: str = "") -> str:
+    """One bad file degrades one region, never all of them. A NAMED region says
+    WHICH nothing it has: its heading is always truthy, so render's `if text`
+    filter can never drop it and no notice names it either. Fault-injected with
+    plan.md as a directory, `recover` printed bare `## recovery block` and
+    `## sprint slice` headings, no notice, and exit 0."""
+    try:
+        return build() or (f"({name}: nothing recorded)" if name else "")
+    except Exception as exc:
+        return f"({name} UNAVAILABLE: {exc})" if name else ""
+
+
+def notice(lost: list[str], cut: list[str], cap: int = OUTPUT_CAP) -> str:
     say = ""
     if lost:
         say += f" CONSTRAINTS {', '.join(lost)} ARE NOT ABOVE — read .xp/constraints.md."
     if cut:
         say += f" CUT: {', '.join(cut)}."
-    if titles:
-        say += f" WORK.MD TITLES CUT: {'; '.join(titles)}."
     return f"\n[truncated at the {cap}-byte output budget.{say}]"
+
+
+def fenced_titles(titles: list[str]) -> str:
+    # INSIDE the fence, unlike the notice: a work.md title is free text any agent
+    # writes through `work.py note`, and the notice is the plugin's own voice —
+    # repo data carried there is repo data wearing the plugin's authority.
+    return f"\n\nWORK.MD TITLES CUT: {'; '.join(titles)}" if titles else ""
 
 
 def byte_len(text: str) -> int:
@@ -282,31 +304,28 @@ def render(
     if byte_len(out) < cap:
         return out
     named = [name for name, text in regions if name and text]
-    worst = notice(CONSTRAINT.findall(rules), named, titles or [], cap)
-    reserve = byte_len(worst) + byte_len(f"\n\n{END}") + 1
+    worst = notice(CONSTRAINT.findall(rules), named, cap)
+    reserve = byte_len(worst + fenced_titles(titles or []) + f"\n\n{END}") + 1
     kept = out.encode()[: max(0, cap - reserve)].decode(errors="ignore")
     at = out.find(rules) if rules else -1
     shown_len = max(0, len(kept) - at) if at >= 0 else 0
     starts = [m.start() for m in CONSTRAINT.finditer(rules)]
-    if 0 < shown_len < len(rules) and shown_len not in starts:
-        partial = max((start for start in starts if start < shown_len), default=None)
-        if partial is not None:
-            kept = out[: at + partial]
+    whole = shown_len in starts or not 0 < shown_len < len(rules)
+    if not whole and (partial := [s for s in starts if s < shown_len]):
+        kept = out[: at + partial[-1]]
     cut_at = len(kept)
-    if BEGIN in kept and END not in kept:
-        kept += f"\n\n{END}"
     shown = "" if at < 0 else rules[: max(0, cut_at - at)]
     survived = CONSTRAINT.findall(shown)
     lost = [n for n in CONSTRAINT.findall(rules) if n not in survived]
-    cursor, cut = 0, []
-    for name, text in [(name, text) for name, text in regions if text]:
-        start = cursor + (2 if cursor else 0)
-        end = start + len(text)
-        if name and end > cut_at:
+    cut, cursor = [], 0
+    for name, text in [(n, t) for n, t in regions if t]:
+        cursor += len(text) + (2 if cursor else 0)
+        if name and cursor > cut_at:
             cut.append(name)
-        cursor = end
-    lost_titles = [title for title in titles or [] if title not in kept[:cut_at]]
-    return kept + notice(lost, cut, lost_titles, cap)
+    lost_titles = [title for title in titles or [] if title not in kept]
+    if BEGIN in kept and END not in kept:
+        kept += f"{fenced_titles(lost_titles)}\n\n{END}"
+    return kept + notice(lost, cut, cap)
 
 
 def recover() -> int:
@@ -314,20 +333,14 @@ def recover() -> int:
     if not top or not (Path(top) / ".xp").is_dir():
         return 0
 
-    def safe(build):
-        try:
-            return build()
-        except Exception:
-            return ""
-
     regions = [
         ("", BEGIN),
-        ("digest", "## digest\n" + safe(digest_output)),
-        ("recovery block", "## recovery block\n" + safe(recovery_block)),
-        ("sprint slice", "## sprint slice\n" + safe(sprint_slice)),
+        ("digest", "## digest\n" + safe(digest_output, "digest")),
+        ("recovery block", "## recovery block\n" + safe(recovery_block, "recovery block")),
+        ("sprint slice", "## sprint slice\n" + safe(sprint_slice, "sprint slice")),
         ("", END),
     ]
-    print(render(regions, titles=safe(work_titles) or [], cap=RECOVER_CAP))
+    print(render(regions, titles=work_titles(), cap=RECOVER_CAP))
     return 0
 
 
@@ -347,12 +360,6 @@ def main(data: dict) -> int:
     if os.environ.get("XP_ROLE", "lead") != "lead":
         print(teammate_marker())
         return 0
-
-    def safe(build):  # one bad file degrades one section, never all
-        try:
-            return build()
-        except Exception:
-            return ""
 
     rules = safe(lambda: read(root / ".xp" / "constraints.md"))
     regions = [
