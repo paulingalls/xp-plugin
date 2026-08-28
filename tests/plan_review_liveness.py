@@ -6,6 +6,13 @@ import time
 
 from test_plan_review import CLEAN, CONFIG, PLAN_REVIEW, make_repo, plan_review
 
+# A HANG GUARD, NOT A DEADLINE (constraint 2's second half). The subject is that an
+# orphaned review FINISHES, never how fast: the planner stub sleeps 4s by design, so a
+# 20s bound left ~5x headroom on an idle box and none under `-n auto` with ~900
+# siblings — it red a sprint-9 RELEASE land. Generous costs nothing when the file
+# arrives, because the loop breaks on the file and not on the clock.
+FINISH_POLLS = 240  # x 0.25s
+
 
 class TestTheReviewOutlivesItsCaller:
     def repo(self, tmp_path):
@@ -48,7 +55,7 @@ class TestTheReviewOutlivesItsCaller:
         os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
         proc.wait()
         plans = tmp_path / "data" / "plans"
-        for _ in range(80):
+        for _ in range(FINISH_POLLS):
             if any(p.read_text().strip() for p in plans.glob("story-042*.md")):
                 return
             time.sleep(0.25)
