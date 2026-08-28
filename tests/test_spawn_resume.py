@@ -5,6 +5,7 @@ import os
 import subprocess
 import sys
 
+import pytest
 from spawn_helpers import SPAWN, in_tree, make_repo, spawn, stub_claude
 
 
@@ -24,6 +25,17 @@ def stopped_story(tmp_path):
     return repo, env, g, tree, marker
 
 
+def finished_story(tmp_path):
+    repo, env, g = make_repo(tmp_path)
+    stub_claude(tmp_path)
+    finished = spawn(repo, env, "story-042")
+    assert finished.returncode == 0, finished.stderr
+    tree = tmp_path / "data" / "worktrees" / "story-042"
+    marker = tmp_path / "data" / "plans" / "story-042.handoff.json"
+    assert json.loads(marker.read_text())["state"] == "FINISHED"
+    return repo, env, g, tree, marker
+
+
 def commit(tree, env, name="predecessor.py"):
     (tree / name).write_text("PREDECESSOR-SENTINEL\n")
     subprocess.run(["git", "add", name], cwd=tree, env=env, check=True)
@@ -31,8 +43,19 @@ def commit(tree, env, name="predecessor.py"):
     return in_tree(tree, env, "rev-parse", "HEAD")
 
 
+def stub_killer(tmp_path):
+    """A launch that dies without ever handing back — story-060's own incident."""
+    killer = tmp_path / "bin" / "claude"
+    killer.write_text(
+        "#!/usr/bin/env python3\nimport os, signal, sys\nsys.stdin.read()\n"
+        "os.kill(os.getppid(), signal.SIGKILL)\n"
+    )
+    killer.chmod(0o755)
+
+
 def stub_takeover(tmp_path, adopted=(), nested=False):
     bin_dir = tmp_path / "bin"
+    bin_dir.mkdir(exist_ok=True)
     rec = tmp_path / "resume-launch.json"
     nested_result = tmp_path / "nested-resume.json"
     second_launch = tmp_path / "second-launch"
@@ -71,6 +94,46 @@ def resume(repo, env, *args):
 
 
 class TestResume:
+    def test_a_clean_finished_handback_is_resumed_without_recreating_it(self, tmp_path):
+        repo, env, _g, tree, _marker = finished_story(tmp_path)
+        predecessor = in_tree(tree, env, "rev-parse", "HEAD")
+        stub_takeover(tmp_path)
+
+        result = resume(repo, env)
+
+        assert result.returncode == 0, result.stderr
+        commits = in_tree(tree, env, "log", "--format=%H")
+        assert predecessor in commits and len(commits.splitlines()) >= 3
+
+    def test_a_killed_successor_does_not_leave_a_finished_credential(self, tmp_path):
+        repo, env, _g, _tree, marker = finished_story(tmp_path)
+        stub_killer(tmp_path)
+
+        killed = resume(repo, env)
+
+        assert killed.returncode < 0
+        assert json.loads(marker.read_text())["state"] == "RUNNING"
+        rec, _nested, _second = stub_takeover(tmp_path)
+        refused = resume(repo, env)
+        assert refused.returncode == 2 and "RUNNING" in refused.stderr
+        assert "FINISHED" not in refused.stderr, "a dead launch was offered the credential"
+        assert not rec.exists(), "resume trusted a FINISHED state from the earlier run"
+
+    def test_an_interrupted_launch_takes_the_repair_its_refusal_names(self, tmp_path):
+        """Constraint 12: the refusal prescribes a repair, so walk it rather than ship it
+        unrun. `spawn.py resume` is the only route back to a tree a dead launch left."""
+        repo, env, _g, _tree, marker = stopped_story(tmp_path)
+        stub_killer(tmp_path)
+        assert resume(repo, env).returncode < 0
+        refused = resume(repo, env)
+        assert refused.returncode == 2 and "INTERRUPTED" in refused.stderr, refused.stderr
+        rec, _nested, _second = stub_takeover(tmp_path)
+
+        marker.write_text(json.dumps(json.loads(marker.read_text()) | {"state": "STOPPED"}))
+
+        assert resume(repo, env).returncode == 0, "the prescribed repair does not resume"
+        assert "STOPPED" in json.loads(rec.read_text())["stdin"]
+
     def test_fresh_teammate_reuses_the_tree_commit_branch_and_draft(self, tmp_path):
         repo, env, _g, tree, _marker = stopped_story(tmp_path)
         predecessor = commit(tree, env)
@@ -115,7 +178,7 @@ class TestResume:
         result = resume(repo, env)
 
         assert result.returncode == 2 and "unreadable" in result.stderr, result.stderr
-        assert "still be running" not in result.stderr  # constraint 15: different problems
+        assert "INTERRUPTED" not in result.stderr  # constraint 15: different problems
         assert not rec.exists(), "a truncated marker was taken as proof of a stop"
 
     def test_resume_refuses_a_card_no_longer_open_for_work(self, tmp_path):
@@ -141,8 +204,69 @@ class TestResume:
         assert predecessor[:7] in prompt and "predecessor work" in prompt, prompt
         assert "NOT yours" in prompt, "the inherited commits are handed over unlabelled"
 
-    def test_plain_spawn_still_refuses_the_existing_worktree(self, tmp_path):
-        repo, env, _g, _tree, _marker = stopped_story(tmp_path)
+    def test_a_finished_successor_preserves_the_predecessor_record_chain(self, tmp_path):
+        repo, env, _g, _tree, marker = stopped_story(tmp_path)
+        root = tmp_path / "data"
+        (root / "work.md").write_text(
+            "## note 2026-08-27T00:00:00Z\nId: deadbeef\nStory: story-042\nRECORD-SENTINEL\n"
+        )
+        state = json.loads(marker.read_text())
+        state["records"] = ["deadbeef"]
+        marker.write_text(json.dumps(state))
+        stub_takeover(tmp_path)
+        assert resume(repo, env).returncode == 0
+        finished = json.loads(marker.read_text())
+        assert finished["state"] == "FINISHED" and finished["records"] == ["deadbeef"]
+        rec, _nested, _second = stub_takeover(tmp_path)
+
+        assert resume(repo, env).returncode == 0
+
+        prompt = json.loads(rec.read_text())["stdin"]
+        assert "FINISHED" in prompt and "RECORD-SENTINEL" in prompt
+        assert "Why the predecessor stopped" not in prompt
+
+    @pytest.mark.parametrize("state", ["STOPPED", "FINISHED"])
+    def test_the_successor_is_told_which_handback_state_it_inherits(self, tmp_path, state):
+        case = tmp_path / state.lower()
+        case.mkdir()
+        if state == "STOPPED":
+            repo, env, _g, tree, marker = stopped_story(case)
+            predecessor = commit(tree, env)
+        else:
+            repo, env, _g, tree, marker = finished_story(case)
+            predecessor = in_tree(tree, env, "rev-parse", "HEAD")
+        assert json.loads(marker.read_text())["state"] == state
+        rec, _nested, _second = stub_takeover(case)
+
+        result = resume(repo, env)
+
+        assert result.returncode == 0, result.stderr
+        prompt = json.loads(rec.read_text())["stdin"]
+        assert state in prompt and predecessor[:7] in prompt, prompt
+
+    @pytest.mark.parametrize("marker_state", [None, "UNKNOWN", "EMPTY", "NONSTRING"])
+    def test_marker_presence_without_a_valid_state_proves_nothing(self, tmp_path, marker_state):
+        repo, env, _g, _tree, marker = stopped_story(tmp_path)
+        contents = json.loads(marker.read_text())
+        if marker_state == "EMPTY":
+            contents.clear()
+        elif marker_state == "NONSTRING":
+            contents["state"] = []
+        elif marker_state is None:
+            contents.pop("state", None)
+        else:
+            contents["state"] = marker_state
+        marker.write_text(json.dumps(contents))
+        rec, _nested, _second = stub_takeover(tmp_path)
+
+        result = resume(repo, env)
+
+        assert result.returncode == 2 and "invalid handoff state" in result.stderr
+        assert not rec.exists(), "resume launched from an unenumerated marker state"
+
+    def test_plain_spawn_still_refuses_a_running_teammates_worktree(self, tmp_path):
+        repo, env, _g, _tree, marker = stopped_story(tmp_path)
+        marker.unlink()
         plan = tmp_path / "data" / "plan.md"
         plan.write_text(plan.read_text().replace("[in-progress]", "[ready]"))
         rec = tmp_path / "launch.json"
@@ -152,6 +276,15 @@ class TestResume:
 
         assert result.returncode == 2 and "already spawned" in result.stderr
         assert not rec.exists(), "plain spawn launched a second teammate"
+
+    def test_plain_spawn_refuses_a_finished_worktree_too(self, tmp_path):
+        repo, env, _g, _tree, _marker = finished_story(tmp_path)
+        plan = tmp_path / "data" / "plan.md"
+        plan.write_text(plan.read_text().replace("[in-progress]", "[ready]"))
+
+        result = spawn(repo, env, "story-042")
+
+        assert result.returncode == 2 and "already spawned" in result.stderr
 
     def test_card_drift_refuses_until_the_real_remint_route_runs(self, tmp_path):
         repo, env, _g, tree, _marker = stopped_story(tmp_path)
@@ -198,7 +331,37 @@ class TestResume:
         assert "spawn.py resume story-042" in result.stderr, result.stderr
         assert marker.exists(), "a partial takeover was made non-resumable"
 
-    def test_resume_without_a_handoff_marker_cannot_join_a_live_teammate(self, tmp_path):
+    def test_a_finished_tree_that_became_dirty_loses_its_credential(self, tmp_path):
+        repo, env, _g, tree, _marker = finished_story(tmp_path)
+        (tree / "after-finish.txt").write_text("late dirt\n")
+        rec, _nested, _second = stub_takeover(tmp_path)
+
+        result = resume(repo, env)
+
+        assert result.returncode == 2, result.stderr
+        assert "FINISHED" in result.stderr and "after-finish.txt" in result.stderr
+        assert not rec.exists(), "resume inherited a changed clean-success tree"
+
+    def test_a_finished_successor_failure_names_its_own_remaining_work(self, tmp_path):
+        repo, env, _g, _tree, _marker = finished_story(tmp_path)
+        stub_claude(tmp_path, write_file=True, add_all=False)
+
+        result = resume(repo, env)
+
+        assert result.returncode == 2
+        assert "remaining work" in result.stderr
+        assert "remaining predecessor diff" not in result.stderr
+
+    def test_resume_names_a_story_that_was_never_spawned(self, tmp_path):
+        repo, env, _g = make_repo(tmp_path)
+        rec, _nested, _second = stub_takeover(tmp_path)
+
+        result = resume(repo, env)
+
+        assert result.returncode == 2 and "NEVER SPAWNED" in result.stderr
+        assert not rec.exists(), "resume launched without a predecessor worktree"
+
+    def test_a_marker_less_tree_is_named_interrupted_rather_than_running(self, tmp_path):
         repo, env, _g, _tree, marker = stopped_story(tmp_path)
         marker.unlink()
         rec = tmp_path / "launch.json"
@@ -206,8 +369,26 @@ class TestResume:
 
         result = resume(repo, env)
 
-        assert result.returncode == 2 and "still be running" in result.stderr.lower()
+        assert result.returncode == 2 and "INTERRUPTED" in result.stderr, result.stderr
         assert not rec.exists(), "resume launched without evidence of a stop"
+
+    def test_a_teammate_that_is_actually_running_is_refused_by_the_lock(self, tmp_path):
+        """The other arm: what entitles the refusal above to say a marker-less tree is
+        NOT running. A live teammate holds the launch lock and never reaches validate."""
+        repo, env, g, tree, marker = stopped_story(tmp_path)
+        assert g("worktree", "remove", "--force", str(tree)).returncode == 0
+        assert g("branch", "-D", "ada/story-042-demo-story").returncode == 0
+        marker.unlink()
+        plan = tmp_path / "data" / "plan.md"
+        plan.write_text(plan.read_text().replace("[in-progress]", "[ready]"))
+        _rec, nested, second = stub_takeover(tmp_path, nested=True)
+
+        assert spawn(repo, env, "story-042").returncode == 0
+
+        attempted = json.loads(nested.read_text())
+        assert attempted["rc"] == 2 and "launch in progress" in attempted["stderr"]
+        assert "INTERRUPTED" not in attempted["stderr"], "a live teammate was called abandoned"
+        assert not second.exists(), "resume joined a running teammate"
 
     def test_a_second_resume_refuses_while_the_first_holds_the_story(self, tmp_path):
         repo, env, _g, _tree, _marker = stopped_story(tmp_path)
