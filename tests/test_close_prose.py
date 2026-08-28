@@ -236,7 +236,7 @@ class TestShippedProseMatchesTheMechanism:
         balance still parses and still runs garbage. This closes the measured
         failure, not the general class."""
         repo, env, _g = make_repo(
-            tmp_path, verify="pytest -q -k x — `-k prose` selected story-010's test"
+            tmp_path, verify="pytest -q -k x — rationale selected story-010's test"
         )
         r = close(repo, env, "review")
         assert r.returncode == 2, r.stdout + r.stderr

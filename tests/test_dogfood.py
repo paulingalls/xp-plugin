@@ -131,6 +131,11 @@ class TestDogfoodMatchesTheScaffold:
     def test_constraints_wall_distinguishes_missing_and_invalid_caps(self, tmp_path):
         missing = self.run_constraints_wall(tmp_path, None, 1)
         assert missing.returncode != 0 and "missing" in missing.stderr
+        default = self.cap_value(self.SHIPPED / "config.yml")
+        assert f"add `constraints_chars_cap: {default}`" in missing.stderr.lower()
+        assert ".xp/config.yml" in missing.stderr
+        added = self.run_constraints_wall(tmp_path, default, 1)
+        assert added.returncode == 0, added.stderr
         invalid = self.run_constraints_wall(tmp_path, "many", 1)
         assert invalid.returncode != 0 and "invalid" in invalid.stderr
 

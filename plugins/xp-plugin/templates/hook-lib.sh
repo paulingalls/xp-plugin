@@ -24,6 +24,7 @@ constraints_size() {
   cap="$(sed -n 's/^constraints_chars_cap:[[:space:]]*//p' .xp/config.yml | head -1 | sed 's/[[:space:]][[:space:]]*#.*$//')"
   if [ -z "$cap" ]; then
     echo "xp wall: constraints_chars_cap is missing in .xp/config.yml — refusing." >&2
+    echo "  Add \`constraints_chars_cap: 4500\` to .xp/config.yml, then retry." >&2
     exit 1
   fi
   case "$cap" in *[!0-9]*|0)

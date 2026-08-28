@@ -64,7 +64,13 @@ def verify_refusal(story_id: str, card: str) -> str:
     is a different problem from no label, and saying "no Verify: line" about a
     card that visibly has one sends the author hunting for the wrong thing —
     they wrote the commands as bullets below it, which is what `AC:` looks like."""
-    if verify_commands(card):
+    command = verify_commands(card)
+    if command and ("`" in command or "$(" in command):
+        return (
+            f"refused: {story_id}'s Verify: line contains shell command substitution"
+            " (`...` or `$(...)`) — remove it and spell the command literally"
+        )
+    if command:
         return ""
     if any(ln.startswith("Verify:") for ln in card.splitlines()):
         return (
@@ -206,8 +212,11 @@ def _preflight(story_id: str, action: str, free: bool = False) -> tuple[str, str
         if status != "in-progress":
             return "", "", f"refused: {story_id} is [{status}], {action} requires [in-progress]"
     if card:
+        command = verify_commands(card)
+        if command and (refusal := verify_refusal(story_id, card)):
+            return "", "", refusal
         try:  # 3e2ad94b: an annotated Verify line reached /bin/sh at LAND, post-review
-            shlex.split(verify_commands(card))
+            shlex.split(command)
         except ValueError as e:
             return "", "", f"refused: {story_id}'s Verify: line is not runnable ({e})"
     branch = git("rev-parse", "--abbrev-ref", "HEAD").stdout.strip()
