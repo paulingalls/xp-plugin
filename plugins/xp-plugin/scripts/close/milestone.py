@@ -4,7 +4,7 @@ from collections import namedtuple
 import lifecycle
 import overlap
 from close import fail
-from work import edit_plan, flip_status, plan_path
+from work import edit_plan, flip_status, missing_plan_refusal, plan_path
 
 TERMINAL = ("[done]", "[retired]")
 Milestone = namedtuple("Milestone", "heading status block members")
@@ -28,7 +28,7 @@ def find(plan, sprint_id):
     following = re.search(r"^## (?!#).+$", plan[target.end() :], re.M)
     end = target.end() + following.start() if following else len(plan)
     block = plan[start:end]
-    heading = block.splitlines()[0]
+    heading = block.splitlines()[0].rstrip()
     prefix, bracket, status = heading.rpartition("[")
     bodies = re.findall(r"^### Sprint [^\n]*\n(.*?)(?=^### |^## |\Z)", block, re.M | re.S)
     members = [card for body in bodies for card in re.findall(r"^#### .+$", body, re.M)]
@@ -43,29 +43,30 @@ def candidate(plan, sprint_id):
 
 
 def move(sprint_id, done=False):
-    refusal = []
+    """Flip under the plan lock. Only the `done` arm refuses: a bracket the start
+    arm cannot read is the lead's to write, never a reason to hold the sprint shut."""
 
     def mutate(text):
         found = candidate(text, sprint_id) if done else find(text, sprint_id)
-        if not done and found and found.status in ("in-progress", "done"):
-            return text
-        if not found or (not done and found.status != "planned"):
-            refusal.append(f"refused: Sprint {sprint_id}'s milestone changed or has invalid status")
-            return text
         before, after = ("in-progress", "done") if done else ("planned", "in-progress")
-        return flip_status(text, found.heading, before, after)
+        return flip_status(text, found.heading, before, after) if found else text
 
-    moved = edit_plan(mutate)
-    if refusal:
-        return refusal[0]
-    return f"refused: Sprint {sprint_id}'s milestone did not move" if done and not moved else ""
+    if not edit_plan(mutate) and done:
+        return (
+            f"refused: Sprint {sprint_id}'s cards changed while `Done when:` ran — one is no"
+            f" longer [done] or [retired]. Run `close.py sprint {sprint_id} start` again"
+        )
+    return ""
 
 
 def cmd_done(sprint_id):
-    found = candidate(path.read_text(), sprint_id) if (path := plan_path()).exists() else None
-    if not found:
+    if not (path := plan_path()).exists():
+        return fail(f"refused: {missing_plan_refusal()}")
+    if not (found := candidate(path.read_text(), sprint_id)):
         return fail(
-            f"refused: Sprint {sprint_id}'s milestone has open cards or is not [in-progress]"
+            f"refused: no [in-progress] milestone owns `### Sprint {sprint_id}` with every"
+            f" scheduled card [done] or [retired] — `close.py sprint {sprint_id} start`"
+            " names the milestone when there is one to close"
         )
     try:
         commands = lifecycle.declared_commands(

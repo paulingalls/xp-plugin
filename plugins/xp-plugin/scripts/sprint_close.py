@@ -269,8 +269,7 @@ def cmd_start(sprint_id: str) -> int:
     if not sprint_branch():
         if red := lc.run(config_flat(lc.KEY), "sprint-open", sprint_id):
             return fail(red)
-        if red := milestone.move(sprint_id):
-            return fail(red)
+        milestone.move(sprint_id)
     opening = record_sprint_branch(branch)
     print(f"sprint branch: {branch}")
     if unfinished := [m for m in members if not m.endswith(("[done]", "[retired]"))]:

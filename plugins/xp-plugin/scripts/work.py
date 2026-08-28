@@ -130,8 +130,7 @@ def card_digest(card: str) -> str:
 
 
 def flip_status(text: str, heading: str, frm: str, to: str) -> str:
-    exact = heading.startswith("## ")
-    heading = heading if heading.startswith("#") else f"#### {heading} "
+    exact = heading.startswith("## ")  # a milestone heading is whole; a card's is a prefix
     out = []
     for ln in text.splitlines(keepends=True):
         head, sep, tail = ln.rstrip().rpartition(f"[{frm}]")

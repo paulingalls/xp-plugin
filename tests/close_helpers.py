@@ -166,7 +166,7 @@ def mint_ready(repo, env, story_id="story-042"):
     its credential is exactly what land refuses."""
     plan = Path(env["XP_DATA"]) / "plan.md"
     for was in ("ready", "in-progress"):
-        plan.write_text(flip_status(plan.read_text(), story_id, was, "planned"))
+        plan.write_text(flip_status(plan.read_text(), f"#### {story_id} ", was, "planned"))
     minted = subprocess.run(
         [sys.executable, str(SPAWN), "ready", story_id],
         cwd=repo,
@@ -176,7 +176,7 @@ def mint_ready(repo, env, story_id="story-042"):
     )
     assert minted.returncode == 0, minted.stderr
     plan = Path(env["XP_DATA"]) / "plan.md"
-    plan.write_text(flip_status(plan.read_text(), story_id, "ready", "in-progress"))
+    plan.write_text(flip_status(plan.read_text(), f"#### {story_id} ", "ready", "in-progress"))
 
 
 def make_repo(

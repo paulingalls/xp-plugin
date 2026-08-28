@@ -91,6 +91,46 @@ def test_opening_the_first_sprint_starts_only_its_milestone(tmp_path):
     assert (tmp_path / "data" / "plan.md").read_text() == before
 
 
+@pytest.mark.parametrize(
+    ("heading", "expected"),
+    [
+        ("", ""),
+        ("## Milestone 1 — no bracket at all", "## Milestone 1 — no bracket at all"),
+        ("## Milestone 1   [retired]", "## Milestone 1   [retired]"),
+        ("## Milestone 1   [planned] ", "## Milestone 1   [in-progress] "),
+    ],
+)
+def test_opening_a_sprint_never_refuses_over_the_milestone_bracket(tmp_path, heading, expected):
+    """The start arm owns one flip, not the plan's shape. Refusing an unreadable
+    bracket shuts the sprint over bookkeeping the lead alone can write."""
+    plan = f"# plan\n{heading}\n### Sprint 2\n#### story-042 — done   [done]\nVerify: true\n"
+    repo, env, _g = make_repo(tmp_path, plan=plan)
+    (tmp_path / "data" / "sprint_branch").unlink()
+
+    opened = sprint(repo, env, "start")
+
+    assert opened.returncode == 0, opened.stderr
+    assert (tmp_path / "data" / "plan.md").read_text() == plan.replace(heading, expected)
+
+
+def test_a_finished_milestone_is_not_proposed_again(tmp_path):
+    """Every later sprint close sits under the same [done] milestone, so a
+    proposal that survives the flip is the wallpaper the card refuses to ship."""
+    command, _sentinel = condition(tmp_path)
+    repo, env, _g = make_repo(tmp_path, plan=active_plan(command))
+    assert "milestone-done" in sprint(repo, env, "start").stdout
+    assert sprint(repo, env, "milestone-done").returncode == 0
+
+    reclosed = sprint(repo, env, "start")
+
+    assert reclosed.returncode == 0, reclosed.stderr
+    assert "milestone" not in reclosed.stdout.lower()
+    assert (
+        "## Milestone 2 repeats Milestone 20   [done]"
+        in (tmp_path / "data" / "plan.md").read_text()
+    )
+
+
 def test_milestone_done_runs_declared_argv_then_flips_only_its_heading(tmp_path):
     command, sentinel = condition(tmp_path)
     plan = active_plan(command).replace(
