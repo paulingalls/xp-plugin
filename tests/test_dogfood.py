@@ -8,6 +8,7 @@ constraints and stories are legitimately its own.
 """
 
 import os
+import shutil
 import subprocess
 from pathlib import Path
 from unittest.mock import patch
@@ -66,21 +67,52 @@ class TestDogfoodMatchesTheScaffold:
         ours = self.cap_value(self.OURS / "config.yml")
         assert ours == self.cap_value(self.SHIPPED / "config.yml") == 4_500
 
-    def run_constraints_wall(self, tmp_path, cap, size, character="x", tier="fast"):
+    def run_constraints_wall(
+        self, tmp_path, cap, size, character="x", tier="fast", path=None, write=True
+    ):
         xp = tmp_path / ".xp"
         xp.mkdir(exist_ok=True)
         setting = "" if cap is None else f"constraints_chars_cap: {cap}\n"
         tiers = "".join(f"  {name}: true\n" for name in ("fast", "story", "full"))
         (xp / "config.yml").write_text(f"{setting}tests:\n{tiers}")
-        (xp / "constraints.md").write_text(character * size, encoding="utf-8")
+        if write:
+            (xp / "constraints.md").write_text(character * size, encoding="utf-8")
         hook_lib = self.SHIPPED / "hook-lib.sh"
+        env = dict(os.environ) | {"HOOK_LIB": str(hook_lib)} | C_LOCALE
+        if path is not None:
+            env["PATH"] = path
         return subprocess.run(
             ["sh", "-c", f'. "$HOOK_LIB"; run_tier {tier}'],
             cwd=tmp_path,
-            env=dict(os.environ) | {"HOOK_LIB": str(hook_lib)} | C_LOCALE,
+            env=env,
             capture_output=True,
             text=True,
         )
+
+    def test_the_wall_refuses_when_the_MEASUREMENT_itself_fails(self, tmp_path):
+        """A gate that reports green having run nothing is worse than no gate —
+        secrets_scan says so twelve lines above this function, and this one used to
+        do exactly that: an empty `count` makes `[ "" -gt N ]` error, which reads as
+        under-cap. Injected two ways the sprint-9 closer named: no python3 on PATH,
+        and a constraints.md the reader cannot open. Both must REFUSE.
+        """
+        bin_dir = tmp_path / "bin"
+        bin_dir.mkdir()
+        for tool in ("sed", "head", "sh", "cat"):
+            found = shutil.which(tool)
+            if found:
+                (bin_dir / tool).symlink_to(found)
+        blind = self.run_constraints_wall(tmp_path, 4_500, 10, path=str(bin_dir))
+        assert blind.returncode != 0, blind.stdout
+        assert "python3" in blind.stderr and "nothing measured" in blind.stderr, blind.stderr
+
+        (tmp_path / ".xp" / "constraints.md").chmod(0o000)
+        try:
+            unreadable = self.run_constraints_wall(tmp_path, 4_500, 10, write=False)
+        finally:
+            (tmp_path / ".xp" / "constraints.md").chmod(0o644)
+        assert unreadable.returncode != 0, unreadable.stdout
+        assert "nothing measured" in unreadable.stderr, unreadable.stderr
 
     def test_scaffolded_wall_refuses_constraints_over_the_character_cap(self, tmp_path):
         red = self.run_constraints_wall(tmp_path, 4_500, 4_501)
