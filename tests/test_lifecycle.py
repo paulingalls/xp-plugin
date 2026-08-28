@@ -56,6 +56,8 @@ def test_runner_uses_exact_quoted_argv_and_never_a_shell(tmp_path):
     refusal = run(f"{command} > {sentinel}", "story-close", "story-042")
     assert "story-close" in refusal and command.split()[0] in refusal
     assert not sentinel.exists()
+    chained = run(f"{command} && {command}", "story-close", "story-042")
+    assert "shell syntax" in chained and len(entries(log)) == 1, "half a chain ran, silently"
     assert run("", "story-close", "story-042") == ""
 
 

@@ -1,7 +1,8 @@
 # xp project config — EDIT the tiers for your stack, then re-run your first commit
 release: sprint      # sprint = stories integrate on a sprint branch, sprint close PRs trunk
 # codex_sandbox: danger-full-access  # Codex only: workspace-write | danger-full-access
-# trunk: develop       # releases land/tag here; any develop -> main cut stays yours
+# trunk: develop       # UNCOMMENT where releases do NOT land on git's DEFAULT branch;
+#                      # they land and tag here, any develop -> main cut stays yours
 # lifecycle_command: ./scripts/xp-lifecycle "fixed value"  # argv prefix, no shell
 #                    # receives sprint-open/story-close/sprint-close and the id
 sprint_cap: 6        # max stories per sprint

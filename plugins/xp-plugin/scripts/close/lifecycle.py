@@ -21,7 +21,7 @@ def _commands(raw: str, owner: str, runnable: bool, chained: bool) -> list[list[
             else:
                 raise ValueError(
                     f"refused: {owner} contains shell syntax {char!r} — no shell runs it:"
-                    " quote it and drop any trailing # comment (Verify chains on unquoted &&)"
+                    " quote it and drop any trailing # comment (only Verify chains, on unquoted &&)"
                 )
         i += 1
     parts.append(raw[start:])
