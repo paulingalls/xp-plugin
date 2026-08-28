@@ -7,11 +7,13 @@ cap (constraint 8: extract, never trim a test to fit).
 import json
 import pathlib
 
+import pytest
 from close import story_card
 from close_helpers import (
     CLEAN,
     FIX_PATCH,
     close,
+    launches,
     make_repo,
     marker,
     marker_file,
@@ -56,6 +58,53 @@ class TestVerifyGate:
         assert absent.returncode != 0
         assert "no Verify:" in absent.stderr, absent.stderr
         assert "same line" not in absent.stderr.lower(), absent.stderr
+
+    @pytest.mark.parametrize("substitution", ["`touch {path}`", "$(touch {path})"])
+    def test_command_substitution_is_refused_before_review_and_land(self, tmp_path, substitution):
+        from work import card_digest
+
+        def rewrite_card(root, sentinel):
+            plan = root / "data" / "plan.md"
+            text = plan.read_text().replace(
+                "Verify: true", f"Verify: {substitution.format(path=sentinel)}"
+            )
+            plan.write_text(text)
+            card = story_card(text, "story-042")[0]
+            ready_marker(root).write_text(json.dumps({"digest": card_digest(card), "card": card}))
+
+        review_root = tmp_path / "review"
+        review_root.mkdir()
+        sentinel = review_root / "substituted"
+        repo, env, _g = make_repo(review_root)
+        rewrite_card(review_root, sentinel)
+        refused = close(repo, env, "review")
+        assert refused.returncode == 2 and "command substitution" in refused.stderr
+        assert "remove" in refused.stderr.lower() and not sentinel.exists()
+        assert launches(review_root) == [], "spent a reviewer on a refused Verify"
+
+        land_root = tmp_path / "land"
+        land_root.mkdir()
+        sentinel = land_root / "substituted"
+        repo, env, _g = make_repo(land_root)
+        assert close(repo, env, "review").returncode == 0
+        rewrite_card(land_root, sentinel)
+        refused = close(repo, env, "land")
+        assert refused.returncode == 2 and "command substitution" in refused.stderr
+        assert not sentinel.exists(), "land substituted the refused Verify"
+
+    def test_verify_keeps_both_commands_in_an_and_chain(self, tmp_path):
+        """A chain through a MOVE, not two touches: reading the same line as one
+        ARGV — the change most likely to retire chaining — still creates both
+        names, because touch takes many operands, so `touch a && touch b` greens
+        against exactly the regression this test exists to catch. Only two
+        commands run in order leave the source gone and the target there."""
+        first, second = tmp_path / "first", tmp_path / "second"
+        repo, env, _g = make_repo(tmp_path, verify=f"touch {first} && mv {first} {second}")
+        assert close(repo, env, "review").returncode == 0
+        assert second.exists() and not first.exists()
+        second.unlink()
+        assert close(repo, env, "land").returncode == 0
+        assert second.exists() and not first.exists()
 
 
 class TestIncompletePlanReviewReachesTheLead:
