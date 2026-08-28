@@ -235,6 +235,26 @@ class TestSprintCloseFindings:
         r = run_script("stop_gate.py", self_payload(), repo, tmp_path)
         assert json.loads(r.stdout)["decision"] == "block"  # garbage file cannot hide the red
 
+    def test_a_multi_command_verify_still_arms_the_gate(self, tmp_path):
+        """story-062 made `a && b` THE multi-command Verify grammar, but this leg
+        matched the whole raw line against ONE separator-split segment, which such a
+        command can never equal — so every && card, including both of sprint-10's,
+        ran with the red-test gate inert."""
+        verify = "pytest -q tests/test_x.py && python3 tests/scripts/ratchet.py"
+        repo, _g = repo_with_story(tmp_path, verify=verify)
+        run_script("bash_status.py", failure_payload(verify), repo, tmp_path)
+        assert [m["story"] for m in markers(tmp_path)] == ["story-042"]
+        r = run_script("stop_gate.py", self_payload(), repo, tmp_path)
+        assert json.loads(r.stdout)["decision"] == "block", r.stdout or r.stderr
+
+    def test_a_multi_command_verify_greens_only_when_its_exit_entails_it(self, tmp_path):
+        verify = "pytest -q tests/test_x.py && python3 tests/scripts/ratchet.py"
+        repo, _g = repo_with_story(tmp_path, verify=verify)
+        run_script("bash_status.py", success_payload(f"{verify} | tail -2"), repo, tmp_path)
+        assert markers(tmp_path) == []  # no pipefail: the pipe's 0 is not the verify's
+        run_script("bash_status.py", success_payload(verify), repo, tmp_path)
+        assert [m["red"] for m in markers(tmp_path)] == [False]
+
 
 def self_payload(session="sess-1", active=False):
     return {"session_id": session, "cwd": ".", "stop_hook_active": active}
@@ -269,6 +289,19 @@ class TestStoryScopedMarkers:
         run_script("bash_status.py", failure_payload(shared), repo, tmp_path)
         names = sorted(p.name for p in (tmp_path / "xp" / "markers").glob("*.test-status"))
         assert names == ["sess-1.story-042.test-status", "sess-1.story-043.test-status"]
+
+    def test_a_red_story_the_parser_later_rejects_still_leaves_the_gate_armed(self, tmp_path):
+        """Liveness is the card status; no parsed command means no telemetry match."""
+        mine = "pytest -q tests/test_mine.py"
+        repo = self.two_stories(tmp_path, mine, "bun test x")
+        run_script("bash_status.py", failure_payload(mine), repo, tmp_path)
+        assert [m["story"] for m in markers(tmp_path)] == ["story-042"]
+        plan = tmp_path / "xp" / "plan.md"
+        plan.write_text(plan.read_text().replace(mine, f"{mine}  # pre-062 template"))
+        run_script("bash_status.py", success_payload("git status\n"), repo, tmp_path)
+        assert {m["story"]: m["red"] for m in markers(tmp_path)} == {"story-042": True}
+        r = run_script("stop_gate.py", self_payload(), repo, tmp_path)
+        assert json.loads(r.stdout)["decision"] == "block", r.stdout or r.stderr
 
     def test_distinct_verifies_still_scope_per_story(self, tmp_path):
         repo = self.two_stories(tmp_path, "pytest -q a.py", "bun test x")

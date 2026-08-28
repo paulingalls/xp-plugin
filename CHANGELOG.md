@@ -4,6 +4,29 @@ Release notes started at v0.6.0; earlier entries are summarized from their
 tag and merge messages. Full detail lives in the merge history and the
 per-sprint review reports.
 
+## v0.11.0 — commands are argv, handbacks are states
+
+Sprint 10. Two stories, plus release-gate repairs found by the durable falsifier
+ledger.
+
+- `Verify:` is parsed once as one or more argv commands separated by unquoted `&&`
+  and executed sequentially without a shell. Quoted arguments and chains remain;
+  expansion, redirection, pipes, backgrounding, substitution and prose are refused at
+  ready/review/land before any command runs. Existing cards that relied on shell
+  syntax must move that logic into a script and name the script in `Verify:`.
+- Executor handbacks now record explicit NEVER SPAWNED, RUNNING, STOPPED and FINISHED
+  states. A clean completed story can be resumed by a fresh executor without deleting
+  its worktree or branch; launch invalidates an old FINISHED credential by writing
+  RUNNING, and a dirty FINISHED tree refuses. Handoff markers created before v0.11.0
+  have no `state` and are refused until the lead discards/re-spawns or records a real
+  STOPPED recovery—never forge FINISHED.
+- This repository's subprocess-heavy fast tier caps xdist at eight workers. On the
+  16-core dogfood box, `-n auto` took 135–253s; eight workers ran 934 tests in
+  92–110s without weakening the existing 120s/150ms guards.
+- Shipped source comments no longer cite project-local constraint numbers. A fresh
+  consumer has its own constraint list, so the same index can name a different rule
+  or nothing at all.
+
 ## v0.10.1 — what a consuming project hits on upgrade
 
 Free patch. Both defects are consumer-facing and v0.10.0 shipped the first one.

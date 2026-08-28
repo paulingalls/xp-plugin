@@ -22,6 +22,8 @@ review: the 129.13s red that motivated it was two gates sharing -n auto, and
 re-measured alone this tree runs 84.4s / 873 tests = 97ms each. A deletion is
 the widest possible raise, and it left three live records (the ones above)
 certifying a wall-clock claim with a check that never starts a clock.
+The dogfood fast tier caps xdist at eight workers: measured on this 16-core box,
+auto took 135-253s while eight ran 934 tests in 98s under the same load.
 """
 
 import re
@@ -56,7 +58,7 @@ def main() -> int:
         return 1
     started = time.monotonic()
     result = subprocess.run(
-        ["pytest", "-q", "-n", "auto", "-m", "not slow"],
+        ["pytest", "-q", "-n", "8", "-m", "not slow"],
         capture_output=True,
         text=True,
     )

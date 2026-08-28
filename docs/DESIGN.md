@@ -132,7 +132,7 @@ Stated as decisions, not discovered later:
    runs and what the reviewer was shown, with no diff to record it. CLOSED at the
    sprint-4 review, by the credential story-023 shipped after this cost was written:
    `land` re-checks the ready digest and refuses, naming the drift, because the
-   card's `Verify:` line is a gate it SHELL-EXECUTES. What is left is the window
+   card's `Verify:` line is a gate it parses and executes. What is left is the window
    between spawn and that review, where the edited card at least reaches a fresh
    reviewer in its bundle.
 5. **Two residual write hazards, both practice rather than property.** `edit_plan`
@@ -177,7 +177,7 @@ Files: apps/site/src/well-known.ts, apps/site/src/__tests__/well-known.test.ts
 AC:
 - Given buildAasa with a team id, When the AASA doc is built, Then components include {"/": "/invite/*"}
 - Given APPLE_TEAM_ID unset, When buildAasa runs, Then it stays fail-soft
-Verify: bun test apps/site/src/__tests__/well-known.test.ts && cd apps/site && bunx playwright test e2e/well-known.e2e.ts
+Verify: bun test apps/site/src/__tests__/well-known.test.ts && bun test apps/site/e2e/well-known.e2e.ts
 Executor: sonnet/medium (or omit → config default)
 ```
 
@@ -185,7 +185,7 @@ Planning constraints (stated in `config.yml`):
 
 - **Sprint cap** (default ~6 stories) — card review counts consumed capacity; work already shipped in a free patch consumes no slot. Smaller sprints make the test tiers work and stop the doubling; debt budget is a share of the cap.
 - The plan reviewer treats story `Files:` lists as declarations for the cross-story **collision check** (the one cheap structural check that survives from file_domain; its lane-policing does not). Two stories claiming the same file must name the shared contract.
-- The plan reviewer requires the story under review to have runnable `Verify:` commands; every milestone has an executable "Done when".
+- The plan reviewer requires runnable `Verify:` commands on the lead's PATH: one or more argv commands separated by unquoted `&&`, with quoted argv legal and shell expansion, redirection, pipes, backgrounding, and process substitution refused. Ready, review and land use this parser and run each argv sequentially without a shell; every milestone has an executable "Done when".
 
 ## 5b. Memory between sessions
 
@@ -243,8 +243,8 @@ The economic shape: **an expensive model orchestrates; cheaper or different mode
 
 - **Execution delegates by default.** Stories go to teammates (worktree-parallel or in-place solo) on the cheapest tier the lead would trust with that story. The lead implements directly only for trivial work where spawn overhead exceeds the story (rule of thumb: single file, single sitting). This inverts today's practice, where the lead tends to launch itself.
 - **Review always delegates** — independence is the point — and prefers a *different* model and, where available, a different harness than the author (Claude authors → Codex reviews, and vice versa; your in-flight cross-CLI launch work carries over). Diversity of failure modes, not just fresh context.
-- The **spawn CLI survives largely as-is in role** (worktree creation, clean branch, bootstrap from `system.md`, plugin preflight), while close-time bookkeeping runs teardown before removal — these are the pieces neither harness provides natively. Spawn slims to: `spawn <story-id> [harness/model/effort]`.
-- `config.yml` sets defaults per role — e.g. `lead: claude/opus`, `executor: claude/sonnet/medium`, `reviewer: codex/<model>/high`, `plan-reviewer: <harness>/<model>` — and the lead overrides per story in plan.md with one line of stated reasoning. The card carries `Executor:` and `Reviewer:` as twins (story-026): a global reviewer choice cannot express "author codex, review claude" on one story and the inverse on the next. No tier tables, no latching, no executor state machine.
+- The **spawn CLI survives largely as-is in role** (worktree creation, clean branch, bootstrap from `system.md`, plugin preflight), while close-time bookkeeping runs teardown before removal — these are the pieces neither harness provides natively. Resume takes over an explicit STOPPED or FINISHED handback (FINISHED only while the tree stays clean); a live teammate holds the launch lock, so a marker still reading RUNNING — or no marker over a tree — is an interrupted spawn, and no tree at all is never-spawned. Spawn slims to: `spawn <story-id> [harness/model/effort]`.
+- `config.yml` sets defaults per role — e.g. `lead: claude/opus`, `executor: claude/sonnet/medium`, `reviewer: codex/<model>/high`, `plan-reviewer: <harness>/<model>` — and the lead overrides per story in plan.md with one line of stated reasoning. The card carries `Executor:` and `Reviewer:` as twins (story-026): a global reviewer choice cannot express "author codex, review claude" on one story and the inverse on the next. No tier tables or latching.
 - Codex spawns carry the documented sandbox posture and the environment pins; `unified_exec` is deliberately NOT disabled (row 80, reversed 2026-08-23). Codex teammates must be pre-answered (no user-interaction surface headless) — which the story shape already guarantees (context + files + ACs + verify).
 
 **A Codex teammate is not at parity with a Claude one (story-021 ships the spawn; story-025 owns the rest).** Stated here so a reader does not infer parity from "both harnesses spawn":

@@ -21,12 +21,12 @@ roles:                 # harness/model[/effort]; lead overrides per story in pla
   # Paul's call at the retro, not a lead's under release pressure — his Sprint-5
   # pairing is codex authors / claude reviews, and flipping finders to codex inverts
   # it for the stage that feeds every other one.
-  finder: claude/opus/high
+  finder: codex/gpt-5.6-sol/high
   verifier: claude/opus/high
-  fixer: claude/opus/high
+  fixer: codex/gpt-5.6-sol/high
   closer: claude/opus/high
 
 tests:
-  fast: pytest -q -n auto -m "not slow"     # pre-commit
+  fast: pytest -q -n 8 -m "not slow"        # pre-commit; 16 workers oversubscribe this suite
   story: pytest -q -n auto          # pre-push + story close
   full: pytest -q -n auto           # sprint close (diverges when e2e/meta lands)

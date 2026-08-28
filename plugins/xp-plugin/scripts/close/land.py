@@ -63,9 +63,12 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool, free_slug: str = "")
         rerun = f"Put the heading back to [planned] and run `close.py free {free_slug} review`."
         if drift := ready.drift(story_id, card, rerun if free else ""):
             return close.fail(drift)
-        if refusal := close.verify_refusal(story_id, card):
-            return close.fail(refusal)
-    verify = close.verify_commands(card) if card else ""
+        try:
+            raw, verify = close.verify_commands(story_id, card)
+        except ValueError as e:
+            return close.fail(str(e))
+    else:
+        raw, verify = "", []
     tier_key = "full" if free else "story"
     tier = work.config_block_value("tests", tier_key)
     branch = close.git("rev-parse", "--abbrev-ref", "HEAD").stdout.strip()
@@ -97,9 +100,7 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool, free_slug: str = "")
             print(f"(first the full tier; then `close.py free {free_slug} post-merge`)")
             return 0
         print(
-            bookkeep.render_land_preview(
-                verify, tier, merge_mode, branch, trunk, pr_steps, pending
-            ),
+            bookkeep.render_land_preview(raw, tier, merge_mode, branch, trunk, pr_steps, pending),
             end="",
         )
         return 0

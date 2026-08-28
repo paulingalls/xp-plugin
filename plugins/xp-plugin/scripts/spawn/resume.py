@@ -1,18 +1,17 @@
-"""Validate and label takeover of a stopped story's existing worktree."""
+"""Validate and label takeover of a handed-back story worktree."""
 
 import argparse
 import fcntl
-import json
 import subprocess
 from pathlib import Path
 
-from handoff import marker_path
+from handoff import handoff_state, marker_path
 
 
 def parse(argv: list[str]):
     parser = argparse.ArgumentParser(
         prog="spawn.py resume",
-        description="launch a fresh teammate in a stopped story's existing worktree",
+        description="launch a fresh teammate in a handed-back story worktree",
     )
     parser.add_argument("story_id")
     parser.add_argument("executor", nargs="?", default="")
@@ -30,7 +29,7 @@ def remint_route(story_id: str) -> str:
 
 def handback_recovery(tree: Path, story_id: str) -> str:
     return (
-        f" Recover by reviewing and committing the remaining predecessor diff in {tree},"
+        f" Recover by reviewing and committing the remaining work in {tree},"
         f" then run `spawn.py resume {story_id}`; do not remove the inherited tree."
     )
 
@@ -52,30 +51,43 @@ def acquire(root: Path, story_id: str):
 
 def validate(root: Path, story_id: str, tree: Path, branch: str) -> str:
     marker = marker_path(root, story_id)
-    if not marker.exists():
-        return (
-            f"refused: {story_id} has no stopped-teammate handoff — its teammate may still"
-            f" be running in {tree}; wait for its handback before resuming"
-        )
-    try:
-        state = json.loads(marker.read_text())
-    except (OSError, ValueError):
-        state = None
-    if not isinstance(state, dict):
+    state = handoff_state(root, story_id)
+    if state is None:
         return (
             f"refused: {marker} is unreadable, so it cannot prove the teammate stopped —"
             " read `work.py list`, repair the handoff, then resume"
         )
+    # A locked RUNNING marker proves a dead launch; FINISHED would forge clean success.
+    kind = state.get("state") if marker.exists() else "NEVER SPAWNED"
+    if kind == "NEVER SPAWNED" and not tree.is_dir():
+        return f"refused: {story_id} was NEVER SPAWNED — use `spawn.py {story_id}` first"
+    if kind not in ("STOPPED", "FINISHED", "RUNNING", "NEVER SPAWNED"):
+        recovery = "discard/re-spawn or record a real STOPPED recovery; never forge FINISHED"
+        return f"refused: invalid handoff state {kind!r} in {marker} — {recovery}"
     if not tree.is_dir():
-        return f"refused: stopped worktree {tree} is missing — recover it before resuming"
+        return f"refused: {kind} worktree {tree} is missing — recover it before resuming"
+    if kind in ("RUNNING", "NEVER SPAWNED"):
+        return (
+            f"refused: {story_id} left {tree} with no handback and nothing holds its launch"
+            f' lock — an INTERRUPTED spawn, not a RUNNING teammate. Write "STOPPED" into'
+            f" {marker} to take that tree over, or remove the worktree and re-spawn"
+        )
     actual = subprocess.run(
         ["git", "branch", "--show-current"], cwd=tree, capture_output=True, text=True
     )
     if actual.returncode or actual.stdout.strip() != branch:
         return (
-            f"refused: {tree} is not on stopped branch {branch} — restore that checkout"
+            f"refused: {tree} is not on {kind.lower()} branch {branch} — restore that checkout"
             " before resuming"
         )
+    if kind == "FINISHED":
+        status = subprocess.run(
+            ["git", "status", "--porcelain"], cwd=tree, capture_output=True, text=True
+        )
+        if status.returncode:
+            return f"refused: FINISHED handback {tree} is unmeasurable: {status.stderr.strip()}"
+        if dirt := status.stdout.strip():
+            return f"refused: FINISHED handback {tree} became dirty:\n{dirt}"
     return ""
 
 

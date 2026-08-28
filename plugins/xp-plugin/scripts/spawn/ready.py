@@ -13,7 +13,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from close import fail, story_card, verify_refusal
+from close import fail, story_card, verify_commands
 from work import (
     card_digest,
     card_lines,
@@ -81,8 +81,10 @@ def mint(story_id: str) -> int:
             " after editing a cleared card, put its heading back to [planned] and run the"
             " plan review again — the edit is what the next spawn would have refused."
         )
-    if refusal := verify_refusal(story_id, card):
-        return fail(refusal + " — fix it before the review, not after the story")
+    try:
+        verify_commands(story_id, card)
+    except ValueError as e:
+        return fail(str(e) + " — fix it before the review, not after the story")
     digest = card_digest(card)
     marker = ready_marker_path(story_id)
     marker.parent.mkdir(parents=True, exist_ok=True)

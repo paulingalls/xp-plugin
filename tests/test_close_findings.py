@@ -1,6 +1,7 @@
 """Review-round findings pinned as tests. Split from test_close.py at sprint-004 open."""
 
 import json
+import shlex
 import subprocess
 import sys
 
@@ -390,12 +391,13 @@ class TestTheCardEndsUpSayingDone:
         # SECOND run only: story-036's review leg runs Verify too, and a rewrite
         # there would destroy the card before land's own drift check reads it —
         # the window this constructs is between that check and the flip.
-        rewrite = (
-            'if [ -e "$XP_DATA/verify-ran" ]; then'
-            " printf '#### story-042 — demo story   [done]\\n' > \"$XP_DATA/plan.md\";"
-            ' else touch "$XP_DATA/verify-ran"; fi'
+        code = (
+            "import os; from pathlib import Path; "
+            "d=Path(os.environ['XP_DATA']); marker=d/'verify-ran'; "
+            "(d/'plan.md').write_text('#### story-042 — demo story   [done]\\n') "
+            "if marker.exists() else marker.touch()"
         )
-        repo, env, g = make_repo(tmp_path, verify=rewrite)
+        repo, env, g = make_repo(tmp_path, verify=f"python3 -c {shlex.quote(code)}")
         assert close(repo, env, "review").returncode == 0
         r = close(repo, env, "land")
         assert "Review round" in g("log", "main", "-1", "--format=%B").stdout, "the merge is the"

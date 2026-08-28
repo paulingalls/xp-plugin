@@ -16,7 +16,7 @@ from bookkeep import bootstrap_command
 from close import config_flat, fail, git, integration_target, story_card
 from env import plugin_version
 from handback import tree_state, unclean_teammate_result
-from handoff import draft_path, inheritance, marker_path, report_handoff
+from handoff import draft_path, inheritance, mark_handoff, report_handoff
 from harness import (
     HARNESS_INSTALL,
     agent_argv,
@@ -430,6 +430,7 @@ def cmd_spawn(
     print(f"{branch} at {tree} ({cut})")
     handed_over = tree_state(tree)
     before = {eid for eid, _ in entries(data_root())}
+    mark_handoff(data_root(), story_id)
     rc = run_teammate(argv, tree, prompt, story_id, data_root(), harness)
     # A crashed teammate is the likeliest one to leave work uncommitted.
     err = unclean_teammate_result(tree, handed_over, story_id, resuming)
@@ -449,7 +450,7 @@ def cmd_spawn(
             f" leg, starting with `python3 {plugin_root}/scripts/close.py {scope} review`{where}"
         )
     print(f"{story_id} produced commit {tree_state(tree)[0]} at {tree}. Read it, then {leg}.")
-    marker_path(data_root(), story_id).unlink(missing_ok=True)
+    mark_handoff(data_root(), story_id, True)
     held.close()
     return rc
 
@@ -479,7 +480,7 @@ def main() -> int:
         description=__doc__,
         epilog="ready <story-id>: after the card review, mint the card's digest and"
         " flip [planned] -> [ready]. Editing the card afterwards refuses the spawn."
-        " resume <story-id>: hand a STOPPED story's own worktree to a fresh teammate.",
+        " resume <story-id>: hand a STOPPED or FINISHED tree to a fresh teammate.",
     )
     p.add_argument("story_id")
     p.add_argument("executor", nargs="?", default="", help="harness/model[/effort] override")

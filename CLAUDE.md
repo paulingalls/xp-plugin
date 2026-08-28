@@ -26,8 +26,10 @@ instead.
 
 ## Commands
 
-- Test tiers live in `.xp/config.yml` — run those spellings, they carry `-n auto`
-  (serial pytest is ~6x slower): fast `pytest -q -n auto -m "not slow"` · full `pytest -q -n auto`
+- Test tiers live in `.xp/config.yml` — read them there and run those spellings
+  verbatim, xdist flag included. Serial pytest is ~6x slower, and the worker count
+  is a measured choice per tier, not a default (sprint-10 retro). Restating a tier
+  here is a fourth copy that drifts the day one is retuned; it already did.
 - Lint: `ruff check --fix . && ruff format .`
 - Hooks: `lefthook install` (once per clone)
 

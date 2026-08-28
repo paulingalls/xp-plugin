@@ -13,6 +13,8 @@ import subprocess
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
+
 # LC_ALL=C ALONE PROVES NOTHING: PEP 538 silently coerces a C locale to C.UTF-8, so
 # the character count came out right for a reason the wall did not own. Disabling
 # coercion and UTF-8 mode is what makes the locale test able to red.
@@ -187,7 +189,7 @@ class TestDogfoodMatchesTheScaffold:
         extra = self.keys(ours) - self.keys(self.SHIPPED / "config.yml")
         assert "dogfood-only-key" in extra, extra
 
-    def test_the_shipped_plan_templates_card_passes_the_gate_that_reads_it(self):
+    def test_the_shipped_plan_templates_card_refuses_its_unedited_placeholder(self):
         """b4c3ef33's practice, applied to the third template we parse: the card
         this project HANDS a new user is fed to the credential leg's own check,
         not to a fixture restating it.
@@ -196,10 +198,11 @@ class TestDogfoodMatchesTheScaffold:
         nothing saying the line is load-bearing — and a consuming project wrote its
         commands as bullets below the label, which parses EMPTY (bug abc052f2).
         """
-        from close import story_card, verify_refusal
+        from close import story_card, verify_commands
 
         card = story_card((self.SHIPPED / "plan.md").read_text(), "story-000")[0]
-        assert verify_refusal("story-000", card) == "", card
+        with pytest.raises(ValueError, match="EDIT-ME"):
+            verify_commands("story-000", card)
 
     def test_the_shipped_system_md_label_is_one_spawn_can_read(self):
         """The drift this class exists for, in the file it had no arm for. Every

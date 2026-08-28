@@ -5,6 +5,7 @@ import argparse
 import json
 import os
 import shlex
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -52,32 +53,54 @@ def story_card(plan: str, story_id: str) -> tuple[str, str]:
     return card, status
 
 
-def verify_commands(card: str) -> str:
+def verify_commands(story_id: str, card: str, runnable: bool = True) -> tuple[str, list[list[str]]]:
+    raw = None
     for ln in card.splitlines():
         if ln.startswith("Verify:"):
-            return ln.removeprefix("Verify:").strip()
-    return ""
-
-
-def verify_refusal(story_id: str, card: str) -> str:
-    """Why this card has no runnable Verify, or "". A LABEL with nothing after it
-    is a different problem from no label, and saying "no Verify: line" about a
-    card that visibly has one sends the author hunting for the wrong thing —
-    they wrote the commands as bullets below it, which is what `AC:` looks like."""
-    command = verify_commands(card)
-    if command and ("`" in command or "$(" in command):
-        return (
-            f"refused: {story_id}'s Verify: line contains shell command substitution"
-            " (`...` or `$(...)`) — remove it and spell the command literally"
+            raw = ln.removeprefix("Verify:").strip()
+            break
+    if raw is None:
+        raise ValueError(
+            f"refused: {story_id} has no Verify: line — an unverifiable story cannot close"
         )
-    if command:
-        return ""
-    if any(ln.startswith("Verify:") for ln in card.splitlines()):
-        return (
+    if not raw:
+        raise ValueError(
             f"refused: {story_id}'s Verify: line is empty — its commands must be on the"
             " SAME line as the label (`Verify: pytest -q ...`), not a list below it"
         )
-    return f"refused: {story_id} has no Verify: line — an unverifiable story cannot close"
+    parts, start, quote, i = [], 0, "", 0
+    while i < len(raw):
+        char = raw[i]
+        if char == "\\" and quote != "'":
+            i += 2
+            continue
+        if char in "'\"":
+            quote = "" if quote == char else quote if quote else char
+        elif char in "$`" or (not quote and char in "|&;<>()[#*?~{"):
+            if char == "&" and raw[i : i + 2] == "&&":
+                parts.append(raw[start:i])
+                start, i = i + 2, i + 1
+            else:
+                raise ValueError(
+                    f"refused: {story_id}'s Verify: line contains shell syntax {char!r}"
+                    " — no shell runs it: quote it, drop any trailing # comment, and"
+                    " separate commands with an unquoted &&"
+                )
+        i += 1
+    parts.append(raw[start:])
+    try:
+        commands = [shlex.split(part) for part in parts]
+    except ValueError as e:
+        raise ValueError(f"refused: {story_id}'s Verify: line is not runnable ({e})") from e
+    if any(not argv for argv in commands):
+        raise ValueError(f"refused: {story_id}'s Verify: line has an empty command around &&")
+    if runnable and (missing := next((a[0] for a in commands if not shutil.which(a[0])), "")):
+        raise ValueError(
+            f"refused: {story_id}'s Verify: command {missing!r} is not runnable on this PATH"
+            " — with no shell there are no builtins, so `cd` is not one of them; make a"
+            " real command available to the lead before `spawn.py ready`"
+        )
+    return raw, commands
 
 
 def config_flat(key: str) -> str:
@@ -212,16 +235,10 @@ def _preflight(story_id: str, action: str, free: bool = False) -> tuple[str, str
         if status != "in-progress":
             return "", "", f"refused: {story_id} is [{status}], {action} requires [in-progress]"
     if card:
-        command = verify_commands(card)
-        if command and (refusal := verify_refusal(story_id, card)):
-            return "", "", refusal
-        # /bin/sh RUNS the line, so it owns the grammar and this split only pre-checks
-        # quote balance (3e2ad94b: an annotated Verify died on /bin/sh at LAND) — never
-        # read it as the argv the command is executed as, because it is not.
         try:
-            shlex.split(command)
+            verify_commands(story_id, card)
         except ValueError as e:
-            return "", "", f"refused: {story_id}'s Verify: line is not runnable ({e})"
+            return "", "", str(e)
     branch = git("rev-parse", "--abbrev-ref", "HEAD").stdout.strip()
     if branch in (trunk, default_branch()):
         return (
@@ -243,11 +260,9 @@ def verify_on_reviewed_tree(story_id: str, card: str) -> str:
     """
     if not card:
         return ""
-    if refusal := verify_refusal(story_id, card):
-        return refusal.removeprefix("refused: ")
     import overlap  # a cycle at module level: it imports close
 
-    red = overlap.run_one("Verify", verify_commands(card), " on the reviewed tree")
+    red = overlap.run_checks(verify_commands(story_id, card)[1], None, " on the reviewed tree")
     return red.removeprefix("refused: ")
 
 

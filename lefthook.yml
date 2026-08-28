@@ -22,7 +22,7 @@ pre-commit:
     fast-tests:
       priority: 5
       # exit 5 = no tests collected — legal while the suite is growing
-      run: sh -c 'pytest -q -n auto -m "not slow"; s=$?; [ $s -eq 5 ] && exit 0; exit $s'
+      run: sh -c 'pytest -q -n 8 -m "not slow"; s=$?; [ $s -eq 5 ] && exit 0; exit $s'
 
 # pre-push RE-CHECKS what pre-commit checked, over the whole tree rather than
 # staged files. A `--no-verify` or `core.hooksPath` bypass leaves no trace in the

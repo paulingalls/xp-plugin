@@ -7,11 +7,9 @@ carrying its {stdout,stderr,...} dict PROVES success. Codex 0.147.0 fires
 PostToolUse for failures too and no field of that payload carries the outcome —
 so green is written only where it is PROVEN, never inferred from an event.
 
-Matching: the command must contain a shell segment that STARTS WITH an
-in-progress story's config-known Verify string — a mention (commit message,
-grep) is not an invocation. One marker per STORY, not per verify string
-(markers are always story-scoped): two stories can carry byte-identical Verify commands — sprint-1
-shipped a pair — and a verify-keyed marker cannot tell whose status it holds.
+Matching: a command's segments must reproduce a story's whole Verify line, `&&` included; a
+mention (grep, commit message) is not one. Markers are story-scoped: byte-identical Verifys
+across two stories leave a verify-keyed marker unable to name whose status it holds.
 """
 
 import json
@@ -26,7 +24,6 @@ from work import chdir_repo_root, data_root, plan_path
 
 
 def in_progress_stories() -> list[tuple[str, str]]:
-    """(story_id, verify) for every [in-progress] story that declares a Verify."""
     if not (path := plan_path()).exists():
         return []
     plan = path.read_text(errors="replace")
@@ -35,8 +32,10 @@ def in_progress_stories() -> list[tuple[str, str]]:
         if ln.startswith("#### ") and "[in-progress]" in ln:
             story_id = ln.removeprefix("#### ").split(" ", 1)[0]
             card, _ = story_card(plan, story_id)
-            if v := verify_commands(card):
-                stories.append((story_id, v))
+            try:
+                stories.append((story_id, verify_commands(story_id, card, runnable=False)[0]))
+            except ValueError:
+                stories.append((story_id, ""))
     return stories
 
 
@@ -46,19 +45,20 @@ def invoked_stories(command: str, event_is_green: bool) -> list[tuple[str, str]]
     A list, not one story: byte-identical Verify commands genuinely entail both
     stories' status, and each gets its own marker.
 
-    Segments must EQUAL the verify exactly (a subset like `verify::test_one` or a
-    mention is not the verify). Green additionally requires every separator to the
-    verify's right to be `&&` — the tool's shell has no pipefail, so `verify | tail`,
-    `verify; echo`, `verify || true` all exit 0 over a red verify (proven live).
-    Red accepts any position: a conservative false-red self-clears on the next
-    honest green run. Anything else -> no marker (advisory fail-open).
+    The verify's own `&&` segments must all appear, in order and whole; a subset
+    (`verify::test_one`) or a mention is not it, and no match writes no marker
+    (advisory fail-open). Green additionally requires every separator to the match's
+    right to be `&&` — this shell has no pipefail, so `verify | tail`, `verify; echo`
+    and `verify || true` all exit 0 over a red verify (proven live). Red takes any
+    position: a conservative false-red self-clears on the next honest green run.
     """
     tokens = [t.strip() for t in re.split(r"(&&|\|\||[;|]|\n)", command)]
     hits = []
     for story_id, verify in in_progress_stories():
-        for i, tok in enumerate(tokens):
-            if tok == verify:
-                rest_seps = [t for t in tokens[i + 1 :] if t in ("&&", "||", ";", "|", "")]
+        want = [tok for part in verify.split("&&") for tok in ("&&", part.strip())][1:]
+        for i in range(0, len(tokens), 2):
+            if verify and tokens[i : i + len(want)] == want:
+                rest_seps = [t for t in tokens[i + len(want) :] if t in ("&&", "||", ";", "|", "")]
                 if not event_is_green or all(t == "&&" for t in rest_seps):
                     hits.append((story_id, verify))
                     break

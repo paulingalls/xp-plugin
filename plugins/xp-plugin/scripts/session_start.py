@@ -80,7 +80,7 @@ def digest_refusal() -> str:
     path = data_root() / "session.md"
     try:
         count = len(read(path).splitlines())
-    except OSError as exc:  # UNREADABLE is not ABSENT (constraint 15)
+    except OSError as exc:  # UNREADABLE is not ABSENT
         return f"session digest UNREADABLE: {path} — {exc}"
     if count <= DIGEST_CAP:
         return ""
@@ -233,7 +233,7 @@ def sprint_slice() -> str:
 
 def work_titles() -> list[str]:
     try:  # its own guard, so `safe` stays str-only: a str reaching `titles` would
-        # be joined character by character into the fence (constraint 15, in types)
+        # be joined character by character into the fence instead of staying distinct
         return [record_summary(t)[1][:ENTRY_CAP] for _e, t in entries(data_root())][-8:]
     except Exception:
         return []
