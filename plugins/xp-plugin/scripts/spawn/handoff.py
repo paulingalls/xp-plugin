@@ -23,13 +23,14 @@ READ_THEM = " Read them (`work.py list`), then fix the card or take the work ove
 
 
 def handoff_state(root: Path, story_id: str) -> dict | None:
-    """The marker as a dict, {} for ABSENT, None for present-but-unreadable.
+    """The marker as a dict, {} for absent OR empty, None for present-but-unreadable.
 
-    Absent and unreadable are different problems with different fixes, and this is the
-    one file where conflating them is silent: {} means "first spawn ever", so a
-    truncated marker threw away a draft, its findings and the escalation record
-    that were all readable on disk beside it — the whole inheritance, and no
-    refusal, because the successor cannot miss what it was never told exists.
+    A caller that must tell absent from empty stats the path. Absent and unreadable are
+    different problems with different fixes, and this is the one file where conflating
+    them is silent: {} means "first spawn ever", so a truncated marker threw away a
+    draft, its findings and the escalation record that were all readable on disk beside
+    it — the whole inheritance, and no refusal, because the successor cannot miss what
+    it was never told exists.
     """
     path = marker_path(root, story_id)
     if not path.exists():
@@ -97,9 +98,9 @@ def _findings(root: Path, story_id: str) -> list[Path]:
 
 def inheritance(root: Path, story_id: str) -> str:
     marker = marker_path(root, story_id)
-    state = handoff_state(root, story_id)
-    if state == {} and not marker.exists():
+    if not marker.exists():
         return ""  # no marker: a first spawn inherits nothing and says nothing
+    state = handoff_state(root, story_id)
     if state is None:
         label = "UNREADABLE"
         why = (

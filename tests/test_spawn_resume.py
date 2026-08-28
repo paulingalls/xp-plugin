@@ -139,7 +139,7 @@ class TestResume:
         result = resume(repo, env)
 
         assert result.returncode == 2 and "unreadable" in result.stderr, result.stderr
-        assert "still be running" not in result.stderr  # constraint 15: different problems
+        assert "INTERRUPTED" not in result.stderr  # constraint 15: different problems
         assert not rec.exists(), "a truncated marker was taken as proof of a stop"
 
     def test_resume_refuses_a_card_no_longer_open_for_work(self, tmp_path):
@@ -303,7 +303,7 @@ class TestResume:
         assert result.returncode == 2 and "NEVER SPAWNED" in result.stderr
         assert not rec.exists(), "resume launched without a predecessor worktree"
 
-    def test_resume_without_a_handoff_marker_cannot_join_a_live_teammate(self, tmp_path):
+    def test_a_marker_less_tree_is_named_interrupted_rather_than_running(self, tmp_path):
         repo, env, _g, _tree, marker = stopped_story(tmp_path)
         marker.unlink()
         rec = tmp_path / "launch.json"
@@ -311,8 +311,26 @@ class TestResume:
 
         result = resume(repo, env)
 
-        assert result.returncode == 2 and "RUNNING" in result.stderr
+        assert result.returncode == 2 and "INTERRUPTED" in result.stderr, result.stderr
         assert not rec.exists(), "resume launched without evidence of a stop"
+
+    def test_a_teammate_that_is_actually_running_is_refused_by_the_lock(self, tmp_path):
+        """The other arm: what entitles the refusal above to say a marker-less tree is
+        NOT running. A live teammate holds the launch lock and never reaches validate."""
+        repo, env, g, tree, marker = stopped_story(tmp_path)
+        assert g("worktree", "remove", "--force", str(tree)).returncode == 0
+        assert g("branch", "-D", "ada/story-042-demo-story").returncode == 0
+        marker.unlink()
+        plan = tmp_path / "data" / "plan.md"
+        plan.write_text(plan.read_text().replace("[in-progress]", "[ready]"))
+        _rec, nested, second = stub_takeover(tmp_path, nested=True)
+
+        assert spawn(repo, env, "story-042").returncode == 0
+
+        attempted = json.loads(nested.read_text())
+        assert attempted["rc"] == 2 and "launch in progress" in attempted["stderr"]
+        assert "INTERRUPTED" not in attempted["stderr"], "a live teammate was called abandoned"
+        assert not second.exists(), "resume joined a running teammate"
 
     def test_a_second_resume_refuses_while_the_first_holds_the_story(self, tmp_path):
         repo, env, _g, _tree, _marker = stopped_story(tmp_path)

@@ -53,7 +53,11 @@ def validate(root: Path, story_id: str, tree: Path, branch: str) -> str:
     marker = marker_path(root, story_id)
     if not marker.exists():
         if tree.is_dir():
-            return f"refused: {story_id} is RUNNING in {tree} — wait for its handback"
+            return (
+                f"refused: {story_id} left {tree} with no handback and nothing holds its launch"
+                f" lock — an INTERRUPTED spawn, not a RUNNING teammate; commit what it left,"
+                f" or remove that worktree and re-spawn"
+            )
         return f"refused: {story_id} was NEVER SPAWNED — use `spawn.py {story_id}` first"
     state = handoff_state(root, story_id)
     if state is None:
@@ -63,7 +67,7 @@ def validate(root: Path, story_id: str, tree: Path, branch: str) -> str:
         )
     kind = state.get("state")
     if kind not in ("STOPPED", "FINISHED"):
-        return f"refused: {marker} has invalid handoff state {kind!r} — repair it before resuming"
+        return f'refused: invalid handoff state {kind!r} in {marker} — set "STOPPED" or "FINISHED"'
     if not tree.is_dir():
         return f"refused: {kind} worktree {tree} is missing — recover it before resuming"
     actual = subprocess.run(
@@ -78,8 +82,9 @@ def validate(root: Path, story_id: str, tree: Path, branch: str) -> str:
         status = subprocess.run(
             ["git", "status", "--porcelain"], cwd=tree, capture_output=True, text=True
         )
-        if status.returncode or status.stdout.strip():
-            dirt = status.stdout.strip() or status.stderr.strip() or "git status failed"
+        if status.returncode:
+            return f"refused: FINISHED handback {tree} is unmeasurable: {status.stderr.strip()}"
+        if dirt := status.stdout.strip():
             return f"refused: FINISHED handback {tree} became dirty:\n{dirt}"
     return ""
 
