@@ -43,9 +43,15 @@ def commit_on_free(repo, g, text="B = 1\n", path="src/free.py", msg="free work")
     g("commit", "-qm", msg)
 
 
-def reviewed(tmp_path, slug="fix-typo"):
+def reviewed(tmp_path, slug="fix-typo", tiers=()):
     """A free branch with one commit and one clean recorded round."""
     repo, env, g = free_repo(tmp_path)
+    if tiers:
+        (repo / ".xp" / "config.yml").write_text(
+            f"roles:\n  reviewer: claude/opus\ntests:\n  story: {tiers[0]}\n  full: {tiers[1]}\n"
+        )
+        g("commit", "-qam", "configure distinct tiers")
+        g("push", "-q", "origin", "main")
     assert free(repo, env, slug, "start").returncode == 0
     commit_on_free(repo, g)
     r = free(repo, env, slug, "review")
@@ -436,24 +442,31 @@ class TestSharedLandGuards:
         # differ: the sha each fixture produced and the leg's own review command.
         assert normalize(story) == normalize(freed)
 
+    @pytest.mark.parametrize("story,full,expected", [("true", "false", 0), ("false", "true", 2)])
     @pytest.mark.slow
-    def test_the_tier_that_gates_is_the_one_the_merged_tree_declares(self, tmp_path):
-        """The other half of the gate-file threat: a tier arriving on TRUNK is
-        invisible to a shown..HEAD guard, and land read its command string
-        before the trial merge — so the merge ran the tier it replaced."""
+    def test_free_land_runs_the_merged_trees_story_tier(self, tmp_path, story, full, expected):
         repo, env, g = reviewed(tmp_path)
         g("checkout", "-q", "main")
         (repo / ".xp" / "config.yml").write_text(
-            "roles:\n  reviewer: claude/opus\ntests:\n  story: true\n  full: false\n"
+            f"roles:\n  reviewer: claude/opus\ntests:\n  story: {story}\n  full: {full}\n"
         )
         g("add", "-A")
-        g("commit", "-qm", "trunk tightens the release tier")
+        g("commit", "-qm", "trunk changes the tiers")
         g("push", "-q", "origin", "main")
         g("checkout", "-q", BRANCH)
         r = free(repo, env, "fix-typo", "land")
-        assert r.returncode == 2, "ran the tier trunk replaced, and opened the PR"
-        assert "tier red" in r.stderr, r.stderr
-        assert not gh_calls(tmp_path)
+        assert r.returncode == expected, r.stderr
+        assert bool(gh_calls(tmp_path)) is (expected == 0)
+
+    def test_identical_tiers_run_one_gate_and_dry_run_names_it(self, tmp_path):
+        gate = tmp_path / "one-shot"
+        gate.write_text('#!/bin/sh\ntest ! -e "$0.ran" || exit 1\ntouch "$0.ran"\n')
+        gate.chmod(0o755)
+        repo, env, _g = reviewed(tmp_path, tiers=(str(gate), str(gate)))
+        preview = free(repo, env, "fix-typo", "land", "--dry-run")
+        assert "first the story tier" in preview.stdout
+        assert free(repo, env, "fix-typo", "land").returncode == 0
+        assert gate.with_name("one-shot.ran").exists()
 
     def test_land_refuses_on_overlap_with_trunk(self, tmp_path):
         """The third shared guard: trunk touched a file this branch touched and
