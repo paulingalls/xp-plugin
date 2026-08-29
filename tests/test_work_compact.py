@@ -62,6 +62,7 @@ def execute_corpus(root):
 
 def test_compact_preserves_the_executed_corpus_and_active_record(tmp_path):
     active, refs = seed(tmp_path)
+    _note, debt, _bug = refs
     before = execute_corpus(tmp_path)
     assert run(tmp_path, "compact").returncode == 0
     assert execute_corpus(tmp_path) == before
@@ -72,7 +73,9 @@ def test_compact_preserves_the_executed_corpus_and_active_record(tmp_path):
     for ref in refs:
         assert f"Id: {ref}" in compacted and f"# Record {ref}" in archived
     assert "Disposition: superseded\n" in compacted
-    assert "printf resolved >/dev/null" in compacted
+    assert f"Archives: {debt}" in compacted
+    assert "printf resolved >/dev/null" not in compacted
+    assert "Disposition: accepted risk" in compacted
     assert "Disposition: resolved" in compacted
     assert "archived note claim and evidence" not in compacted
     assert "archived note claim and evidence" in archived

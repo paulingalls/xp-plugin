@@ -122,6 +122,65 @@ def file_debt(repo, env, claim, command, covered_by=""):
     return result.stdout.strip()
 
 
+def archive_debt(repo, env, counter):
+    ref = file_debt(repo, env, "disposed", writes(counter))
+    before = counter.read_text()
+    assert work(repo, env, "archive", "--ref", ref, "--disposition", "dropped").returncode == 0
+    return ref, before
+
+
+def test_an_archived_debt_falsifier_is_not_executed(tmp_path):
+    repo, env, _g = make_repo(tmp_path)
+    counter = tmp_path / "archived"
+    _ref, before = archive_debt(repo, env, counter)
+
+    assert sprint(repo, env, "start").returncode == 0
+    assert counter.read_text() == before
+
+
+def test_a_compacted_archived_debt_falsifier_is_not_executed(tmp_path):
+    repo, env, _g = make_repo(tmp_path)
+    counter = tmp_path / "compacted"
+    ref, before = archive_debt(repo, env, counter)
+    assert work(repo, env, "compact").returncode == 0
+    compacted = (tmp_path / "data" / "work.md").read_text()
+    assert f"Id: {ref}\nArchives: {ref}" in compacted and "Falsifier:" in compacted
+
+    assert sprint(repo, env, "start").returncode == 0
+    assert counter.read_text() == before
+
+
+def test_archive_wins_over_resolution_before_and_after_compaction(tmp_path):
+    repo, env, _g = make_repo(tmp_path)
+    original, replacement = tmp_path / "original", tmp_path / "replacement"
+    ref = file_debt(repo, env, "disposed after repair", writes(original))
+    resolved = work(repo, env, "resolve", "--ref", ref, "--falsifier", writes(replacement))
+    assert resolved.returncode == 0
+    assert work(repo, env, "archive", "--ref", ref, "--disposition", "dropped").returncode == 0
+    before = original.read_text(), replacement.read_text()
+
+    assert sprint(repo, env, "start").returncode == 0
+    assert (original.read_text(), replacement.read_text()) == before
+    assert work(repo, env, "compact").returncode == 0
+    assert sprint(repo, env, "start").returncode == 0
+    assert (original.read_text(), replacement.read_text()) == before
+
+
+def test_an_archives_mention_does_not_dispose_another_record(tmp_path):
+    repo, env, _g = make_repo(tmp_path)
+    counter = tmp_path / "still-live"
+    ref = file_debt(repo, env, "must remain live", writes(counter))
+    before = counter.read_text()
+    with (tmp_path / "data" / "work.md").open("a") as records:
+        records.write(
+            "## bug 2026-01-01T00:00:00Z\nClaim: hand-written mention\n"
+            f"Archives: {ref}\nFalsifier: `false`\nFiles: a.py\n\n"
+        )
+
+    assert sprint(repo, env, "start").returncode == 2
+    assert counter.read_text() == before + "x"
+
+
 def test_a_shared_falsifier_executes_once(tmp_path):
     repo, env, _g = make_repo(tmp_path)
     counter = tmp_path / "shared"
