@@ -97,11 +97,68 @@ class TestReadyCredential:
         assert r.returncode == 2, r.stdout
         assert "Given X, When Y, Then Z" in r.stderr, r.stderr
         assert "Given P, When Q, Then R" in r.stderr, r.stderr
+        assert "spawn.py amend story-042" in r.stderr, r.stderr
         # the bracket moved between mint and spawn and the digest forgave it, so
         # a diff that names the heading would be reporting drift that is not drift
         assert "#### story-042" not in r.stderr.replace(" #### story-042", ""), r.stderr
         assert not (tmp_path / "data" / "worktrees").exists(), "launched on unreviewed text"
         assert "[in-progress]" not in (tmp_path / "data" / "plan.md").read_text(), "flipped anyway"
+
+    def test_an_in_progress_card_can_be_amended_with_an_audited_reason(self, tmp_path):
+        repo, env, _g = make_repo(tmp_path, status="planned")
+        stub_claude(tmp_path)
+        self.mint(repo, env)
+        assert spawn(repo, env, "story-042").returncode == 0
+        marker = self.marker(tmp_path)
+        before = json.loads(marker.read_text())
+        self.edit_card(tmp_path, "Files: src/thing.py", "Files: src/thing.py, tests/test_a.py")
+        self.edit_card(tmp_path, "Verify: true", "Verify: python3 -m pytest -q tests/test_a.py")
+
+        amended = spawn(
+            repo, env, "amend", "story-042", "--reason", "the implementation added its test"
+        )
+
+        assert amended.returncode == 0, amended.stderr
+        assert "-Files: src/thing.py" in amended.stdout
+        assert "+Files: src/thing.py, tests/test_a.py" in amended.stdout
+        assert "-Verify: true" in amended.stdout
+        assert "+Verify: python3 -m pytest -q tests/test_a.py" in amended.stdout
+        assert "[in-progress]" in (tmp_path / "data" / "plan.md").read_text()
+        after = json.loads(marker.read_text())
+        assert after["digest"] != before["digest"] and "tests/test_a.py" in after["card"]
+        assert after["amendments"] == [
+            {"reason": "the implementation added its test", "card": before["card"]}
+        ]
+
+    def test_amend_without_a_reason_refuses_without_moving_either_artifact(self, tmp_path):
+        repo, env, _g = make_repo(tmp_path, status="planned")
+        stub_claude(tmp_path)
+        self.mint(repo, env)
+        assert spawn(repo, env, "story-042").returncode == 0
+        self.edit_card(tmp_path, "Context: demo.", "Context: measured answer.")
+        plan = tmp_path / "data" / "plan.md"
+        before = plan.read_text(), self.marker(tmp_path).read_text()
+
+        refused = spawn(repo, env, "amend", "story-042")
+
+        assert refused.returncode == 2 and "amend requires --reason" in refused.stderr
+        assert (plan.read_text(), self.marker(tmp_path).read_text()) == before
+
+    def test_a_spawned_card_cannot_use_two_raw_flips_to_erase_its_drift(self, tmp_path):
+        repo, env, _g = make_repo(tmp_path, status="planned")
+        stub_claude(tmp_path)
+        self.mint(repo, env)
+        assert spawn(repo, env, "story-042").returncode == 0
+        self.edit_card(tmp_path, "Context: demo.", "Context: unreviewed answer.")
+        plan = tmp_path / "data" / "plan.md"
+        plan.write_text(plan.read_text().replace("[in-progress]", "[planned]"))
+        before = self.marker(tmp_path).read_text()
+
+        refused = spawn(repo, env, "ready", "story-042")
+
+        assert refused.returncode == 2 and "already spawned" in refused.stderr
+        assert "spawn.py amend story-042" in refused.stderr
+        assert self.marker(tmp_path).read_text() == before
 
     def test_the_same_card_unedited_spawns(self, tmp_path):
         """The pair AC1 demands: a refusal that also fires on the reviewed card
@@ -224,6 +281,34 @@ class TestReadyCredential:
         # JSON that is not the object, which subscripts to TypeError, not ValueError
         marker.write_text("null")
         assert "Traceback" not in spawn(repo, env, "story-042").stderr
+
+    @pytest.mark.parametrize(
+        "broken",
+        [None, "{", json.dumps({"card": "old", "digest": "bad", "amendments": [None]})],
+    )
+    def test_a_spawned_broken_credential_can_be_amended_back_to_a_resumable_state(
+        self, tmp_path, broken
+    ):
+        repo, env, _g = make_repo(tmp_path, status="planned")
+        stub_claude(tmp_path)
+        self.mint(repo, env)
+        assert spawn(repo, env, "story-042").returncode == 0
+        marker = self.marker(tmp_path)
+        marker.unlink() if broken is None else marker.write_text(broken)
+
+        refused = spawn(repo, env, "resume", "story-042")
+
+        diagnosis = "nothing minted it" if broken is None else "unreadable"
+        assert refused.returncode == 2 and diagnosis in refused.stderr
+        assert "spawn.py amend story-042" in refused.stderr
+        amended = spawn(
+            repo, env, "amend", "story-042", "--reason", "repair the spawned credential"
+        )
+        assert amended.returncode == 0, amended.stderr
+        audit = json.loads(marker.read_text())["amendments"][-1]
+        prior = broken or "(credential absent)"
+        assert audit == {"reason": "repair the spawned credential", "card": prior}
+        assert spawn(repo, env, "resume", "story-042").returncode == 0
 
     def test_a_planned_card_is_told_which_leg_clears_it(self, tmp_path):
         """The one refusal a lead meets holding an unreviewed card. Before the
