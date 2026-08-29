@@ -117,7 +117,24 @@ def disposition(text: str, before: bytes | None, after: bytes | None) -> str:
     try:
         report = json.loads(text)
     except ValueError:
-        return "the plan review wrote no structured disposition"
+        decoder, values, end = json.JSONDecoder(), [], 0
+        for start in (i for i, char in enumerate(text) if char in "{["):
+            if start < end:
+                continue
+            try:
+                value, end = decoder.raw_decode(text, start)
+            except ValueError:
+                continue
+            values.append(value)
+        if not values:
+            return "the plan review wrote no structured disposition"
+        # Only an object can be a disposition, so a `[1]` beside a fenced verdict is
+        # not a rival — counting it would refuse the mixed report this scan exists to
+        # accept. Kept when none is an object, so a fenced `[]` still refuses by type.
+        found = [v for v in values if isinstance(v, dict)] or values
+        if len(found) != 1:
+            return "the plan review wrote an ambiguous disposition — write exactly one JSON object"
+        report = found[0]
     if not isinstance(report, dict):
         return "the plan disposition must be a JSON object"
     status = report.get("status")
