@@ -27,6 +27,6 @@ roles:               # harness/model[/effort]; the lead overrides per story in p
   closer: claude/opus
 
 tests:
-  fast: EDIT-ME      # pre-commit: seconds (e.g. `pytest -q -m "not slow"` or `bun test --changed`)
-  story: EDIT-ME     # pre-push + story close (e.g. `pytest -q`)
-  full: EDIT-ME      # sprint close: everything incl. e2e
+  fast: EDIT-ME      # quick project checks at pre-commit
+  story: EDIT-ME     # project checks at pre-push + story close
+  full: EDIT-ME      # sprint close; records may declare `--covered-by full`

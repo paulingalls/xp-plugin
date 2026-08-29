@@ -3,7 +3,9 @@
 import subprocess
 import sys
 
+import pytest
 from sprint_helpers import PLUGIN, make_repo, sprint
+from sprint_helpers import work as project_work
 
 WORK = PLUGIN / "scripts" / "work.py"
 sys.path.insert(0, str(WORK.parent))
@@ -53,8 +55,8 @@ def seed(root):
 
 def execute_corpus(root):
     return [
-        (ref, headline, command, subprocess.run(command, shell=True).returncode)
-        for ref, headline, command in sprint_close.corpus(root)
+        (ref, headline, command, covered, subprocess.run(command, shell=True).returncode)
+        for ref, headline, command, covered in sprint_close.corpus(root)
     ]
 
 
@@ -149,3 +151,34 @@ def test_compacted_archived_note_stays_out_of_sprint_triage(tmp_path):
     assert project_work("compact").returncode == 0
     result = sprint(repo, env, "start")
     assert result.returncode == 0 and "ARCHIVE-ME-SENTINEL" not in result.stdout
+
+
+@pytest.mark.parametrize("replacement_tier", ("", "full"))
+def test_compaction_keeps_coverage_with_the_replacement_falsifier(tmp_path, replacement_tier):
+    repo, env, _git = make_repo(tmp_path)
+    filed = project_work(
+        repo,
+        env,
+        "bug",
+        "--claim",
+        "fixed",
+        "--falsifier",
+        "false",
+        "--files",
+        "a",
+        "--covered-by",
+        "full",
+    )
+    counter = tmp_path / "replacement"
+    args = ["resolve", "--ref", filed.stdout.strip(), "--falsifier", f"printf x >> {counter}"]
+    if replacement_tier:
+        args += ["--covered-by", replacement_tier]
+    assert project_work(repo, env, *args).returncode == 0
+    assert project_work(repo, env, "compact").returncode == 0
+    compacted = (tmp_path / "data" / "work.md").read_text()
+    assert ("Covered by: full" in compacted) == bool(replacement_tier)
+
+    before = counter.read_text()
+    assert sprint(repo, env, "start").returncode == 0
+    expected = before if replacement_tier else before + "x"
+    assert counter.read_text() == expected

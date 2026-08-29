@@ -27,8 +27,9 @@ recovery block and sprint slice; they are not injected. Artifacts win.
    prescription, uncovered behavior, a conflict you resolved — is owed a round.
    The bar: silent or corrupting (false green, corrupted record, unreviewed merge)
    earns a round; loud does not.
-4. **Sprint close** — Falsifiers and full tier precede note
-   triage and retro; review is last and covers the retro diff. Present the retro;
+4. **Sprint close** — Uncovered falsifiers precede the full tier. A record declaring
+   `--covered-by full` trusts only that tier's green verdict and is named; absent or
+   red means its command runs. Triage and retro follow; review covers the retro. Present it;
    with the human, schedule debt under budget or drop it. Nothing carries.
 5. **Free** — scope one patch, then `free start`; `spawn.py` gives a teammate its
    worktree. The data root proves the spawn; authorship cannot. Cut release
@@ -39,6 +40,8 @@ recovery block and sprint slice; they are not injected. Artifacts win.
 - **bug** — claim + red falsifier + files; fix now. No red means debt/note.
 - **debt** — claim + green falsifier + files; planning schedules/archives it.
 - **resolve** — substitutes a green falsifier; ids come from `work.py list`.
+- **coverage** — optional `--covered-by TIER`; the configured tier, not the plugin,
+  asserts the falsifier is one of its selections. Resolutions declare anew.
 - **note** — value tradeoff or discovery; sprint close promotes or archives it.
   A directive the NEXT STORY must follow goes on that card — a note reaches it never.
 - **Polarity** — debt/archive: still OK; red means the latent problem materialised. A
