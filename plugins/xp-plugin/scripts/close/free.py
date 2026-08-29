@@ -86,7 +86,7 @@ def cmd_review(slug: str, dry_run: bool) -> int:
             return 2
         if status in ("planned", "ready") and not flip_card(key, "ready", "in-progress"):
             return fail(f"refused: could not move {key} to [in-progress]")
-    return close.cmd_review(key, dry_run, free=True)
+    return close.cmd_review(key, dry_run, free=True, free_slug=slug)
 
 
 def cmd_land(slug: str, dry_run: bool) -> int:

@@ -214,7 +214,7 @@ def _record_round(story_id: str, card: str, path: Path, marker: Path, state: dic
     kept = "The round IS recorded, and it names this tree — a reset here orphans it."
     refusal = review.abort_text(head, verify_err, kept) if verify_err else ""
     review.stamp(path, refusal)
-    if err := review.write_reviewer_diff(path, head, f"story {story_id}"):
+    if err := review.write_reviewer_diff(path, head, at.get("noun", f"story {story_id}")):
         return fail(review.stamp(path, err))  # already a whole refusal, prefix and all
     review.write_round(
         marker,
@@ -229,7 +229,9 @@ def _record_round(story_id: str, card: str, path: Path, marker: Path, state: dic
     return fail(refusal) if refusal else 0
 
 
-def cmd_review(story_id: str, dry_run: bool = False, free: bool = False) -> int:
+def cmd_review(
+    story_id: str, dry_run: bool = False, free: bool = False, free_slug: str = ""
+) -> int:
     import review
 
     card, trunk, err = _preflight(story_id, "review", free)
@@ -243,7 +245,10 @@ def cmd_review(story_id: str, dry_run: bool = False, free: bool = False) -> int:
         review.patch_path(path).unlink(missing_ok=True)
     head = git("rev-parse", "HEAD").stdout.strip()
     base = git("merge-base", f"refs/heads/{trunk}", "HEAD").stdout.strip()
+    # The noun is the LEG's own command, not the story leg's: a free card lands with
+    # `close.py free <slug> land` and following `story <key>` gets a refusal (e2ff1a03).
     at = {"head": head, "digest": review.marker_digest(marker), "base": base, "card": card}
+    at["noun"] = f"free {free_slug}" if free_slug else f"story {story_id}"
     prior = render_prior_rounds(state.get("rounds", []))
     notices = [review.plan_review_notice(story_id)]
     if free and not card:
