@@ -93,7 +93,7 @@ class TestSprintIntegration:
         g("commit", "-qm", "another story landed on the sprint branch")
         g("checkout", "-q", "story-042-branch")
         r = close(repo, env, "land")
-        assert r.returncode == 2 and "sprint-001" in r.stderr and "src/thing.py" in r.stderr
+        assert r.returncode == 2 and "sprint-001" in r.stderr and "conflicts" in r.stderr
 
     def test_main_motion_does_not_block_sprint_close(self, tmp_path):
         repo, env, g = self.sprint_repo(tmp_path)
@@ -169,7 +169,7 @@ class TestSprintIntegration:
         g("commit", "-qm", "another story landed on the sprint branch")
         g("checkout", "-q", "story-042-branch")
         r = close(repo, env, "land")
-        assert r.returncode == 2 and "src/thing.py" in r.stderr
+        assert r.returncode == 2 and "refs/heads/sprint-001" in r.stderr and "conflicts" in r.stderr
 
     def test_pr_refusal_precedes_moved_check(self, tmp_path):
         repo, env, g = self.sprint_repo(tmp_path)

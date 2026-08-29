@@ -107,16 +107,18 @@ class TestShippedProseMatchesTheMechanism:
             assert "inside the round that found" in text, f"{path.name}: reviewer half"
             assert "past what the review covered" in text, f"{path.name}: lead half"
 
-    def test_DESIGN_states_overlap_not_motion_and_report_not_refuse(self):
-        """story-018 AC 7. Positive and BOTH halves, in the style of the stopping-rule
-        pin above: the doc moves with the code or they disagree, and a doc that kept
-        only the half that reads like the old rule is the drift this catches."""
+    def test_DESIGN_assigns_each_merge_reader_once(self):
+        """story-066 replaces story-018's blanket overlap refusal: only sprint
+        integration has a later semantic reader, while every other unsafe state
+        keeps its refusal."""
         design = prose(Path(__file__).parent.parent / "docs" / "DESIGN.md")
         for claim in (
-            "overlap, not motion",
-            "intersect the files the story changed",
             "trial-merges",
-            "report, not refuse",
+            "sprint integration branch",
+            "story-scoped path list",
+            "Gate-file overlap still refuses",
+            "conflicts refuse",
+            "Free and story releases still refuse",
         ):
             assert claim in design, f"DESIGN §6 no longer states: {claim}"
 
