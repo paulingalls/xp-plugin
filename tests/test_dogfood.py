@@ -185,7 +185,9 @@ class TestDogfoodMatchesTheScaffold:
         """The reverse drift: a key we rely on that a scaffolded repo never gets."""
         shipped = self.SHIPPED / "config.yml"
         text = shipped.read_text()
-        extra = {k for k in self.keys(self.OURS / "config.yml") - self.keys(shipped)}
+        # constraints_cap is OURS alone: story-073 deleted it as a second copy of the
+        # 15 the seed constraints.md already states, and no code ever read it.
+        extra = self.keys(self.OURS / "config.yml") - self.keys(shipped) - {"constraints_cap"}
         for key in sorted(extra):
             assert f"# {key}:" in text, f"we use {key!r} and the scaffold never mentions it"
 

@@ -164,13 +164,13 @@ class TestCodexExecutor:
         cannot red against its target defect certifies. Re-ADD `--disable
         unified_exec` to the REAL builder's output and run the real stub on it —
         the pair is what the spawn ships, and re-disabling it is now the defect."""
-        import spawn as spawn_mod
+        from harness import codex_argv
 
         # monkeypatch, not os.environ[...]: this test runs IN-PROCESS, and a bare
         # assignment leaves every later data_root() in this worker pointed at a
         # tmp_path pytest has already deleted
         monkeypatch.setenv("XP_DATA", str(tmp_path / "data"))
-        argv = spawn_mod.codex_argv("gpt-5.6-terra", "medium", "danger-full-access")
+        argv = codex_argv("gpt-5.6-terra", "medium", "danger-full-access")
         stub_codex(tmp_path)
         mutated = [argv[0], "exec", "--disable", "unified_exec", *argv[2:]]
         r = subprocess.run(
@@ -215,7 +215,7 @@ class TestCodexExecutor:
             if dies:
                 assert "sandbox" in r.stderr, r.stderr
 
-    def test_the_launch_prints_the_posture_it_actually_took(self, tmp_path, monkeypatch):
+    def test_the_launch_prints_the_posture_it_actually_took(self, tmp_path, monkeypatch, capsys):
         """AC1: an invisible relaxation is the same defect as the invisible
         restriction that produced this card. Printed from `run_stream`, so the
         REVIEWER legs print it too — a reviewer's posture going unprinted is the
@@ -234,7 +234,6 @@ class TestCodexExecutor:
         confined = [a if a != "danger-full-access" else "workspace-write" for a in shipped]
         for argv, posture in ((shipped, "danger-full-access"), (confined, "workspace-write")):
             stub_codex(tmp_path, commit=False, sandbox=posture)
-            said = []
             run_stream(
                 [str(tmp_path / "bin" / "codex"), *argv[1:]],
                 tmp_path,
@@ -243,10 +242,8 @@ class TestCodexExecutor:
                 tmp_path / "data",
                 "codex",
                 dict(os.environ),
-                out=lambda _s: None,
-                err=said.append,
             )
-            assert any(f"codex sandbox: {posture}" in line for line in said), (posture, said)
+            assert f"codex sandbox: {posture}" in capsys.readouterr().err
 
     def test_absent_from_path_refuses_before_any_worktree_is_cut(self, tmp_path):
         repo, env, _g = make_repo(tmp_path, executor="codex/gpt-5.6-terra/medium")
@@ -285,9 +282,9 @@ class TestCodexExecutor:
         close.py running Verify and the git-hook wall, which a shell obtained any
         way at all still meets.
         """
-        import spawn as spawn_mod
+        from harness import codex_argv
 
-        argv = spawn_mod.codex_argv("gpt-5.6-terra", "medium", "danger-full-access")
+        argv = codex_argv("gpt-5.6-terra", "medium", "danger-full-access")
         assert ("--disable", "unified_exec") not in list(pairwise(argv)), (
             "the codex teammate cannot run a command past the shell bound: " + " ".join(argv)
         )
@@ -301,7 +298,7 @@ class TestCodexExecutor:
         hooks = json.loads(HOOKS_JSON.read_text())["hooks"]
         assert "PreToolUse" not in hooks, (
             "a PreToolUse hook now ships and codex's write_stdin bypasses it — either"
-            " re-add `--disable unified_exec` to spawn.codex_argv (DESIGN §3 row 80,"
+            " re-add `--disable unified_exec` to harness.codex_argv (DESIGN §3 row 80,"
             " which costs the codex teammate its plan review again) or register the"
             " hook claude-only. Whichever wins, row 80 and DESIGN §7 item 4 must say so"
         )

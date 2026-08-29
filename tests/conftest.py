@@ -29,7 +29,10 @@ for _var in ("GIT_DIR", "GIT_WORK_TREE", "GIT_COMMON_DIR", "GIT_INDEX_FILE"):
 # `from spawn import …` worked only when a sibling file had already seeded the
 # path — 14 tests red under `pytest tests/test_spawn_run.py` alone (story-019
 # close review, noted[]), invisible because every Verify line ran a seeder too.
-sys.path.insert(0, str(Path(__file__).parent.parent / "plugins" / "xp-plugin" / "scripts"))
+# The spawn package too, since story-073 ended spawn.py's argv re-export.
+_SCRIPTS = Path(__file__).parent.parent / "plugins" / "xp-plugin" / "scripts"
+sys.path.insert(0, str(_SCRIPTS))
+sys.path.insert(0, str(_SCRIPTS / "spawn"))
 
 _TEMPLATE_ENV = "XP_TEST_REPO_TEMPLATES"
 

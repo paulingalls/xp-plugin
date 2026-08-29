@@ -49,24 +49,8 @@ def plan_path() -> Path:
     return data_root() / "plan.md"
 
 
-def stale_plan() -> str:
-    """The migration sentence, folded into each tool's missing-plan refusal."""
-    if plan_path().exists() or not Path(".xp/plan.md").exists():
-        return ""
-    return (
-        f"the execution plan is per-clone now and lives at {plan_path()}; the"
-        " .xp/plan.md beside you is the pre-move copy. Migrate it:\n"
-        # mkdir first: nothing creates the state root until a tool writes a marker
-        # or a record there, and a repo scaffolded before the move may have written
-        # neither — so the bare `mv` fails on the very population this addresses
-        f"  mkdir -p {data_root()} && mv .xp/plan.md {plan_path()}"
-        " && git rm --cached .xp/plan.md"
-    )
-
-
 def missing_plan_refusal() -> str:
-    """Use the migration when a pre-move copy exists, else the diagnosis."""
-    return stale_plan() or f"no plan at {plan_path()} — is this an xp-managed repo?"
+    return f"no plan at {plan_path()} — is this an xp-managed repo?"
 
 
 def edit_plan(mutate) -> bool:

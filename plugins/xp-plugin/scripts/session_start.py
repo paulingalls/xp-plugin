@@ -115,16 +115,12 @@ ROUND_CAP = 100  # per round within it
 
 
 def _close_detail(record: dict) -> str:
-    """Both record shapes, bounded.
-
-    closes.jsonl is append-only, so the older verdicts[] records outlive the
-    mechanism that wrote them; a reader that knows only rounds[] degrades this
-    whole layer to "(unreadable log)". Bounded because more review rounds must
-    never mean fewer constraints reaching the lead.
-    """
+    """Bound rounds so more of them never means fewer constraints reach the lead."""
     rounds = record.get("rounds")
-    if rounds is None:
-        return _fit(record.get("verdicts") or ["(no verdict recorded)"])
+    if rounds is None:  # a record older than rounds[] is MISSING them, not unreadable
+        return "(no rounds in this record)"
+    if not isinstance(rounds, list):
+        return "(unreadable close record)"
     shown = []
     for i, r in enumerate(rounds, 1):
         items = ", ".join([*r.get("fixed", []), *r.get("blocking", []), *r.get("noted", [])])
@@ -162,11 +158,11 @@ def last_close() -> str:
     if not lines:
         return ""
     record = json.loads(lines[-1])
-    verdicts = _close_detail(record)
+    detail = _close_detail(record)
     return (
         f"last close: {record['story']} — {record.get('title', '')}"
         f" at {str(record.get('merge_sha', ''))[:8]} on {record.get('closed_at', '?')}"
-        f"\n  {verdicts}"
+        f"\n  {detail}"
     )
 
 
@@ -351,10 +347,6 @@ def main(data: dict) -> int:
     root = Path(top)
     if not (root / ".xp").is_dir():
         return 0
-    session = str(data.get("session_id", "unknown"))[:64]
-    markers = data_root() / "markers"
-    markers.mkdir(parents=True, exist_ok=True)
-    (markers / f"{session}.alive").touch()
     with contextlib.suppress(Exception):
         write_env(PLUGIN_ROOT, plugin_version(PLUGIN_ROOT))
     if os.environ.get("XP_ROLE", "lead") != "lead":
