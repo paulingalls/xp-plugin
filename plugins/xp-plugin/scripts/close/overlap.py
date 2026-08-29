@@ -76,10 +76,9 @@ def collision(ref: str, files: list[str]) -> str:
     )
 
 
-def report_merge(story_id: str, files: list[str]) -> str:
+def report_merge(story_id: str, files: list[str]) -> None:
     print(f"{story_id} shares these with the branch it merged into:")
     print("  " + "\n  ".join(files))
-    return ""
 
 
 def run_one(label: str, cmd: str | list[str], where: str = "") -> str:
