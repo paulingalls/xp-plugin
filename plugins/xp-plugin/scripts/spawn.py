@@ -51,7 +51,7 @@ PROJECT_PLUGIN = Path("plugins/xp-plugin")
 # over prose we do not own certifies nothing (DESIGN §8 diff proposed at close).
 PLUGIN_SHIPPED_CAP = 1200
 COMPONENT_METADATA_CAP = 300  # so a new skill reds the component line, not TEAMMATE.md
-TOTAL_TARGET = 2500  # composed profile: reported, never enforced
+TOTAL_TARGET = 4500  # composed profile: reported, never enforced
 
 
 def component_metadata_chars() -> int:
