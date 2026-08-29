@@ -50,6 +50,7 @@ def main(tmp: Path) -> int:
     stub = tmp / "tests" / "scripts"
     stub.mkdir(parents=True)
     (stub / "ratchet.py").write_text("raise SystemExit(0)\n")
+    (stub / "check_falsifier_node_ids.py").write_text("raise SystemExit(0)\n")
     lib = tmp / "plugins" / "xp-plugin" / "templates"
     lib.mkdir(parents=True)
     (lib / "hook-lib.sh").write_text("constraints_size() { :; }\n")

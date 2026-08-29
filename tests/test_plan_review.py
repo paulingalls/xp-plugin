@@ -359,6 +359,7 @@ class TestIncompleteReviewIsVisibleToTheLead:
         r = plan_review(repo, env, "story-042", str(draft))
         assert r.returncode != 0, r.stdout
         assert self.marker(tmp_path).exists(), "nothing records that the gate did not run"
+        assert "plan" not in json.loads(self.marker(tmp_path).read_text())
 
     def test_a_completed_review_leaves_none(self, tmp_path):
         repo, env, draft = self.repo(tmp_path)
@@ -432,62 +433,61 @@ class TestPlanEditsInPlace:
         problem = disposition_result(report, b"before", b"Reason: a different reason\n")
         assert "every plan edit" in problem
 
-    def test_an_edit_without_its_reason_refuses(self, tmp_path):
-        repo, env, draft = self.repo(tmp_path)
-        stub_planner(
-            tmp_path,
-            findings=json.dumps({"status": "edited", "reasons": []}),
-            motion="edit-no-reason",
-        )
-        result = plan_review(repo, env, "story-042", str(draft))
-        assert result.returncode == 2 and "reason" in result.stderr.lower()
-        assert (tmp_path / "data" / "markers" / "story-042.plan-review-incomplete").exists()
+    def test_a_bracket_in_the_prose_is_not_a_rival_disposition(self):
+        """A footnote marker, a checkbox and a fenced non-object all decode as JSON on
+        their own, so an ambiguity check counting every decodable value refuses the fenced
+        verdict this story exists to accept — the round lost twice under a new diagnostic."""
+        report = f"Findings [1]\n\n- [ ] nothing loud\n\n```\n[2]\n```\n\n```json\n{CLEAN}\n```"
+        assert disposition_result(report, b"x", b"x") == ""
+        truncated = f'Verdict: {{"status":\nquoted charter example: `{CLEAN}`'
+        assert "no structured disposition" in disposition_result(truncated, b"x", b"x")
 
-    def test_a_clean_review_leaves_the_plan_byte_identical(self, tmp_path):
-        repo, env, draft = self.repo(tmp_path)
-        before = draft.read_bytes()
-        stub_planner(tmp_path, findings=json.dumps({"status": "clean", "reasons": []}))
-        assert plan_review(repo, env, "story-042", str(draft)).returncode == 0
-        assert draft.read_bytes() == before
-
+    @pytest.mark.parametrize(
+        "wrapper",
+        ["{}", "```json\n{}\n```", "```\n{}\n```"],
+        ids=["bare", "fenced", "untagged"],
+    )
     @pytest.mark.parametrize(
         "findings,motion,mark",
         [
-            (CLEAN, "edit", "a clean review changed the plan"),
-            (EDITED, "", "an edited disposition left the plan unchanged"),
+            (CLEAN, "", ""),
+            (EDITED, "edit", ""),
+            ('{"status":"blocked","question":"human?"}', "", "blocked for the human"),
+            ('{"status":"blocked","question":"human?"}', "edit", "human-only"),
+            (CLEAN, "edit", "clean review changed"),
+            (EDITED, "", "edited disposition left"),
+            ('{"status":"edited","reasons":[]}', "edit-no-reason", "every plan edit"),
+            ("[]", "", "json object"),
+            ("human question in prose", "", "structured disposition"),
+            (f"{CLEAN}\n{CLEAN}", "", "ambiguous"),
         ],
-        ids=["clean-but-edited", "edited-but-clean"],
+        ids=[
+            "clean",
+            "edited",
+            "blocked",
+            "blocked-changed",
+            "clean-changed",
+            "edited-unchanged",
+            "reason-absent",
+            "non-object",
+            "prose-only",
+            "ambiguous",
+        ],
     )
-    def test_a_disposition_the_plan_contradicts_refuses(self, tmp_path, findings, motion, mark):
-        """The byte comparison in BOTH directions, because a one-way check leaves
-        the reviewer's own report deciding what happened to the plan. Above, the
-        clean case is asserted against a stub that edits NOTHING, so it passes
-        against a do-nothing guard; these two are what make it red."""
-        repo, env, draft = self.repo(tmp_path)
-        stub_planner(tmp_path, findings=findings, motion=motion)
-        result = plan_review(repo, env, "story-042", str(draft))
-        assert result.returncode == 2 and mark in result.stderr, result.stderr
-
-    def test_a_human_question_stops_and_keeps_the_incomplete_marker(self, tmp_path):
+    def test_bare_and_fenced_dispositions_keep_round_states_distinct(
+        self, tmp_path, wrapper, findings, motion, mark
+    ):
         repo, env, draft = self.repo(tmp_path)
         before = draft.read_bytes()
-        blocked = json.dumps({"status": "blocked", "question": "How long may teardown take?"})
-        stub_planner(tmp_path, findings=blocked)
+        report = wrapper.format(findings)
+        stub_planner(tmp_path, findings=report, motion=motion)
         result = plan_review(repo, env, "story-042", str(draft))
         marker = tmp_path / "data" / "markers" / "story-042.plan-review-incomplete"
-        assert result.returncode == 2 and marker.exists()
-        assert draft.read_bytes() == before
-
-    @pytest.mark.parametrize(
-        "findings,mark", [("human question in prose", "structured"), ("[]", "json object")]
-    )
-    def test_an_unstructured_disposition_cannot_clear_the_marker(self, tmp_path, findings, mark):
-        repo, env, draft = self.repo(tmp_path)
-        stub_planner(tmp_path, findings=findings)
-        result = plan_review(repo, env, "story-042", str(draft))
-        marker = tmp_path / "data" / "markers" / "story-042.plan-review-incomplete"
-        assert result.returncode == 2 and mark in result.stderr.lower()
-        assert marker.exists()
+        assert result.returncode == (2 if mark else 0), result.stderr
+        assert (mark in result.stderr.lower()) if mark else result.stdout.strip() == report
+        assert marker.exists() is bool(mark)
+        if findings == CLEAN and not motion:
+            assert draft.read_bytes() == before
 
     def test_the_teammate_is_told_to_reread_the_plan(self):
         teammate = (PLUGIN / "TEAMMATE.md").read_text().lower()

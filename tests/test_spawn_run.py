@@ -155,7 +155,7 @@ class TestStreamJsonRequiresVerbose:
         assert r.returncode == 1 and "verbose" in r.stderr
 
     def test_the_teammates_actual_argv_greens_against_the_same_stub(self, tmp_path):
-        from spawn import claude_argv
+        from harness import claude_argv
 
         claude = stub_claude_requiring_verbose(tmp_path)
         argv = claude_argv("sonnet", "medium", "stream-json")[1:]  # drop the "claude" argv[0]
@@ -166,7 +166,7 @@ class TestStreamJsonRequiresVerbose:
     def test_review_py_still_passes_json_untouched(self):
         """review.py's own argv is explicit ("json"), so this story must not
         have touched it into carrying --verbose it never asked for."""
-        from spawn import claude_argv
+        from harness import claude_argv
 
         assert "--verbose" not in claude_argv("opus", "", "json")
 
@@ -196,7 +196,6 @@ class TestLiveLogDuringARun:
         run = threading.Thread(
             target=run_teammate,
             args=([sys.executable, str(script)], tmp_path, "", "story-live", tmp_path / "data"),
-            kwargs={"out": lambda _l: None},
         )
         run.start()
         log = log_path(tmp_path / "data", "story-live")
@@ -235,7 +234,6 @@ class TestLiveLogDuringARun:
             "x" * (1 << 20),
             "story-epipe",
             tmp_path / "data",
-            out=lambda _l: None,
         )
         assert rc == 1
         assert died == [], f"the feeder thread died unhandled: {died}"
@@ -430,10 +428,9 @@ class TestCodexTee:
     stream is `codex exec --json`, measured on 0.149.0 at story-028 — the two legs
     diverge in the per-line parse and nowhere else."""
 
-    def test_codex_native_stream_requires_a_terminal_agent_message(self, tmp_path):
+    def test_codex_native_stream_requires_a_terminal_agent_message(self, tmp_path, capsys):
         from teammate_tee import run_teammate
 
-        out = []
         line = '{"type":"item.completed","item":{"type":"agent_message","text":"done"}}'
         rc = run_teammate(
             ["/bin/sh", "-c", f"echo '{line}'"],
@@ -442,10 +439,9 @@ class TestCodexTee:
             "story-042",
             tmp_path / "data",
             harness="codex",
-            out=out.append,
         )
         assert rc == 0
-        assert "[item.completed] agent_message" in out, "the tail names the item, not the event"
+        assert "[item.completed] agent_message" in capsys.readouterr().out
 
     def test_the_same_append_only_log_contract(self, tmp_path):
         from teammate_tee import run_teammate
@@ -458,7 +454,6 @@ class TestCodexTee:
                 "story-042",
                 tmp_path / "data",
                 harness="codex",
-                out=lambda _l: None,
             )
         log = (tmp_path / "data" / "logs" / "story-042.log").read_text()
         assert log.count("===== spawn story-042 ") == 2, log
@@ -481,19 +476,16 @@ class TestCodexTee:
         assert len(seen) == 4
         assert sum(o == "[turn.started]" for o in out) == 4
 
-    def test_the_claude_leg_still_demands_its_terminal_object(self, tmp_path):
+    def test_the_claude_leg_still_demands_its_terminal_object(self, tmp_path, capsys):
         """The two legs must diverge HERE and nowhere else: dropping the check
         for claude would hide a teammate whose stream died mid-run."""
         from teammate_tee import run_teammate
 
-        errs = []
         run_teammate(
             ["/bin/sh", "-c", "echo not-json"],
             tmp_path,
             "",
             "story-042",
             tmp_path / "data",
-            out=lambda _l: None,
-            err=errs.append,
         )
-        assert any("terminal result" in e for e in errs), errs
+        assert "terminal result" in capsys.readouterr().err

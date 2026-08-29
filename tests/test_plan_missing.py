@@ -69,17 +69,11 @@ class TestOneMissingPlanRefusal:
         said = {leg: sentence(proc, leg) for leg, proc in legs(repo, env).items()}
         assert len(set(said.values())) == 1, f"the legs disagree about a missing plan: {said}"
 
-    def test_the_pre_move_copy_still_wins_everywhere(self, tmp_path):
-        """The migration sentence is the other arm of the same helper: a leg that
-        reached the generic diagnosis while a pre-move plan sat beside it would
-        send the lead to scaffold a repo that only needs `mv`."""
+    def test_the_pre_move_copy_gets_the_same_refusal_everywhere(self, tmp_path):
         repo, env, g, plan = reviewed_repo(tmp_path)
         plan.rename(repo / ".xp" / "plan.md")
         g("add", "-A")
         g("commit", "-qm", "pre-move plan")
 
-        for leg, proc in legs(repo, env).items():
-            assert proc.returncode != 0, leg
-            assert "per-clone now" in proc.stderr, (
-                f"{leg} lost the migration sentence:\n{proc.stderr}"
-            )
+        said = {leg: sentence(proc, leg) for leg, proc in legs(repo, env).items()}
+        assert len(set(said.values())) == 1, f"the legs disagree about a missing plan: {said}"

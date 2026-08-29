@@ -210,8 +210,6 @@ def run_stream(
     harness: str,
     env: dict,
     timeout: float | None = None,
-    out: OutWrite = print,
-    err: OutWrite = lambda s: print(s, file=sys.stderr),
     widen_git: bool = False,
 ) -> subprocess.CompletedProcess:
     """Every spawned agent streams live and tees to a durable log; `widen_git`
@@ -237,7 +235,7 @@ def run_stream(
     # if what follows then hangs. Here rather than at one caller, so the reviewer
     # legs report it too.
     if posture := sandbox_line(argv):
-        err(posture)
+        print(posture, file=sys.stderr)
     proc = subprocess.Popen(
         argv,
         cwd=cwd,
@@ -285,10 +283,10 @@ def run_stream(
         path.parent.mkdir(parents=True, exist_ok=True)
         log = open(path, "a")  # noqa: SIM115 — the no-log fallback has no file to enter
     except OSError as exc:
-        err(f"warning: log open failed ({exc}); continuing without it")
+        print(f"warning: log open failed ({exc}); continuing without it", file=sys.stderr)
         log = None
     else:
-        err(f"live log: {path}")  # in the runner, so every role's launch names it
+        print(f"live log: {path}", file=sys.stderr)
     pointed = False
 
     def log_write(line: str) -> None:
@@ -309,9 +307,9 @@ def run_stream(
             stamp = datetime.now(timezone.utc).isoformat(timespec="seconds")
             log_write(spawn_header(log_id, stamp))
         except OSError as exc:
-            err(f"warning: log write failed ({exc}); continuing without it")
+            print(f"warning: log write failed ({exc}); continuing without it", file=sys.stderr)
         assert proc.stdout is not None
-        result = tee_stream(ticking(proc.stdout), log_write, out, parse)
+        result = tee_stream(ticking(proc.stdout), log_write, print, parse)
     except BaseException:
         # Ctrl-C no longer reaches the child, because it has its own session now.
         # Only here: a run that DRAINED is already exiting, and killing on the way
@@ -330,7 +328,7 @@ def run_stream(
         raise subprocess.TimeoutExpired(argv, timeout, stderr=str(path))
     rc = proc.returncode
     if result is None:
-        err(f"{log_id}: stream never carried a terminal result; see {path}")
+        print(f"{log_id}: stream never carried a terminal result; see {path}", file=sys.stderr)
         rc = rc or 1
     return subprocess.CompletedProcess(
         argv,
@@ -347,8 +345,6 @@ def run_teammate(
     story_id: str,
     data_root: Path,
     harness: str = "claude",
-    out: OutWrite = print,
-    err: OutWrite = lambda s: print(s, file=sys.stderr),
 ) -> int:
     """The teammate leg's thin wrapper: no timeout, because a teammate
     legitimately outruns any wall clock (spawn.run_agent's timeout comment)."""
@@ -360,12 +356,10 @@ def run_teammate(
         data_root,
         harness,
         os.environ | {"XP_ROLE": "teammate", "XP_STORY_ID": story_id},
-        out=out,
-        err=err,
         widen_git=True,  # the executor commits and must
     )
     if proc.returncode == 0 and harness == "claude" and proc.stdout:
-        out(closing_line(story_id, json.loads(proc.stdout)))
+        print(closing_line(story_id, json.loads(proc.stdout)))
     return proc.returncode
 
 

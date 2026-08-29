@@ -435,7 +435,7 @@ class TestArchive:
         assert r.returncode == 2, r.stdout
         # not `"bug" in stderr`: argparse's usage line lists every subcommand, so
         # that greened while `archive` did not exist at all
-        assert "only a debt or a note" in r.stderr, r.stderr
+        assert "only a debt or a note" in r.stderr and "fix it, then resolve it" in r.stderr
 
     def test_an_archived_record_cannot_be_archived_again(self, tmp_path):
         run(["note", "a discovery"], tmp_path, check=True)
@@ -444,6 +444,10 @@ class TestArchive:
         second = self.last_id(tmp_path)
         r = run(["archive", "--ref", second, "--disposition", "d"], tmp_path)
         assert r.returncode == 2, r.stdout + r.stderr
+        # constraint 15: retired is not unfinished. A refusal naming only the bug
+        # arm sends a lead holding a DISPOSED record to `resolve`, which checks
+        # only that the replacement is green — a frictionless dishonest exit.
+        assert "already disposed" in r.stderr, r.stderr
 
     def test_a_ref_matching_no_record_is_refused_before_anything_is_written(self, tmp_path):
         run(["note", "a discovery"], tmp_path, check=True)

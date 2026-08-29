@@ -4,6 +4,7 @@ import inspect
 import shlex
 from pathlib import Path
 
+import pytest
 import work as work_module
 from sprint_helpers import (
     CONFIG,
@@ -120,6 +121,97 @@ def file_debt(repo, env, claim, command, covered_by=""):
     result = work(repo, env, *args)
     assert result.returncode == 0, result.stderr
     return result.stdout.strip()
+
+
+def live_control(repo, env, tmp_path):
+    """A record the batch MUST run. Every exclusion below asserts only that a
+    counter did not grow, and that greens just as well against a close whose
+    batch executes nothing at all — the mutation constraint 2 calls certifying."""
+    counter = tmp_path / "control"
+    file_debt(repo, env, "live control", writes(counter))
+    return counter
+
+
+def archive_debt(repo, env, counter):
+    ref = file_debt(repo, env, "disposed", writes(counter))
+    before = counter.read_text()
+    assert work(repo, env, "archive", "--ref", ref, "--disposition", "dropped").returncode == 0
+    return ref, before
+
+
+def test_an_archived_debt_falsifier_is_not_executed(tmp_path):
+    repo, env, _g = make_repo(tmp_path)
+    counter = tmp_path / "archived"
+    _ref, before = archive_debt(repo, env, counter)
+    control = live_control(repo, env, tmp_path)
+
+    assert sprint(repo, env, "start").returncode == 0
+    assert counter.read_text() == before
+    assert control.read_text() == "xx"
+
+
+def test_a_compacted_archived_debt_falsifier_is_not_executed(tmp_path):
+    repo, env, _g = make_repo(tmp_path)
+    counter = tmp_path / "compacted"
+    ref, before = archive_debt(repo, env, counter)
+    control = live_control(repo, env, tmp_path)
+    assert work(repo, env, "compact").returncode == 0
+    compacted = (tmp_path / "data" / "work.md").read_text()
+    stub = f"Id: {ref}\nArchives: {ref}\nDisposition: dropped\nFalsifier: `{writes(counter)}`"
+    assert stub in compacted, compacted
+
+    assert sprint(repo, env, "start").returncode == 0
+    assert counter.read_text() == before
+    assert control.read_text() == "xx"
+
+
+@pytest.mark.parametrize("order", [("resolve", "archive"), ("archive", "resolve")])
+def test_archive_wins_over_resolution_before_and_after_compaction(tmp_path, order):
+    """Archive wins in both orders, including the compacted one-field stub."""
+    repo, env, _g = make_repo(tmp_path)
+    original, replacement = tmp_path / "original", tmp_path / "replacement"
+    ref = file_debt(repo, env, "disposed after repair", writes(original))
+    steps = {
+        "resolve": ["resolve", "--ref", ref, "--falsifier", writes(replacement)],
+        "archive": ["archive", "--ref", ref, "--disposition", "dropped"],
+    }
+    for step in order:
+        result = work(repo, env, *steps[step])
+        if order[0] == "archive" and step == "resolve":
+            assert result.returncode == 2 and "archived" in result.stderr
+        else:
+            assert result.returncode == 0, step
+
+    def contents(path):
+        return path.read_text() if path.exists() else ""
+
+    before = contents(original), contents(replacement)
+    control = live_control(repo, env, tmp_path)
+
+    assert sprint(repo, env, "start").returncode == 0
+    assert (contents(original), contents(replacement)) == before
+    assert control.read_text() == "xx"
+    assert work(repo, env, "compact").returncode == 0
+    stale = work(repo, env, "resolve", "--ref", ref, "--falsifier", writes(replacement))
+    assert stale.returncode == 2 and "archived" in stale.stderr
+    assert sprint(repo, env, "start").returncode == 0
+    assert (contents(original), contents(replacement)) == before
+    assert control.read_text() == "xxx"
+
+
+def test_an_archives_mention_does_not_dispose_another_record(tmp_path):
+    repo, env, _g = make_repo(tmp_path)
+    counter = tmp_path / "still-live"
+    ref = file_debt(repo, env, "must remain live", writes(counter))
+    before = counter.read_text()
+    with (tmp_path / "data" / "work.md").open("a") as records:
+        records.write(
+            "## bug 2026-01-01T00:00:00Z\nClaim: hand-written mention\n"
+            f"Archives: {ref}\nFalsifier: `false`\nFiles: a.py\n\n"
+        )
+
+    assert sprint(repo, env, "start").returncode == 2
+    assert counter.read_text() == before + "x"
 
 
 def test_a_shared_falsifier_executes_once(tmp_path):

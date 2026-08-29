@@ -6,8 +6,10 @@ makes the shipped charter reachable there.
 """
 
 import argparse
+import contextlib
 import json
 import os
+import re
 import subprocess
 import sys
 import time
@@ -117,7 +119,33 @@ def disposition(text: str, before: bytes | None, after: bytes | None) -> str:
     try:
         report = json.loads(text)
     except ValueError:
-        return "the plan review wrote no structured disposition"
+        values = []
+        for fence in re.findall(r"```[^\n]*\n(.*?)```", text, flags=re.S):
+            with contextlib.suppress(ValueError):
+                values.append(json.loads(fence))
+        # A non-object in a fence is no rival verdict — kept only when none is an object,
+        # so a fenced `[]` refuses by TYPE. Narrowing either discards a completed round.
+        values = [v for v in values if isinstance(v, dict)] or values
+        if len(values) == 1:
+            report = values[0]
+        elif len(values) > 1:
+            return "the plan review wrote an ambiguous disposition — write exactly one JSON object"
+        else:
+            decoder, objects, end = json.JSONDecoder(), [], 0
+            for start in (i for i, char in enumerate(text) if char == "{"):
+                if start < end:
+                    continue
+                try:
+                    value, end = decoder.raw_decode(text, start)
+                except ValueError:
+                    continue
+                if isinstance(value, dict):
+                    objects.append(value)
+            if len(objects) > 1:
+                return (
+                    "the plan review wrote an ambiguous disposition — write exactly one JSON object"
+                )
+            return "the plan review wrote no structured disposition"
     if not isinstance(report, dict):
         return "the plan disposition must be a JSON object"
     status = report.get("status")
@@ -227,11 +255,7 @@ def _detach(story_id: str, plan_file: Path, out: Path) -> tuple[int, subprocess.
         stdin=subprocess.DEVNULL,
         start_new_session=True,
     )
-    marker.write_text(
-        json.dumps(
-            {"pid": child.pid, "findings": str(out), "log": str(log), "plan": str(plan_file)}
-        )
-    )
+    marker.write_text(json.dumps({"pid": child.pid, "findings": str(out), "log": str(log)}))
     print(f"plan review running (pid {child.pid}); live log: {log}", file=sys.stderr)
     return child.pid, child
 

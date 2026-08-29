@@ -44,8 +44,8 @@ recovery block and sprint slice; they are not injected. Artifacts win.
   that tier's selections and nothing checks you. Resolutions declare anew.
 - **note** — value tradeoff or discovery; sprint close promotes or archives it.
   A directive the NEXT STORY must follow goes on that card — a note reaches it never.
-- **Polarity** — debt/archive: still OK; red means the latent problem materialised. A
-  falsifier green because the flaw exists is inverted.
+- **Polarity** — a debt's falsifier: still OK; red means the latent problem
+  materialised. A falsifier green because the flaw exists is inverted.
 
 Telemetry is re-measured, never recorded. Replace the ≤30-line session digest at
 story/sprint close; never append it.

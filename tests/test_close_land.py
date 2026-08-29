@@ -9,6 +9,7 @@ import pytest
 from close_helpers import (
     CLEAN,
     CLOSE,
+    SPAWN,
     close,
     launches,
     make_repo,
@@ -49,6 +50,38 @@ class TestLandFailureModes:
         assert "Traceback" not in r.stderr, r.stderr
         assert r.returncode == 2 and "story-042" in r.stderr
         assert g("rev-parse", "main").stdout.strip() == before, "it merged anyway"
+
+    def test_land_discloses_the_amendment_route_reason_and_card_diff(self, tmp_path):
+        repo, env, _g = make_repo(tmp_path)
+        plan = tmp_path / "data" / "plan.md"
+        plan.write_text(plan.read_text().replace("Files: src/thing.py", "Files: src/other.py"))
+        assert close(repo, env, "review").returncode == 0
+        refused = close(repo, env, "land", "--dry-run")
+        assert refused.returncode == 2 and "spawn.py amend story-042" in refused.stderr
+
+        amended = subprocess.run(
+            [
+                sys.executable,
+                str(SPAWN),
+                "amend",
+                "story-042",
+                "--reason",
+                "implementation moved to its actual file",
+            ],
+            cwd=repo,
+            env=env,
+            capture_output=True,
+            text=True,
+        )
+        assert amended.returncode == 0, amended.stderr
+        landed = close(repo, env, "land", "--dry-run")
+        assert landed.returncode == 0, landed.stderr
+        audit = "implementation moved to its actual file"
+        assert all(
+            part in landed.stdout
+            for part in (audit, "-Files: src/thing.py", "+Files: src/other.py")
+        )
+        assert landed.stdout.index(audit) < landed.stdout.index("would run:")
 
     def pr_repo(self, tmp_path):
         repo, env, g = make_repo(tmp_path)
@@ -229,31 +262,22 @@ class TestStructuredGate:
         assert close(repo, env, "review").returncode == 0
         return repo, env, g, target.relative_to(repo).as_posix()
 
-    def test_clean_sprint_overlap_runs_the_merged_tier_and_records_the_delta(self, tmp_path):
+    def test_clean_sprint_overlap_runs_the_merged_tier_and_names_the_delta(self, tmp_path):
         repo, env, g, shared = self.sprint_overlap_repo(tmp_path)
         r = close(repo, env, "land")
         assert r.returncode == 0, r.stderr + r.stdout
         merged = g("show", "sprint-001:shared.py").stdout
         assert "STORY_MERGED" in merged and "SPRINT_MERGED" in merged
-        report = tmp_path / "data" / "reports" / "merge" / "story-042.txt"
-        assert report.read_text().splitlines() == [shared]
         assert f"\n  {shared}\n" in r.stdout, "the lead was told nothing of the shared file domain"
+        assert not (tmp_path / "data" / "reports" / "merge").exists()
 
     def test_a_clean_gate_overlap_still_refuses_before_integration(self, tmp_path):
         repo, env, g, gate = self.sprint_overlap_repo(tmp_path, gate=True)
         before = g("rev-parse", "sprint-001").stdout.strip()
         r = close(repo, env, "land")
-        assert r.returncode == 2 and "sprint-001" in r.stderr and gate in r.stderr
+        assert r.returncode == 2 and "overlaps files no review covered together" in r.stderr
+        assert "sprint-001" in r.stderr and gate in r.stderr
         assert g("rev-parse", "sprint-001").stdout.strip() == before
-        assert not (tmp_path / "data" / "reports" / "merge").exists()
-
-    def test_a_merge_report_write_failure_is_incomplete_not_silent(self, tmp_path):
-        repo, env, g, _shared = self.sprint_overlap_repo(tmp_path)
-        report_dir = tmp_path / "data" / "reports" / "merge"
-        report_dir.write_text("not a directory")
-        r = close(repo, env, "land")
-        assert r.returncode == 3 and "merge delta" in r.stderr
-        assert "STORY_MERGED" in g("show", "sprint-001:shared.py").stdout
 
     def test_a_lead_commit_after_the_review_is_REPORTED_and_merged(self, tmp_path):
         """story-018/024: the refusal here bought one round per lead fix and was the

@@ -59,13 +59,18 @@ def test_a_missing_system_file_is_the_no_teardown_arm(tmp_path):
 
 
 def test_a_hung_teardown_is_killed_and_removal_continues(tmp_path):
-    # The bound has to beat `sleep 30`, not time a land: at 5s it red under
-    # xdist load on a machine where a land alone takes four.
+    # Constraint 2: assert the EVENT, and keep the clock as a generous hang guard
+    # only. The stderr line below is the real proof — it can only be written by the
+    # kill path, and a teardown allowed to run would take 30s and never emit it.
+    # The bound was tuned 5 -> 20 chasing xdist load and still red at 20.06s; a
+    # third guess at machine speed is the wall-clock trap, so it beats `sleep 30`
+    # by a wide margin instead. It asserts AFTER the event, or a slow machine
+    # reports a timing miss while saying nothing about the mechanism.
     started = time.monotonic()
     tree, result = land(tmp_path, teardown="`sleep 30`", teardown_timeout=1)
-    assert time.monotonic() - started < 20
     assert result.returncode == 3
     assert "Worktree teardown timed out after 1s ('sleep 30')" in result.stderr
+    assert time.monotonic() - started < 120
     assert "worktree removed; inspect external state manually" in result.stderr
     assert not tree.exists()
 

@@ -298,13 +298,13 @@ class TestResume:
         refused = resume(repo, env)
 
         assert refused.returncode == 2 and "edited after its plan review" in refused.stderr
-        for instruction in ("[planned]", "plan_review.py", "spawn.py ready", "spawn.py resume"):
-            assert instruction in refused.stderr, refused.stderr
+        assert "spawn.py amend story-042" in refused.stderr, refused.stderr
         assert in_tree(tree, env, "rev-parse", "HEAD")
 
-        plan.write_text(plan.read_text().replace("[in-progress]", "[planned]"))
-        minted = spawn(repo, env, "ready", "story-042")
-        assert minted.returncode == 0, minted.stderr
+        amended = spawn(
+            repo, env, "amend", "story-042", "--reason", "the answer changed during execution"
+        )
+        assert amended.returncode == 0, amended.stderr
         stub_claude(tmp_path)
         assert resume(repo, env).returncode == 0
         assert "[in-progress]" in plan.read_text()

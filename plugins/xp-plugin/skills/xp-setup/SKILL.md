@@ -19,7 +19,7 @@ description: >-
      product presents (HTTP / Browser / CLI / SDK / Automation / Message-event)
      needs a harness that drives it at its boundary; a surface without one is
      the first debt worth filing. Wire acceptance harnesses with the project's
-     own tooling (Playwright, pytest+subprocess, supertest, …) — judgment work,
+     own tooling (browser, subprocess, request harnesses, …) — judgment work,
      not scaffolding
    - a linter in the pre-commit hook
 3. Plan the first milestone in the plan the scaffold wrote — it is PER CLONE,

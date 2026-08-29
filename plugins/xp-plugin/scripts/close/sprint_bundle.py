@@ -1,13 +1,13 @@
 import re
 from pathlib import Path
 
-import overlap
 from close import _read, git
 from work import data_root, entries, work_entries_since
 
 FALSIFIER = re.compile(r"^Falsifier: `(.+)`$", re.M)
 COVERED_BY = re.compile(r"^Covered by: (.+)$", re.M)
 RESOLVES = re.compile(r"^Resolves: (\w+)$", re.M)
+ARCHIVES = re.compile(r"^Archives: (\w+)$", re.M)
 PLUGIN_ROOT = Path(__file__).parent.parent.parent
 
 
@@ -46,7 +46,6 @@ def build(sprint_id, cards, base, report, charter, extra, diff_base="") -> str:
         *extra,
         (f"The stories in sprint {sprint_id}", cards),
         (title, git("diff", f"{diff_base or base}..HEAD").stdout),
-        ("Merge deltas not covered by story review", overlap.merge_reports(cards)),
         ("Resolutions filed during the sprint", resolutions),
         ("work.md entries filed during the sprint", work_md),
         ("PROCESS", _read(str(PLUGIN_ROOT / "PROCESS.md"))),

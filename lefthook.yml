@@ -49,3 +49,5 @@ pre-push:
       run: sh -c 'pytest -q -n auto; s=$?; [ $s -eq 5 ] && exit 0; exit $s'
     ratchet:
       run: python3 tests/scripts/ratchet.py
+    falsifier-node-ids:
+      run: python3 tests/scripts/check_falsifier_node_ids.py

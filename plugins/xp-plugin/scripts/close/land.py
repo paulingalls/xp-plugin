@@ -63,9 +63,13 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool, free_slug: str = "")
     if card:
         if status != "in-progress":
             return close.fail(f"refused: {story_id} is [{status}], land requires [in-progress]")
-        rerun = f"Put the heading back to [planned] and run `close.py free {free_slug} review`."
-        if drift := ready.drift(story_id, card, rerun if free else ""):
+        if drift := ready.drift(story_id, card):
             return close.fail(drift)
+        amended = json.loads(work.ready_marker_path(story_id).read_text()).get("amendments", [])
+        for i, change in enumerate(amended):
+            after = amended[i + 1]["card"] if i + 1 < len(amended) else card
+            print(f"card amended — reason: {change['reason']}")
+            print(ready.card_diff(change["card"], after))
         try:
             raw, verify = close.verify_commands(story_id, card)
         except ValueError as e:
@@ -154,8 +158,8 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool, free_slug: str = "")
 
     print(bookkeep.render_noted(rounds), end="")
     failed = []
-    if files and (err := overlap.report_merge(story_id, files)):
-        failed.append(err)
+    if files:
+        overlap.report_merge(story_id, files)
     if merge_mode == "pr":
         for c in pr_sync:
             if subprocess.run(c, capture_output=True, text=True).returncode != 0:

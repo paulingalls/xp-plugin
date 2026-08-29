@@ -46,7 +46,7 @@ def invoked_stories(command: str, event_is_green: bool) -> list[tuple[str, str]]
     stories' status, and each gets its own marker.
 
     The verify's own `&&` segments must all appear, in order and whole; a subset
-    (`verify::test_one`) or a mention is not it, and no match writes no marker
+    (the first of two `&&` segments) or a mention is not it, and no match writes no marker
     (advisory fail-open). Green additionally requires every separator to the match's
     right to be `&&` — this shell has no pipefail, so `verify | tail`, `verify; echo`
     and `verify || true` all exit 0 over a red verify (proven live). Red takes any

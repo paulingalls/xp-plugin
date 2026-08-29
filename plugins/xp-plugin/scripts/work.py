@@ -8,7 +8,6 @@ import fcntl
 import hashlib
 import os
 import re
-import shlex
 import subprocess
 import sys
 from datetime import datetime, timezone
@@ -49,24 +48,8 @@ def plan_path() -> Path:
     return data_root() / "plan.md"
 
 
-def stale_plan() -> str:
-    """The migration sentence, folded into each tool's missing-plan refusal."""
-    if plan_path().exists() or not Path(".xp/plan.md").exists():
-        return ""
-    return (
-        f"the execution plan is per-clone now and lives at {plan_path()}; the"
-        " .xp/plan.md beside you is the pre-move copy. Migrate it:\n"
-        # mkdir first: nothing creates the state root until a tool writes a marker
-        # or a record there, and a repo scaffolded before the move may have written
-        # neither — so the bare `mv` fails on the very population this addresses
-        f"  mkdir -p {data_root()} && mv .xp/plan.md {plan_path()}"
-        " && git rm --cached .xp/plan.md"
-    )
-
-
 def missing_plan_refusal() -> str:
-    """Use the migration when a pre-move copy exists, else the diagnosis."""
-    return stale_plan() or f"no plan at {plan_path()} — is this an xp-managed repo?"
+    return f"no plan at {plan_path()} — is this an xp-managed repo?"
 
 
 def edit_plan(mutate) -> bool:
@@ -212,25 +195,6 @@ def falsifier_is_green(command: str) -> bool:
     return subprocess.run(command, shell=True, capture_output=True).returncode == 0
 
 
-def refuse_pytest_k(command: str) -> bool:
-    try:
-        words = shlex.split(command)
-    except ValueError:
-        return False
-    # Pytest also accepts an attached expression, clusters `-k` after any of its
-    # argument-free short flags (-d -f -l -q -s -v -x), and installs `py.test`
-    # alongside `pytest`; a spelling that evades the guard certifies.
-    selects = any(word.startswith("-k") or re.fullmatch(r"-[dflqsvx]+k.*", word) for word in words)
-    if not selects or not any(Path(word).name in ("pytest", "py.test") for word in words):
-        return False
-    print(
-        "refused: a pytest falsifier must name an exact node id such as "
-        "path/to/test.py::TestClass::test_name; replace the -k selector with that node id.",
-        file=sys.stderr,
-    )
-    return True
-
-
 def checked_coverage(args: argparse.Namespace) -> str | None:
     tier = args.covered_by
     if not tier:
@@ -279,6 +243,14 @@ def _kind_of(root: Path, ref: str) -> str | None:
     return matches[0].split(" ", 2)[1]
 
 
+def _archived(root: Path, ref: str) -> bool:
+    field = f"Archives: {ref}"
+    return any(
+        field in text.splitlines() and (text.startswith("## archived ") or eid == ref)
+        for eid, text in entries(root)
+    )
+
+
 def resolve(root: Path, args: argparse.Namespace) -> int:
     """Resolve a record by SUBSTITUTING a falsifier, never by deleting one.
 
@@ -290,8 +262,6 @@ def resolve(root: Path, args: argparse.Namespace) -> int:
         return 2
     if not _single_line(args.falsifier, "falsifier"):
         return 2
-    if refuse_pytest_k(args.falsifier):
-        return 2
     if (kind := _kind_of(root, args.ref)) is None:
         return 2
     if kind not in ("bug", "debt"):
@@ -299,6 +269,13 @@ def resolve(root: Path, args: argparse.Namespace) -> int:
             f"refused: {args.ref} is a {kind} — only a bug or a debt carries the"
             " falsifier a resolution substitutes for, so resolving anything else"
             " asserts a change no batch will ever honour.",
+            file=sys.stderr,
+        )
+        return 2
+    if _archived(root, args.ref):
+        print(
+            f"refused: {args.ref} is archived — it has left the falsifier batch;"
+            " choose an open bug or debt to resolve.",
             file=sys.stderr,
         )
         return 2
@@ -327,8 +304,8 @@ def archive(root: Path, args: argparse.Namespace) -> int:
     if kind not in ("debt", "note"):
         print(
             f"refused: {args.ref} is a {kind} — only a debt or a note is archivable."
-            " A bug's falsifier reds NOW, so archiving one hides a live defect; a"
-            " resolved or archived block is already disposed of.",
+            " Archiving a bug hides its red falsifier: fix it, then resolve it. A"
+            " resolved or archived record is already disposed of; choose an open one.",
             file=sys.stderr,
         )
         return 2
@@ -392,8 +369,6 @@ def main() -> int:
     if (coverage := checked_coverage(args)) is None:
         return 2
     if not _single_line(args.falsifier, "falsifier"):
-        return 2
-    if refuse_pytest_k(args.falsifier):
         return 2
     green = falsifier_is_green(args.falsifier)  # outside the lock: may be slow
     if args.kind == "bug" and green:
