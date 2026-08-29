@@ -4,6 +4,7 @@ import inspect
 import shlex
 from pathlib import Path
 
+import pytest
 import work as work_module
 from sprint_helpers import (
     CONFIG,
@@ -122,6 +123,15 @@ def file_debt(repo, env, claim, command, covered_by=""):
     return result.stdout.strip()
 
 
+def live_control(repo, env, tmp_path):
+    """A record the batch MUST run. Every exclusion below asserts only that a
+    counter did not grow, and that greens just as well against a close whose
+    batch executes nothing at all — the mutation constraint 2 calls certifying."""
+    counter = tmp_path / "control"
+    file_debt(repo, env, "live control", writes(counter))
+    return counter
+
+
 def archive_debt(repo, env, counter):
     ref = file_debt(repo, env, "disposed", writes(counter))
     before = counter.read_text()
@@ -133,37 +143,52 @@ def test_an_archived_debt_falsifier_is_not_executed(tmp_path):
     repo, env, _g = make_repo(tmp_path)
     counter = tmp_path / "archived"
     _ref, before = archive_debt(repo, env, counter)
+    control = live_control(repo, env, tmp_path)
 
     assert sprint(repo, env, "start").returncode == 0
     assert counter.read_text() == before
+    assert control.read_text() == "xx"
 
 
 def test_a_compacted_archived_debt_falsifier_is_not_executed(tmp_path):
     repo, env, _g = make_repo(tmp_path)
     counter = tmp_path / "compacted"
     ref, before = archive_debt(repo, env, counter)
+    control = live_control(repo, env, tmp_path)
     assert work(repo, env, "compact").returncode == 0
     compacted = (tmp_path / "data" / "work.md").read_text()
-    assert f"Id: {ref}\nArchives: {ref}" in compacted and "Falsifier:" in compacted
+    stub = f"Id: {ref}\nArchives: {ref}\nDisposition: dropped\nFalsifier: `{writes(counter)}`"
+    assert stub in compacted, compacted
 
     assert sprint(repo, env, "start").returncode == 0
     assert counter.read_text() == before
+    assert control.read_text() == "xx"
 
 
-def test_archive_wins_over_resolution_before_and_after_compaction(tmp_path):
+@pytest.mark.parametrize("order", [("resolve", "archive"), ("archive", "resolve")])
+def test_archive_wins_over_resolution_before_and_after_compaction(tmp_path, order):
+    """Both filing orders: `resolve` accepts an already-archived debt, and a stub
+    carries ONE disposition field, so a compaction taking the LAST decision rather
+    than the archiving one hands the replacement falsifier back to the batch."""
     repo, env, _g = make_repo(tmp_path)
     original, replacement = tmp_path / "original", tmp_path / "replacement"
     ref = file_debt(repo, env, "disposed after repair", writes(original))
-    resolved = work(repo, env, "resolve", "--ref", ref, "--falsifier", writes(replacement))
-    assert resolved.returncode == 0
-    assert work(repo, env, "archive", "--ref", ref, "--disposition", "dropped").returncode == 0
+    steps = {
+        "resolve": ["resolve", "--ref", ref, "--falsifier", writes(replacement)],
+        "archive": ["archive", "--ref", ref, "--disposition", "dropped"],
+    }
+    for step in order:
+        assert work(repo, env, *steps[step]).returncode == 0, step
     before = original.read_text(), replacement.read_text()
+    control = live_control(repo, env, tmp_path)
 
     assert sprint(repo, env, "start").returncode == 0
     assert (original.read_text(), replacement.read_text()) == before
+    assert control.read_text() == "xx"
     assert work(repo, env, "compact").returncode == 0
     assert sprint(repo, env, "start").returncode == 0
     assert (original.read_text(), replacement.read_text()) == before
+    assert control.read_text() == "xxx"
 
 
 def test_an_archives_mention_does_not_dispose_another_record(tmp_path):

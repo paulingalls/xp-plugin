@@ -327,8 +327,8 @@ def archive(root: Path, args: argparse.Namespace) -> int:
     if kind not in ("debt", "note"):
         print(
             f"refused: {args.ref} is a {kind} — only a debt or a note is archivable."
-            " A bug hides a red falsifier; fix it, then resolve it. A resolved or"
-            " archived record is already disposed of. Choose an open debt or note.",
+            " Archiving a bug hides its red falsifier: fix it, then resolve it. A"
+            " resolved or archived record is already disposed of; choose an open one.",
             file=sys.stderr,
         )
         return 2

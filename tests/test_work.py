@@ -444,9 +444,9 @@ class TestArchive:
         second = self.last_id(tmp_path)
         r = run(["archive", "--ref", second, "--disposition", "d"], tmp_path)
         assert r.returncode == 2, r.stdout + r.stderr
-        # constraint 15: retired is not unfinished. Naming only the bug arm sends a
-        # lead holding a DISPOSED record to `resolve`, the frictionless dishonest
-        # exit this story's own card names.
+        # constraint 15: retired is not unfinished. A refusal naming only the bug
+        # arm sends a lead holding a DISPOSED record to `resolve`, which checks
+        # only that the replacement is green — a frictionless dishonest exit.
         assert "already disposed" in r.stderr, r.stderr
 
     def test_a_ref_matching_no_record_is_refused_before_anything_is_written(self, tmp_path):
