@@ -117,7 +117,20 @@ def disposition(text: str, before: bytes | None, after: bytes | None) -> str:
     try:
         report = json.loads(text)
     except ValueError:
-        return "the plan review wrote no structured disposition"
+        decoder, reports, end = json.JSONDecoder(), [], 0
+        for start in (i for i, char in enumerate(text) if char in "{["):
+            if start < end:
+                continue
+            try:
+                report, end = decoder.raw_decode(text, start)
+            except ValueError:
+                continue
+            reports.append(report)
+        if not reports:
+            return "the plan review wrote no structured disposition"
+        if len(reports) != 1:
+            return "the plan review wrote an ambiguous structured disposition"
+        report = reports[0]
     if not isinstance(report, dict):
         return "the plan disposition must be a JSON object"
     status = report.get("status")
