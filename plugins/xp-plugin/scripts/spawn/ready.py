@@ -1,11 +1,3 @@
-"""The plan-review credential: minted once by the lead, checked at every spawn.
-
-[ready] was a bit with a reader and no writer — a card edited after its review
-kept it, and spawn launched an unbounded teammate on text no reviewer saw
-(measured three times in sprint-003). The digest binds the credential to the card
-text; the bracket is display.
-"""
-
 import argparse
 import difflib
 import json
@@ -14,61 +6,89 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from close import fail, story_card, verify_commands
+from handoff import marker_path as handoff_marker_path
 from work import (
     card_digest,
     card_lines,
     chdir_repo_root,
+    data_root,
     flip_card,
     missing_plan_refusal,
     plan_path,
     ready_marker_path,
 )
 
+AMEND = "Run `spawn.py amend {} --reason '<why this declaration changed>'`."
+REMINT = "Put the heading back to [planned] and run `spawn.py ready {}`."
+DOC = "The plan-review credential: minted from [planned], amended only with a recorded reason."
 
-def drift(story_id: str, card: str, remediation: str = "") -> str:
-    """ "" when this card is the one the plan reviewer saw; otherwise the refusal.
 
-    The reviewed TEXT is stored beside its digest so the refusal can show what
-    moved. A digest alone can only assert that something did, and the lead is one
-    diff away from knowing whether to re-review or to undo.
-    """
-    marker = ready_marker_path(story_id)
-    recovery = remediation or (
-        f"Put the heading back to [planned] and run `spawn.py ready {story_id}`, which"
-        " records the card the reviewer saw."
-    )
-    if not marker.exists():
-        return (
-            f"refused: {story_id}'s card is cleared and nothing minted it — the bracket"
-            f" was typed, not earned, or {marker} was deleted. {recovery}"
-        )
+def credential(marker: Path) -> dict | None:
     try:
         minted = json.loads(marker.read_text())
-        reviewed, digest = minted["card"], minted["digest"]
-    except (OSError, ValueError, KeyError, TypeError):
-        return (
-            f"refused: {marker} is unreadable, so nothing vouches for {story_id} — an"
-            f" interrupted mint leaves half of it. {recovery}"
+        history = minted.get("amendments", []) if isinstance(minted, dict) else None
+        valid = isinstance(minted, dict) and isinstance(minted.get("card"), str)
+        valid &= isinstance(history, list) and all(
+            isinstance(x, dict) and all(isinstance(x.get(k), str) for k in ("reason", "card"))
+            for x in history
         )
-    if digest == card_digest(card):
+        return minted if valid else None
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+
+
+def card_diff(reviewed: str, card: str) -> str:
+    return "\n".join(
+        difflib.unified_diff(
+            card_lines(reviewed), card_lines(card), "reviewed", "now", lineterm="", n=1
+        )
+    )
+
+
+def drift(sid: str, card: str) -> str:
+    marker = ready_marker_path(sid)
+    recovery = (AMEND if handoff_marker_path(data_root(), sid).exists() else REMINT).format(sid)
+    if not marker.exists():
+        return f"refused: nothing minted it for {sid}; {marker} is absent. {recovery}"
+    minted = credential(marker)
+    if minted is None:
+        return f"refused: {marker} is unreadable; nothing vouches for {sid}. {recovery}"
+    if minted.get("digest") == card_digest(card):
         return ""
-    diff = difflib.unified_diff(
-        card_lines(reviewed),
-        card_lines(card),
-        "reviewed",
-        "now",
-        lineterm="",
-        n=1,
-    )
-    return (
-        f"refused: {story_id} was edited after its plan review — spawning would launch"
-        " a teammate on text no reviewer saw:\n" + "\n".join(diff) + f"\n{recovery}"
-    )
+    diff = card_diff(minted["card"], card)
+    return f"refused: {sid} was edited after its plan review:\n{diff}\n{AMEND.format(sid)}"
+
+
+def amend(story_id: str, reason: str) -> int:
+    if not reason.strip():
+        return fail("refused: amend requires --reason")
+    try:
+        card, status = story_card(plan_path().read_text(), story_id)
+    except (KeyError, OSError) as e:
+        why = missing_plan_refusal() if isinstance(e, OSError) else e.args[0]
+        return fail(f"refused: {why}")
+    if status not in {"ready", "in-progress"}:
+        return fail(f"refused: {story_id} is [{status}], amend requires [ready] or [in-progress]")
+    try:
+        verify_commands(story_id, card)
+    except ValueError as e:
+        return fail(str(e))
+    marker = ready_marker_path(story_id)
+    previous = credential(marker)
+    if previous is None and not handoff_marker_path(data_root(), story_id).exists():
+        return fail(f"refused: no reviewed card to amend. {REMINT.format(story_id)}")
+    prior = previous["card"] if previous else "(credential absent)"
+    if previous is None and marker.exists():
+        prior = marker.read_text(errors="replace") or "(credential empty)"
+    history = previous.get("amendments", []) if previous else []
+    history = [*history, {"reason": reason, "card": prior}]
+    payload = {"digest": card_digest(card), "card": card, "amendments": history}
+    marker.write_text(json.dumps(payload, ensure_ascii=False))
+    print(f"{story_id} amended — reason: {reason}\n{card_diff(prior, card)}")
+    return 0
 
 
 def mint(story_id: str) -> int:
-    """The one leg that clears a card, so the [ready] flip and the digest cannot
-    come apart: a lead who types the bracket mints nothing and spawn refuses."""
     if not plan_path().exists():
         return fail("refused: " + missing_plan_refusal())
     try:
@@ -76,11 +96,9 @@ def mint(story_id: str) -> int:
     except KeyError as e:
         return fail(f"refused: {e.args[0]}")
     if status != "planned":
-        return fail(
-            f"refused: {story_id} is [{status}], ready mints from [planned]. To re-mint"
-            " after editing a cleared card, put its heading back to [planned] and run the"
-            " plan review again — the edit is what the next spawn would have refused."
-        )
+        return fail(f"refused: {story_id} is [{status}]; ready mints only from [planned]")
+    if handoff_marker_path(data_root(), story_id).exists():
+        return fail(f"refused: {story_id} was already spawned. {AMEND.format(story_id)}")
     try:
         verify_commands(story_id, card)
     except ValueError as e:
@@ -94,10 +112,12 @@ def mint(story_id: str) -> int:
     return 0
 
 
-def main(argv: list[str]) -> int:
-    p = argparse.ArgumentParser(prog="spawn.py ready", description=mint.__doc__)
+def main(argv: list[str], action: str = "ready") -> int:
+    p = argparse.ArgumentParser(prog=f"spawn.py {action}", description=DOC)
     p.add_argument("story_id")
-    story_id = p.parse_args(argv).story_id
+    if action == "amend":
+        p.add_argument("--reason", default="", help="why this declaration changed — required")
+    args = p.parse_args(argv)
     if not chdir_repo_root():
         return fail("refused: not inside a git repository")
-    return mint(story_id)
+    return amend(args.story_id, args.reason) if action == "amend" else mint(args.story_id)

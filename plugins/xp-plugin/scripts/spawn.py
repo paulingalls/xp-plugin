@@ -231,9 +231,10 @@ def execution_root(tree: Path, cut_from: str) -> Path:
 
 
 def flip_to_in_progress(story_id: str) -> None:
-    """close.py refuses a story that is not [in-progress], and without this that
-    refusal lands only AFTER the teammate has written the whole story."""
+    """Both marks of a started story, together: close.py refuses a card that is not
+    [in-progress], and ready.py refuses re-minting one already handed to an executor."""
     flip_card(story_id, "ready", "in-progress")
+    mark_handoff(data_root(), story_id)
 
 
 def not_ready_hint(status: str, story_id: str) -> str:
@@ -298,7 +299,7 @@ def cmd_spawn(
         card, status = story_card(plan_path().read_text(), story_id)
     except KeyError as e:
         return fail(f"refused: {e.args[0]}")
-    if resuming and (drift := ready().drift(story_id, card, resume().remint_route(story_id))):
+    if resuming and (drift := ready().drift(story_id, card)):
         return fail(drift)
     if resuming and status not in {"ready", "in-progress"}:
         return fail(f"refused: {story_id} is [{status}], resume requires [in-progress] or [ready]")
@@ -462,8 +463,8 @@ def resume():
 
 
 def main() -> int:
-    if sys.argv[1:2] == ["ready"]:
-        return ready().main(sys.argv[2:])
+    if sys.argv[1:2] in (["ready"], ["amend"]):
+        return ready().main(sys.argv[2:], sys.argv[1])
     if sys.argv[1:2] == ["resume"]:
         a = resume().parse(sys.argv[2:])
         if not chdir_repo_root():
@@ -472,7 +473,7 @@ def main() -> int:
     p = argparse.ArgumentParser(
         description=__doc__,
         epilog="ready <story-id>: after the card review, mint the card's digest and"
-        " flip [planned] -> [ready]. Editing the card afterwards refuses the spawn."
+        " flip [planned] -> [ready]. amend <story-id> --reason: record a later card edit."
         " resume <story-id>: hand a STOPPED or FINISHED tree to a fresh teammate.",
     )
     p.add_argument("story_id")

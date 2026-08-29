@@ -19,14 +19,6 @@ def parse(argv: list[str]):
     return parser.parse_args(argv)
 
 
-def remint_route(story_id: str) -> str:
-    return (
-        "Put the heading back to [planned], run `plan_review.py"
-        f" {story_id} <plan-draft>`, then `spawn.py ready {story_id}` and"
-        f" `spawn.py resume {story_id}`."
-    )
-
-
 def handback_recovery(tree: Path, story_id: str) -> str:
     return (
         f" Recover by reviewing and committing the remaining work in {tree},"
