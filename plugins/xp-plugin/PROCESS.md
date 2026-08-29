@@ -40,8 +40,8 @@ recovery block and sprint slice; they are not injected. Artifacts win.
 - **bug** — claim + red falsifier + files; fix now. No red means debt/note.
 - **debt** — claim + green falsifier + files; planning schedules/archives it.
 - **resolve** — substitutes a green falsifier; ids come from `work.py list`.
-- **coverage** — optional `--covered-by TIER`; the configured tier, not the plugin,
-  asserts the falsifier is one of its selections. Resolutions declare anew.
+- **coverage** — optional `--covered-by TIER`: YOU assert the falsifier is one of
+  that tier's selections and nothing checks you. Resolutions declare anew.
 - **note** — value tradeoff or discovery; sprint close promotes or archives it.
   A directive the NEXT STORY must follow goes on that card — a note reaches it never.
 - **Polarity** — debt/archive: still OK; red means the latent problem materialised. A

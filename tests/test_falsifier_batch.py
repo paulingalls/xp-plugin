@@ -186,7 +186,28 @@ def test_a_green_full_tier_is_trusted_without_reexecuting_the_falsifier(tmp_path
 
     assert result.returncode == 0, result.stderr
     assert tier.read_text() == "x" and falsifier.read_text() == before
-    assert ref in result.stdout and "full" in result.stdout
+    # not `"full" in stdout`: the `running the full tier:` line already carries
+    # the name, so that spelling greens against a report naming no tier at all
+    assert f"trusted {ref}" in result.stdout and "via tier full" in result.stdout
+
+
+def test_a_declaration_whose_tier_the_config_no_longer_defines_still_executes(tmp_path):
+    """The record names `full`, the project renamed it, so no run of `full`
+    happened this close. Without the configured-tier half of the defer test the
+    command is dropped in silence — no execution and no `trusted` line either."""
+    counter = tmp_path / "renamed-tier"
+    repo, env, _g = make_repo(tmp_path, config=CONFIG.replace("full:", "nightly:"))
+    (tmp_path / "data" / "work.md").write_text(
+        "## debt 2026-01-01T00:00:00Z\nClaim: declared before the tier was renamed\n"
+        f"Falsifier: `{writes(counter)}`\nCovered by: full\nFiles: old.py\n\n"
+    )
+
+    result = sprint(repo, env, "start")
+
+    assert result.returncode == 0, result.stderr
+    ran = counter.read_text() if counter.exists() else "never executed"
+    assert ran == "x", f"took a verdict from a tier that never ran: {ran}"
+    assert "trusted" not in result.stdout
 
 
 def test_a_declared_tier_that_was_not_run_does_not_suppress_the_falsifier(tmp_path):

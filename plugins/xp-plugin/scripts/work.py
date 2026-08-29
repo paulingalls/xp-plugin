@@ -104,7 +104,7 @@ def config_block_value(
         line = strip_comment(raw)
         if line.rstrip() == f"{block}:":
             inside = True
-        elif inside and line.strip() and not line.startswith(" "):
+        elif inside and line.strip() and not line[:1].isspace():
             inside = False
         elif inside and ":" in line:
             name, value = line.strip().split(":", 1)
@@ -349,7 +349,7 @@ def main() -> int:
         p.add_argument("--claim", required=True)
         p.add_argument("--falsifier", required=True, help="shell command; red = exit nonzero")
         p.add_argument("--files", required=True, help="comma-separated paths")
-        p.add_argument("--covered-by", metavar="TIER")
+        p.add_argument("--covered-by", metavar="TIER", help="a configured tier that runs it")
     sub.add_parser("note").add_argument("text")
     sub.add_parser("list")
     sub.add_parser("compact")
@@ -360,7 +360,7 @@ def main() -> int:
     r = sub.add_parser("resolve")
     r.add_argument("--ref", required=True, help="record id from `list`")
     r.add_argument("--falsifier", required=True, help="replacement; must be GREEN now")
-    r.add_argument("--covered-by", metavar="TIER")
+    r.add_argument("--covered-by", metavar="TIER", help="a configured tier that runs it")
     args = parser.parse_args()
 
     if args.kind == "env":
