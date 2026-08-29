@@ -18,6 +18,7 @@ from env import record_sprint_branch, refuse_direct_invocation, sprint_branch
 from release import cmd_post_merge as release_post_merge
 from release import next_version, refuse_unbumpable
 from review import reviewer_strays
+from sprint_bundle import FALSIFIER, RESOLVES, build
 from work import (
     append,
     config_block_value,
@@ -28,12 +29,9 @@ from work import (
     plan_path,
     record_summary,
     stamp,
-    work_entries_since,
 )
 
 PLUGIN_ROOT = Path(__file__).parent.parent
-FALSIFIER = re.compile(r"^Falsifier: `(.+)`$", re.M)
-RESOLVES = re.compile(r"^Resolves: (\w+)$", re.M)
 sprint_stories = milestone.sprint_stories
 
 
@@ -60,55 +58,6 @@ def sprint_marker(sprint_id: str) -> Path:
     d = data_root() / "markers" / "sprint"
     d.mkdir(parents=True, exist_ok=True)
     return d / f"{sprint_id}.json"
-
-
-def _sprint_records(root: Path, since_epoch: int) -> tuple[str, str]:
-    """Keep original falsifiers for review while corpus substitutes the batch copy."""
-    originals = {e: t for e, t in entries(root) if t.startswith(("## bug ", "## debt "))}
-    latest, kept = {}, []
-    for block in re.split(r"^(?=## )", work_entries_since(since_epoch), flags=re.M):
-        if block.startswith("## archived "):
-            continue
-        if not block.startswith("## resolved "):
-            kept.append(block)
-        elif (ref := RESOLVES.search(block)) and (new := FALSIFIER.search(block)):
-            latest[ref.group(1)] = new.group(1)
-    out = []
-    for ref, new in latest.items():
-        text = originals.get(ref, "")
-        claim = next((ln[7:] for ln in text.splitlines() if ln.startswith("Claim: ")), "")
-        old = FALSIFIER.search(text)
-        out.append(
-            f"- {ref}: {claim or '(no record with this id)'}\n  original falsifier:"
-            f" `{old.group(1) if old else '(none)'}`\n  replacement: `{new}`"
-        )
-    return "\n".join(out) or "none", "\n".join(kept).strip() or "none"
-
-
-def build_sprint_bundle(
-    sprint_id: str, cards: str, base: str, report: Path, charter: str, extra: list, diff_base=""
-) -> str:
-    """Build at launch so the closer sees the fixer's tree."""
-    from close import _read
-
-    resolutions, work_md = _sprint_records(
-        data_root(), int(git("show", "-s", "--format=%ct", base).stdout.strip())
-    )
-    title = "The delta since the last recorded round" if diff_base else "Cumulative sprint diff"
-    sections = [
-        ("Your charter", charter),
-        ("Your report", f"REPORT_PATH: {report}"),
-        *extra,
-        (f"The stories in sprint {sprint_id}", cards),
-        (title, git("diff", f"{diff_base or base}..HEAD").stdout),
-        ("Resolutions filed during the sprint", resolutions),
-        ("work.md entries filed during the sprint", work_md),
-        ("PROCESS", _read(str(PLUGIN_ROOT / "PROCESS.md"))),
-        ("VALUES", _read(str(PLUGIN_ROOT / "VALUES.md"))),
-        ("Constraints", _read(".xp/constraints.md")),
-        ("System context", _read(".xp/system.md")),
-    ]
-    return "".join(f"## {title}\n\n{body}\n\n" for title, body in sections)
 
 
 def cmd_review(sprint_id: str, dry_run: bool) -> int:
@@ -174,9 +123,7 @@ def cmd_review(sprint_id: str, dry_run: bool) -> int:
             review.patch_path(path).unlink(missing_ok=True)
         if stage == "fixer":
             extra = [("Your patch", f"PATCH_PATH: {review.patch_path(path)}"), *extra]
-        bundle = build_sprint_bundle(
-            sprint_id, cards, base, path, charter or charters[stage], extra, diff_base
-        )
+        bundle = build(sprint_id, cards, base, path, charter or charters[stage], extra, diff_base)
         stage_head = git("rev-parse", "HEAD").stdout.strip()
         role = stage if not complete_n else ""
         result, err = review.run(

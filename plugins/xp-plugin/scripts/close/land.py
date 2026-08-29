@@ -37,8 +37,11 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool, free_slug: str = "")
         return close.fail(err)
     rounds = state["rounds"]
     ref = overlap.merge_source(trunk, merge_mode)
-    if files := overlap.overlapping(ref, base):
-        return close.fail(overlap.collision(ref, files))
+    files = overlap.overlapping(ref, base)
+    gates = [f for f in files if f in overlap.GATE_FILES]
+    blocked = files if trunk == close.default_branch() else gates
+    if blocked:
+        return close.fail(overlap.collision(ref, blocked))
     pending = overlap.unmerged(ref)
 
     held = ""
@@ -151,6 +154,8 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool, free_slug: str = "")
 
     print(bookkeep.render_noted(rounds), end="")
     failed = []
+    if files and (err := overlap.report_merge(story_id, files)):
+        failed.append(err)
     if merge_mode == "pr":
         for c in pr_sync:
             if subprocess.run(c, capture_output=True, text=True).returncode != 0:

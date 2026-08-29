@@ -1,10 +1,4 @@
-"""What a recorded review covers, and what only executing the merge can tell you.
-
-Trunk moving is not evidence the review went stale — only files BOTH diffs touch
-can interact somewhere no later review makes cheap to find. So motion buys a trial
-merge and overlap buys a round: something EXECUTED the merge result is a different
-property from someone REVIEWED it.
-"""
+"""What review covers, what merge execution proves, and what sprint review inherits."""
 
 import shlex
 import subprocess
@@ -13,6 +7,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from close import git, origin_trunk_sha
+from work import data_root
 
 # config.yml holds the tier land runs; constraints.md is the rubric the reviewer
 # applied; system.md's worktree lifecycle lines are shell-executed by spawn/close.
@@ -70,21 +65,35 @@ def unmerged(ref: str) -> bool:
 
 
 def overlapping(ref: str, base: str) -> list[str]:
-    """Anchored at the merge base, not at the trunk tip recorded before the review:
-    review no longer refuses while trunk is ahead of the fork point, so a
-    since-the-review window would be inert for exactly that case."""
+    """Compare from the fork point; a since-review window misses trunk motion."""
     return sorted(_files(f"{base}..{ref}") & _files(f"{base}..HEAD"))
 
 
 def collision(ref: str, files: list[str]) -> str:
-    """It NAMES the files: the practice it defends (DESIGN §11) is a human one
-    nothing else watches."""
+    listed = "\n  ".join(files)
     return (
-        f"refused: {ref} changed files this story also changed, and no review covered"
-        " the two together:\n  " + "\n  ".join(files) + "\n"
-        f"Run `git merge {ref}` here and review again — but first ask whether two"
-        " stories are sharing a file domain, because that is what this refusal sees"
+        f"refused: {ref} overlaps files no review covered together:\n  {listed}\n"
+        "Merge it here and review again — gate files and trunk releases have no later reader"
     )
+
+
+def report_merge(story_id: str, files: list[str]) -> str:
+    path = data_root() / "reports" / "merge" / f"{story_id}.txt"
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("\n".join(files) + "\n")
+    except OSError as error:
+        return f"record merge delta for {story_id} at {path}: {error}"
+    return ""
+
+
+def merge_reports(cards: str) -> str:
+    out = []
+    root = data_root() / "reports" / "merge"
+    for path in sorted(root.glob("*.txt")):
+        if f"#### {path.stem} " in cards:
+            out += [f"{path.stem}: {name}" for name in path.read_text().splitlines()]
+    return "\n".join(out) or "none"
 
 
 def run_one(label: str, cmd: str | list[str], where: str = "") -> str:
