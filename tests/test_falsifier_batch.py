@@ -191,6 +191,22 @@ def test_a_green_full_tier_is_trusted_without_reexecuting_the_falsifier(tmp_path
     assert f"trusted {ref}" in result.stdout and "via tier full" in result.stdout
 
 
+def test_a_shared_command_with_a_legacy_record_is_not_deferred(tmp_path):
+    tier, falsifier = tmp_path / "tier", tmp_path / "falsifier"
+    config = CONFIG.replace("full: true", f"full: {writes(tier)}")
+    repo, env, _g = make_repo(tmp_path, config=config)
+    command = writes(falsifier)
+    file_debt(repo, env, "covered claim", command, "full")
+    file_debt(repo, env, "legacy claim", command)
+    before = falsifier.read_text()
+
+    result = sprint(repo, env, "start")
+
+    assert result.returncode == 0, result.stderr
+    assert tier.read_text() == "x" and falsifier.read_text() == before + "x"
+    assert "trusted" not in result.stdout
+
+
 def test_a_declaration_whose_tier_the_config_no_longer_defines_still_executes(tmp_path):
     """The record names `full`, the project renamed it, so no run of `full`
     happened this close. Without the configured-tier half of the defer test the
