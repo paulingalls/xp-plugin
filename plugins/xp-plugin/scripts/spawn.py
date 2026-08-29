@@ -231,9 +231,10 @@ def execution_root(tree: Path, cut_from: str) -> Path:
 
 
 def flip_to_in_progress(story_id: str) -> None:
-    """close.py refuses a story that is not [in-progress], and without this that
-    refusal lands only AFTER the teammate has written the whole story."""
+    """Both marks of a started story, together: close.py refuses a card that is not
+    [in-progress], and ready.py refuses re-minting one already handed to an executor."""
     flip_card(story_id, "ready", "in-progress")
+    mark_handoff(data_root(), story_id)
 
 
 def not_ready_hint(status: str, story_id: str) -> str:

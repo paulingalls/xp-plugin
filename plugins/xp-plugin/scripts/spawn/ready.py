@@ -20,6 +20,7 @@ from work import (
 
 AMEND = "Run `spawn.py amend {} --reason '<why this declaration changed>'`."
 REMINT = "Put the heading back to [planned] and run `spawn.py ready {}`."
+DOC = "The plan-review credential: minted from [planned], amended only with a recorded reason."
 
 
 def credential(marker: Path) -> dict | None:
@@ -46,8 +47,7 @@ def card_diff(reviewed: str, card: str) -> str:
 
 def drift(sid: str, card: str) -> str:
     marker = ready_marker_path(sid)
-    spawned = handoff_marker_path(data_root(), sid).exists()
-    recovery = (AMEND if spawned else REMINT).format(sid)
+    recovery = (AMEND if handoff_marker_path(data_root(), sid).exists() else REMINT).format(sid)
     if not marker.exists():
         return f"refused: nothing minted it for {sid}; {marker} is absent. {recovery}"
     minted = credential(marker)
@@ -113,10 +113,10 @@ def mint(story_id: str) -> int:
 
 
 def main(argv: list[str], action: str = "ready") -> int:
-    p = argparse.ArgumentParser(prog=f"spawn.py {action}", description=__doc__)
+    p = argparse.ArgumentParser(prog=f"spawn.py {action}", description=DOC)
     p.add_argument("story_id")
     if action == "amend":
-        p.add_argument("--reason", default="")
+        p.add_argument("--reason", default="", help="why this declaration changed — required")
     args = p.parse_args(argv)
     if not chdir_repo_root():
         return fail("refused: not inside a git repository")
