@@ -46,9 +46,9 @@ adding over the cap requires retiring one (the plan reviewer enforces).
    AGENT TO RUN SOMETHING IS SUCH A PATH — run it yourself before shipping the
    instruction (measured: v0.7.7 told two fixers to run a gate that inspects
    nothing over unstaged edits). Walking it costs minutes.
-13. **A claim about existing code is CHECKED before it is written down.** A card, a
-   plan or a review that asserts what the code does, without running or reading it,
-   spends a story on a premise. Cheap to check, expensive to inherit.
+13. **A claim about existing code is CHECKED before it is written down.** A card,
+   plan, review or PROMOTED note asserting what the code does, without running or
+   reading it, spends a story on a premise. Cheap to check, expensive to inherit.
 14. **A release is the tag, the manifest and the CHANGELOG naming ONE version.**
    `plugin.json`'s version keys the consumer's plugin cache, so a tag that moves
    without it ships the previous cached copy under the new name — silently, and to

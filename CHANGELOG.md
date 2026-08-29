@@ -4,6 +4,47 @@ Release notes started at v0.6.0; earlier entries are summarized from their
 tag and merge messages. Full detail lives in the merge history and the
 per-sprint review reports.
 
+## v0.14.0 — every mechanism has a reader, or it goes
+
+Sprint 13, opening Milestone 5. Six cards. Four remove shipped code, one fixes a
+defect that forged a record, one closes a field-reported bug. The plugin ends the
+sprint measurably smaller with nothing lost, and no size cap was raised or re-cut.
+
+- A plan review whose disposition is FENCED in a ```json block is now accepted
+  instead of discarded (github issue #38). The findings were written to disk and
+  then thrown away, the plan left edited, the round lost, and the wrapper exited 2
+  saying no disposition was written — twice costing a full story cycle on one card.
+  A report carrying ordinary markdown brackets beside its verdict is accepted too.
+  Two decodable JSON OBJECTS still refuse rather than guess which one is the
+  verdict, and prose carrying no object at all still refuses exactly as before.
+- A [ready] card can be amended honestly: `spawn.py amend <id> --reason '<why>'`
+  re-mints the credential, records the reason and the prior text beside it, and
+  LEAVES the status unchanged. `spawn.py ready` now refuses to re-mint a card that
+  has already been handed to an executor — including one launched with `--in-place`
+  — which closes the undocumented two-flip path that re-minted a digest with no
+  record of what changed. Free-lane cards keep that path for now.
+- An ARCHIVED record's falsifier no longer runs in the sprint-close batch, in either
+  the live block form or the compacted stub, and archive now wins over resolution
+  when a record carries both. Three archived debts were executing every close and a
+  red one would have appended a forged bug claiming the latent problem materialised.
+  The cost, recorded deliberately: archiving is now an unchecked done-marker, so "a
+  dropped debt that matters will red again" holds only where a test tier covers it.
+- The merge-delta FILE STORE and its sprint-review bundle section are gone: they had
+  no reader and never fired. The land-time stdout print, which the lead does read,
+  and the narrowing that spares a clean sprint-branch overlap a second review round
+  both stay.
+- The shipped plugin no longer names any test runner. `pytest`, `py.test`, `-k`
+  selector syntax and node-id spelling left `work.py`; the rule they enforced is this
+  repository's own and its check now lives in this repository's pre-push hook.
+- Also removed for want of a reader: the legacy `verdicts[]` recovery arm, the
+  session `.alive` touchfile writer, the stale in-repo plan detector and its
+  migration command, the stream runner's output-injection parameters, the plan-review
+  marker's unread `plan` field, and two argv re-exports. `debt_budget` stays — it has
+  a reader in PROCESS.md and was nearly deleted on a premise that measured false.
+- The teammate profile target moved 2500 -> 4500. At 2500 it could never be met by
+  any spawn — the project's own capped files are ~3240 tokens before a card line — so
+  it fired every time and advised retiring a file a constraint pins.
+
 ## v0.13.0 — a leg that already ran is not re-bought
 
 Sprint 12. Three cards, one property: no leg in the pipeline pays sweep price for a
