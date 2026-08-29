@@ -37,7 +37,7 @@ def compact(root: Path, entry_id, record_summary) -> int:
                 continue
             decisions = disposed[eid]
             _aid, decision, field = next(
-                (item for item in reversed(decisions) if item[2] == "Resolves"), decisions[-1]
+                (item for item in reversed(decisions) if item[2] == "Archives"), decisions[-1]
             )
             heading, body = record_summary(block)
             detail = (

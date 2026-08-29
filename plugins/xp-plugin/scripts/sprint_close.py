@@ -18,7 +18,7 @@ from env import record_sprint_branch, refuse_direct_invocation, sprint_branch
 from release import cmd_post_merge as release_post_merge
 from release import next_version, refuse_unbumpable
 from review import reviewer_strays
-from sprint_bundle import COVERED_BY, FALSIFIER, RESOLVES, build
+from sprint_bundle import ARCHIVES, COVERED_BY, FALSIFIER, RESOLVES, build
 from work import (
     append,
     config_block_value,
@@ -36,9 +36,14 @@ sprint_stories = milestone.sprint_stories
 
 
 def corpus(root: Path) -> list[tuple[str, str, str, str]]:
-    records, resolutions = {}, {}
+    records, resolutions, archived = {}, {}, set()
     for eid, text in entries(root):
         head = text.splitlines()[0]
+        if (archive := ARCHIVES.search(text)) and (
+            head.startswith("## archived ")
+            or (head.startswith(("## bug ", "## debt ")) and archive.group(1) == eid)
+        ):
+            archived.add(archive.group(1))
         if head.startswith("## resolved "):
             ref, m = RESOLVES.search(text), FALSIFIER.search(text)
             if ref and m:
@@ -55,6 +60,7 @@ def corpus(root: Path) -> list[tuple[str, str, str, str]]:
     return [
         (eid, head, *resolutions.get(eid, (f, covered)))
         for eid, (head, f, covered) in records.items()
+        if eid not in archived
     ]
 
 

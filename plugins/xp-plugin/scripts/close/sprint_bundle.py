@@ -7,6 +7,7 @@ from work import data_root, entries, work_entries_since
 FALSIFIER = re.compile(r"^Falsifier: `(.+)`$", re.M)
 COVERED_BY = re.compile(r"^Covered by: (.+)$", re.M)
 RESOLVES = re.compile(r"^Resolves: (\w+)$", re.M)
+ARCHIVES = re.compile(r"^Archives: (\w+)$", re.M)
 PLUGIN_ROOT = Path(__file__).parent.parent.parent
 
 
