@@ -17,14 +17,7 @@ from close import config_flat, fail, git, integration_target, story_card
 from env import plugin_version
 from handback import tree_state, unclean_teammate_result
 from handoff import draft_path, inheritance, mark_handoff, report_handoff
-from harness import (
-    HARNESS_INSTALL,
-    agent_argv,
-    claude_argv,  # noqa: F401  — re-exported: story-017's argv tests import it here
-    codex_argv,  # noqa: F401
-    missing_harness,
-    resolve_codex_sandbox,
-)
+from harness import HARNESS_INSTALL, agent_argv, missing_harness, resolve_codex_sandbox
 from role_config import card_role, config_role
 from teammate_tee import run_stream, run_teammate
 from work import (

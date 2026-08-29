@@ -71,7 +71,8 @@ class TestScaffold:
         assert config_flat("release") == "sprint"
         assert "EDIT-ME" in config_block_value("tests", "story")  # tiers are placeholders
         cfg = (repo / ".xp" / "config.yml").read_text()
-        assert "sprint_cap" in cfg and "debt_budget" in cfg and "constraints_cap" in cfg
+        assert "sprint_cap" in cfg and "constraints_chars_cap" in cfg
+        assert "debt_budget" not in cfg and "constraints_cap" not in cfg
         # AC3: the plan scaffolds into the CLONE's state root, and .xp/ keeps only
         # what three parallel streams must share. XP_DATA is unset here and
         # HOME is tmp_path, so data_root() really hashes and nothing touches the

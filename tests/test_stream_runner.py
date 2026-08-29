@@ -27,6 +27,13 @@ def test_run_agent_signature_has_harness_and_log_id_not_capture():
     assert "harness" in names and "log_id" in names
 
 
+def test_stream_runners_expose_no_output_injection_parameters():
+    from teammate_tee import run_stream, run_teammate
+
+    for runner in (run_stream, run_teammate):
+        assert not {"out", "err"} & inspect.signature(runner).parameters.keys()
+
+
 @pytest.mark.parametrize(
     ("harness", "lines", "expected"),
     [
@@ -255,8 +262,6 @@ def test_a_codex_line_that_is_not_an_object_is_tolerated_not_raised(tmp_path, mo
         tmp_path / "data",
         "codex",
         dict(os.environ),
-        out=lambda _l: None,
-        err=lambda _l: None,
     )
     assert proc.returncode == 0 and proc.stdout == "done"
 

@@ -227,11 +227,7 @@ def _detach(story_id: str, plan_file: Path, out: Path) -> tuple[int, subprocess.
         stdin=subprocess.DEVNULL,
         start_new_session=True,
     )
-    marker.write_text(
-        json.dumps(
-            {"pid": child.pid, "findings": str(out), "log": str(log), "plan": str(plan_file)}
-        )
-    )
+    marker.write_text(json.dumps({"pid": child.pid, "findings": str(out), "log": str(log)}))
     print(f"plan review running (pid {child.pid}); live log: {log}", file=sys.stderr)
     return child.pid, child
 

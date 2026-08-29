@@ -359,6 +359,7 @@ class TestIncompleteReviewIsVisibleToTheLead:
         r = plan_review(repo, env, "story-042", str(draft))
         assert r.returncode != 0, r.stdout
         assert self.marker(tmp_path).exists(), "nothing records that the gate did not run"
+        assert "plan" not in json.loads(self.marker(tmp_path).read_text())
 
     def test_a_completed_review_leaves_none(self, tmp_path):
         repo, env, draft = self.repo(tmp_path)

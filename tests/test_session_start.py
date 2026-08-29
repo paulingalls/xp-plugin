@@ -119,10 +119,10 @@ class TestInjection:
             banners.append(result.stdout.splitlines()[0])
         assert banners[0] != banners[1]
 
-    def test_liveness_touchfile_session_scoped(self, tmp_path):
+    def test_session_start_creates_no_liveness_store(self, tmp_path):
         repo, _g = xp_repo(tmp_path)
         run_hook(repo, tmp_path, session_id="sess-xyz")
-        assert (tmp_path / "xp" / "markers" / "sess-xyz.alive").exists()
+        assert not (tmp_path / "xp" / "markers").exists()
 
 
 class TestRegistration:
@@ -144,7 +144,7 @@ class TestReviewFindings:
         r = run_hook(repo, tmp_path, session_id="sess-corrupt")
         assert r.returncode == 0
         assert "CONSTRAINT-SENTINEL" in r.stdout  # other sections survive
-        assert (tmp_path / "xp" / "markers" / "sess-corrupt.alive").exists()
+        assert not (tmp_path / "xp" / "markers").exists()
 
     def test_recovery_block_carries_work_item_claims(self, tmp_path):
         repo, _g = xp_repo(tmp_path)
@@ -323,7 +323,7 @@ class TestCodexSessionStart:
             text=True,
         )
 
-    def test_codex_payload_injects_and_keys_liveness_on_the_payload(self, tmp_path):
+    def test_codex_payload_injects_without_a_liveness_store(self, tmp_path):
         repo, _g = xp_repo(tmp_path)
         sub = repo / "pkg"
         sub.mkdir()
@@ -341,14 +341,12 @@ class TestCodexSessionStart:
             },
         )
         assert "CONSTRAINT-SENTINEL" in r.stdout, r.stderr
-        alive = tmp_path / "xp" / "markers" / "01a0287c-801c-7651-bf86-d1cb2d4b2284.alive"
-        assert alive.exists()
+        assert not (tmp_path / "xp" / "markers").exists()
 
-    def test_session_id_alone_still_lands_the_touchfile(self, tmp_path):
-        """Fault-injection for the key: an env-keyed touchfile has nothing to read."""
+    def test_session_id_alone_does_not_create_a_store(self, tmp_path):
         repo, _g = xp_repo(tmp_path)
         self.codex_run(repo, tmp_path, {"session_id": "bare-id"})
-        assert (tmp_path / "xp" / "markers" / "bare-id.alive").exists()
+        assert not (tmp_path / "xp" / "markers").exists()
 
     def test_codex_payload_refreshes_the_plugin_pointer(self, tmp_path):
         repo, _g = xp_repo(tmp_path)
