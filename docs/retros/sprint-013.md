@@ -6,17 +6,21 @@ defect that forged records, one closed github issue #38. The release is v0.14.0.
 
 The milestone's thesis was that we ship mechanisms nothing reads, and that removing
 them would fund the sprint's own spending. It held, and the number is the whole
-argument: **5,569/5,570 at open, 5,550 at close — 19 lines net returned** while
-adding an amend verb, a fenced-disposition parser and an archived-record exclusion.
-**No cap was raised and no sub-budget re-cut, across six cards.** The single free
-line at open was never spent.
+argument: the six cards returned **43 lines** — 5,569/5,570 at open, **5,526 at the
+release commit a48bb2d** — while adding an amend verb, a fenced-disposition parser
+and an archived-record exclusion. **No cap was raised and no sub-budget re-cut,
+across six cards.** The single free line at open was never spent.
 
-Stated the way it actually happened, because the first draft of this sentence cached
-a number and the sprint review blocked on it: the six cards returned **43** (5,526 at
-the release commit), and the review round's own fixer then spent **24** of them in
-`misc`, buying a guard that refuses resolving an ARCHIVED record — the read-time half
-of the boundary story-051 left open. 19 is the honest close figure, and the round that
-caught it is itself the argument for reading the live table over a number in prose.
+EVERY FIGURE HERE IS ANCHORED TO A COMMIT, and that is a lesson this retro learned
+about itself rather than a formatting choice. The first draft cached "43 at close";
+sprint review round 1 blocked on it, because its OWN fixer had just spent 24 of those
+lines in `misc` buying a guard that refuses resolving an ARCHIVED record — the
+read-time half of the boundary story-051 left open. The correction then went stale
+again two lines' worth when round 2 patched the fence spelling. **A prose number
+about the tree is invalidated by the very round that verifies it**, so a close figure
+quoted flat is wrong by construction. Run `tests/scripts/ratchet.py` — the live table
+is the only authority, which is what CLAUDE.md already says and what this paragraph
+now stops contradicting. What the rounds bought is worth their lines both times.
 
 ## 1. What the process caught
 
