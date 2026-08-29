@@ -124,12 +124,18 @@ class TestReviewLeg:
         assert "Polarity" in bundle, "PROCESS.md, which the charter points at"
 
     def test_no_sprint_bundle_asks_for_a_merge_delta(self, tmp_path):
+        """Planted, because a project upgrading from v0.13.0 still HAS the store on
+        disk — nothing deletes it, so absence over an empty root proves nothing."""
         repo, env, _g = make_repo(tmp_path)
+        stale = tmp_path / "data" / "reports" / "merge" / "story-042.txt"
+        stale.parent.mkdir(parents=True)
+        stale.write_text("STALE-MERGE-DELTA.py\n")
         assert sprint(repo, env, "review").returncode == 0
         bundles = [launch["stdin"] for launch in launches(tmp_path)]
         assert bundles
         for bundle in bundles:
             assert "Merge deltas not covered by story review" not in bundle
+            assert "STALE-MERGE-DELTA.py" not in bundle
 
     def test_a_story_cannot_shadow_the_sprints_report_or_marker_key(self, tmp_path):
         """Constraint 10, fault-injected against the id that would collide: a
