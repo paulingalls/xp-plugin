@@ -37,8 +37,11 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool, free_slug: str = "")
         return close.fail(err)
     rounds = state["rounds"]
     ref = overlap.merge_source(trunk, merge_mode)
-    if files := overlap.overlapping(ref, base):
-        return close.fail(overlap.collision(ref, files))
+    files = overlap.overlapping(ref, base)
+    gate_hits = [f for f in files if f in overlap.GATE_FILES]
+    blocked = files if trunk == close.default_branch() else gate_hits
+    if blocked:
+        return close.fail(overlap.collision(ref, blocked))
     pending = overlap.unmerged(ref)
 
     held = ""
@@ -69,7 +72,7 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool, free_slug: str = "")
             return close.fail(str(e))
     else:
         raw, verify = "", []
-    tier_key = "full" if free else "story"
+    tier_key = "story"
     tier = work.config_block_value("tests", tier_key)
     branch = close.git("rev-parse", "--abbrev-ref", "HEAD").stdout.strip()
     verdict = bookkeep.render_merge_body(rounds)
@@ -97,7 +100,7 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool, free_slug: str = "")
         if free:
             for command in pr_cmds:
                 print(" ".join(command))
-            print(f"(first the full tier; then `close.py free {free_slug} post-merge`)")
+            print(f"(first the story tier; then `close.py free {free_slug} post-merge`)")
             return 0
         print(
             bookkeep.render_land_preview(raw, tier, merge_mode, branch, trunk, pr_steps, pending),
@@ -151,6 +154,8 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool, free_slug: str = "")
 
     print(bookkeep.render_noted(rounds), end="")
     failed = []
+    if files and (err := overlap.report_merge(story_id, files)):
+        failed.append(err)
     if merge_mode == "pr":
         for c in pr_sync:
             if subprocess.run(c, capture_output=True, text=True).returncode != 0:

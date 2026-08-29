@@ -59,6 +59,13 @@ class TestDogfoodMatchesTheScaffold:
         )
         assert not missing, f"we never exercise the shipped keys: {missing}"
 
+    def test_shipped_coverage_guidance_names_no_test_runner_or_selection_syntax(self):
+        prose = (self.SHIPPED / "config.yml").read_text() + (
+            self.REPO / "plugins/xp-plugin/PROCESS.md"
+        ).read_text()
+        forbidden = ("pytest", "py.test", "bun test", "node id", "::")
+        assert not [term for term in forbidden if term in prose.lower()]
+
     def cap_value(self, path):
         line = next(
             ln for ln in path.read_text().splitlines() if ln.startswith("constraints_chars_cap:")

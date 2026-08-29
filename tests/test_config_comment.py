@@ -66,6 +66,17 @@ class TestConfigCommentRule:
         assert config_block_value("review", "verify_batches") == ""
         assert config_block_value("tests", "full") == "pytest"
 
+    def test_a_tab_indented_tier_is_read_rather_than_ending_its_block(self, tmp_path, monkeypatch):
+        """An unreadable tier is indistinguishable from an unconfigured one at
+        every reader, and both sprint close and land SKIP an empty tier without
+        saying so — so a config this reader once resolved must keep resolving."""
+        from work import config_block_value
+
+        body = "tests:\n\tfull: pytest\nroles:\n  reviewer: claude/opus\n"
+        monkeypatch.chdir(self.config(tmp_path, body))
+        assert config_block_value("tests", "full") == "pytest"
+        assert config_block_value("tests", "reviewer", missing="OUT") == "OUT"
+
     def test_a_missing_sentinel_distinguishes_absent_from_empty(self, tmp_path, monkeypatch):
         from work import config_block_value
 

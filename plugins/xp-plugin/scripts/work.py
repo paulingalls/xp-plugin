@@ -21,7 +21,8 @@ NOTE_CAP = 4000  # chars; measured: p90 of 392 records is 1,799, so this binds r
 
 
 STRUCTURAL = re.compile(
-    r"^(## |# Record |Claim:|Falsifier:|Resolves:|Archives:|Id:|Disposition:|Files:|Story:)",
+    r"^(## |# Record |Claim:|Falsifier:|Covered by:|Resolves:|Archives:|"
+    r"Id:|Disposition:|Files:|Story:)",
     re.M,
 )
 
@@ -91,21 +92,24 @@ def strip_comment(line: str) -> str:
     return re.sub(r"(?:^|(?<=\s))#.*", "", line)
 
 
-def config_block_value(block: str, key: str, missing: str = "") -> str:
-    """Read `key:` under `block:` after stripping comments."""
+def config_block_value(
+    block: str, key: str | None = None, missing: str = ""
+) -> str | dict[str, str]:
     cfg = Path(".xp/config.yml")
     if not cfg.exists():
-        return missing
+        return {} if key is None else missing
+    values = {}
     inside = False
     for raw in cfg.read_text(errors="replace").splitlines():
         line = strip_comment(raw)
         if line.rstrip() == f"{block}:":
             inside = True
-        elif inside and line.strip().startswith(f"{key}:"):
-            return line.split(f"{key}:", 1)[1].strip()
-        elif inside and line.strip() and not line.startswith(" "):
+        elif inside and line.strip() and not line[:1].isspace():
             inside = False
-    return missing
+        elif inside and ":" in line:
+            name, value = line.strip().split(":", 1)
+            values[name] = value.strip()
+    return values if key is None else values.get(key, missing)
 
 
 def card_title(card: str) -> str:
@@ -227,11 +231,24 @@ def refuse_pytest_k(command: str) -> bool:
     return True
 
 
-def entry(kind: str, args: argparse.Namespace) -> str:
+def checked_coverage(args: argparse.Namespace) -> str | None:
+    tier = args.covered_by
+    if not tier:
+        return ""
+    tiers = config_block_value("tests")
+    if tier in tiers:
+        return f"Covered by: {tier}\n"
+    names = ", ".join(tiers) or "none"
+    print(f"refused: --covered-by {tier!r}; configured tiers: {names}", file=sys.stderr)
+    return None
+
+
+def entry(kind: str, args: argparse.Namespace, coverage: str) -> str:
     return (
         f"## {kind} {stamp()}\n"
         f"Claim: {neutralize(args.claim)}\n"
         f"Falsifier: `{neutralize(args.falsifier)}`\n"
+        f"{coverage}"
         f"Files: {neutralize(args.files)}\n\n"
     )
 
@@ -269,6 +286,8 @@ def resolve(root: Path, args: argparse.Namespace) -> int:
     silence a live bug forever. The replacement must be green now and the batch
     runs it, so a wrong resolution reds later and the record reopens.
     """
+    if (coverage := checked_coverage(args)) is None:
+        return 2
     if not _single_line(args.falsifier, "falsifier"):
         return 2
     if refuse_pytest_k(args.falsifier):
@@ -294,7 +313,8 @@ def resolve(root: Path, args: argparse.Namespace) -> int:
     print(
         append(
             root,
-            f"## resolved {stamp()}\nResolves: {args.ref}\nFalsifier: `{args.falsifier}`\n\n",
+            f"## resolved {stamp()}\nResolves: {args.ref}\nFalsifier: `{args.falsifier}`\n"
+            f"{coverage}\n",
         )
     )
     return 0
@@ -329,6 +349,7 @@ def main() -> int:
         p.add_argument("--claim", required=True)
         p.add_argument("--falsifier", required=True, help="shell command; red = exit nonzero")
         p.add_argument("--files", required=True, help="comma-separated paths")
+        p.add_argument("--covered-by", metavar="TIER", help="a configured tier that runs it")
     sub.add_parser("note").add_argument("text")
     sub.add_parser("list")
     sub.add_parser("compact")
@@ -339,6 +360,7 @@ def main() -> int:
     r = sub.add_parser("resolve")
     r.add_argument("--ref", required=True, help="record id from `list`")
     r.add_argument("--falsifier", required=True, help="replacement; must be GREEN now")
+    r.add_argument("--covered-by", metavar="TIER", help="a configured tier that runs it")
     args = parser.parse_args()
 
     if args.kind == "env":
@@ -367,6 +389,8 @@ def main() -> int:
         print(append(root, f"## note {stamp()}\n{neutralize(text)}\n\n"))
         return 0
 
+    if (coverage := checked_coverage(args)) is None:
+        return 2
     if not _single_line(args.falsifier, "falsifier"):
         return 2
     if refuse_pytest_k(args.falsifier):
@@ -385,7 +409,7 @@ def main() -> int:
             file=sys.stderr,
         )
         return 2
-    print(append(root, entry(args.kind, args)))
+    print(append(root, entry(args.kind, args, coverage)))
     return 0
 
 

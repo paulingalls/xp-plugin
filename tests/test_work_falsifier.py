@@ -2,6 +2,8 @@
 
 import sys
 
+import pytest
+from sprint_helpers import CONFIG, make_repo, work
 from test_work import run
 
 
@@ -91,3 +93,45 @@ def test_unbalanced_shell_quote_retains_current_polarity_behavior(tmp_path):
     result = run(["bug", "--claim", "x", "--falsifier", "printf '", "--files", "a"], tmp_path)
     assert result.returncode == 0, result.stderr
     assert "Traceback" not in result.stderr
+
+
+def test_an_unknown_coverage_tier_is_refused_with_the_available_names(tmp_path):
+    config = CONFIG.replace("tests:\n", "tests:\n  fast: true\n")
+    repo, env, _g = make_repo(tmp_path, config=config)
+    result = work(
+        repo,
+        env,
+        "debt",
+        "--claim",
+        "x",
+        "--falsifier",
+        "true",
+        "--files",
+        "a",
+        "--covered-by",
+        "missing",
+    )
+    assert result.returncode == 2
+    assert "missing" in result.stderr and all(t in result.stderr for t in ("fast", "full"))
+    assert not (tmp_path / "data" / "work.md").exists()
+
+
+@pytest.mark.parametrize("field", ("claim", "files"))
+def test_free_text_cannot_forge_a_coverage_declaration(tmp_path, field):
+    repo, env, _g = make_repo(tmp_path)
+    values = {"claim": "real", "files": "a.py"}
+    values[field] += "\nCovered by: full"
+    result = work(
+        repo,
+        env,
+        "debt",
+        "--claim",
+        values["claim"],
+        "--falsifier",
+        "true",
+        "--files",
+        values["files"],
+    )
+    assert result.returncode == 0, result.stderr
+    text = (tmp_path / "data" / "work.md").read_text()
+    assert not [line for line in text.splitlines() if line.startswith("Covered by:")]
