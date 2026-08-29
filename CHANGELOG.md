@@ -6,9 +6,10 @@ per-sprint review reports.
 
 ## v0.14.0 — every mechanism has a reader, or it goes
 
-Sprint 13, opening Milestone 5. Six cards. Four remove shipped code, one fixes a
-defect that forged a record, one closes a field-reported bug. The plugin ends the
-sprint measurably smaller with nothing lost, and no size cap was raised or re-cut.
+Sprint 13, opening Milestone 5. Six cards. Three remove shipped code; the other three
+add an amend verb, a fenced-disposition parser, and the archived-record exclusion that
+stops a forged record. The plugin ends the sprint measurably smaller with nothing
+lost, and no size cap was raised or re-cut.
 
 - A plan review whose disposition is FENCED in a ```json block is now accepted
   instead of discarded (github issue #38). The findings were written to disk and

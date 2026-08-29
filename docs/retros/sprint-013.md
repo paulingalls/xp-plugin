@@ -1,8 +1,9 @@
 # Sprint 13 retro — every mechanism has a reader, or it goes
 
-Milestone 5 opened and completed in one sprint: 7 stories, 6 scheduled cards plus a
-mid-sprint addition from a field report. Four cards removed shipped code, one fixed a
-defect that forged records, one closed github issue #38. The release is v0.14.0.
+Milestone 5 opened and completed in one sprint: 6 stories — 5 scheduled cards plus a
+mid-sprint addition from a field report. Release v0.14.0. Three cards RETURNED shipped
+lines (-19, -41, -24) and three SPENT (+7 the archived-record fix, +17 github issue
+#38's parser, +17 the amend verb), measured at each merge commit.
 
 The milestone's thesis was that we ship mechanisms nothing reads, and that removing
 them would fund the sprint's own spending. It held, and the number is the whole
@@ -24,7 +25,7 @@ now stops contradicting. What the rounds bought is worth their lines both times.
 
 ## 1. What the process caught
 
-**Every card shipped a vacuous test, and mutation found all three — reading found
+**Three cards shipped a vacuous test, and mutation found all three — reading found
 none.** Story 072's replacement test asserted absence over an EMPTY data root, where
 the function it guarded returns `"none"` regardless, so only a literal section title
 could ever have redded; a project upgrading from v0.13.0 still has the store on disk,

@@ -434,10 +434,10 @@ class TestPlanEditsInPlace:
         assert "every plan edit" in problem
 
     def test_a_bracket_in_the_prose_is_not_a_rival_disposition(self):
-        """A footnote marker or a markdown checkbox decodes as JSON on its own, so an
-        ambiguity check counting every decodable value refuses the fenced verdict this
-        story exists to accept — the same round, lost twice under a new diagnostic."""
-        report = f"Findings [1]\n\n- [ ] nothing loud\n\n```json\n{CLEAN}\n```"
+        """A footnote marker, a checkbox and a fenced non-object all decode as JSON on
+        their own, so an ambiguity check counting every decodable value refuses the fenced
+        verdict this story exists to accept — the round lost twice under a new diagnostic."""
+        report = f"Findings [1]\n\n- [ ] nothing loud\n\n```\n[2]\n```\n\n```json\n{CLEAN}\n```"
         assert disposition_result(report, b"x", b"x") == ""
         truncated = f'Verdict: {{"status":\nquoted charter example: `{CLEAN}`'
         assert "no structured disposition" in disposition_result(truncated, b"x", b"x")
