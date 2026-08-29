@@ -367,7 +367,7 @@ def write_reviewer_diff(report: Path, reviewed_head: str, noun: str) -> str:
     lived. The tree has ALREADY moved here, so a write that fails rolls back
     rather than leave the lead accepting commits nothing showed them, and
     abort_text covers a rollback that itself fails. `noun` is the caller's
-    `story <id>` / `sprint <id>`: one rule, one implementation, two legs."""
+    `story <id>` / `sprint <id>` / `free <slug>`: one rule, one implementation."""
     from close import git
 
     summary = reviewer_range(reviewed_head, git("rev-parse", "HEAD").stdout.strip())

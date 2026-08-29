@@ -12,7 +12,10 @@ from close import story_card
 from close_helpers import (
     CLEAN,
     FIX_PATCH,
+    NEW_FILE_PATCH,
     close,
+    free,
+    free_repo,
     launches,
     make_repo,
     marker,
@@ -344,3 +347,34 @@ class TestTheReviewersOwnFixIsUnderTheGateItPasses:
         assert r.returncode != 0 and "git reset --hard" not in r.stderr, r.stderr
         assert "IS recorded" in r.stderr, r.stderr
         assert marker(tmp_path)["rounds"][-1]["blocking"] == ["B"]
+
+
+class TestTheFreeLegNamesItsOwnLandCommand:
+    """The handoff after a reviewer patch printed the STORY leg's command for a
+    free card — wrong subcommand and wrong id, so a reader following it is
+    refused. close.py passes f"story {story_id}" into write_reviewer_diff with no
+    arm for the third leg, and free.cmd_review knows the slug but drops it where
+    cmd_land threads it through. Field-reported by a consuming project that
+    followed the printed line and got the refusal (work.md e2ff1a03).
+
+    The slug is spelled UNNORMALIZED on purpose: `free start` accepts any spelling
+    that slugifies to itself modulo case and separators, so a handoff echoing the
+    lead's own word prints a line argparse splits into two.
+    """
+
+    def test_the_free_handoff_names_the_command_that_actually_works(self, tmp_path):
+        repo, env, g = free_repo(tmp_path)
+        started = free(repo, env, "Fix Typo", "start")
+        assert started.returncode == 0 and "free fix-typo review" in started.stdout
+        (repo / "src").mkdir(parents=True, exist_ok=True)
+        (repo / "src" / "free.py").write_text("B = 1\n")
+        g("add", "-A")
+        g("commit", "-qm", "free work")
+        stub_reviewer(tmp_path, patch=NEW_FILE_PATCH)
+
+        r = free(repo, env, "Fix Typo", "review")
+
+        assert r.returncode == 0, r.stderr + r.stdout
+        assert "the script-applied review fix changed the tree" in r.stdout, r.stdout
+        assert "close.py free fix-typo land" in r.stdout, r.stdout
+        assert "close.py story" not in r.stdout, r.stdout
