@@ -439,6 +439,8 @@ class TestPlanEditsInPlace:
         story exists to accept — the same round, lost twice under a new diagnostic."""
         report = f"Findings [1]\n\n- [ ] nothing loud\n\n```json\n{CLEAN}\n```"
         assert disposition_result(report, b"x", b"x") == ""
+        truncated = f'Verdict: {{"status":\nquoted charter example: `{CLEAN}`'
+        assert "no structured disposition" in disposition_result(truncated, b"x", b"x")
 
     @pytest.mark.parametrize("wrapper", ["{}", "```json\n{}\n```"], ids=["bare", "fenced"])
     @pytest.mark.parametrize(

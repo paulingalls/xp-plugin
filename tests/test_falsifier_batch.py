@@ -167,9 +167,7 @@ def test_a_compacted_archived_debt_falsifier_is_not_executed(tmp_path):
 
 @pytest.mark.parametrize("order", [("resolve", "archive"), ("archive", "resolve")])
 def test_archive_wins_over_resolution_before_and_after_compaction(tmp_path, order):
-    """Both filing orders: `resolve` accepts an already-archived debt, and a stub
-    carries ONE disposition field, so a compaction taking the LAST decision rather
-    than the archiving one hands the replacement falsifier back to the batch."""
+    """Archive wins in both orders, including the compacted one-field stub."""
     repo, env, _g = make_repo(tmp_path)
     original, replacement = tmp_path / "original", tmp_path / "replacement"
     ref = file_debt(repo, env, "disposed after repair", writes(original))
@@ -178,16 +176,24 @@ def test_archive_wins_over_resolution_before_and_after_compaction(tmp_path, orde
         "archive": ["archive", "--ref", ref, "--disposition", "dropped"],
     }
     for step in order:
-        assert work(repo, env, *steps[step]).returncode == 0, step
-    before = original.read_text(), replacement.read_text()
+        result = work(repo, env, *steps[step])
+        if order[0] == "archive" and step == "resolve":
+            assert result.returncode == 2 and "archived" in result.stderr
+        else:
+            assert result.returncode == 0, step
+
+    def contents(path):
+        return path.read_text() if path.exists() else ""
+
+    before = contents(original), contents(replacement)
     control = live_control(repo, env, tmp_path)
 
     assert sprint(repo, env, "start").returncode == 0
-    assert (original.read_text(), replacement.read_text()) == before
+    assert (contents(original), contents(replacement)) == before
     assert control.read_text() == "xx"
     assert work(repo, env, "compact").returncode == 0
     assert sprint(repo, env, "start").returncode == 0
-    assert (original.read_text(), replacement.read_text()) == before
+    assert (contents(original), contents(replacement)) == before
     assert control.read_text() == "xxx"
 
 

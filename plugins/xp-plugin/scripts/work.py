@@ -243,6 +243,14 @@ def _kind_of(root: Path, ref: str) -> str | None:
     return matches[0].split(" ", 2)[1]
 
 
+def _archived(root: Path, ref: str) -> bool:
+    field = f"Archives: {ref}"
+    return any(
+        field in text.splitlines() and (text.startswith("## archived ") or eid == ref)
+        for eid, text in entries(root)
+    )
+
+
 def resolve(root: Path, args: argparse.Namespace) -> int:
     """Resolve a record by SUBSTITUTING a falsifier, never by deleting one.
 
@@ -261,6 +269,13 @@ def resolve(root: Path, args: argparse.Namespace) -> int:
             f"refused: {args.ref} is a {kind} — only a bug or a debt carries the"
             " falsifier a resolution substitutes for, so resolving anything else"
             " asserts a change no batch will ever honour.",
+            file=sys.stderr,
+        )
+        return 2
+    if _archived(root, args.ref):
+        print(
+            f"refused: {args.ref} is archived — it has left the falsifier batch;"
+            " choose an open bug or debt to resolve.",
             file=sys.stderr,
         )
         return 2
