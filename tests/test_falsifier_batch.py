@@ -192,6 +192,8 @@ def test_archive_wins_over_resolution_before_and_after_compaction(tmp_path, orde
     assert (contents(original), contents(replacement)) == before
     assert control.read_text() == "xx"
     assert work(repo, env, "compact").returncode == 0
+    stale = work(repo, env, "resolve", "--ref", ref, "--falsifier", writes(replacement))
+    assert stale.returncode == 2 and "archived" in stale.stderr
     assert sprint(repo, env, "start").returncode == 0
     assert (contents(original), contents(replacement)) == before
     assert control.read_text() == "xxx"

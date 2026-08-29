@@ -119,11 +119,13 @@ def disposition(text: str, before: bytes | None, after: bytes | None) -> str:
     try:
         report = json.loads(text)
     except ValueError:
-        fenced = re.findall(r"```json\s*\n(.*?)\n```", text, flags=re.I | re.S)
         values = []
-        for value in fenced:
+        for fence in re.findall(r"```[^\n]*\n(.*?)```", text, flags=re.S):
             with contextlib.suppress(ValueError):
-                values.append(json.loads(value))
+                values.append(json.loads(fence))
+        # A non-object in a fence is no rival verdict — kept only when none is an object,
+        # so a fenced `[]` refuses by TYPE. Narrowing either discards a completed round.
+        values = [v for v in values if isinstance(v, dict)] or values
         if len(values) == 1:
             report = values[0]
         elif len(values) > 1:

@@ -442,7 +442,11 @@ class TestPlanEditsInPlace:
         truncated = f'Verdict: {{"status":\nquoted charter example: `{CLEAN}`'
         assert "no structured disposition" in disposition_result(truncated, b"x", b"x")
 
-    @pytest.mark.parametrize("wrapper", ["{}", "```json\n{}\n```"], ids=["bare", "fenced"])
+    @pytest.mark.parametrize(
+        "wrapper",
+        ["{}", "```json\n{}\n```", "```\n{}\n```"],
+        ids=["bare", "fenced", "untagged"],
+    )
     @pytest.mark.parametrize(
         "findings,motion,mark",
         [
