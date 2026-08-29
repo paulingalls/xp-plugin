@@ -121,7 +121,8 @@ class TestInjection:
 
     def test_session_start_creates_no_liveness_store(self, tmp_path):
         repo, _g = xp_repo(tmp_path)
-        run_hook(repo, tmp_path, session_id="sess-xyz")
+        r = run_hook(repo, tmp_path, session_id="sess-xyz")
+        assert "CONSTRAINT-SENTINEL" in r.stdout  # a hook that ran, not one that died
         assert not (tmp_path / "xp" / "markers").exists()
 
 
@@ -144,7 +145,6 @@ class TestReviewFindings:
         r = run_hook(repo, tmp_path, session_id="sess-corrupt")
         assert r.returncode == 0
         assert "CONSTRAINT-SENTINEL" in r.stdout  # other sections survive
-        assert not (tmp_path / "xp" / "markers").exists()
 
     def test_recovery_block_carries_work_item_claims(self, tmp_path):
         repo, _g = xp_repo(tmp_path)
@@ -343,9 +343,10 @@ class TestCodexSessionStart:
         assert "CONSTRAINT-SENTINEL" in r.stdout, r.stderr
         assert not (tmp_path / "xp" / "markers").exists()
 
-    def test_session_id_alone_does_not_create_a_store(self, tmp_path):
+    def test_a_bare_payload_still_injects_and_creates_no_store(self, tmp_path):
         repo, _g = xp_repo(tmp_path)
-        self.codex_run(repo, tmp_path, {"session_id": "bare-id"})
+        r = self.codex_run(repo, tmp_path, {"session_id": "bare-id"})
+        assert "CONSTRAINT-SENTINEL" in r.stdout, r.stderr  # else the absence proves nothing
         assert not (tmp_path / "xp" / "markers").exists()
 
     def test_codex_payload_refreshes_the_plugin_pointer(self, tmp_path):

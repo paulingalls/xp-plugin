@@ -20,8 +20,6 @@ from spawn_helpers import (  # noqa: F401
     trunk_sha,
 )
 
-sys.path.insert(0, str(SPAWN.parent / "spawn"))
-
 
 class TestAgentWallClock:
     """story-012b bounds the reviewer. cmd_spawn's launch call site has no

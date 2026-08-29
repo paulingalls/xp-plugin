@@ -6,15 +6,12 @@ Verify: pytest -q tests/test_spawn_codex.py"""
 import json
 import os
 import subprocess
-import sys
 from itertools import pairwise
 
 import pytest
 from session_start import missing_template_keys
 from session_start_helpers import HOOKS_JSON
 from spawn_helpers import SPAWN, in_tree, make_repo, spawn, stub_codex
-
-sys.path.insert(0, str(SPAWN.parent / "spawn"))
 
 
 class TestCodexExecutor:
@@ -301,7 +298,7 @@ class TestCodexExecutor:
         hooks = json.loads(HOOKS_JSON.read_text())["hooks"]
         assert "PreToolUse" not in hooks, (
             "a PreToolUse hook now ships and codex's write_stdin bypasses it — either"
-            " re-add `--disable unified_exec` to spawn.codex_argv (DESIGN §3 row 80,"
+            " re-add `--disable unified_exec` to harness.codex_argv (DESIGN §3 row 80,"
             " which costs the codex teammate its plan review again) or register the"
             " hook claude-only. Whichever wins, row 80 and DESIGN §7 item 4 must say so"
         )

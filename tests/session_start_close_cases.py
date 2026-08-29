@@ -34,20 +34,34 @@ class LastCloseCases:
         assert "story-041" in r.stdout and "a finished story" in r.stdout
         assert "review clean" in r.stdout
 
-    def test_a_legacy_only_record_is_named_as_unreadable(self, tmp_path):
-        repo, _g = xp_repo(tmp_path)
-        legacy = {
+    def legacy(self, rounds=None):
+        record = {
             "story": "story-008",
             "title": "the legacy gate",
             "verdicts": ["LEGACY-DETAIL-MUST-NOT-RENDER"],
             "merge_sha": "abc1234",
             "closed_at": "2026-08-20T19:00:00Z",
         }
-        self.write_closes(tmp_path, legacy)
+        return record if rounds is None else {**record, "rounds": rounds}
+
+    def test_a_record_with_no_rounds_says_so_and_does_not_claim_corruption(self, tmp_path):
+        """story-073 deleted the verdicts[] arm. Constraint 15 survives it: MISSING
+        is not UNREADABLE, so the two states are named apart — and the boundary is
+        fault-injected below, because one message for both greens against a reader
+        that cannot tell them apart at all."""
+        repo, _g = xp_repo(tmp_path)
+        self.write_closes(tmp_path, self.legacy())
         out = run_recovery(repo, tmp_path).stdout
-        assert "story-008" in out and "(unreadable close record)" in out
+        assert "story-008" in out and "(no rounds in this record)" in out
         assert "LEGACY-DETAIL-MUST-NOT-RENDER" not in out
         assert "branch: main" in out, "the legacy record degraded the whole recovery block"
+
+    def test_a_rounds_key_of_the_wrong_shape_is_the_one_named_unreadable(self, tmp_path):
+        repo, _g = xp_repo(tmp_path)
+        self.write_closes(tmp_path, self.legacy(rounds="clean"))
+        out = run_recovery(repo, tmp_path).stdout
+        assert "(unreadable close record)" in out and "(no rounds" not in out
+        assert "branch: main" in out
 
     def test_a_long_round_list_cannot_evict_the_rules(self, tmp_path):
         repo, _g = xp_repo(tmp_path)

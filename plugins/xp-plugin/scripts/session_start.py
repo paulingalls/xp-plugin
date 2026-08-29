@@ -117,6 +117,8 @@ ROUND_CAP = 100  # per round within it
 def _close_detail(record: dict) -> str:
     """Bound rounds so more of them never means fewer constraints reach the lead."""
     rounds = record.get("rounds")
+    if rounds is None:  # a record older than rounds[] is MISSING them, not unreadable
+        return "(no rounds in this record)"
     if not isinstance(rounds, list):
         return "(unreadable close record)"
     shown = []
