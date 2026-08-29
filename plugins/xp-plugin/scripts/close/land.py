@@ -38,8 +38,8 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool, free_slug: str = "")
     rounds = state["rounds"]
     ref = overlap.merge_source(trunk, merge_mode)
     files = overlap.overlapping(ref, base)
-    gates = [f for f in files if f in overlap.GATE_FILES]
-    blocked = files if trunk == close.default_branch() else gates
+    gate_hits = [f for f in files if f in overlap.GATE_FILES]
+    blocked = files if trunk == close.default_branch() else gate_hits
     if blocked:
         return close.fail(overlap.collision(ref, blocked))
     pending = overlap.unmerged(ref)

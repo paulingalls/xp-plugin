@@ -237,6 +237,7 @@ class TestStructuredGate:
         assert "STORY_MERGED" in merged and "SPRINT_MERGED" in merged
         report = tmp_path / "data" / "reports" / "merge" / "story-042.txt"
         assert report.read_text().splitlines() == [shared]
+        assert f"\n  {shared}\n" in r.stdout, "the lead was told nothing of the shared file domain"
 
     def test_a_clean_gate_overlap_still_refuses_before_integration(self, tmp_path):
         repo, env, g, gate = self.sprint_overlap_repo(tmp_path, gate=True)

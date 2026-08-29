@@ -11,6 +11,7 @@ PLUGIN_ROOT = Path(__file__).parent.parent.parent
 
 
 def _sprint_records(root: Path, since_epoch: int) -> tuple[str, str]:
+    """Keep original falsifiers for review while corpus substitutes the batch copy."""
     originals = {e: t for e, t in entries(root) if t.startswith(("## bug ", "## debt "))}
     latest, kept = {}, []
     for block in re.split(r"^(?=## )", work_entries_since(since_epoch), flags=re.M):

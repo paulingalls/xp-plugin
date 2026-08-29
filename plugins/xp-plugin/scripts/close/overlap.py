@@ -83,7 +83,9 @@ def report_merge(story_id: str, files: list[str]) -> str:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text("\n".join(files) + "\n")
     except OSError as error:
-        return f"record merge delta for {story_id} at {path}: {error}"
+        return f"record the merge delta {' '.join(files)} at {path}: {error}"
+    print(f"reported to sprint review — {story_id} shares these with the branch it merged into:")
+    print("  " + "\n  ".join(files))
     return ""
 
 
