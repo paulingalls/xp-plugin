@@ -8,7 +8,6 @@ import fcntl
 import hashlib
 import os
 import re
-import shlex
 import subprocess
 import sys
 from datetime import datetime, timezone
@@ -196,25 +195,6 @@ def falsifier_is_green(command: str) -> bool:
     return subprocess.run(command, shell=True, capture_output=True).returncode == 0
 
 
-def refuse_pytest_k(command: str) -> bool:
-    try:
-        words = shlex.split(command)
-    except ValueError:
-        return False
-    # Pytest also accepts an attached expression, clusters `-k` after any of its
-    # argument-free short flags (-d -f -l -q -s -v -x), and installs `py.test`
-    # alongside `pytest`; a spelling that evades the guard certifies.
-    selects = any(word.startswith("-k") or re.fullmatch(r"-[dflqsvx]+k.*", word) for word in words)
-    if not selects or not any(Path(word).name in ("pytest", "py.test") for word in words):
-        return False
-    print(
-        "refused: a pytest falsifier must name an exact node id such as "
-        "path/to/test.py::TestClass::test_name; replace the -k selector with that node id.",
-        file=sys.stderr,
-    )
-    return True
-
-
 def checked_coverage(args: argparse.Namespace) -> str | None:
     tier = args.covered_by
     if not tier:
@@ -273,8 +253,6 @@ def resolve(root: Path, args: argparse.Namespace) -> int:
     if (coverage := checked_coverage(args)) is None:
         return 2
     if not _single_line(args.falsifier, "falsifier"):
-        return 2
-    if refuse_pytest_k(args.falsifier):
         return 2
     if (kind := _kind_of(root, args.ref)) is None:
         return 2
@@ -376,8 +354,6 @@ def main() -> int:
     if (coverage := checked_coverage(args)) is None:
         return 2
     if not _single_line(args.falsifier, "falsifier"):
-        return 2
-    if refuse_pytest_k(args.falsifier):
         return 2
     green = falsifier_is_green(args.falsifier)  # outside the lock: may be slow
     if args.kind == "bug" and green:

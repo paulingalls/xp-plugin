@@ -1,78 +1,85 @@
-"""Pytest falsifiers select exact node IDs, never names via ``-k``."""
+"""Repository falsifier rules and shipped record behavior."""
 
+import subprocess
 import sys
+from pathlib import Path
 
 import pytest
 from sprint_helpers import CONFIG, make_repo, work
 from test_work import run
 
-
-def pytest_k(tmp_path, expression, flag="-k ", runner=None):
-    # `runner` is what the guard reads, so it is a single knob: a second parameter
-    # overriding it would let a runner-spelling case silently test the default one.
-    test_file = tmp_path / "test_selection.py"
-    test_file.write_text("def test_selected():\n    pass\n")
-    runner = runner or f"{sys.executable} -m pytest"
-    return f"{runner} -q {test_file} {flag}{expression}"
+CHECKER = Path(__file__).parent / "scripts" / "check_falsifier_node_ids.py"
+LEFTHOOK = Path(__file__).parent.parent / "lefthook.yml"
 
 
-def assert_node_id_refusal(result):
-    assert result.returncode == 2
-    assert "-k" in result.stderr
-    assert "path/to/test.py::TestClass::test_name" in result.stderr
+def check_records(path):
+    return subprocess.run([sys.executable, CHECKER, path], capture_output=True, text=True)
 
 
-def test_bug_with_unmatched_pytest_k_is_refused_before_filing(tmp_path):
-    result = run(
-        [
-            "bug",
-            "--claim",
-            "x",
-            "--falsifier",
-            pytest_k(tmp_path, "absent", runner="pytest"),
-            "--files",
-            "a",
-        ],
-        tmp_path,
+def record(command, resolved=False):
+    original = (
+        "## debt 2026-08-29T00:00:00Z\n"
+        "Claim: selected by name\n"
+        f"Falsifier: `{command}`\n"
+        "Files: tests/test_example.py\n\n"
     )
-    assert_node_id_refusal(result)
-    assert not (tmp_path / "work.md").exists()
+    if not resolved:
+        return original
+    from work import entry_id
 
-
-def test_debt_with_matching_pytest_k_is_refused_before_filing(tmp_path):
-    result = run(
-        ["debt", "--claim", "x", "--falsifier", pytest_k(tmp_path, "selected"), "--files", "a"],
-        tmp_path,
+    return (
+        original
+        + f"## resolved 2026-08-29T00:00:01Z\nResolves: {entry_id(original)}\n"
+        + ("Falsifier: `true`\n\n")
     )
-    assert_node_id_refusal(result)
-    assert not (tmp_path / "work.md").exists()
 
 
-def test_pytest_k_attached_or_clustered_is_refused(tmp_path):
-    for flag in ("-k", "-k=", "-xk ", "-vxk", "-dk "):
-        falsifier = pytest_k(tmp_path, "selected", flag=flag)
-        result = run(["debt", "--claim", "x", "--falsifier", falsifier, "--files", "a"], tmp_path)
-        assert_node_id_refusal(result)
-        assert not (tmp_path / "work.md").exists()
+@pytest.mark.parametrize(
+    "command",
+    (
+        "pytest -q tests/test_example.py -k selected",
+        "pytest -q tests/test_example.py -kselected",
+        "pytest -q tests/test_example.py -vxk selected",
+        "py.test -q tests/test_example.py -k selected",
+        f"{sys.executable} -m pytest -q tests/test_example.py -k selected",
+    ),
+)
+def test_repo_checker_refuses_an_open_broad_test_selector(tmp_path, command):
+    work = tmp_path / "work.md"
+    work.write_text(record(command))
+    result = check_records(work)
+    assert result.returncode == 1
+    assert "exact node id" in result.stderr.lower()
 
 
-def test_resolution_with_pytest_k_is_refused_before_append(tmp_path):
-    run(["bug", "--claim", "x", "--falsifier", "false", "--files", "a"], tmp_path, True)
-    ref = run(["list"], tmp_path, True).stdout.split()[0]
-    before = (tmp_path / "work.md").read_text()
-    result = run(["resolve", "--ref", ref, "--falsifier", pytest_k(tmp_path, "selected")], tmp_path)
-    assert_node_id_refusal(result)
-    assert (tmp_path / "work.md").read_text() == before
+def test_repo_checker_ignores_the_selector_on_a_resolved_record(tmp_path):
+    work = tmp_path / "work.md"
+    work.write_text(record("pytest -q tests/test_example.py -k selected", resolved=True))
+    assert check_records(work).returncode == 0
 
 
-def test_the_py_test_alias_is_refused_too(tmp_path):
-    """pytest still installs `py.test`, so a guard that knows only one of the two
-    names lets the whole rule be spelled around."""
-    falsifier = pytest_k(tmp_path, "selected", runner="py.test")
-    assert_node_id_refusal(
-        run(["debt", "--claim", "x", "--falsifier", falsifier, "--files", "a"], tmp_path)
-    )
-    assert not (tmp_path / "work.md").exists()
+@pytest.mark.parametrize(
+    "command",
+    (
+        "pytest -q tests/test_example.py::test_selected",
+        f"{sys.executable} -c 'pass' -k",
+    ),
+)
+def test_repo_checker_accepts_exact_or_non_test_commands(tmp_path, command):
+    work = tmp_path / "work.md"
+    work.write_text(record(command))
+    assert check_records(work).returncode == 0
+
+
+def test_repo_checker_reports_when_there_is_no_record_file(tmp_path):
+    result = check_records(tmp_path / "work.md")
+    assert result.returncode == 0
+    assert "scanned nothing" in result.stdout
+
+
+def test_repo_pre_push_runs_the_falsifier_checker():
+    pre_push = LEFTHOOK.read_text().split("pre-push:", 1)[1]
+    assert "python3 tests/scripts/check_falsifier_node_ids.py" in pre_push
 
 
 def test_non_pytest_falsifier_with_k_is_untouched(tmp_path):

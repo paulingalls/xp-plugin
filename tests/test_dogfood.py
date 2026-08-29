@@ -60,9 +60,12 @@ class TestDogfoodMatchesTheScaffold:
         assert not missing, f"we never exercise the shipped keys: {missing}"
 
     def test_shipped_coverage_guidance_names_no_test_runner_or_selection_syntax(self):
-        prose = (self.SHIPPED / "config.yml").read_text() + (
-            self.REPO / "plugins/xp-plugin/PROCESS.md"
-        ).read_text()
+        plugin = self.REPO / "plugins/xp-plugin"
+        prose = "".join(
+            path.read_text(errors="replace")
+            for path in plugin.rglob("*")
+            if path.is_file() and "__pycache__" not in path.parts
+        )
         forbidden = ("pytest", "py.test", "bun test", "node id", "::")
         assert not [term for term in forbidden if term in prose.lower()]
 

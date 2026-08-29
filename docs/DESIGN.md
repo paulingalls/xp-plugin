@@ -161,6 +161,8 @@ Concerns as a distinct stored type disappear: review findings are fixed on the s
 
 **Falsifiers are reviewed work.** The bug/debt boundary is authored by the interested party, so it's gameable in both directions — a falsifier asserting the *desired end-state* reds trivially and reclassifies any debt as do-it-now work; a near-vacuous falsifier guarantees a drop. The story reviewer therefore receives the work.md entries filed during the story as part of its input and fault-injects them like any guard: a bug's falsifier must red *for the stated claim*; a debt's must be shown capable of redding. One charter line, no new hook.
 
+Exact test-node selection is this repository's rule, enforced over open records by its pre-push wall. It is not plugin policy: the shipped plugin neither knows nor names a test runner.
+
 `--covered-by TIER` is the project's declaration that a record's opaque command selects work in that configured tier. Sprint close trusts only the `full` tier it just ran and only when it passed, naming every record trusted; an absent, unrun or red tier executes the command. The plugin neither parses runner output nor infers selection relationships.
 
 ## 5. Planning artifacts
