@@ -154,8 +154,8 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool, free_slug: str = "")
 
     print(bookkeep.render_noted(rounds), end="")
     failed = []
-    if files and (err := overlap.report_merge(story_id, files)):
-        failed.append(err)
+    if files:
+        overlap.report_merge(story_id, files)
     if merge_mode == "pr":
         for c in pr_sync:
             if subprocess.run(c, capture_output=True, text=True).returncode != 0:

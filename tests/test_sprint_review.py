@@ -123,25 +123,19 @@ class TestReviewLeg:
         assert "story-099" not in bundle, "another sprint's card rode along"
         assert "Polarity" in bundle, "PROCESS.md, which the charter points at"
 
-    def test_every_story_merge_delta_reaches_only_its_sprint_bundle(self, tmp_path, monkeypatch):
+    def test_no_sprint_bundle_asks_for_a_merge_delta(self, tmp_path):
+        """Planted, because a project upgrading from v0.13.0 still HAS the store on
+        disk — nothing deletes it, so absence over an empty root proves nothing."""
         repo, env, _g = make_repo(tmp_path)
-        monkeypatch.chdir(repo)
-        monkeypatch.setenv("XP_DATA", env["XP_DATA"])
-        sys.path.insert(0, str(PLUGIN / "scripts" / "close"))
-        import overlap
-
-        overlap.report_merge("story-042", ["src.py"])
-        overlap.report_merge("story-043", ["other.py"])
-        overlap.report_merge("story-099", ["later.py"])
+        stale = tmp_path / "data" / "reports" / "merge" / "story-042.txt"
+        stale.parent.mkdir(parents=True)
+        stale.write_text("STALE-MERGE-DELTA.py\n")
         assert sprint(repo, env, "review").returncode == 0
-        for bundle in (launch["stdin"] for launch in launches(tmp_path)):
-            body = section(
-                bundle,
-                "Merge deltas not covered by story review",
-                "Resolutions filed during the sprint",
-            )
-            assert "story-042: src.py" in body and "story-043: other.py" in body
-            assert "story-099" not in body and "later.py" not in body
+        bundles = [launch["stdin"] for launch in launches(tmp_path)]
+        assert bundles
+        for bundle in bundles:
+            assert "Merge deltas not covered by story review" not in bundle
+            assert "STALE-MERGE-DELTA.py" not in bundle
 
     def test_a_story_cannot_shadow_the_sprints_report_or_marker_key(self, tmp_path):
         """Constraint 10, fault-injected against the id that would collide: a

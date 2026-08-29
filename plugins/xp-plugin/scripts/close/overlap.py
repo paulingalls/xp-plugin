@@ -1,4 +1,4 @@
-"""What review covers, what merge execution proves, and what sprint review inherits."""
+"""What review covers and what merge execution proves."""
 
 import shlex
 import subprocess
@@ -7,7 +7,6 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from close import git, origin_trunk_sha
-from work import data_root
 
 # config.yml holds the tier land runs; constraints.md is the rubric the reviewer
 # applied; system.md's worktree lifecycle lines are shell-executed by spawn/close.
@@ -77,25 +76,9 @@ def collision(ref: str, files: list[str]) -> str:
     )
 
 
-def report_merge(story_id: str, files: list[str]) -> str:
-    path = data_root() / "reports" / "merge" / f"{story_id}.txt"
-    try:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text("\n".join(files) + "\n")
-    except OSError as error:
-        return f"record the merge delta {' '.join(files)} at {path}: {error}"
-    print(f"reported to sprint review — {story_id} shares these with the branch it merged into:")
+def report_merge(story_id: str, files: list[str]) -> None:
+    print(f"{story_id} shares these with the branch it merged into:")
     print("  " + "\n  ".join(files))
-    return ""
-
-
-def merge_reports(cards: str) -> str:
-    out = []
-    root = data_root() / "reports" / "merge"
-    for path in sorted(root.glob("*.txt")):
-        if f"#### {path.stem} " in cards:
-            out += [f"{path.stem}: {name}" for name in path.read_text().splitlines()]
-    return "\n".join(out) or "none"
 
 
 def run_one(label: str, cmd: str | list[str], where: str = "") -> str:
