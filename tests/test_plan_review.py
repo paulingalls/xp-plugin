@@ -433,6 +433,13 @@ class TestPlanEditsInPlace:
         problem = disposition_result(report, b"before", b"Reason: a different reason\n")
         assert "every plan edit" in problem
 
+    def test_a_bracket_in_the_prose_is_not_a_rival_disposition(self):
+        """A footnote marker or a markdown checkbox decodes as JSON on its own, so an
+        ambiguity check counting every decodable value refuses the fenced verdict this
+        story exists to accept — the same round, lost twice under a new diagnostic."""
+        report = f"Findings [1]\n\n- [ ] nothing loud\n\n```json\n{CLEAN}\n```"
+        assert disposition_result(report, b"x", b"x") == ""
+
     @pytest.mark.parametrize("wrapper", ["{}", "```json\n{}\n```"], ids=["bare", "fenced"])
     @pytest.mark.parametrize(
         "findings,motion,mark",
