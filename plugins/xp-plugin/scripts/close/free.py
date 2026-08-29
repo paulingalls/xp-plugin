@@ -66,7 +66,7 @@ def cmd_start(slug: str) -> int:
     card = "card in the plan" if card_in_plan(new.split("/", 1)[1]) else "no card"
     print(
         f"{new} off {trunk} — {card}. Cut your release artifacts, then"
-        f" `close.py free {slug} review`"
+        f" `close.py free {slugify(slug)} review`"
     )
     return 0
 
@@ -86,7 +86,7 @@ def cmd_review(slug: str, dry_run: bool) -> int:
             return 2
         if status in ("planned", "ready") and not flip_card(key, "ready", "in-progress"):
             return fail(f"refused: could not move {key} to [in-progress]")
-    return close.cmd_review(key, dry_run, free=True, free_slug=slug)
+    return close.cmd_review(key, dry_run, free=True, free_slug=slugify(slug))
 
 
 def cmd_land(slug: str, dry_run: bool) -> int:

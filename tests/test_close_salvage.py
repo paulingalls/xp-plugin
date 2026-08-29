@@ -195,3 +195,21 @@ class TestSalvage:
             _result, err = review.run("bundle", repo, name=name)
             assert "produced NO OUTPUT" in err and "XP_AGENT_TIMEOUT" in err, err
             assert ("story <id> salvage" in err) is offered, (name, err)
+
+    def test_a_launch_marker_written_before_the_noun_still_records(self, tmp_path):
+        """v0.14.1 moved the leg's own land command into the launch marker, and
+        salvage is the one leg that reads a marker THIS version may not have
+        written: an upgrade between the kill and the rescue leaves one carrying
+        no noun. Delete with the fallback.
+        """
+        repo, env, _ = make_repo(tmp_path)
+        dying_reviewer(tmp_path)
+        assert close(repo, env | KILLED, "review").returncode == 2
+        launch = tmp_path / "data" / "markers" / "story-042.review-launch"
+        at = json.loads(launch.read_text())
+        assert at.pop("noun") == "story story-042", at
+        launch.write_text(json.dumps(at))
+
+        rescued = salvage(repo, env)
+        assert rescued.returncode == 0, rescued.stderr
+        assert "close.py story story-042 land" in rescued.stdout, rescued.stdout

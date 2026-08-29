@@ -356,18 +356,23 @@ class TestTheFreeLegNamesItsOwnLandCommand:
     arm for the third leg, and free.cmd_review knows the slug but drops it where
     cmd_land threads it through. Field-reported by a consuming project that
     followed the printed line and got the refusal (work.md e2ff1a03).
+
+    The slug is spelled UNNORMALIZED on purpose: `free start` accepts any spelling
+    that slugifies to itself modulo case and separators, so a handoff echoing the
+    lead's own word prints a line argparse splits into two.
     """
 
     def test_the_free_handoff_names_the_command_that_actually_works(self, tmp_path):
         repo, env, g = free_repo(tmp_path)
-        assert free(repo, env, "fix-typo", "start").returncode == 0
+        started = free(repo, env, "Fix Typo", "start")
+        assert started.returncode == 0 and "free fix-typo review" in started.stdout
         (repo / "src").mkdir(parents=True, exist_ok=True)
         (repo / "src" / "free.py").write_text("B = 1\n")
         g("add", "-A")
         g("commit", "-qm", "free work")
         stub_reviewer(tmp_path, patch=NEW_FILE_PATCH)
 
-        r = free(repo, env, "fix-typo", "review")
+        r = free(repo, env, "Fix Typo", "review")
 
         assert r.returncode == 0, r.stderr + r.stdout
         assert "the script-applied review fix changed the tree" in r.stdout, r.stdout

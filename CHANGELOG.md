@@ -6,7 +6,8 @@ per-sprint review reports.
 
 ## v0.14.1 — the free leg names its own land command
 
-Patch. One field-reported defect, from the only consuming project running this plugin.
+Patch. One field-reported defect from the only consuming project running this plugin,
+and one of its class found beside it at review.
 
 - After a reviewer patch, a FREE card's handoff printed `close.py story <branch-key>
   land` — the story leg's subcommand and the branch-style id, where the free leg takes
@@ -15,6 +16,8 @@ Patch. One field-reported defect, from the only consuming project running this p
   `free.cmd_review` knew the slug but dropped it where `cmd_land` already threads it
   through. The noun now travels in the launch marker, so `salvage` is fixed by the same
   change and markers written by older versions still record.
+- Both free handoffs echo the slug SLUGIFIED. `free start` accepts `Fix Typo`, and only
+  the spelling its branch carries survives argparse.
 
 ## v0.14.0 — every mechanism has a reader, or it goes
 
