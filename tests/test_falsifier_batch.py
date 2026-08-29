@@ -5,7 +5,16 @@ import shlex
 from pathlib import Path
 
 import work as work_module
-from sprint_helpers import make_repo, snapshot, sprint, work
+from sprint_helpers import (
+    CONFIG,
+    WORK_SECTION,
+    launches,
+    make_repo,
+    section,
+    snapshot,
+    sprint,
+    work,
+)
 
 
 class TestFalsifierBatch:
@@ -104,18 +113,11 @@ class TestFalsifierBatch:
         assert r.returncode == 2, "a record that only referenced an id silenced a live bug"
 
 
-def file_debt(repo, env, claim, command):
-    result = work(
-        repo,
-        env,
-        "debt",
-        "--claim",
-        claim,
-        "--falsifier",
-        command,
-        "--files",
-        "a.py",
-    )
+def file_debt(repo, env, claim, command, covered_by=""):
+    args = ["debt", "--claim", claim, "--falsifier", command, "--files", "a.py"]
+    if covered_by:
+        args += ["--covered-by", covered_by]
+    result = work(repo, env, *args)
     assert result.returncode == 0, result.stderr
     return result.stdout.strip()
 
@@ -167,3 +169,142 @@ def test_a_shared_red_falsifier_bug_claim_names_every_record(tmp_path):
 
 def test_falsifier_execution_has_no_per_record_context():
     assert list(inspect.signature(work_module.falsifier_is_green).parameters) == ["command"]
+
+
+def writes(path, succeeds=True):
+    return f"printf x >> {shlex.quote(str(path))}; {'true' if succeeds else 'false'}"
+
+
+def test_a_green_full_tier_is_trusted_without_reexecuting_the_falsifier(tmp_path):
+    tier, falsifier = tmp_path / "tier", tmp_path / "falsifier"
+    config = CONFIG.replace("full: true", f"full: {writes(tier)}")
+    repo, env, _g = make_repo(tmp_path, config=config)
+    ref = file_debt(repo, env, "covered claim", writes(falsifier), "full")
+    before = falsifier.read_text()
+
+    result = sprint(repo, env, "start")
+
+    assert result.returncode == 0, result.stderr
+    assert tier.read_text() == "x" and falsifier.read_text() == before
+    # not `"full" in stdout`: the `running the full tier:` line already carries
+    # the name, so that spelling greens against a report naming no tier at all
+    assert f"trusted {ref}" in result.stdout and "via tier full" in result.stdout
+
+
+def test_a_declaration_whose_tier_the_config_no_longer_defines_still_executes(tmp_path):
+    """The record names `full`, the project renamed it, so no run of `full`
+    happened this close. Without the configured-tier half of the defer test the
+    command is dropped in silence — no execution and no `trusted` line either."""
+    counter = tmp_path / "renamed-tier"
+    repo, env, _g = make_repo(tmp_path, config=CONFIG.replace("full:", "nightly:"))
+    (tmp_path / "data" / "work.md").write_text(
+        "## debt 2026-01-01T00:00:00Z\nClaim: declared before the tier was renamed\n"
+        f"Falsifier: `{writes(counter)}`\nCovered by: full\nFiles: old.py\n\n"
+    )
+
+    result = sprint(repo, env, "start")
+
+    assert result.returncode == 0, result.stderr
+    ran = counter.read_text() if counter.exists() else "never executed"
+    assert ran == "x", f"took a verdict from a tier that never ran: {ran}"
+    assert "trusted" not in result.stdout
+
+
+def test_a_declared_tier_that_was_not_run_does_not_suppress_the_falsifier(tmp_path):
+    falsifier = tmp_path / "falsifier"
+    config = CONFIG.replace("tests:\n", "tests:\n  fast: true\n")
+    repo, env, _g = make_repo(tmp_path, config=config)
+    file_debt(repo, env, "fast selection", writes(falsifier), "fast")
+    before = falsifier.read_text()
+
+    result = sprint(repo, env, "start")
+
+    assert result.returncode == 0, result.stderr
+    assert falsifier.read_text() == before + "x"
+    assert "trusted" not in result.stdout
+
+
+def test_a_red_full_tier_runs_the_deferred_falsifier_before_refusing(tmp_path):
+    tier, falsifier = tmp_path / "tier", tmp_path / "falsifier"
+    config = CONFIG.replace("full: true", f"full: {writes(tier, False)}")
+    repo, env, _g = make_repo(tmp_path, config=config)
+    file_debt(repo, env, "covered claim", writes(falsifier), "full")
+    before = falsifier.read_text()
+
+    result = sprint(repo, env, "start")
+
+    assert result.returncode == 2 and "full tier" in result.stderr
+    assert tier.read_text() == "x" and falsifier.read_text() == before + "x"
+
+
+def test_a_project_with_no_tiers_executes_legacy_records_without_tier_prose(tmp_path):
+    repo, env, _g = make_repo(tmp_path, config="release: sprint\nroles:\n  reviewer: claude/opus\n")
+    counter = tmp_path / "legacy"
+    (tmp_path / "data" / "work.md").write_text(
+        "## debt 2026-01-01T00:00:00Z\nClaim: legacy\n"
+        f"Falsifier: `{writes(counter)}`\nFiles: old.py\n\n"
+    )
+
+    result = sprint(repo, env, "start")
+
+    assert result.returncode == 0, result.stderr
+    assert counter.read_text() == "x"
+    assert "tier" not in (result.stdout + result.stderr).lower()
+
+
+def test_a_resolution_without_a_declaration_executes_its_replacement(tmp_path):
+    counter = tmp_path / "replacement"
+    repo, env, _g = make_repo(tmp_path)
+    result = work(
+        repo,
+        env,
+        "bug",
+        "--claim",
+        "fixed",
+        "--falsifier",
+        "false",
+        "--files",
+        "a",
+        "--covered-by",
+        "full",
+    )
+    assert result.returncode == 0, result.stderr
+    ref = result.stdout.strip()
+    assert work(repo, env, "resolve", "--ref", ref, "--falsifier", writes(counter)).returncode == 0
+    before = counter.read_text()
+
+    assert sprint(repo, env, "start").returncode == 0
+    assert counter.read_text() == before + "x"
+
+
+def test_a_resolution_coverage_declaration_is_visible_to_sprint_review(tmp_path):
+    repo, env, _g = make_repo(tmp_path)
+    filed = work(
+        repo,
+        env,
+        "bug",
+        "--claim",
+        "fixed",
+        "--falsifier",
+        "false",
+        "--files",
+        "a",
+    )
+    result = work(
+        repo,
+        env,
+        "resolve",
+        "--ref",
+        filed.stdout.strip(),
+        "--falsifier",
+        "true",
+        "--covered-by",
+        "full",
+    )
+    assert result.returncode == 0, result.stderr
+
+    assert sprint(repo, env, "review").returncode == 0
+    body = section(
+        launches(tmp_path)[0]["stdin"], "Resolutions filed during the sprint", WORK_SECTION
+    )
+    assert "covered by: full" in body

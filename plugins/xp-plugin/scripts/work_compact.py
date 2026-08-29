@@ -56,6 +56,8 @@ def compact(root: Path, entry_id, record_summary) -> int:
             source = decision if field == "Resolves" else block
             if falsifier := re.search(r"^Falsifier: `.+`$", source, re.M):
                 lines.append(falsifier.group(0))
+            if covered := re.search(r"^Covered by: .+$", source, re.M):
+                lines.append(covered.group(0))
             kept.append("\n".join(lines) + "\n\n")
             prose = [] if re.search(r"^Id: ", block, re.M) else [f"# Record {eid}\n\n{block}"]
             sections.append((eid, prose + [d[1] for d in decisions]))

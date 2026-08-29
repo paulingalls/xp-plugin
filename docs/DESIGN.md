@@ -152,14 +152,16 @@ Everything an agent records goes in `work.md` as one of three shapes, **always v
 
 | Shape | Fields | Lifecycle |
 |---|---|---|
-| **bug** | claim + falsifier command **that reds right now** + files | Fixed immediately — the red is the objective bound on "now". A bug that can't red is not a bug. |
-| **debt** | claim + falsifier command (currently green) + files | Lives only until next sprint planning: scheduled under the debt budget **or dropped**. Drop ≠ delete: `work.py archive --ref <id> --disposition <text>` records the decision IN PLACE, so the batch keeps running the falsifier — the block never moves, which is a stronger guarantee than a separate file that could be lost or never created — one that reds is re-filed as a bug; untouched for N sprints, it purges. This is what makes "a dropped debt that matters will red again" *true* for the silent-cumulative class (unbounded spend, orphaned resources) whose falsifiers live outside every test tier. |
+| **bug** | claim + falsifier command **that reds right now** + files + optional covered tier | Fixed immediately — the red is the objective bound on "now". A bug that can't red is not a bug. |
+| **debt** | claim + falsifier command (currently green) + files + optional covered tier | Lives only until next sprint planning: scheduled under the debt budget **or dropped**. Drop ≠ delete: `work.py archive --ref <id> --disposition <text>` records the decision IN PLACE, so the batch keeps checking the falsifier — directly unless its declared tier just passed. One that reds is re-filed as a bug; untouched for N sprints, it purges. This makes "a dropped debt that matters will red again" *true* for the silent-cumulative class (unbounded spend, orphaned resources) whose falsifiers live outside every test tier. |
 | **note** | free text (decisions: choice + because; discoveries; conventions-in-waiting) | Reviewed at sprint close: promoted into `constraints.md`/`system.md` via the retro diff, or auto-archived. |
-| **resolved** | the id of a prior record + a replacement falsifier **that is green right now** | Sprint-002 amendment. Records ARE named — by `sha256(entry)[:8]`, derived not stored, because an ISO second is not a name (measured: 48 concurrent appends, 48 identical headings) and an append-only file cannot be backfilled. And the sprint-close batch runs **unresolved work.md falsifiers as well as archived blocks'**, so a dropped debt that later matters returns as an evidence-bearing red — and a bug whose falsifier went stale is unwedged by resolution rather than reporting itself unfixed forever. Resolution SUBSTITUTES a falsifier rather than deleting one: marking a record done would be an unchecked assertion that silences a live bug with one command, whereas a substituted falsifier that was wrong reds at the next batch and the record reopens. **Polarity**, which the same batch enforces: a debt or archived falsifier asserts the system is still OK, so red means the latent problem materialised — one that greens *because* the flaw is present is inverted and aborts the close on the day it is fixed. |
+| **resolved** | prior id + replacement falsifier **green right now** + optional covered tier | Sprint-002 amendment. Records ARE named — by `sha256(entry)[:8]`, derived not stored, because an ISO second is not a name (measured: 48 concurrent appends, 48 identical headings) and an append-only file cannot be backfilled. The sprint-close batch checks unresolved and archived records, so a dropped debt that later matters returns as an evidence-bearing red and a stale bug falsifier is replaced rather than wedging the close. Resolution SUBSTITUTES a falsifier rather than deleting one: an unchecked done marker could silence a live bug, whereas a wrong replacement reds later and reopens it. Coverage belongs to the replacement and is never inherited. **Polarity**: a debt or archived falsifier asserts the system is still OK, so red means the latent problem materialised — one that greens *because* the flaw is present is inverted. |
 
 Concerns as a distinct stored type disappear: review findings are fixed on the spot, or filed as bug/debt by the rules above, or they're notes. The 97%-of-debts-become-work failure mode is answered at the *scheduling* edge: mid-sprint agents record but never schedule (sole exception: it blocks the current story's acceptance — which makes it a bug); the human picks at planning, under `config.yml`'s debt budget (default ≤20% of stories); unscheduled debts are dropped to the archive.
 
 **Falsifiers are reviewed work.** The bug/debt boundary is authored by the interested party, so it's gameable in both directions — a falsifier asserting the *desired end-state* reds trivially and reclassifies any debt as do-it-now work; a near-vacuous falsifier guarantees a drop. The story reviewer therefore receives the work.md entries filed during the story as part of its input and fault-injects them like any guard: a bug's falsifier must red *for the stated claim*; a debt's must be shown capable of redding. One charter line, no new hook.
+
+`--covered-by TIER` is the project's declaration that a record's opaque command selects work in that configured tier. Sprint close trusts only the `full` tier it just ran and only when it passed, naming every record trusted; an absent, unrun or red tier executes the command. The plugin neither parses runner output nor infers selection relationships.
 
 ## 5. Planning artifacts
 
@@ -235,9 +237,9 @@ Test tiers, declared once in `config.yml` and scaffolded into the git hooks:
 
 ```yaml
 tests:
-  fast: bun test --changed          # pre-commit: seconds
-  story: bun test <story packages>  # pre-push / story close
-  full: bun run test:all            # sprint close: everything incl. e2e + meta
+  fast: EDIT-ME   # quick project checks at pre-commit
+  story: EDIT-ME  # project checks at pre-push / story close
+  full: EDIT-ME   # sprint close; coverage declarations may trust this verdict
 ```
 
 ## 8. Teammates and subagents — delegation-first orchestration

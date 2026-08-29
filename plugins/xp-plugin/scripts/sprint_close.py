@@ -18,7 +18,7 @@ from env import record_sprint_branch, refuse_direct_invocation, sprint_branch
 from release import cmd_post_merge as release_post_merge
 from release import next_version, refuse_unbumpable
 from review import reviewer_strays
-from sprint_bundle import FALSIFIER, RESOLVES, build
+from sprint_bundle import COVERED_BY, FALSIFIER, RESOLVES, build
 from work import (
     append,
     config_block_value,
@@ -35,19 +35,47 @@ PLUGIN_ROOT = Path(__file__).parent.parent
 sprint_stories = milestone.sprint_stories
 
 
-def corpus(root: Path) -> list[tuple[str, str, str]]:
-    """Use resolved headings, not references, to substitute batch falsifiers."""
+def corpus(root: Path) -> list[tuple[str, str, str, str]]:
     records, resolutions = {}, {}
     for eid, text in entries(root):
         head = text.splitlines()[0]
         if head.startswith("## resolved "):
             ref, m = RESOLVES.search(text), FALSIFIER.search(text)
             if ref and m:
-                resolutions[ref.group(1)] = m.group(1)
+                covered = COVERED_BY.search(text)
+                resolutions[ref.group(1)] = (m.group(1), covered.group(1) if covered else "")
         elif head.startswith(("## bug ", "## debt ")) and (m := FALSIFIER.search(text)):
             claim = next((ln for ln in text.splitlines() if ln.startswith("Claim: ")), "")
-            records[eid] = (f"{head[3:]} — {claim[7:97]}", m.group(1))
-    return [(eid, head, resolutions.get(eid, f)) for eid, (head, f) in records.items()]
+            covered = COVERED_BY.search(text)
+            records[eid] = (
+                f"{head[3:]} — {claim[7:97]}",
+                m.group(1),
+                covered.group(1) if covered else "",
+            )
+    return [
+        (eid, head, *resolutions.get(eid, (f, covered)))
+        for eid, (head, f, covered) in records.items()
+    ]
+
+
+def batch_refusal(root: Path, grouped: dict[str, list[tuple[str, str, str]]]) -> str:
+    for falsifier, records in grouped.items():
+        if falsifier_is_green(falsifier):
+            continue
+        citations = "; ".join(f"{eid} ({head})" for eid, head, _covered in records)
+        known = any(head.startswith("bug ") for _eid, head, _covered in records)
+        if not known:
+            append(
+                root,
+                f"## bug {stamp()}\nClaim: batch falsifier RED for records {citations};"
+                " debt/archive red means the latent problem materialised.\n"
+                f"Falsifier: `{falsifier}`\nFiles: unknown\n\n",
+            )
+        return (
+            f"refused: batch falsifier RED for records {citations}:\n  {falsifier}\n"
+            f"{'already filed' if known else 'Re-filed'} as a bug. Fix it, then run start again"
+        )
+    return ""
 
 
 def sprint_cards(plan: str, sprint_id: str) -> str:
@@ -230,29 +258,26 @@ def cmd_start(sprint_id: str) -> int:
     root = data_root()
     batch = corpus(root)
     grouped = {}
-    for eid, head, falsifier in batch:
-        grouped.setdefault(falsifier, []).append((eid, head))
-    known = {f for _e, h, f in batch if h.startswith("bug ")}
-    for falsifier, records in grouped.items():
-        if not falsifier_is_green(falsifier):
-            citations = "; ".join(f"{eid} ({head})" for eid, head in records)
-            if falsifier not in known:
-                append(
-                    root,
-                    f"## bug {stamp()}\nClaim: a falsifier in the sprint-close batch RED"
-                    f" for records {citations}. A debt or archived falsifier asserts the"
-                    " system is still OK, so red means the latent problem materialised.\n"
-                    f"Falsifier: `{falsifier}`\nFiles: unknown\n\n",
-                )
-            filed = "already filed as a bug" if falsifier in known else "Re-filed as a bug"
-            return fail(
-                f"refused: batch falsifier RED for records {citations}:\n  {falsifier}\n"
-                f"{filed}. Fix it, then run start again"
-            )
+    for eid, head, falsifier, covered in batch:
+        grouped.setdefault(falsifier, []).append((eid, head, covered))
+    tier = config_block_value("tests", "full")
+    deferred = {
+        command: records
+        for command, records in grouped.items()
+        if tier and all(covered == "full" for _eid, _head, covered in records)
+    }
+    if red := batch_refusal(root, {k: v for k, v in grouped.items() if k not in deferred}):
+        return fail(red)
 
-    if tier := config_block_value("tests", "full"):
+    if tier:
         print(f"running the full tier: {tier}")
-        if subprocess.run(tier, shell=True).returncode != 0:
+        if subprocess.run(tier, shell=True).returncode == 0:
+            for records in deferred.values():
+                for eid, head, covered in records:
+                    print(f"trusted {eid} ({head}) via tier {covered}")
+        elif red := batch_refusal(root, deferred):
+            return fail(red)
+        else:
             return fail(f"refused: full tier red: {tier}")
 
     if completion := milestone.candidate(plan.read_text(), sprint_id):

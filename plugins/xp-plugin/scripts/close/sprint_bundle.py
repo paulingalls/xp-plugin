@@ -6,6 +6,7 @@ from close import _read, git
 from work import data_root, entries, work_entries_since
 
 FALSIFIER = re.compile(r"^Falsifier: `(.+)`$", re.M)
+COVERED_BY = re.compile(r"^Covered by: (.+)$", re.M)
 RESOLVES = re.compile(r"^Resolves: (\w+)$", re.M)
 PLUGIN_ROOT = Path(__file__).parent.parent.parent
 
@@ -20,15 +21,16 @@ def _sprint_records(root: Path, since_epoch: int) -> tuple[str, str]:
         if not block.startswith("## resolved "):
             kept.append(block)
         elif (ref := RESOLVES.search(block)) and (new := FALSIFIER.search(block)):
-            latest[ref.group(1)] = new.group(1)
+            latest[ref.group(1)] = (new.group(1), COVERED_BY.search(block))
     out = []
-    for ref, new in latest.items():
+    for ref, (new, covered) in latest.items():
         text = originals.get(ref, "")
         claim = next((ln[7:] for ln in text.splitlines() if ln.startswith("Claim: ")), "")
         old = FALSIFIER.search(text)
         out.append(
             f"- {ref}: {claim or '(no record with this id)'}\n  original falsifier:"
             f" `{old.group(1) if old else '(none)'}`\n  replacement: `{new}`"
+            + (f"\n  covered by: {covered.group(1)}" if covered else "")
         )
     return "\n".join(out) or "none", "\n".join(kept).strip() or "none"
 
