@@ -108,19 +108,20 @@ class TestShippedProseMatchesTheMechanism:
             assert "past what the review covered" in text, f"{path.name}: lead half"
 
     def test_DESIGN_assigns_each_merge_reader_once(self):
-        """story-066 replaces story-018's blanket overlap refusal: only sprint
-        integration has a later semantic reader, while every other unsafe state
-        keeps its refusal."""
+        """Sprint integration names a clean overlap to its lead; every other
+        unsafe overlap keeps its refusal."""
         design = prose(Path(__file__).parent.parent / "docs" / "DESIGN.md")
         for claim in (
             "trial-merges",
             "sprint integration branch",
-            "story-scoped path list",
+            "NAMED to the lead at land on stdout",
             "Gate-file overlap still refuses",
             "conflicts refuse",
             "Free and story releases still refuse",
         ):
             assert claim in design, f"DESIGN §6 no longer states: {claim}"
+        assert "story-scoped path list" not in design
+        assert "every sprint-review stage reads" not in design
 
     def test_the_sprint_close_skill_runs_the_reviews_rather_than_composing_them(self):
         """Step 2 used to tell a human to do a broad review and a security review.
