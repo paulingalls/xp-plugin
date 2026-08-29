@@ -4,6 +4,30 @@ Release notes started at v0.6.0; earlier entries are summarized from their
 tag and merge messages. Full detail lives in the merge history and the
 per-sprint review reports.
 
+## v0.13.0 — a leg that already ran is not re-bought
+
+Sprint 12. Three cards, one property: no leg in the pipeline pays sweep price for a
+confirmation. This closes Milestone 4's last open exit clause.
+
+- A free patch release now pays `tests.story` rather than `tests.full`. `tests.full`
+  remains the sprint release boundary alone. A project that configures only `full`
+  and no `story` now runs no tier at a free release — loud (one stderr line), and the
+  say-so-don't-refuse policy is unchanged, but the leg that hits it is now a release.
+- On a sprint integration branch, a clean non-gate overlap with the branch is NAMED to
+  the lead at land and written as a story-scoped path list that every sprint-review
+  stage reads, instead of buying a second story review round. Gate-file overlap still
+  refuses, because it changes what land runs; conflicts still refuse at the trial
+  merge; and free and story releases still refuse any overlap, because neither has a
+  later sprint review to inherit the signal.
+- Records may declare `--covered-by TIER`. When that tier RAN and PASSED in the same
+  close, the batch takes its verdict and names the record it trusted instead of
+  re-executing the falsifier; when the tier was not run, red, or no longer configured,
+  the falsifier runs as before. The author asserts the coverage and nothing checks it —
+  `PROCESS.md` says so in those words. Records filed before this version have no
+  declaration and execute exactly as they did.
+- `config_block_value` no longer silently drops tab-indented keys, which would have
+  made an unresolvable tier indistinguishable from an unconfigured one.
+
 ## v0.12.0 — projects act, milestones move
 
 Sprint 11. Two stories held out of v0.11.0 until their product contracts were clear.
