@@ -25,19 +25,24 @@ def selects_by_name(command: str) -> bool:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("work", nargs="?", type=Path, default=data_root() / "work.md")
+    # A ROOT, not a work.md path, because corpus() reads root/work.md itself: a file
+    # argument it ignored would report a clean scan of a file it never opened. Resolved
+    # after parsing so --help needs neither a git repo nor XP_DATA.
+    parser.add_argument("root", nargs="?", type=Path, help="data root holding work.md")
     args = parser.parse_args()
-    if not args.work.exists():
-        print(f"scanned nothing: {args.work} is absent")
+    root = args.root or data_root()
+    work = root / "work.md"
+    if not work.exists():
+        print(f"scanned nothing: {work} is absent")
         return 0
     try:
         offenders = [
             (eid, command)
-            for eid, _head, command, _covered in corpus(args.work.parent)
+            for eid, _head, command, _covered in corpus(root)
             if selects_by_name(command)
         ]
     except OSError as exc:
-        print(f"refused: cannot read {args.work}: {exc}", file=sys.stderr)
+        print(f"refused: cannot read {work}: {exc}", file=sys.stderr)
         return 2
     if offenders:
         refs = ", ".join(eid for eid, _command in offenders)
@@ -47,7 +52,7 @@ def main() -> int:
             file=sys.stderr,
         )
         return 1
-    print(f"checked open falsifiers in {args.work}")
+    print(f"checked open falsifiers in {work}")
     return 0
 
 

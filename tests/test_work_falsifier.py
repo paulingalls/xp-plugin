@@ -1,5 +1,6 @@
 """Repository falsifier rules and shipped record behavior."""
 
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -7,30 +8,30 @@ from pathlib import Path
 import pytest
 from sprint_helpers import CONFIG, make_repo, work
 from test_work import run
+from work import entry_id
 
 CHECKER = Path(__file__).parent / "scripts" / "check_falsifier_node_ids.py"
 LEFTHOOK = Path(__file__).parent.parent / "lefthook.yml"
 
 
-def check_records(path):
-    return subprocess.run([sys.executable, CHECKER, path], capture_output=True, text=True)
+def check_records(root, text):
+    (root / "work.md").write_text(text)
+    return subprocess.run([sys.executable, CHECKER, root], capture_output=True, text=True)
 
 
-def record(command, resolved=False):
+def record(command, replacement=None):
     original = (
         "## debt 2026-08-29T00:00:00Z\n"
         "Claim: selected by name\n"
         f"Falsifier: `{command}`\n"
         "Files: tests/test_example.py\n\n"
     )
-    if not resolved:
+    if replacement is None:
         return original
-    from work import entry_id
-
     return (
         original
         + f"## resolved 2026-08-29T00:00:01Z\nResolves: {entry_id(original)}\n"
-        + ("Falsifier: `true`\n\n")
+        + f"Falsifier: `{replacement}`\n\n"
     )
 
 
@@ -45,17 +46,24 @@ def record(command, resolved=False):
     ),
 )
 def test_repo_checker_refuses_an_open_broad_test_selector(tmp_path, command):
-    work = tmp_path / "work.md"
-    work.write_text(record(command))
-    result = check_records(work)
+    result = check_records(tmp_path, record(command))
     assert result.returncode == 1
     assert "exact node id" in result.stderr.lower()
 
 
 def test_repo_checker_ignores_the_selector_on_a_resolved_record(tmp_path):
-    work = tmp_path / "work.md"
-    work.write_text(record("pytest -q tests/test_example.py -k selected", resolved=True))
-    assert check_records(work).returncode == 0
+    text = record("pytest -q tests/test_example.py -k selected", replacement="true")
+    assert check_records(tmp_path, text).returncode == 0
+
+
+def test_repo_checker_refuses_a_resolution_that_selects_by_name(tmp_path):
+    """Constraint 11 binds the replacement too, and the corpus substitutes it for the
+    original — so the clean-resolution case alone would pass a checker that never
+    read a resolution at all."""
+    text = record("true", replacement="pytest -q tests/test_example.py -k selected")
+    result = check_records(tmp_path, text)
+    assert result.returncode == 1
+    assert "exact node id" in result.stderr.lower()
 
 
 @pytest.mark.parametrize(
@@ -66,15 +74,24 @@ def test_repo_checker_ignores_the_selector_on_a_resolved_record(tmp_path):
     ),
 )
 def test_repo_checker_accepts_exact_or_non_test_commands(tmp_path, command):
-    work = tmp_path / "work.md"
-    work.write_text(record(command))
-    assert check_records(work).returncode == 0
+    assert check_records(tmp_path, record(command)).returncode == 0
 
 
 def test_repo_checker_reports_when_there_is_no_record_file(tmp_path):
-    result = check_records(tmp_path / "work.md")
+    result = subprocess.run([sys.executable, CHECKER, tmp_path], capture_output=True, text=True)
     assert result.returncode == 0
     assert "scanned nothing" in result.stdout
+
+
+@pytest.mark.parametrize("argv", (["--help"], ["."]))
+def test_repo_checker_needs_no_ambient_data_root_when_told_where_to_look(tmp_path, argv):
+    """`data_root()` shells out to git and exits 2 outside a repo, so resolving it as an
+    argparse default would make --help refuse and would tie an explicit root to the cwd."""
+    env = {k: v for k, v in os.environ.items() if k != "XP_DATA"}
+    result = subprocess.run(
+        [sys.executable, CHECKER, *argv], capture_output=True, text=True, cwd=tmp_path, env=env
+    )
+    assert result.returncode == 0, result.stderr
 
 
 def test_repo_pre_push_runs_the_falsifier_checker():
