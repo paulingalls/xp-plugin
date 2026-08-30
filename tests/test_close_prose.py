@@ -165,12 +165,12 @@ class TestShippedProseMatchesTheMechanism:
         assert outputs[0] != outputs[1]
 
     def test_the_loop_states_carded_execution_once_and_does_not_grow(self):
-        """Constraint 1: the execution rule displaces its own weight. PROCESS.md
-        measured 5,517 bytes at 896da44, the commit before the entry landed; the
-        cap sits under that so a later edit cannot quietly spend the displacement
-        back."""
+        """Constraint 1. The cap is the LIVE size, never a historical one: left at
+        5,454 for a file that had shrunk to 2,928, it passed with 2,277 characters
+        of padding spliced in — a ratchet with that much slack certifies instead of
+        checking. Re-measure and lower it whenever this file legitimately shrinks."""
         raw = (PLUGIN / "PROCESS.md").read_text()
-        assert len(raw) <= 5454, "the free entry stopped paying for itself"
+        assert len(raw) <= 2928, "the execution rule stopped paying for itself"
         process = " ".join(raw.split())
         story = process.split("2. **Story", 1)[1].split("3. **Story close", 1)[0]
         assert "free work" in story and "worktree" in story

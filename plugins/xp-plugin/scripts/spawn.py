@@ -430,12 +430,6 @@ def resume():
 
 
 def main() -> int:
-    if "--in-place" in sys.argv[1:]:
-        story_id = next((arg for arg in sys.argv[1:] if not arg.startswith("-")), "<story-id>")
-        return fail(
-            f"refused: --in-place was removed; run `spawn.py {story_id}` to launch"
-            " the executor in its worktree"
-        )
     if sys.argv[1:2] in (["ready"], ["amend"]):
         return ready().main(sys.argv[2:], sys.argv[1])
     if sys.argv[1:2] == ["resume"]:
@@ -443,6 +437,14 @@ def main() -> int:
         if not chdir_repo_root():
             return fail("refused: not inside a git repository")
         return cmd_spawn(a.story_id, a.executor, a.dry_run, resuming=True)
+    # After the subcommand dispatch, so the story_id it echoes is a story_id: ahead
+    # of it, `spawn.py resume <id> --in-place` names `spawn.py resume` as the launch.
+    if "--in-place" in sys.argv[1:]:
+        story_id = next((arg for arg in sys.argv[1:] if not arg.startswith("-")), "<story-id>")
+        return fail(
+            f"refused: --in-place was removed; run `spawn.py {story_id}` to launch"
+            " the executor in its worktree"
+        )
     p = argparse.ArgumentParser(
         description=__doc__,
         epilog="ready <story-id>: after the card review, mint the card's digest and"

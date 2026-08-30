@@ -354,6 +354,10 @@ class TestRetiredInPlace:
         assert refused.returncode == 2
         assert "spawn.py story-042" in refused.stderr and "worktree" in refused.stderr
         assert help_text.returncode == 0 and "--in-place" not in help_text.stdout
+        # Above the subcommand dispatch the tombstone swallows every leg, and the
+        # story_id it echoes is the subcommand: "run `spawn.py resume` to launch".
+        stale = spawn(repo, env, "resume", "story-042", "--in-place")
+        assert stale.returncode == 2 and "was removed; run" not in stale.stderr
 
 
 class TestConfigRoleParsing:

@@ -13,12 +13,12 @@ recovery block and sprint slice; they are not injected. Artifacts win.
    free work spends no slot. `spawn.py ready <story-id>` binds it.
    For multi-file work, the executor writes and runs the **plan review**; the lead
    never writes it. Human-only questions stop.
-2. **Story** — red → green → refactor, small commits. For carded story and free
-   work, code is always written on its branch in a worktree, never in the lead's checkout.
-   This is practice, not a wall: the data root proves spawn, not authorship. Done
-   means ACs at the surface. Git hooks are the wall: lint, secrets and fast tests at
-   commit; full tests and ratchet at push. Never bypass or fake a red;
-   prose/config-only commits name why no red exists.
+2. **Story** — red → green → refactor, small commits. Carded story and free work
+   is written in its branch's worktree, never in the lead's checkout — practice, not
+   a wall: the data root proves spawn, not authorship. Done means ACs at the surface.
+   Git hooks are the wall: lint, secrets and fast tests at commit; full tests and
+   ratchet at push. Never bypass or fake a red; prose/config-only commits name why
+   no red exists.
 
    Comments: restates the code → delete · explains WHAT → rename it · a checkable
    claim → write the test · narrates history → delete, git holds it. Keep only the
