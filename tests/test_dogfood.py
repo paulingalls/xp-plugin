@@ -70,7 +70,7 @@ class TestDogfoodMatchesTheScaffold:
             if path.is_file() and "__pycache__" not in path.parts
         }
         assert len(shipped) > 40, "scanned nothing — a green here would certify (constraint 2)"
-        forbidden = ("pytest", "py.test", "bun test", "node id", "::")
+        forbidden = ("pytest", "py.test", "bun test", "unittest", "node id", "::")
         named = [
             f"{path.relative_to(plugin)} names {term!r}"
             for path, text in shipped.items()
