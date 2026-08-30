@@ -1,9 +1,9 @@
-"""story-012b: the reviewer fixes; the lead reads its diff.
-Split from test_close.py at sprint-004 open."""
+"""story-012b: the reviewer fixes; the lead reads its diff."""
 
 import subprocess
 import sys
 
+import pytest
 from close_helpers import (  # noqa: F401
     CARD,
     CLEAN,
@@ -478,6 +478,7 @@ class TestFixingReviewer:
         second = launches(tmp_path)[1]["stdin"]
         assert "renamed the flag" in second and "N1: punted on purpose" in second
 
+    @pytest.mark.slow
     def test_a_reviewer_that_produces_nothing_is_still_killed(self, tmp_path):
         """story-012b: review is the only long-running command AND the only
         writer. story-036 AC 8: the bound became IDLE rather than wall, and this
