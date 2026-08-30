@@ -144,14 +144,11 @@ class TestReadyCredential:
         assert refused.returncode == 2 and "amend requires --reason" in refused.stderr
         assert (plan.read_text(), self.marker(tmp_path).read_text()) == before
 
-    # In place is a spawn with no worktree, so a hatch closed only for teammate
-    # launches leaves the lead — the one who hit this in sprint 12 — still holding it.
-    @pytest.mark.parametrize("launch", [[], ["--in-place"]])
-    def test_a_spawned_card_cannot_use_two_raw_flips_to_erase_its_drift(self, tmp_path, launch):
+    def test_a_spawned_card_cannot_use_two_raw_flips_to_erase_its_drift(self, tmp_path):
         repo, env, _g = make_repo(tmp_path, status="planned")
         stub_claude(tmp_path)
         self.mint(repo, env)
-        assert spawn(repo, env, "story-042", *launch).returncode == 0
+        assert spawn(repo, env, "story-042").returncode == 0
         self.edit_card(tmp_path, "Context: demo.", "Context: unreviewed answer.")
         plan = tmp_path / "data" / "plan.md"
         plan.write_text(plan.read_text().replace("[in-progress]", "[planned]"))

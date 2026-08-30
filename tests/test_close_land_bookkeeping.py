@@ -35,8 +35,7 @@ class TestLandBookkeeping:
         assert g("rev-parse", "origin/main").stdout.strip() == local_main
 
     def test_unpushed_story_branch_does_not_produce_a_spurious_failure(self, tmp_path):
-        """N2b: a story closed with `spawn --in-place` never pushed its branch —
-        this repo's own story-007 did exactly that."""
+        """N2b: an absent remote story branch is already the desired end state."""
         repo, env, g = self.with_origin(tmp_path, push_story_branch=False)
         close(repo, env, "review")
         r = close(repo, env, "land")
