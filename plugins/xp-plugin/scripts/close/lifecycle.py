@@ -35,7 +35,8 @@ def _commands(raw: str, owner: str, runnable: bool, chained: bool) -> list[list[
         missing := next((a[0] for a in commands if a[0] == "cd" or not shutil.which(a[0])), "")
     ):
         raise ValueError(
-            f"refused: {owner} command {missing!r} is not runnable on PATH — no shell, no `cd`"
+            f"refused: {owner} command {missing!r} is not runnable on PATH — no shell,"
+            " no `cd`: pass any working directory through the runner's own option"
         )
     return commands
 
