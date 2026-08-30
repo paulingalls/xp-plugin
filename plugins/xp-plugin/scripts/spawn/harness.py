@@ -47,7 +47,10 @@ def missing_harness(harness: str) -> str:
         harness, plugin_manifest_value(PLUGIN_ROOT, "name"), plugin_version(PLUGIN_ROOT)
     )
     if status == "absent-plugin":
-        return f"{harness} does not carry this plugin — install it (`{PLUGIN_INSTALL[harness]}`)"
+        return (
+            f"{harness} has no ENABLED copy of this plugin — install it"
+            f" (`{PLUGIN_INSTALL[harness]}`) or enable the copy it already has"
+        )
     return ""
 
 

@@ -93,7 +93,7 @@ def install_status(source="", name="", running="") -> tuple[str, str]:
         local = [x for x in local if os.path.realpath(x["projectPath"]) == project]
         users = [x for x in matched if x.get("scope") == "user" and "projectPath" not in x]
         matched = local or users
-    if not matched:
+    if not (matched := [x for x in matched if x.get("enabled", True)]):  # missing != disabled
         return "absent-plugin", ""
     item = min(matched, key=lambda value: (value.get("version") != running, str(value.get(key))))
     identity, found = item.get(key), item.get("version")

@@ -280,6 +280,18 @@ class TestCodexExecutor:
         assert "codex plugin add xp-plugin@xp-plugin" in r.stderr, r.stderr
         assert not (tmp_path / "data" / "worktrees" / "story-042").exists()
 
+    def test_a_disabled_copy_is_not_an_install_because_the_launch_loads_none_of_it(self, tmp_path):
+        """Both harnesses report `enabled` and both report it false for real records:
+        a disabled copy is PRESENT and supplies no hook, skill or injection, so
+        reading presence alone launches exactly the uninstrumented agent this gate
+        exists to stop."""
+        repo, env, _g = make_repo(tmp_path, executor="codex/gpt-5.6-terra/medium")
+        record = {"pluginId": "xp-plugin@xp-plugin", "version": "0.14.1", "enabled": False}
+        self.installed_codex(tmp_path, [record])
+        r = spawn(repo, env, "story-042", "--dry-run")
+        assert r.returncode == 2, r.stdout[:300]
+        assert "codex plugin add xp-plugin@xp-plugin" in r.stderr, r.stderr
+
     def test_a_different_plugin_version_launches_without_consuming_the_drift_edge(
         self, tmp_path, monkeypatch
     ):
