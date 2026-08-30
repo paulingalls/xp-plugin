@@ -1,9 +1,23 @@
-"""Mandatory free-card lifecycle cases, collected from test_close_free.py."""
+"""The free card's lifecycle: mint, amend, drift remediation, Verify, salvage.
+
+What is NOT here: the free LEG — start, land, release, post-merge — which stays
+distinct on purpose and is covered beside this file.
+"""
 
 import json
+import subprocess
+import sys
 from pathlib import Path
 
-from close_helpers import CONFIG_PATCH, free, free_repo, launches, marker_file, stub_reviewer
+from close_helpers import (
+    CLOSE,
+    CONFIG_PATCH,
+    free,
+    free_repo,
+    launches,
+    marker_file,
+    stub_reviewer,
+)
 from spawn_helpers import spawn
 from test_close_salvage import KILLED, dying_reviewer
 
@@ -222,3 +236,41 @@ class FreeCardCases:
         assert "#### " + key in preview.stdout
         assert "[planned]" in (Path(env["XP_DATA"]) / "plan.md").read_text()
         assert not (Path(env["XP_DATA"]) / "markers" / f"{key}.ready.json").exists()
+
+    def test_a_hand_written_heading_without_its_bracket_refuses(self, tmp_path):
+        """The card-less refusal tells the lead to TYPE that heading, so its
+        likeliest typo must reach a refusal rather than a traceback."""
+        repo, env, g = free_repo(tmp_path)
+        assert free(repo, env, "fix-typo", "start").returncode == 0
+        _branch, key = free_identity(g)
+        commit_on_free(repo, g)
+        add_free_card(env, key)
+        plan = Path(env["XP_DATA"]) / "plan.md"
+        plan.write_text(plan.read_text().replace(f"{key} — fix typo   [planned]", f"{key} — fix"))
+
+        result = free(repo, env, "fix-typo", "review")
+
+        assert result.returncode == 2, result.stdout + result.stderr
+        assert "Traceback" not in result.stderr, result.stderr
+        assert "[status] bracket" in result.stderr, result.stderr
+
+    def test_the_story_noun_cannot_review_a_free_card_nothing_minted(self, tmp_path):
+        """`close.py story <key>` is the wrong-noun move e2ff1a03 measured a lead
+        making; it must not buy a review round for a card still [planned]."""
+        repo, env, g = free_repo(tmp_path)
+        assert free(repo, env, "fix-typo", "start").returncode == 0
+        _branch, key = free_identity(g)
+        commit_on_free(repo, g)
+        add_free_card(env, key)
+
+        result = subprocess.run(
+            [sys.executable, str(CLOSE), "story", key, "review"],
+            cwd=repo,
+            env=env,
+            capture_output=True,
+            text=True,
+        )
+
+        assert result.returncode == 2 and "[planned]" in result.stderr, result.stderr
+        assert launches(tmp_path) == [], "a review ran on a card nothing minted"
+        assert not marker_file(tmp_path, key).exists(), "an unminted card recorded a round"

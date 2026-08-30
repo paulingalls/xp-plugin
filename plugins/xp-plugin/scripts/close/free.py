@@ -85,7 +85,10 @@ def cmd_review(slug: str, dry_run: bool) -> int:
             f" and Verify to {plan_path()}, then run `close.py {noun} review`"
         )
     if not dry_run:
-        _card, status = story_card(plan_path().read_text(), key)
+        try:
+            _card, status = story_card(plan_path().read_text(), key)
+        except KeyError as e:  # the heading above is hand-written; a typo'd one is a refusal
+            return fail(f"refused: {e.args[0]}")
         if status == "planned" and ready.mint(key):
             return 2
         if status in ("planned", "ready") and not flip_card(key, "ready", "in-progress"):

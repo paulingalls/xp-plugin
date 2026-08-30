@@ -154,7 +154,7 @@ def build_bundle(card: str, base: str, report: Path, prior: str = "", notice: st
     return "".join(f"## {title}\n\n{body}\n\n" for title, body in sections)
 
 
-def _preflight(story_id: str, action: str) -> tuple[str, str, str]:
+def _preflight(story_id: str, action: str, dry_run: bool = False) -> tuple[str, str, str]:
     if git("status", "--porcelain").stdout.strip():
         return "", "", "refused: working tree is dirty — commit or stash first"
     _noun, free_slug = leg(story_id)
@@ -165,7 +165,10 @@ def _preflight(story_id: str, action: str) -> tuple[str, str, str]:
         card, status = story_card(plan_path().read_text(), story_id)
     except KeyError as e:
         return "", "", f"refused: {e.args[0]}"
-    previewable = free_slug and action == "review" and status in ("planned", "ready")
+    # Only a PREVIEW: free.cmd_review mints and flips before every real review, so a
+    # live one arriving here [planned] came in under the story noun, and reviewing it
+    # spends a round on a card nothing committed to.
+    previewable = dry_run and free_slug and action == "review" and status in ("planned", "ready")
     if status != "in-progress" and not previewable:
         return "", "", f"refused: {story_id} is [{status}], {action} requires [in-progress]"
     try:
@@ -230,7 +233,7 @@ def _record_round(story_id: str, card: str, path: Path, marker: Path, state: dic
 def cmd_review(story_id: str, dry_run: bool = False) -> int:
     import review
 
-    card, trunk, err = _preflight(story_id, "review")
+    card, trunk, err = _preflight(story_id, "review", dry_run)
     if err:
         return fail(err)
     marker = marker_path(story_id)
