@@ -95,15 +95,16 @@ def clear_sprint_branch() -> None:
     sprint_branch_path().unlink(missing_ok=True)
 
 
-def plugin_version(root: Path) -> str:
+def plugin_manifest_value(root: Path, key: str) -> str:
     try:
-        manifest = json.loads((root / ".claude-plugin" / "plugin.json").read_text())
-    except (OSError, ValueError):
+        value = json.loads((root / ".claude-plugin" / "plugin.json").read_text()).get(key)
+    except (AttributeError, OSError, ValueError):
         return "unknown"
-    if not isinstance(manifest, dict):
-        return "unknown"
-    version = manifest.get("version")
-    return version if isinstance(version, str) and version else "unknown"
+    return value if isinstance(value, str) and value else "unknown"
+
+
+def plugin_version(root: Path) -> str:
+    return plugin_manifest_value(root, "version")
 
 
 def write_env(root: Path, version: str) -> None:

@@ -34,7 +34,6 @@ from work import (
 )
 
 PLUGIN_ROOT = Path(__file__).parent.parent
-PROJECT_PLUGIN = Path("plugins/xp-plugin")
 
 # Tokens (chars//4). The cap covers prose WE ship — VALUES, TEAMMATE.md, the
 # seed constraints file and always-on component metadata — because ownership is
@@ -185,7 +184,7 @@ def run_agent(
     log_id: str,
 ) -> subprocess.CompletedProcess:
     """Run one role with its prompt off argv and the reviewer silence bound on."""
-    env = os.environ | {"XP_ROLE": role}
+    env = os.environ | {"XP_ROLE": role, "XP_HARNESS": harness}
     # BOTH reviewer legs: a review is the one launch both long-running AND
     # writing, and a hung one owns the lead's tree, with edit rights, forever. A
     # teammate legitimately outruns any bound, and cmd_spawn's call site has no
@@ -220,14 +219,6 @@ def common_dir_widening(cwd: Path) -> list[str]:
 
 def worktree_path(story_id: str) -> Path:
     return data_root() / "worktrees" / story_id
-
-
-def execution_root(tree: Path, cut_from: str) -> Path:
-    # Asked of the ref the tree is CUT FROM, never `tree`: the prompt precedes the worktree.
-    # NOT the integration target — free cuts off the default branch, resume re-enters one.
-    source = PROJECT_PLUGIN / "scripts" / "spawn.py"
-    exists = git("cat-file", "-e", f"{cut_from}:{source}", check=False)
-    return tree / PROJECT_PLUGIN if exists.returncode == 0 else PLUGIN_ROOT
 
 
 def flip_to_in_progress(story_id: str) -> None:
@@ -291,7 +282,7 @@ def cmd_spawn(story_id: str, override: str, dry_run: bool, resuming: bool = Fals
     tree = worktree_path(story_id)
     trunk = integration_target()
     reuse = bool(FREE_ID.fullmatch(story_id)) and current_branch() == branch
-    plugin_root = execution_root(tree, branch if reuse or resuming else trunk)
+    plugin_root = PLUGIN_ROOT
     argv = agent_argv(harness, model, effort, "stream-json", sandbox)
     handoff = inheritance(data_root(), story_id)
     if resuming and tree.is_dir():

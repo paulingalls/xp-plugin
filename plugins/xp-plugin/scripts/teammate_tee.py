@@ -355,7 +355,7 @@ def run_teammate(
         story_id,
         data_root,
         harness,
-        os.environ | {"XP_ROLE": "teammate", "XP_STORY_ID": story_id},
+        os.environ | {"XP_ROLE": "teammate", "XP_STORY_ID": story_id, "XP_HARNESS": harness},
         widen_git=True,  # the executor commits and must
     )
     if proc.returncode == 0 and harness == "claude" and proc.stdout:

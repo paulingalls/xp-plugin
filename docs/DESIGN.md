@@ -43,40 +43,34 @@ repo/                              (in-repo: durable, git-versioned, PR-reviewab
 ├── work.md                        open bugs/debts/notes — all writes via the flock'd append CLI, never direct edits
 ├── env.json                       machine facts for processes the plugin never spawned: the installed
 │                                  plugin root + the version that recorded it (setup seeds, SessionStart refreshes)
+├── installed-<source>-version     last public-CLI observation, scoped by project and source harness
 ├── markers/                       ALWAYS scoped: <story-id>.ready.json (the reviewed card's digest),
 │                                  <story-id>.close.json, <session>.test-status — a project-global
 │                                  marker is a design error
 └── locks/
 ```
 
-**env.json, and why the read refuses.** A codex-native lead's scripts, and any hook
-outside a spawn, have no `${CLAUDE_PLUGIN_ROOT}` and no `Path(__file__)` inside the
-plugin — but they can derive the data root from git alone, so that is where the
-installed plugin root goes. Project-scoped, never global: two projects may pin two
-plugin versions. `setup.py` seeds it; `session_start.py` refreshes it every session, on
-both harnesses and both roles. The refresh is load-bearing rather than belt-and-braces:
-the codex cache is version-keyed, so every release makes staleness expected. The reader
-therefore names the bad file/value and refresh route, and checks its manifest version;
-existence alone passes on a cache that keeps old versions. One case is out of its reach
-and is bounded by the refresh instead: a kept old directory whose manifest still matches
-the recorded version is self-consistent. The version line is also the skew signal — two
-harnesses can hold two installs, and the last SessionStart wins the pointer. **`spawn.py`
-never reads env.json** — it runs FROM the plugin and knows `Path(__file__)`, and the
-pointer can be a frozen codex cache, so reading it would put a stale, refusable lookup in
-front of the one path that never needs one. A consumer without `plugins/xp-plugin` keeps
-the invoked installed root and unchanged output. When THE REF THE WORKTREE IS CUT FROM
-carries that path — the integration target for a story, the branch itself for a free
-patch or a resume, and they differ — spawn substitutes its future worktree root into the
-executor's commands and tells the lead to use that root and manifest version for every
-review and land leg.
-Resolving in `close.py` was rejected as a consumer change; a card-only walk leaves other
-plugin changes silent. The price of that rejection is that the handback is the only
-carrier: every later close.py refusal and land message re-spells a bare `close.py`, so a
-lead following the newest line on screen is back on the installed pipeline. The COMMANDS
-move; the executor's SESSION does not. Its `--plugin-dir` (and codex's cache) still load
-the installed hooks, skills and charters, and the prompt reads installed VALUES and
-TEAMMATE prose before the worktree exists — so a story changing any of those is still
-unwalked by the leg that closes it.
+**Install state, with two truths kept separate.** `env.json` is the last SessionStart
+pointer for processes the plugin did not spawn. It is project-scoped and refreshed by
+both roles, but it is not version-change evidence: a different installed copy can rewrite
+it while this session keeps running. `spawn.py` never reads it because an invoked script
+already knows its own root.
+
+SessionStart treats its own manifest as the running truth and queries only the other
+harness's public `plugin list --json` record. Spawn stamps the running harness; an
+unstamped direct session probes only when exactly one native harness signal is present.
+Claude project scope is matched to the real git-common-dir parent and precedes user scope;
+a user record is eligible only when `projectPath` is absent. List order never decides.
+Absent CLI and absent plugin remain distinct silent states. A match updates the
+project-and-source-scoped observation file: a changed observation is announced, and a
+version mismatch names both versions and the record-derived repair command. A copy older
+than this check cannot report on itself; the mechanism prevents recurrence after upgrade,
+not the bootstrap failure already running.
+
+Spawn and close now use the installed or otherwise invoked plugin root regardless of a
+consumer repository's layout. The accepted cost is that a self-hosting story no longer
+executes the edited plugin tree during its own close. The cross-harness notice detects a
+future stale install; it does not walk or verify that edited surface.
 
 Two harness adapters over one shared core:
 
