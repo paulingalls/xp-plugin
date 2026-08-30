@@ -28,10 +28,10 @@ recovery block and sprint slice; they are not injected. Artifacts win.
    The bar: silent or corrupting (false green, corrupted record, unreviewed merge)
    earns a round; loud does not.
 4. **Sprint close** — Uncovered falsifiers run before full. `--covered-by full`
-   trusts only that tier's named green verdict; absent or red runs its command.
+   trusts only that tier's green verdict and is named; absent or red runs its command.
    Triage and retro follow; review covers retro. Present it; with the human, schedule
    debt under budget or drop it. Nothing carries.
-5. **Free** — scope one patch, then `free start`; cut release artifacts, then run free review, land and post-merge.
+5. **Free** — scope one patch, then `free start`; cut release artifacts, free review, land and post-merge.
 
 ## Records (`work.py` only)
 
