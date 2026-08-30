@@ -22,6 +22,17 @@ description: >-
      own tooling (browser, subprocess, request harnesses, …) — judgment work,
      not scaffolding
    - a linter in the pre-commit hook
-3. Plan the first milestone in the plan the scaffold wrote — it is PER CLONE,
+3. Set `roles.executor` with the human — the scaffold ships a default, so reading
+   it unasked offers the harness the template guessed, not the team's. That
+   harness's teammates need a user install of this plugin; offer to run its pair:
+   - Claude: `claude plugin marketplace add paulingalls/xp-plugin`, then
+     `claude plugin install xp-plugin@xp-plugin --scope user`
+   - Codex: `codex plugin marketplace add paulingalls/xp-plugin`, then
+     `codex plugin add xp-plugin@xp-plugin`
+   Only if they accept; declining or a failure never undoes setup — report and
+   continue. If marketplace add says the name exists, the source is there: run
+   the second command anyway, not `marketplace upgrade` — on codex that refreshes
+   a Git source but exits 0 without touching a local one.
+4. Plan the first milestone in the plan the scaffold wrote — it is PER CLONE,
    outside the repo, and setup prints its path. The skeleton card shows the
    format; every story needs runnable `Verify:` commands.

@@ -7,6 +7,7 @@ These pin the SHAPE the code parses, never the content: a project's tiers,
 constraints and stories are legitimately its own.
 """
 
+import json
 import os
 import shutil
 import subprocess
@@ -310,6 +311,23 @@ class TestDogfoodMatchesTheScaffold:
         assert f"≤{DIGEST_CAP} lines" in skill, (
             f"the SKILL does not state the {DIGEST_CAP}-line bound the hook enforces"
         )
+
+    def test_setup_offers_the_install_commands_the_spawn_refusal_names(self):
+        """Three copies of one identity: the manifests key the marketplace, harness.py
+        prints it when a spawn finds a bare harness, and the SKILL offers it at setup.
+        Only the code's copy is runnable, so both others pin to it — asserting the
+        identity alone left either harness's whole bullet deletable while green."""
+        from harness import PLUGIN_INSTALL
+
+        marketplace = json.loads((self.REPO / ".claude-plugin/marketplace.json").read_text())
+        manifest = json.loads(
+            (self.REPO / "plugins/xp-plugin/.claude-plugin/plugin.json").read_text()
+        )
+        identity = f"{manifest['name']}@{marketplace['name']}"
+        skill = (self.REPO / "plugins/xp-plugin/skills/xp-setup/SKILL.md").read_text()
+        for name, command in PLUGIN_INSTALL.items():
+            assert identity in command, f"{name}'s install command does not name {identity}"
+            assert command in skill, f"setup does not offer {name}: `{command}`"
 
     def test_the_shipped_plan_parses_with_the_parser_sprint_close_uses(self):
         """Was a PAIR: it also read THIS repo's .xp/plan.md, so our live plan and
