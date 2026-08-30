@@ -164,17 +164,19 @@ class TestShippedProseMatchesTheMechanism:
             assert "Commit, then" not in result.stdout
         assert outputs[0] != outputs[1]
 
-    def test_the_loop_names_free_execution_and_does_not_grow(self):
-        """Constraint 1: the free entry displaces its own weight. PROCESS.md
+    def test_the_loop_states_carded_execution_once_and_does_not_grow(self):
+        """Constraint 1: the execution rule displaces its own weight. PROCESS.md
         measured 5,517 bytes at 896da44, the commit before the entry landed; the
         cap sits under that so a later edit cannot quietly spend the displacement
         back."""
-        process = (PLUGIN / "PROCESS.md").read_text()
-        assert len(process) <= 5454, "the free entry stopped paying for itself"
-        free_entry = process.split("5. **Free", 1)[1].split("## Records", 1)[0]
-        assert "spawn.py" in free_entry
-        assert "worktree" in free_entry and "data root" in free_entry
-        assert "authorship cannot" in free_entry.lower()
+        raw = (PLUGIN / "PROCESS.md").read_text()
+        assert len(raw) <= 5454, "the free entry stopped paying for itself"
+        process = " ".join(raw.split())
+        story = process.split("2. **Story", 1)[1].split("3. **Story close", 1)[0]
+        assert "free work" in story and "worktree" in story
+        assert "never in the lead's checkout" in story
+        assert "practice, not a wall" in story and "data root proves spawn" in story
+        assert process.count("worktree") == 1
 
     def test_a_script_driving_skill_does_not_restate_the_mechanism(self):
         """Measured drift, three times in two sprints, caught by a READER every

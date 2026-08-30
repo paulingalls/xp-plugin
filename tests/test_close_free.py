@@ -107,7 +107,7 @@ class TestFreeStart:
         result = free(repo, env, "fix-typo", "start")
         assert result.returncode == 0 and "no card" in result.stdout
 
-    def test_a_carded_spawn_reuses_the_free_branch_and_its_commits(self, tmp_path):
+    def test_a_carded_spawn_reuses_the_free_branch_and_lands_from_its_worktree(self, tmp_path):
         repo, env, g = carded_free_patch(tmp_path)
         (repo / "lead-left.txt").write_text("mine\n")
         refused = spawn(repo, env, KEY)
@@ -123,6 +123,13 @@ class TestFreeStart:
         assert f"at {tree} (continued, not cut)" in result.stdout
         assert "`close.py free fix-typo review` from that worktree" in result.stdout
         assert "close.py story" not in result.stdout
+        stub_reviewer(tmp_path)
+        review = free(tree, env, "fix-typo", "review")
+        assert review.returncode == 0, review.stderr + review.stdout
+        land = free(tree, env, "fix-typo", "land")
+        assert land.returncode == 0, land.stderr + land.stdout
+        create = [call for call in gh_calls(tmp_path) if call[:2] == ["pr", "create"]]
+        assert len(create) == 1 and create[0][create[0].index("--base") + 1] == "main"
 
     def test_a_spawn_from_off_the_free_branch_names_the_checkout(self, tmp_path):
         """The lead's own checkout is the only thing missing, and `git branch -D`
@@ -133,13 +140,6 @@ class TestFreeStart:
         refused = spawn(repo, env, KEY)
         assert refused.returncode == 2 and f"git checkout {BRANCH}" in refused.stderr
         assert g("rev-parse", "--verify", "-q", BRANCH).returncode == 0
-
-    def test_a_carded_in_place_spawn_keeps_the_free_branch(self, tmp_path):
-        repo, env, g = carded_free_patch(tmp_path)
-        result = spawn(repo, env, KEY, "--in-place")
-        assert result.returncode == 0, result.stderr
-        assert g("branch", "--show-current").stdout.strip() == BRANCH
-        assert (repo / "src" / "free.py").read_text() == "B = 1\n"
 
     def test_start_anywhere_but_the_default_branch_refuses_naming_it(self, tmp_path):
         """AC 2: a free branch cut off a story branch carries that story's

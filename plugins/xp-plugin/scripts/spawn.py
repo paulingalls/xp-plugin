@@ -252,29 +252,6 @@ def not_ready_hint(status: str, story_id: str) -> str:
     )
 
 
-def cmd_in_place(story_id: str, card: str) -> int:
-    """Create the story branch in the current tree without launching."""
-    if git("status", "--porcelain").stdout.strip():
-        return fail(
-            "refused: working tree is dirty — commit or stash first, or the"
-            " uncommitted work rides onto the story branch unreviewed"
-        )
-    branch = story_branch(card, story_id)
-    if FREE_ID.fullmatch(story_id) and current_branch() == branch:
-        flip_to_in_progress(story_id)
-        print(f"{branch} already current — in place, nothing launched; you are the executor")
-        return 0
-    if git("rev-parse", "--verify", "-q", f"refs/heads/{branch}", check=False).returncode == 0:
-        return fail(f"refused: branch {branch} already exists")
-    trunk = integration_target()
-    made = git("checkout", "-q", "-b", branch, trunk, check=False)
-    if made.returncode != 0:
-        return fail(f"git checkout -b failed: {made.stderr.strip()}")
-    flip_to_in_progress(story_id)
-    print(f"{branch} off {trunk} — in place, nothing launched; you are the executor")
-    return 0
-
-
 # The shape close/free.py cuts and every free leg keys off; group 2 is the slug
 # those legs take as their argument.
 FREE_ID = re.compile(r"free-(\d{4}-\d\d-\d\d-(.+))")
@@ -290,9 +267,7 @@ def current_branch() -> str:
     return git("branch", "--show-current").stdout.strip()
 
 
-def cmd_spawn(
-    story_id: str, override: str, dry_run: bool, in_place: bool = False, resuming: bool = False
-) -> int:
+def cmd_spawn(story_id: str, override: str, dry_run: bool, resuming: bool = False) -> int:
     if not plan_path().exists():
         return fail("refused: " + missing_plan_refusal())
     try:
@@ -308,14 +283,6 @@ def cmd_spawn(
         return fail(f"refused: {story_id} is [{status}], spawn requires [ready]. {hint}")
     if not resuming and (drift := ready().drift(story_id, card)):
         return fail(drift)
-    if in_place:
-        if dry_run:
-            print(
-                f"would create {story_branch(card, story_id)} off {integration_target()},"
-                f" flip {story_id} to [in-progress], and launch nothing"
-            )
-            return 0
-        return cmd_in_place(story_id, card)
     harness, model, effort = resolve_role("executor", card, override)
     sandbox, problem = resolve_codex_sandbox(harness, config_flat("codex_sandbox"))
     if problem:
@@ -463,6 +430,12 @@ def resume():
 
 
 def main() -> int:
+    if "--in-place" in sys.argv[1:]:
+        story_id = next((arg for arg in sys.argv[1:] if not arg.startswith("-")), "<story-id>")
+        return fail(
+            f"refused: --in-place was removed; run `spawn.py {story_id}` to launch"
+            " the executor in its worktree"
+        )
     if sys.argv[1:2] in (["ready"], ["amend"]):
         return ready().main(sys.argv[2:], sys.argv[1])
     if sys.argv[1:2] == ["resume"]:
@@ -479,15 +452,10 @@ def main() -> int:
     p.add_argument("story_id")
     p.add_argument("executor", nargs="?", default="", help="harness/model[/effort] override")
     p.add_argument("--dry-run", action="store_true")
-    p.add_argument(
-        "--in-place",
-        action="store_true",
-        help="create the story branch here and stop — the lead executes it solo",
-    )
     a = p.parse_args()
     if not chdir_repo_root():
         return fail("refused: not inside a git repository")
-    return cmd_spawn(a.story_id, a.executor, a.dry_run, a.in_place)
+    return cmd_spawn(a.story_id, a.executor, a.dry_run)
 
 
 if __name__ == "__main__":

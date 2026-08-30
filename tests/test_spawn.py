@@ -346,52 +346,14 @@ class TestExecutorResolution:
         assert "--effort" not in argv  # two-part spec: reviewer role shape (story-008)
 
 
-class TestInPlace:
-    """The lead implementing a story solo (DESIGN §8) had NO branch-creation step:
-    spawn made one only on the delegation path, so solo work landed straight on
-    the sprint branch. close.py refuses to close from the trunk, but only after
-    the whole story is written — and the recovery (branch + reset) is cheap only
-    while nothing is pushed. Measured on story-007 itself."""
-
-    def test_creates_the_story_branch_without_launching(self, tmp_path):
+class TestRetiredInPlace:
+    def test_the_retired_flag_refuses_with_the_worktree_route(self, tmp_path):
         repo, env, _g = make_repo(tmp_path)
-        rec = stub_claude(tmp_path)
-        r = spawn(repo, env, "story-042", "--in-place")
-        assert r.returncode == 0, r.stderr
-        assert not rec.exists()  # nothing launched: the lead does the work
-        assert not (tmp_path / "data" / "worktrees" / "story-042").exists()
-        assert in_tree(repo, env, "branch", "--show-current") == "ada/story-042-demo-story"
-        assert "[in-progress]" in (tmp_path / "data" / "plan.md").read_text()
-        assert in_tree(repo, env, "status", "--porcelain") == ""
-
-    def test_dry_run_creates_nothing(self, tmp_path):
-        """--in-place dispatched BEFORE the dry-run check, so the one flag whose
-        whole contract is "changes nothing" created a branch and a commit."""
-        repo, env, _g = make_repo(tmp_path)
-        before = in_tree(repo, env, "rev-parse", "HEAD")
-        r = spawn(repo, env, "story-042", "--in-place", "--dry-run")
-        assert r.returncode == 0 and "would create" in r.stdout
-        assert in_tree(repo, env, "branch", "--show-current") == "elsewhere"
-        assert in_tree(repo, env, "rev-parse", "HEAD") == before
-        assert "[ready]" in (tmp_path / "data" / "plan.md").read_text()
-
-    def test_existing_branch_refused(self, tmp_path):
-        repo, env, _g = make_repo(tmp_path)
-        assert spawn(repo, env, "story-042", "--in-place").returncode == 0
-        subprocess.run(["git", "checkout", "-q", "main"], cwd=repo, env=env)
-        reset_to_ready(tmp_path)  # else the [in-progress] guard fires first
-        r = spawn(repo, env, "story-042", "--in-place")
-        assert r.returncode == 2 and "already exists" in r.stderr
-        assert in_tree(repo, env, "branch", "--show-current") == "main"
-
-    def test_dirty_tree_refused(self, tmp_path):
-        """git worktree tolerates a dirty tree; switching branches in place does
-        not — uncommitted work would ride onto the story branch unreviewed."""
-        repo, env, _g = make_repo(tmp_path)
-        (repo / "scratch.txt").write_text("uncommitted\n")
-        r = spawn(repo, env, "story-042", "--in-place")
-        assert r.returncode == 2 and "dirty" in r.stderr.lower()
-        assert in_tree(repo, env, "branch", "--show-current") == "elsewhere"
+        refused = spawn(repo, env, "story-042", "--in-place")
+        help_text = spawn(repo, env, "--help")
+        assert refused.returncode == 2
+        assert "spawn.py story-042" in refused.stderr and "worktree" in refused.stderr
+        assert help_text.returncode == 0 and "--in-place" not in help_text.stdout
 
 
 class TestConfigRoleParsing:
