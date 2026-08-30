@@ -65,18 +65,20 @@ def config_age(root: Path) -> str:
     )
 
 
-def install_status() -> tuple[str, str]:
-    harness = os.environ.get("XP_HARNESS", "")
-    if harness not in {"claude", "codex"}:
-        native = [key for key in ("CLAUDECODE", "CODEX_THREAD_ID") if os.environ.get(key)]
-        if len(native) != 1:
-            return "ambiguous", ""
-        harness = "claude" if native[0] == "CLAUDECODE" else "codex"
-    source = "claude" if harness == "codex" else "codex"
-    name, running = plugin_manifest_value(PLUGIN_ROOT, "name"), plugin_version(PLUGIN_ROOT)
+def install_status(source="", name="", running="") -> tuple[str, str]:
+    observing = not source
+    if observing:
+        harness = os.environ.get("XP_HARNESS", "")
+        if harness not in {"claude", "codex"}:
+            native = [key for key in ("CLAUDECODE", "CODEX_THREAD_ID") if os.environ.get(key)]
+            if len(native) != 1:
+                return "ambiguous", ""
+            harness = "claude" if native[0] == "CLAUDECODE" else "codex"
+        source = "claude" if harness == "codex" else "codex"
+        name, running = plugin_manifest_value(PLUGIN_ROOT, "name"), plugin_version(PLUGIN_ROOT)
     try:
-        argv = [source, "plugin", "list", "--json"]
-        listed = subprocess.run(argv, capture_output=True, text=True, timeout=5, check=True)
+        options = {"capture_output": True, "text": True, "timeout": 8, "check": True}
+        listed = subprocess.run([source, "plugin", "list", "--json"], **options)
         payload = json.loads(listed.stdout)
         records = payload.get("installed", []) if source == "codex" else payload
     except (AttributeError, OSError, ValueError, subprocess.SubprocessError) as exc:
@@ -91,15 +93,15 @@ def install_status() -> tuple[str, str]:
         local = [x for x in local if os.path.realpath(x["projectPath"]) == project]
         users = [x for x in matched if x.get("scope") == "user" and "projectPath" not in x]
         matched = local or users
-    if not matched:
+    if not (matched := [x for x in matched if x.get("enabled", True)]):  # missing != disabled
         return "absent-plugin", ""
     item = min(matched, key=lambda value: (value.get("version") != running, str(value.get(key))))
     identity, found = item.get(key), item.get("version")
     if not all(isinstance(value, str) and value for value in (identity, found)):
         return "unreadable", ""
-    path = data_root() / f"installed-{source}-version"
-    old = read(path).strip()
-    path.write_text(found + "\n")
+    old = read(path := data_root() / f"installed-{source}-version").strip() if observing else ""
+    if observing:
+        path.write_text(found + "\n")
     changed = f"{source} plugin changed from {old} to {found}" if old and old != found else ""
     if found == running:
         return "current", changed
@@ -376,10 +378,8 @@ def recover() -> int:
 
 def main(data: dict) -> int:
     top = git("rev-parse", "--show-toplevel")
-    if not top:
-        return 0
     root = Path(top)
-    if not (root / ".xp").is_dir():
+    if not top or not (root / ".xp").is_dir():
         return 0
     with contextlib.suppress(Exception):
         write_env(PLUGIN_ROOT, plugin_version(PLUGIN_ROOT))

@@ -1,9 +1,7 @@
 """story-022: the sprint review finds, judges, fixes, then clears.
 
-Measured at sprint-003's close, over one release diff: a single reviewer found
-1 blocking + 8 noted, and a 28-agent multi-angle pass found FOUR more, all
-CONFIRMED, all silent. It also cost 1.47M tokens because 22 refuters killed 3
-candidates. The shape here is what both halves buy: N blind finders, BATCHED
+Sprint-003: one reviewer found 1 blocking + 8 noted; 28 agents found FOUR more, all
+confirmed and silent, at 1.47M tokens. The shape buys N blind finders, BATCHED
 verification, a fixer, and a blockers-only closing pass.
 Verify: pytest -q tests/test_review.py
 """
@@ -14,6 +12,7 @@ import shutil
 from pathlib import Path
 
 from close_helpers import LEAD_CREDS, launches
+from review_install_cases import HarnessInstallCases
 from sprint_helpers import (
     CONFIG,
     PLAN,
@@ -41,6 +40,10 @@ LEFTHOOK = [
     "summary: (done)",
     "\\033[31mformat: src.py would be reformatted\\033[0m",
 ]
+
+
+class TestHarnessInstallPreflight(HarnessInstallCases):
+    pass
 
 
 def angle_names():

@@ -88,6 +88,7 @@ class TestBudget:
 
     def test_project_owned_absences_stay_tolerant_at_each_consumer(self, tmp_path):
         repo, env, _g = make_repo(tmp_path)
+        stub_claude(tmp_path)
         (repo / ".xp" / "constraints.md").unlink()
         r = spawn(repo, env, "story-042", "--dry-run")
         missing_constraints = "(missing: .xp/constraints.md)"

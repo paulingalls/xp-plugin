@@ -277,6 +277,8 @@ def cmd_spawn(story_id: str, override: str, dry_run: bool, resuming: bool = Fals
     sandbox, problem = resolve_codex_sandbox(harness, config_flat("codex_sandbox"))
     if problem:
         return fail("refused: " + problem)
+    if gone := missing_harness(harness):
+        return fail("refused: " + gone)
     branch = story_branch(card, story_id)
     tree = worktree_path(story_id)
     trunk = integration_target()
@@ -294,9 +296,6 @@ def cmd_spawn(story_id: str, override: str, dry_run: bool, resuming: bool = Fals
         print(" ".join(argv))
         print(prompt)
         return 0
-    # Check the harness before creating a tree that a failed launch would strand.
-    if gone := missing_harness(harness):
-        return fail("refused: " + gone)
     # Parse bootstrap before creating a tree that a bad command would strand.
     system = Path(".xp/system.md")
     if not resuming and not system.parent.exists():

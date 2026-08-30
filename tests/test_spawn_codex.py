@@ -28,6 +28,18 @@ class TestCodexExecutor:
                 return ln.split(" ")
         raise AssertionError(f"no codex argv in: {r.stdout[:400]}")
 
+    def installed_codex(self, tmp_path, records):
+        rec = stub_codex(tmp_path, sandbox="danger-full-access")
+        path = tmp_path / "bin" / "codex"
+        probe = (
+            "if argv == ['plugin', 'list', '--json']:\n"
+            f"    print({json.dumps(json.dumps({'installed': records}))}); sys.exit()"
+        )
+        path.write_text(
+            path.read_text().replace("if argv == ['plugin', 'list', '--json']: sys.exit(1)", probe)
+        )
+        return rec
+
     def test_the_assembled_argv(self, tmp_path):
         argv = self.argv(tmp_path)
         pairs = list(pairwise(argv))
@@ -249,24 +261,56 @@ class TestCodexExecutor:
             )
             assert f"codex sandbox: {posture}" in capsys.readouterr().err
 
-    def test_absent_from_path_refuses_before_any_worktree_is_cut(self, tmp_path):
+    @pytest.mark.parametrize("option", [(), ("--dry-run",)])
+    def test_absent_from_path_refuses_before_any_worktree_is_cut(self, tmp_path, option):
         repo, env, _g = make_repo(tmp_path, executor="codex/gpt-5.6-terra/medium")
-        r = spawn(repo, env, "story-042")  # no stub_codex: nothing named codex on PATH
+        r = spawn(repo, env, "story-042", *option)  # no stub: nothing named codex on PATH
         assert r.returncode == 2
         assert "codex" in r.stderr and "install" in r.stderr.lower(), r.stderr
         assert not (tmp_path / "data" / "worktrees" / "story-042").exists()
         branches = in_tree(repo, env, "branch", "--format=%(refname:short)")
         assert "story-042" not in branches, branches
 
-    def test_dry_run_still_prints_the_argv_with_nothing_installed(self, tmp_path):
-        """Reading the argv a harness WOULD take is what a lead does before
-        installing it — review.run already exempts its dry run, and one rule with
-        two implementations is this repo's most-filed defect class."""
+    @pytest.mark.parametrize("option", [(), ("--dry-run",)])
+    def test_an_installed_binary_without_this_plugin_refuses(self, tmp_path, option):
         repo, env, _g = make_repo(tmp_path, executor="codex/gpt-5.6-terra/medium")
+        self.installed_codex(tmp_path, [])
+        r = spawn(repo, env, "story-042", *option)
+        assert r.returncode == 2
+        assert "codex plugin add xp-plugin@xp-plugin" in r.stderr, r.stderr
+        assert not (tmp_path / "data" / "worktrees" / "story-042").exists()
+
+    def test_a_disabled_copy_is_not_an_install_because_the_launch_loads_none_of_it(self, tmp_path):
+        """Both harnesses report `enabled` and both report it false for real records:
+        a disabled copy is PRESENT and supplies no hook, skill or injection, so
+        reading presence alone launches exactly the uninstrumented agent this gate
+        exists to stop."""
+        repo, env, _g = make_repo(tmp_path, executor="codex/gpt-5.6-terra/medium")
+        record = {"pluginId": "xp-plugin@xp-plugin", "version": "0.14.1", "enabled": False}
+        self.installed_codex(tmp_path, [record])
         r = spawn(repo, env, "story-042", "--dry-run")
-        assert r.returncode == 0, r.stderr
-        assert "--sandbox danger-full-access" in r.stdout, r.stdout[:400]
-        assert "--disable unified_exec" not in r.stdout, r.stdout[:400]
+        assert r.returncode == 2, r.stdout[:300]
+        assert "codex plugin add xp-plugin@xp-plugin" in r.stderr, r.stderr
+
+    def test_a_different_plugin_version_launches_without_consuming_the_drift_edge(
+        self, tmp_path, monkeypatch
+    ):
+        from session_start import install_status
+
+        repo, env, _g = make_repo(tmp_path, executor="codex/gpt-5.6-terra/medium")
+        record = {"pluginId": "xp-plugin@xp-plugin", "version": "99.0.0"}
+        self.installed_codex(tmp_path, [record])
+        observed = tmp_path / "data" / "installed-codex-version"
+        observed.write_text("0.13.0\n")
+        r = spawn(repo, env, "story-042", "--dry-run")
+        assert r.returncode == 0 and "--sandbox danger-full-access" in r.stdout
+        assert observed.read_text() == "0.13.0\n"
+        monkeypatch.chdir(repo)
+        monkeypatch.setenv("PATH", env["PATH"])
+        monkeypatch.setenv("XP_DATA", env["XP_DATA"])
+        monkeypatch.setenv("XP_HARNESS", "claude")
+        status, notice = install_status()
+        assert status == "stale" and "changed from 0.13.0 to 99.0.0" in notice
 
     def test_the_teammates_shell_keeps_codexs_own_long_process_facility(self, tmp_path):
         """unified_exec is codex's persistent-session exec tool — start a process,

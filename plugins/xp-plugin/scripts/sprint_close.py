@@ -161,7 +161,7 @@ def cmd_review(sprint_id: str, dry_run: bool) -> int:
         stage_head = git("rev-parse", "HEAD").stdout.strip()
         role = stage if not complete_n else ""
         result, err = review.run(
-            bundle, Path.cwd(), dry_run, f"sprint {key}", cards if role else "", role
+            bundle, Path.cwd(), dry_run, f"sprint {key}", cards if role else "", role, bool(role)
         )
         if dry_run:  # an EMPTY report, not a shapeless one: a preview walks
             empty = {k: [] for k in review.REPORT_KEYS}

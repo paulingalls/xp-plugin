@@ -43,6 +43,7 @@ def stub_planner(tmp_path, findings=CLEAN, write_findings=True, motion=""):
     (bin_dir / "claude").write_text(
         "#!/usr/bin/env python3\n"
         "import json, os, re, sys\n"
+        "if sys.argv[1:] == ['plugin', 'list', '--json']: sys.exit(1)\n"
         "stdin = sys.stdin.read()\n"
         "json.dump({'argv': sys.argv[1:], 'env': dict(os.environ), 'stdin': stdin},"
         f" open({str(rec)!r}, 'w'))\n"
@@ -302,6 +303,7 @@ class TestTheProfileCarriesTheInvocation:
     def rendered(self, tmp_path, executor):
         root = tmp_path / executor.split("/")[0]
         repo, env, _g = make_repo(root, executor=executor)
+        (stub_claude if executor.startswith("claude") else stub_codex)(root)
         r = spawn(repo, env, "story-042", "--dry-run")
         assert r.returncode == 0, r.stderr
         return r.stdout

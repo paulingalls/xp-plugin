@@ -50,6 +50,7 @@ def dying_reviewer(tmp_path, extra="", patch=PATCH):
     )
     (bin_dir / "claude").write_text(
         "#!/bin/sh\n"
+        '[ "$1 $2 $3" = "plugin list --json" ] && exit 1\n'
         f"{sys.executable} {ticker} &\n"
         "ticker=$!\n"
         f"echo launched >> {tmp_path / 'spawns'}\n"
