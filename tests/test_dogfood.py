@@ -7,6 +7,7 @@ These pin the SHAPE the code parses, never the content: a project's tiers,
 constraints and stories are legitimately its own.
 """
 
+import json
 import os
 import shutil
 import subprocess
@@ -310,6 +311,15 @@ class TestDogfoodMatchesTheScaffold:
         assert f"≤{DIGEST_CAP} lines" in skill, (
             f"the SKILL does not state the {DIGEST_CAP}-line bound the hook enforces"
         )
+
+    def test_setup_offer_uses_the_published_plugin_identity(self):
+        marketplace = json.loads((self.REPO / ".claude-plugin/marketplace.json").read_text())
+        manifest = json.loads(
+            (self.REPO / "plugins/xp-plugin/.claude-plugin/plugin.json").read_text()
+        )
+        identity = f"{manifest['name']}@{marketplace['name']}"
+        skill = (self.REPO / "plugins/xp-plugin/skills/xp-setup/SKILL.md").read_text()
+        assert identity in skill, f"setup does not offer the published identity {identity}"
 
     def test_the_shipped_plan_parses_with_the_parser_sprint_close_uses(self):
         """Was a PAIR: it also read THIS repo's .xp/plan.md, so our live plan and

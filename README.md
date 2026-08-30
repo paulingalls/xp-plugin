@@ -58,10 +58,6 @@ codex plugin marketplace add paulingalls/xp-plugin
 codex plugin add xp-plugin@xp-plugin
 ```
 
-(The local-checkout form — `codex plugin marketplace add /path/to/xp-plugin` —
-is the one measured by this repo's own walks; the published form follows the
-CLI's documented syntax.)
-
 **You must trust the hooks, or nothing fires.** Codex skips unreviewed
 plugin hooks *silently*: run `/hooks` interactively and approve (per content
 hash — repeat after every update), or pass `--dangerously-bypass-hook-trust`
