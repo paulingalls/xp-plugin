@@ -402,7 +402,7 @@ def stage_role(stage: str, card: str) -> tuple[str, str, str]:
 
 
 def run(
-    prompt: str, cwd: Path, dry_run: bool = False, name: str = "", card: str = "", role: str = ""
+    prompt: str, cwd: Path, dry_run=False, name="", card="", role="", checked=False
 ) -> tuple[str, str]:
     """Launch a configured reviewer, returning (result text, error).
     Function-local imports avoid spawn -> close -> review cycling at import time."""
@@ -418,13 +418,13 @@ def run(
     sandbox, problem = resolve_codex_sandbox(harness, config_flat("codex_sandbox"))
     if problem:
         return "", problem
+    if not checked and (missing := missing_harness(harness)):
+        return "", missing
     argv = agent_argv(harness, model, effort, "stream-json", sandbox)
     if dry_run:
         print("would launch: " + " ".join(argv))
         print(prompt)
         return "", ""
-    if missing := missing_harness(harness):
-        return "", missing
     log_card = "" if stage else card
     log_id = ((re.search(r"#### (story-\d+)", log_card) or [None, name])[1] + "-review").replace(
         " ", "-"

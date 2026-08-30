@@ -1,9 +1,7 @@
 """story-022: the sprint review finds, judges, fixes, then clears.
 
-Measured at sprint-003's close, over one release diff: a single reviewer found
-1 blocking + 8 noted, and a 28-agent multi-angle pass found FOUR more, all
-CONFIRMED, all silent. It also cost 1.47M tokens because 22 refuters killed 3
-candidates. The shape here is what both halves buy: N blind finders, BATCHED
+Sprint-003: one reviewer found 1 blocking + 8 noted; 28 agents found FOUR more, all
+confirmed and silent, at 1.47M tokens. The shape buys N blind finders, BATCHED
 verification, a fixer, and a blockers-only closing pass.
 Verify: pytest -q tests/test_review.py
 """
@@ -14,6 +12,7 @@ import shutil
 from pathlib import Path
 
 from close_helpers import LEAD_CREDS, launches
+from review_install_cases import HarnessInstallCases
 from sprint_helpers import (
     CONFIG,
     PLAN,
@@ -41,6 +40,10 @@ LEFTHOOK = [
     "summary: (done)",
     "\\033[31mformat: src.py would be reformatted\\033[0m",
 ]
+
+
+class TestHarnessInstallPreflight(HarnessInstallCases):
+    pass
 
 
 def angle_names():
@@ -241,7 +244,7 @@ class TestTheFixerFixes:
         state = json.loads(marker_path(tmp_path).read_text())
         assert state["rounds"][-1]["fixed"] == ["fixed the silent one"]
         assert state["shown_sha"] == head(repo, env), "the round names a tree nobody reviewed"
-        for launch in launches(tmp_path):
+        for launch in (item for item in launches(tmp_path) if item["stdin"]):
             assert not [k for k in launch["env"] if k.startswith(("GIT_AUTHOR_", "GIT_COMMITTER_"))]
 
     def test_a_STAGE_THAT_COMMITS_AT_ALL_is_refused(self, tmp_path):

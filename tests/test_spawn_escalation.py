@@ -45,6 +45,7 @@ def stub_escalating(
     body = [
         "#!/usr/bin/env python3",
         "import json, os, subprocess, sys, time",
+        "if sys.argv[1:] == ['plugin', 'list', '--json']: sys.exit(1)",
         "stdin = sys.stdin.read()",
         f"json.dump({{'env': dict(os.environ), 'stdin': stdin}}, open({str(rec)!r}, 'w'))",
         f"if {write_file!r} or {commit!r}:",

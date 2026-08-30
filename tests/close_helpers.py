@@ -124,6 +124,7 @@ def stub_reviewer(tmp_path, result="findings above", exit_code=0, raw=None, repo
     (bin_dir / "claude").write_text(
         "#!/usr/bin/env python3\n"
         "import json, os, re, sys\n"
+        "if sys.argv[1:] == ['plugin', 'list', '--json']: sys.exit(1)\n"
         "stdin = sys.stdin.read()\n"
         f"open({str(rec)!r}, 'a').write(json.dumps({{'argv': sys.argv[1:],"
         " 'env': dict(os.environ), 'stdin': stdin}) + '\\n')\n"

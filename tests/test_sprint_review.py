@@ -6,6 +6,7 @@ import subprocess
 import sys
 
 from close_helpers import launches
+from spawn_helpers import stub_codex
 from sprint_helpers import (  # noqa: F401
     CLOSE,
     CONFIG,
@@ -210,6 +211,7 @@ class TestReviewLeg:
         can know; swallowing it greens the command whose whole job is the warning."""
         bad = CONFIG.replace("reviewer: claude/opus", "reviewer: codex/gpt-5.6-terra/high")
         repo, env, _g = make_repo(tmp_path, config=bad + "codex_sandbox: broken\n")
+        stub_codex(tmp_path)
         r = sprint(repo, env, "review", "--dry-run")
         assert r.returncode == 2, r.stdout
         assert "codex_sandbox" in r.stderr and "broken" in r.stderr, r.stderr
