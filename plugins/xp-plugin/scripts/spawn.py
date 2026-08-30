@@ -14,7 +14,6 @@ sys.path.insert(0, str(Path(__file__).parent / "spawn"))
 # (close -> spawn -> close) and fails before fail/git exist (story-008).
 from bookkeep import bootstrap_command
 from close import config_flat, fail, git, integration_target, story_card
-from env import plugin_version
 from handback import tree_state, unclean_teammate_result
 from handoff import draft_path, inheritance, mark_handoff, report_handoff
 from harness import HARNESS_INSTALL, agent_argv, missing_harness, resolve_codex_sandbox
@@ -282,12 +281,11 @@ def cmd_spawn(story_id: str, override: str, dry_run: bool, resuming: bool = Fals
     tree = worktree_path(story_id)
     trunk = integration_target()
     reuse = bool(FREE_ID.fullmatch(story_id)) and current_branch() == branch
-    plugin_root = PLUGIN_ROOT
     argv = agent_argv(harness, model, effort, "stream-json", sandbox)
     handoff = inheritance(data_root(), story_id)
     if resuming and tree.is_dir():
         handoff += resume().inherited_evidence(tree, trunk)
-    prompt = build_prompt(teammate_sections(card, story_id, handoff, plugin_root))
+    prompt = build_prompt(teammate_sections(card, story_id, handoff, PLUGIN_ROOT))
     report, warning = profile_report(card, prompt, handoff)
     print(report)
     if warning:
@@ -396,11 +394,6 @@ def cmd_spawn(story_id: str, override: str, dry_run: bool, resuming: bool = Fals
     # The free leg reads its branch off HEAD, and spawn just moved the lead to trunk.
     where = " from that worktree" if free_id else ""
     leg = f"run `close.py {scope} review`{where}"
-    if plugin_root != PLUGIN_ROOT:
-        leg = (
-            f"use xp-plugin {plugin_version(plugin_root)} at {plugin_root} for every close.py"
-            f" leg, starting with `python3 {plugin_root}/scripts/close.py {scope} review`{where}"
-        )
     print(f"{story_id} produced commit {tree_state(tree)[0]} at {tree}. Read it, then {leg}.")
     mark_handoff(data_root(), story_id, True)
     held.close()

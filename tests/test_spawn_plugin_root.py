@@ -77,9 +77,9 @@ def test_a_free_consumer_plugin_tree_keeps_the_installed_root(tmp_path):
 
 
 def test_a_branch_lacking_the_plugin_keeps_the_installed_root(tmp_path):
-    """`free start` cuts off the DEFAULT branch and the integration target may be the
-    sprint branch, so the target is not the ref the worktree comes from. Asking it
-    hands the executor — and every close leg — a path its own worktree does not have."""
+    """The free branch is cut before the plugin reaches the default branch, so its
+    worktree has no plugins/ at all — the arm where a layout-derived root is a path
+    that does not exist rather than merely the wrong one."""
     from test_close_free import KEY, carded_free_patch
 
     repo, env, g = carded_free_patch(tmp_path)
@@ -100,10 +100,9 @@ def test_a_branch_lacking_the_plugin_keeps_the_installed_root(tmp_path):
     )
 
 
-def test_resume_asks_the_stopped_branch_not_the_moved_integration_target(tmp_path):
-    """A resume re-enters an EXISTING tree, so the integration target is not where that
-    tree came from either: a trunk that adopts the plugin after the stop would hand the
-    successor — and every close leg — a path its own worktree has never had."""
+def test_a_resume_keeps_the_installed_root_after_trunk_adopts_a_plugin(tmp_path):
+    """A resume re-enters a tree cut BEFORE trunk adopted the plugin, so the repository
+    now ships plugins/xp-plugin while the successor's own worktree still does not."""
     from test_spawn_resume import stopped_story
 
     repo, env, g, tree, _marker = stopped_story(tmp_path)

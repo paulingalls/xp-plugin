@@ -122,7 +122,7 @@ class InstallProbeCases:
             (
                 "claude",
                 "codex",
-                "claude plugin install sample-plugin@fixture-market --scope user",
+                "claude plugin install --scope user sample-plugin@fixture-market",
             ),
         ],
     )
@@ -169,6 +169,52 @@ class InstallProbeCases:
         self.cli(tmp_path, "claude", list(reversed(records)) if reverse else records)
         out = self.run(repo, tmp_path, running, "codex").stdout
         assert "installed 1.0.0" in out and "running 2.0.0" in out
+        # the repair is only a repair at the scope the stale record actually holds:
+        # --scope user against a project install adds a second copy and fixes nothing
+        assert "claude plugin install --scope project sample-plugin@fixture-market" in out
+
+    @pytest.mark.parametrize("reverse", [False, True])
+    def test_another_projects_scoped_record_is_never_this_projects_install(self, tmp_path, reverse):
+        """`claude plugin list` reports every project's scoped entries, so a match on
+        `projectPath` PRESENT rather than EQUAL reads a foreign repo's version as ours."""
+        repo, _g = xp_repo(tmp_path)
+        running, installed = self.copies(tmp_path)
+        elsewhere = tmp_path / "another-project"
+        elsewhere.mkdir()
+        foreign = self.entry("claude", installed, scope="project", projectPath=str(elsewhere))
+        mine = self.entry("claude", installed, version="2.0.0", scope="user")
+        records = [foreign, mine]
+        self.cli(tmp_path, "claude", list(reversed(records)) if reverse else records)
+        out = self.run(repo, tmp_path, running, "codex").stdout
+        assert "installed 1.0.0" not in out, out
+
+    def test_a_user_scope_record_pinned_to_a_project_is_not_eligible(self, tmp_path):
+        """User scope is the only record that answers for a project it does not name,
+        so it earns that only by naming none: a `projectPath` makes it someone else's."""
+        repo, _g = xp_repo(tmp_path)
+        running, installed = self.copies(tmp_path)
+        elsewhere = tmp_path / "another-project"
+        elsewhere.mkdir()
+        pinned = self.entry("claude", installed, scope="user", projectPath=str(elsewhere))
+        self.cli(tmp_path, "claude", [pinned])
+        out = self.run(repo, tmp_path, running, "codex").stdout
+        assert "installed 1.0.0" not in out, out
+
+    @pytest.mark.parametrize("reverse", [False, True])
+    def test_two_eligible_records_resolve_the_same_way_in_either_list_order(
+        self, tmp_path, reverse
+    ):
+        """DESIGN's "list order never decides": two records survive the same scope
+        filter when one plugin name is installed from two marketplaces."""
+        repo, _g = xp_repo(tmp_path)
+        running, installed = self.copies(tmp_path)
+        alpha = self.entry("codex", installed)
+        zulu = dict(alpha, pluginId="sample-plugin@zulu-market", version="3.0.0")
+        records = [alpha, zulu]
+        self.cli(tmp_path, "codex", list(reversed(records)) if reverse else records)
+        out = self.run(repo, tmp_path, running, "claude").stdout
+        assert "codex plugin add sample-plugin@fixture-market" in out, out
+        assert "installed 1.0.0" in out and "3.0.0" not in out, out
 
     @pytest.mark.parametrize(("harness", "other"), [("claude", "codex"), ("codex", "claude")])
     def test_explicit_harness_stamp_wins_over_inherited_native_variables(
@@ -216,6 +262,18 @@ class InstallProbeCases:
         self.cli(tmp_path, "codex", records)
         out = self.run(repo, tmp_path, running, "claude").stdout
         assert "codex plugin add renamed-plugin@fixture-market" in out
+
+    def test_a_teammate_session_reports_drift_beside_its_marker(self, tmp_path):
+        """The teammate path returns before the profile builders, so its notice is a
+        second write rather than a region — and on a cross-harness spawn it is the ONLY
+        session whose own root is the other harness's cache, so nothing else sees it."""
+        repo, _g = xp_repo(tmp_path)
+        running, installed = self.copies(tmp_path)
+        self.cli(tmp_path, "codex", [self.entry("codex", installed)])
+        r = self.run(repo, tmp_path, running, "claude", XP_ROLE="teammate")
+        assert "teammate session" in r.stdout, r.stdout
+        assert "installed 1.0.0" in r.stdout and "running 2.0.0" in r.stdout, r.stdout
+        assert r.stdout.splitlines()[0].endswith("never close, never merge"), r.stdout
 
     def test_timeout_is_an_unreadable_cli_not_an_absent_plugin(self, tmp_path, monkeypatch):
         import session_start

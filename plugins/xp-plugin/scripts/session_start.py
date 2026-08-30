@@ -103,8 +103,8 @@ def install_status() -> tuple[str, str]:
     changed = f"{source} plugin changed from {old} to {found}" if old and old != found else ""
     if found == running:
         return "current", changed
-    action, scope = ("add", "") if source == "codex" else ("install", " --scope user")
-    mismatch = f"installed {found}; running {running}; `{source} plugin {action} {identity}{scope}`"
+    action = "add" if source == "codex" else f"install --scope {item.get('scope') or 'user'}"
+    mismatch = f"installed {found}; running {running}; `{source} plugin {action} {identity}`"
     return "stale", "\n".join(filter(None, (changed, mismatch)))
 
 
