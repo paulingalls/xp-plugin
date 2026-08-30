@@ -77,7 +77,7 @@ def install_status(source="", name="", running="") -> tuple[str, str]:
         source = "claude" if harness == "codex" else "codex"
         name, running = plugin_manifest_value(PLUGIN_ROOT, "name"), plugin_version(PLUGIN_ROOT)
     try:
-        options = {"capture_output": True, "text": True, "timeout": 5, "check": True}
+        options = {"capture_output": True, "text": True, "timeout": 8, "check": True}
         listed = subprocess.run([source, "plugin", "list", "--json"], **options)
         payload = json.loads(listed.stdout)
         records = payload.get("installed", []) if source == "codex" else payload

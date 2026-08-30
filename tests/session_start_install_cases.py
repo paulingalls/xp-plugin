@@ -279,7 +279,7 @@ class InstallProbeCases:
         import session_start
 
         def expired(*_args, **_kwargs):
-            raise subprocess.TimeoutExpired(["codex", "plugin", "list", "--json"], 5)
+            raise subprocess.TimeoutExpired(["codex", "plugin", "list", "--json"], 8)
 
         monkeypatch.setattr(session_start.subprocess, "run", expired)
         monkeypatch.setenv("XP_HARNESS", "claude")
