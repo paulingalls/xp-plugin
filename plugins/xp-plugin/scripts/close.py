@@ -266,7 +266,7 @@ def cmd_review(
         review.launch_marker(story_id).write_text(json.dumps(at))
     result, err = review.run(bundle, Path.cwd(), dry_run, card=card)
     if dry_run:
-        return 0
+        return fail("refused: " + err) if err else 0
     if err:  # crash, timeout, absent binary — it may still have committed first
         return fail(review.stamp(path, review.abort_text(head, err)))
     print(result)

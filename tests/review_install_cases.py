@@ -1,10 +1,19 @@
 """Role install preflight cases collected through test_review.py."""
 
 import json
+import subprocess
+import sys
+from pathlib import Path
 
 import pytest
+from close_helpers import CONFIG as STORY_CONFIG
+from close_helpers import close
+from close_helpers import make_repo as story_repo
+from spawn_helpers import make_repo as plan_repo
 from spawn_helpers import stub_codex
 from sprint_helpers import bundles, make_repo, sprint, staged_stub
+
+PLAN_REVIEW = Path(__file__).parent.parent / "plugins" / "xp-plugin" / "scripts" / "plan_review.py"
 
 ROLES = """release: sprint
 roles:
@@ -70,3 +79,33 @@ class HarnessInstallCases:
         assert r.returncode == 0, r.stdout + r.stderr
         assert all(path.read_text().splitlines() == ["1"] for path in counts)
         assert "install xp-plugin" not in r.stdout + r.stderr
+
+    def test_a_story_review_dry_run_refuses_where_it_used_to_preview(self, tmp_path):
+        """The hoist reaches close.py's dry-run branch, which returns 0 without
+        reading review.run's error: the refusal arrived as silence under exit 0."""
+        repo, env, g = story_repo(tmp_path)
+        spec = STORY_CONFIG.replace("claude/opus", "codex/gpt-5.6-sol")
+        (repo / ".xp" / "config.yml").write_text(spec)
+        g("add", "-A")
+        g("commit", "-qm", "point the reviewer at a harness this machine lacks")
+        r = close(repo, env, "review", "--dry-run")
+        assert r.returncode == 2, f"{r.returncode}: {r.stdout!r} {r.stderr!r}"
+        assert "codex" in r.stderr and "install" in r.stderr.lower(), r.stderr
+
+    def test_a_plan_review_dry_run_refuses_where_it_used_to_preview(self, tmp_path):
+        """The same swallow, in the leg an EXECUTOR runs — and the copy that would
+        have kept previewing after close.py stopped."""
+        repo, env, _g = plan_repo(tmp_path)
+        (repo / ".xp" / "config.yml").write_text(
+            "release: sprint\nroles:\n  plan-reviewer: codex/gpt-5.6-sol\ntests:\n  story: true\n"
+        )
+        (draft := tmp_path / "draft.md").write_text("PLAN-SENTINEL\n")
+        r = subprocess.run(
+            [sys.executable, str(PLAN_REVIEW), "story-042", str(draft), "--dry-run"],
+            cwd=repo,
+            env=env,
+            capture_output=True,
+            text=True,
+        )
+        assert r.returncode == 2, f"{r.returncode}: {r.stdout!r} {r.stderr!r}"
+        assert "codex" in r.stderr and "install" in r.stderr.lower(), r.stderr

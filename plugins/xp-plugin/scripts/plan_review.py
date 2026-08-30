@@ -317,7 +317,7 @@ def _run_review(
     bundle = build_bundle(charter, plan, card, plan_file, out)
     _result, err = review.run(bundle, Path.cwd(), dry_run, name="plan-reviewer", card=card)
     if dry_run:
-        return 0
+        return fail("refused: " + err) if err else 0
     try:
         changed = review_state(plan_file, story_id) != before
     except OSError as e:

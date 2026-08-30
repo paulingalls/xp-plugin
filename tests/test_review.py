@@ -244,7 +244,7 @@ class TestTheFixerFixes:
         state = json.loads(marker_path(tmp_path).read_text())
         assert state["rounds"][-1]["fixed"] == ["fixed the silent one"]
         assert state["shown_sha"] == head(repo, env), "the round names a tree nobody reviewed"
-        for launch in (item for item in launches(tmp_path) if item["stdin"]):
+        for launch in launches(tmp_path):
             assert not [k for k in launch["env"] if k.startswith(("GIT_AUTHOR_", "GIT_COMMITTER_"))]
 
     def test_a_STAGE_THAT_COMMITS_AT_ALL_is_refused(self, tmp_path):
