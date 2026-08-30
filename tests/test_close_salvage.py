@@ -192,10 +192,10 @@ class TestSalvage:
             monkeypatch.setenv(key, value)
         # the COMMAND, never the bare word: pytest names tmp_path after the test, so
         # `salvage` is in the log path this text quotes and matches whatever it says
-        for name, offered in (("story-reviewer", True), ("plan-reviewer", False)):
-            _result, err = review.run("bundle", repo, name=name)
+        for name, noun in (("story-reviewer", "story story-042"), ("plan-reviewer", "")):
+            _result, err = review.run("bundle", repo, name=name, noun=noun)
             assert "produced NO OUTPUT" in err and "XP_AGENT_TIMEOUT" in err, err
-            assert ("story <id> salvage" in err) is offered, (name, err)
+            assert ("story story-042 salvage" in err) is bool(noun), (name, err)
 
     def test_a_launch_marker_written_before_the_noun_still_records(self, tmp_path):
         """v0.14.1 moved the leg's own land command into the launch marker, and

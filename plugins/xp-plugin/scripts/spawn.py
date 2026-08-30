@@ -3,7 +3,6 @@
 
 import argparse
 import os
-import re
 import subprocess
 import sys
 from pathlib import Path
@@ -13,7 +12,7 @@ sys.path.insert(0, str(Path(__file__).parent / "spawn"))
 # close must import back FUNCTION-LOCALLY: a module-level edge cycles
 # (close -> spawn -> close) and fails before fail/git exist (story-008).
 from bookkeep import bootstrap_command
-from close import config_flat, fail, git, integration_target, story_card
+from close import config_flat, fail, git, integration_target, leg, story_card
 from handback import tree_state, unclean_teammate_result
 from handoff import draft_path, inheritance, mark_handoff, report_handoff
 from harness import HARNESS_INSTALL, agent_argv, missing_harness, resolve_codex_sandbox
@@ -242,13 +241,8 @@ def not_ready_hint(status: str, story_id: str) -> str:
     )
 
 
-# The shape close/free.py cuts and every free leg keys off; group 2 is the slug
-# those legs take as their argument.
-FREE_ID = re.compile(r"free-(\d{4}-\d\d-\d\d-(.+))")
-
-
 def story_branch(card: str, story_id: str) -> str:
-    if FREE_ID.fullmatch(story_id):
+    if leg(story_id)[1]:
         return f"{user_ns()}/{story_id}"
     return f"{user_ns()}/{story_id}-{slugify(card_title(card))}"
 
@@ -282,7 +276,7 @@ def cmd_spawn(story_id: str, override: str, dry_run: bool, resuming: bool = Fals
     branch = story_branch(card, story_id)
     tree = worktree_path(story_id)
     trunk = integration_target()
-    reuse = bool(FREE_ID.fullmatch(story_id)) and current_branch() == branch
+    reuse = bool(leg(story_id)[1]) and current_branch() == branch
     argv = agent_argv(harness, model, effort, "stream-json", sandbox)
     handoff = inheritance(data_root(), story_id)
     if resuming and tree.is_dir():
@@ -345,7 +339,7 @@ def cmd_spawn(story_id: str, override: str, dry_run: bool, resuming: bool = Fals
             stand = (
                 f" — `git checkout {branch}` first: it is this patch's free branch,"
                 " and spawn continues it rather than cutting a new one"
-                if FREE_ID.fullmatch(story_id)
+                if leg(story_id)[1]
                 else ""
             )
             return fail(f"refused: branch {branch} already exists{stand}")
@@ -388,12 +382,13 @@ def cmd_spawn(story_id: str, override: str, dry_run: bool, resuming: bool = Fals
         result = report_handoff(data_root(), story_id, before, why, rc)
         held.close()
         return result
-    free_id = FREE_ID.fullmatch(story_id)
-    scope = f"free {free_id.group(2)}" if free_id else f"story {story_id}"
+    scope, free_slug = leg(story_id)
     # The free leg reads its branch off HEAD, and spawn just moved the lead to trunk.
-    where = " from that worktree" if free_id else ""
-    leg = f"run `close.py {scope} review`{where}"
-    print(f"{story_id} produced commit {tree_state(tree)[0]} at {tree}. Read it, then {leg}.")
+    where = " from that worktree" if free_slug else ""
+    instruction = f"run `close.py {scope} review`{where}"
+    print(
+        f"{story_id} produced commit {tree_state(tree)[0]} at {tree}. Read it, then {instruction}."
+    )
     mark_handoff(data_root(), story_id, True)
     held.close()
     return rc

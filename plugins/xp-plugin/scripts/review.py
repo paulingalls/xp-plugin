@@ -402,7 +402,7 @@ def stage_role(stage: str, card: str) -> tuple[str, str, str]:
 
 
 def run(
-    prompt: str, cwd: Path, dry_run=False, name="", card="", role="", checked=False
+    prompt: str, cwd: Path, dry_run=False, name="", card="", role="", checked=False, noun=""
 ) -> tuple[str, str]:
     """Launch a configured reviewer, returning (result text, error).
     Function-local imports avoid spawn -> close -> review cycling at import time."""
@@ -434,14 +434,10 @@ def run(
     except OSError as e:  # claude absent from PATH
         return "", f"could not launch the reviewer: {e}"
     except subprocess.TimeoutExpired as e:
-        # Only the STORY leg has a salvage action. The plan and sprint legs share
-        # this text and write no launch marker for it to read, so naming it there
-        # spends the lead's next move on a command that refuses — at the one moment
-        # a review has just been lost.
         salvage = (
-            " If it wrote its report and patch before dying, `close.py story <id>"
+            f" If it wrote its report and patch before dying, `close.py {noun}"
             " salvage` records that round without paying for a second review."
-            if name == "story-reviewer"
+            if noun
             else ""
         )
         return "", (

@@ -31,7 +31,7 @@ recovery block and sprint slice; they are not injected. Artifacts win.
    trusts only that tier's green verdict and is named; absent or red runs its command.
    Triage and retro follow; review covers retro. Present it; with the human, schedule
    debt under budget or drop it. Nothing carries.
-5. **Free** — scope one patch, then `free start`; cut release artifacts, free review, land and post-merge.
+5. **Free** — `free start`; add dated card, cut release artifacts, review, land, post-merge.
 
 ## Records (`work.py` only)
 

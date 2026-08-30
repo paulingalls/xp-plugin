@@ -1,4 +1,4 @@
-"""An optionally carded free branch and the shared patch-release boundaries."""
+"""A carded free branch and its distinct patch-release boundaries."""
 
 import datetime
 import json
@@ -11,7 +11,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 sys.path.insert(0, str(Path(__file__).parent.parent / "spawn"))
 import bookkeep
 import spawn
-from close import config_flat, default_branch, fail, git, marker_path, story_card
+from close import config_flat, default_branch, fail, git, leg, marker_path, story_card
 from work import data_root, flip_card, plan_path, ready_marker_path, slugify, user_ns
 
 FREE = re.compile(r"[^/]+/free-(\d{4}-\d\d-\d\d-(.+))")
@@ -63,11 +63,9 @@ def cmd_start(slug: str) -> int:
         return fail(f"refused: branch {new} already exists")
     if (made := git("checkout", "-q", "-b", new, trunk, check=False)).returncode:
         return fail(f"git checkout -b failed: {made.stderr.strip()}")
-    card = "card in the plan" if card_in_plan(new.split("/", 1)[1]) else "no card"
-    print(
-        f"{new} off {trunk} — {card}. Cut your release artifacts, then"
-        f" `close.py free {slugify(slug)} review`"
-    )
+    card = "card in the plan" if card_in_plan(new.split("/", 1)[1]) else "card required"
+    noun = leg(new.split("/", 1)[1])[0]
+    print(f"{new} off {trunk} — {card}. Cut your release artifacts, then `close.py {noun} review`")
     return 0
 
 
@@ -80,20 +78,36 @@ def cmd_review(slug: str, dry_run: bool) -> int:
         return fail(err)
     if git("status", "--porcelain").stdout.strip():
         return fail("refused: working tree is dirty — commit or stash first")
-    if card_in_plan(key) and not dry_run:
-        _card, status = story_card(plan_path().read_text(), key)
+    if not card_in_plan(key):
+        noun = leg(key)[0]
+        return fail(
+            f"refused: add `#### {key} — <title>   [planned]` with Context, Files, AC,"
+            f" and Verify to {plan_path()}, then run `close.py {noun} review`"
+        )
+    if not dry_run:
+        try:
+            _card, status = story_card(plan_path().read_text(), key)
+        except KeyError as e:  # the heading above is hand-written; a typo'd one is a refusal
+            return fail(f"refused: {e.args[0]}")
         if status == "planned" and ready.mint(key):
             return 2
         if status in ("planned", "ready") and not flip_card(key, "ready", "in-progress"):
             return fail(f"refused: could not move {key} to [in-progress]")
-    return close.cmd_review(key, dry_run, free=True, free_slug=slugify(slug))
+    return close.cmd_review(key, dry_run)
+
+
+def cmd_salvage(slug: str) -> int:
+    import close
+
+    key, _branch, err = current_free(slug)
+    return fail(err) if err else close.cmd_salvage(key)
 
 
 def cmd_land(slug: str, dry_run: bool) -> int:
     import close
 
     key, _branch, err = current_free(slug)
-    return fail(err) if err else close.cmd_land(key, "pr", dry_run, slug)
+    return fail(err) if err else close.cmd_land(key, "pr", dry_run)
 
 
 def cmd_post_merge(slug: str) -> int:
@@ -106,13 +120,15 @@ def cmd_post_merge(slug: str) -> int:
             f"refused: expected one reviewed free release for {slug!r}, found {len(matches)}"
         )
     key = matches[0].name.removesuffix(".close.json")
+    if not card_in_plan(key):
+        return fail(f"refused: {key} not found in {plan_path()}")
     state = json.loads(matches[0].read_text())
     branch = str(state.get("branch", ""))
     result = release.cmd_post_merge(key, branch, "patch", False)
     if result:
         return result
     tree, spawned_branch, failed = bookkeep.story_worktree(spawn.worktree_path(key))
-    if card_in_plan(key) and not flip_card(key, "in-progress", "done"):
+    if not flip_card(key, "in-progress", "done"):
         # Reported, not returned: the tag is cut by here and a second post-merge
         # refuses it, so an early return leaves no leg to discharge the checkout.
         failed.append(f"flip {key} to [done] in {plan_path()}")

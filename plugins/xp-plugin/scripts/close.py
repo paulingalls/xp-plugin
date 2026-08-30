@@ -4,6 +4,7 @@
 import argparse
 import json
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -21,6 +22,8 @@ from work import (
     strip_comment,
     work_entries_since,
 )
+
+FREE_ID = re.compile(r"free-(\d{4}-\d\d-\d\d-(.+))")
 
 
 def fail(msg: str) -> "int":
@@ -49,6 +52,11 @@ def story_card(plan: str, story_id: str) -> tuple[str, str]:
         raise KeyError(f"{story_id} header has no [status] bracket in the plan")
     status = lines[start].rsplit("[", 1)[1].rstrip().rstrip("]")
     return card, status
+
+
+def leg(story_id: str) -> tuple[str, str]:
+    free = FREE_ID.fullmatch(story_id)
+    return (f"free {free.group(2)}", free.group(2)) if free else (f"story {story_id}", "")
 
 
 def config_flat(key: str) -> str:
@@ -133,7 +141,7 @@ def build_bundle(card: str, base: str, report: Path, prior: str = "", notice: st
     sections = [
         ("Your charter", review.charter()),
         ("Your report", f"REPORT_PATH: {report}\nPATCH_PATH: {review.patch_path(report)}"),
-        ("Story card", card or "none — this is a free branch; judge the diff itself"),
+        ("Story card", card),
         *([("Before you start", notice)] if notice else []),
         ("Earlier rounds of THIS review", prior or "none — you are round 1"),
         ("Cumulative diff", git("diff", f"{base}..HEAD").stdout),
@@ -146,32 +154,27 @@ def build_bundle(card: str, base: str, report: Path, prior: str = "", notice: st
     return "".join(f"## {title}\n\n{body}\n\n" for title, body in sections)
 
 
-def _preflight(story_id: str, action: str, free: bool = False) -> tuple[str, str, str]:
+def _preflight(story_id: str, action: str, dry_run: bool = False) -> tuple[str, str, str]:
     if git("status", "--porcelain").stdout.strip():
         return "", "", "refused: working tree is dirty — commit or stash first"
-    card, trunk = "", default_branch() if free else integration_target()
-    if free:
-        if plan_path().exists() and f"#### {story_id} " in plan_path().read_text():
-            try:
-                card, status = story_card(plan_path().read_text(), story_id)
-            except KeyError as e:
-                return "", "", f"refused: {e.args[0]}"
-            if status not in ("planned", "ready", "in-progress"):
-                return "", "", f"refused: {story_id} is [{status}], {action} cannot use it"
-    else:
-        if not plan_path().exists():
-            return "", "", f"refused: {missing_plan_refusal()}"
-        try:
-            card, status = story_card(plan_path().read_text(), story_id)
-        except KeyError as e:
-            return "", "", f"refused: {e.args[0]}"
-        if status != "in-progress":
-            return "", "", f"refused: {story_id} is [{status}], {action} requires [in-progress]"
-    if card:
-        try:
-            verify_commands(story_id, card)
-        except ValueError as e:
-            return "", "", str(e)
+    _noun, free_slug = leg(story_id)
+    card, trunk = "", default_branch() if free_slug else integration_target()
+    if not plan_path().exists():
+        return "", "", f"refused: {missing_plan_refusal()}"
+    try:
+        card, status = story_card(plan_path().read_text(), story_id)
+    except KeyError as e:
+        return "", "", f"refused: {e.args[0]}"
+    # Only a PREVIEW: free.cmd_review mints and flips before every real review, so a
+    # live one arriving here [planned] came in under the story noun, and reviewing it
+    # spends a round on a card nothing committed to.
+    previewable = dry_run and free_slug and action == "review" and status in ("planned", "ready")
+    if status != "in-progress" and not previewable:
+        return "", "", f"refused: {story_id} is [{status}], {action} requires [in-progress]"
+    try:
+        verify_commands(story_id, card)
+    except ValueError as e:
+        return "", "", str(e)
     branch = git("rev-parse", "--abbrev-ref", "HEAD").stdout.strip()
     if branch in (trunk, default_branch()):
         return (
@@ -185,8 +188,6 @@ def _preflight(story_id: str, action: str, free: bool = False) -> tuple[str, str
 
 def verify_on_reviewed_tree(story_id: str, card: str) -> str:
     """Run Verify on the reviewed diff; land separately protects the merged tree."""
-    if not card:
-        return ""
     import overlap  # a cycle at module level: it imports close
 
     red = overlap.run_checks(verify_commands(story_id, card)[1], None, " on the reviewed tree")
@@ -214,7 +215,7 @@ def _record_round(story_id: str, card: str, path: Path, marker: Path, state: dic
     kept = "The round IS recorded, and it names this tree — a reset here orphans it."
     refusal = review.abort_text(head, verify_err, kept) if verify_err else ""
     review.stamp(path, refusal)
-    if err := review.write_reviewer_diff(path, head, at.get("noun", f"story {story_id}")):
+    if err := review.write_reviewer_diff(path, head, at.get("noun", leg(story_id)[0])):
         return fail(review.stamp(path, err))  # already a whole refusal, prefix and all
     review.write_round(
         marker,
@@ -229,12 +230,10 @@ def _record_round(story_id: str, card: str, path: Path, marker: Path, state: dic
     return fail(refusal) if refusal else 0
 
 
-def cmd_review(
-    story_id: str, dry_run: bool = False, free: bool = False, free_slug: str = ""
-) -> int:
+def cmd_review(story_id: str, dry_run: bool = False) -> int:
     import review
 
-    card, trunk, err = _preflight(story_id, "review", free)
+    card, trunk, err = _preflight(story_id, "review", dry_run)
     if err:
         return fail(err)
     marker = marker_path(story_id)
@@ -245,26 +244,17 @@ def cmd_review(
         review.patch_path(path).unlink(missing_ok=True)
     head = git("rev-parse", "HEAD").stdout.strip()
     base = git("merge-base", f"refs/heads/{trunk}", "HEAD").stdout.strip()
-    # The noun is the LEG's own command, not the story leg's: a free card lands with
-    # `close.py free <slug> land` and following `story <key>` gets a refusal (e2ff1a03).
     at = {"head": head, "digest": review.marker_digest(marker), "base": base, "card": card}
-    at["noun"] = f"free {free_slug}" if free_slug else f"story {story_id}"
+    at["noun"] = leg(story_id)[0]
     prior = render_prior_rounds(state.get("rounds", []))
     notices = [review.plan_review_notice(story_id)]
-    if free and not card:
-        changed = git("diff", "--numstat", f"{base}..HEAD").stdout.splitlines()
-        lines = sum(int(n) for row in changed for n in row.split("\t")[:2] if n.isdigit())
-        notices.append(
-            f"card-less free diff is {lines} changed lines across {len(changed)} files;"
-            " a card would add explicit scope, AC, and Verify"
-        )
     notice = "\n".join(n for n in notices if n)
     if notice:
         print("warning: " + notice, file=sys.stderr)
     bundle = build_bundle(card, base, path, prior, notice)
     if not dry_run:
         review.launch_marker(story_id).write_text(json.dumps(at))
-    result, err = review.run(bundle, Path.cwd(), dry_run, card=card)
+    result, err = review.run(bundle, Path.cwd(), dry_run, card=card, noun=at["noun"])
     if dry_run:
         return fail("refused: " + err) if err else 0
     if err:  # crash, timeout, absent binary — it may still have committed first
@@ -307,11 +297,11 @@ def _read(path: str) -> str:
     return p.read_text() if p.exists() else f"(missing: {path})"
 
 
-def cmd_land(story_id: str, merge_mode: str, dry_run: bool, free_slug: str = "") -> int:
+def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
     sys.path[:0] = [str(Path(__file__).parent / d) for d in ("close", "spawn")]
     import land
 
-    return land.cmd_land(story_id, merge_mode, dry_run, free_slug)
+    return land.cmd_land(story_id, merge_mode, dry_run)
 
 
 def main() -> int:
@@ -323,7 +313,7 @@ def main() -> int:
     sp.add_argument("--dry-run", action="store_true")
     f = sub.add_parser("free")
     f.add_argument("slug")
-    f.add_argument("action", choices=["start", "review", "land", "post-merge"])
+    f.add_argument("action", choices=["start", "review", "salvage", "land", "post-merge"])
     f.add_argument("--dry-run", action="store_true")
     s = sub.add_parser("story")
     s.add_argument("story_id")
@@ -348,6 +338,8 @@ def main() -> int:
             return free.cmd_start(a.slug)
         if a.action == "review":
             return free.cmd_review(a.slug, a.dry_run)
+        if a.action == "salvage":
+            return free.cmd_salvage(a.slug)
         if a.action == "land":
             return free.cmd_land(a.slug, a.dry_run)
         return free.cmd_post_merge(a.slug)
