@@ -11,7 +11,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
-from env import plugin_version, run_hook, write_env
+from env import plugin_manifest_value, plugin_version, run_hook, write_env
 from work import data_root, entries, plan_path, record_summary, strip_comment
 
 PLUGIN_ROOT = Path(__file__).parent.parent
@@ -63,6 +63,49 @@ def config_age(root: Path) -> str:
     return ".xp/config.yml is missing shipped keys — " + "; ".join(
         f"{key}: add `{line}`" for key, line in missing
     )
+
+
+def install_status() -> tuple[str, str]:
+    harness = os.environ.get("XP_HARNESS", "")
+    if harness not in {"claude", "codex"}:
+        native = [key for key in ("CLAUDECODE", "CODEX_THREAD_ID") if os.environ.get(key)]
+        if len(native) != 1:
+            return "ambiguous", ""
+        harness = "claude" if native[0] == "CLAUDECODE" else "codex"
+    source = "claude" if harness == "codex" else "codex"
+    name, running = plugin_manifest_value(PLUGIN_ROOT, "name"), plugin_version(PLUGIN_ROOT)
+    try:
+        argv = [source, "plugin", "list", "--json"]
+        listed = subprocess.run(argv, capture_output=True, text=True, timeout=5, check=True)
+        payload = json.loads(listed.stdout)
+        records = payload.get("installed", []) if source == "codex" else payload
+    except (AttributeError, OSError, ValueError, subprocess.SubprocessError) as exc:
+        return ("absent-harness" if isinstance(exc, FileNotFoundError) else "unreadable"), ""
+    key = "pluginId" if source == "codex" else "id"
+    if not isinstance(records, list) or not all(isinstance(item, dict) for item in records):
+        return "unreadable", ""
+    matched = [item for item in records if str(item.get(key, "")).partition("@")[0] == name]
+    if source == "claude":
+        project = str(Path(os.path.realpath(git("rev-parse", "--git-common-dir"))).parent)
+        local = [x for x in matched if isinstance(x.get("projectPath"), str)]
+        local = [x for x in local if os.path.realpath(x["projectPath"]) == project]
+        users = [x for x in matched if x.get("scope") == "user" and "projectPath" not in x]
+        matched = local or users
+    if not matched:
+        return "absent-plugin", ""
+    item = min(matched, key=lambda value: (value.get("version") != running, str(value.get(key))))
+    identity, found = item.get(key), item.get("version")
+    if not all(isinstance(value, str) and value for value in (identity, found)):
+        return "unreadable", ""
+    path = data_root() / f"installed-{source}-version"
+    old = read(path).strip()
+    path.write_text(found + "\n")
+    changed = f"{source} plugin changed from {old} to {found}" if old and old != found else ""
+    if found == running:
+        return "current", changed
+    action = "add" if source == "codex" else f"install --scope {item.get('scope') or 'user'}"
+    mismatch = f"installed {found}; running {running}; `{source} plugin {action} {identity}`"
+    return "stale", "\n".join(filter(None, (changed, mismatch)))
 
 
 DIGEST_CAP = 30  # lines; the story-close SKILL's copy is pinned to this by a test
@@ -285,23 +328,14 @@ def fenced_titles(titles: list[str]) -> str:
     return f"\n\nWORK.MD TITLES CUT: {'; '.join(titles)}" if titles else ""
 
 
-def byte_len(text: str) -> int:
-    return len(text.encode())
-
-
-def render(
-    regions: list[tuple[str, str]],
-    rules: str = "",
-    titles: list[str] | None = None,
-    cap: int = OUTPUT_CAP,
-) -> str:
+def render(regions, rules="", titles=None, cap=OUTPUT_CAP) -> str:
     texts = [text for _name, text in regions if text]
     out = "\n\n".join(texts)
-    if byte_len(out) < cap:
+    if len(out.encode()) < cap:
         return out
     named = [name for name, text in regions if name and text]
     worst = notice(CONSTRAINT.findall(rules), named, cap)
-    reserve = byte_len(worst + fenced_titles(titles or []) + f"\n\n{END}") + 1
+    reserve = len((worst + fenced_titles(titles or []) + f"\n\n{END}").encode()) + 1
     kept = out.encode()[: max(0, cap - reserve)].decode(errors="ignore")
     at = out.find(rules) if rules else -1
     shown_len = max(0, len(kept) - at) if at >= 0 else 0
@@ -349,14 +383,16 @@ def main(data: dict) -> int:
         return 0
     with contextlib.suppress(Exception):
         write_env(PLUGIN_ROOT, plugin_version(PLUGIN_ROOT))
+    install = safe(lambda: install_status()[1])
     if os.environ.get("XP_ROLE", "lead") != "lead":
-        print(teammate_marker())
+        print(teammate_marker() + ("\n" + install if install else ""))
         return 0
 
     rules = safe(lambda: read(root / ".xp" / "constraints.md"))
     regions = [
         ("banner", safe(lambda: banner(root))),
         ("config notice", safe(lambda: config_age(root))),
+        ("install notice", install),
         ("VALUES.md", safe(lambda: read(PLUGIN_ROOT / "VALUES.md"))),
         ("PROCESS.md", safe(lambda: read(PLUGIN_ROOT / "PROCESS.md"))),
         ("", BEGIN),

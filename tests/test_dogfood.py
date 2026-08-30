@@ -78,6 +78,19 @@ class TestDogfoodMatchesTheScaffold:
         ]
         assert not named, named
 
+    def test_shipped_tree_names_no_repository_relative_plugin_layout(self):
+        plugin = self.REPO / "plugins" / "xp-plugin"
+        shipped = [
+            path for path in plugin.rglob("*") if path.is_file() and "__pycache__" not in path.parts
+        ]
+        assert len(shipped) > 40, "scanned nothing — a green here would certify"
+        leaked = [
+            path.relative_to(plugin)
+            for path in shipped
+            if "plugins/xp-plugin" in path.read_text(errors="replace")
+        ]
+        assert not leaked, leaked
+
     def cap_value(self, path):
         line = next(
             ln for ln in path.read_text().splitlines() if ln.startswith("constraints_chars_cap:")

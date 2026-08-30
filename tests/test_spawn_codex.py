@@ -61,7 +61,9 @@ class TestCodexExecutor:
         assert not [a for a in argv if a.startswith("sandbox_workspace_write.")], argv
         # still banned, and not for the sandbox half: it also routes approvals
         # through an automatic model review, which is judgment where a gate belongs
+        assert "--approve-for-me" not in argv, argv
         assert "--dangerously-bypass-approvals-and-sandbox" not in argv, argv
+        assert "--dangerously-bypass-hook-trust" not in argv, argv
         # exactly one: note 6193855e probed the git-common-dir widening
         # unnecessary on 0.147.0, and a second --add-dir is that widening returning
         assert argv.count("--add-dir") == 1, argv
@@ -121,7 +123,9 @@ class TestCodexExecutor:
         rec = stub_codex(tmp_path, sandbox=posture)
         r = spawn(repo, env, "story-042")
         assert r.returncode == 0, r.stderr
-        argv = json.loads(rec.read_text())["argv"]
+        launched = json.loads(rec.read_text())
+        argv = launched["argv"]
+        assert launched["env"]["XP_HARNESS"] == "codex"
         expected = {
             "workspace-write": (
                 "codex sandbox: workspace-write — no outbound network — DNS, loopback,"

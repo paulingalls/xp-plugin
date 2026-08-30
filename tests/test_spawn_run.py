@@ -75,6 +75,7 @@ class TestAgentWallClock:
         argv = ["claude", "--dangerously-skip-permissions"]
         spawn.run_agent(argv, tmp_path, "", role, "claude", "review")
         assert not [k for k in seen["env"] if k.startswith(("GIT_AUTHOR_", "GIT_COMMITTER_"))]
+        assert seen["env"]["XP_HARNESS"] == "claude"
         assert seen["argv"] == ["claude", "--dangerously-skip-permissions"]
         assert seen["options"]["widen_git"] is False
 
