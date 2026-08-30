@@ -57,10 +57,11 @@ def test_a_consumer_plugin_tree_does_not_replace_the_installed_root(tmp_path):
 
 
 def test_a_free_consumer_plugin_tree_keeps_the_installed_root(tmp_path):
-    from test_close_free import KEY, carded_free_patch
+    from test_close_free import carded_free_patch
 
     repo, env, g = carded_free_patch(tmp_path)
     branch = g("rev-parse", "--abbrev-ref", "HEAD").stdout.strip()
+    key = branch.split("/", 1)[1]
     g("checkout", "-q", "main")
     write_plugin_source(repo)
     g("add", "-A")
@@ -69,7 +70,7 @@ def test_a_free_consumer_plugin_tree_keeps_the_installed_root(tmp_path):
     assert g("merge", "-q", "main").returncode == 0
     stub_claude(tmp_path)
 
-    result = spawn(repo, env, KEY)
+    result = spawn(repo, env, key)
     assert result.returncode == 0, result.stderr
     handback = result.stdout.splitlines()[-1]
     assert handback.endswith("close.py free fix-typo review` from that worktree.")
@@ -80,10 +81,11 @@ def test_a_branch_lacking_the_plugin_keeps_the_installed_root(tmp_path):
     """The free branch is cut before the plugin reaches the default branch, so its
     worktree has no plugins/ at all — the arm where a layout-derived root is a path
     that does not exist rather than merely the wrong one."""
-    from test_close_free import KEY, carded_free_patch
+    from test_close_free import carded_free_patch
 
     repo, env, g = carded_free_patch(tmp_path)
     branch = g("rev-parse", "--abbrev-ref", "HEAD").stdout.strip()
+    key = branch.split("/", 1)[1]
     g("checkout", "-q", "main")
     write_plugin_source(repo)
     g("add", "-A")
@@ -91,9 +93,9 @@ def test_a_branch_lacking_the_plugin_keeps_the_installed_root(tmp_path):
     g("checkout", "-q", branch)
     rec = stub_claude(tmp_path)
 
-    result = spawn(repo, env, KEY)
+    result = spawn(repo, env, key)
     assert result.returncode == 0, result.stderr
-    assert not (Path(env["XP_DATA"]) / "worktrees" / KEY / "plugins").exists()
+    assert not (Path(env["XP_DATA"]) / "worktrees" / key / "plugins").exists()
     assert str(SPAWN.parent / "work.py") in json.loads(rec.read_text())["stdin"]
     assert result.stdout.splitlines()[-1].endswith(
         "Read it, then run `close.py free fix-typo review` from that worktree."

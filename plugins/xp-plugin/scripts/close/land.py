@@ -16,13 +16,14 @@ import work
 from release import next_version, refuse_unbumpable
 
 
-def cmd_land(story_id: str, merge_mode: str, dry_run: bool, free_slug: str = "") -> int:
+def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
     if close.git("status", "--porcelain").stdout.strip():
         return close.fail("refused: working tree is dirty — Verify must judge the tree that merges")
     marker = close.marker_path(story_id)
     if not marker.exists():
         return close.fail(f"refused: no close in progress for {story_id} — run review first")
     state = json.loads(marker.read_text())
+    noun, free_slug = close.leg(story_id)
     free = bool(free_slug)
     trunk = close.default_branch() if free else close.integration_target()
     if not free and merge_mode == "pr" and trunk != close.default_branch():
@@ -32,8 +33,7 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool, free_slug: str = "")
         )
     head = close.git("rev-parse", "HEAD").stdout.strip()
     base = close.git("merge-base", f"refs/heads/{trunk}", "HEAD").stdout.strip()
-    key = f"free {free_slug}" if free else f"story {story_id}"
-    if err := overlap.land_refusal(state, key, base):
+    if err := overlap.land_refusal(state, noun, base):
         return close.fail(err)
     rounds = state["rounds"]
     ref = overlap.merge_source(trunk, merge_mode)
@@ -49,33 +49,25 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool, free_slug: str = "")
         held, err = bookkeep.held_trunk_tree(trunk)
         if err:
             return close.fail(err)
-    minted = work.ready_marker_path(story_id).exists()
-    text = work.plan_path().read_text() if work.plan_path().exists() else ""
-    card, status = "", ""
-    # A minted free card reached review, so losing it cannot become card-less mode.
-    if not free or minted or f"#### {story_id} " in text:
-        if not text:
-            return close.fail(f"refused: {work.missing_plan_refusal()}")
-        try:
-            card, status = close.story_card(text, story_id)
-        except KeyError as e:
-            return close.fail(f"refused: {e.args[0]}")
-    if card:
-        if status != "in-progress":
-            return close.fail(f"refused: {story_id} is [{status}], land requires [in-progress]")
-        if drift := ready.drift(story_id, card):
-            return close.fail(drift)
-        amended = json.loads(work.ready_marker_path(story_id).read_text()).get("amendments", [])
-        for i, change in enumerate(amended):
-            after = amended[i + 1]["card"] if i + 1 < len(amended) else card
-            print(f"card amended — reason: {change['reason']}")
-            print(ready.card_diff(change["card"], after))
-        try:
-            raw, verify = close.verify_commands(story_id, card)
-        except ValueError as e:
-            return close.fail(str(e))
-    else:
-        raw, verify = "", []
+    if not work.plan_path().exists():
+        return close.fail(f"refused: {work.missing_plan_refusal()}")
+    try:
+        card, status = close.story_card(work.plan_path().read_text(), story_id)
+    except KeyError as e:
+        return close.fail(f"refused: {e.args[0]}")
+    if status != "in-progress":
+        return close.fail(f"refused: {story_id} is [{status}], land requires [in-progress]")
+    if drift := ready.drift(story_id, card):
+        return close.fail(drift)
+    amended = json.loads(work.ready_marker_path(story_id).read_text()).get("amendments", [])
+    for i, change in enumerate(amended):
+        after = amended[i + 1]["card"] if i + 1 < len(amended) else card
+        print(f"card amended — reason: {change['reason']}")
+        print(ready.card_diff(change["card"], after))
+    try:
+        raw, verify = close.verify_commands(story_id, card)
+    except ValueError as e:
+        return close.fail(str(e))
     tier_key = "story"
     tier = work.config_block_value("tests", tier_key)
     branch = close.git("rev-parse", "--abbrev-ref", "HEAD").stdout.strip()
@@ -84,7 +76,7 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool, free_slug: str = "")
     if free and not version:
         return refuse_unbumpable(ref)
     message = f"Merge {branch} ({story_id})\n\n{verdict}\n"
-    title = f"free {free_slug} — {version}" if free else story_id
+    title = f"{noun} — {version}" if free else story_id
     pr_cmds = [["git", "push", "-u", "origin", branch]]
     pr_cmds.append(
         ["gh", "pr", "create"]
@@ -104,7 +96,7 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool, free_slug: str = "")
         if free:
             for command in pr_cmds:
                 print(" ".join(command))
-            print(f"(first the story tier; then `close.py free {free_slug} post-merge`)")
+            print(f"(first the story tier; then `close.py {noun} post-merge`)")
             return 0
         print(
             bookkeep.render_land_preview(raw, tier, merge_mode, branch, trunk, pr_steps, pending),
@@ -128,8 +120,7 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool, free_slug: str = "")
                 return close.fail(f"{command[0]} failed: {result.stderr.strip()}")
         print(bookkeep.render_noted(rounds), end="")
         print(
-            f"PR open against {trunk} for {version}. After it merges:"
-            f" `close.py free {free_slug} post-merge`"
+            f"PR open against {trunk} for {version}. After it merges: `close.py {noun} post-merge`"
         )
         return 0
 

@@ -9,6 +9,7 @@ import pathlib
 
 import pytest
 from close import story_card
+from close_free_card_cases import add_free_card, free_identity
 from close_helpers import (
     CLEAN,
     FIX_PATCH,
@@ -366,6 +367,8 @@ class TestTheFreeLegNamesItsOwnLandCommand:
         repo, env, g = free_repo(tmp_path)
         started = free(repo, env, "Fix Typo", "start")
         assert started.returncode == 0 and "free fix-typo review" in started.stdout
+        _branch, key = free_identity(g)
+        add_free_card(env, key)
         (repo / "src").mkdir(parents=True, exist_ok=True)
         (repo / "src" / "free.py").write_text("B = 1\n")
         g("add", "-A")
