@@ -312,14 +312,22 @@ class TestDogfoodMatchesTheScaffold:
             f"the SKILL does not state the {DIGEST_CAP}-line bound the hook enforces"
         )
 
-    def test_setup_offer_uses_the_published_plugin_identity(self):
+    def test_setup_offers_the_install_commands_the_spawn_refusal_names(self):
+        """Three copies of one identity: the manifests key the marketplace, harness.py
+        prints it when a spawn finds a bare harness, and the SKILL offers it at setup.
+        Only the code's copy is runnable, so both others pin to it — asserting the
+        identity alone left either harness's whole bullet deletable while green."""
+        from harness import PLUGIN_INSTALL
+
         marketplace = json.loads((self.REPO / ".claude-plugin/marketplace.json").read_text())
         manifest = json.loads(
             (self.REPO / "plugins/xp-plugin/.claude-plugin/plugin.json").read_text()
         )
         identity = f"{manifest['name']}@{marketplace['name']}"
         skill = (self.REPO / "plugins/xp-plugin/skills/xp-setup/SKILL.md").read_text()
-        assert identity in skill, f"setup does not offer the published identity {identity}"
+        for name, command in PLUGIN_INSTALL.items():
+            assert identity in command, f"{name}'s install command does not name {identity}"
+            assert command in skill, f"setup does not offer {name}: `{command}`"
 
     def test_the_shipped_plan_parses_with_the_parser_sprint_close_uses(self):
         """Was a PAIR: it also read THIS repo's .xp/plan.md, so our live plan and
