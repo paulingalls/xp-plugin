@@ -4,6 +4,38 @@ Release notes started at v0.6.0; earlier entries are summarized from their
 tag and merge messages. Full detail lives in the merge history and the
 per-sprint review reports.
 
+## v0.15.0 — each harness can trust what the other is running
+
+Sprint 14, opening and completing Milestone 6. Six cards make installation state,
+role readiness, free work and Verify paths explicit across both supported harnesses.
+The sprint spends eight net shipped lines, raises no total cap, and funds its one
+component re-cut from the removal of `--in-place`.
+
+- SessionStart compares the running plugin with the other harness's installed record
+  and reports version drift with the exact marketplace upgrade command. Plugin identity
+  comes from the manifest; records are scoped per install; a long-running session is
+  never compared with its own newly updated record; and no repository-local path leaks
+  into a consumer install. Absent harness, absent plugin, stale plugin and changed
+  installed version remain distinct states.
+- Role preflight now proves the selected harness has this plugin before launching the
+  first reviewer, including dry runs. A missing install refuses before any finder,
+  verifier or fixer spend, while disabled roles retain their own refusal.
+- `xp-setup` offers the normal marketplace install for each configured harness. The
+  published Codex path was installed and walked as a consumer would run it.
+- `spawn.py --in-place` is gone. The process no longer offers the lead a route to act
+  as its own executor; code is written on a branch in a teammate worktree. Ordinary
+  story spawn and carded free work retain their handoff and landing paths.
+- Every free patch now has a card: mint, amend, drift detection, Review, Verify,
+  salvage and the distinct free landing command all use the same lifecycle. The old
+  cardless branch is removed, and handoffs name the slugged free id they can land.
+- Verify documentation now states that argv runs without a shell from the repository
+  root. Subprojects use their runner's working-directory option; the README's `uv
+  run --directory` example was walked passing, failing and with the directory option
+  removed.
+- The fast-tier cost falsifier uses a same-run load control, so host contention does
+  not impersonate a suite regression. Fault injection proves suite-only slowdown still
+  reds, and timer-dependent watchdog tests remain in the full release tier.
+
 ## v0.14.1 — the free leg names its own land command
 
 Patch. One field-reported defect from the only consuming project running this plugin,

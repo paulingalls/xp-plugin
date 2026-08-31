@@ -23,8 +23,9 @@ Story ACs must be executed by a test named in the story's Verify.
 - Size budgets are acceptance criteria (DESIGN.md §9, rationale and numbers); run
   `tests/scripts/ratchet.py` for the live table — pre-push runs it too.
 - **Worktree bootstrap**: none needed (stdlib only, no install step).
-- **Concurrency**: at most two review/analysis streams, but only one `pytest -n auto`
-  gate. Reviews have no wall-clock limit; rejoin the same task instead of relaunching it.
-- **Lanes**: `docs/DESIGN.md` is shared by EVERY card by construction — a card records
-  its decision there — so it never separates lanes, and land's coverage check refuses
-  on it. Reason about lanes from the other files (measured: sprint 9, twice).
+- **Concurrency**: at most two review streams and one `pytest -n auto` gate. Reviews
+  have no wall-clock limit; rejoin instead of relaunching.
+- **Triage**: name any tier that still covers a dropped debt; without coverage, the
+  drop is final.
+- **Lanes**: `docs/DESIGN.md` is shared by every card and never separates lanes; use
+  the other files instead (measured twice in Sprint 9).
