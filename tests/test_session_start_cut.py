@@ -13,8 +13,7 @@ from session_start import END, OUTPUT_CAP, PLUGIN_ROOT, RECOVER_CAP
 from session_start_helpers import run_hook, run_recovery, xp_repo
 
 VALUES = (PLUGIN_ROOT / "VALUES.md").read_text()
-JUDGMENT_PATH = PLUGIN_ROOT / "JUDGMENT.md"
-JUDGMENT = JUDGMENT_PATH.read_text() if JUDGMENT_PATH.exists() else "JUDGMENT-MISSING"
+JUDGMENT = (PLUGIN_ROOT / "JUDGMENT.md").read_text()
 PROCESS = (PLUGIN_ROOT / "PROCESS.md").read_text()
 
 

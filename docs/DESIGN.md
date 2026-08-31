@@ -269,10 +269,11 @@ The economic shape: **an expensive model orchestrates; cheaper or different mode
 
 Every agent, on every spawn path, gets the small shared **VALUES.md** and
 **JUDGMENT.md** documents. Each role still gets its own role-shaped document. The
-audit rejected one big shared guide that replaced role-shaped instructions; it did
-not reject small shared sources that remove duplicates. VALUES is the standing
-counterexample, and JUDGMENT adds 304-or-fewer tokens without removing PROCESS,
-TEAMMATE or any reviewer charter.
+§3 finding this amends is AUDIT.md:123, and it is graded **testimony-only** —
+reads leave no trace. Its one corroborated half is that the guide DUPLICATED skill
+text, which is the argument FOR this file rather than against it: JUDGMENT is ~300
+tokens that REPLACE duplication, and PROCESS, TEAMMATE and every reviewer charter
+survive it. VALUES is the standing counterexample — small, shared, in all five.
 
 | Audience | Injected | Target |
 |---|---|---|
@@ -335,12 +336,11 @@ Re-measure the dogfood profile with
 | Hook bindings | 34 | 4 CLI + 2 git | ~82% |
 | State stores | 6 JSON + event log + 15 CLIs | 4 markdown in-repo + 2 out + 1 config | — |
 | Per-session injection | ~10k+ tokens | ≤9,500 bytes | transport-bound |
-| Teammate plugin-shipped profile | 1,200 tokens, flush | ≤1,365 tokens (1,329 measured) | 36-token headroom; funded by shared prose removed from TEAMMATE |
 | Kickoff subagent tax | ~115k tokens measured | 0 | 100% |
 
 These are acceptance criteria for the build, not aspirations: `ratchet.py` measures the Python line and prose-density budgets at pre-push and fails if they are exceeded; the prose-word and test-ratio budgets below are read-and-judge, unmeasured so far. The sub-allocation below is the only other copy of the sub-budget numbers, and a test pins it to ratchet.py's constants; README, CLAUDE.md and system.md point here and to the command, never restate a number. Meta-tests are budgeted too: test lines ≤ 2× code lines (1.7× at sprint-003, down from 3.6× at sprint-001 — hand-measured, which is why it is the next thing the ratchet should count).
 
-**Prose inside code is budgeted like any other prose**: comments + docstrings ≤ 20% of shipped Python lines — every line under `plugins/xp-plugin/**`, blanks included in the denominator as in the component counts, which is the LENIENT of the two readings and materially so; the ratchet only ever lowers it, and the non-blank denominator is where it lowers to first. The predecessor reached 33% with no counter-pressure. The reason it needs a number rather than good intentions: a comment is the one artifact no test can check, so it goes stale SILENTLY — sprint-002 found a comment still describing a block that had moved away from it, asserting something false, with the suite green. JUDGMENT.md is the one shipped copy of the rubric and finding bar; reviewer charters point at it and every reviewer bundle carries it. This also closes the sprint fixer's prior gap: it edits files under the same rubric as the executor and story reviewer. The lead injection is net-negative because PROCESS sheds more than JUDGMENT adds. The teammate cap moves from 1,200 to 1,365, funded by removing the shared rules from TEAMMATE rather than adding a second copy. The number lives here because only CI can count.
+**Prose inside code is budgeted like any other prose**: comments + docstrings ≤ 20% of shipped Python lines — every line under `plugins/xp-plugin/**`, blanks included in the denominator as in the component counts, which is the LENIENT of the two readings and materially so; the ratchet only ever lowers it, and the non-blank denominator is where it lowers to first. The predecessor reached 33% with no counter-pressure. The reason it needs a number rather than good intentions: a comment is the one artifact no test can check, so it goes stale SILENTLY — sprint-002 found a comment still describing a block that had moved away from it, asserting something false, with the suite green. JUDGMENT.md is the one shipped copy of the rubric and finding bar; reviewer charters point at it and every reviewer bundle carries it. This also closes the sprint fixer's prior gap: it edits files under the same rubric as the executor and story reviewer. The lead injection is net-negative because PROCESS sheds more than JUDGMENT adds. The teammate cap moves from a flush 1,200 to 1,365 tokens — 1,329 measured, 36 of stated headroom — funded by removing the shared rules from TEAMMATE rather than adding a second copy. The number lives here because only CI can count.
 
 The 5,570-line total is **sub-budgeted**, because the two surviving big components already threaten it (the predecessor's spawn subsystem alone is ~1.7k+ lines, and the Codex leg's measured requirements — sandbox flags, install preflight, catalog re-enumeration, tier handling — are feature surface, not prose): spawn CLI ≤ 1,385 · close component ≤ 2,420 · hooks + both harness adapters ≤ 563 · scaffolding/validators/misc ≤ 1,202.
 

@@ -27,9 +27,9 @@ adding over the cap requires retiring one (the plan reviewer enforces).
    worth writing). Large files eat agent context on every read; over-cap means
    extract, not scroll.
 9. **Comments exist only for what neither a test nor a name can carry** — the why,
-   an external constraint, a rejected design; JUDGMENT.md gives every role the rubric.
-   Prose in code is budgeted like any other prose
-   because a comment is the one artifact no test checks, so it rots silently.
+   an external constraint, a rejected design; JUDGMENT.md gives every role the
+   rubric. Prose in code is budgeted like any other prose because a comment is
+   the one artifact no test checks, so it rots silently.
 10. **Markers are always scoped** (story/plan/session) — a project-global mutable
    marker is a design error (measured: marker bleed between parallel stories).
 11. **A falsifier must CONSTRUCT the condition it claims** — never observe ambient

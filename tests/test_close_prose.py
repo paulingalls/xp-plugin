@@ -192,7 +192,10 @@ class TestShippedProseMatchesTheMechanism:
         """Constraint 1. The cap is the LIVE size, never a historical one: left at
         5,454 for a file that had shrunk to 2,928, it passed with 2,277 characters
         of padding spliced in — a ratchet with that much slack certifies instead of
-        checking. Re-measure and lower it whenever this file legitimately shrinks."""
+        checking. THE SLACK HERE IS RESERVED, NOT FORGOTTEN: story-089 moved the
+        shared rules out to JUDGMENT.md and left this file at 1,345, and story-082
+        spends the room on the loop's spine. Lower it to the live size at that
+        card's close, or it is padding again."""
         raw = (PLUGIN / "PROCESS.md").read_text()
         assert len(raw) <= 2840, "the execution rule stopped paying for itself"
         process = " ".join(raw.split())

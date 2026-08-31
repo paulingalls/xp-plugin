@@ -442,9 +442,9 @@ class TestSprintCharter:
             assert token in shared, f"the charter never names {token}"
 
     def test_the_new_agent_files_frontmatter_is_funded_not_added(self):
-        """Both shipped-prose caps sit at 240/300 and 1329/1365. Constraint 1 is
-        mechanical here: the sprint
-        charter's frontmatter is paid for out of story-reviewer.md's."""
+        """Both shipped-prose caps sit at 214/300 and 1329/1365. Constraint 1 is
+        mechanical here: the sprint charter's frontmatter is paid for out of
+        story-reviewer.md's."""
         sys.path.insert(0, str(CLOSE.parent))
         from spawn import (
             COMPONENT_METADATA_CAP,

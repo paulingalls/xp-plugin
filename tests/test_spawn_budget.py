@@ -35,6 +35,7 @@ class TestBudget:
     def test_JUDGMENT_is_injected_counted_and_required(self, tmp_path, monkeypatch):
         import spawn as spawn_module
 
+        monkeypatch.setenv("XP_DATA", str(tmp_path))  # so the only SystemExit below is the read
         root = tmp_path / "plugin"
         shutil.copytree(spawn_module.PLUGIN_ROOT, root)
         monkeypatch.setattr(spawn_module, "PLUGIN_ROOT", root)

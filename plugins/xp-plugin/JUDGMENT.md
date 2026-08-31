@@ -1,8 +1,8 @@
 # Judgment
 
 - Red first; watch it fail. Never fake a red; no-red commits say why. Hooks are the
-  wall: commit = lint/secrets/tests; push = full tests+ratchet.
-  Never bypass them.
+  wall: your commit and push hooks run the tiers you configured. Never bypass
+  them.
 - **Comments** — restates the code → delete · explains WHAT → rename it ·
   a checkable claim → write the test · narrates history → delete, git holds it.
   Keep only the why, external constraints or rejected designs.
