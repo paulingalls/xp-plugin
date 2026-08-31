@@ -120,8 +120,14 @@ def cmd_post_merge(slug: str) -> int:
             f"refused: expected one reviewed free release for {slug!r}, found {len(matches)}"
         )
     key = matches[0].name.removesuffix(".close.json")
-    if not card_in_plan(key):
-        return fail(f"refused: {key} not found in {plan_path()}")
+    try:
+        card, status = story_card(plan_path().read_text(), key)
+    except (KeyError, OSError) as exc:
+        return fail(f"refused: {key} not found in {plan_path()}: {exc}")
+    if status != "in-progress":
+        return fail(f"refused: {key} is [{status}], post-merge requires [in-progress]")
+    if refusal := spawn.ready().drift(key, card):
+        return fail(refusal)
     state = json.loads(matches[0].read_text())
     branch = str(state.get("branch", ""))
     result = release.cmd_post_merge(key, branch, "patch", False)
@@ -129,8 +135,6 @@ def cmd_post_merge(slug: str) -> int:
         return result
     tree, spawned_branch, failed = bookkeep.story_worktree(spawn.worktree_path(key))
     if not flip_card(key, "in-progress", "done"):
-        # Reported, not returned: the tag is cut by here and a second post-merge
-        # refuses it, so an early return leaves no leg to discharge the checkout.
         failed.append(f"flip {key} to [done] in {plan_path()}")
     failed += bookkeep.remove_story_checkout(tree, spawned_branch, config_flat("teardown_timeout"))
     failed += bookkeep.delete_story_branch(branch)

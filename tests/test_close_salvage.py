@@ -53,7 +53,9 @@ def dying_reviewer(tmp_path, extra="", patch=PATCH):
     )
     (bin_dir / "claude").write_text(
         "#!/bin/sh\n"
-        '[ "$1 $2 $3" = "plugin list --json" ] && exit 1\n'
+        '[ "$1 $2 $3" = "plugin list --json" ] && echo '
+        '\'[{"id":"xp-plugin@xp-plugin","version":"fixture",'
+        '"scope":"user"}]\' && exit 0\n'
         f"{sys.executable} {ticker} &\n"
         "ticker=$!\n"
         f"echo launched >> {tmp_path / 'spawns'}\n"
@@ -194,7 +196,13 @@ class TestSalvage:
         (repo / ".xp" / "config.yml").write_text(
             "roles:\n  reviewer: claude/opus\n  plan-reviewer: claude/opus\n"
         )
-        (tmp_path / "bin" / "claude").write_text("#!/bin/sh\nsleep 30\n")  # silent by design
+        (tmp_path / "bin" / "claude").write_text(
+            "#!/bin/sh\n"
+            '[ "$1 $2 $3" = "plugin list --json" ] && echo '
+            '\'[{"id":"xp-plugin@xp-plugin","version":"fixture",'
+            '"scope":"user"}]\' && exit 0\n'
+            "sleep 30\n"
+        )  # reviewer argv is silent by design
         monkeypatch.chdir(repo)
         for key, value in (env | {"XP_AGENT_TIMEOUT": "1"}).items():
             monkeypatch.setenv(key, value)

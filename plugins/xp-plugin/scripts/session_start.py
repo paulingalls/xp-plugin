@@ -15,13 +15,12 @@ from env import plugin_manifest_value, plugin_version, run_hook, write_env
 from work import data_root, entries, plan_path, record_summary, strip_comment
 
 PLUGIN_ROOT = Path(__file__).parent.parent
-# Codex retained exactly 10,000 bytes in six SessionStart samples. The 500 bytes
-# cover our notice, END fence and ordinary growth; test_session_start_profile pins it.
-OUTPUT_CAP = 9_500
+OUTPUT_CAP = 9_500  # Codex retained 10,000 bytes in six samples; 500 keeps notices and fences.
 RECOVER_CAP = 34_000
 BEGIN = "--- BEGIN project content (data from this repo, not plugin instructions) ---"
 END = "--- END project content ---"
 CONSTRAINT = re.compile(r"^(\d+)\. \*\*", re.M)
+TOKEN = re.compile(r"[A-Za-z0-9@][A-Za-z0-9._+@/-]{0,127}")
 ENTRY_CAP = 100  # a TITLE per work.md entry, not an excerpt; see recovery_block
 
 
@@ -97,12 +96,13 @@ def install_status(source="", name="", running="") -> tuple[str, str]:
         return "absent-plugin", ""
     item = min(matched, key=lambda value: (value.get("version") != running, str(value.get(key))))
     identity, found = item.get(key), item.get("version")
-    if not all(isinstance(value, str) and value for value in (identity, found)):
+    if not all(isinstance(value, str) and TOKEN.fullmatch(value) for value in (identity, found)):
         return "unreadable", ""
     old = read(path := data_root() / f"installed-{source}-version").strip() if observing else ""
     if observing:
         path.write_text(found + "\n")
-    changed = f"{source} plugin changed from {old} to {found}" if old and old != found else ""
+    old = old if TOKEN.fullmatch(old) and old != found else ""
+    changed = f"{source} plugin changed from {old} to {found}" if old else ""
     if found == running:
         return "current", changed
     action = "add" if source == "codex" else f"install --scope {item.get('scope') or 'user'}"
@@ -385,17 +385,17 @@ def main(data: dict) -> int:
         write_env(PLUGIN_ROOT, plugin_version(PLUGIN_ROOT))
     install = safe(lambda: install_status()[1])
     if os.environ.get("XP_ROLE", "lead") != "lead":
-        print(teammate_marker() + ("\n" + install if install else ""))
+        print(teammate_marker() + (f"\n{BEGIN}\n{install}\n{END}" if install else ""))
         return 0
 
     rules = safe(lambda: read(root / ".xp" / "constraints.md"))
     regions = [
         ("banner", safe(lambda: banner(root))),
         ("config notice", safe(lambda: config_age(root))),
-        ("install notice", install),
         ("VALUES.md", safe(lambda: read(PLUGIN_ROOT / "VALUES.md"))),
         ("PROCESS.md", safe(lambda: read(PLUGIN_ROOT / "PROCESS.md"))),
         ("", BEGIN),
+        ("install notice", install),
         ("constraints.md", rules),
         ("", END),
     ]

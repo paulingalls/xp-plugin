@@ -107,7 +107,9 @@ def stub_claude(
     body = [
         "#!/usr/bin/env python3",
         "import json, os, shlex, subprocess, sys",
-        "if sys.argv[1:] == ['plugin', 'list', '--json']: sys.exit(1)",
+        "if sys.argv[1:] == ['plugin', 'list', '--json']: print("
+        '\'[{"id":"xp-plugin@xp-plugin","version":"fixture",'
+        '"scope":"user"}]\'); sys.exit()',
         "argv = sys.argv[1:]",
         "stdin = sys.stdin.read()",
         f"json.dump({{'argv': argv, 'env': dict(os.environ), 'stdin': stdin}},"
@@ -250,7 +252,9 @@ def stub_codex(
         "#!/usr/bin/env python3",
         "import json, os, re, subprocess, sys",
         "argv = sys.argv[1:]",
-        "if argv == ['plugin', 'list', '--json']: sys.exit(1)",
+        "if argv == ['plugin', 'list', '--json']: print("
+        '\'{"installed":[{"pluginId":"xp-plugin@xp-plugin",'
+        '"version":"fixture"}]}\'); sys.exit()',
         "def die(m):",
         "    print('error: ' + m, file=sys.stderr); sys.exit(2)",
         "if argv[:1] != ['exec']: die('unrecognized subcommand')",

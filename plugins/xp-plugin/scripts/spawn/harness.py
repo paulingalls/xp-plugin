@@ -51,6 +51,8 @@ def missing_harness(harness: str) -> str:
             f"{harness} has no ENABLED copy of this plugin — install it"
             f" (`{PLUGIN_INSTALL[harness]}`) or enable the copy it already has"
         )
+    if status not in {"current", "stale"}:
+        return f"plugin state is {status}; `{harness} plugin list --json` did not prove it enabled"
     return ""
 
 

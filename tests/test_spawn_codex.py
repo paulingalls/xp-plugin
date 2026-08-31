@@ -36,7 +36,12 @@ class TestCodexExecutor:
             f"    print({json.dumps(json.dumps({'installed': records}))}); sys.exit()"
         )
         path.write_text(
-            path.read_text().replace("if argv == ['plugin', 'list', '--json']: sys.exit(1)", probe)
+            path.read_text().replace(
+                "if argv == ['plugin', 'list', '--json']: print("
+                '\'{"installed":[{"pluginId":"xp-plugin@xp-plugin",'
+                '"version":"fixture"}]}\'); sys.exit()',
+                probe,
+            )
         )
         return rec
 

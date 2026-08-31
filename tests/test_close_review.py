@@ -9,6 +9,7 @@ from itertools import pairwise
 import pytest
 from close_helpers import (  # noqa: F401
     CARD,
+    CLAUDE_SH,
     CLEAN,
     CLOSE,
     CONFIG,
@@ -352,7 +353,7 @@ class TestTrunkMotionGuards:
 
 
 class TestAReviewerMayNotREWRITEWhatItWasGiven:
-    """012b handback N2, carried by story-011 and still open: every motion check
+    """012b handback N2: every motion check
     is ancestry-BLIND. A reviewer that resets past reviewed_head and re-commits
     leaves `reviewed_head..HEAD` holding only its own commits, so authorship
     passes; the tree is clean, `.xp/` is untouched, the marker is intact; and
@@ -363,8 +364,7 @@ class TestAReviewerMayNotREWRITEWhatItWasGiven:
 
     def rewriting_stub(self, tmp_path):
         (tmp_path / "bin" / "claude").write_text(
-            "#!/bin/sh\n"
-            "p=$(sed -n 's/^REPORT_PATH: //p')\n"
+            CLAUDE_SH + "p=$(sed -n 's/^REPORT_PATH: //p')\n"
             'printf \'{"fixed": [], "blocking": [], "noted": []}\' > "$p"\n'
             "git reset -q --hard HEAD~1\n"  # the lead's story work, gone
             "echo 'x = 1' > src/thing.py\n"
@@ -390,8 +390,7 @@ class TestAReviewerMayNotREWRITEWhatItWasGiven:
     def test_a_read_only_reviewer_that_adds_a_commit_is_refused(self, tmp_path):
         repo, env, _g = make_repo(tmp_path)
         (tmp_path / "bin" / "claude").write_text(
-            "#!/bin/sh\n"
-            "p=$(sed -n 's/^REPORT_PATH: //p')\n"
+            CLAUDE_SH + "p=$(sed -n 's/^REPORT_PATH: //p')\n"
             'printf \'{"fixed": ["f"], "blocking": [], "noted": []}\' > "$p"\n'
             "echo 'x = 1' >> src/thing.py\n"
             "git -c user.name='xp story-reviewer' -c user.email='r@xp' commit -qam 'fix'\n"

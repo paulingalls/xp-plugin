@@ -48,7 +48,9 @@ def stub_killer(tmp_path):
     killer = tmp_path / "bin" / "claude"
     killer.write_text(
         "#!/usr/bin/env python3\nimport os, signal, sys\n"
-        "if sys.argv[1:] == ['plugin', 'list', '--json']: sys.exit(1)\nsys.stdin.read()\n"
+        "if sys.argv[1:] == ['plugin', 'list', '--json']: print("
+        '\'[{"id":"xp-plugin@xp-plugin","version":"fixture",'
+        '"scope":"user"}]\'); sys.exit()\nsys.stdin.read()\n'
         "os.kill(os.getppid(), signal.SIGKILL)\n"
     )
     killer.chmod(0o755)
@@ -63,7 +65,9 @@ def stub_takeover(tmp_path, adopted=(), nested=False):
     body = [
         "#!/usr/bin/env python3",
         "import json, os, subprocess, sys",
-        "if sys.argv[1:] == ['plugin', 'list', '--json']: sys.exit(1)",
+        "if sys.argv[1:] == ['plugin', 'list', '--json']: print("
+        '\'[{"id":"xp-plugin@xp-plugin","version":"fixture",'
+        '"scope":"user"}]\'); sys.exit()',
         "stdin = sys.stdin.read()",
         f"json.dump({{'stdin': stdin}}, open({str(rec)!r}, 'w'))",
         f"if os.environ.get('NESTED_RESUME'): open({str(second_launch)!r}, 'w').write('launched')",

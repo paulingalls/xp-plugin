@@ -40,6 +40,7 @@ import time
 MAX_SECONDS = 120
 MAX_SECONDS_PER_TEST = 0.15
 REFERENCE_GIT_MS = 200
+MAX_LOAD_FACTOR = 2.0
 FIXTURE_NODE = "tests/test_repo_templates.py::test_finished_fixture_copy_cost_against_git_build"
 FIXTURE_PATTERN = re.compile(r"fixture cost ([0-9.]+)ms copy / ([0-9.]+)ms git = ([0-9.]+)x")
 
@@ -60,8 +61,8 @@ def fixture_cost_is_bounded() -> tuple[bool, float]:
     return True, git_ms
 
 
-def suite_cost_is_bounded(elapsed: float, count: int, git_ms: float) -> bool:
-    load_factor = max(1.0, git_ms / REFERENCE_GIT_MS)
+def suite_cost_is_bounded(elapsed: float, count: int, git_ms: float, after_ms: float) -> bool:
+    load_factor = min(MAX_LOAD_FACTOR, max(1.0, min(git_ms, after_ms) / REFERENCE_GIT_MS))
     normalized = elapsed / load_factor
     per_test = normalized / count if count else float("inf")
     print(
@@ -82,13 +83,14 @@ def main() -> int:
         text=True,
     )
     elapsed = time.monotonic() - started
+    after_ok, after_ms = fixture_cost_is_bounded()
     match = re.search(r"(\d+) passed", result.stdout)
     count = int(match.group(1)) if match else 0
-    if result.returncode or not count:
+    if result.returncode or not count or not after_ok:
         sys.stdout.write(result.stdout)
         sys.stderr.write(result.stderr)
         return 1
-    return int(not suite_cost_is_bounded(elapsed, count, git_ms))
+    return int(not suite_cost_is_bounded(elapsed, count, git_ms, after_ms))
 
 
 if __name__ == "__main__":

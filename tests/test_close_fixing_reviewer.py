@@ -6,6 +6,7 @@ import sys
 import pytest
 from close_helpers import (  # noqa: F401
     CARD,
+    CLAUDE_SH,
     CLEAN,
     CLOSE,
     CONFIG,
@@ -29,15 +30,12 @@ from close_helpers import (  # noqa: F401
 
 
 class TestFixingReviewer:
-    """story-012b: the reviewer fixes; the lead reads its diff."""
-
     def fixing_stub(self, tmp_path, extra="", patch=FIX_PATCH):
         """A read-only reviewer that proposes its fix beside the report."""
         bin_dir = tmp_path / "bin"
         bin_dir.mkdir(exist_ok=True)
         (bin_dir / "claude").write_text(
-            "#!/bin/sh\n"
-            "input=$(cat)\n"
+            CLAUDE_SH + "input=$(cat)\n"
             "p=$(printf '%s' \"$input\" | sed -n 's/^REPORT_PATH: //p')\n"
             "q=$(printf '%s' \"$input\" | sed -n 's/^PATCH_PATH: //p')\n"
             'printf \'{"fixed": ["tightened the guard"], "blocking": [], "noted": []}\' > "$p"\n'
@@ -100,8 +98,7 @@ class TestFixingReviewer:
         bin_dir = tmp_path / "bin"
         bin_dir.mkdir(exist_ok=True)
         (bin_dir / "claude").write_text(
-            "#!/bin/sh\n"
-            "input=$(cat)\n"
+            CLAUDE_SH + "input=$(cat)\n"
             "p=$(printf '%s' \"$input\" | sed -n 's/^REPORT_PATH: //p')\n"
             "q=$(printf '%s' \"$input\" | sed -n 's/^PATCH_PATH: //p')\n"
             'printf \'{"fixed": ["f"], "blocking": [], "noted": []}\' > "$p"\n'
@@ -156,8 +153,7 @@ class TestFixingReviewer:
         mf = marker_file(tmp_path)
         bin_dir = tmp_path / "bin"
         (bin_dir / "claude").write_text(
-            "#!/bin/sh\n"
-            "p=$(sed -n 's/^REPORT_PATH: //p')\n"
+            CLAUDE_SH + "p=$(sed -n 's/^REPORT_PATH: //p')\n"
             'printf \'{"fixed": [], "blocking": [], "noted": []}\' > "$p"\n'
             f"python3 -c \"import json;f='{mf}';d=json.load(open(f));"
             "d['rounds'][0]['blocking']=[];json.dump(d,open(f,'w'))\"\n"
@@ -430,8 +426,7 @@ class TestFixingReviewer:
         pre = g("rev-parse", "HEAD").stdout.strip()
         stub = tmp_path / "bin" / "claude"
         stub.write_text(
-            "#!/bin/sh\n"
-            "echo 'x = 1' >> src/thing.py\n"
+            CLAUDE_SH + "echo 'x = 1' >> src/thing.py\n"
             f"git -c user.name='{REVIEWER_NAME}' -c user.email='r@xp' commit -qam 'fix'\n"
             'printf \'{"type": "result", "result": "fixed it, forgot the report"}\'\n'
         )
@@ -488,7 +483,7 @@ class TestFixingReviewer:
         """
         repo, env, _g = make_repo(tmp_path)
         bin_dir = tmp_path / "bin"
-        (bin_dir / "claude").write_text("#!/bin/sh\nsleep 30\n")
+        (bin_dir / "claude").write_text(CLAUDE_SH + "sleep 30\n")
         (bin_dir / "claude").chmod(0o755)
         r = close(repo, env | {"XP_AGENT_TIMEOUT": "1"}, "review")
         assert r.returncode == 2 and "produced NO OUTPUT" in r.stderr, r.stderr

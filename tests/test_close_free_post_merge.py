@@ -56,6 +56,14 @@ class TestFreeTeardown:
         stub_reviewer(tmp_path)
         plan = Path(env["XP_DATA"]) / "plan.md"
         plan.write_text(plan.read_text().replace("— fix typo", "— renamed after spawn"))
+        amended = subprocess.run(
+            [sys.executable, str(SPAWN), "amend", key, "--reason", "rename after spawn"],
+            cwd=tree,
+            env=env,
+            capture_output=True,
+            text=True,
+        )
+        assert amended.returncode == 0, amended.stderr
         assert free(tree, env, "fix-typo", "review").returncode == 0
         g("checkout", "-q", "main")
         g("merge", "-q", "--no-ff", branch, "-m", "merge free release")
@@ -88,14 +96,15 @@ class TestFreeTeardown:
         assert not tree.exists() and spawned_branch not in branches and branch not in branches
         assert not marker_file(tmp_path, key).exists()
 
-    def test_a_card_that_will_not_flip_still_discharges_both_branches(self, tmp_path):
-        repo, env, g, tree, spawned_branch, _branch, key = self.spawned(tmp_path)
+    def test_post_merge_refuses_a_card_already_marked_done(self, tmp_path):
+        repo, env, g, tree, spawned_branch, branch, _key = self.spawned(tmp_path)
         plan = Path(env["XP_DATA"]) / "plan.md"
         plan.write_text(plan.read_text().replace("[in-progress]", "[done]"))
         result = free(repo, env, "fix-typo", "post-merge")
-        assert result.returncode == 3 and key in result.stderr
+        assert result.returncode == 2 and "post-merge requires [in-progress]" in result.stderr
         branches = g("branch", "--format=%(refname:short)").stdout.splitlines()
-        assert not tree.exists() and spawned_branch not in branches
+        assert tree.exists() and spawned_branch in branches and branch in branches
+        assert "v0.2.1" not in g("tag").stdout.split()
 
     def test_an_unspawned_free_close_has_no_missing_worktree_error(self, tmp_path):
         repo, env, g, branch = self.unspawned(tmp_path)
@@ -149,6 +158,18 @@ class TestFreePostMerge:
         result = free(repo, env, "fix-typo", "post-merge")
         assert result.returncode == 2 and branch in result.stderr
         assert "v0.2.1" not in g("tag").stdout.split()
+
+    def test_card_drift_while_the_pr_waits_refuses_before_tagging(self, tmp_path):
+        repo, env, g, branch = self.reviewed(tmp_path)
+        self.merge_pr(g, branch)
+        plan = Path(env["XP_DATA"]) / "plan.md"
+        plan.write_text(plan.read_text().replace("Then it lands.", "Then it lands safely."))
+
+        result = free(repo, env, "fix-typo", "post-merge")
+
+        assert result.returncode == 2 and "edited after its plan review" in result.stderr
+        assert "v0.2.1" not in g("tag").stdout.split()
+        assert "[in-progress]" in plan.read_text()
 
     def test_a_free_release_leaves_the_recorded_sprint_branch_alone(self, tmp_path):
         repo, env, g, branch = self.reviewed(tmp_path, extra="lifecycle_command: false\n")

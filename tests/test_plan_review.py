@@ -9,13 +9,13 @@ from itertools import pairwise
 from pathlib import Path
 
 import pytest
+from close_helpers import CLAUDE_SH
 from plan_review import disposition as disposition_result
 from spawn_helpers import make_repo, spawn, stub_claude, stub_codex
 
 PLUGIN = Path(__file__).parent.parent / "plugins" / "xp-plugin"
 PLAN_REVIEW = PLUGIN / "scripts" / "plan_review.py"
-# a phrase from the charter BODY: the stub is handed what it must see, so a
-# bundle assembled with an empty charter section cannot pass for a real one
+# A charter-body phrase, so a bundle with an empty charter cannot pass for a real one.
 CHARTER_MARK = "Checks, in order of payoff"
 CLEAN = '{"status":"clean","reasons":[]}'
 
@@ -33,9 +33,8 @@ tests:
 def stub_planner(tmp_path, findings=CLEAN, write_findings=True, motion=""):
     """A fake `claude` that REFUSES a prompt carrying no charter.
 
-    The rubric is the whole value of a review: a leg that lost it would still
-    exit 0, print plausible prose and leave a findings file behind. Nothing
-    downstream can tell that apart, so the detector belongs at the binary.
+    A leg that lost the rubric could still exit 0 with plausible prose and findings.
+    Nothing downstream can tell that apart, so its detector belongs at the binary.
     """
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir(exist_ok=True)
@@ -43,7 +42,9 @@ def stub_planner(tmp_path, findings=CLEAN, write_findings=True, motion=""):
     (bin_dir / "claude").write_text(
         "#!/usr/bin/env python3\n"
         "import json, os, re, sys\n"
-        "if sys.argv[1:] == ['plugin', 'list', '--json']: sys.exit(1)\n"
+        "if sys.argv[1:] == ['plugin', 'list', '--json']: print("
+        '\'[{"id":"xp-plugin@xp-plugin","version":"fixture",'
+        '"scope":"user"}]\'); sys.exit()\n'
         "stdin = sys.stdin.read()\n"
         "json.dump({'argv': sys.argv[1:], 'env': dict(os.environ), 'stdin': stdin},"
         f" open({str(rec)!r}, 'w'))\n"
@@ -376,12 +377,7 @@ class TestIncompleteReviewIsVisibleToTheLead:
         repo, env, draft = self.repo(tmp_path)
         bin_dir = tmp_path / "bin"
         bin_dir.mkdir(exist_ok=True)
-        (bin_dir / "claude").write_text(
-            "#!/usr/bin/env python3\n"
-            "import os, signal, sys\n"
-            "sys.stdin.read()\n"
-            "os.kill(os.getppid(), signal.SIGKILL)\n"
-        )
+        (bin_dir / "claude").write_text(CLAUDE_SH + "cat >/dev/null\nkill -9 $PPID\n")
         (bin_dir / "claude").chmod(0o755)
         proc = plan_review(repo, env, "story-042", str(draft))
         assert proc.returncode != 0
