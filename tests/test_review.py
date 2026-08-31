@@ -146,11 +146,11 @@ class TestTheTwoBarsAreBothStated:
             assert "loud and self-healing never" in charter, "the never half is missing"
             assert "plausible is the default" in charter, "confidence was tightened too"
 
-    def test_process_still_carries_the_bar_the_finder_quotes(self):
+    def test_judgment_carries_the_bar_the_finder_quotes(self):
         """One rule, and the charter is the second place it is written: if
-        PROCESS.md ever loses it, the finder's copy is a bar nobody else holds."""
-        process = (PLUGIN / "PROCESS.md").read_text()
-        assert "silent or corrupting" in process
+        JUDGMENT.md ever loses it, the finder's copy is a bar nobody else holds."""
+        judgment = (PLUGIN / "JUDGMENT.md").read_text()
+        assert "silent or corrupting" in judgment
 
 
 class TestVerificationIsBatched:

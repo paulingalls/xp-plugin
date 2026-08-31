@@ -2,8 +2,10 @@
 story-021, which needed the room under constraint 8's 500-line cap for the
 codex leg's tee ACs — the card's Verify names test_spawn_run.py."""
 
+import shutil
 from pathlib import Path
 
+import pytest
 from spawn_helpers import _total, make_repo, spawn, stub_claude
 
 
@@ -29,6 +31,26 @@ class TestBudget:
             f"plugin-shipped profile is {shipped} tokens (cap {PLUGIN_SHIPPED_CAP});"
             f" components account for {components}"
         )
+
+    def test_JUDGMENT_is_injected_counted_and_required(self, tmp_path, monkeypatch):
+        import spawn as spawn_module
+
+        root = tmp_path / "plugin"
+        shutil.copytree(spawn_module.PLUGIN_ROOT, root)
+        monkeypatch.setattr(spawn_module, "PLUGIN_ROOT", root)
+        judgment = root / "JUDGMENT.md"
+        assert spawn_module.PLUGIN_SHIPPED_CAP == 1365
+        assert judgment.exists(), "the universal document is absent"
+        prompt = spawn_module.build_prompt(
+            spawn_module.teammate_sections("card", "story-042", "", root)
+        )
+        assert "## JUDGMENT\n\n" in prompt and "Polarity" in prompt
+        before = spawn_module.plugin_shipped_chars()
+        judgment.write_text(judgment.read_text() + "four")
+        assert spawn_module.plugin_shipped_chars() == before + 4
+        judgment.unlink()
+        with pytest.raises(SystemExit):
+            spawn_module.teammate_sections("card", "story-042", "", root)
 
     def test_composed_total_is_computed_not_printed(self, tmp_path):
         """A print-a-constant implementation passes 'it prints a total' forever."""

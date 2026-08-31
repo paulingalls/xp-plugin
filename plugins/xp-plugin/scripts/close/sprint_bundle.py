@@ -48,7 +48,7 @@ def build(sprint_id, cards, base, report, charter, extra, diff_base="") -> str:
         (title, git("diff", f"{diff_base or base}..HEAD").stdout),
         ("Resolutions filed during the sprint", resolutions),
         ("work.md entries filed during the sprint", work_md),
-        ("PROCESS", _read(str(PLUGIN_ROOT / "PROCESS.md"))),
+        ("JUDGMENT", _read(str(PLUGIN_ROOT / "JUDGMENT.md"))),
         ("VALUES", _read(str(PLUGIN_ROOT / "VALUES.md"))),
         ("Constraints", _read(".xp/constraints.md")),
         ("System context", _read(".xp/system.md")),

@@ -13,6 +13,8 @@ from session_start import END, OUTPUT_CAP, PLUGIN_ROOT, RECOVER_CAP
 from session_start_helpers import run_hook, run_recovery, xp_repo
 
 VALUES = (PLUGIN_ROOT / "VALUES.md").read_text()
+JUDGMENT_PATH = PLUGIN_ROOT / "JUDGMENT.md"
+JUDGMENT = JUDGMENT_PATH.read_text() if JUDGMENT_PATH.exists() else "JUDGMENT-MISSING"
 PROCESS = (PLUGIN_ROOT / "PROCESS.md").read_text()
 
 
@@ -32,7 +34,7 @@ def named(notice: str) -> list[int]:
 
 
 class TestWhatTheProfileLeadsWith:
-    """VALUES first, then PROCESS, and neither may be dropped (Paul, 2026-08-24):
+    """Shared values and judgment lead into the role-shaped process, and none drop:
     values set the stage for everything read after them, and the loop is how the
     work happens. They may be made smaller; they may not move or go."""
 
@@ -44,12 +46,13 @@ class TestWhatTheProfileLeadsWith:
     def test_values_lead_the_profile_and_process_follows(self, tmp_path):
         r = self.over_budget(tmp_path)
         assert len(r.stdout) <= OUTPUT_CAP and "[truncated" in r.stdout
-        assert r.stdout.index(VALUES[:60]) < r.stdout.index(PROCESS[:60])
+        assert r.stdout.index(VALUES[:60]) < r.stdout.index(JUDGMENT[:60])
+        assert r.stdout.index(JUDGMENT[:60]) < r.stdout.index(PROCESS[:60])
         assert r.stdout.index(PROCESS[:60]) < r.stdout.index("BEGIN project content")
 
     def test_neither_is_dropped_by_a_cut(self, tmp_path):
         r = self.over_budget(tmp_path)
-        assert VALUES in r.stdout and PROCESS in r.stdout
+        assert VALUES in r.stdout and JUDGMENT in r.stdout and PROCESS in r.stdout
 
     def test_process_recovery_instruction_runs_the_banner_command(self, tmp_path):
         repo, _g = xp_repo(tmp_path)

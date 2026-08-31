@@ -14,7 +14,7 @@ script cannot absorb them (judgment belongs only where an LLM is present).
    unfinished output says close checks wait.
 1. **Re-run `close.py sprint <id> start` at close** — the same recorded branch is
    a no-op; now it runs the batch and emits the close material.
-   A red falsifier ABORTS the close and is re-filed as a bug (PROCESS.md carries
+   A red falsifier ABORTS the close and is re-filed as a bug (JUDGMENT.md carries
    the polarity contract).
 2. **Note triage, then the retro — YOURS, and they come FIRST.**
    Each note is promoted to constraints.md/system.md via the retro diff, or
@@ -23,7 +23,7 @@ script cannot absorb them (judgment belongs only where an LLM is present).
    narrative and REPLACE the digest: the pipeline emits facts, the
    narrative is the part with judgment in it.
    BEFORE the review, not after. Land refuses when code moved since the review,
-   and a retro that promotes into DESIGN.md or PROCESS.md is code motion — run it
+   and a retro that promotes into DESIGN.md, JUDGMENT.md or PROCESS.md is code motion — run it
    last and you must review again, which invalidates what you just wrote.
 3. **The review**, which the pipeline marshals — you do not compose it:
    `close.py sprint <id> review`. It finds, judges, fixes and clears in one
