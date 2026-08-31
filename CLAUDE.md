@@ -20,7 +20,7 @@ instead.
   executor re-reads its edits before code. Red test first; for config/docs commits,
   never fake a red — say so in the commit body.
 - Story done → run the `/story-close` checklist (spawns `story-reviewer`).
-- Records (bug/debt/note) per PROCESS.md; mid-sprint you may record, never schedule.
+- Records (bug/debt/note) per JUDGMENT.md; mid-sprint you may record, never schedule.
 - Git hooks (lefthook) are the wall: ruff + gitleaks + fast tests at commit, full
   suite at push. Don't bypass them (`--no-verify` is a values violation, not a trick).
 

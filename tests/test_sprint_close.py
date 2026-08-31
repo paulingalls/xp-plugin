@@ -475,6 +475,6 @@ class TestBundleDedup:
         assert work(repo, env, "archive", "--ref", ref, "--disposition", "dropped").returncode == 0
         work(repo, env, "note", "A-PLAIN-NOTE")
         assert sprint(repo, env, "review").returncode == 0
-        raw = section(launches(tmp_path)[0]["stdin"], WORK_SECTION, "PROCESS")
+        raw = section(launches(tmp_path)[0]["stdin"], WORK_SECTION, "JUDGMENT")
         assert "A-PLAIN-NOTE" in raw, "the raw section lost the entries it exists to carry"
         assert "## archived " not in raw

@@ -45,28 +45,47 @@ class TestShippedProseMatchesTheMechanism:
         assert row.count("**") % 2 == 0, f"unbalanced bold span: {row}"
         assert row.count("`") % 2 == 0, f"unbalanced backtick span: {row}"
 
-    def test_the_comment_rubric_is_identical_in_every_shipped_copy(self):
-        """TWO copies now, not three. The reviewer's copy existed for one stated
-        reason — "build_bundle never sends PROCESS.md" — which was one line of
-        Python, not a fact, so story-014 sent it and the charter POINTS.
-
-        TEAMMATE.md keeps its copy: spawn inlines it into a fresh session with no
-        bundle, so for THAT reader the premise still holds.
-        """
-        rubric = (
-            "Comments: restates the code → delete · explains WHAT → rename it ·"
-            " a checkable claim → write the test · narrates history → delete, git"
-            " holds it. Keep only the why, an external constraint, a rejected design."
-        )
-        for path in (PLUGIN / "PROCESS.md", PLUGIN / "TEAMMATE.md"):
-            assert rubric in prose(path), f"{path.name} has drifted from the rubric"
+    def test_each_shared_rule_has_one_complete_copy_in_shipped_markdown(self):
+        """The corpus is every Markdown file under the shipped plugin root, including
+        templates/constraints.md. docs/DESIGN.md is project documentation, not shipped
+        plugin prose, and carries the intentionally separate lifecycle authority table."""
+        corpus = sorted(PLUGIN.rglob("*.md"))
+        assert PLUGIN / "templates" / "constraints.md" in corpus
+        rules = {
+            "comment rubric": (
+                "restates the code → delete",
+                "explains WHAT → rename",
+                "a checkable claim → write the test",
+                "narrates history → delete",
+                "Keep only the why",
+            ),
+            "record shapes and polarity": (
+                "**bug** — claim + red falsifier",
+                "**debt** — claim + green falsifier",
+                "**resolve** — substitutes a green falsifier",
+                "**coverage** — optional",
+                "**note** — value tradeoff or discovery",
+                "**Polarity**",
+            ),
+            "hook and red contract": ("Hooks are the wall", "Never bypass", "fake a red"),
+            "finding bar": (
+                "silent or corrupting",
+                "false green, corrupted record, unreviewed merge",
+                "loud does not",
+            ),
+        }
+        for name, signatures in rules.items():
+            matches = [
+                p.relative_to(PLUGIN) for p in corpus if all(s in prose(p) for s in signatures)
+            ]
+            assert len(matches) == 1, f"{name} has {len(matches)} complete copies: {matches}"
 
     def test_both_shipped_copies_name_the_two_reviews_and_who_owns_the_plan(self):
         """The lead drafted the executor's implementation plan twice in one week
         (bug 898ad9e1, note c3d8e2a7): one word covered two artifacts and no
         lead-facing sentence said whose each was. Pinned in both copies rather
-        than read-and-judged because TEAMMATE.md sits AT its enforced cap
-        (`spawn.PLUGIN_SHIPPED_CAP`, 1200/1200 today) — the next component that
+        than read-and-judged because TEAMMATE.md shares an enforced profile cap
+        (`spawn.PLUGIN_SHIPPED_CAP`, 1329/1365 today) — the next component that
         lands forces a cut there, and the newest sentence is the one that looks
         least load-bearing. "sprint review" is excluded by name: `close.py sprint
         <id> review` already holds that phrase.
@@ -78,13 +97,18 @@ class TestShippedProseMatchesTheMechanism:
             assert "the lead never" in text, f"{path.name}: the plan's owner is unnamed"
             assert "sprint review" not in text, f"{path.name}: close.py owns that phrase"
 
-    def test_the_story_bundle_carries_PROCESS_md(self, tmp_path):
-        """What replaces the two pins. Both charters point at PROCESS.md now, so a
-        bundle without it hands the reviewer a pointer to nothing."""
+    def test_the_story_bundle_carries_JUDGMENT_but_not_PROCESS(self, tmp_path):
         repo, env, _g = make_repo(tmp_path)
         assert close(repo, env, "review").returncode == 0
         bundle = launches(tmp_path)[0]["stdin"]
-        assert "Polarity" in bundle and "(missing" not in bundle
+        assert "## JUDGMENT\n\n" in bundle and "Polarity" in bundle
+        assert "## PROCESS\n\n" not in bundle and "(missing" not in bundle
+
+    def test_the_plan_review_bundle_carries_JUDGMENT(self, tmp_path):
+        from plan_review import build_bundle
+
+        bundle = build_bundle("charter", "plan", "card", tmp_path / "plan", tmp_path / "out")
+        assert "## JUDGMENT\n\n" in bundle and "Polarity" in bundle
 
     def test_every_stopping_rule_copy_states_the_split_arithmetic(self):
         """land refuses unless the last round covers HEAD, so "close without
@@ -168,7 +192,10 @@ class TestShippedProseMatchesTheMechanism:
         """Constraint 1. The cap is the LIVE size, never a historical one: left at
         5,454 for a file that had shrunk to 2,928, it passed with 2,277 characters
         of padding spliced in — a ratchet with that much slack certifies instead of
-        checking. Re-measure and lower it whenever this file legitimately shrinks."""
+        checking. THE SLACK HERE IS RESERVED, NOT FORGOTTEN: story-089 moved the
+        shared rules out to JUDGMENT.md and left this file at 1,345, and story-082
+        spends the room on the loop's spine. Lower it to the live size at that
+        card's close, or it is padding again."""
         raw = (PLUGIN / "PROCESS.md").read_text()
         assert len(raw) <= 2840, "the execution rule stopped paying for itself"
         process = " ".join(raw.split())
@@ -304,21 +331,23 @@ class TestCharterBar:
             assert token in charter
         assert "heredoc" not in charter, "Write is allowed now; the heredoc route is stale"
 
-    def test_both_charters_point_at_the_finding_bar_rather_than_copying_it(self):
-        """Replaces the byte-identical pin story-014 deleted. That pin existed
-        because "build_bundle never sends PROCESS.md" — one line of Python, not a
-        fact. Asserting the bar appears ONCE in PROCESS.md would be false as
-        written: PROCESS.md states it twice, at story close and at sprint close.
-        """
+    def test_every_shared_rule_pointer_names_JUDGMENT(self):
         bar = "silent or corrupting (false green, corrupted record, unreviewed merge)"
-        # Whitespace-normalised: the pin is the WORDS, not their wrapping. Matching
-        # raw text made a reflow of PROCESS.md read as a dropped bar — a false
-        # negative that says nothing about whether the charters copy it.
-        assert bar in prose(PLUGIN / "PROCESS.md")
+        assert bar in prose(PLUGIN / "JUDGMENT.md")
         for name in ("story-reviewer", "sprint-reviewer"):
             charter = prose(PLUGIN / "agents" / f"{name}.md")
             assert bar not in charter, f"{name} still ships a second copy of the bar"
-            assert "PROCESS" in charter, f"{name} dropped the copy without pointing"
+            assert "JUDGMENT" in charter, f"{name} dropped the copy without pointing"
+            assert "PROCESS" not in charter, f"{name} kept a stale pointer"
+        pointers = {
+            PLUGIN / "skills" / "story-close" / "SKILL.md": "file noted ones per JUDGMENT.md",
+            PLUGIN / "skills" / "sprint-close" / "SKILL.md": (
+                "JUDGMENT.md carries the polarity contract"
+            ),
+            PLUGIN / "scripts" / "bookkeep.py": "file these per JUDGMENT.md",
+        }
+        for path, pointer in pointers.items():
+            assert pointer in prose(path), f"stale rule pointer in {path}"
 
 
 def test_every_shipped_skill_is_named_by_shipped_prose():

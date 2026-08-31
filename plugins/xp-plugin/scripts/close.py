@@ -146,7 +146,7 @@ def build_bundle(card: str, base: str, report: Path, prior: str = "", notice: st
         ("Earlier rounds of THIS review", prior or "none — you are round 1"),
         ("Cumulative diff", git("diff", f"{base}..HEAD").stdout),
         ("work.md entries filed during the story", work_entries_since(base_epoch) or "none"),
-        ("PROCESS", _read(str(review.PLUGIN_ROOT / "PROCESS.md"))),
+        ("JUDGMENT", _read(str(review.PLUGIN_ROOT / "JUDGMENT.md"))),
         ("VALUES", _read(str(Path(__file__).parent.parent / "VALUES.md"))),
         ("Constraints", _read(".xp/constraints.md")),
         ("System context", _read(".xp/system.md")),

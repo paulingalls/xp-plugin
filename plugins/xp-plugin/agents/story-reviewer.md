@@ -53,7 +53,7 @@ spend most of your effort on checks 1–2 at full depth; `standard` weights 1, 3
 5. **Simplicity & reuse**: duplicated logic (grep for it), premature abstraction,
    dead paths, misleading names. And prose in code, which no test can catch and which
    goes stale silently when the code it describes moves — hold it to the comment
-   rubric in your bundle's PROCESS section.
+   rubric in your bundle's JUDGMENT section.
 
 ## Output
 
@@ -68,7 +68,7 @@ the priority:
 
 - **`fixed`** — your patch changes it. Default here. Anything you can fix, fix.
 - **`blocking`** — you could NOT fix it, AND it clears the finding bar stated in your
-  bundle's PROCESS section. Land refuses while this is non-empty, so it is the most
+  bundle's JUDGMENT section. Land refuses while this is non-empty, so it is the most
   expensive thing you can write: it stops a merge and costs the lead a round. A
   finding you merely dislike is not one of these.
 - **`noted`** — everything else you are handing back deliberately.

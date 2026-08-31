@@ -90,7 +90,7 @@ def render_noted(rounds: list[dict]) -> str:
     noted = [n for r in rounds for n in r["noted"]]
     if not noted:
         return ""
-    return "noted by the reviewer, not fixed — file these per PROCESS.md:\n" + "".join(
+    return "noted by the reviewer, not fixed — file these per JUDGMENT.md:\n" + "".join(
         f"  {n}\n" for n in noted
     )
 

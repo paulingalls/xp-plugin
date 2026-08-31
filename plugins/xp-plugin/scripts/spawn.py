@@ -33,13 +33,13 @@ from work import (
 
 PLUGIN_ROOT = Path(__file__).parent.parent
 
-# Tokens (chars//4). The cap covers prose WE ship — VALUES, TEAMMATE.md, the
+# Tokens (chars//4). The cap covers prose WE ship — VALUES, JUDGMENT, TEAMMATE.md, the
 # seed constraints file and always-on component metadata — because ownership is
 # about who authored the prose, not which directory it lands in after install.
 # Deliberately NOT a cap on the composed total: CLAUDE.md, the project's grown
 # constraints.md and its cards are the consuming project's, and a plugin gate
 # over prose we do not own certifies nothing (DESIGN §8 diff proposed at close).
-PLUGIN_SHIPPED_CAP = 1200
+PLUGIN_SHIPPED_CAP = 1365
 COMPONENT_METADATA_CAP = 300  # so a new skill reds the component line, not TEAMMATE.md
 TOTAL_TARGET = 4500  # composed profile: reported, never enforced
 
@@ -59,11 +59,9 @@ def component_metadata_chars() -> int:
 
 
 def plugin_shipped_chars() -> int:
-    shipped = [
-        PLUGIN_ROOT / "VALUES.md",
-        PLUGIN_ROOT / "TEAMMATE.md",
-        PLUGIN_ROOT / "templates" / "constraints.md",
-    ]
+    names = ("VALUES.md", "JUDGMENT.md", "TEAMMATE.md")
+    shipped = [PLUGIN_ROOT / name for name in names]
+    shipped.append(PLUGIN_ROOT / "templates" / "constraints.md")
     return sum(len(_read(p)) for p in shipped) + component_metadata_chars()
 
 
@@ -143,6 +141,7 @@ def teammate_sections(
 ) -> list[tuple[str, str]]:
     sections = [
         ("VALUES", _read_shipped(PLUGIN_ROOT / "VALUES.md")),
+        ("JUDGMENT", _read_shipped(PLUGIN_ROOT / "JUDGMENT.md")),
         # the escalation command must be runnable: work.py is not on PATH, and
         # spawn inlines this as raw prompt text, so ${CLAUDE_PLUGIN_ROOT} would
         # arrive literal. A teammate hitting "command not found" guesses instead.

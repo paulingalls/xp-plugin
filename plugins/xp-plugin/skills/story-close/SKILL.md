@@ -18,7 +18,7 @@ yourself doing by hand is a defect in the pipeline — file it.
    a finding yourself, a round recorded without the reviewer's own report, a refusal
    because trunk moved (only files trunk and your story BOTH changed cost a round).
 3. **Judgment point** (yours, and the only one): fix blocking findings; file noted
-   ones per PROCESS.md; ask the human only where you and the reviewer disagree.
+   ones per JUDGMENT.md; ask the human only where you and the reviewer disagree.
    Stopping rule: the REVIEWER's fixes cost no confirming round — inside the round
    that found them, and your read of its diff is the judgment. YOUR fixes move HEAD
    past what the review covered and still cost one confirming round — land REPORTS
