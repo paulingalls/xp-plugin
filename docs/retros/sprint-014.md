@@ -3,9 +3,9 @@
 Milestone 6 opened with six ordered stories and closes in one sprint. The thesis was
 that each harness must be able to trust what the other is running, and that deletion
 would fund the proof. It held: the sprint opened at **5,552/5,570 shipped lines** and
-closes at **5,560/5,570**. The total cap did not move. Story 077's removal of
+closes at **5,566/5,570**. The total cap did not move. Story 077's removal of
 `--in-place` funded a zero-sum component re-cut from `spawn` to `hooks` and `misc`;
-the remaining five stories spent eight net lines.
+the six stories spent eight net lines, and round 1's five fixes spent six more.
 
 Release v0.15.0 adds installed-version drift notices, refuses roles whose harness
 lacks the plugin before any review spend, offers the normal marketplace install at

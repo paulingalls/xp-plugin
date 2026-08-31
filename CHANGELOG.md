@@ -8,7 +8,7 @@ per-sprint review reports.
 
 Sprint 14, opening and completing Milestone 6. Six cards make installation state,
 role readiness, free work and Verify paths explicit across both supported harnesses.
-The sprint spends eight net shipped lines, raises no total cap, and funds its one
+The sprint spends fourteen net shipped lines, raises no total cap, and funds its one
 component re-cut from the removal of `--in-place`.
 
 - SessionStart compares the running plugin with the other harness's installed record
