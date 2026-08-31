@@ -12,11 +12,13 @@ The sprint spends fourteen net shipped lines, raises no total cap, and funds its
 component re-cut from the removal of `--in-place`.
 
 - SessionStart compares the running plugin with the other harness's installed record
-  and reports version drift with the exact marketplace upgrade command. Plugin identity
-  comes from the manifest; records are scoped per install; a long-running session is
-  never compared with its own newly updated record; and no repository-local path leaks
-  into a consumer install. Absent harness, absent plugin, stale plugin and changed
-  installed version remain distinct states.
+  and reports version drift with the install command that repairs it at the scope the
+  stale record holds — never `marketplace upgrade`, which exits 0 on a local source
+  without touching it. Plugin identity comes from the manifest; records are scoped per
+  install; a long-running session is never compared with its own newly updated record;
+  and no repository-local path leaks into a consumer install. Absent harness, absent
+  plugin, stale plugin and changed installed version remain distinct states, and a
+  record whose identity, version or scope is not a plain token reads as unreadable.
 - Role preflight now proves the selected harness has this plugin before launching the
   first reviewer, including dry runs. A missing install refuses before any finder,
   verifier or fixer spend, while disabled roles retain their own refusal.

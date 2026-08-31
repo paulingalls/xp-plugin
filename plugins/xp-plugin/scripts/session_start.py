@@ -95,8 +95,8 @@ def install_status(source="", name="", running="") -> tuple[str, str]:
     if not (matched := [x for x in matched if x.get("enabled", True)]):  # missing != disabled
         return "absent-plugin", ""
     item = min(matched, key=lambda value: (value.get("version") != running, str(value.get(key))))
-    identity, found = item.get(key), item.get("version")
-    if not all(isinstance(value, str) and TOKEN.fullmatch(value) for value in (identity, found)):
+    identity, found, scope = item.get(key), item.get("version"), item.get("scope") or "user"
+    if not all(isinstance(v, str) and TOKEN.fullmatch(v) for v in (identity, found, scope)):
         return "unreadable", ""
     old = read(path := data_root() / f"installed-{source}-version").strip() if observing else ""
     if observing:
@@ -105,7 +105,7 @@ def install_status(source="", name="", running="") -> tuple[str, str]:
     changed = f"{source} plugin changed from {old} to {found}" if old else ""
     if found == running:
         return "current", changed
-    action = "add" if source == "codex" else f"install --scope {item.get('scope') or 'user'}"
+    action = "add" if source == "codex" else f"install --scope {scope}"
     mismatch = f"installed {found}; running {running}; `{source} plugin {action} {identity}`"
     return "stale", "\n".join(filter(None, (changed, mismatch)))
 
