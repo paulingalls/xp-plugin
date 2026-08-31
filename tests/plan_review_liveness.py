@@ -44,6 +44,9 @@ class TestTheReviewOutlivesItsCaller:
         (bin_dir / "claude").write_text(
             "#!/usr/bin/env python3\n"
             "import json, os, re, sys, time\n"
+            "if sys.argv[1:] == ['plugin', 'list', '--json']: print("
+            '\'[{"id":"xp-plugin@xp-plugin","version":"fixture",'
+            '"scope":"user"}]\'); sys.exit()\n'
             "stdin = sys.stdin.read()\n"
             f"open({str(rec)!r}, 'a').write('LAUNCH\\n')\n"
             f"time.sleep({seconds})\n"

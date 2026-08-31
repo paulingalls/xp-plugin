@@ -35,6 +35,10 @@ CONFIG = "roles:\n  reviewer: claude/opus\ntests:\n  story: true\n"
 REVIEWER_NAME = "xp story-reviewer"
 REVIEWER_EMAIL = "story-reviewer@xp.local"
 CLEAN = {"fixed": [], "blocking": [], "noted": []}
+CLAUDE_SH = (
+    '#!/bin/sh\nif [ "$1" = plugin ]; then echo '
+    '\'[{"id":"xp-plugin","version":"v","scope":"user"}]\'; exit; fi\n'
+)
 # Injected into close.py's OWN env by the tests that assert a reviewer launch
 # carries no credential: unset in the parent, the assertion passes on a spawn
 # that strips nothing.
@@ -124,6 +128,9 @@ def stub_reviewer(tmp_path, result="findings above", exit_code=0, raw=None, repo
     (bin_dir / "claude").write_text(
         "#!/usr/bin/env python3\n"
         "import json, os, re, sys\n"
+        "if sys.argv[1:] == ['plugin', 'list', '--json']: print("
+        '\'[{"id":"xp-plugin@xp-plugin","version":"fixture",'
+        '"scope":"user"}]\'); sys.exit()\n'
         "stdin = sys.stdin.read()\n"
         f"open({str(rec)!r}, 'a').write(json.dumps({{'argv': sys.argv[1:],"
         " 'env': dict(os.environ), 'stdin': stdin}) + '\\n')\n"

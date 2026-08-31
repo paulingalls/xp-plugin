@@ -324,6 +324,7 @@ def test_a_reviewer_that_keeps_talking_outlives_the_bound(tmp_path, monkeypatch)
     assert json.loads(proc.stdout)["result"] == "still going"
 
 
+@pytest.mark.slow
 def test_the_bound_does_not_wait_on_the_killed_agent_s_own_children(tmp_path, monkeypatch):
     """A real agent shells out constantly, and its children inherit the stdout
     pipe — so killing only the process LEADER leaves the drain blocked reading a

@@ -11,12 +11,15 @@ import json
 import subprocess
 import sys
 
+import pytest
 from close_helpers import CLOSE, close, make_repo, marker_file, stub_reviewer
 
 # The bound is the longest SILENCE, and it starts at launch — so the stub streams
-# once it has written its artifacts, which both restarts the clock and models the
-# field case: a reviewer that was producing output right up to the kill.
-KILLED = {"XP_AGENT_TIMEOUT": "5"}
+# until it has written its artifacts, which restarts the clock and models the
+# field case: a reviewer that was producing output right up to the kill. One
+# second still has a 30x margin over the terminal sleep without charging every
+# salvage assertion five seconds for the same constructed event.
+KILLED = {"XP_AGENT_TIMEOUT": "1"}
 FIXED = {"fixed": ["tightened the guard"], "blocking": [], "noted": []}
 PATCH = """diff --git a/src/thing.py b/src/thing.py
 --- a/src/thing.py
@@ -50,6 +53,9 @@ def dying_reviewer(tmp_path, extra="", patch=PATCH):
     )
     (bin_dir / "claude").write_text(
         "#!/bin/sh\n"
+        '[ "$1 $2 $3" = "plugin list --json" ] && echo '
+        '\'[{"id":"xp-plugin@xp-plugin","version":"fixture",'
+        '"scope":"user"}]\' && exit 0\n'
         f"{sys.executable} {ticker} &\n"
         "ticker=$!\n"
         f"echo launched >> {tmp_path / 'spawns'}\n"
@@ -82,6 +88,7 @@ def report_of(tmp_path):
 
 
 class TestSalvage:
+    @pytest.mark.slow
     def test_the_lead_reaches_a_round_without_a_second_review(self, tmp_path):
         """AC 9. Re-reading the diff would ask a fresh reviewer to find what the
         surviving patch already fixes, and charge a full round for it."""
@@ -100,6 +107,7 @@ class TestSalvage:
         assert "guarded = True" in (repo / "src" / "thing.py").read_text()
         assert g("log", "-1", "--format=%an").stdout.strip() == "xp story-reviewer"
 
+    @pytest.mark.slow
     def test_a_salvaged_round_no_longer_reads_as_refused(self, tmp_path):
         """The kill stamps the report, so a reader between the two commands is
         not told a dead round passed. A salvage clears it — the two must not
@@ -115,6 +123,7 @@ class TestSalvage:
         assert salvage(repo, env).returncode == 0
         assert json.loads(report_of(tmp_path).read_text()) == FIXED
 
+    @pytest.mark.slow
     def test_a_killed_reviewer_that_committed_is_refused(self, tmp_path):
         """AC 10, and the door this arm exists to close: review.run returns on
         the timeout BEFORE check_reviewer_motion, so a reviewer that violated
@@ -142,6 +151,7 @@ class TestSalvage:
         assert "or you did since the kill" in refused.stderr, refused.stderr
         assert not marker_file(tmp_path).exists(), "a forbidden commit reached a round"
 
+    @pytest.mark.slow
     def test_a_green_report_on_a_red_tree_is_refused_here_too(self, tmp_path):
         """Salvage runs the same round recorder, so the card's first gate binds
         it. Asserted rather than assumed: a salvage leg with its own checks is
@@ -172,6 +182,7 @@ class TestSalvage:
         assert "not readable" in broken.stderr, broken.stderr
         assert "no unrecorded review" not in broken.stderr, broken.stderr
 
+    @pytest.mark.slow
     def test_the_kill_names_salvage_only_on_the_leg_that_has_one(self, tmp_path, monkeypatch):
         """review.run's kill text is shared by four legs and only story close has a
         salvage action to offer. Plan and sprint reviews write no launch marker, so
@@ -185,17 +196,24 @@ class TestSalvage:
         (repo / ".xp" / "config.yml").write_text(
             "roles:\n  reviewer: claude/opus\n  plan-reviewer: claude/opus\n"
         )
-        (tmp_path / "bin" / "claude").write_text("#!/bin/sh\nsleep 30\n")  # silent by design
+        (tmp_path / "bin" / "claude").write_text(
+            "#!/bin/sh\n"
+            '[ "$1 $2 $3" = "plugin list --json" ] && echo '
+            '\'[{"id":"xp-plugin@xp-plugin","version":"fixture",'
+            '"scope":"user"}]\' && exit 0\n'
+            "sleep 30\n"
+        )  # reviewer argv is silent by design
         monkeypatch.chdir(repo)
         for key, value in (env | {"XP_AGENT_TIMEOUT": "1"}).items():
             monkeypatch.setenv(key, value)
         # the COMMAND, never the bare word: pytest names tmp_path after the test, so
         # `salvage` is in the log path this text quotes and matches whatever it says
-        for name, offered in (("story-reviewer", True), ("plan-reviewer", False)):
-            _result, err = review.run("bundle", repo, name=name)
+        for name, noun in (("story-reviewer", "story story-042"), ("plan-reviewer", "")):
+            _result, err = review.run("bundle", repo, name=name, noun=noun)
             assert "produced NO OUTPUT" in err and "XP_AGENT_TIMEOUT" in err, err
-            assert ("story <id> salvage" in err) is offered, (name, err)
+            assert ("story story-042 salvage" in err) is bool(noun), (name, err)
 
+    @pytest.mark.slow
     def test_a_launch_marker_written_before_the_noun_still_records(self, tmp_path):
         """v0.14.1 moved the leg's own land command into the launch marker, and
         salvage is the one leg that reads a marker THIS version may not have

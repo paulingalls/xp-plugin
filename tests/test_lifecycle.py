@@ -7,6 +7,7 @@ import sys
 
 import pytest
 from close import verify_commands
+from close_free_card_cases import add_free_card, free_identity
 from close_helpers import CLOSE, free, free_repo, make_repo
 from close_helpers import close as story
 
@@ -103,6 +104,8 @@ def test_free_land_does_not_emit_a_story_event(tmp_path):
     repo, env, g = free_repo(tmp_path)
     configure(repo, g, command)
     assert free(repo, env, "fix-typo", "start").returncode == 0
+    _branch, key = free_identity(g)
+    add_free_card(env, key)
     (repo / "free.py").write_text("FREE = 1\n")
     g("add", "-A")
     g("commit", "-qm", "free change")

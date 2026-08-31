@@ -7,6 +7,7 @@ import time
 from contextlib import suppress
 from pathlib import Path
 
+import pytest
 from close_helpers import close, make_repo, worktree_land_setup
 from spawn_helpers import make_repo as make_spawn_repo
 from spawn_helpers import spawn, stub_claude
@@ -58,6 +59,7 @@ def test_a_missing_system_file_is_the_no_teardown_arm(tmp_path):
     assert not tree.exists()
 
 
+@pytest.mark.slow
 def test_a_hung_teardown_is_killed_and_removal_continues(tmp_path):
     # Constraint 2: assert the EVENT, and keep the clock as a generous hang guard
     # only. The stderr line below is the real proof — it can only be written by the
@@ -75,6 +77,7 @@ def test_a_hung_teardown_is_killed_and_removal_continues(tmp_path):
     assert not tree.exists()
 
 
+@pytest.mark.slow
 def test_the_timeout_kill_reaches_the_teardown_s_own_children(tmp_path):
     """Killing only the shell orphans whatever it started — and a teardown that
     backgrounds work is exactly the shape that holds an environment open."""
@@ -139,6 +142,7 @@ def test_the_handback_guard_survives_a_teammate_written_non_utf8_system(tmp_path
     assert "Could not read" in err
 
 
+@pytest.mark.slow
 def test_timeout_comes_from_the_post_merge_trunk_config(tmp_path):
     repo, env, g, tree, _branch = worktree_land_setup(
         tmp_path, teardown="`sleep 30`", teardown_timeout=60

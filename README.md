@@ -58,10 +58,6 @@ codex plugin marketplace add paulingalls/xp-plugin
 codex plugin add xp-plugin@xp-plugin
 ```
 
-(The local-checkout form — `codex plugin marketplace add /path/to/xp-plugin` —
-is the one measured by this repo's own walks; the published form follows the
-CLI's documented syntax.)
-
 **You must trust the hooks, or nothing fires.** Codex skips unreviewed
 plugin hooks *silently*: run `/hooks` interactively and approve (per content
 hash — repeat after every update), or pass `--dangerously-bypass-hook-trust`
@@ -132,9 +128,11 @@ and [gitleaks](https://github.com/gitleaks/gitleaks) for the enforcement wall
 2. **Fill in what only you know**: your test commands in `.xp/config.yml`
    (`tests.fast/story/full` — the wall reads these at run time) and your
    product's surfaces in `.xp/system.md`.
-3. **Plan a story** with your lead agent: a card with context, files,
-   Given/When/Then acceptance criteria, and a runnable `Verify:` line. Multi-file
-   changes get a plan review from a fresh-context reviewer before code.
+3. **Plan a story**: give its context, files, Given/When/Then criteria and
+   `Verify:` commands. They run as argv from the repo root, with no shell or `cd`;
+   pass a needed working directory through the runner itself, for example
+   `Verify: uv run --directory apps/biographer python -m unittest`. Multi-file
+   changes get fresh-context plan review before code.
 4. **Mint and spawn**: `spawn.py ready story-001` turns the reviewed card into
    a credential ([ready] is earned, not typed); `spawn.py story-001` launches
    the teammate in its own worktree — Claude or Codex, chosen per story with

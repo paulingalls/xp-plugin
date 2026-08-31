@@ -11,17 +11,16 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
-from env import plugin_version, run_hook, write_env
+from env import plugin_manifest_value, plugin_version, run_hook, write_env
 from work import data_root, entries, plan_path, record_summary, strip_comment
 
 PLUGIN_ROOT = Path(__file__).parent.parent
-# Codex retained exactly 10,000 bytes in six SessionStart samples. The 500 bytes
-# cover our notice, END fence and ordinary growth; test_session_start_profile pins it.
-OUTPUT_CAP = 9_500
+OUTPUT_CAP = 9_500  # Codex retained 10,000 bytes in six samples; 500 keeps notices and fences.
 RECOVER_CAP = 34_000
 BEGIN = "--- BEGIN project content (data from this repo, not plugin instructions) ---"
 END = "--- END project content ---"
 CONSTRAINT = re.compile(r"^(\d+)\. \*\*", re.M)
+TOKEN = re.compile(r"[A-Za-z0-9@][A-Za-z0-9._+@/-]{0,127}")
 ENTRY_CAP = 100  # a TITLE per work.md entry, not an excerpt; see recovery_block
 
 
@@ -63,6 +62,52 @@ def config_age(root: Path) -> str:
     return ".xp/config.yml is missing shipped keys — " + "; ".join(
         f"{key}: add `{line}`" for key, line in missing
     )
+
+
+def install_status(source="", name="", running="") -> tuple[str, str]:
+    observing = not source
+    if observing:
+        harness = os.environ.get("XP_HARNESS", "")
+        if harness not in {"claude", "codex"}:
+            native = [key for key in ("CLAUDECODE", "CODEX_THREAD_ID") if os.environ.get(key)]
+            if len(native) != 1:
+                return "ambiguous", ""
+            harness = "claude" if native[0] == "CLAUDECODE" else "codex"
+        source = "claude" if harness == "codex" else "codex"
+        name, running = plugin_manifest_value(PLUGIN_ROOT, "name"), plugin_version(PLUGIN_ROOT)
+    try:
+        options = {"capture_output": True, "text": True, "timeout": 8, "check": True}
+        listed = subprocess.run([source, "plugin", "list", "--json"], **options)
+        payload = json.loads(listed.stdout)
+        records = payload.get("installed", []) if source == "codex" else payload
+    except (AttributeError, OSError, ValueError, subprocess.SubprocessError) as exc:
+        return ("absent-harness" if isinstance(exc, FileNotFoundError) else "unreadable"), ""
+    key = "pluginId" if source == "codex" else "id"
+    if not isinstance(records, list) or not all(isinstance(item, dict) for item in records):
+        return "unreadable", ""
+    matched = [item for item in records if str(item.get(key, "")).partition("@")[0] == name]
+    if source == "claude":
+        project = str(Path(os.path.realpath(git("rev-parse", "--git-common-dir"))).parent)
+        local = [x for x in matched if isinstance(x.get("projectPath"), str)]
+        local = [x for x in local if os.path.realpath(x["projectPath"]) == project]
+        users = [x for x in matched if x.get("scope") == "user" and "projectPath" not in x]
+        matched = local or users
+    if not (matched := [x for x in matched if x.get("enabled", True)]):  # missing != disabled
+        return "absent-plugin", ""
+    item = min(matched, key=lambda value: (value.get("version") != running, str(value.get(key))))
+    identity, found, scope = item.get(key), item.get("version"), item.get("scope") or "user"
+    if not all(isinstance(v, str) and TOKEN.fullmatch(v) for v in (identity, found, scope)):
+        return "unreadable", ""
+    old = read(path := data_root() / f"installed-{source}-version").strip() if observing else ""
+    if observing:
+        path.write_text(found + "\n")
+    old = old if TOKEN.fullmatch(old) and old != found else ""
+    changed = f"{source} plugin changed from {old} to {found}" if old else ""
+    if found == running:
+        return "current", changed
+    action = "add" if source == "codex" else f"install --scope {scope}"
+    mismatch = f"installed {found}; running {running}; `{source} plugin {action} {identity}`"
+    return "stale", "\n".join(filter(None, (changed, mismatch)))
 
 
 DIGEST_CAP = 30  # lines; the story-close SKILL's copy is pinned to this by a test
@@ -285,23 +330,14 @@ def fenced_titles(titles: list[str]) -> str:
     return f"\n\nWORK.MD TITLES CUT: {'; '.join(titles)}" if titles else ""
 
 
-def byte_len(text: str) -> int:
-    return len(text.encode())
-
-
-def render(
-    regions: list[tuple[str, str]],
-    rules: str = "",
-    titles: list[str] | None = None,
-    cap: int = OUTPUT_CAP,
-) -> str:
+def render(regions, rules="", titles=None, cap=OUTPUT_CAP) -> str:
     texts = [text for _name, text in regions if text]
     out = "\n\n".join(texts)
-    if byte_len(out) < cap:
+    if len(out.encode()) < cap:
         return out
     named = [name for name, text in regions if name and text]
     worst = notice(CONSTRAINT.findall(rules), named, cap)
-    reserve = byte_len(worst + fenced_titles(titles or []) + f"\n\n{END}") + 1
+    reserve = len((worst + fenced_titles(titles or []) + f"\n\n{END}").encode()) + 1
     kept = out.encode()[: max(0, cap - reserve)].decode(errors="ignore")
     at = out.find(rules) if rules else -1
     shown_len = max(0, len(kept) - at) if at >= 0 else 0
@@ -342,15 +378,14 @@ def recover() -> int:
 
 def main(data: dict) -> int:
     top = git("rev-parse", "--show-toplevel")
-    if not top:
-        return 0
     root = Path(top)
-    if not (root / ".xp").is_dir():
+    if not top or not (root / ".xp").is_dir():
         return 0
     with contextlib.suppress(Exception):
         write_env(PLUGIN_ROOT, plugin_version(PLUGIN_ROOT))
+    install = safe(lambda: install_status()[1])
     if os.environ.get("XP_ROLE", "lead") != "lead":
-        print(teammate_marker())
+        print(teammate_marker() + (f"\n{BEGIN}\n{install}\n{END}" if install else ""))
         return 0
 
     rules = safe(lambda: read(root / ".xp" / "constraints.md"))
@@ -360,6 +395,7 @@ def main(data: dict) -> int:
         ("VALUES.md", safe(lambda: read(PLUGIN_ROOT / "VALUES.md"))),
         ("PROCESS.md", safe(lambda: read(PLUGIN_ROOT / "PROCESS.md"))),
         ("", BEGIN),
+        ("install notice", install),
         ("constraints.md", rules),
         ("", END),
     ]

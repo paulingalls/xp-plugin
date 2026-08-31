@@ -8,6 +8,7 @@ import sys
 import pytest
 from close_helpers import (  # noqa: F401
     CARD,
+    CLAUDE_SH,
     CLOSE,
     CONFIG,
     PLUGIN,
@@ -28,8 +29,6 @@ from work import flip_status
 
 
 class TestStoryReviewFindings:
-    """story-008 close review, run by this story's own pipeline."""
-
     def test_a_comment_on_the_tests_header_cannot_silence_the_story_tier(self, tmp_path):
         """G2: the twin of the roles: bug, and this copy fails OPEN — a red tier
         is skipped and the story closes green."""
@@ -49,7 +48,8 @@ class TestStoryReviewFindings:
         denied, so an uncommitted scratch write is the likelier defect."""
         repo, env, _g = make_repo(tmp_path)
         (tmp_path / "bin" / "claude").write_text(
-            "#!/bin/sh\necho 'scratch' >> src/thing.py\nprintf '{\"result\": \"VERDICT: clean\"}'\n"
+            CLAUDE_SH
+            + "echo 'scratch' >> src/thing.py\nprintf '{\"result\": \"VERDICT: clean\"}'\n"
         )
         (tmp_path / "bin" / "claude").chmod(0o755)
         r = close(repo, env, "review")
@@ -243,8 +243,7 @@ class TestRoundThreeFindings:
         repo, env, _g = make_repo(tmp_path)
         bin_dir = tmp_path / "bin"
         (bin_dir / "claude").write_text(
-            "#!/bin/sh\n"
-            "p=$(sed -n 's/^REPORT_PATH: //p')\n"
+            CLAUDE_SH + "p=$(sed -n 's/^REPORT_PATH: //p')\n"
             'printf \'{"fixed": [], "blocking": [], "noted": []}\' > "$p"\n'
             "NEW=$(git commit-tree HEAD^{tree} -p main -m 'teammate landed mid-review')\n"
             "git update-ref refs/heads/main $NEW\n"

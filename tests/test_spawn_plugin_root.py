@@ -1,4 +1,4 @@
-"""story-059: self-hosting spawn executes the plugin tree under review."""
+"""Spawn executes the installed plugin, independent of consumer layout."""
 
 import json
 from pathlib import Path
@@ -12,7 +12,9 @@ def test_consuming_project_keeps_installed_root_and_output(tmp_path):
     rec = stub_claude(tmp_path)
     result = spawn(repo, env, "story-042")
     assert result.returncode == 0, result.stderr
-    assert str(SPAWN.parent / "work.py") in json.loads(rec.read_text())["stdin"]
+    launched = json.loads(rec.read_text())
+    assert str(SPAWN.parent / "work.py") in launched["stdin"]
+    assert launched["env"]["XP_HARNESS"] == "claude"
     # nothing NEW printed, not just the right last line: a root or version disclosure
     # leaking anywhere into a consuming project's console is the design's failure arm.
     assert "xp-plugin" not in result.stdout + result.stderr
@@ -37,7 +39,7 @@ def write_plugin_source(repo):
     manifest.write_text('{"version": "9.8.7"}\n')
 
 
-def test_self_hosting_commands_execute_and_disclose_worktree_root(tmp_path):
+def test_a_consumer_plugin_tree_does_not_replace_the_installed_root(tmp_path):
     repo, env, g = make_repo(tmp_path)
     g("checkout", "-q", "main")
     write_plugin_source(repo)
@@ -49,23 +51,17 @@ def test_self_hosting_commands_execute_and_disclose_worktree_root(tmp_path):
     result = spawn(repo, env, "story-042")
     assert result.returncode == 0, result.stderr
     tree = Path(env["XP_DATA"]) / "worktrees" / "story-042"
-    worktree_plugin = tree / "plugins" / "xp-plugin"
-    assert (tree / "executed-plugin-script").read_text() == str(
-        (worktree_plugin / "scripts" / "work.py").resolve()
-    )
+    assert not (tree / "executed-plugin-script").exists()
     handback = result.stdout.splitlines()[-1]
-    assert "for every close.py leg" in handback
-    assert f"python3 {worktree_plugin}/scripts/close.py story story-042 review" in handback
-    assert "xp-plugin 9.8.7" in handback
+    assert handback.endswith("Read it, then run `close.py story story-042 review`.")
 
 
-def test_self_hosting_free_leg_still_names_the_worktree_it_must_run_from(tmp_path):
-    """`close.py free` reads its branch off HEAD and spawn moves the lead to trunk,
-    so the long spelling drops the lead onto a checkout that refuses the leg."""
-    from test_close_free import KEY, carded_free_patch
+def test_a_free_consumer_plugin_tree_keeps_the_installed_root(tmp_path):
+    from test_close_free import carded_free_patch
 
     repo, env, g = carded_free_patch(tmp_path)
     branch = g("rev-parse", "--abbrev-ref", "HEAD").stdout.strip()
+    key = branch.split("/", 1)[1]
     g("checkout", "-q", "main")
     write_plugin_source(repo)
     g("add", "-A")
@@ -74,21 +70,22 @@ def test_self_hosting_free_leg_still_names_the_worktree_it_must_run_from(tmp_pat
     assert g("merge", "-q", "main").returncode == 0
     stub_claude(tmp_path)
 
-    result = spawn(repo, env, KEY)
+    result = spawn(repo, env, key)
     assert result.returncode == 0, result.stderr
     handback = result.stdout.splitlines()[-1]
-    assert "for every close.py leg" in handback
     assert handback.endswith("close.py free fix-typo review` from that worktree.")
+    assert "plugins/xp-plugin" not in handback
 
 
 def test_a_branch_lacking_the_plugin_keeps_the_installed_root(tmp_path):
-    """`free start` cuts off the DEFAULT branch and the integration target may be the
-    sprint branch, so the target is not the ref the worktree comes from. Asking it
-    hands the executor — and every close leg — a path its own worktree does not have."""
-    from test_close_free import KEY, carded_free_patch
+    """The free branch is cut before the plugin reaches the default branch, so its
+    worktree has no plugins/ at all — the arm where a layout-derived root is a path
+    that does not exist rather than merely the wrong one."""
+    from test_close_free import carded_free_patch
 
     repo, env, g = carded_free_patch(tmp_path)
     branch = g("rev-parse", "--abbrev-ref", "HEAD").stdout.strip()
+    key = branch.split("/", 1)[1]
     g("checkout", "-q", "main")
     write_plugin_source(repo)
     g("add", "-A")
@@ -96,19 +93,18 @@ def test_a_branch_lacking_the_plugin_keeps_the_installed_root(tmp_path):
     g("checkout", "-q", branch)
     rec = stub_claude(tmp_path)
 
-    result = spawn(repo, env, KEY)
+    result = spawn(repo, env, key)
     assert result.returncode == 0, result.stderr
-    assert not (Path(env["XP_DATA"]) / "worktrees" / KEY / "plugins").exists()
+    assert not (Path(env["XP_DATA"]) / "worktrees" / key / "plugins").exists()
     assert str(SPAWN.parent / "work.py") in json.loads(rec.read_text())["stdin"]
     assert result.stdout.splitlines()[-1].endswith(
         "Read it, then run `close.py free fix-typo review` from that worktree."
     )
 
 
-def test_resume_asks_the_stopped_branch_not_the_moved_integration_target(tmp_path):
-    """A resume re-enters an EXISTING tree, so the integration target is not where that
-    tree came from either: a trunk that adopts the plugin after the stop would hand the
-    successor — and every close leg — a path its own worktree has never had."""
+def test_a_resume_keeps_the_installed_root_after_trunk_adopts_a_plugin(tmp_path):
+    """A resume re-enters a tree cut BEFORE trunk adopted the plugin, so the repository
+    now ships plugins/xp-plugin while the successor's own worktree still does not."""
     from test_spawn_resume import stopped_story
 
     repo, env, g, tree, _marker = stopped_story(tmp_path)

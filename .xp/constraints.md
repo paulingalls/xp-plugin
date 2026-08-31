@@ -8,9 +8,9 @@ adding over the cap requires retiring one (the plan reviewer enforces).
 2. **Fault-inject every guard.** A check that cannot red against its target defect is
    vacuous and worse than no check — it certifies. This applies to the plugin's own
    gates, tests, and filed falsifiers. (The predecessor's audit: 7 vacuous guards
-   shipped by one agent in one session, zero found by reading.) The inverse also breaks a
-   gate: a wall-clock bound measures the machine, so a timeout is a HANG GUARD —
-   generous, or assert the event.
+   shipped by one agent in one session, zero found by reading.) The inverse breaks a
+   gate too: normalize raw wall clock against a same-run control, or use a
+   generous HANG GUARD and assert the event.
 3. **Independent adversarial pressure, not bookkeeping.** A mechanism must be able to
    tell us something we didn't already believe, or it doesn't ship.
 4. **Stdlib only.** No external Python packages, ever. Each dependency is a failure

@@ -10,6 +10,7 @@ from pathlib import Path
 
 from session_start_close_cases import LastCloseCases
 from session_start_helpers import HOOK, HOOKS_JSON, run_hook, run_hook_as, run_recovery, xp_repo
+from session_start_install_cases import EnvRefreshCases, InstallProbeCases
 
 
 def run_banner_script(output, cwd, data_dir, script="work.py env"):
@@ -395,74 +396,12 @@ class TestSkillsCarryNoPreload:
                 assert "!`" not in line, f"{skill.parent.name}: {line}"
 
 
-class TestEnvRefresh:
-    """story-027 AC2. The codex plugin cache is version-keyed, so every release
-    moves the install and a seeded pointer goes stale on its own. Only this
-    refresh clears it, which is why it runs on every session and both roles."""
+class TestEnvRefresh(EnvRefreshCases):
+    pass
 
-    PLUGIN = HOOK.parent.parent
 
-    def seed(self, tmp_path, **extra):
-        d = tmp_path / "xp"
-        d.mkdir(parents=True, exist_ok=True)
-        (d / "env.json").write_text(
-            json.dumps({"plugin_root": "/gone/0.0.1", "plugin_version": "0.0.1", **extra})
-        )
-        return d / "env.json"
-
-    def recorded(self, tmp_path):
-        return json.loads((tmp_path / "xp" / "env.json").read_text())
-
-    def assert_current(self, tmp_path):
-        manifest = json.loads((self.PLUGIN / ".claude-plugin" / "plugin.json").read_text())
-        found = self.recorded(tmp_path)
-        assert found["plugin_root"] == str(self.PLUGIN), found
-        assert found["plugin_version"] == manifest["version"], found
-
-    def test_the_hook_refreshes_a_stale_pointer(self, tmp_path):
-        repo, _g = xp_repo(tmp_path)
-        self.seed(tmp_path)
-        assert run_hook(repo, tmp_path).returncode == 0
-        self.assert_current(tmp_path)
-
-    def test_the_refresh_leaves_non_plugin_keys_alone(self, tmp_path):
-        """AC1's merge clause, on the path that can reach an existing file — setup's
-        own .xp/ and plan refusals block every route to one."""
-        repo, _g = xp_repo(tmp_path)
-        self.seed(tmp_path, scratch="keep me")
-        run_hook(repo, tmp_path)
-        assert self.recorded(tmp_path)["scratch"] == "keep me"
-        self.assert_current(tmp_path)
-
-    def test_a_teammate_session_refreshes_it_too(self, tmp_path):
-        """The write sits ABOVE the XP_ROLE gate: the teammate path returns before
-        the profile builders, so a write below it would refresh on lead sessions
-        only — and a teammate's session is a live install pointer like any other."""
-        repo, _g = xp_repo(tmp_path)
-        self.seed(tmp_path)
-        r = run_hook_as(repo, tmp_path, role="teammate")
-        assert "teammate session" in r.stdout, r.stdout
-        self.assert_current(tmp_path)
-
-    def test_a_hook_that_cannot_write_keeps_injecting(self, tmp_path):
-        """A pointer-write failure must not trade away the whole lead profile."""
-        repo, _g = xp_repo(tmp_path)
-        (tmp_path / "xp" / "env.json").mkdir(parents=True)
-        r = run_hook(repo, tmp_path)
-        assert r.returncode == 0
-        assert "CONSTRAINT-SENTINEL" in r.stdout, r.stdout or r.stderr
-
-    def test_an_invalid_env_is_not_replaced_and_the_hook_keeps_injecting(self, tmp_path):
-        repo, _g = xp_repo(tmp_path)
-        path = tmp_path / "xp" / "env.json"
-        for invalid in ('{"consumer": ', '["consumer"]'):
-            path.write_text(invalid)
-
-            r = run_hook(repo, tmp_path)
-
-            assert r.returncode == 0
-            assert "CONSTRAINT-SENTINEL" in r.stdout, r.stdout or r.stderr
-            assert path.read_text() == invalid
+class TestInstallProbe(InstallProbeCases):
+    pass
 
 
 class TestTheStoryStampIsProvenanceNotContent:

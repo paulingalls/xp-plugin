@@ -52,12 +52,15 @@ def check_roles(card: str) -> None:
     """Resolve every stage's role before the FIRST launch, for charters()'s reason
     one stage later: a bad `closer` key first read at the closer's turn refuses
     after every earlier stage has spent and the fixer has committed, and that exit
-    bypasses the incomplete-round record. resolve_role's own refusal is the
-    message, so this alone among the stage readers returns nothing and raises."""
+    bypasses the incomplete-round record. The role and harness refusals are both
+    the message, so this alone among the stage readers returns nothing and raises."""
     import review
+    import spawn
+    from close import fail
 
-    for stage in STAGES:
-        review.stage_role(stage, card)
+    for harness in {review.stage_role(stage, card)[0] for stage in STAGES}:
+        if missing := spawn.missing_harness(harness):
+            raise SystemExit(fail("refused: " + missing))
 
 
 def altitude() -> tuple[str, str]:

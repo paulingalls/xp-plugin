@@ -23,6 +23,12 @@ REMINT = "Put the heading back to [planned] and run `spawn.py ready {}`."
 DOC = "The plan-review credential: minted from [planned], amended only with a recorded reason."
 
 
+def progressed(story_id: str) -> bool:
+    root = data_root()
+    close = root / "markers" / f"{story_id}.close.json"
+    return handoff_marker_path(root, story_id).exists() or close.exists()
+
+
 def credential(marker: Path) -> dict | None:
     try:
         minted = json.loads(marker.read_text())
@@ -47,7 +53,7 @@ def card_diff(reviewed: str, card: str) -> str:
 
 def drift(sid: str, card: str) -> str:
     marker = ready_marker_path(sid)
-    recovery = (AMEND if handoff_marker_path(data_root(), sid).exists() else REMINT).format(sid)
+    recovery = (AMEND if progressed(sid) else REMINT).format(sid)
     if not marker.exists():
         return f"refused: nothing minted it for {sid}; {marker} is absent. {recovery}"
     minted = credential(marker)
@@ -75,7 +81,7 @@ def amend(story_id: str, reason: str) -> int:
         return fail(str(e))
     marker = ready_marker_path(story_id)
     previous = credential(marker)
-    if previous is None and not handoff_marker_path(data_root(), story_id).exists():
+    if previous is None and not progressed(story_id):
         return fail(f"refused: no reviewed card to amend. {REMINT.format(story_id)}")
     prior = previous["card"] if previous else "(credential absent)"
     if previous is None and marker.exists():

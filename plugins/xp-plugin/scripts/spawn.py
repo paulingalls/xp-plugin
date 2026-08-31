@@ -3,7 +3,6 @@
 
 import argparse
 import os
-import re
 import subprocess
 import sys
 from pathlib import Path
@@ -13,8 +12,7 @@ sys.path.insert(0, str(Path(__file__).parent / "spawn"))
 # close must import back FUNCTION-LOCALLY: a module-level edge cycles
 # (close -> spawn -> close) and fails before fail/git exist (story-008).
 from bookkeep import bootstrap_command
-from close import config_flat, fail, git, integration_target, story_card
-from env import plugin_version
+from close import config_flat, fail, git, integration_target, leg, story_card
 from handback import tree_state, unclean_teammate_result
 from handoff import draft_path, inheritance, mark_handoff, report_handoff
 from harness import HARNESS_INSTALL, agent_argv, missing_harness, resolve_codex_sandbox
@@ -34,7 +32,6 @@ from work import (
 )
 
 PLUGIN_ROOT = Path(__file__).parent.parent
-PROJECT_PLUGIN = Path("plugins/xp-plugin")
 
 # Tokens (chars//4). The cap covers prose WE ship — VALUES, TEAMMATE.md, the
 # seed constraints file and always-on component metadata — because ownership is
@@ -185,7 +182,7 @@ def run_agent(
     log_id: str,
 ) -> subprocess.CompletedProcess:
     """Run one role with its prompt off argv and the reviewer silence bound on."""
-    env = os.environ | {"XP_ROLE": role}
+    env = os.environ | {"XP_ROLE": role, "XP_HARNESS": harness}
     # BOTH reviewer legs: a review is the one launch both long-running AND
     # writing, and a hung one owns the lead's tree, with edit rights, forever. A
     # teammate legitimately outruns any bound, and cmd_spawn's call site has no
@@ -222,14 +219,6 @@ def worktree_path(story_id: str) -> Path:
     return data_root() / "worktrees" / story_id
 
 
-def execution_root(tree: Path, cut_from: str) -> Path:
-    # Asked of the ref the tree is CUT FROM, never `tree`: the prompt precedes the worktree.
-    # NOT the integration target — free cuts off the default branch, resume re-enters one.
-    source = PROJECT_PLUGIN / "scripts" / "spawn.py"
-    exists = git("cat-file", "-e", f"{cut_from}:{source}", check=False)
-    return tree / PROJECT_PLUGIN if exists.returncode == 0 else PLUGIN_ROOT
-
-
 def flip_to_in_progress(story_id: str) -> None:
     """Both marks of a started story, together: close.py refuses a card that is not
     [in-progress], and ready.py refuses re-minting one already handed to an executor."""
@@ -252,36 +241,8 @@ def not_ready_hint(status: str, story_id: str) -> str:
     )
 
 
-def cmd_in_place(story_id: str, card: str) -> int:
-    """Create the story branch in the current tree without launching."""
-    if git("status", "--porcelain").stdout.strip():
-        return fail(
-            "refused: working tree is dirty — commit or stash first, or the"
-            " uncommitted work rides onto the story branch unreviewed"
-        )
-    branch = story_branch(card, story_id)
-    if FREE_ID.fullmatch(story_id) and current_branch() == branch:
-        flip_to_in_progress(story_id)
-        print(f"{branch} already current — in place, nothing launched; you are the executor")
-        return 0
-    if git("rev-parse", "--verify", "-q", f"refs/heads/{branch}", check=False).returncode == 0:
-        return fail(f"refused: branch {branch} already exists")
-    trunk = integration_target()
-    made = git("checkout", "-q", "-b", branch, trunk, check=False)
-    if made.returncode != 0:
-        return fail(f"git checkout -b failed: {made.stderr.strip()}")
-    flip_to_in_progress(story_id)
-    print(f"{branch} off {trunk} — in place, nothing launched; you are the executor")
-    return 0
-
-
-# The shape close/free.py cuts and every free leg keys off; group 2 is the slug
-# those legs take as their argument.
-FREE_ID = re.compile(r"free-(\d{4}-\d\d-\d\d-(.+))")
-
-
 def story_branch(card: str, story_id: str) -> str:
-    if FREE_ID.fullmatch(story_id):
+    if leg(story_id)[1]:
         return f"{user_ns()}/{story_id}"
     return f"{user_ns()}/{story_id}-{slugify(card_title(card))}"
 
@@ -290,9 +251,7 @@ def current_branch() -> str:
     return git("branch", "--show-current").stdout.strip()
 
 
-def cmd_spawn(
-    story_id: str, override: str, dry_run: bool, in_place: bool = False, resuming: bool = False
-) -> int:
+def cmd_spawn(story_id: str, override: str, dry_run: bool, resuming: bool = False) -> int:
     if not plan_path().exists():
         return fail("refused: " + missing_plan_refusal())
     try:
@@ -308,28 +267,21 @@ def cmd_spawn(
         return fail(f"refused: {story_id} is [{status}], spawn requires [ready]. {hint}")
     if not resuming and (drift := ready().drift(story_id, card)):
         return fail(drift)
-    if in_place:
-        if dry_run:
-            print(
-                f"would create {story_branch(card, story_id)} off {integration_target()},"
-                f" flip {story_id} to [in-progress], and launch nothing"
-            )
-            return 0
-        return cmd_in_place(story_id, card)
     harness, model, effort = resolve_role("executor", card, override)
     sandbox, problem = resolve_codex_sandbox(harness, config_flat("codex_sandbox"))
     if problem:
         return fail("refused: " + problem)
+    if gone := missing_harness(harness):
+        return fail("refused: " + gone)
     branch = story_branch(card, story_id)
     tree = worktree_path(story_id)
     trunk = integration_target()
-    reuse = bool(FREE_ID.fullmatch(story_id)) and current_branch() == branch
-    plugin_root = execution_root(tree, branch if reuse or resuming else trunk)
+    reuse = bool(leg(story_id)[1]) and current_branch() == branch
     argv = agent_argv(harness, model, effort, "stream-json", sandbox)
     handoff = inheritance(data_root(), story_id)
     if resuming and tree.is_dir():
         handoff += resume().inherited_evidence(tree, trunk)
-    prompt = build_prompt(teammate_sections(card, story_id, handoff, plugin_root))
+    prompt = build_prompt(teammate_sections(card, story_id, handoff, PLUGIN_ROOT))
     report, warning = profile_report(card, prompt, handoff)
     print(report)
     if warning:
@@ -338,9 +290,6 @@ def cmd_spawn(
         print(" ".join(argv))
         print(prompt)
         return 0
-    # Check the harness before creating a tree that a failed launch would strand.
-    if gone := missing_harness(harness):
-        return fail("refused: " + gone)
     # Parse bootstrap before creating a tree that a bad command would strand.
     system = Path(".xp/system.md")
     if not resuming and not system.parent.exists():
@@ -390,7 +339,7 @@ def cmd_spawn(
             stand = (
                 f" — `git checkout {branch}` first: it is this patch's free branch,"
                 " and spawn continues it rather than cutting a new one"
-                if FREE_ID.fullmatch(story_id)
+                if leg(story_id)[1]
                 else ""
             )
             return fail(f"refused: branch {branch} already exists{stand}")
@@ -433,17 +382,13 @@ def cmd_spawn(
         result = report_handoff(data_root(), story_id, before, why, rc)
         held.close()
         return result
-    free_id = FREE_ID.fullmatch(story_id)
-    scope = f"free {free_id.group(2)}" if free_id else f"story {story_id}"
+    scope, free_slug = leg(story_id)
     # The free leg reads its branch off HEAD, and spawn just moved the lead to trunk.
-    where = " from that worktree" if free_id else ""
-    leg = f"run `close.py {scope} review`{where}"
-    if plugin_root != PLUGIN_ROOT:
-        leg = (
-            f"use xp-plugin {plugin_version(plugin_root)} at {plugin_root} for every close.py"
-            f" leg, starting with `python3 {plugin_root}/scripts/close.py {scope} review`{where}"
-        )
-    print(f"{story_id} produced commit {tree_state(tree)[0]} at {tree}. Read it, then {leg}.")
+    where = " from that worktree" if free_slug else ""
+    instruction = f"run `close.py {scope} review`{where}"
+    print(
+        f"{story_id} produced commit {tree_state(tree)[0]} at {tree}. Read it, then {instruction}."
+    )
     mark_handoff(data_root(), story_id, True)
     held.close()
     return rc
@@ -470,6 +415,14 @@ def main() -> int:
         if not chdir_repo_root():
             return fail("refused: not inside a git repository")
         return cmd_spawn(a.story_id, a.executor, a.dry_run, resuming=True)
+    # After the subcommand dispatch, so the story_id it echoes is a story_id: ahead
+    # of it, `spawn.py resume <id> --in-place` names `spawn.py resume` as the launch.
+    if "--in-place" in sys.argv[1:]:
+        story_id = next((arg for arg in sys.argv[1:] if not arg.startswith("-")), "<story-id>")
+        return fail(
+            f"refused: --in-place was removed; run `spawn.py {story_id}` to launch"
+            " the executor in its worktree"
+        )
     p = argparse.ArgumentParser(
         description=__doc__,
         epilog="ready <story-id>: after the card review, mint the card's digest and"
@@ -479,15 +432,10 @@ def main() -> int:
     p.add_argument("story_id")
     p.add_argument("executor", nargs="?", default="", help="harness/model[/effort] override")
     p.add_argument("--dry-run", action="store_true")
-    p.add_argument(
-        "--in-place",
-        action="store_true",
-        help="create the story branch here and stop — the lead executes it solo",
-    )
     a = p.parse_args()
     if not chdir_repo_root():
         return fail("refused: not inside a git repository")
-    return cmd_spawn(a.story_id, a.executor, a.dry_run, a.in_place)
+    return cmd_spawn(a.story_id, a.executor, a.dry_run)
 
 
 if __name__ == "__main__":

@@ -10,7 +10,8 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from env import refuse_direct_invocation
+from env import plugin_manifest_value, plugin_version, refuse_direct_invocation
+from session_start import install_status
 from work import data_root
 
 PLUGIN_ROOT = Path(__file__).parent.parent.parent
@@ -26,6 +27,10 @@ HARNESS_INSTALL = {
     "claude": "https://claude.com/product/claude-code",
     "codex": "npm install -g @openai/codex",
 }
+PLUGIN_INSTALL = {
+    "claude": "claude plugin install xp-plugin@xp-plugin --scope user",
+    "codex": "codex plugin add xp-plugin@xp-plugin",
+}
 CODEX_SANDBOXES = ("workspace-write", "danger-full-access")
 
 
@@ -33,12 +38,22 @@ def missing_harness(harness: str) -> str:
     """Text, not an exit code: the spawn turns it into rc 2 before the worktree
     is cut, while review.run must return it as an error tuple — a SystemExit
     there would skip close.py's abort/undo block."""
-    if shutil.which(harness):
-        return ""
-    return (
-        f"{harness} is not on PATH — install it ({HARNESS_INSTALL[harness]})"
-        " or point the role at a harness that is"
+    if not shutil.which(harness):
+        return (
+            f"{harness} is not on PATH — install it ({HARNESS_INSTALL[harness]})"
+            " or point the role at a harness that is"
+        )
+    status, _notice = install_status(
+        harness, plugin_manifest_value(PLUGIN_ROOT, "name"), plugin_version(PLUGIN_ROOT)
     )
+    if status == "absent-plugin":
+        return (
+            f"{harness} has no ENABLED copy of this plugin — install it"
+            f" (`{PLUGIN_INSTALL[harness]}`) or enable the copy it already has"
+        )
+    if status not in {"current", "stale"}:
+        return f"plugin state is {status}; `{harness} plugin list --json` did not prove it enabled"
+    return ""
 
 
 def claude_argv(model: str, effort: str, output_format: str = "json") -> list[str]:
