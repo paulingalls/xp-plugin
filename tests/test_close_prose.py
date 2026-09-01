@@ -200,7 +200,7 @@ class TestShippedProseMatchesTheMechanism:
         of padding spliced in — a ratchet with slack certifies instead of checking.
         Re-measure and lower it whenever this file legitimately shrinks."""
         raw = (PLUGIN / "PROCESS.md").read_text()
-        assert len(raw) <= 1279, "the execution rule stopped paying for itself"
+        assert len(raw) <= 1274, "the execution rule stopped paying for itself"
         process = " ".join(raw.split())
         story = process.split("2. **Story", 1)[1].split("3. **Story close", 1)[0]
         assert "free work" in story and "worktree" in story
