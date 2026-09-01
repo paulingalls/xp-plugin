@@ -22,7 +22,7 @@ pre-commit:
     fast-tests:
       priority: 5
       # exit 5 = no tests collected — legal while the suite is growing
-      run: sh -c 'pytest -q -n 8 -m "not slow"; s=$?; [ $s -eq 5 ] && exit 0; exit $s'
+      run: sh -c '. plugins/xp-plugin/templates/hook-lib.sh; run_tier fast; s=$?; [ $s -eq 5 ] && exit 0; exit $s'
 
 # pre-push RE-CHECKS what pre-commit checked, over the whole tree rather than
 # staged files. A `--no-verify` or `core.hooksPath` bypass leaves no trace in the
@@ -46,7 +46,7 @@ pre-push:
     constraints-size:
       run: sh -c '. plugins/xp-plugin/templates/hook-lib.sh; constraints_size'
     full-tests:
-      run: sh -c 'pytest -q -n auto; s=$?; [ $s -eq 5 ] && exit 0; exit $s'
+      run: sh -c '. plugins/xp-plugin/templates/hook-lib.sh; run_tier story; s=$?; [ $s -eq 5 ] && exit 0; exit $s'
     ratchet:
       run: python3 tests/scripts/ratchet.py
     falsifier-node-ids:
