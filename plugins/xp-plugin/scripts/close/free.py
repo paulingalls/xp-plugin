@@ -63,9 +63,12 @@ def cmd_start(slug: str) -> int:
         return fail(f"refused: branch {new} already exists")
     if (made := git("checkout", "-q", "-b", new, trunk, check=False)).returncode:
         return fail(f"git checkout -b failed: {made.stderr.strip()}")
-    card = "card in the plan" if card_in_plan(new.split("/", 1)[1]) else "card required"
-    noun = leg(new.split("/", 1)[1])[0]
-    print(f"{new} off {trunk} — {card}. Cut your release artifacts, then `close.py {noun} review`")
+    key = new.split("/", 1)[1]
+    card = "card in the plan" if card_in_plan(key) else "card required, add it"
+    print(
+        f"{new} off {trunk} — {card}. Cut your release artifacts, then "
+        f"`spawn.py ready {key}` before `close.py {leg(key)[0]} review`"
+    )
     return 0
 
 

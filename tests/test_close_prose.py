@@ -7,6 +7,7 @@ import sys
 from pathlib import Path
 
 import pytest
+from close_free_card_cases import free_identity
 from close_helpers import (  # noqa: F401
     CARD,
     CLOSE,
@@ -183,10 +184,12 @@ class TestShippedProseMatchesTheMechanism:
     def test_free_start_names_release_timing_without_telling_the_lead_to_commit(self, tmp_path):
         outputs = []
         for name, slug in (("one", "fix-one"), ("two", "fix-two")):
-            repo, env, _g = free_repo(tmp_path / name)
+            repo, env, g = free_repo(tmp_path / name)
             result = free(repo, env, slug, "start")
             assert result.returncode == 0, result.stderr
             outputs.append(result.stdout)
+            key = free_identity(g)[1]
+            assert result.stdout.index(f"spawn.py ready {key}") < result.stdout.index("review")
             assert result.stdout.index("release artifacts") < result.stdout.index("review")
             assert "Commit, then" not in result.stdout
         assert outputs[0] != outputs[1]

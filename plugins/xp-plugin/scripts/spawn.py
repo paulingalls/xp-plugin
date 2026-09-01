@@ -384,7 +384,7 @@ def cmd_spawn(story_id: str, override: str, dry_run: bool, resuming: bool = Fals
     scope, free_slug = leg(story_id)
     # The free leg reads its branch off HEAD, and spawn just moved the lead to trunk.
     where = " from that worktree" if free_slug else ""
-    instruction = f"run `close.py {scope} review`{where}"
+    instruction = f"run `close.py {scope} review`{where}" if free_slug else "run `/story-close`"
     print(
         f"{story_id} produced commit {tree_state(tree)[0]} at {tree}. Read it, then {instruction}."
     )
