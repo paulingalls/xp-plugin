@@ -31,6 +31,14 @@ from close_helpers import (  # noqa: F401
 class TestShippedProseMatchesTheMechanism:
     """The prose is what a consuming project believes. story-012a AC 11/12."""
 
+    def test_sprint_salvage_is_a_walkable_help_route(self):
+        r = subprocess.run(
+            [sys.executable, str(CLOSE), "sprint", "walk", "salvage", "--help"],
+            capture_output=True,
+            text=True,
+        )
+        assert r.returncode == 0 and "salvage" in r.stdout, r.stderr
+
     def test_no_verdict_token_survives_in_the_shipped_prose(self):
         for path in (
             PLUGIN / "skills" / "story-close" / "SKILL.md",

@@ -19,6 +19,18 @@ from release import next_version, refuse_unbumpable
 def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
     if close.git("status", "--porcelain").stdout.strip():
         return close.fail("refused: working tree is dirty — Verify must judge the tree that merges")
+    launch = review.launch_marker(story_id)
+    if launch.exists():
+        try:
+            unrecorded = json.loads(launch.read_text())
+        except (OSError, ValueError):
+            unrecorded = {}
+        if verify_red := unrecorded.get("verify_red"):
+            verified = str(unrecorded.get("verify_head", unrecorded.get("head", "")))[:8]
+            return close.fail(
+                f"refused: the review completed on tree {verified}, but {verify_red}."
+                " No round was recorded; fix that tree, then run review again"
+            )
     marker = close.marker_path(story_id)
     if not marker.exists():
         return close.fail(f"refused: no close in progress for {story_id} — run review first")

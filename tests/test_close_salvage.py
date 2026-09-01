@@ -12,7 +12,7 @@ import subprocess
 import sys
 
 import pytest
-from close_helpers import CLOSE, close, make_repo, marker_file, stub_reviewer
+from close_helpers import CLOSE, close, free, free_repo, make_repo, marker_file, stub_reviewer
 
 # The bound is the longest SILENCE, and it starts at launch — so the stub streams
 # until it has written its artifacts, which restarts the clock and models the
@@ -171,6 +171,7 @@ class TestSalvage:
         nothing = salvage(repo, env)
         assert nothing.returncode == 2
         assert "no unrecorded review" in nothing.stderr, nothing.stderr
+        assert "story-042.round-1.json" in nothing.stderr, nothing.stderr
 
         stub_reviewer(tmp_path)
         marker = tmp_path / "data" / "markers" / "story-042.review-launch"
@@ -182,13 +183,29 @@ class TestSalvage:
         assert "not readable" in broken.stderr, broken.stderr
         assert "no unrecorded review" not in broken.stderr, broken.stderr
 
+    def test_free_salvage_names_the_unrecorded_round_it_searched(self, tmp_path):
+        repo, env, g = free_repo(tmp_path)
+        assert free(repo, env, "fix-typo", "start").returncode == 0
+        key = g("branch", "--show-current").stdout.strip().split("/", 1)[1]
+        plan = tmp_path / "data" / "plan.md"
+        plan.write_text(
+            plan.read_text() + f"\n### Free\n#### {key} — fix typo   [planned]\nContext: release.\n"
+            "Files: src/free.py\nAC:\n- Given a patch, Then it lands.\nVerify: true\n"
+        )
+        (repo / "src" / "free.py").write_text("B = 1\n")
+        g("add", "-A")
+        g("commit", "-qm", "free work")
+        assert free(repo, env, "fix-typo", "review").returncode == 0
+
+        refused = free(repo, env, "fix-typo", "salvage")
+
+        assert refused.returncode == 2
+        assert f"{key}.round-2.json" in refused.stderr, refused.stderr
+
     @pytest.mark.slow
     def test_the_kill_names_salvage_only_on_the_leg_that_has_one(self, tmp_path, monkeypatch):
-        """review.run's kill text is shared by four legs and only story close has a
-        salvage action to offer. Plan and sprint reviews write no launch marker, so
-        salvage there answers `no unrecorded review — Run review`, sending the lead
-        to a STORY close review after a PLAN review died. Both halves asserted:
-        dropping the advice from every leg would satisfy the second alone.
+        """review.run's kill text is shared by four legs; only plan review has no
+        salvage action. Both halves are asserted, so dropping all advice cannot pass.
         """
         import review
 
@@ -208,10 +225,15 @@ class TestSalvage:
             monkeypatch.setenv(key, value)
         # the COMMAND, never the bare word: pytest names tmp_path after the test, so
         # `salvage` is in the log path this text quotes and matches whatever it says
-        for name, noun in (("story-reviewer", "story story-042"), ("plan-reviewer", "")):
+        for name, noun in (
+            ("story-reviewer", "story story-042"),
+            ("sprint find-state", "sprint 2"),
+            ("plan-reviewer", ""),
+        ):
             _result, err = review.run("bundle", repo, name=name, noun=noun)
             assert "produced NO OUTPUT" in err and "XP_AGENT_TIMEOUT" in err, err
-            assert ("story story-042 salvage" in err) is bool(noun), (name, err)
+            command = f"close.py {noun} salvage"
+            assert (command in err) is bool(noun), (name, err)
 
     @pytest.mark.slow
     def test_a_launch_marker_written_before_the_noun_still_records(self, tmp_path):
