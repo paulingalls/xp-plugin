@@ -18,9 +18,7 @@ def test_consuming_project_keeps_installed_root_and_output(tmp_path):
     # nothing NEW printed, not just the right last line: a root or version disclosure
     # leaking anywhere into a consuming project's console is the design's failure arm.
     assert "xp-plugin" not in result.stdout + result.stderr
-    assert result.stdout.splitlines()[-1].endswith(
-        "Read it, then run `close.py story story-042 review`."
-    )
+    assert result.stdout.splitlines()[-1].endswith("Read it, then run `/story-close`.")
 
 
 def write_plugin_source(repo):
@@ -53,7 +51,7 @@ def test_a_consumer_plugin_tree_does_not_replace_the_installed_root(tmp_path):
     tree = Path(env["XP_DATA"]) / "worktrees" / "story-042"
     assert not (tree / "executed-plugin-script").exists()
     handback = result.stdout.splitlines()[-1]
-    assert handback.endswith("Read it, then run `close.py story story-042 review`.")
+    assert handback.endswith("Read it, then run `/story-close`.")
 
 
 def test_a_free_consumer_plugin_tree_keeps_the_installed_root(tmp_path):
@@ -120,6 +118,4 @@ def test_a_resume_keeps_the_installed_root_after_trunk_adopts_a_plugin(tmp_path)
     assert result.returncode == 0, result.stderr
     assert not (tree / "plugins").exists()
     assert str(SPAWN.parent / "work.py") in json.loads(rec.read_text())["stdin"]
-    assert result.stdout.splitlines()[-1].endswith(
-        "Read it, then run `close.py story story-042 review`."
-    )
+    assert result.stdout.splitlines()[-1].endswith("Read it, then run `/story-close`.")

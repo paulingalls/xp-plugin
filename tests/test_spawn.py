@@ -184,7 +184,7 @@ class TestWorktree:
             handoffs, (first_tree, second_tree), (env, env2), strict=True
         ):
             assert str(tree) in line and in_tree(tree, run_env, "rev-parse", "HEAD") in line
-            assert "close.py story story-042 review" in line
+            assert line.endswith("Read it, then run `/story-close`.")
         assert handoffs[0] != handoffs[1]
 
     def test_the_flip_lands_in_the_clones_plan_and_commits_nothing(self, tmp_path):
