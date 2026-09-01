@@ -212,6 +212,10 @@ class TestShippedProseMatchesTheMechanism:
             _walk_step_routes(process.replace("plan_review.py", "missing.py"))
         with pytest.raises(AssertionError, match="bogus"):
             _walk_step_routes(process.replace("close.py free", "close.py bogus"))
+        with pytest.raises(AssertionError, match="redy"):
+            _walk_step_routes(process.replace("spawn.py ready", "spawn.py redy"))
+        with pytest.raises(AssertionError, match="step 2 names no"):
+            _walk_step_routes(process.replace("`spawn.py <story-id>`", "spawn.py"))
 
     def test_system_context_names_every_shipped_prose_document(self):
         """This line rides into every reviewer bundle, so a short list tells a
@@ -383,13 +387,19 @@ def _walk_step_routes(process):
         routes = [s for s in spans if s.startswith("/") or shlex.split(s)[0].endswith(".py")]
         assert routes, f"step {number} names no command or skill"
         for route in (r for r in routes if not r.startswith("/")):
-            words = ["walk" if word.startswith("<") else word for word in shlex.split(route)]
+            words = shlex.split(route)
+            argv = ["walk" if word.startswith("<") else word for word in words]
             result = subprocess.run(
-                [sys.executable, str(PLUGIN / "scripts" / words[0]), *words[1:], "--help"],
+                [sys.executable, str(PLUGIN / "scripts" / argv[0]), *argv[1:], "--help"],
                 capture_output=True,
                 text=True,
             )
             assert result.returncode == 0, f"{route} does not answer --help: {result.stderr}"
+            # spawn.py takes its subcommand as a bare positional, so a misspelled one
+            # parses as a story id and answers off the top-level parser, exit 0.
+            usage = result.stdout.split("\n\n", 1)[0]
+            named = [word for word in words[1:] if not word.startswith("<")]
+            assert all(word in usage for word in named), f"{route} answered as `{usage}`"
 
 
 def _assert_skill_routes(skills_dir, process, prose_docs, nudges, refusals):
@@ -421,7 +431,7 @@ def test_every_shipped_skill_is_named_by_shipped_prose(tmp_path):
     repo, env, _g = make_repo(story_root)
     assert close(repo, env, "review").returncode == 0
     story_nudge = close(repo, env, "land")
-    assert story_nudge.returncode == 0, story_nudge.stderr
+    assert story_nudge.returncode == 0 and story_nudge.stdout, story_nudge.stderr
 
     from sprint_helpers import make_repo as make_sprint_repo
     from sprint_helpers import sprint
@@ -433,7 +443,7 @@ def test_every_shipped_skill_is_named_by_shipped_prose(tmp_path):
     g("checkout", "-q", "main")
     g("merge", "-q", "--no-ff", "sprint-002", "-m", "release")
     sprint_nudge = sprint(repo, env, "post-merge")
-    assert sprint_nudge.returncode == 0, sprint_nudge.stderr
+    assert sprint_nudge.returncode == 0 and sprint_nudge.stdout, sprint_nudge.stderr
 
     from spawn_helpers import make_repo as make_spawn_repo
     from spawn_helpers import spawn, stub_claude
@@ -448,7 +458,7 @@ def test_every_shipped_skill_is_named_by_shipped_prose(tmp_path):
 
     skills = PLUGIN / "skills"
     process = (PLUGIN / "PROCESS.md").read_text()
-    prose_docs = [path.read_text() for path in PLUGIN.glob("*.md")]
+    prose_docs = [path.read_text() for path in PLUGIN.rglob("*.md")]
     nudges = [story_nudge.stdout, sprint_nudge.stdout]
     refusals = [refusal.stderr]
     _assert_skill_routes(skills, process, prose_docs, nudges, refusals)
