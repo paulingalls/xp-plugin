@@ -111,18 +111,11 @@ class TestShippedProseMatchesTheMechanism:
         assert "## JUDGMENT\n\n" in bundle and "Polarity" in bundle
 
     def test_every_stopping_rule_copy_states_the_split_arithmetic(self):
-        """land refuses unless the last round covers HEAD, so "close without
-        re-review" cannot be kept. Asserted POSITIVELY and in every copy: a
-        negative grep for one file's old wording passed vacuously on the file
-        that never used that spelling, and missed DESIGN.md entirely.
-
-        story-012b SPLIT the rule — a REVIEWER fix costs no confirming round, a
-        LEAD fix still does — and `"confirming round" in text` was already true of
-        all three files BEFORE the split, so it certified the undifferentiated
-        sentence AC 10 exists to replace. Both halves, or neither is guarded.
-        """
+        """PROCESS spends its one-page loop on routing. The story-close skill and
+        DESIGN retain the complete stopping rule: pin both because a prior negative
+        grep missed DESIGN, and "confirming round" alone passed before the rule was
+        split between reviewer and lead fixes (story-012b)."""
         for path in (
-            PLUGIN / "PROCESS.md",
             PLUGIN / "skills" / "story-close" / "SKILL.md",
             Path(__file__).parent.parent / "docs" / "DESIGN.md",
         ):
@@ -154,6 +147,12 @@ class TestShippedProseMatchesTheMechanism:
         pass — an unbounded re-review (note bae0b87b)."""
         skill = prose(PLUGIN / "skills" / "sprint-close" / "SKILL.md")
         assert "close.py sprint <id> review" in skill, "the review is still hand-composed"
+
+    def test_the_sprint_close_skill_states_the_confirming_round_shape(self):
+        skill = prose(PLUGIN / "skills" / "sprint-close" / "SKILL.md")
+        assert "lead change after a completed round costs a confirming round" in skill
+        assert "re-run `close.py sprint <id> review`" in skill
+        assert "one story-shaped reviewer over the delta, not another fanout" in skill
 
     def test_sprint_opening_has_no_tracked_branch_ritual(self):
         skill = prose(PLUGIN / "skills" / "sprint-close" / "SKILL.md")
@@ -191,19 +190,40 @@ class TestShippedProseMatchesTheMechanism:
     def test_the_loop_states_carded_execution_once_and_does_not_grow(self):
         """Constraint 1. The cap is the LIVE size, never a historical one: left at
         5,454 for a file that had shrunk to 2,928, it passed with 2,277 characters
-        of padding spliced in — a ratchet with that much slack certifies instead of
-        checking. THE SLACK HERE IS RESERVED, NOT FORGOTTEN: story-089 moved the
-        shared rules out to JUDGMENT.md and left this file at 1,345, and story-082
-        spends the room on the loop's spine. Lower it to the live size at that
-        card's close, or it is padding again."""
+        of padding spliced in — a ratchet with slack certifies instead of checking.
+        Re-measure and lower it whenever this file legitimately shrinks."""
         raw = (PLUGIN / "PROCESS.md").read_text()
-        assert len(raw) <= 2840, "the execution rule stopped paying for itself"
+        assert len(raw) <= 1279, "the execution rule stopped paying for itself"
         process = " ".join(raw.split())
         story = process.split("2. **Story", 1)[1].split("3. **Story close", 1)[0]
         assert "free work" in story and "worktree" in story
         assert "never in the lead's checkout" in story
         assert "practice, not a wall" in story and "data root proves spawn" in story
         assert process.count("worktree") == 1
+
+    def test_each_loop_step_names_its_command_or_skill(self):
+        process = (PLUGIN / "PROCESS.md").read_text()
+        found = re.findall(r"(?ms)^(\d+)\. \*\*[^*]+\*\*.*?(?=^\d+\. \*\*|\Z)", process)
+        assert found == ["1", "2", "3", "4", "5"], found
+        steps = {
+            int(match[1]): match[0]
+            for match in re.findall(r"(?ms)^((\d+)\. \*\*[^*]+\*\*.*?)(?=^\d+\. \*\*|\Z)", process)
+        }
+        expected = {
+            1: ("spawn.py ready <story-id>", "plan_review.py <story-id> <plan-file>"),
+            2: ("spawn.py <story-id>",),
+            3: ("/story-close",),
+            4: ("/sprint-close",),
+            5: ("close.py free <slug>",),
+        }
+        for step, commands in expected.items():
+            for command in commands:
+                assert command in steps[step], f"step {step} does not name {command}"
+
+    def test_system_context_names_every_shipped_prose_document(self):
+        system = (Path(__file__).parent.parent / ".xp" / "system.md").read_text()
+        line = next(line for line in system.splitlines() if line.startswith("- shipped prose"))
+        assert "(VALUES.md, JUDGMENT.md, PROCESS.md)" in line
 
     def test_a_script_driving_skill_does_not_restate_the_mechanism(self):
         """Measured drift, three times in two sprints, caught by a READER every
@@ -215,7 +235,7 @@ class TestShippedProseMatchesTheMechanism:
         Pinned as a WORD BUDGET, not a token grep: a count reds when the
         enumerations grow back under any wording, which is the failure mode.
         """
-        for skill, cap in (("story-close", 330), ("sprint-close", 330)):
+        for skill, cap in (("story-close", 330), ("sprint-close", 350)):
             body = prose(PLUGIN / "skills" / skill / "SKILL.md")
             assert len(body.split()) <= cap, f"{skill} regrew to {len(body.split())} words"
 

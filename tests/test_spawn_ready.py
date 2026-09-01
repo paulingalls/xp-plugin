@@ -248,6 +248,10 @@ class TestReadyCredential:
             [sys.executable, str(SPAWN), named[1], "--help"], capture_output=True, text=True
         )
         assert f"usage: spawn.py {named[1]}" in r.stdout, r.stdout + r.stderr
+        launch = re.search(r"`spawn\.py <story-id>`", process)
+        assert launch, "PROCESS.md no longer names the leg that launches a story"
+        r = subprocess.run([sys.executable, str(SPAWN), "--help"], capture_output=True, text=True)
+        assert "usage: spawn.py [-h]" in r.stdout, r.stdout + r.stderr
 
     def test_minting_one_card_leaves_its_siblings_brackets_alone(self, tmp_path):
         """The flip is story-scoped, and the plan is shared. Rewriting every

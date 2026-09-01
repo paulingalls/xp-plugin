@@ -322,8 +322,11 @@ class TestModeSwitch:
             )
         )
         assert sprint(repo, env, "review").returncode == 0
-        bundle = launches(tmp_path)[0]["stdin"]
+        ran = launches(tmp_path)
+        assert len(ran) == 1, "a confirming delta paid for another fanout"
+        bundle = ran[0]["stdin"]
         assert "ROUND-1-BLOCKER" in bundle and "ROUND-1-NOTE" in bundle
+        assert DELTA in bundle
         assert "validate that each was addressed; do not re-derive the diff" in bundle
         assert "run the full pass yourself" not in bundle, "handed findings AND told to re-derive"
 
