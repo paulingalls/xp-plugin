@@ -88,6 +88,13 @@ class TestTheFilesLineIsProseNotAPath:
         r = self.accepts(tmp_path, "src.py, .xp/system.md (new)")
         assert r.returncode == 0, r.stderr
 
+    def test_BOTH_decorations_at_once_name_the_path_they_spell(self, tmp_path):
+        """`_bare` strips twice for exactly this: one pass leaves the backtick that
+        `(new)` sat outside of. Each decoration alone survives a single pass, so
+        without this case the second one is unpinned."""
+        r = self.accepts(tmp_path, "`src.py`, `.xp/system.md` (new)")
+        assert r.returncode == 0, r.stderr
+
     def test_an_undeclared_path_is_still_refused_when_others_are_decorated(self, tmp_path):
         """Normalising must not turn the guard off — the inverse of the two above,
         because a strip that ate too much would green every case in this class."""

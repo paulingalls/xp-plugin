@@ -13,6 +13,8 @@ import sys
 
 import pytest
 from close_helpers import CLOSE, close, free, free_repo, make_repo, marker_file, stub_reviewer
+from sprint_helpers import SPRINT_ID, sprint
+from sprint_helpers import make_repo as sprint_repo
 
 # The bound is the longest SILENCE, and it starts at launch — so the stub streams
 # until it has written its artifacts, which restarts the clock and models the
@@ -234,6 +236,28 @@ class TestSalvage:
             assert "produced NO OUTPUT" in err and "XP_AGENT_TIMEOUT" in err, err
             command = f"close.py {noun} salvage"
             assert (command in err) is bool(noun), (name, err)
+
+    @pytest.mark.slow
+    def test_the_sprint_leg_ITSELF_passes_the_noun_its_kill_text_needs(self, tmp_path):
+        """The case above hands review.run a noun, so it proves the `if noun` branch
+        that already worked — never that the sprint leg passes one, which WAS the
+        defect. Measured: delete `noun=` from sprint_close's review.run call and the
+        whole suite greens. Only driving the leg end to end reds."""
+        repo, env, _g = sprint_repo(tmp_path)
+        stub = tmp_path / "bin" / "claude"
+        stub.write_text(
+            "#!/bin/sh\n"
+            '[ "$1 $2 $3" = "plugin list --json" ] && echo '
+            '\'[{"id":"xp-plugin@xp-plugin","version":"fixture",'
+            '"scope":"user"}]\' && exit 0\n'
+            "sleep 30\n"
+        )
+        stub.chmod(0o755)
+
+        killed = sprint(repo, env | KILLED, "review")
+
+        assert killed.returncode == 2, killed.stdout
+        assert f"close.py sprint {SPRINT_ID} salvage" in killed.stderr, killed.stderr
 
     @pytest.mark.slow
     def test_a_launch_marker_written_before_the_noun_still_records(self, tmp_path):

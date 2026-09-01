@@ -262,17 +262,33 @@ class TestSprintCloseFindings:
         assert r.returncode == 2 and "Traceback" not in r.stderr
 
 
+VERIFIED_PATCH = """diff --git a/src/thing.py b/src/thing.py
+--- a/src/thing.py
++++ b/src/thing.py
+@@ -1 +1,2 @@
+ A = 2
++guarded = True
+"""
+
+
 class TestCompletedVerifyState:
     def test_land_names_the_completed_review_verify_failure_and_tree(self, tmp_path):
+        """The reviewer PATCHES, so Verify judges a tree the review was not launched
+        against and the two shas differ. Without the patch either sha satisfies this,
+        and land would point the lead at a tree Verify never ran on."""
         repo, env, g = make_repo(tmp_path, verify="false")
-        reviewed = g("rev-parse", "HEAD").stdout.strip()
+        stub_reviewer(tmp_path, patch=VERIFIED_PATCH)
+        launched = g("rev-parse", "HEAD").stdout.strip()
         assert close(repo, env, "review").returncode == 2
+        verified = g("rev-parse", "HEAD").stdout.strip()
+        assert verified != launched, "the reviewer patch did not move HEAD"
 
         refused = close(repo, env, "land")
 
         assert refused.returncode == 2
         assert "completed" in refused.stderr and "false" in refused.stderr
-        assert reviewed[:8] in refused.stderr
+        assert verified[:8] in refused.stderr, refused.stderr
+        assert launched[:8] not in refused.stderr, refused.stderr
         assert "no close in progress" not in refused.stderr
 
     def test_a_re_review_clears_the_verify_red_refusal(self, tmp_path):

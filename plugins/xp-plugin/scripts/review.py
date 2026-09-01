@@ -452,8 +452,11 @@ def run(
         return "", f"could not launch the reviewer: {e}"
     except subprocess.TimeoutExpired as e:
         salvage = (
+            # NOT "saves you a review": true of story/free, where salvage records a
+            # landable round, and false of sprint, where it records an incomplete one
+            # land always refuses. One sentence, three nouns.
             f" If it wrote its report and patch before dying, `close.py {noun}"
-            " salvage` records that round without paying for a second review."
+            " salvage` records that round from what survives instead of discarding it."
             if noun
             else ""
         )
