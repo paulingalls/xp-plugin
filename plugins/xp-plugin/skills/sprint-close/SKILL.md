@@ -26,8 +26,10 @@ script cannot absorb them (judgment belongs only where an LLM is present).
    and a retro that promotes into DESIGN.md, JUDGMENT.md or PROCESS.md is code motion — run it
    last and you must review again, which invalidates what you just wrote.
 3. **The review**, which the pipeline marshals — you do not compose it:
-   `close.py sprint <id> review`. It finds, judges, fixes and clears in one
-   command; what reaches you is what it could not fix. Fix that, then re-run.
+   `close.py sprint <id> review`. What reaches you is what it could not fix.
+   A lead change after a
+   completed round costs a confirming round: re-run `close.py sprint <id> review`
+   to get it. That run is one story-shaped reviewer over the delta, not another fanout.
    Read the reviewer's diff before you land: running land is how you accept it.
 4. **`close.py sprint <id> land`** opens the release PR. Not releasable? Don't run
    it — the branch carries.
