@@ -294,8 +294,8 @@ def cmd_spawn(story_id: str, override: str, dry_run: bool, resuming: bool = Fals
     if not resuming and not system.parent.exists():
         # NOT a `mkdir -p .xp && cp`: that half-scaffold locks setup.py out for good.
         return fail(
-            f"refused: no .xp/ here — is this an xp-managed repo? Restore .xp/ from"
-            f" version control; xp-setup refuses over the plan at {plan_path()}"
+            "refused: no .xp/ here — is this an xp-managed repo? Run `/xp-setup`; it"
+            f" refuses over the plan at {plan_path()}"
         )
     if not resuming and not system.exists():
         return fail(
