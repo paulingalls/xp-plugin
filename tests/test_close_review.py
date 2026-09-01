@@ -275,6 +275,19 @@ class TestCompletedVerifyState:
         assert reviewed[:8] in refused.stderr
         assert "no close in progress" not in refused.stderr
 
+    def test_a_re_review_clears_the_verify_red_refusal(self, tmp_path):
+        """What CLEARS the state land now reads. Nothing else does, so a story whose
+        Verify was fixed would refuse at land forever on a tree that is green."""
+        repo, env, _g = make_repo(tmp_path, verify="false")
+        assert close(repo, env, "review").returncode == 2
+        assert close(repo, env, "land").returncode == 2
+        plan = tmp_path / "data" / "plan.md"
+        plan.write_text(CARD.format(status="planned", verify="true"))
+        mint_ready(repo, env)
+
+        assert close(repo, env, "review").returncode == 0
+        assert close(repo, env, "land").returncode == 0
+
     def test_green_verify_still_records_and_lands_the_clean_round(self, tmp_path):
         repo, env, _g = make_repo(tmp_path)
         assert close(repo, env, "review").returncode == 0

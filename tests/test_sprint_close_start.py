@@ -8,6 +8,7 @@ from sprint_helpers import make_repo, snapshot, sprint, work
 
 class TestStartIsReadOnly:
     def test_start_mutates_nothing_but_appends_to_work_md(self, tmp_path):
+        """Structural, so the property survives every future addition to the leg."""
         repo, env, _g = make_repo(tmp_path)
         work(repo, env, "note", "a note to consume")
         root = tmp_path / "data"
@@ -37,15 +38,21 @@ class TestStartIsReadOnly:
         assert first.stdout == second.stdout
 
     def test_start_emits_the_retro_skeleton_and_the_digest_PROMPT(self, tmp_path):
+        """Constraint 7: deterministic Python may not summarize. It emits the
+        prompt, exactly as close.py's story leg does."""
         repo, env, _g = make_repo(tmp_path)
         work(repo, env, "note", "SENTINEL-NOTE-FOR-TRIAGE")
         r = sprint(repo, env, "start")
         assert r.returncode == 0, r.stderr
-        assert "SENTINEL-NOTE-FOR-TRIAGE" in r.stdout
+        assert "SENTINEL-NOTE-FOR-TRIAGE" in r.stdout, "notes were not emitted for triage"
         assert "Retro" in r.stdout
         assert "digest" in r.stdout.lower()
 
     def test_a_teammate_stamped_note_is_triaged_by_its_CLAIM_not_its_stamp(self, tmp_path):
+        """work.py stamps `Story: <id>` as a teammate-filed record's SECOND line, and
+        the human decides promote-or-archive on the line this prints. THIRD reader of
+        that second line; the other two were taught to skip the stamp and this one
+        was not."""
         repo, env, _g = make_repo(tmp_path)
         claim = "THE-CLAIM-A-HUMAN-TRIAGES"
         work(repo, env | {"XP_STORY_ID": "story-042"}, "note", claim)

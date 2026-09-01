@@ -29,7 +29,8 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
             verified = str(unrecorded.get("verify_head", unrecorded.get("head", "")))[:8]
             return close.fail(
                 f"refused: the review completed on tree {verified}, but {verify_red}."
-                " No round was recorded; fix that tree, then run review again"
+                " THAT round is not recorded — any earlier one still is, and does not"
+                " cover this tree; fix it, then run review again"
             )
     marker = close.marker_path(story_id)
     if not marker.exists():

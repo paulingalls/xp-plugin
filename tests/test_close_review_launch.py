@@ -16,6 +16,8 @@ class TestReviewLeg:
         assert argv[argv.index("--model") + 1] == "opus"
         assert argv[argv.index("--output-format") + 1] == "stream-json"
         assert "--verbose" in argv
+        # acceptEdits denies Bash and the data-root Write (story-034 close): the
+        # read-only bound is the missing credential below, not the permission mode.
         assert "--dangerously-skip-permissions" in argv
         assert "--permission-mode" not in argv
         assert not [k for k in launch["env"] if k.startswith(("GIT_AUTHOR_", "GIT_COMMITTER_"))]

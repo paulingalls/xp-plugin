@@ -265,10 +265,14 @@ def cmd_salvage(sprint_id: str) -> int:
         else:
             recovered.append((path.name[len(prefix) : -len(suffix)], report))
     if not recovered:
-        detail = f" Unreadable: {'; '.join(unreadable)}" if unreadable else ""
+        if unreadable:  # constraint 15: missing is not unreadable
+            return fail(
+                f"refused: every sprint report at {root / shown} is UNREADABLE, not"
+                f" absent: {'; '.join(unreadable)}. Repair or delete them, then review"
+            )
         return fail(
             f"refused: no unrecorded sprint reports for round {round_n}; looked for"
-            f" {root / shown}.{detail} Run review"
+            f" {root / shown}. Run review"
         )
     seen = {
         key: dict.fromkeys(item for _stage, report in recovered for item in report[key])

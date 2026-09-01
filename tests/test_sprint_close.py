@@ -27,7 +27,6 @@ from sprint_helpers import (  # noqa: F401
     marker_path,
     record_reviews,
     section,
-    snapshot,
     sprint,
     work,
 )
@@ -256,10 +255,14 @@ class TestKilledReviewRecovery:
             text=True,
             start_new_session=True,
         )
-        deadline = time.monotonic() + 5
+        # A generous HANG GUARD, never a timing assertion (constraint 2): the 5s this
+        # first carried redded the story tier at -n 12, where the leg needs longer.
+        deadline = time.monotonic() + 120
         while not ready.exists() and proc.poll() is None and time.monotonic() < deadline:
             time.sleep(0.05)
-        assert ready.exists(), proc.communicate(timeout=1)
+        if not ready.exists():  # communicate() before the killpg would wait on the stub
+            os.killpg(proc.pid, signal.SIGKILL)
+            raise AssertionError(f"no stage report: {proc.communicate(timeout=5)}")
         os.killpg(proc.pid, signal.SIGKILL)
         proc.communicate(timeout=5)
         assert proc.returncode < 0, "the host did not kill the controlling process"
@@ -277,6 +280,18 @@ class TestKilledReviewRecovery:
         refused = sprint(repo, env, "salvage")
         assert refused.returncode == 2
         assert f"{SPRINT_ID}.*.round-1.json" in refused.stderr, refused.stderr
+
+    def test_an_unreadable_stage_report_is_not_reported_as_an_absent_one(self, tmp_path):
+        """Constraint 15; the story leg already draws this boundary and this is its
+        second implementation, so only a test on BOTH keeps them from drifting."""
+        repo, env, _g = make_repo(tmp_path)
+        path = tmp_path / "data" / "reports" / "sprint" / f"{SPRINT_ID}.find-x.round-1.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("{not json")
+        refused = sprint(repo, env, "salvage")
+        assert refused.returncode == 2, refused.stdout
+        assert "UNREADABLE" in refused.stderr, refused.stderr
+        assert "no unrecorded sprint reports" not in refused.stderr, refused.stderr
 
 
 class TestLandCoverage:
