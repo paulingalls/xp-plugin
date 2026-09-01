@@ -64,9 +64,9 @@ def cmd_start(slug: str) -> int:
     if (made := git("checkout", "-q", "-b", new, trunk, check=False)).returncode:
         return fail(f"git checkout -b failed: {made.stderr.strip()}")
     key = new.split("/", 1)[1]
-    card = "card in the plan" if card_in_plan(key) else "card required"
+    card = "card in the plan" if card_in_plan(key) else "card required, add it"
     print(
-        f"{new} off {trunk} — {card}. Add it if required, cut your release artifacts, then "
+        f"{new} off {trunk} — {card}. Cut your release artifacts, then "
         f"`spawn.py ready {key}` before `close.py {leg(key)[0]} review`"
     )
     return 0
