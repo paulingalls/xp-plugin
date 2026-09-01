@@ -16,9 +16,9 @@ import tokenize
 from pathlib import Path
 
 SPAWN = 1385
-CLOSE = 2420
-HOOKS = 563
-MISC = 1202
+CLOSE = 2423
+HOOKS = 562
+MISC = 1200
 TOTAL = 5570
 
 CLOSE_NAMES = {"close", "review", "bookkeep", "sprint_close"}
