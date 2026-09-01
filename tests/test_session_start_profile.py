@@ -106,7 +106,10 @@ class TestTheRealProfileAgainstTheRealCap:
         assert all(head + tail == CODEX_OUTPUT_BOUND for head, tail in CODEX_RETAINED_BYTES)
         assert CODEX_OUTPUT_BOUND - OUTPUT_CAP == HEADROOM
         out = self.run_real()
-        assert len(out.encode()) <= OUTPUT_CAP
+        assert len(out.encode()) <= OUTPUT_CAP, "the NEXT region outgrew the real lead profile"
+        assert len([line for line in out.splitlines() if line.startswith("NEXT:")]) == 1, (
+            "the NEXT region did not reach the real lead profile exactly once"
+        )
         self.assert_all_constraints_delivered(out)
         plugin = Path(__file__).parent.parent / "plugins" / "xp-plugin"
         values = (plugin / "VALUES.md").read_text()[:60]

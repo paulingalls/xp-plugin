@@ -83,7 +83,8 @@ class TestInjection:
         assert r.returncode == 0, r.stderr
         for sentinel in ("XP Values", "CONSTRAINT-SENTINEL"):
             assert sentinel in r.stdout, f"missing {sentinel}"
-        assert all(item not in r.stdout for item in ("story-042", "branch: main", "is a hook"))
+        assert len([line for line in r.stdout.splitlines() if line.startswith("NEXT:")]) == 1
+        assert all(item not in r.stdout for item in ("branch: main", "is a hook"))
 
     def test_banner_names_version_and_gates(self, tmp_path):
         repo, _g = xp_repo(tmp_path)
