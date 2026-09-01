@@ -20,8 +20,9 @@ nothing; citations are not proof.
    Reading does not substitute.
 4. **Omitted pins** — search affected gates, callers, types, templates and tests
    that the card does not name. Citations do not bound scope.
-5. **Mutation** — when feasible, apply the change in a disposable copy and run its
-   acceptance surface; explain infeasibility and never mutate the source tree.
+5. **Mutation** — when feasible, apply the change in a disposable copy and run the
+   whole suite, not only its acceptance surface: the reds that decide a card fall
+   outside the files it declares. Explain infeasibility; never mutate the source tree.
 
 ## Output
 

@@ -93,9 +93,12 @@ def test_route_isolation_guard_reds_when_shipped_instructions_are_removed():
         line = next(line for line in skill.splitlines() if fragment in line)
         with pytest.raises((AssertionError, IndexError, ValueError)):
             assert_open_route(skill.replace(line + "\n", ""), process)
-    route = next(line for line in process.splitlines() if "`/sprint-close`" in line)
-    with pytest.raises((AssertionError, IndexError, ValueError)):
-        assert_open_route(skill, process.replace(route + "\n", ""))
+    # token, not line: dropping the line takes the `1. **Card review**` heading with
+    # it, so `section` raises before any route assertion is reached and the mutation
+    # proves only that the heading exists
+    for token in ("`/sprint-close`", "corrected slate"):
+        with pytest.raises(AssertionError):
+            assert_open_route(skill, process.replace(token, "the lead", 1))
 
 
 def test_charter_contract_and_its_fault_injections():

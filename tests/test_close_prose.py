@@ -90,7 +90,7 @@ class TestShippedProseMatchesTheMechanism:
         (bug 898ad9e1, note c3d8e2a7): one word covered two artifacts and no
         lead-facing sentence said whose each was. Pinned in both copies rather
         than read-and-judged because TEAMMATE.md shares an enforced profile cap
-        (`spawn.PLUGIN_SHIPPED_CAP`, 1329/1365 today) — the next component that
+        (`spawn.PLUGIN_SHIPPED_CAP`, 1363/1365 today) — the next component that
         lands forces a cut there, and the newest sentence is the one that looks
         least load-bearing. "sprint review" is excluded by name: `close.py sprint
         <id> review` already holds that phrase.
