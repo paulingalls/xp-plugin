@@ -203,12 +203,9 @@ class TestShippedProseMatchesTheMechanism:
 
     def test_each_loop_step_names_its_command_or_skill(self):
         process = (PLUGIN / "PROCESS.md").read_text()
-        found = re.findall(r"(?ms)^(\d+)\. \*\*[^*]+\*\*.*?(?=^\d+\. \*\*|\Z)", process)
-        assert found == ["1", "2", "3", "4", "5"], found
-        steps = {
-            int(match[1]): match[0]
-            for match in re.findall(r"(?ms)^((\d+)\. \*\*[^*]+\*\*.*?)(?=^\d+\. \*\*|\Z)", process)
-        }
+        blocks = re.findall(r"(?ms)^((\d+)\. \*\*[^*]+\*\*.*?)(?=^\d+\. \*\*|\Z)", process)
+        steps = {int(number): body for body, number in blocks}
+        assert sorted(steps) == [1, 2, 3, 4, 5], sorted(steps)
         expected = {
             1: ("spawn.py ready <story-id>", "plan_review.py <story-id> <plan-file>"),
             2: ("spawn.py <story-id>",),
@@ -221,9 +218,16 @@ class TestShippedProseMatchesTheMechanism:
                 assert command in steps[step], f"step {step} does not name {command}"
 
     def test_system_context_names_every_shipped_prose_document(self):
+        """This line rides into every reviewer bundle, so a short list tells a
+        reviewer the shipped set is smaller than it is. ENUMERATED from the plugin
+        root, never a hand-list: the hand-list went short the day JUDGMENT.md
+        shipped and would again for the next document."""
         system = (Path(__file__).parent.parent / ".xp" / "system.md").read_text()
         line = next(line for line in system.splitlines() if line.startswith("- shipped prose"))
-        assert "(VALUES.md, JUDGMENT.md, PROCESS.md)" in line
+        shipped = sorted(doc.name for doc in PLUGIN.glob("*.md"))
+        assert shipped, "no shipped prose found — the enumeration itself broke"
+        missing = [name for name in shipped if name not in line]
+        assert not missing, f"the reviewer is told the shipped set omits: {missing}"
 
     def test_a_script_driving_skill_does_not_restate_the_mechanism(self):
         """Measured drift, three times in two sprints, caught by a READER every

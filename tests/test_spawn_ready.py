@@ -240,7 +240,10 @@ class TestReadyCredential:
         """PROCESS.md is injected into every lead session, so it is what a lead
         believes; nothing bound it to the leg it names. WALKED, not grepped: the
         name is read out of the prose and run, so a renamed subcommand reds here
-        instead of at the lead's next plan review (constraints 11, 12)."""
+        instead of at the lead's next plan review (constraints 11, 12). The bare
+        launch has no subcommand to name, so its walk binds to the POSITIONAL:
+        `usage: spawn.py [-h]` alone survives the launch becoming a subcommand,
+        which is the rename that would falsify the prose."""
         process = (SPAWN.parent.parent / "PROCESS.md").read_text()
         named = re.search(r"`spawn\.py (\w+) <story-id>`", process)
         assert named, "PROCESS.md no longer names the leg that clears a card"
@@ -248,10 +251,11 @@ class TestReadyCredential:
             [sys.executable, str(SPAWN), named[1], "--help"], capture_output=True, text=True
         )
         assert f"usage: spawn.py {named[1]}" in r.stdout, r.stdout + r.stderr
-        launch = re.search(r"`spawn\.py <story-id>`", process)
-        assert launch, "PROCESS.md no longer names the leg that launches a story"
+        assert re.search(r"`spawn\.py <story-id>`", process), "the launch is unnamed"
         r = subprocess.run([sys.executable, str(SPAWN), "--help"], capture_output=True, text=True)
-        assert "usage: spawn.py [-h]" in r.stdout, r.stdout + r.stderr
+        usage = r.stdout.split("\n\n", 1)[0]
+        assert usage.startswith("usage: spawn.py [-h]"), r.stdout + r.stderr
+        assert " story_id" in usage, f"the bare form is no longer spawn.py's own argv: {usage}"
 
     def test_minting_one_card_leaves_its_siblings_brackets_alone(self, tmp_path):
         """The flip is story-scoped, and the plan is shared. Rewriting every
