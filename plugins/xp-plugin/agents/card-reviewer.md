@@ -23,6 +23,8 @@ nothing; citations are not proof.
 5. **Mutation** — when feasible, apply the change in a disposable copy and run the
    whole suite, not only its acceptance surface: the reds that decide a card fall
    outside the files it declares. Explain infeasibility; never mutate the source tree.
+6. **Stop states** — a card naming a stop, escalation or refusal branch states what
+   `Verify:` means AT that branch, or says the branch closes no story.
 
 ## Output
 

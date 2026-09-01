@@ -4,6 +4,49 @@ Release notes started at v0.6.0; earlier entries are summarized from their
 tag and merge messages. Full detail lives in the merge history and the
 per-sprint review reports.
 
+## v0.16.0 — the loop names the thing that carries each step
+
+Sprint 15, opening Milestone 7. v0.15.0 shipped and leads did not follow the process
+unless a human named each step; the cause was in the artifacts, not in anyone's
+attention. Five cards make the loop self-routing.
+
+- **`JUDGMENT.md` is new, and every injection carries it.** The comment rubric, the
+  finding bar, the record shapes, the polarity contract and the red/hooks rules were
+  duplicated between `PROCESS.md` and `TEAMMATE.md` and reached the reviewers through
+  neither. They now live in one shipped document that all five injection sites carry,
+  and `PROCESS.md` more than halves — 2,826 characters to 1,274. The teammate profile
+  cap moves 1,200 → 1,365 to fund it, with the measurement and its funding in the
+  commit that took it.
+- **Every loop step names the command or skill that performs it.** `PROCESS.md`'s five
+  steps named no skill at any step and never named `spawn.py <story-id>` at all; the
+  skills appeared once, in a sentence *about* them. Each step now routes: `/xp-setup`,
+  `spawn.py ready`, `plan_review.py`, `spawn.py <story-id>`, `/story-close`,
+  `/sprint-close`, `close.py free`.
+- **The guard that checks that routing now acts on real surfaces.** It enumerates the
+  shipped skills directory rather than a hand-list, scopes routing to numbered steps or
+  to stdout captured from a real leg run, and walks the named commands with `--help`
+  instead of matching a hardcoded table that would survive a rename. The no-`.xp/`
+  refusal routes to `/xp-setup` rather than to version control — a refusal is a naming
+  site.
+- **A leg that finishes names the next step, and the step is the skill.** The story
+  handback said `close.py story <id> review`, which is `/story-close`'s step 2 — past
+  the preflight, the fix-or-ask judgment point and the digest replacement. It now names
+  `/story-close`. Verified live on codex-cli 0.150.1, which resolves the token and reads
+  the shipped `SKILL.md`. The free leg is deliberately unchanged until `/free-close`
+  exists.
+- **Sprint cards get a reader who did not write them.** `card-reviewer.md` is a new
+  shipped charter, routed from `/sprint-close`, that reads a proposed slate without the
+  lead's conclusions and checks slate ordering and funding, AC-to-Verify mapping,
+  existing-code premises by executing them, and pins the cards do not name. Its checks
+  are written from two measured data sets: this project's own hand-run over the Sprint
+  15 slate, and a parallel run on an unrelated project.
+
+Also: this repo's own `lefthook.yml` now reads its test tiers from `.xp/config.yml`
+through `run_tier` instead of restating them, which is what the shipped template already
+did; the twenty-second component re-cut moves three lines to `close`, total unmoved at
+5,570; and `sprint-close/SKILL.md` stops promising a confirming round for lead changes
+that `close.py` actually exempts.
+
 ## v0.15.0 — each harness can trust what the other is running
 
 Sprint 14, opening and completing Milestone 6. Six cards make installation state,

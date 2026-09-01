@@ -58,6 +58,9 @@ def assert_charter_contract(charter):
         "Acceptance",
         "Premises",
         "Omitted pins",
+        # sprint-015 retro promotion: story-089's first teammate stopped and escalated,
+        # and its Verify said nothing about whether the escalation was correct.
+        "Stop states",
         "Mutation",
     }
     assert all(word in checks["Slate"] for word in ("order", "funding", "collisions", "capacity"))
