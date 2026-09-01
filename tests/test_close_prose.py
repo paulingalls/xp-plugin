@@ -1,8 +1,12 @@
 """Shipped prose matches the mechanism. Split from test_close.py at sprint-004 open."""
 
 import re
+import shlex
+import subprocess
+import sys
 from pathlib import Path
 
+import pytest
 from close_helpers import (  # noqa: F401
     CARD,
     CLOSE,
@@ -203,19 +207,11 @@ class TestShippedProseMatchesTheMechanism:
 
     def test_each_loop_step_names_its_command_or_skill(self):
         process = (PLUGIN / "PROCESS.md").read_text()
-        blocks = re.findall(r"(?ms)^((\d+)\. \*\*[^*]+\*\*.*?)(?=^\d+\. \*\*|\Z)", process)
-        steps = {int(number): body for body, number in blocks}
-        assert sorted(steps) == [1, 2, 3, 4, 5], sorted(steps)
-        expected = {
-            1: ("spawn.py ready <story-id>", "plan_review.py <story-id> <plan-file>"),
-            2: ("spawn.py <story-id>",),
-            3: ("/story-close",),
-            4: ("/sprint-close",),
-            5: ("close.py free <slug>",),
-        }
-        for step, commands in expected.items():
-            for command in commands:
-                assert command in steps[step], f"step {step} does not name {command}"
+        _walk_step_routes(process)
+        with pytest.raises(AssertionError, match=r"missing\.py"):
+            _walk_step_routes(process.replace("plan_review.py", "missing.py"))
+        with pytest.raises(AssertionError, match="bogus"):
+            _walk_step_routes(process.replace("close.py free", "close.py bogus"))
 
     def test_system_context_names_every_shipped_prose_document(self):
         """This line rides into every reviewer bundle, so a short list tells a
@@ -374,7 +370,43 @@ class TestCharterBar:
             assert pointer in prose(path), f"stale rule pointer in {path}"
 
 
-def test_every_shipped_skill_is_named_by_shipped_prose():
+def _step_regions(process):
+    blocks = re.findall(r"(?ms)^((\d+)\. \*\*[^*]+\*\*.*?)(?=^\d+\. \*\*|\Z)", process)
+    steps = {int(number): body for body, number in blocks}
+    assert sorted(steps) == [1, 2, 3, 4, 5], sorted(steps)
+    return steps
+
+
+def _walk_step_routes(process):
+    for number, step in _step_regions(process).items():
+        spans = re.findall(r"`([^`]+)`", step)
+        routes = [s for s in spans if s.startswith("/") or shlex.split(s)[0].endswith(".py")]
+        assert routes, f"step {number} names no command or skill"
+        for route in (r for r in routes if not r.startswith("/")):
+            words = ["walk" if word.startswith("<") else word for word in shlex.split(route)]
+            result = subprocess.run(
+                [sys.executable, str(PLUGIN / "scripts" / words[0]), *words[1:], "--help"],
+                capture_output=True,
+                text=True,
+            )
+            assert result.returncode == 0, f"{route} does not answer --help: {result.stderr}"
+
+
+def _assert_skill_routes(skills_dir, process, prose_docs, nudges, refusals):
+    shipped = sorted(d.name for d in skills_dir.iterdir() if (d / "SKILL.md").is_file())
+    assert shipped, "no skills found — the enumeration itself broke"
+    token = re.compile(r"`/([a-z][a-z0-9-]+)`")
+    action_tokens = set(
+        token.findall("\n".join([*_step_regions(process).values(), *nudges, *refusals]))
+    )
+    missing = sorted(set(shipped) - action_tokens)
+    assert not missing, f"shipped but named at no action site: {', '.join(missing)}"
+    references = set(token.findall("\n".join([*prose_docs, *nudges, *refusals])))
+    unknown = sorted(references - set(shipped))
+    assert not unknown, f"named but not shipped: {', '.join(unknown)}"
+
+
+def test_every_shipped_skill_is_named_by_shipped_prose(tmp_path):
     """A skill nothing points at is reachable only by someone who already knows it
     exists, which is the opposite of what a skill is for. Measured: /sprint-close
     and /xp-setup shipped for six sprints named by no prose, and the lead ran the
@@ -384,8 +416,63 @@ def test_every_shipped_skill_is_named_by_shipped_prose():
     Enumerated from the directory, never a hand-list: a skill added later is
     covered without editing this test (bug 6d384ef9).
     """
+    story_root = tmp_path / "story"
+    story_root.mkdir()
+    repo, env, _g = make_repo(story_root)
+    assert close(repo, env, "review").returncode == 0
+    story_nudge = close(repo, env, "land")
+    assert story_nudge.returncode == 0, story_nudge.stderr
+
+    from sprint_helpers import make_repo as make_sprint_repo
+    from sprint_helpers import sprint
+
+    sprint_root = tmp_path / "sprint"
+    sprint_root.mkdir()
+    repo, env, g = make_sprint_repo(sprint_root)
+    g("tag", "v0.2.1")
+    g("checkout", "-q", "main")
+    g("merge", "-q", "--no-ff", "sprint-002", "-m", "release")
+    sprint_nudge = sprint(repo, env, "post-merge")
+    assert sprint_nudge.returncode == 0, sprint_nudge.stderr
+
+    from spawn_helpers import make_repo as make_spawn_repo
+    from spawn_helpers import spawn, stub_claude
+
+    spawn_root = tmp_path / "spawn"
+    spawn_root.mkdir()
+    repo, env, _g = make_spawn_repo(spawn_root, executor="claude/haiku")
+    stub_claude(spawn_root)
+    (repo / ".xp").rename(repo / "held-xp")
+    refusal = spawn(repo, env, "story-042")
+    assert refusal.returncode == 2 and "no .xp/" in refusal.stderr
+
+    skills = PLUGIN / "skills"
     process = (PLUGIN / "PROCESS.md").read_text()
-    shipped = sorted(d.name for d in (PLUGIN / "skills").iterdir() if d.is_dir())
-    assert shipped, "no skills found — the enumeration itself broke"
-    missing = [s for s in shipped if s not in process]
-    assert not missing, f"shipped but named by no prose: {', '.join(missing)}"
+    prose_docs = [path.read_text() for path in PLUGIN.glob("*.md")]
+    nudges = [story_nudge.stdout, sprint_nudge.stdout]
+    refusals = [refusal.stderr]
+    _assert_skill_routes(skills, process, prose_docs, nudges, refusals)
+
+    mention_only = process.replace("`/story-close`", "the story skill").replace(
+        "`/sprint-close`", "the sprint skill"
+    )
+    mention_only = "`/story-close` and `/sprint-close` are skills.\n" + mention_only
+    with pytest.raises(AssertionError, match="action site"):
+        _assert_skill_routes(skills, mention_only, prose_docs, nudges, refusals)
+
+    copied_skills = tmp_path / "skills"
+    for skill in (d for d in skills.iterdir() if (d / "SKILL.md").is_file()):
+        (copied_skills / skill.name).mkdir(parents=True)
+        (copied_skills / skill.name / "SKILL.md").write_text("")
+    (copied_skills / "unrouted" / "SKILL.md").parent.mkdir()
+    (copied_skills / "unrouted" / "SKILL.md").write_text("")
+    with pytest.raises(AssertionError, match="unrouted"):
+        _assert_skill_routes(copied_skills, process, prose_docs, nudges, refusals)
+    with pytest.raises(AssertionError, match="not-shipped"):
+        _assert_skill_routes(
+            skills, process, [*prose_docs, "Use `/not-shipped`."], nudges, refusals
+        )
+    with pytest.raises(AssertionError, match="not-shipped"):
+        _assert_skill_routes(
+            skills, process, prose_docs, [*nudges, "Next: `/not-shipped`."], refusals
+        )

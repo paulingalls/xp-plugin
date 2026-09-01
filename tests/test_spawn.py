@@ -360,6 +360,15 @@ class TestRetiredInPlace:
         assert stale.returncode == 2 and "was removed; run" not in stale.stderr
 
 
+def test_a_repo_without_dot_xp_routes_to_setup(tmp_path):
+    repo, env, _g = make_repo(tmp_path, executor="claude/haiku")
+    stub_claude(tmp_path)
+    (repo / ".xp").rename(repo / "held-xp")
+    refused = spawn(repo, env, "story-042")
+    assert refused.returncode == 2
+    assert "/xp-setup" in refused.stderr
+
+
 class TestConfigRoleParsing:
     """Found by running close.py's review leg against this repo's real config."""
 
