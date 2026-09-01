@@ -285,7 +285,7 @@ def cmd_salvage(sprint_id: str) -> int:
     round_.update(incomplete=why, stages=[stage for stage, _report in recovered])
     review.write_round(marker, state, round_)
     print(f"round {round_n} recorded incomplete after {', '.join(round_['stages'])}")
-    return fail(why) if unreadable else 0
+    return fail(f"refused: {why}") if unreadable else 0
 
 
 def cmd_start(sprint_id: str) -> int:

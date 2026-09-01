@@ -15,6 +15,7 @@ import pytest
 from close_helpers import CLOSE, close, free, free_repo, make_repo, marker_file, stub_reviewer
 from sprint_helpers import SPRINT_ID, sprint
 from sprint_helpers import make_repo as sprint_repo
+from sprint_helpers import marker_path as sprint_marker_path
 
 # The bound is the longest SILENCE, and it starts at launch — so the stub streams
 # until it has written its artifacts, which restarts the clock and models the
@@ -184,6 +185,49 @@ class TestSalvage:
         assert broken.returncode == 2
         assert "not readable" in broken.stderr, broken.stderr
         assert "no unrecorded review" not in broken.stderr, broken.stderr
+
+    @pytest.mark.slow
+    def test_a_report_that_outlived_its_launch_marker_is_NAMED_not_denied(self, tmp_path):
+        """The two states behind one refusal (constraint 15). Salvage's own advice for an
+        unreadable marker is `delete it and review again`, which reaches this branch with
+        the round's report still on disk. Compared against the empty-disk refusal rather
+        than against a phrase: a text that merely LISTS the round-scoped paths it would
+        have read names this one too, byte-identically, while claiming it is not there."""
+        repo, env, _g = make_repo(tmp_path)
+        dying_reviewer(tmp_path)
+        assert close(repo, env | KILLED, "review").returncode == 2
+        report = report_of(tmp_path)
+        (tmp_path / "data" / "markers" / "story-042.review-launch").unlink()
+
+        survived = salvage(repo, env)
+        report.unlink()
+        report.with_suffix(".patch").unlink()
+        nothing = salvage(repo, env)
+
+        assert survived.returncode == nothing.returncode == 2
+        assert str(report) in survived.stderr, survived.stderr
+        assert survived.stderr != nothing.stderr, survived.stderr
+
+    def test_a_partly_unreadable_sprint_round_is_recorded_AND_says_what_it_lost(self, tmp_path):
+        """A round rebuilt from SOME of its stages must not report success while a
+        sibling report went unread. Measured: deleting both halves of that answer —
+        the clause and the non-zero exit — greens the whole suite, because land
+        refuses on `incomplete` either way and nothing else carries the loss."""
+        repo, env, _g = sprint_repo(tmp_path)
+        reports = tmp_path / "data" / "reports" / "sprint"
+        reports.mkdir(parents=True, exist_ok=True)
+        (reports / f"{SPRINT_ID}.find-a.round-1.json").write_text(json.dumps(FIXED))
+        (reports / f"{SPRINT_ID}.find-b.round-1.json").write_text("{not json")
+
+        partial = sprint(repo, env, "salvage")
+
+        assert partial.returncode == 2, partial.stdout
+        assert "round 1 recorded incomplete after find-a" in partial.stdout, partial.stdout
+        assert partial.stderr.startswith("refused:"), partial.stderr
+        assert "find-b" in partial.stderr and "unreadable" in partial.stderr, partial.stderr
+        round_ = json.loads(sprint_marker_path(tmp_path).read_text())["rounds"][-1]
+        assert round_["fixed"] == FIXED["fixed"], round_
+        assert "find-b" in round_["incomplete"], round_
 
     def test_free_salvage_names_the_unrecorded_round_it_searched(self, tmp_path):
         repo, env, g = free_repo(tmp_path)

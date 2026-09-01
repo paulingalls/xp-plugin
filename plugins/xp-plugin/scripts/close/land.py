@@ -21,11 +21,18 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
         return close.fail("refused: working tree is dirty — Verify must judge the tree that merges")
     launch = review.launch_marker(story_id)
     if launch.exists():
+        # Constraint 15: salvage refuses when this file is unreadable, and land
+        # reading the same file may not answer it with "no unrecorded review".
         try:
             unrecorded = json.loads(launch.read_text())
-        except (OSError, ValueError):
-            unrecorded = {}
-        if verify_red := unrecorded.get("verify_red"):
+            verify_red = unrecorded.get("verify_red", "")
+        except (OSError, ValueError, AttributeError) as e:
+            return close.fail(
+                f"refused: {launch} is not readable ({e}) — it is the only record of a"
+                " review no round covers, so land cannot tell a completed round whose"
+                " Verify redded from a review that never ran. Delete it and review again"
+            )
+        if verify_red:
             verified = str(unrecorded.get("verify_head", unrecorded.get("head", "")))[:8]
             return close.fail(
                 f"refused: the review completed on tree {verified}, but {verify_red}."

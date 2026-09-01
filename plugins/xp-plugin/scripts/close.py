@@ -277,10 +277,19 @@ def cmd_salvage(story_id: str) -> int:
     path = review.report_path(story_id, len(state.get("rounds", [])) + 1)
     launch = review.launch_marker(story_id)
     if not launch.exists():
+        # Two states, so this must LOOK rather than list what it would have read:
+        # `not readable — delete it` sends the lead here with the round's own
+        # artifacts still on disk, and "nothing was left behind" is a lie there.
+        left = ", ".join(str(p) for p in (path, review.patch_path(path)) if p.exists())
         return fail(
-            f"refused: no unrecorded review for {story_id} — salvage records what a"
-            f" killed reviewer already wrote. Looked for {launch}, {path}, and"
-            f" {review.patch_path(path)}; nothing was left behind. Run review"
+            f"refused: no unrecorded review for {story_id} — {launch} names the tree a"
+            " killed reviewer was launched against, and salvage records no round it"
+            " cannot bind to one. "
+            + (
+                f"{left} outlived it and belongs to no tree; copy it, then review"
+                if left
+                else f"Nor is {path} or {review.patch_path(path)} on disk. Run review"
+            )
         )
     try:
         at = json.loads(launch.read_text())
