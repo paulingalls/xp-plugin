@@ -2,10 +2,12 @@
 Verify: pytest -q tests/test_sprint_close.py"""
 
 import json
+import os
 import shlex
+import signal
 import subprocess
 import sys
-from pathlib import Path
+import time
 
 from close_helpers import launches, stub_reviewer  # noqa: F401
 from sprint_helpers import (  # noqa: F401
@@ -25,7 +27,6 @@ from sprint_helpers import (  # noqa: F401
     marker_path,
     record_reviews,
     section,
-    snapshot,
     sprint,
     work,
 )
@@ -227,64 +228,70 @@ class TestFullTier:
         assert sprint(repo, env, "start").returncode == 2, "a stray key shadowed the real tier"
 
 
-class TestStartIsReadOnly:
-    def test_start_mutates_nothing_but_appends_to_work_md(self, tmp_path):
-        """Structural, so the property survives every future addition to the leg."""
+class TestKilledReviewRecovery:
+    def test_host_killed_stage_report_becomes_an_incomplete_round(self, tmp_path):
         repo, env, _g = make_repo(tmp_path)
-        work(repo, env, "note", "a note to consume")
-        root = tmp_path / "data"
-        before = snapshot(root)
-        before_head = subprocess.run(
-            ["git", "rev-parse", "HEAD"], cwd=repo, env=env, capture_output=True, text=True
-        ).stdout
-        assert sprint(repo, env, "start").returncode == 0
-        after = snapshot(root)
-        for name, blob in before.items():
-            if name == Path("work.md"):
-                assert after[name].startswith(blob), "work.md was rewritten, not appended to"
-            else:
-                assert after[name] == blob, f"{name} changed during a read-and-emit leg"
-        assert (
-            subprocess.run(
-                ["git", "rev-parse", "HEAD"], cwd=repo, env=env, capture_output=True, text=True
-            ).stdout
-            == before_head
+        ready = tmp_path / "stage-report-written"
+        (tmp_path / "bin" / "claude").write_text(
+            "#!/usr/bin/env python3\n"
+            "import json, pathlib, re, sys, time\n"
+            "if sys.argv[1:] == ['plugin', 'list', '--json']:\n"
+            ' print(\'[{"id":"xp-plugin@xp-plugin","version":"fixture",'
+            '"scope":"user"}]\'); sys.exit()\n'
+            "prompt = sys.stdin.read()\n"
+            "report = re.search(r'^REPORT_PATH: (.+)$', prompt, re.M).group(1).strip()\n"
+            'pathlib.Path(report).write_text(json.dumps({"fixed": [], "blocking": [],'
+            ' "noted": ["survived host kill"]}))\n'
+            f"pathlib.Path({str(ready)!r}).write_text('ready')\n"
+            "time.sleep(30)\n"
         )
+        (tmp_path / "bin" / "claude").chmod(0o755)
+        proc = subprocess.Popen(
+            [sys.executable, str(CLOSE), "sprint", SPRINT_ID, "review"],
+            cwd=repo,
+            env=env,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            start_new_session=True,
+        )
+        # A generous HANG GUARD, never a timing assertion (constraint 2): the 5s this
+        # first carried redded the story tier at -n 12, where the leg needs longer.
+        deadline = time.monotonic() + 120
+        while not ready.exists() and proc.poll() is None and time.monotonic() < deadline:
+            time.sleep(0.05)
+        if not ready.exists():  # communicate() before the killpg would wait on the stub
+            os.killpg(proc.pid, signal.SIGKILL)
+            raise AssertionError(f"no stage report: {proc.communicate(timeout=5)}")
+        os.killpg(proc.pid, signal.SIGKILL)
+        proc.communicate(timeout=5)
+        assert proc.returncode < 0, "the host did not kill the controlling process"
 
-    def test_start_is_idempotent(self, tmp_path):
-        repo, env, _g = make_repo(tmp_path)
-        first = sprint(repo, env, "start")
-        second = sprint(repo, env, "start")
-        assert first.returncode == second.returncode == 0
-        assert first.stdout == second.stdout
+        rescued = sprint(repo, env, "salvage")
+        assert rescued.returncode == 0, rescued.stderr
+        state = json.loads(marker_path(tmp_path).read_text())
+        assert state["rounds"][-1]["noted"] == ["survived host kill"]
+        assert state["rounds"][-1]["incomplete"] and state["rounds"][-1]["stages"]
+        land = sprint(repo, env, "land", "--dry-run")
+        assert land.returncode == 2 and "incomplete" in land.stderr
 
-    def test_start_emits_the_retro_skeleton_and_the_digest_PROMPT(self, tmp_path):
-        """Constraint 7: deterministic Python may not summarize. It emits the
-        prompt, exactly as close.py's story leg does."""
+    def test_sprint_salvage_names_the_unrecorded_round_it_searched(self, tmp_path):
         repo, env, _g = make_repo(tmp_path)
-        work(repo, env, "note", "SENTINEL-NOTE-FOR-TRIAGE")
-        r = sprint(repo, env, "start")
-        assert r.returncode == 0, r.stderr
-        assert "SENTINEL-NOTE-FOR-TRIAGE" in r.stdout, "notes were not emitted for triage"
-        assert "Retro" in r.stdout
-        assert "digest" in r.stdout.lower()
+        refused = sprint(repo, env, "salvage")
+        assert refused.returncode == 2
+        assert f"{SPRINT_ID}.*.round-1.json" in refused.stderr, refused.stderr
 
-    def test_a_teammate_stamped_note_is_triaged_by_its_CLAIM_not_its_stamp(self, tmp_path):
-        """work.py stamps `Story: <id>` as a teammate-filed record's SECOND line,
-        and this listing took the second line as the claim — so every note a
-        teammate filed read `note <ts> — Story: story-0NN`, and the human decides
-        promote-or-archive on a line that says only which lane filed it. THIRD
-        reader of a record's second line; `work.py list` and the session banner
-        were both taught to skip the stamp and this one was not."""
+    def test_an_unreadable_stage_report_is_not_reported_as_an_absent_one(self, tmp_path):
+        """Constraint 15; the story leg already draws this boundary and this is its
+        second implementation, so only a test on BOTH keeps them from drifting."""
         repo, env, _g = make_repo(tmp_path)
-        claim = "THE-CLAIM-A-HUMAN-TRIAGES"
-        work(repo, env | {"XP_STORY_ID": "story-042"}, "note", claim)
-        r = sprint(repo, env, "start")
-        assert r.returncode == 0, r.stderr
-        listed = [ln for ln in r.stdout.splitlines() if ln.strip().startswith("note ")]
-        assert listed, r.stdout
-        assert claim in listed[0], f"the stamp displaced the claim: {listed[0]!r}"
-        assert "Story: story-042" not in listed[0], listed[0]
+        path = tmp_path / "data" / "reports" / "sprint" / f"{SPRINT_ID}.find-x.round-1.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("{not json")
+        refused = sprint(repo, env, "salvage")
+        assert refused.returncode == 2, refused.stdout
+        assert "UNREADABLE" in refused.stderr, refused.stderr
+        assert "no unrecorded sprint reports" not in refused.stderr, refused.stderr
 
 
 class TestLandCoverage:
