@@ -19,7 +19,7 @@ script cannot absorb them (judgment belongs only where an LLM is present).
 2. **Note triage, then the retro — YOURS, and they come FIRST.**
    Each note is promoted to constraints.md/system.md via the retro diff, or
    archived. A learning that changes nothing executable is not recorded, and every
-   promotion must displace something (every new rule displaces one). Then write the retro
+   promotion must displace something. Then write the retro
    narrative and REPLACE the digest: the pipeline emits facts, the
    narrative is the part with judgment in it.
    BEFORE the review, not after. Land refuses when code moved since the review,
@@ -27,9 +27,9 @@ script cannot absorb them (judgment belongs only where an LLM is present).
    last and you must review again, which invalidates what you just wrote.
 3. **The review**, which the pipeline marshals — you do not compose it:
    `close.py sprint <id> review`. What reaches you is what it could not fix.
-   A lead change after a
-   completed round costs a confirming round: re-run `close.py sprint <id> review`
-   to get it. That run is one story-shaped reviewer over the delta, not another fanout.
+   Lead changes after a completed round cost a confirming round, except any
+   land names as exempt: re-run `close.py sprint <id> review` to get one. That
+   run is one story-shaped reviewer over the delta, not another fanout.
    Read the reviewer's diff before you land: running land is how you accept it.
 4. **`close.py sprint <id> land`** opens the release PR. Not releasable? Don't run
    it — the branch carries.

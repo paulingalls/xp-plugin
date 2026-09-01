@@ -150,7 +150,7 @@ class TestShippedProseMatchesTheMechanism:
 
     def test_the_sprint_close_skill_states_the_confirming_round_shape(self):
         skill = prose(PLUGIN / "skills" / "sprint-close" / "SKILL.md")
-        assert "lead change after a completed round costs a confirming round" in skill
+        assert "cost a confirming round, except any land names as exempt" in skill
         assert "re-run `close.py sprint <id> review`" in skill
         assert "one story-shaped reviewer over the delta, not another fanout" in skill
 
