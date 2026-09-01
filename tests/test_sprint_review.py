@@ -122,7 +122,8 @@ class TestReviewLeg:
         assert "CONSTRAINT-SENTINEL" in bundle and "SYSTEM-SENTINEL" in bundle
         assert "story-042 — done thing" in bundle, "the sprint's story cards"
         assert "story-099" not in bundle, "another sprint's card rode along"
-        assert "Polarity" in bundle, "PROCESS.md, which the charter points at"
+        assert "## JUDGMENT\n\n" in bundle and "Polarity" in bundle
+        assert "## PROCESS\n\n" not in bundle
 
     def test_no_sprint_bundle_asks_for_a_merge_delta(self, tmp_path):
         """Planted, because a project upgrading from v0.13.0 still HAS the store on
@@ -286,7 +287,7 @@ class TestResolutionsAreCarried:
         work(repo, env, "resolve", "--ref", ref, "--falsifier", "true # THE-REPLACEMENT")
         work(repo, env, "note", "A-PLAIN-NOTE")
         assert sprint(repo, env, "review").returncode == 0
-        raw = section(launches(tmp_path)[0]["stdin"], WORK_SECTION, "PROCESS")
+        raw = section(launches(tmp_path)[0]["stdin"], WORK_SECTION, "JUDGMENT")
         assert "A-PLAIN-NOTE" in raw, "the raw section lost the entries it exists to carry"
         assert "## resolved " not in raw
 
@@ -321,8 +322,11 @@ class TestModeSwitch:
             )
         )
         assert sprint(repo, env, "review").returncode == 0
-        bundle = launches(tmp_path)[0]["stdin"]
+        ran = launches(tmp_path)
+        assert len(ran) == 1, "a confirming delta paid for another fanout"
+        bundle = ran[0]["stdin"]
         assert "ROUND-1-BLOCKER" in bundle and "ROUND-1-NOTE" in bundle
+        assert DELTA in bundle
         assert "validate that each was addressed; do not re-derive the diff" in bundle
         assert "run the full pass yourself" not in bundle, "handed findings AND told to re-derive"
 
@@ -432,7 +436,7 @@ class TestSprintCharter:
         shared = text.split("---", 2)[2].split("\n## ")[0]
         assert len(shared.split()) <= 150, f"{len(shared.split())} words: a preamble, not a charter"
         assert "report-only" not in shared.lower(), "the fixer commits; this leg is not report-only"
-        assert "PROCESS.md" in shared, "the bar and the rubric are POINTED at, never restated"
+        assert "JUDGMENT.md" in shared, "the bar and rubric pointer drifted"
         assert "Round 1" in shared and "Later rounds use one" in shared
         assert "story-shaped reviewer" in shared and "fix inside its round" in shared
         # the report SHAPE as the stage must write it, not the bucket names in
@@ -441,9 +445,9 @@ class TestSprintCharter:
             assert token in shared, f"the charter never names {token}"
 
     def test_the_new_agent_files_frontmatter_is_funded_not_added(self):
-        """Both shipped-prose caps sit at 240/300 and 1197/1200 — one token of
-        headroom before this story. Constraint 1 is mechanical here: the sprint
-        charter's frontmatter is paid for out of story-reviewer.md's."""
+        """Both shipped-prose caps sit at 247/300 and 1363/1365. Constraint 1 is
+        mechanical here: the sprint charter's frontmatter is paid for out of
+        story-reviewer.md's."""
         sys.path.insert(0, str(CLOSE.parent))
         from spawn import (
             COMPONENT_METADATA_CAP,
@@ -465,9 +469,9 @@ class TestShippedProse:
         assert "note triage" in skill and "retro" in skill
         assert "narrative is the part" in skill, "the judgment step lost its reason"
 
-    def test_process_carries_the_record_lifecycle_and_the_polarity_contract(self):
-        process = (PLUGIN / "PROCESS.md").read_text()
-        assert "resolve" in process, (
-            "a verb in work.py and not in PROCESS.md is one rule, two impls"
+    def test_judgment_carries_the_record_lifecycle_and_the_polarity_contract(self):
+        judgment = (PLUGIN / "JUDGMENT.md").read_text()
+        assert "resolve" in judgment, (
+            "a verb in work.py and not in JUDGMENT.md is one rule, two impls"
         )
-        assert "still OK" in process, "the polarity contract belongs where the filer reads it"
+        assert "still OK" in judgment, "the polarity contract belongs where the filer reads it"

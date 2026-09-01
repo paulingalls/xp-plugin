@@ -10,7 +10,7 @@ tools: Read, Grep, Glob, Bash
 Round 1 reviews the sprint as ONE change in four stages. Later rounds use one
 story-shaped reviewer over only the delta, with authority to fix inside its round.
 You are ONE stage of round 1 — the section below that matches your bundle's charter,
-and no other. Read VALUES.md and your bundle's PROCESS.md.
+and no other. Read VALUES.md and your bundle's JUDGMENT.md.
 
 ALTITUDE, every stage: every story was reviewed at its own close, so restating a
 story-level finding is noise. What earns effort is what no story-scoped reader

@@ -226,9 +226,7 @@ def open_cards(text: str) -> list[str]:
 def recovery_block() -> str:
     """Computed fresh from always-current sources — the layer that can't go stale."""
     stories = open_cards(read(plan_path()))
-    # Through work.py's own summariser, never a second line-scan here: it is the
-    # writer, so it is where the `Story:` stamp is known not to be the claim.
-    # A TITLE, not an excerpt: `work.py list` is what reads the rest.
+    # work.py owns the `Story:` stamp and list reads the rest; keep a title, not an excerpt.
     summaries = []
     for _eid, text in entries(data_root()):
         heading, body = record_summary(text)
@@ -393,6 +391,7 @@ def main(data: dict) -> int:
         ("banner", safe(lambda: banner(root))),
         ("config notice", safe(lambda: config_age(root))),
         ("VALUES.md", safe(lambda: read(PLUGIN_ROOT / "VALUES.md"))),
+        ("JUDGMENT.md", safe(lambda: read(PLUGIN_ROOT / "JUDGMENT.md"))),
         ("PROCESS.md", safe(lambda: read(PLUGIN_ROOT / "PROCESS.md"))),
         ("", BEGIN),
         ("install notice", install),

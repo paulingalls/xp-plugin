@@ -436,7 +436,7 @@ class TestStructuredGate:
         close(repo, env, "review")
         r = close(repo, env, "land")
         assert r.returncode == 0, r.stderr
-        assert "N1: this name misleads" in r.stdout and "PROCESS.md" in r.stdout
+        assert "N1: this name misleads" in r.stdout and "JUDGMENT.md" in r.stdout
         # the merge body is DESIGN §6's git-versioned audit trail: assert the ITEM,
         # not just its count — deleting "noted" from the renderer passed 192 tests
         assert "noted: N1: this name misleads" in g("log", "-1", "--format=%B", "main").stdout

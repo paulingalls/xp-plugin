@@ -66,6 +66,7 @@ def build_bundle(charter: str, plan: str, card: str, plan_file: Path, out: Path)
         ("The plan under review", plan),
         ("Story card", card),
         ("VALUES", _read_shipped(PLUGIN_ROOT / "VALUES.md")),
+        ("JUDGMENT", _read_shipped(PLUGIN_ROOT / "JUDGMENT.md")),
         ("Constraints", _read(Path(".xp/constraints.md"))),
         ("System context", _read(Path(".xp/system.md"))),
     ]

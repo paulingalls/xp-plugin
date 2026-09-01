@@ -358,9 +358,11 @@ def test_subbudgets_sum_to_total():
         sys.path.remove(str(RATCHET.parent))
 
 
-def test_lefthook_pre_push_runs_ratchet():
+def test_lefthook_pre_push_runs_story_tier_and_ratchet():
     text = LEFTHOOK.read_text()
     pre_push = text.split("pre-push:", 1)[1]
+    full_tests = pre_push.split("    full-tests:\n", 1)[1].split("\n    ", 1)[0]
+    assert "run_tier story" in full_tests
     assert "ratchet.py" in pre_push
 
 

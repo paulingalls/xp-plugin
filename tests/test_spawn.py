@@ -184,7 +184,7 @@ class TestWorktree:
             handoffs, (first_tree, second_tree), (env, env2), strict=True
         ):
             assert str(tree) in line and in_tree(tree, run_env, "rev-parse", "HEAD") in line
-            assert "close.py story story-042 review" in line
+            assert line.endswith("Read it, then run `/story-close`.")
         assert handoffs[0] != handoffs[1]
 
     def test_the_flip_lands_in_the_clones_plan_and_commits_nothing(self, tmp_path):
@@ -358,6 +358,15 @@ class TestRetiredInPlace:
         # story_id it echoes is the subcommand: "run `spawn.py resume` to launch".
         stale = spawn(repo, env, "resume", "story-042", "--in-place")
         assert stale.returncode == 2 and "was removed; run" not in stale.stderr
+
+
+def test_a_repo_without_dot_xp_routes_to_setup(tmp_path):
+    repo, env, _g = make_repo(tmp_path, executor="claude/haiku")
+    stub_claude(tmp_path)
+    (repo / ".xp").rename(repo / "held-xp")
+    refused = spawn(repo, env, "story-042")
+    assert refused.returncode == 2
+    assert "/xp-setup" in refused.stderr
 
 
 class TestConfigRoleParsing:

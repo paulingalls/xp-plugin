@@ -2,48 +2,23 @@
 
 ## Start here
 
-Run the exact `recover:` command printed by SessionStart. Read digest,
-recovery block and sprint slice; they are not injected. Artifacts win.
+`/xp-setup` once. Run the exact `recover:` command from SessionStart; read
+uninjected digest, recovery block and sprint slice. Artifacts win.
 
 ## The loop
 
-`/xp-setup`, `/story-close` and `/sprint-close` carry judgment; scripts own mechanics.
-
-1. **Card review** — lead reviews slate against `sprint_cap`; free work is
-   slotless. `spawn.py ready <story-id>` binds it. For multi-file work, executor
-   writes and runs the **plan review**; the lead never writes it. Human-only questions stop.
-2. **Story** — red → green → refactor, small commits. Carded story or free work
-   stays in its branch worktree, never in the lead's checkout; practice, not a wall:
+1. **Card review** — lead runs `/sprint-close`: a fresh reader checks full slate
+   and `sprint_cap`; free work slotless. The corrected slate precedes
+   `spawn.py ready <story-id>`. For multi-file work, executor writes the plan and
+   runs **plan review** with `plan_review.py <story-id> <plan-file>`; the lead never
+   writes it. Human-only questions stop.
+2. **Story** — `spawn.py <story-id>` launches. Red → green → refactor, small commits. Carded story or free work
+   stays in its worktree, never in the lead's checkout; practice, not a wall:
    data root proves spawn, not authorship. Done means ACs at the surface.
-   Hooks are the wall: lint, secrets and fast tests at commit; full tests and ratchet
-   at push. Never bypass or fake a red; prose/config-only commits say why no red exists.
+3. **Story close** — `/story-close`: Review, Verify, merge; one full review always.
+4. **Sprint close** — `/sprint-close`: uncovered falsifiers precede full. Triage and retro follow;
+   review covers retro. With the human, schedule debt under budget or
+   drop it. Nothing carries.
+5. **Free** — `close.py free <slug>`: start, add dated card, cut release artifacts, review, land, post-merge.
 
-   Comments: restates the code → delete · explains WHAT → rename it · a checkable
-   claim → write the test · narrates history → delete, git holds it. Keep only the
-   why, an external constraint, a rejected design.
-3. **Story close** — Review, Verify, merge; one full review always. A reviewer fix
-   is inside the round that found it; a lead fix moves HEAD past what the review
-   covered and costs a confirming round. A deviation — generalizing a
-   prescription, uncovered behavior, a conflict you resolved — is owed a round.
-   The bar: silent or corrupting (false green, corrupted record, unreviewed merge)
-   earns a round; loud does not.
-4. **Sprint close** — Uncovered falsifiers run before full. `--covered-by full`
-   trusts only that tier's green verdict and is named; absent or red runs its command.
-   Triage and retro follow; review covers retro. Present it; with the human, schedule
-   debt under budget or drop it. Nothing carries.
-5. **Free** — `free start`; add dated card, cut release artifacts, review, land, post-merge.
-
-## Records (`work.py` only)
-
-- **bug** — claim + red falsifier + files; fix now. No red means debt/note.
-- **debt** — claim + green falsifier + files; planning schedules/archives it.
-- **resolve** — substitutes a green falsifier; ids come from `work.py list`.
-- **coverage** — optional `--covered-by TIER`: YOU assert the falsifier is one of
-  that tier's selections and nothing checks you. Resolutions declare anew.
-- **note** — value tradeoff or discovery; sprint close promotes or archives it.
-  A directive the NEXT STORY must follow goes on that card — a note reaches it never.
-- **Polarity** — a debt's falsifier: still OK; red means the latent problem
-  materialised. A falsifier green because the flaw exists is inverted.
-
-Telemetry is re-measured, never recorded. Replace the ≤30-line session digest at
-story/sprint close; never append it.
+Replace the ≤30-line session digest at story/sprint close; never append it.

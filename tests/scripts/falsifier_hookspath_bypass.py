@@ -53,7 +53,11 @@ def main(tmp: Path) -> int:
     (stub / "check_falsifier_node_ids.py").write_text("raise SystemExit(0)\n")
     lib = tmp / "plugins" / "xp-plugin" / "templates"
     lib.mkdir(parents=True)
-    (lib / "hook-lib.sh").write_text("constraints_size() { :; }\n")
+    # BOTH helpers this repo's lefthook.yml sources, or the control run reds on an
+    # undefined function and the falsifier refuses instead of measuring the wall
+    # (measured at sprint-015 close: full-tests grew a `run_tier story` call and
+    # this stub still only defined constraints_size, so pre-push exited 127).
+    (lib / "hook-lib.sh").write_text("constraints_size() { :; }\nrun_tier() { :; }\n")
     (tmp / "clean.py").write_text("A = 1\n")
     run("git", "add", "-A")
     run("git", "commit", "-qm", "base")
