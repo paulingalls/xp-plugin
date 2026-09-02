@@ -69,12 +69,28 @@ def test_repo_checker_refuses_a_resolution_that_selects_by_name(tmp_path):
 @pytest.mark.parametrize(
     "command",
     (
-        "pytest -q tests/test_example.py::test_selected",
+        # A REAL node id, not a placeholder: since 2026-09-02 the checker verifies
+        # that an exact id still resolves, so a fictional one is now correctly
+        # refused and would assert the opposite of this test's name.
+        "pytest -q tests/test_work.py::TestNote",
         f"{sys.executable} -c 'pass' -k",
     ),
 )
 def test_repo_checker_accepts_exact_or_non_test_commands(tmp_path, command):
     assert check_records(tmp_path, record(command)).returncode == 0
+
+
+def test_repo_checker_refuses_an_exact_id_that_no_longer_resolves(tmp_path):
+    """The other half of the rule above, and the one that was missing: naming an
+    exact id buys nothing if nothing checks it. Measured at Sprint 16's close — a
+    test moved file, its record kept the old path, pytest exited 5 on no match,
+    and the release aborted on a defect that had not returned."""
+    gone = "pytest -q tests/test_work_falsifier.py::test_that_moved_away"
+
+    result = check_records(tmp_path, record(gone))
+
+    assert result.returncode == 1, result.stdout
+    assert "no longer collects" in result.stderr, result.stderr
 
 
 def test_repo_checker_reports_when_there_is_no_record_file(tmp_path):
