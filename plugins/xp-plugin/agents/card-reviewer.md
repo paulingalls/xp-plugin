@@ -16,8 +16,9 @@ nothing; citations are not proof.
    moves or cuts.
 2. **Acceptance** — map each AC to executable Verify and a system surface. A
    command unable to red is a false green.
-3. **Premises** — execute existing-code claims; test required state is reachable.
-   Reading does not substitute.
+3. **Premises** — execute existing-code claims and RESOLVE every cited record id;
+   test required state is reachable. Reading does not substitute, and an id naming
+   nothing is never a red.
 4. **Omitted pins** — search affected gates, callers, types, templates and tests
    that the card does not name. Citations do not bound scope.
 5. **Mutation** — when feasible, apply the change in a disposable copy and run the
