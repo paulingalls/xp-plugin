@@ -33,6 +33,5 @@ description: >-
    continue. If marketplace add says the name exists, the source is there: run
    the second command anyway, not `marketplace upgrade` — on codex that refreshes
    a Git source but exits 0 without touching a local one.
-4. Plan the first milestone at the per-clone plan path setup prints. `Verify:`
-   commands run as argv from the repo root, with no shell or `cd`; a runner needing
-   another working directory takes it through its own option.
+4. Run `/create-sprint` to plan the first milestone at the per-clone plan path
+   setup prints.

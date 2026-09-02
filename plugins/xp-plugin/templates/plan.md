@@ -13,3 +13,4 @@ AC:
 - Given <precondition>, When <action>, Then <observable result>
 Verify: EDIT-ME
 Executor: (default)
+Close review: standard

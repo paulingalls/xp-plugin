@@ -57,7 +57,9 @@ def assert_open_route(skill, process):
     assert "full proposed slate" in opening and "`sprint_cap`" in opening
     assert "author's conclusions" in opening and "do not give" in opening
     assert "corrected cards" in opening and "work.py note" in opening
-    assert "`/sprint-close`" in card_step and "corrected slate" in card_step
+    assert "`/create-sprint`" in card_step and "`/sprint-close`" in card_step
+    assert "corrected slate" in card_step
+    assert card_step.index("`/create-sprint`") < card_step.index("`/sprint-close`")
     assert card_step.index("`/sprint-close`") < card_step.index("spawn.py ready")
 
 
@@ -317,9 +319,18 @@ def test_route_isolation_guard_reds_when_shipped_instructions_are_removed():
     # token, not line: dropping the line takes the `1. **Card review**` heading with
     # it, so `section` raises before any route assertion is reached and the mutation
     # proves only that the heading exists
-    for token in ("`/sprint-close`", "corrected slate"):
+    for token in ("`/create-sprint`", "`/sprint-close`", "corrected slate"):
         with pytest.raises(AssertionError):
             assert_open_route(skill, process.replace(token, "the lead", 1))
+    # both tokens present in the wrong order: authoring after review is the whole
+    # defect the ordering assertion exists for, and no dropped token exercises it
+    swapped = (
+        process.replace("`/create-sprint`", "\x00")
+        .replace("`/sprint-close`", "`/create-sprint`", 1)
+        .replace("\x00", "`/sprint-close`", 1)
+    )
+    with pytest.raises(AssertionError):
+        assert_open_route(skill, swapped)
 
 
 def test_charter_contract_and_its_fault_injections():
