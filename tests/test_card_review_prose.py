@@ -368,14 +368,21 @@ def test_a_zero_padded_sprint_id_names_the_marker_the_hook_reads(tmp_path, monke
     reads `### Sprint (\\d+)` through int(). So `07` writes 07.card-review-incomplete
     and the hook looks for 7.card-review-incomplete — and an incomplete card review
     is then spelled exactly like a completed one, which is the inversion AC3 rests
-    on: absence of the marker is the success signal."""
+    on: absence of the marker is the success signal.
+
+    Asserted against session_start's OWN derivation, not against a second call to
+    this function: self-equality is satisfied by any normalisation the runner
+    shares with itself, and `zfill(3)` is one — measured, it made both spellings
+    `007.card-review-incomplete` and left this test green with the hook still
+    reading `7.`. The end-to-end half is in tests/test_session_recover.py."""
     monkeypatch.setenv("XP_DATA", str(tmp_path))
     module = runpy.run_path(str(PLUGIN / "scripts" / "card_review.py"))
+    import session_start
 
+    sprint, _sections = session_start.sprint_sections("### Sprint 07\n#### s — d   [planned]\n")
     padded = module["review_marker"]("07", "card")
-    plain = module["review_marker"]("7", "card")
 
-    assert padded == plain, f"{padded.name} is not the {plain.name} the hook reads"
+    assert padded.name == f"{int(sprint)}.card-review-incomplete", f"{padded.name} unread"
 
 
 def test_a_story_id_is_never_renumbered(tmp_path, monkeypatch):

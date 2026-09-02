@@ -259,15 +259,15 @@ def digest_output() -> str:
     return digest_refusal() or digest_with_staleness() or absent
 
 
-def sprint_sections(text: str) -> tuple[int, list[str]]:
-    sections = re.split(r"(?=^### )", text, flags=re.M)
+def sprint_sections(text: str) -> tuple[str, list[str]]:
     at = [
-        (int(match[1]), section.strip())
-        for section in sections
+        (match[1], section.strip())
+        for section in re.split(r"(?=^### )", text, flags=re.M)
         if (match := re.match(r"### Sprint (\d+)\b", section))
     ]
-    current = max((number for number, _section in at), default=0)
-    return current, [section for number, section in at if number == current]
+    # int() orders; the id keeps the PLAN'S spelling, the only one a slate matches
+    current = max((raw for raw, _section in at), key=int, default="")
+    return current, [section for raw, section in at if raw == current]
 
 
 def sprint_slice() -> str:
@@ -326,7 +326,7 @@ def _next_action() -> str:
     if unknown := [(story, status) for story, status in cards if status not in known]:
         story, status = unknown[0]
         return f"NEXT: recovery required — {story} has unknown status [{status}]"
-    if (data_root() / "markers" / f"{sprint}.card-review-incomplete").exists():
+    if (data_root() / "markers" / f"{int(sprint)}.card-review-incomplete").exists():
         return f"NEXT: Sprint {sprint} card review did not complete — run `card_review.py {sprint}`"
     active = [card for card in cards if card[1] == "in-progress"]
     if len(active) > 1:

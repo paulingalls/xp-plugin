@@ -80,6 +80,35 @@ class TestTheNextLoopAction:
         ]
         assert unreviewed == ["NEXT: story-042 is [planned] — run `spawn.py ready story-042`"]
 
+    def test_a_padded_sprint_names_a_card_review_command_that_resolves(self, tmp_path, monkeypatch):
+        """The seam story-091's runner and story-084's hook share, one layer past
+        round 2's marker fix, and BOTH halves are asserted here because either
+        alone greens against a spelling the other does not share. The marker is
+        normalised through int() so a killed review is found at all; the slate is
+        NOT — close/milestone.py matches `### Sprint <id>` literally, so `07` and
+        `7` are different sprints to card_review.py. Measured: a runner that
+        normalised to `007` agreed with itself and vanished from the hook, and a
+        hook that printed its int named `card_review.py 7` against a `Sprint 07`
+        plan — a NEXT line whose one job is to be runnable, refusing `no Sprint 7
+        slate`."""
+        import card_review
+        from sprint_close import sprint_cards
+
+        repo, _g = xp_repo(tmp_path)
+        root = tmp_path / "xp"
+        plan = "# plan\n### Sprint 07\n#### story-042 — demo   [planned]\nVerify: true\n"
+        (root / "plan.md").write_text(plan)
+        monkeypatch.setenv("XP_DATA", str(root))
+        marker = card_review.review_marker("07", "card")
+        marker.parent.mkdir(parents=True, exist_ok=True)
+        marker.write_text("{}")
+
+        named = next_lines(run_hook_as(repo, tmp_path, role="lead").stdout)
+
+        assert named == ["NEXT: Sprint 07 card review did not complete — run `card_review.py 07`"]
+        spelling = named[0].rsplit("card_review.py ", 1)[1].rstrip("`")
+        assert sprint_cards(plan, spelling), f"`card_review.py {spelling}` names no slate"
+
     def test_a_plan_story_id_cannot_append_a_shell_command(self, tmp_path):
         repo, _g = xp_repo(tmp_path)
         root = tmp_path / "xp"
