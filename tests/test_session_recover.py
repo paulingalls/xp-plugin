@@ -4,6 +4,7 @@ Its own file because test_session_start.py sits AT constraint 8's 500-line cap:
 extract, not scroll. Verify: pytest -q tests/test_session_recover.py"""
 
 import json
+import subprocess
 import sys
 
 import pytest
@@ -59,6 +60,49 @@ class TestTheNextLoopAction:
         out = run_hook_as(repo, tmp_path, role="lead").stdout
 
         assert next_lines(out) == [expected]
+
+    def test_a_failed_card_review_precedes_the_planned_card_boundary(self, tmp_path):
+        repo, _g = xp_repo(tmp_path)
+        root = tmp_path / "xp"
+        (root / "plan.md").write_text(
+            "# plan\n### Sprint 1\n#### story-042 — demo   [planned]\nVerify: true\n"
+        )
+        marker = root / "markers" / "1.card-review-incomplete"
+        marker.parent.mkdir()
+        marker.write_text("{}")
+
+        incomplete = next_lines(run_hook_as(repo, tmp_path, role="lead").stdout)
+        marker.unlink()
+        unreviewed = next_lines(run_hook_as(repo, tmp_path, role="lead").stdout)
+
+        assert incomplete == [
+            "NEXT: Sprint 1 card review did not complete — run `card_review.py 1`"
+        ]
+        assert unreviewed == ["NEXT: story-042 is [planned] — run `spawn.py ready story-042`"]
+
+    def test_a_plan_story_id_cannot_append_a_shell_command(self, tmp_path):
+        repo, _g = xp_repo(tmp_path)
+        root = tmp_path / "xp"
+        sentinel = tmp_path / "command-ran"
+        story = f"story-042;touch${{IFS}}{sentinel}"
+        (root / "plan.md").write_text(
+            f"# plan\n### Sprint 1\n#### {story} — demo   [planned]\nVerify: true\n"
+        )
+        binary = tmp_path / "bin" / "spawn.py"
+        binary.parent.mkdir()
+        binary.write_text("#!/bin/sh\nexit 7\n")
+        binary.chmod(0o755)
+
+        output = run_hook_as(repo, tmp_path, role="lead").stdout
+        line = next_lines(output)[0]
+        command = line.split("`", 2)[1]
+        ran = subprocess.run(
+            ["/bin/sh", "-c", command], env={"PATH": f"{binary.parent}:/usr/bin:/bin"}
+        )
+        fenced = output.split("BEGIN project content", 1)[1].split("END project content", 1)[0]
+
+        assert ran.returncode == 7 and not sentinel.exists()
+        assert line in fenced
 
     @pytest.mark.parametrize("status", ["planned", "ready"])
     def test_a_worktree_on_the_wrong_side_of_spawn_names_recovery(self, tmp_path, status):

@@ -271,9 +271,7 @@ def sprint_sections(text: str) -> tuple[int, list[str]]:
 
 
 def sprint_slice() -> str:
-    """Every highest-numbered sprint section, excluding later carried pools.
-    Measured: pool cards outranked a shipped sprint, while selecting only the last
-    section omitted cards from repeated sprint headings."""
+    """All highest-numbered sprint sections, excluding later carried pools."""
     return "\n\n".join(sprint_sections(read(plan_path()))[1])
 
 
@@ -328,27 +326,29 @@ def _next_action() -> str:
     if unknown := [(story, status) for story, status in cards if status not in known]:
         story, status = unknown[0]
         return f"NEXT: recovery required — {story} has unknown status [{status}]"
+    if (data_root() / "markers" / f"{sprint}.card-review-incomplete").exists():
+        return f"NEXT: Sprint {sprint} card review did not complete — run `card_review.py {sprint}`"
     active = [card for card in cards if card[1] == "in-progress"]
     if len(active) > 1:
         return f"NEXT: recovery required — multiple [in-progress] cards in Sprint {sprint}"
     selected = active or [card for card in cards if card[1] == "ready"]
     selected = selected or [card for card in cards if card[1] == "planned"]
     if not selected:
-        # Only a surviving TREE: close keeps the marker for a later resume's inheritance,
-        for story, _status in cards:  # so reading one as leftover work vetoes every close.
+        # Only a surviving TREE counts; close keeps markers for later inheritance.
+        for story, _status in cards:
             if (tree := _worktree_state(data_root(), story))[0]:
                 return f"NEXT: recovery required — {story} remains after close: {tree[1]}"
         return f"NEXT: no open card in Sprint {sprint} — run `/sprint-close`"
     story, status = selected[0]
     exists, tree_state = _worktree_state(data_root(), story)
     if status == "planned" and not exists and tree_state == "ABSENT":
-        return f"NEXT: {story} is [planned] — run `spawn.py ready {story}`"
+        return f"NEXT: {story} is [planned] — run `spawn.py ready {shlex.quote(story)}`"
     if status == "ready" and not exists and tree_state == "ABSENT":
-        return f"NEXT: {story} is [ready] — run `spawn.py {story}`"
+        return f"NEXT: {story} is [ready] — run `spawn.py {shlex.quote(story)}`"
     if status == "in-progress" and not exists and tree_state == "ABSENT":
         return f"NEXT: {story} is [in-progress] without a worktree — recover it before resuming"
     if status == "in-progress" and tree_state == "STOPPED":
-        return f"NEXT: {story} has a STOPPED worktree — run `spawn.py resume {story}`"
+        return f"NEXT: {story} has a STOPPED worktree — run `spawn.py resume {shlex.quote(story)}`"
     if status == "in-progress" and tree_state == "FINISHED":
         return f"NEXT: {story} has a FINISHED worktree — run `/story-close`"
     return f"NEXT: recovery required — {story} is [{status}] with worktree state {tree_state}"
@@ -480,12 +480,12 @@ def main(data: dict) -> int:
     rules = safe(lambda: read(root / ".xp" / "constraints.md"))
     regions = [
         ("banner", safe(lambda: banner(root))),
-        ("NEXT", next_action()),
         ("config notice", safe(lambda: config_age(root))),
         ("VALUES.md", safe(lambda: read(PLUGIN_ROOT / "VALUES.md"))),
         ("JUDGMENT.md", safe(lambda: read(PLUGIN_ROOT / "JUDGMENT.md"))),
         ("PROCESS.md", safe(lambda: read(PLUGIN_ROOT / "PROCESS.md"))),
         ("", BEGIN),
+        ("NEXT", next_action()),
         ("install notice", install),
         ("constraints.md", rules),
         ("", END),
