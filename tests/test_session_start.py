@@ -83,6 +83,9 @@ class TestInjection:
         assert r.returncode == 0, r.stderr
         for sentinel in ("XP Values", "CONSTRAINT-SENTINEL"):
             assert sentinel in r.stdout, f"missing {sentinel}"
+        assert len([line for line in r.stdout.splitlines() if line.startswith("NEXT:")]) == 1
+        # story-042 is the FIXTURE PLAN's only card, and this fixture has no numbered
+        # sprint, so no NEXT line can name it: the plan body still stays behind `recover`.
         assert all(item not in r.stdout for item in ("story-042", "branch: main", "is a hook"))
 
     def test_banner_names_version_and_gates(self, tmp_path):

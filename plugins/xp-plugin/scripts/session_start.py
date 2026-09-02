@@ -259,15 +259,106 @@ def digest_output() -> str:
     return digest_refusal() or digest_with_staleness() or absent
 
 
+def sprint_sections(text: str) -> tuple[int, list[str]]:
+    sections = re.split(r"(?=^### )", text, flags=re.M)
+    at = [
+        (int(match[1]), section.strip())
+        for section in sections
+        if (match := re.match(r"### Sprint (\d+)\b", section))
+    ]
+    current = max((number for number, _section in at), default=0)
+    return current, [section for number, section in at if number == current]
+
+
 def sprint_slice() -> str:
-    """EVERY section of the highest-NUMBERED sprint. Selecting the last section
-    holding an open card read the carried POOL instead — ten [planned] cards under
-    `### Sprint 7` outranked a shipped Sprint 9 whose every card was [done] — and a
-    sprint written in two sections delivered one of them (measured on this plan)."""
-    sections = re.split(r"(?=^### Sprint )", read(plan_path()), flags=re.M)
-    at = [(int(m[1]), s.strip()) for s in sections if (m := re.match(r"### Sprint (\d+)", s))]
-    current = max((n for n, _ in at), default=0)
-    return "\n\n".join(s for n, s in at if n == current)
+    """Every highest-numbered sprint section, excluding later carried pools.
+    Measured: pool cards outranked a shipped sprint, while selecting only the last
+    section omitted cards from repeated sprint headings."""
+    return "\n\n".join(sprint_sections(read(plan_path()))[1])
+
+
+CARD = re.compile(r"^#### (\S+) .* \[([^]\n]+)\]\s*$", re.M)
+HANDOFF = {"RUNNING", "STOPPED", "FINISHED"}
+
+
+def _handoff_state(marker: Path) -> dict | None:
+    try:
+        state = json.loads(marker.read_text())
+    except (OSError, ValueError):
+        return None
+    return state if isinstance(state, dict) else None
+
+
+def _worktree_state(root: Path, story_id: str) -> tuple[bool, str]:
+    tree = root / "worktrees" / story_id
+    marker = root / "plans" / f"{story_id}.handoff.json"
+    exists = tree.exists()
+    if not exists and not marker.exists():
+        return False, "ABSENT"
+    if exists and not tree.is_dir():
+        return True, "INVALID"
+    if exists and not marker.exists():
+        return True, "ABSENT"
+    state = _handoff_state(marker)
+    if state is None:
+        kind = "UNREADABLE"
+    else:
+        kind = state.get("state")
+        kind = kind if isinstance(kind, str) and kind in HANDOFF else "INVALID"
+    return exists, kind if exists else f"ORPHANED-{kind}"
+
+
+def _next_action() -> str:
+    path = plan_path()
+    try:
+        plan = path.read_text(errors="replace")
+    except FileNotFoundError:
+        return f"NEXT: recover plan at {path} — missing"
+    except OSError:
+        return f"NEXT: recover plan at {path} — unreadable"
+    sprint, sections = sprint_sections(plan)
+    if not sections:
+        return f"NEXT: recovery required — no numbered sprint in {path}"
+    text = "\n".join(sections)
+    headings = [line for line in text.splitlines() if line.startswith("#### ")]
+    cards = CARD.findall(text)
+    if len(cards) != len(headings) or len({story for story, _status in cards}) != len(cards):
+        return f"NEXT: recovery required — malformed card headings in Sprint {sprint}"
+    known = {"planned", "ready", "in-progress", "done", "retired"}
+    if unknown := [(story, status) for story, status in cards if status not in known]:
+        story, status = unknown[0]
+        return f"NEXT: recovery required — {story} has unknown status [{status}]"
+    active = [card for card in cards if card[1] == "in-progress"]
+    if len(active) > 1:
+        return f"NEXT: recovery required — multiple [in-progress] cards in Sprint {sprint}"
+    selected = active or [card for card in cards if card[1] == "ready"]
+    selected = selected or [card for card in cards if card[1] == "planned"]
+    if not selected:
+        # Only a surviving TREE: close keeps the marker for a later resume's inheritance,
+        for story, _status in cards:  # so reading one as leftover work vetoes every close.
+            if (tree := _worktree_state(data_root(), story))[0]:
+                return f"NEXT: recovery required — {story} remains after close: {tree[1]}"
+        return f"NEXT: no open card in Sprint {sprint} — run `/sprint-close`"
+    story, status = selected[0]
+    exists, tree_state = _worktree_state(data_root(), story)
+    if status == "planned" and not exists and tree_state == "ABSENT":
+        return f"NEXT: {story} is [planned] — run `spawn.py ready {story}`"
+    if status == "ready" and not exists and tree_state == "ABSENT":
+        return f"NEXT: {story} is [ready] — run `spawn.py {story}`"
+    if status == "in-progress" and not exists and tree_state == "ABSENT":
+        return f"NEXT: {story} is [in-progress] without a worktree — recover it before resuming"
+    if status == "in-progress" and tree_state == "STOPPED":
+        return f"NEXT: {story} has a STOPPED worktree — run `spawn.py resume {story}`"
+    if status == "in-progress" and tree_state == "FINISHED":
+        return f"NEXT: {story} has a FINISHED worktree — run `/story-close`"
+    return f"NEXT: recovery required — {story} is [{status}] with worktree state {tree_state}"
+
+
+def next_action() -> str:
+    try:
+        return _next_action()
+    except Exception as exc:
+        return f"NEXT: recovery required — next-action state is unreadable: {exc}"
 
 
 def work_titles() -> list[str]:
@@ -389,6 +480,7 @@ def main(data: dict) -> int:
     rules = safe(lambda: read(root / ".xp" / "constraints.md"))
     regions = [
         ("banner", safe(lambda: banner(root))),
+        ("NEXT", next_action()),
         ("config notice", safe(lambda: config_age(root))),
         ("VALUES.md", safe(lambda: read(PLUGIN_ROOT / "VALUES.md"))),
         ("JUDGMENT.md", safe(lambda: read(PLUGIN_ROOT / "JUDGMENT.md"))),
