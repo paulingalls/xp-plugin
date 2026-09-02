@@ -9,6 +9,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 sys.path.insert(0, str(Path(__file__).parent / "close"))
+import bookkeep
 import lifecycle as lc
 import milestone
 import overlap
@@ -442,11 +443,10 @@ def cmd_land(sprint_id: str, dry_run: bool) -> int:
     ref = overlap.merge_source(default_branch(), "pr")
     pending = overlap.unmerged(ref)
     if dry_run:
+        print(bookkeep.render_tier_preview(config_block_value("tests", "full"), "full"))
         for c in cmds:
             print(" ".join(c))
         print(f"(then: close.py sprint {sprint_id} post-merge — tag {version}, retire the key)")
-        full = config_block_value("tests", "full") or "none configured"
-        print(f"(and first: the full tier — {full})")
         if pending:
             print(f"...on a trial merge with {ref} — staged, then aborted either way")
         return 0

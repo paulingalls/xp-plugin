@@ -43,8 +43,9 @@ def reviewed(tmp_path, slug="fix-typo", tiers=()):
     """A free branch with one commit and one clean recorded round."""
     repo, env, g = free_repo(tmp_path)
     if tiers:
+        story = f"  story: {tiers[0]}\n" if tiers[0] is not None else ""
         (repo / ".xp" / "config.yml").write_text(
-            f"roles:\n  reviewer: claude/opus\ntests:\n  story: {tiers[0]}\n  full: {tiers[1]}\n"
+            f"roles:\n  reviewer: claude/opus\ntests:\n{story}  full: {tiers[1]}\n"
         )
         g("commit", "-qam", "configure distinct tiers")
         g("push", "-q", "origin", "main")
@@ -421,9 +422,26 @@ class TestSharedLandGuards:
         gate.chmod(0o755)
         repo, env, _g = reviewed(tmp_path, tiers=(str(gate), str(gate)))
         preview = free(repo, env, "fix-typo", "land", "--dry-run")
-        assert "first the story tier" in preview.stdout
-        assert free(repo, env, "fix-typo", "land").returncode == 0
+        assert f"would run: {gate}" in preview.stdout
+        landed = free(repo, env, "fix-typo", "land")
+        assert landed.returncode == 0
+        assert "tests.story" not in landed.stdout + landed.stderr
         assert gate.with_name("one-shot.ran").exists()
+
+    @pytest.mark.parametrize("tier", [None, "EDIT-ME"], ids=["missing", "unedited"])
+    def test_free_release_refuses_a_story_tier_that_cannot_run(self, tmp_path, tier):
+        repo, env, _g = reviewed(tmp_path, tiers=(tier, "true"))
+        preview = free(repo, env, "fix-typo", "land", "--dry-run")
+        assert "test tier would run nothing: tests.story" in preview.stdout
+        assert preview.stdout.index("test tier") < preview.stdout.index("gh pr create")
+
+        landed = free(repo, env, "fix-typo", "land")
+        expected = (
+            "refused: tests.story is unset or still EDIT-ME in .xp/config.yml — no test tier"
+            " ran. Set tests.story to your suite's command, then retry\n"
+        )
+        assert landed.returncode == 2 and landed.stderr == expected
+        assert "PATH" not in landed.stderr and not gh_calls(tmp_path)
 
     def test_land_refuses_on_overlap_with_trunk(self, tmp_path):
         """The third shared guard: trunk touched a file this branch touched and

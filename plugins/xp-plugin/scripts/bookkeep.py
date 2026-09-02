@@ -60,10 +60,17 @@ def render_sprint_prior(rounds: list[dict]) -> str:
     return body + "\n\nvalidate that each was addressed; do not re-derive the diff."
 
 
+def render_tier_preview(tier: str, tier_key: str) -> str:
+    if tier in ("", "EDIT-ME"):
+        return f"test tier would run nothing: tests.{tier_key} is unset or still EDIT-ME"
+    return f"would run: {tier}"
+
+
 def render_land_preview(
     verify: str, tier: str, merge_mode: str, branch: str, trunk: str, pr_steps: tuple, pending: bool
 ) -> str:
-    out = [f"would run: {verify}"] + ([f"would run: {tier}"] if tier else [])
+    tier_preview = render_tier_preview(tier, "story")
+    out = [tier_preview] if tier in ("", "EDIT-ME") else [f"would run: {verify}", tier_preview]
     if pending:
         out.append(f"...on a trial merge with {trunk} — staged, then aborted either way")
     if merge_mode == "pr":

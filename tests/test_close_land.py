@@ -217,6 +217,23 @@ class TestLandFailureModes:
         assert r.returncode == 0, r.stderr
         assert "trial merge with main" in r.stdout, r.stdout
 
+    @pytest.mark.parametrize("tier", [None, "EDIT-ME"], ids=["missing", "unedited"])
+    def test_story_land_refuses_a_tier_that_cannot_run(self, tmp_path, tier):
+        repo, env, g = make_repo(tmp_path)
+        config = repo / ".xp" / "config.yml"
+        lines = [line for line in config.read_text().splitlines() if "story:" not in line]
+        config.write_text("\n".join(lines + ([] if tier is None else [f"  story: {tier}"])) + "\n")
+        g("add", "-A")
+        g("commit", "-qm", "break story tier")
+        assert close(repo, env, "review").returncode == 0
+
+        preview = close(repo, env, "land", "--dry-run")
+        assert "would run: true" not in preview.stdout
+        assert "test tier would run nothing: tests.story" in preview.stdout
+        assert "would run: EDIT-ME" not in preview.stdout
+        landed = close(repo, env, "land")
+        assert landed.returncode == 2 and "Set tests.story" in landed.stderr
+
 
 class TestFullReviewFindings:
     """story-008 close review, round 5 — the first review over the whole story."""

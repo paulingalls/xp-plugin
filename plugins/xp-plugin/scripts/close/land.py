@@ -115,9 +115,10 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
     pr_steps = (pr_cmds, pr_sync, pr_bookkeep)
     if dry_run:
         if free:
+            print(bookkeep.render_tier_preview(tier, tier_key))
             for command in pr_cmds:
                 print(" ".join(command))
-            print(f"(first the story tier; then `close.py {noun} post-merge`)")
+            print(f"(then `close.py {noun} post-merge`)")
             return 0
         print(
             bookkeep.render_land_preview(raw, tier, merge_mode, branch, trunk, pr_steps, pending),

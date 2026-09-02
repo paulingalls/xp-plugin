@@ -96,13 +96,14 @@ def run_one(label: str, cmd: str | list[str], where: str = "") -> str:
     return f"refused: {label} red{where}: {shown}" if rc else ""
 
 
-def run_checks(verify: list[list[str]], tier: str | None, where: str = "") -> str:
-    if tier == "":
-        # SAYS SO rather than refusing: hook-lib.sh's run_tier refuses an unset
-        # tier, and the two legs disagreeing is worth a card (f6c00b18) — but the
-        # defect worth fixing now is the SILENCE. A merge gated by Verify alone is
-        # legal; one the lead believes a tier gated is not. None = no tier applies.
-        print("no tests.<tier> in .xp/config.yml — Verify alone gates this", file=sys.stderr)
+def run_checks(
+    verify: list[list[str]], tier: str | None, where: str = "", tier_key: str = "story"
+) -> str:
+    if tier in ("", "EDIT-ME"):
+        return (
+            f"refused: tests.{tier_key} is unset or still EDIT-ME in .xp/config.yml — no test"
+            f" tier ran. Set tests.{tier_key} to your suite's command, then retry"
+        )
     for label, commands in (("Verify", verify), ("test tier", [tier] if tier else [])):
         for cmd in commands:
             if red := run_one(label, cmd, where):
@@ -120,7 +121,7 @@ def gates(ref: str, verify: list[list[str]], tier_key: str, pending: bool) -> st
     from work import config_block_value
 
     if not pending:
-        return run_checks(verify, config_block_value("tests", tier_key))
+        return run_checks(verify, config_block_value("tests", tier_key), tier_key=tier_key)
     staged = git("merge", "--no-commit", "--no-ff", ref, check=False)
     try:
         if staged.returncode != 0:
@@ -128,8 +129,7 @@ def gates(ref: str, verify: list[list[str]], tier_key: str, pending: bool) -> st
                 f"refused: merging {ref} here conflicts. Resolve it on this branch,"
                 " review the post-resolution diff, then land"
             )
-        return run_checks(
-            verify, config_block_value("tests", tier_key), f" on the tree merged with {ref}"
-        )
+        where = f" on the tree merged with {ref}"
+        return run_checks(verify, config_block_value("tests", tier_key), where, tier_key)
     finally:
         git("merge", "--abort", check=False)

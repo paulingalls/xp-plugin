@@ -183,6 +183,21 @@ class TestTheRoundIsRecordedOnlyIfVerifyRan:
         r = close(repo, env, "review")
         assert r.returncode == 0 and "no tests.<tier>" not in r.stderr, r.stderr
 
+    @pytest.mark.parametrize(("tier", "expected_calls"), [("", 0), ("EDIT-ME", 0), (None, 1)])
+    def test_only_a_real_land_tier_can_reach_command_execution(
+        self, monkeypatch, tier, expected_calls
+    ):
+        import overlap
+
+        calls = []
+        monkeypatch.setattr(overlap, "run_one", lambda *args: calls.append(args) or "")
+        verdict = overlap.run_checks([["verify"]], tier)
+        assert len(calls) == expected_calls
+        if tier is None:
+            assert verdict == ""
+        else:
+            assert verdict.startswith("refused: tests.story") and "Set tests.story" in verdict
+
     def test_a_verify_that_cannot_run_is_not_a_verify_that_failed(self):
         """AC 2 of story-036, whose only cover the argv cut deleted: the lead's next
         action differs — one is a code fix, the other a harness problem. A shell

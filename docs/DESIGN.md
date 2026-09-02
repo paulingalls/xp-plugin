@@ -233,7 +233,7 @@ CLI hooks (one registration file, both harnesses) — **advisory lane-keeping by
 
 That's the whole floor: 2 git hooks + 3 CLI bindings, replacing 34. There is no review-marker gate: story-review enforcement moved *inside* close.py (§6) and the plan-review credential *inside* spawn (§6), where there is no marker to forge — a PreToolUse write-block on a plan-reviewed marker was designed here and never built, and the digest retires the design rather than owing it. Everything else — red-first ordering, refactor discipline, coherence, scope honesty, fault injection — belongs to the reviewers, where the audit shows it actually gets caught.
 
-Test tiers are declared once in the project's `config.yml` and scaffolded into the git hooks. The three keys, what each is for and when it runs live in `templates/config.yml` alone — restating them here was a second copy and it drifted within one release (the comments disagreed at v0.13.0), which is the defect class this repo files most.
+Test tiers are declared once in the project's `config.yml` and scaffolded into the git hooks. The three keys, what each is for and when it runs live in `templates/config.yml` alone. A missing or scaffold-default tier refuses at every hook and land leg; dry-run exposes the same absence.
 
 ## 8. Teammates and subagents — delegation-first orchestration
 
