@@ -71,7 +71,7 @@ def test_a_free_consumer_plugin_tree_keeps_the_installed_root(tmp_path):
     result = spawn(repo, env, key)
     assert result.returncode == 0, result.stderr
     handback = result.stdout.splitlines()[-1]
-    assert handback.endswith("close.py free fix-typo review` from that worktree.")
+    assert handback.endswith("/free-close` from that worktree.")
     assert "plugins/xp-plugin" not in handback
 
 
@@ -96,7 +96,7 @@ def test_a_branch_lacking_the_plugin_keeps_the_installed_root(tmp_path):
     assert not (Path(env["XP_DATA"]) / "worktrees" / key / "plugins").exists()
     assert str(SPAWN.parent / "work.py") in json.loads(rec.read_text())["stdin"]
     assert result.stdout.splitlines()[-1].endswith(
-        "Read it, then run `close.py free fix-typo review` from that worktree."
+        "Read it, then run `/free-close` from that worktree."
     )
 
 

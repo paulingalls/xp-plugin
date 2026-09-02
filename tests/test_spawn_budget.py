@@ -16,14 +16,19 @@ class TestBudget:
     someone else's file."""
 
     def test_plugin_shipped_profile_within_cap(self):
-        from spawn import PLUGIN_SHIPPED_CAP, component_metadata_chars, plugin_shipped_chars
+        from spawn import (
+            COMPONENT_METADATA_CAP,
+            PLUGIN_SHIPPED_CAP,
+            component_metadata_chars,
+            plugin_shipped_chars,
+        )
 
         # inner cap FIRST: a newly added skill or agent must red THIS line, not
         # the total — otherwise the ratchet blames TEAMMATE.md for a defect that
         # is a new component shipping unbudgeted prose into every spawn
         components = component_metadata_chars() // 4
-        assert components <= 300, (
-            f"always-on component metadata is {components} tokens (cap 300) —"
+        assert components <= COMPONENT_METADATA_CAP, (
+            f"always-on component metadata is {components} tokens (cap {COMPONENT_METADATA_CAP}) —"
             " a skill or agent grew; retire prose there, not in TEAMMATE.md"
         )
         shipped = plugin_shipped_chars() // 4
@@ -31,6 +36,34 @@ class TestBudget:
             f"plugin-shipped profile is {shipped} tokens (cap {PLUGIN_SHIPPED_CAP});"
             f" components account for {components}"
         )
+
+    def test_component_cap_constant_moves_this_wall(self, monkeypatch):
+        import spawn as spawn_module
+
+        moved = spawn_module.component_metadata_chars() // 4 - 1
+        monkeypatch.setattr(spawn_module, "COMPONENT_METADATA_CAP", moved)
+        with pytest.raises(AssertionError, match=rf"cap {moved}\)") as failure:
+            self.test_plugin_shipped_profile_within_cap()
+        assert "always-on component metadata" in str(failure.value)
+
+    def test_new_frontmatter_fails_the_component_wall_first(self, tmp_path, monkeypatch):
+        import spawn as spawn_module
+
+        root = tmp_path / "plugin"
+        shutil.copytree(spawn_module.PLUGIN_ROOT, root)
+        monkeypatch.setattr(spawn_module, "PLUGIN_ROOT", root)
+        before = spawn_module.component_metadata_chars() // 4
+        padding = (spawn_module.COMPONENT_METADATA_CAP - before + 1) * 4
+        skill = root / "skills" / "story-close" / "SKILL.md"
+        parts = skill.read_text().split("---", 2)
+        parts[1] += "x" * padding
+        skill.write_text("---".join(parts))
+
+        assert spawn_module.component_metadata_chars() // 4 > spawn_module.COMPONENT_METADATA_CAP
+        assert spawn_module.plugin_shipped_chars() // 4 <= spawn_module.PLUGIN_SHIPPED_CAP
+        with pytest.raises(AssertionError) as failure:
+            self.test_plugin_shipped_profile_within_cap()
+        assert "always-on component metadata" in str(failure.value)
 
     def test_JUDGMENT_is_injected_counted_and_required(self, tmp_path, monkeypatch):
         import spawn as spawn_module
