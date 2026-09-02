@@ -31,7 +31,12 @@ by a story: the commit gate's ceiling re-cut for a suite grown to 1,129 tests, a
 falsifier naming a test another story had moved, two comments citing a constraint
 index meaningless outside this repo, and a card-review marker whose writer and
 reader disagreed on zero padding — which made an incomplete review indistinguishable
-from a completed one.
+from a completed one, a skill-command walk that covered `/create-sprint` alone while
+the other four skills' spellings stayed pinned as substrings, and the seam between
+the recovery this release ships and the route a lead is sent down to reach it —
+review deletes the round's artifacts before it spawns, on BOTH nouns, so issue
+#44's own suggested recovery destroys what `salvage` would have recorded. It now
+says what it is about to delete, and names salvage, before it deletes it.
 
 ## v0.16.0 — the loop names the thing that carries each step
 

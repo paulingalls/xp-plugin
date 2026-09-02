@@ -13,7 +13,7 @@ import lifecycle as lc
 import milestone
 import overlap
 import stages
-from close import config_flat, default_branch, fail, git, story_card
+from close import config_flat, default_branch, fail, git, sprint_unrecorded_notice, story_card
 from env import record_sprint_branch, refuse_direct_invocation, sprint_branch
 from release import cmd_post_merge as release_post_merge
 from release import next_version, refuse_unbumpable
@@ -138,6 +138,9 @@ def cmd_review(sprint_id: str, dry_run: bool) -> int:
     diff_base = state["shown_sha"] if complete_n else ""
     if diff_base and (missing := _shown_diff(sprint_id, diff_base, head)[1]):
         return fail(missing)
+
+    if not dry_run and (left := sprint_unrecorded_notice(sprint_id, round_n)):
+        print("warning: " + left, file=sys.stderr)  # every leg below unlinks its own
 
     ran, reports = [], []
 

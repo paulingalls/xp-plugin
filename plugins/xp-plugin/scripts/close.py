@@ -2,6 +2,7 @@
 """Story review records judgment; story land runs gates and moves refs without spawning."""
 
 import argparse
+import glob
 import json
 import os
 import re
@@ -24,6 +25,30 @@ from work import (
 )
 
 FREE_ID = re.compile(r"free-(\d{4}-\d\d-\d\d-(.+))")
+
+
+def unrecorded_notice(paths: list[Path], salvage: str) -> str:
+    """What a relaunched review is about to unlink, for every noun. A round's
+    artifacts exist at the CURRENT round only when a review ran and recorded none —
+    salvage's own precondition — so issue #44's suggested recovery, review again,
+    deletes exactly what salvage would have recorded. A notice and not a refusal: a
+    reviewer that died before writing a usable report leaves the same artifacts and
+    salvage cannot record those either, so refusing would deadlock the pair.
+    """
+    if not (left := [str(p) for p in paths if p.exists()]):
+        return ""
+    return (
+        f"an unrecorded review left {', '.join(left)}, which this run DELETES —"
+        f" `{salvage}` records it instead"
+    )
+
+
+def sprint_unrecorded_notice(sprint_id: str, round_n: int) -> str:
+    """The sprint noun's stage keys are not known until the legs run, so it looks by
+    round rather than by name — the same round salvage globs for."""
+    stale = f"{glob.escape(sprint_id)}.*.round-{round_n}.*"
+    doomed = (data_root() / "reports" / "sprint").glob(stale)
+    return unrecorded_notice(sorted(doomed), f"close.py sprint {sprint_id} salvage")
 
 
 def fail(msg: str) -> "int":
@@ -242,8 +267,11 @@ def cmd_review(story_id: str, dry_run: bool = False) -> int:
     state = json.loads(marker.read_text()) if marker.exists() else {}
     path = review.report_path(story_id, len(state.get("rounds", [])) + 1)
     if not dry_run:  # a preview must not delete the findings of a refused round
-        path.unlink(missing_ok=True)
-        review.patch_path(path).unlink(missing_ok=True)
+        doomed = [path, review.patch_path(path)]
+        if left := unrecorded_notice(doomed, f"close.py {leg(story_id)[0]} salvage"):
+            print("warning: " + left, file=sys.stderr)
+        for doomed_path in doomed:
+            doomed_path.unlink(missing_ok=True)
     head = git("rev-parse", "HEAD").stdout.strip()
     base = git("merge-base", f"refs/heads/{trunk}", "HEAD").stdout.strip()
     at = {"head": head, "digest": review.marker_digest(marker), "base": base, "card": card}

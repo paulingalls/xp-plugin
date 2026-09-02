@@ -4,6 +4,7 @@ import re
 import shlex
 import subprocess
 import sys
+from pathlib import Path
 
 import pytest
 from close_free_card_cases import free_identity
@@ -20,12 +21,30 @@ def _step_regions(process):
     return steps
 
 
+def _command_words(span):
+    """A code span as [script, *args], or None if it names no script. The script is
+    the first `.py` WORD and not the first word: xp-setup routes through
+    `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/setup.py`, and an interpreter prefix is
+    exactly the spelling a first-word check drops silently — an unwalked command
+    that reads as covered.
+    """
+    try:
+        words = shlex.split(span)
+    except ValueError:
+        return None
+    for index, word in enumerate(words):
+        if word.endswith(".py"):
+            return [Path(word).name, *words[index + 1 :]]
+    return None
+
+
 def _walk_command(command):
     """ONE walker for every shipped spelling, PROCESS step or skill body alike. A
     second copy drifts off the usage assertion below, and that assertion is the only
     half of the walk that catches a misspelling.
     """
-    words = shlex.split(command)
+    words = _command_words(command)
+    assert words, f"{command} names no script"
     script = PLUGIN / "scripts" / words[0]
     assert script.is_file(), f"{command} does not resolve"
     argv = ["walk" if word.startswith("<") else word for word in words]
@@ -45,7 +64,7 @@ def _walk_command(command):
 def _walk_step_routes(process):
     for number, step in _step_regions(process).items():
         spans = re.findall(r"`([^`]+)`", step)
-        routes = [s for s in spans if s.startswith("/") or shlex.split(s)[0].endswith(".py")]
+        routes = [s for s in spans if s.startswith("/") or _command_words(s)]
         assert routes, f"step {number} names no command or skill"
         for route in (r for r in routes if not r.startswith("/")):
             _walk_command(route)
@@ -90,12 +109,32 @@ def _assert_authoring_content(skill):
     )
 
 
-def _walk_skill_commands(skill):
-    spans = re.findall(r"`([^`]+)`", skill)
-    commands = [span for span in spans if shlex.split(span)[0].endswith(".py")]
-    assert commands, "create-sprint names no command to walk"
-    for command in commands:
-        _walk_command(command)
+def _walk_skill_commands(skills_dir):
+    """EVERY shipped skill, enumerated from the directory rather than hand-listed, so
+    a skill added later is walked without editing this test (bug 6d384ef9). Only
+    create-sprint's body was walked before; the other four skills' spellings were
+    pinned as literal substrings, which greens on a command that no longer exists.
+
+    The per-skill vacuity guard is derived from the file, never a count: a body that
+    mentions `.py` at all must yield a command, so the span regex silently matching
+    nothing reds instead of walking an empty list.
+    """
+    for skill in sorted(skills_dir.glob("*/SKILL.md")):
+        text = skill.read_text()
+        commands = dict.fromkeys(s for s in re.findall(r"`([^`]+)`", text) if _command_words(s))
+        assert commands or ".py" not in text, f"{skill.parent.name} names no command to walk"
+        for command in commands:
+            _walk_command(command)
+
+
+def _copied_skills(root, edit):
+    """Fault injection against a COPY of the shipped bodies, so each arm proves the
+    walk reds on the real prose rather than on a fixture shaped like it."""
+    for skill in sorted((PLUGIN / "skills").glob("*/SKILL.md")):
+        target = root / skill.parent.name / "SKILL.md"
+        target.parent.mkdir(parents=True)
+        target.write_text(edit(skill.read_text()))
+    return root
 
 
 def test_each_loop_step_names_its_command_or_skill():
@@ -142,16 +181,24 @@ def test_create_sprint_carries_what_the_template_cannot():
         _assert_authoring_content("\n".join(reversed(skill.split("\n"))))
 
 
-def test_every_create_sprint_command_is_walkable():
-    skill = CREATE_SPRINT.read_text()
-    _walk_skill_commands(skill)
-    without_commands = re.sub(r"`[^`]*\.py[^`]*`", "the command", skill)
+def test_every_shipped_skill_command_is_walkable(tmp_path):
+    _walk_skill_commands(PLUGIN / "skills")
+    unspanned = _copied_skills(tmp_path / "a", lambda t: re.sub(r"`([^`]*\.py[^`]*)`", r"\1", t))
     with pytest.raises(AssertionError, match="names no command"):
-        _walk_skill_commands(without_commands)
+        _walk_skill_commands(unspanned)
+    absent = _copied_skills(tmp_path / "b", lambda t: t.replace("close.py", "missing.py"))
     with pytest.raises(AssertionError, match="does not resolve"):
-        _walk_skill_commands(skill.replace("spawn.py", "missing.py"))
+        _walk_skill_commands(absent)
+    redy = lambda t: t.replace("spawn.py ready", "spawn.py redy")  # noqa: E731
+    misspelled = _copied_skills(tmp_path / "c", redy)
     with pytest.raises(AssertionError, match="answered as"):
-        _walk_skill_commands(skill.replace("spawn.py ready", "spawn.py redy"))
+        _walk_skill_commands(misspelled)
+    # the arm that reds ONLY because the script is found past an interpreter prefix:
+    # on a first-word selector xp-setup's span yields nothing and this greens
+    gone = lambda t: t.replace("scripts/setup.py", "scripts/gone.py")  # noqa: E731
+    prefixed = _copied_skills(tmp_path / "d", gone)
+    with pytest.raises(AssertionError, match="does not resolve"):
+        _walk_skill_commands(prefixed)
 
 
 def test_every_shipped_skill_is_named_by_shipped_prose(tmp_path):
