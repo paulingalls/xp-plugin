@@ -114,10 +114,15 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
     pr_bookkeep = [["git", "push", "origin", trunk]]
     pr_steps = (pr_cmds, pr_sync, pr_bookkeep)
     if dry_run:
+        # A preview of a land that refuses is the refusal: listing steps it will
+        # never take is the same lie in the other direction.
+        if refusal := overlap.tier_refusal(tier, tier_key):
+            return close.fail(refusal)
         if free:
+            print(f"would run: {tier}")
             for command in pr_cmds:
                 print(" ".join(command))
-            print(f"(first the story tier; then `close.py {noun} post-merge`)")
+            print(f"(then `close.py {noun} post-merge`)")
             return 0
         print(
             bookkeep.render_land_preview(raw, tier, merge_mode, branch, trunk, pr_steps, pending),

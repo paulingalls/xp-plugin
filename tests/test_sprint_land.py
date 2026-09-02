@@ -182,6 +182,16 @@ class TestLandRunsTheTierItReleasesOn:
         r = sprint(repo, env, "land", "--dry-run")
         assert r.returncode == 0, r.stdout + r.stderr
 
+    def test_dry_run_says_when_the_full_tier_cannot_run(self, tmp_path):
+        config = CONFIG.replace("  full: true\n", "  full: EDIT-ME\n")
+        repo, env, _g = make_repo(tmp_path, config=config)
+        record_reviews(tmp_path, repo, env)
+        preview = sprint(repo, env, "land", "--dry-run")
+        assert preview.returncode == 2 and "Set tests.full" in preview.stderr
+        assert "gh pr create" not in preview.stdout and "EDIT-ME" not in preview.stdout
+        landed = sprint(repo, env, "land")
+        assert landed.returncode == 2 and "Set tests.full" in landed.stderr
+
     def test_land_proceeds_on_a_green_tier(self, tmp_path):
         """Absence of a refusal also passes an implementation that deleted the
         tier, so the green arm pins that land still reaches its normal exit."""

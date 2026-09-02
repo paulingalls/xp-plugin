@@ -321,6 +321,10 @@ def cmd_start(sprint_id: str) -> int:
     for eid, head, falsifier, covered in batch:
         grouped.setdefault(falsifier, []).append((eid, head, covered))
     tier = config_block_value("tests", "full")
+    # EDIT-ME ONLY — an absent full tier is a tested position (test_falsifier_batch runs
+    # the batch without one); EDIT-ME reached `sh -c`, returned 127, and refused as red.
+    if tier == "EDIT-ME":
+        return fail(overlap.tier_refusal(tier, "full"))
     deferred = {
         command: records
         for command, records in grouped.items()
@@ -442,11 +446,13 @@ def cmd_land(sprint_id: str, dry_run: bool) -> int:
     ref = overlap.merge_source(default_branch(), "pr")
     pending = overlap.unmerged(ref)
     if dry_run:
+        full = config_block_value("tests", "full")
+        if refusal := overlap.tier_refusal(full, "full"):
+            return fail(refusal)
+        print(f"would run: {full}")
         for c in cmds:
             print(" ".join(c))
         print(f"(then: close.py sprint {sprint_id} post-merge — tag {version}, retire the key)")
-        full = config_block_value("tests", "full") or "none configured"
-        print(f"(and first: the full tier — {full})")
         if pending:
             print(f"...on a trial merge with {ref} — staged, then aborted either way")
         return 0

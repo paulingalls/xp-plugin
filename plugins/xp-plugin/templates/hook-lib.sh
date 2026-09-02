@@ -65,8 +65,7 @@ run_tier() {
   constraints_size
   cmd="$(tier_cmd "$1")"
   if [ -z "$cmd" ] || [ "$cmd" = "EDIT-ME" ]; then
-    echo "xp wall: tests.$1 is unset or still EDIT-ME in .xp/config.yml — refusing to" >&2
-    echo "  pass a commit no test ran. Set tests.$1 to your suite's command, then retry." >&2
+    echo "refused: tests.$1 is unset or still EDIT-ME in .xp/config.yml — no test tier ran. Set tests.$1 to your suite's command, then retry" >&2
     exit 1
   fi
   sh -c "$cmd"

@@ -7,6 +7,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 SCRIPTS = Path(__file__).parent.parent / "plugins" / "xp-plugin" / "scripts"
 sys.path.insert(0, str(SCRIPTS))
 from close import config_flat, story_card  # noqa: E402
@@ -318,6 +320,25 @@ class TestCloseReviewFindings:
         )
         assert r.returncode != 0, "an unedited tier passed the wall having run nothing"
         assert "tests.fast" in r.stderr and ".xp/config.yml" in r.stderr
+
+    @pytest.mark.parametrize("tier_line", ["", "  story: EDIT-ME\n"], ids=["missing", "unedited"])
+    def test_story_hook_refuses_the_same_invalid_tiers_as_land(self, tmp_path, tier_line):
+        repo, env = bare_repo(tmp_path)
+        run_setup(repo, env)
+        config = repo / ".xp" / "config.yml"
+        kept = [ln for ln in config.read_text().splitlines(True) if "story:" not in ln]
+        # UNDER `tests:`, never appended: at EOF this constructs EDIT-ME only while
+        # that block stays last, and silently becomes the unset case the day it does not.
+        kept.insert(kept.index("tests:\n") + 1, tier_line)
+        config.write_text("".join(kept))
+        result = subprocess.run(
+            ["sh", ".githooks/pre-push"], cwd=repo, env=env, capture_output=True, text=True
+        )
+        assert result.returncode != 0
+        assert result.stderr == (
+            "refused: tests.story is unset or still EDIT-ME in .xp/config.yml — no test tier"
+            " ran. Set tests.story to your suite's command, then retry\n"
+        )
 
 
 class TestEnvFile:
