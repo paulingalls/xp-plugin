@@ -1,9 +1,14 @@
 """The sprint slate reaches an independent reader before any story slot is spent."""
 
+import ast
+import json
 import re
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
+from spawn_helpers import make_repo
 
 ROOT = Path(__file__).parent.parent
 PLUGIN = ROOT / "plugins" / "xp-plugin"
@@ -11,10 +16,14 @@ CHARTER = PLUGIN / "agents" / "card-reviewer.md"
 SKILL = PLUGIN / "skills" / "sprint-close" / "SKILL.md"
 PROCESS = PLUGIN / "PROCESS.md"
 DESIGN = ROOT / "docs" / "DESIGN.md"
+CARD_REVIEW = PLUGIN / "scripts" / "card_review.py"
+PLAN_REVIEW = PLUGIN / "scripts" / "plan_review.py"
+REVIEW = PLUGIN / "scripts" / "review.py"
 DESIGN_CLAIMS = (
     "four review points",
-    "Claude Code lead",
-    "Codex lead cannot invoke",
+    "lead on either harness",
+    "absolute findings path",
+    "marker's absence is success",
     "multi-file",
     "AFTER `spawn.py ready`",
     "single-file",
@@ -44,11 +53,87 @@ def assert_open_route(skill, process):
     opening = section(skill, "0. **", "1. **")
     card_step = section(process, "1. **Card review**", "2. **Story**")
     assert opening.index("card-reviewer") < opening.index("close.py sprint <id> start")
+    assert opening.index("card_review.py") < opening.index("close.py sprint <id> start")
     assert "full proposed slate" in opening and "`sprint_cap`" in opening
     assert "author's conclusions" in opening and "do not give" in opening
     assert "corrected cards" in opening and "work.py note" in opening
     assert "`/sprint-close`" in card_step and "corrected slate" in card_step
     assert card_step.index("`/sprint-close`") < card_step.index("spawn.py ready")
+
+
+def card_repo(tmp_path):
+    repo, env, _g = make_repo(tmp_path)
+    (repo / ".xp" / "config.yml").write_text(
+        "sprint_cap: 6\nroles:\n  reviewer: claude/haiku/low\ntests:\n  story: true\n"
+    )
+    return repo, env
+
+
+def stub_card_reviewer(tmp_path, findings="## story-042 — GREEN\n\n## Slate — GREEN\n"):
+    binary = tmp_path / "bin" / "claude"
+    binary.parent.mkdir(exist_ok=True)
+    launch = tmp_path / "card-launch.json"
+    binary.write_text(
+        "#!/usr/bin/env python3\n"
+        "import json, re, sys\n"
+        "if sys.argv[1:] == ['plugin', 'list', '--json']:\n"
+        ' print(\'[{"id":"xp-plugin@xp-plugin","version":"fixture",'
+        '"scope":"user"}]\'); sys.exit()\n'
+        "prompt = sys.stdin.read()\n"
+        f"json.dump({{'argv': sys.argv[1:], 'prompt': prompt}}, open({str(launch)!r}, 'w'))\n"
+        "path = re.search(r'^FINDINGS_PATH: (.+)$', prompt, re.M)\n"
+        f"open(path.group(1), 'w').write({findings!r}) if path else None\n"
+        "print(json.dumps({'type': 'result', 'result': 'review complete'}))\n"
+    )
+    binary.chmod(0o755)
+    return launch
+
+
+def card_review(repo, env, sprint_id="1"):
+    return subprocess.run(
+        [sys.executable, str(CARD_REVIEW), sprint_id],
+        cwd=repo,
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+
+
+def lifecycle_shapes(source):
+    tree = ast.parse(source)
+    calls = [node for node in ast.walk(tree) if isinstance(node, ast.Call)]
+    return {
+        "detach": sum(
+            any(
+                k.arg == "start_new_session" and isinstance(k.value, ast.Constant) and k.value.value
+                for k in node.keywords
+            )
+            for node in calls
+        ),
+        "poll": sum(
+            isinstance(node.func, ast.Attribute)
+            and isinstance(node.func.value, ast.Name)
+            and (node.func.value.id, node.func.attr) == ("time", "sleep")
+            for node in calls
+        ),
+        "liveness": sum(
+            isinstance(node.func, ast.Attribute)
+            and isinstance(node.func.value, ast.Name)
+            and (node.func.value.id, node.func.attr) == ("os", "kill")
+            for node in calls
+        ),
+        "marker": source.count("plan-review-incomplete"),
+    }
+
+
+def assert_one_lifecycle(card_source, plan_source, review_source):
+    shared = lifecycle_shapes(card_source)
+    consumers = {
+        shape: lifecycle_shapes(plan_source)[shape] + lifecycle_shapes(review_source)[shape]
+        for shape in shared
+    }
+    assert all(shared.values()), shared
+    assert consumers == {shape: 0 for shape in consumers}, consumers
 
 
 def assert_charter_contract(charter):
@@ -86,13 +171,67 @@ def test_card_reviewer_is_shipped_and_routed_before_slots_are_spent():
     assert_open_route(SKILL.read_text(), PROCESS.read_text())
 
 
+def test_runner_builds_the_complete_bundle_and_returns_absolute_findings(tmp_path):
+    repo, env = card_repo(tmp_path)
+    launch_path = stub_card_reviewer(tmp_path)
+    result = card_review(repo, env)
+    assert result.returncode == 0, result.stderr
+    launch = json.loads(launch_path.read_text())
+    prompt = launch["prompt"]
+    assert "You did not write the cards" in prompt
+    assert "story-042 — demo story" in prompt
+    assert "sprint_cap: 6" in prompt
+    assert "# XP Values" in prompt and "# Judgment" in prompt
+    assert "CONSTRAINT-SENTINEL" in prompt and "Worktree bootstrap" in prompt
+    assert "author's conclusions" not in prompt
+    findings = next(
+        Path(line.removeprefix("FINDINGS_PATH: "))
+        for line in prompt.splitlines()
+        if line.startswith("FINDINGS_PATH: ")
+    )
+    assert findings.is_absolute() and findings.is_file()
+    assert str(findings) in result.stderr
+    assert not (Path(env["XP_DATA"]) / "markers" / "1.card-review-incomplete").exists()
+
+
+def test_incomplete_card_review_marker_names_state_and_next_action(tmp_path):
+    repo, env = card_repo(tmp_path)
+    stub_card_reviewer(tmp_path, findings="")
+    result = card_review(repo, env)
+    assert result.returncode != 0
+    marker = Path(env["XP_DATA"]) / "markers" / "1.card-review-incomplete"
+    state = json.loads(marker.read_text())
+    assert "DID NOT COMPLETE" in state["state"]
+    assert "card_review.py 1" in state["next"]
+
+
+def test_both_runners_share_one_detach_poll_marker_lifecycle():
+    card_source = CARD_REVIEW.read_text()
+    plan_source = PLAN_REVIEW.read_text()
+    review_source = REVIEW.read_text()
+    assert_one_lifecycle(card_source, plan_source, review_source)
+    duplicate = """
+def {name}():
+    subprocess.Popen([], start_new_session=True)
+    while True:
+        time.sleep(3)
+        os.kill(1, 0)
+    marker = 'plan-review-incomplete'
+"""
+    for name in ("_detach", "_launch_under_an_unrelated_name"):
+        with pytest.raises(AssertionError):
+            assert_one_lifecycle(
+                card_source, plan_source + duplicate.format(name=name), review_source
+            )
+
+
 def test_route_isolation_guard_reds_when_shipped_instructions_are_removed():
     skill = SKILL.read_text()
     process = PROCESS.read_text()
     assert_open_route(skill, process)
     with pytest.raises((AssertionError, IndexError, ValueError)):
         assert_open_route(section(skill, "1. **", "2. **"), process)
-    for fragment in ("card-reviewer", "author's conclusions", "work.py note"):
+    for fragment in ("card-reviewer", "card_review.py", "author's conclusions", "work.py note"):
         line = next(line for line in skill.splitlines() if fragment in line)
         with pytest.raises((AssertionError, IndexError, ValueError)):
             assert_open_route(skill.replace(line + "\n", ""), process)
