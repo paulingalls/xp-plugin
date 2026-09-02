@@ -12,5 +12,6 @@ Undeclared `.xp/` path stops.
 - **Escalate, don't guess.** Blocked/card wrong? Stop. If a mandatory step fails
   twice for infrastructure reasons, stop rather than proceed.
   File it: `python3 {PLUGIN_ROOT}/scripts/work.py note '...'`.
-- **Done = Verify green, then hand back.** Never close, never merge, never run
+- **Done = Verify green, work COMMITTED, then hand back.** Small commits. Never
+  close, never merge, never run
   `/story-close` — a self-close is an unreviewed merge.

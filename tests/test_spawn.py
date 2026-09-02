@@ -472,3 +472,21 @@ class TestCommonDirWidening:
         from spawn import common_dir_widening
 
         assert common_dir_widening(tmp_path) == []
+
+
+def test_the_brief_states_the_commit_the_handback_guard_requires(tmp_path, monkeypatch):
+    """handback.py:76 refuses when HEAD equals the flip head, so committing is a
+    precondition of finishing that only the refusal states. Two independent reports
+    on 2026-09-02 of executors handing back a correct, verified, UNCOMMITTED tree;
+    one had done both suite baselines and two fault injections, and the resumed
+    teammate rightly refused to inherit evidence it could not see.
+    A bare `"commit" in brief` is VACUOUS and was measured passing before the fix:
+    JUDGMENT.md already says "no-red commits say why". The instruction is what is
+    missing, so the instruction is what this asserts."""
+    import spawn
+
+    monkeypatch.setenv("XP_DATA", str(tmp_path))
+    sections = spawn.teammate_sections("card", "story-x", "", spawn.PLUGIN_ROOT)
+    brief = " ".join(b for _, b in sections)
+    told = ("commit your", "small commits", "your own commits")
+    assert any(p in brief.lower() for p in told), "the brief never tells the executor to commit"
