@@ -265,7 +265,7 @@ def cmd_salvage(sprint_id: str) -> int:
         else:
             recovered.append((path.name[len(prefix) : -len(suffix)], report))
     if not recovered:
-        if unreadable:  # constraint 15: missing is not unreadable
+        if unreadable:  # distinct states stay distinct: missing is not unreadable
             return fail(
                 f"refused: every sprint report at {root / shown} is UNREADABLE, not"
                 f" absent: {'; '.join(unreadable)}. Repair or delete them, then review"

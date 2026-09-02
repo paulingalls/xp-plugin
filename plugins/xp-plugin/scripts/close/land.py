@@ -21,8 +21,9 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
         return close.fail("refused: working tree is dirty — Verify must judge the tree that merges")
     launch = review.launch_marker(story_id)
     if launch.exists():
-        # Constraint 15: salvage refuses when this file is unreadable, and land
-        # reading the same file may not answer it with "no unrecorded review".
+        # Distinct states stay distinct: salvage refuses when this file is
+        # unreadable, and land reading the same file may not answer it with
+        # "no unrecorded review".
         try:
             unrecorded = json.loads(launch.read_text())
             verify_red = unrecorded.get("verify_red", "")
