@@ -64,7 +64,14 @@ def assert_open_route(skill, process):
 def card_repo(tmp_path):
     repo, env, _g = make_repo(tmp_path)
     (repo / ".xp" / "config.yml").write_text(
-        "sprint_cap: 6\nroles:\n  reviewer: claude/haiku/low\ntests:\n  story: true\n"
+        "sprint_cap: 6\ndebt_budget: 0.2\n"
+        "roles:\n  reviewer: claude/haiku/low\ntests:\n  story: true\n"
+    )
+    plan = Path(env["XP_DATA"]) / "plan.md"
+    plan.write_text(
+        plan.read_text().replace(
+            "### Sprint 1\n", "### Sprint 1\nLead verdicts: AUTHOR-CONCLUSIONS-SENTINEL\n"
+        )
     )
     return repo, env
 
@@ -136,6 +143,20 @@ def assert_one_lifecycle(card_source, plan_source, review_source):
     assert consumers == {shape: 0 for shape in consumers}, consumers
 
 
+def assert_bundle_schema(bundle, out):
+    expected = (
+        "## Your charter\n\nCHARTER\n\n"
+        f"## Your findings file\n\nFINDINGS_PATH: {out.resolve()}\n\n"
+        "## Full proposed slate\n\nCARDS\n\n"
+        "## Sprint capacity\n\nsprint_cap: 6\ndebt_budget: 0.2\n\n"
+        "## VALUES\n\nSHIPPED:VALUES.md\n\n"
+        "## JUDGMENT\n\nSHIPPED:JUDGMENT.md\n\n"
+        "## Constraints\n\nLOCAL:constraints.md\n\n"
+        "## System context\n\nLOCAL:system.md\n\n"
+    )
+    assert bundle == expected
+
+
 def assert_charter_contract(charter):
     checks = numbered_items(section(charter, "## Checks", "## Output"))
     assert set(checks) == {
@@ -181,9 +202,10 @@ def test_runner_builds_the_complete_bundle_and_returns_absolute_findings(tmp_pat
     assert "You did not write the cards" in prompt
     assert "story-042 — demo story" in prompt
     assert "sprint_cap: 6" in prompt
+    assert "debt_budget: 0.2" in prompt
     assert "# XP Values" in prompt and "# Judgment" in prompt
     assert "CONSTRAINT-SENTINEL" in prompt and "Worktree bootstrap" in prompt
-    assert "author's conclusions" not in prompt
+    assert "AUTHOR-CONCLUSIONS-SENTINEL" not in prompt
     findings = next(
         Path(line.removeprefix("FINDINGS_PATH: "))
         for line in prompt.splitlines()
@@ -192,6 +214,22 @@ def test_runner_builds_the_complete_bundle_and_returns_absolute_findings(tmp_pat
     assert findings.is_absolute() and findings.is_file()
     assert str(findings) in result.stderr
     assert not (Path(env["XP_DATA"]) / "markers" / "1.card-review-incomplete").exists()
+
+
+def test_bundle_schema_refuses_an_unlabelled_author_conclusion(tmp_path, monkeypatch):
+    import card_review as runner
+    import spawn
+
+    monkeypatch.setattr(spawn, "_read_shipped", lambda path: f"SHIPPED:{path.name}")
+    monkeypatch.setattr(spawn, "_read", lambda path: f"LOCAL:{path.name}")
+    out = tmp_path / "findings.md"
+    bundle = runner.build_bundle("CHARTER", "CARDS", "6", "0.2", out)
+    assert_bundle_schema(bundle, out)
+    with pytest.raises(AssertionError):
+        assert_bundle_schema(
+            bundle + "## Lead's slate verdicts\n\nThis card is funded; do not re-price it.\n\n",
+            out,
+        )
 
 
 def test_incomplete_card_review_marker_names_state_and_next_action(tmp_path):

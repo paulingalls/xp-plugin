@@ -134,14 +134,14 @@ def _dead(pid: int, child: subprocess.Popen | None) -> bool:
     return False
 
 
-def build_bundle(charter: str, cards: str, sprint_cap: str, out: Path) -> str:
+def build_bundle(charter: str, cards: str, sprint_cap: str, debt_budget: str, out: Path) -> str:
     from spawn import _read, _read_shipped
 
     sections = [
         ("Your charter", charter),
         ("Your findings file", f"FINDINGS_PATH: {out.resolve()}"),
         ("Full proposed slate", cards),
-        ("Sprint capacity", f"sprint_cap: {sprint_cap}"),
+        ("Sprint capacity", f"sprint_cap: {sprint_cap}\ndebt_budget: {debt_budget}"),
         ("VALUES", _read_shipped(PLUGIN_ROOT / "VALUES.md")),
         ("JUDGMENT", _read_shipped(PLUGIN_ROOT / "JUDGMENT.md")),
         ("Constraints", _read(Path(".xp/constraints.md"))),
@@ -150,7 +150,7 @@ def build_bundle(charter: str, cards: str, sprint_cap: str, out: Path) -> str:
     return "".join(f"## {title}\n\n{body}\n\n" for title, body in sections)
 
 
-def _inputs(sprint_id: str) -> tuple[str, str, str]:
+def _inputs(sprint_id: str) -> tuple[str, str, str, str]:
     import review
     from close import config_flat
     from sprint_close import sprint_cards
@@ -159,17 +159,22 @@ def _inputs(sprint_id: str) -> tuple[str, str, str]:
         cards = sprint_cards(plan_path().read_text(), sprint_id)
     except OSError:
         cards = ""
-    return review.charter("card-reviewer"), cards, config_flat("sprint_cap")
+    return (
+        review.charter("card-reviewer"),
+        cards,
+        config_flat("sprint_cap"),
+        config_flat("debt_budget"),
+    )
 
 
 def _run_review(sprint_id: str, out: Path, dry_run: bool) -> int:
     import review
     from spawn import tree_state
 
-    charter, cards, sprint_cap = _inputs(sprint_id)
+    charter, cards, sprint_cap, debt_budget = _inputs(sprint_id)
     before = tree_state(Path.cwd())
     _result, error = review.run(
-        build_bundle(charter, cards, sprint_cap, out),
+        build_bundle(charter, cards, sprint_cap, debt_budget, out),
         Path.cwd(),
         dry_run,
         name="card-reviewer",
@@ -194,13 +199,15 @@ def _run_review(sprint_id: str, out: Path, dry_run: bool) -> int:
 
 
 def cmd_review(sprint_id: str, dry_run: bool) -> int:
-    charter, cards, sprint_cap = _inputs(sprint_id)
+    charter, cards, sprint_cap, debt_budget = _inputs(sprint_id)
     if not charter:
         return fail("refused: card-reviewer.md carries no charter — restore it")
     if not cards:
         return fail(f"refused: no Sprint {sprint_id} slate in {plan_path()}")
     if not sprint_cap:
         return fail("refused: .xp/config.yml carries no sprint_cap")
+    if not debt_budget:
+        return fail("refused: .xp/config.yml carries no debt_budget")
     out = review_findings_path(sprint_id, "card")
     if dry_run:
         return _run_review(sprint_id, out, True)
