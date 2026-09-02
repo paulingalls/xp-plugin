@@ -322,6 +322,15 @@ def test_route_isolation_guard_reds_when_shipped_instructions_are_removed():
     for token in ("`/create-sprint`", "`/sprint-close`", "corrected slate"):
         with pytest.raises(AssertionError):
             assert_open_route(skill, process.replace(token, "the lead", 1))
+    # both tokens present in the wrong order: authoring after review is the whole
+    # defect the ordering assertion exists for, and no dropped token exercises it
+    swapped = (
+        process.replace("`/create-sprint`", "\x00")
+        .replace("`/sprint-close`", "`/create-sprint`", 1)
+        .replace("\x00", "`/sprint-close`", 1)
+    )
+    with pytest.raises(AssertionError):
+        assert_open_route(skill, swapped)
 
 
 def test_charter_contract_and_its_fault_injections():

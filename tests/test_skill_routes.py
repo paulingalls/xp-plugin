@@ -20,25 +20,35 @@ def _step_regions(process):
     return steps
 
 
+def _walk_command(command):
+    """ONE walker for every shipped spelling, PROCESS step or skill body alike. A
+    second copy drifts off the usage assertion below, and that assertion is the only
+    half of the walk that catches a misspelling.
+    """
+    words = shlex.split(command)
+    script = PLUGIN / "scripts" / words[0]
+    assert script.is_file(), f"{command} does not resolve"
+    argv = ["walk" if word.startswith("<") else word for word in words]
+    result = subprocess.run(
+        [sys.executable, str(script), *argv[1:], "--help"],
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, f"{command} does not answer --help: {result.stderr}"
+    # spawn.py accepts a story id at the top level, so an unknown subcommand
+    # can exit zero unless the requested spelling is present in its usage.
+    usage = result.stdout.split("\n\n", 1)[0]
+    named = [word for word in words[1:] if not word.startswith("<")]
+    assert all(word in usage for word in named), f"{command} answered as `{usage}`"
+
+
 def _walk_step_routes(process):
     for number, step in _step_regions(process).items():
         spans = re.findall(r"`([^`]+)`", step)
         routes = [s for s in spans if s.startswith("/") or shlex.split(s)[0].endswith(".py")]
         assert routes, f"step {number} names no command or skill"
         for route in (r for r in routes if not r.startswith("/")):
-            words = shlex.split(route)
-            argv = ["walk" if word.startswith("<") else word for word in words]
-            result = subprocess.run(
-                [sys.executable, str(PLUGIN / "scripts" / argv[0]), *argv[1:], "--help"],
-                capture_output=True,
-                text=True,
-            )
-            assert result.returncode == 0, f"{route} does not answer --help: {result.stderr}"
-            # spawn.py accepts a story id at the top level, so an unknown subcommand
-            # can exit zero unless the requested spelling is present in its usage.
-            usage = result.stdout.split("\n\n", 1)[0]
-            named = [word for word in words[1:] if not word.startswith("<")]
-            assert all(word in usage for word in named), f"{route} answered as `{usage}`"
+            _walk_command(route)
 
 
 def _assert_skill_routes(skills_dir, process, prose_docs, nudges, refusals):
@@ -59,8 +69,23 @@ def _assert_template_owns_card_fields(skill, template):
     fields = ("# Execution Plan", "Context:", "Files:", "AC:", "Verify:", "Close review:")
     missing = [field for field in fields if field not in template]
     assert not missing, f"plan template is missing: {', '.join(missing)}"
+    # one is the budget, not zero: the skill teaches the `Verify:` grammar, which the
+    # template cannot carry. Restating a SECOND field is the shape drifting into prose.
     duplicated = [field for field in fields if field in skill]
-    assert duplicated != list(fields), "create-sprint duplicates the template's field list"
+    assert len(duplicated) <= 1, f"create-sprint duplicates the template's fields: {duplicated}"
+
+
+def _assert_authoring_content(skill):
+    """The skill's own list, pinned as vocabulary. No harness reaches the judgment
+    behind it, so the reachable failure is a later edit trimming an item to buy
+    words against the skill's word cap — which is silent and looks like tightening.
+    """
+    for token in ("`sprint_cap`", "`debt_budget`", "merge order", "collisions", "argv", "`cd`"):
+        assert token in skill, f"create-sprint no longer names {token}"
+    assert "`/sprint-close`" in skill and "`spawn.py ready" in skill
+    assert skill.index("`/sprint-close`") < skill.index("`spawn.py ready"), (
+        "slate review must precede any `spawn.py ready`"
+    )
 
 
 def _walk_skill_commands(skill):
@@ -68,16 +93,7 @@ def _walk_skill_commands(skill):
     commands = [span for span in spans if shlex.split(span)[0].endswith(".py")]
     assert commands, "create-sprint names no command to walk"
     for command in commands:
-        words = shlex.split(command)
-        script = PLUGIN / "scripts" / words[0]
-        assert script.is_file(), f"{command} does not resolve"
-        argv = ["walk" if word.startswith("<") else word for word in words]
-        result = subprocess.run(
-            [sys.executable, str(script), *argv[1:], "--help"],
-            capture_output=True,
-            text=True,
-        )
-        assert result.returncode == 0, f"{command} does not answer --help: {result.stderr}"
+        _walk_command(command)
 
 
 def test_each_loop_step_names_its_command_or_skill():
@@ -103,6 +119,21 @@ def test_the_template_owns_the_card_field_list():
     duplicate = skill + "\n# Execution Plan\nContext:\nFiles:\nAC:\nVerify:\nClose review:\n"
     with pytest.raises(AssertionError, match="duplicates"):
         _assert_template_owns_card_fields(duplicate, template)
+    with pytest.raises(AssertionError, match="duplicates"):
+        _assert_template_owns_card_fields(
+            skill + "\nEach card carries Context: and AC:\n", template
+        )
+
+
+def test_create_sprint_carries_what_the_template_cannot():
+    skill = CREATE_SPRINT.read_text()
+    _assert_authoring_content(skill)
+    for token in ("`sprint_cap`", "`debt_budget`", "merge order", "collisions", "argv", "`cd`"):
+        with pytest.raises(AssertionError, match="no longer names"):
+            _assert_authoring_content(skill.replace(token, "the slate"))
+    # same words, order destroyed: the ordering claim must red on its own
+    with pytest.raises(AssertionError, match="precede"):
+        _assert_authoring_content("\n".join(reversed(skill.split("\n"))))
 
 
 def test_every_create_sprint_command_is_walkable():
@@ -113,6 +144,8 @@ def test_every_create_sprint_command_is_walkable():
         _walk_skill_commands(without_commands)
     with pytest.raises(AssertionError, match="does not resolve"):
         _walk_skill_commands(skill.replace("spawn.py", "missing.py"))
+    with pytest.raises(AssertionError, match="answered as"):
+        _walk_skill_commands(skill.replace("spawn.py ready", "spawn.py redy"))
 
 
 def test_every_shipped_skill_is_named_by_shipped_prose(tmp_path):

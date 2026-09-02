@@ -5,8 +5,8 @@ description: Author a sprint slate before story slots are spent.
 
 # Create Sprint
 
-At the per-clone path printed by `/xp-setup`, start from `templates/plan.md`; it
-owns card shape.
+`templates/plan.md` owns card shape; setup already copied it to the per-clone
+plan path `/xp-setup` prints.
 
 Before writing:
 
