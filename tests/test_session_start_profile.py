@@ -106,7 +106,10 @@ class TestTheRealProfileAgainstTheRealCap:
         assert all(head + tail == CODEX_OUTPUT_BOUND for head, tail in CODEX_RETAINED_BYTES)
         assert CODEX_OUTPUT_BOUND - OUTPUT_CAP == HEADROOM
         out = self.run_real()
-        assert len(out.encode()) <= OUTPUT_CAP, "the NEXT region outgrew the real lead profile"
+        assert len(out.encode()) <= OUTPUT_CAP, (
+            f"{len(out.encode())} bytes over {OUTPUT_CAP}; NEXT is the newest region, but any"
+            " of them can be the one that grew — read the profile, do not assume"
+        )
         assert len([line for line in out.splitlines() if line.startswith("NEXT:")]) == 1, (
             "the NEXT region did not reach the real lead profile exactly once"
         )

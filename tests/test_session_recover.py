@@ -4,9 +4,10 @@ Its own file because test_session_start.py sits AT constraint 8's 500-line cap:
 extract, not scroll. Verify: pytest -q tests/test_session_recover.py"""
 
 import json
+import sys
 
 import pytest
-from session_start_helpers import run_hook_as, run_recovery, xp_repo
+from session_start_helpers import HOOK, run_hook_as, run_recovery, xp_repo
 
 
 def next_lines(output):
@@ -145,6 +146,7 @@ class TestTheNextLoopAction:
         [
             ("file", None, "INVALID"),
             ("directory", "{", "UNREADABLE"),
+            ("directory", "[]", "UNREADABLE"),  # valid JSON, wrong SHAPE — `.get` would raise
             ("directory", '{"state": "PAUSED"}', "INVALID"),
             ("directory", None, "ABSENT"),
             ("absent", '{"state": "STOPPED"}', "ORPHANED-STOPPED"),
@@ -191,6 +193,22 @@ class TestTheNextLoopAction:
 
         assert lines == ["NEXT: recovery required — story-042 remains after close: FINISHED"]
 
+    def test_a_closed_cards_surviving_marker_does_not_veto_sprint_close(self, tmp_path):
+        """The marker is DURABLE: close removes the tree and the branch, never
+        `plans/<story>.handoff.json`, because a later resume inherits from it. Reading it
+        as leftover work made the sprint-close row above unreachable on any repo that has
+        ever closed a story — measured against this repo's own root, 24 markers deep."""
+        repo, _g = xp_repo(tmp_path)
+        root = tmp_path / "xp"
+        (root / "plan.md").write_text("# plan\n### Sprint 1\n#### story-042 — done   [done]\n")
+        plans = root / "plans"
+        plans.mkdir(parents=True)
+        (plans / "story-042.handoff.json").write_text('{"state": "FINISHED", "records": []}')
+
+        lines = next_lines(run_hook_as(repo, tmp_path, role="lead").stdout)
+
+        assert lines == ["NEXT: no open card in Sprint 1 — run `/sprint-close`"]
+
     @pytest.mark.parametrize("plan_state", ["missing", "directory"])
     def test_a_broken_plan_names_plan_recovery(self, tmp_path, plan_state):
         repo, _g = xp_repo(tmp_path)
@@ -214,6 +232,22 @@ class TestTheNextLoopAction:
         lines = next_lines(run_hook_as(repo, tmp_path, role="lead").stdout)
 
         assert lines == [f"NEXT: recovery required — no numbered sprint in {plan}"]
+
+    def test_an_unforeseen_failure_degrades_rather_than_tracebacking(self, monkeypatch):
+        """The catch-all BENEATH the OSError handlers the tests above drive. No plan or
+        marker on disk reaches it — `Path.exists()` swallows OSError — so raising from the
+        one call outside the inner `try` is the only thing that can prove it not vacuous."""
+        sys.path.insert(0, str(HOOK.parent))
+        import session_start
+
+        def explode():
+            raise ValueError("boom")
+
+        monkeypatch.setattr(session_start, "plan_path", explode)
+
+        assert session_start.next_action() == (
+            "NEXT: recovery required — next-action state is unreadable: boom"
+        )
 
 
 class TestARegionThatProducedNothing:

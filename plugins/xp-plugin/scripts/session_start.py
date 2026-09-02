@@ -334,10 +334,10 @@ def _next_action() -> str:
     selected = active or [card for card in cards if card[1] == "ready"]
     selected = selected or [card for card in cards if card[1] == "planned"]
     if not selected:
-        for story, _status in cards:
-            exists, tree_state = _worktree_state(data_root(), story)
-            if exists or tree_state != "ABSENT":
-                return f"NEXT: recovery required — {story} remains after close: {tree_state}"
+        # Only a surviving TREE: close keeps the marker for a later resume's inheritance,
+        for story, _status in cards:  # so reading one as leftover work vetoes every close.
+            if (tree := _worktree_state(data_root(), story))[0]:
+                return f"NEXT: recovery required — {story} remains after close: {tree[1]}"
         return f"NEXT: no open card in Sprint {sprint} — run `/sprint-close`"
     story, status = selected[0]
     exists, tree_state = _worktree_state(data_root(), story)
