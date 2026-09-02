@@ -105,6 +105,12 @@ class TestShippedProseMatchesTheMechanism:
             assert "the lead never" in text, f"{path.name}: the plan's owner is unnamed"
             assert "sprint review" not in text, f"{path.name}: close.py owns that phrase"
 
+    def test_a_mandatory_step_failing_twice_routes_to_escalation(self):
+        teammate = " ".join(prose(PLUGIN / "TEAMMATE.md").lower().split())
+        assert "mandatory step fails twice for infrastructure reasons" in teammate
+        assert "stop rather than proceed" in teammate
+        assert "scripts/work.py note" in teammate
+
     def test_the_story_bundle_carries_JUDGMENT_but_not_PROCESS(self, tmp_path):
         repo, env, _g = make_repo(tmp_path)
         assert close(repo, env, "review").returncode == 0
