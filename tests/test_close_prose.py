@@ -235,7 +235,7 @@ class TestShippedProseMatchesTheMechanism:
         Pinned as a WORD BUDGET, not a token grep: a count reds when the
         enumerations grow back under any wording, which is the failure mode.
         """
-        for skill, cap in (("story-close", 330), ("sprint-close", 350)):
+        for skill, cap in (("story-close", 330), ("sprint-close", 350), ("free-close", 85)):
             body = prose(PLUGIN / "skills" / skill / "SKILL.md")
             assert len(body.split()) <= cap, f"{skill} regrew to {len(body.split())} words"
 

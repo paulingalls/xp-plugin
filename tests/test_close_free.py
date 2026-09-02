@@ -211,13 +211,17 @@ class TestFreeCardLifecycle(FreeCardCases):
 
 class TestFreeCloseSkill:
     def test_it_carries_only_the_judgment_the_scripts_cannot(self):
+        """The word budget lives with its siblings in test_close_prose.py, at the
+        LIVE size; a second cap here was 41 words of slack. This is the budget's
+        counterweight: the sentences it must not be satisfied by deleting, and the
+        release enumeration it must not admit (the sprint-close twin's negative)."""
         body = (PLUGIN / "skills" / "free-close" / "SKILL.md").read_text().split("---", 2)[2]
         text = " ".join(body.split())
-        assert len(text.split()) <= 110
         assert "`close.py free <slug> review`" in text
         assert "`close.py free <slug> land`" in text
         assert "release artifacts are yours" in text.lower()
         assert "before review" in text.lower()
+        assert "bump" not in text.lower() and "changelog" not in text.lower()
         assert "inside the round that found" in text
         assert "past what the review covered" in text and "confirming round" in text
         assert "finding bar" in text and "JUDGMENT.md" in text
