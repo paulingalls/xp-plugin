@@ -17,8 +17,6 @@ from close_helpers import (  # noqa: F401
     WORK,
     close,
     close_bare,
-    free,
-    free_repo,
     launches,
     make_repo,
     marker,
@@ -189,19 +187,6 @@ class TestShippedProseMatchesTheMechanism:
         assert "before" in step.lower() and "review" in step.lower()
         assert "bump" not in step.lower() and "changelog" not in step.lower()
 
-    def test_free_start_names_release_timing_without_telling_the_lead_to_commit(self, tmp_path):
-        outputs = []
-        for name, slug in (("one", "fix-one"), ("two", "fix-two")):
-            repo, env, g = free_repo(tmp_path / name)
-            result = free(repo, env, slug, "start")
-            assert result.returncode == 0, result.stderr
-            outputs.append(result.stdout)
-            key = free_identity(g)[1]
-            assert result.stdout.index(f"spawn.py ready {key}") < result.stdout.index("review")
-            assert result.stdout.index("release artifacts") < result.stdout.index("review")
-            assert "Commit, then" not in result.stdout
-        assert outputs[0] != outputs[1]
-
     def test_the_loop_states_carded_execution_once_and_does_not_grow(self):
         """Constraint 1. The cap is the LIVE size, never a historical one: left at
         5,454 for a file that had shrunk to 2,928, it passed with 2,277 characters
@@ -250,7 +235,7 @@ class TestShippedProseMatchesTheMechanism:
         Pinned as a WORD BUDGET, not a token grep: a count reds when the
         enumerations grow back under any wording, which is the failure mode.
         """
-        for skill, cap in (("story-close", 330), ("sprint-close", 350)):
+        for skill, cap in (("story-close", 330), ("sprint-close", 350), ("free-close", 85)):
             body = prose(PLUGIN / "skills" / skill / "SKILL.md")
             assert len(body.split()) <= cap, f"{skill} regrew to {len(body.split())} words"
 
@@ -458,6 +443,13 @@ def test_every_shipped_skill_is_named_by_shipped_prose(tmp_path):
 
     from spawn_helpers import make_repo as make_spawn_repo
     from spawn_helpers import spawn, stub_claude
+    from test_close_free import carded_free_patch
+
+    free_root = tmp_path / "free"
+    repo, env, g = carded_free_patch(free_root)
+    stub_claude(free_root)
+    free_nudge = spawn(repo, env, free_identity(g)[1])
+    assert free_nudge.returncode == 0 and free_nudge.stdout, free_nudge.stderr
 
     spawn_root = tmp_path / "spawn"
     spawn_root.mkdir()
@@ -470,7 +462,7 @@ def test_every_shipped_skill_is_named_by_shipped_prose(tmp_path):
     skills = PLUGIN / "skills"
     process = (PLUGIN / "PROCESS.md").read_text()
     prose_docs = [path.read_text() for path in PLUGIN.rglob("*.md")]
-    nudges = [story_nudge.stdout, sprint_nudge.stdout]
+    nudges = [story_nudge.stdout, sprint_nudge.stdout, free_nudge.stdout]
     refusals = [refusal.stderr]
     _assert_skill_routes(skills, process, prose_docs, nudges, refusals)
 

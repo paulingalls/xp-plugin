@@ -21,6 +21,7 @@ from close_free_card_cases import (
 from close_helpers import (
     CLOSE,
     NEW_FILE_PATCH,
+    PLUGIN,
     close,
     free,
     free_repo,
@@ -30,6 +31,7 @@ from close_helpers import (
     stub_reviewer,
 )
 from spawn_helpers import in_tree, spawn, stub_claude
+from spawn_helpers import make_repo as make_spawn_repo
 
 
 def normalize(refusal: str) -> str:
@@ -104,7 +106,7 @@ class TestFreeStart:
         assert in_tree(tree, env, "branch", "--show-current") == branch
         assert (tree / "src" / "free.py").read_text() == "B = 1\n"
         assert f"at {tree} (continued, not cut)" in result.stdout
-        assert "`close.py free fix-typo review` from that worktree" in result.stdout
+        assert "`/free-close` from that worktree" in result.stdout
         assert "close.py story" not in result.stdout
         stub_reviewer(tmp_path)
         review = free(tree, env, "fix-typo", "review")
@@ -113,6 +115,35 @@ class TestFreeStart:
         assert land.returncode == 0, land.stderr + land.stdout
         create = [call for call in gh_calls(tmp_path) if call[:2] == ["pr", "create"]]
         assert len(create) == 1 and create[0][create[0].index("--base") + 1] == "main"
+
+    def test_spawn_handoff_routes_story_and_free_to_their_skills(self, tmp_path):
+        story_root = tmp_path / "story"
+        repo, env, _g = make_spawn_repo(story_root, executor="claude/sonnet/medium")
+        stub_claude(story_root)
+        story = spawn(repo, env, "story-042")
+        assert story.returncode == 0, story.stderr
+
+        free_root = tmp_path / "free"
+        repo, env, g = carded_free_patch(free_root)
+        stub_claude(free_root)
+        freed = spawn(repo, env, free_identity(g)[1])
+        assert freed.returncode == 0, freed.stderr
+
+        assert story.stdout.endswith("Read it, then run `/story-close`.\n")
+        assert freed.stdout.endswith("Read it, then run `/free-close` from that worktree.\n")
+
+    def test_free_start_names_release_timing_without_telling_the_lead_to_commit(self, tmp_path):
+        outputs = []
+        for name, slug in (("one", "fix-one"), ("two", "fix-two")):
+            repo, env, g = free_repo(tmp_path / name)
+            result = free(repo, env, slug, "start")
+            assert result.returncode == 0, result.stderr
+            outputs.append(result.stdout)
+            key = free_identity(g)[1]
+            assert result.stdout.index(f"spawn.py ready {key}") < result.stdout.index("review")
+            assert result.stdout.index("release artifacts") < result.stdout.index("review")
+            assert "Commit, then" not in result.stdout
+        assert outputs[0] != outputs[1]
 
     def test_a_spawn_from_off_the_free_branch_names_the_checkout(self, tmp_path):
         """The lead's own checkout is the only thing missing, and `git branch -D`
@@ -176,6 +207,24 @@ class TestFreeStart:
 
 class TestFreeCardLifecycle(FreeCardCases):
     pass
+
+
+class TestFreeCloseSkill:
+    def test_it_carries_only_the_judgment_the_scripts_cannot(self):
+        """The word budget lives with its siblings in test_close_prose.py, at the
+        LIVE size; a second cap here was 41 words of slack. This is the budget's
+        counterweight: the sentences it must not be satisfied by deleting, and the
+        release enumeration it must not admit (the sprint-close twin's negative)."""
+        body = (PLUGIN / "skills" / "free-close" / "SKILL.md").read_text().split("---", 2)[2]
+        text = " ".join(body.split())
+        assert "`close.py free <slug> review`" in text
+        assert "`close.py free <slug> land`" in text
+        assert "release artifacts are yours" in text.lower()
+        assert "before review" in text.lower()
+        assert "bump" not in text.lower() and "changelog" not in text.lower()
+        assert "inside the round that found" in text
+        assert "past what the review covered" in text and "confirming round" in text
+        assert "finding bar" in text and "JUDGMENT.md" in text
 
 
 class TestFreeLand:
