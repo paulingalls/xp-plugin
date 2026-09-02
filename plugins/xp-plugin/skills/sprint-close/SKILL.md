@@ -19,8 +19,9 @@ description: >-
    A red falsifier ABORTS the close and is re-filed as a bug (JUDGMENT.md carries
    the polarity contract).
 2. **Note triage, then the retro — YOURS, and they come FIRST.**
-   Promote each note through the retro diff, or archive it. A learning that changes
-   nothing executable is not recorded; every promotion displaces something. Write
+   Promote each note through the retro diff, or `work.py archive` it; then
+   `work.py compact` once. A learning that changes nothing executable is not
+   recorded; every promotion displaces something. Write
    the retro and REPLACE the digest: the pipeline emits facts; the
    narrative is the part with judgment.
    BEFORE the review, not after. Land refuses when code moved since the review,
