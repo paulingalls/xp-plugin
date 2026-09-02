@@ -69,10 +69,12 @@ def _assert_template_owns_card_fields(skill, template):
     fields = ("# Execution Plan", "Context:", "Files:", "AC:", "Verify:", "Close review:")
     missing = [field for field in fields if field not in template]
     assert not missing, f"plan template is missing: {', '.join(missing)}"
-    # one is the budget, not zero: the skill teaches the `Verify:` grammar, which the
-    # template cannot carry. Restating a SECOND field is the shape drifting into prose.
-    duplicated = [field for field in fields if field in skill]
-    assert len(duplicated) <= 1, f"create-sprint duplicates the template's fields: {duplicated}"
+    # `Verify:` exactly, not "at most one field": the budget is one because the skill
+    # teaches the grammar the template cannot carry, so a count alone lets a later edit
+    # spend it on a different field. A second field is the shape drifting into prose;
+    # none means the grammar no longer names the field it governs.
+    restated = [field for field in fields if field in skill]
+    assert restated == ["Verify:"], f"create-sprint restates {restated}, not ['Verify:']"
 
 
 def _assert_authoring_content(skill):
@@ -117,12 +119,16 @@ def test_the_template_owns_the_card_field_list():
         with pytest.raises(AssertionError, match="plan template is missing"):
             _assert_template_owns_card_fields(skill, template.replace(field, "omitted", 1))
     duplicate = skill + "\n# Execution Plan\nContext:\nFiles:\nAC:\nVerify:\nClose review:\n"
-    with pytest.raises(AssertionError, match="duplicates"):
+    with pytest.raises(AssertionError, match="restates"):
         _assert_template_owns_card_fields(duplicate, template)
-    with pytest.raises(AssertionError, match="duplicates"):
+    with pytest.raises(AssertionError, match="restates"):
         _assert_template_owns_card_fields(
             skill + "\nEach card carries Context: and AC:\n", template
         )
+    # the word-saving rewrite a count-only guard greens: the grammar survives, the
+    # field name it governs does not, and the skill stops teaching which line to write
+    with pytest.raises(AssertionError, match="restates"):
+        _assert_template_owns_card_fields(skill.replace("each `Verify:`", "every check"), template)
 
 
 def test_create_sprint_carries_what_the_template_cannot():
