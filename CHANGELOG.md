@@ -4,6 +4,35 @@ Release notes started at v0.6.0; earlier entries are summarized from their
 tag and merge messages. Full detail lives in the merge history and the
 per-sprint review reports.
 
+## v0.17.0 — the process runs itself, or it is not a process
+
+Milestone 7 closes. Card review now reaches a lead on **either harness**: a Codex
+lead with no `--plugin-dir` and no subagents reaches a real card review through a
+headless runner, walked live on codex-cli 0.150.1 — its retries joined the running
+reviewer rather than launching a second one, and that review returned RED on the
+story that created it.
+
+- **`/create-sprint` and `/free-close`** — the last two loop steps with no shipped
+  page now have one, and every command a skill names is walked against the CLI
+  rather than pinned as a substring.
+- **SessionStart names the next action**, not just state: one deterministic `NEXT:`
+  line from card status and worktree state, with every unenumerated state refusing
+  to guess rather than inventing a step.
+- **A killed review's artifacts outlive the process that wrote it** (issues #41,
+  #44): `sprint salvage`, a land refusal that distinguishes "Verify redded on the
+  reviewed tree" from "no review ran", and reports that survive the kill.
+- **The `.xp/` scope guard reads a `Files:` line as prose** (issue #45): backticks
+  and a trailing `(new)` no longer make it refuse a path the card names, and its
+  refusal names the patch that survives instead of implying the work is lost.
+- **A mandatory step that fails twice escalates** rather than being skipped.
+
+Fixed at close, each caught by the falsifier batch or the sprint review rather than
+by a story: the commit gate's ceiling re-cut for a suite grown to 1,129 tests, a
+falsifier naming a test another story had moved, two comments citing a constraint
+index meaningless outside this repo, and a card-review marker whose writer and
+reader disagreed on zero padding — which made an incomplete review indistinguishable
+from a completed one.
+
 ## v0.16.0 — the loop names the thing that carries each step
 
 Sprint 15, opening Milestone 7. v0.15.0 shipped and leads did not follow the process
