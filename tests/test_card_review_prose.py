@@ -3,6 +3,7 @@
 import ast
 import json
 import re
+import runpy
 import subprocess
 import sys
 from pathlib import Path
@@ -358,3 +359,29 @@ def test_design_pins_timing_harness_evidence_and_residuals():
     for claim in DESIGN_CLAIMS:
         with pytest.raises(AssertionError):
             assert_design_contract(design.replace(card, card.replace(claim, "omitted decision")))
+
+
+def test_a_zero_padded_sprint_id_names_the_marker_the_hook_reads(tmp_path, monkeypatch):
+    """The seam story-091's runner and story-084's hook share, found by the sprint
+    review because neither story's own review could see the other side of it.
+    card_review.py names the marker from the id the LEAD TYPED; session_start.py
+    reads `### Sprint (\\d+)` through int(). So `07` writes 07.card-review-incomplete
+    and the hook looks for 7.card-review-incomplete — and an incomplete card review
+    is then spelled exactly like a completed one, which is the inversion AC3 rests
+    on: absence of the marker is the success signal."""
+    monkeypatch.setenv("XP_DATA", str(tmp_path))
+    module = runpy.run_path(str(PLUGIN / "scripts" / "card_review.py"))
+
+    padded = module["review_marker"]("07", "card")
+    plain = module["review_marker"]("7", "card")
+
+    assert padded == plain, f"{padded.name} is not the {plain.name} the hook reads"
+
+
+def test_a_story_id_is_never_renumbered(tmp_path, monkeypatch):
+    """The other side of the same fix: a plan review's identifier is a story id,
+    not a number, and must survive verbatim."""
+    monkeypatch.setenv("XP_DATA", str(tmp_path))
+    module = runpy.run_path(str(PLUGIN / "scripts" / "card_review.py"))
+
+    assert module["review_marker"]("story-042", "plan").name.startswith("story-042.")

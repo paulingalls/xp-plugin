@@ -30,8 +30,14 @@ def review_findings_path(identifier: str, kind: str) -> Path:
 
 
 def review_marker(identifier: str, kind: str) -> Path:
+    r"""One spelling for the writer and the reader. A sprint id is typed by the lead
+    and read back by session_start from `### Sprint (\d+)` through int(), so `07`
+    and `7` MUST name one marker — two spellings make an incomplete card review
+    indistinguishable from a completed one, and absence of the marker is the
+    success signal. A story id is not numeric and survives verbatim."""
     suffix = "plan-review-incomplete" if kind == "plan" else "card-review-incomplete"
-    return data_root() / "markers" / f"{identifier}.{suffix}"
+    name = str(int(identifier)) if identifier.isdigit() else identifier
+    return data_root() / "markers" / f"{name}.{suffix}"
 
 
 def _marker_state(identifier: str, kind: str) -> dict:
