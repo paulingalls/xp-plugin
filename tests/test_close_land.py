@@ -221,16 +221,17 @@ class TestLandFailureModes:
     def test_story_land_refuses_a_tier_that_cannot_run(self, tmp_path, tier):
         repo, env, g = make_repo(tmp_path)
         config = repo / ".xp" / "config.yml"
-        lines = [line for line in config.read_text().splitlines() if "story:" not in line]
-        config.write_text("\n".join(lines + ([] if tier is None else [f"  story: {tier}"])) + "\n")
+        kept = [ln for ln in config.read_text().splitlines(True) if "story:" not in ln]
+        if tier is not None:  # under `tests:`, not at EOF — see test_setup's twin
+            kept.insert(kept.index("tests:\n") + 1, f"  story: {tier}\n")
+        config.write_text("".join(kept))
         g("add", "-A")
         g("commit", "-qm", "break story tier")
         assert close(repo, env, "review").returncode == 0
 
         preview = close(repo, env, "land", "--dry-run")
-        assert "would run: true" not in preview.stdout
-        assert "test tier would run nothing: tests.story" in preview.stdout
-        assert "would run: EDIT-ME" not in preview.stdout
+        assert preview.returncode == 2 and "Set tests.story" in preview.stderr
+        assert preview.stdout == "", "a land that refuses previewed steps it will not take"
         landed = close(repo, env, "land")
         assert landed.returncode == 2 and "Set tests.story" in landed.stderr
 

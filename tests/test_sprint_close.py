@@ -218,6 +218,16 @@ class TestFullTier:
         assert sprint(repo, env, "start").returncode == 0
         assert sentinel.exists(), "a green batch never reached the tier"
 
+    def test_the_unedited_scaffold_tier_never_reaches_the_shell(self, tmp_path):
+        """DRIVEN at story-046 review: `EDIT-ME` reached `sh -c`, came back 127 and
+        refused as `full tier red: EDIT-ME` — a red suite blamed on an unedited
+        config. An ABSENT tier stays legal here; test_falsifier_batch owns that."""
+        config = CONFIG.replace("full: true", "full: EDIT-ME")
+        repo, env, _g = make_repo(tmp_path, config=config)
+        r = sprint(repo, env, "start")
+        assert r.returncode == 2 and "Set tests.full" in r.stderr, r.stdout
+        assert "full tier red" not in r.stderr and "running the full tier" not in r.stdout
+
     def test_a_stray_top_level_key_cannot_override_the_declared_tier(self, tmp_path):
         """`full:` is only ever nested under `tests:` — the flat lookup was dead
         code, and worse than dead: a stray top-level key silently replaced the

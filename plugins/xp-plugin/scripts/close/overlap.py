@@ -96,14 +96,22 @@ def run_one(label: str, cmd: str | list[str], where: str = "") -> str:
     return f"refused: {label} red{where}: {shown}" if rc else ""
 
 
+def tier_refusal(tier: str | None, tier_key: str) -> str:
+    """The ONE answer every leg gives a tier that cannot run — hook-lib.sh's
+    run_tier says these words at the commit leg. None = no tier applies here."""
+    if tier not in ("", "EDIT-ME"):
+        return ""
+    return (
+        f"refused: tests.{tier_key} is unset or still EDIT-ME in .xp/config.yml — no test"
+        f" tier ran. Set tests.{tier_key} to your suite's command, then retry"
+    )
+
+
 def run_checks(
     verify: list[list[str]], tier: str | None, where: str = "", tier_key: str = "story"
 ) -> str:
-    if tier in ("", "EDIT-ME"):
-        return (
-            f"refused: tests.{tier_key} is unset or still EDIT-ME in .xp/config.yml — no test"
-            f" tier ran. Set tests.{tier_key} to your suite's command, then retry"
-        )
+    if refusal := tier_refusal(tier, tier_key):
+        return refusal
     for label, commands in (("Verify", verify), ("test tier", [tier] if tier else [])):
         for cmd in commands:
             if red := run_one(label, cmd, where):

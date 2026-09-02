@@ -187,9 +187,8 @@ class TestLandRunsTheTierItReleasesOn:
         repo, env, _g = make_repo(tmp_path, config=config)
         record_reviews(tmp_path, repo, env)
         preview = sprint(repo, env, "land", "--dry-run")
-        assert preview.returncode == 0, preview.stderr
-        assert "test tier would run nothing: tests.full" in preview.stdout
-        assert "full tier — EDIT-ME" not in preview.stdout
+        assert preview.returncode == 2 and "Set tests.full" in preview.stderr
+        assert "gh pr create" not in preview.stdout and "EDIT-ME" not in preview.stdout
         landed = sprint(repo, env, "land")
         assert landed.returncode == 2 and "Set tests.full" in landed.stderr
 

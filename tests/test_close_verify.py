@@ -175,13 +175,21 @@ class TestTheRoundIsRecordedOnlyIfVerifyRan:
         assert "Verify red" in r.stderr, r.stderr
         assert not marker_file(tmp_path).exists(), "a refused round was recorded anyway"
 
-    def test_the_reviewed_tree_verify_does_not_report_the_tier_unset(self, tmp_path):
-        """The fixture's config.yml SETS tests.story. Routing this leg through the
-        gate runner made it claim otherwise on every round — telling the lead their
-        config is broken, about a tier this leg was never asked to run."""
-        repo, env, _g = make_repo(tmp_path)
+    @pytest.mark.parametrize("configured", [True, False], ids=["set", "unset"])
+    def test_the_reviewed_tree_verify_never_answers_for_the_land_tier(self, tmp_path, configured):
+        """Routing this leg through the gate runner made it speak about a tier it
+        was never asked to run. Now that the runner REFUSES an unset one, the
+        unset arm is the one that matters: it would kill every round for a project
+        with no story tier. `None` (no tier applies) stays distinct from unset."""
+        repo, env, g = make_repo(tmp_path)
+        if not configured:
+            config = repo / ".xp" / "config.yml"
+            kept = [ln for ln in config.read_text().splitlines(True) if "story:" not in ln]
+            config.write_text("".join(kept))
+            g("commit", "-qam", "drop the story tier")
         r = close(repo, env, "review")
-        assert r.returncode == 0 and "no tests.<tier>" not in r.stderr, r.stderr
+        assert r.returncode == 0, r.stderr
+        assert "tests.story" not in r.stderr and "<tier>" not in r.stderr, r.stderr
 
     @pytest.mark.parametrize(("tier", "expected_calls"), [("", 0), ("EDIT-ME", 0), (None, 1)])
     def test_only_a_real_land_tier_can_reach_command_execution(

@@ -326,8 +326,11 @@ class TestCloseReviewFindings:
         repo, env = bare_repo(tmp_path)
         run_setup(repo, env)
         config = repo / ".xp" / "config.yml"
-        kept = [line for line in config.read_text().splitlines() if "story:" not in line]
-        config.write_text("\n".join(kept) + "\n" + tier_line)
+        kept = [ln for ln in config.read_text().splitlines(True) if "story:" not in ln]
+        # UNDER `tests:`, never appended: at EOF this constructs EDIT-ME only while
+        # that block stays last, and silently becomes the unset case the day it does not.
+        kept.insert(kept.index("tests:\n") + 1, tier_line)
+        config.write_text("".join(kept))
         result = subprocess.run(
             ["sh", ".githooks/pre-push"], cwd=repo, env=env, capture_output=True, text=True
         )

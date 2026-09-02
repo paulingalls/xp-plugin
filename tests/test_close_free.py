@@ -430,16 +430,18 @@ class TestSharedLandGuards:
 
     @pytest.mark.parametrize("tier", [None, "EDIT-ME"], ids=["missing", "unedited"])
     def test_free_release_refuses_a_story_tier_that_cannot_run(self, tmp_path, tier):
+        """The dry run answers IDENTICALLY: a preview that lists `gh pr create` for
+        a land that refuses describes a release that cannot happen."""
         repo, env, _g = reviewed(tmp_path, tiers=(tier, "true"))
-        preview = free(repo, env, "fix-typo", "land", "--dry-run")
-        assert "test tier would run nothing: tests.story" in preview.stdout
-        assert preview.stdout.index("test tier") < preview.stdout.index("gh pr create")
-
-        landed = free(repo, env, "fix-typo", "land")
         expected = (
             "refused: tests.story is unset or still EDIT-ME in .xp/config.yml — no test tier"
             " ran. Set tests.story to your suite's command, then retry\n"
         )
+        preview = free(repo, env, "fix-typo", "land", "--dry-run")
+        assert preview.returncode == 2 and preview.stderr == expected
+        assert "gh pr create" not in preview.stdout
+
+        landed = free(repo, env, "fix-typo", "land")
         assert landed.returncode == 2 and landed.stderr == expected
         assert "PATH" not in landed.stderr and not gh_calls(tmp_path)
 
