@@ -37,7 +37,9 @@ def charter(name: str = "story-reviewer") -> str:
 
 
 def plan_review_notice(story_id: str) -> str:
-    marker = data_root() / "markers" / f"{story_id}.plan-review-incomplete"
+    from card_review import review_marker
+
+    marker = review_marker(story_id, "plan")
     if not marker.exists():
         return ""
     try:
@@ -241,6 +243,18 @@ def check_reviewer_motion(
     return ""
 
 
+DECORATION = re.compile(r"\s*\(new\)\s*$")
+
+
+def _bare(entry: str) -> str:
+    """A Files: entry is prose a human wrote for a human, and git prints neither the
+    markdown backticks nor the `(new)` a card puts on a file that does not exist yet.
+    Twice, because either decoration may sit inside the other (issue #45)."""
+    for _ in range(2):
+        entry = DECORATION.sub("", entry.strip().strip("`"))
+    return entry.strip()
+
+
 def declared_files(card: str) -> set[str]:
     declared, in_files = set(), False
     for ln in card.splitlines():
@@ -249,7 +263,7 @@ def declared_files(card: str) -> set[str]:
         elif in_files and re.match(r"[A-Za-z][A-Za-z ]*:", ln):
             in_files = False
         if in_files:
-            declared |= {f.strip() for f in ln.split(",") if f.strip()}
+            declared |= {f for f in (_bare(e) for e in ln.split(",")) if f}
     return declared
 
 
@@ -289,7 +303,12 @@ def apply_patch(report: Path, card: str) -> str:
     touched = git("diff", "--cached", "--name-only", "--no-renames", "HEAD").stdout.splitlines()
     if bad := [p for p in touched if p.startswith(".xp/") and p not in declared_files(card)]:
         git("reset", "-q", "--hard", check=False)  # a refusal must not become a traceback
-        return f"the reviewer proposed {', '.join(bad)} — the Files line does not name it"
+        return (
+            f"the reviewer proposed {', '.join(bad)} — the Files line does not name it."
+            f" The reset undoes the patch in the tree, NOT the patch itself: it survives"
+            f" at {path}, and a relaunched review deletes that file. Copy it if you want"
+            " it, then name the path on the card and review again"
+        )
     env = os.environ | {
         "GIT_AUTHOR_NAME": REVIEWER_NAME,
         "GIT_COMMITTER_NAME": REVIEWER_NAME,
@@ -435,8 +454,11 @@ def run(
         return "", f"could not launch the reviewer: {e}"
     except subprocess.TimeoutExpired as e:
         salvage = (
+            # NOT "saves you a review": true of story/free, where salvage records a
+            # landable round, and false of sprint, where it records an incomplete one
+            # land always refuses. One sentence, three nouns.
             f" If it wrote its report and patch before dying, `close.py {noun}"
-            " salvage` records that round without paying for a second review."
+            " salvage` records that round from what survives instead of discarding it."
             if noun
             else ""
         )

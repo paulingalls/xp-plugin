@@ -12,7 +12,10 @@ import subprocess
 import sys
 
 import pytest
-from close_helpers import CLOSE, close, make_repo, marker_file, stub_reviewer
+from close_helpers import CLOSE, close, free, free_repo, make_repo, marker_file, stub_reviewer
+from sprint_helpers import SPRINT_ID, sprint
+from sprint_helpers import make_repo as sprint_repo
+from sprint_helpers import marker_path as sprint_marker_path
 
 # The bound is the longest SILENCE, and it starts at launch — so the stub streams
 # until it has written its artifacts, which restarts the clock and models the
@@ -171,6 +174,7 @@ class TestSalvage:
         nothing = salvage(repo, env)
         assert nothing.returncode == 2
         assert "no unrecorded review" in nothing.stderr, nothing.stderr
+        assert "story-042.round-1.json" in nothing.stderr, nothing.stderr
 
         stub_reviewer(tmp_path)
         marker = tmp_path / "data" / "markers" / "story-042.review-launch"
@@ -183,12 +187,71 @@ class TestSalvage:
         assert "no unrecorded review" not in broken.stderr, broken.stderr
 
     @pytest.mark.slow
+    def test_a_report_that_outlived_its_launch_marker_is_NAMED_not_denied(self, tmp_path):
+        """The two states behind one refusal (constraint 15). Salvage's own advice for an
+        unreadable marker is `delete it and review again`, which reaches this branch with
+        the round's report still on disk. Compared against the empty-disk refusal rather
+        than against a phrase: a text that merely LISTS the round-scoped paths it would
+        have read names this one too, byte-identically, while claiming it is not there."""
+        repo, env, _g = make_repo(tmp_path)
+        dying_reviewer(tmp_path)
+        assert close(repo, env | KILLED, "review").returncode == 2
+        report = report_of(tmp_path)
+        (tmp_path / "data" / "markers" / "story-042.review-launch").unlink()
+
+        survived = salvage(repo, env)
+        report.unlink()
+        report.with_suffix(".patch").unlink()
+        nothing = salvage(repo, env)
+
+        assert survived.returncode == nothing.returncode == 2
+        assert str(report) in survived.stderr, survived.stderr
+        assert survived.stderr != nothing.stderr, survived.stderr
+
+    def test_a_partly_unreadable_sprint_round_is_recorded_AND_says_what_it_lost(self, tmp_path):
+        """A round rebuilt from SOME of its stages must not report success while a
+        sibling report went unread. Measured: deleting both halves of that answer —
+        the clause and the non-zero exit — greens the whole suite, because land
+        refuses on `incomplete` either way and nothing else carries the loss."""
+        repo, env, _g = sprint_repo(tmp_path)
+        reports = tmp_path / "data" / "reports" / "sprint"
+        reports.mkdir(parents=True, exist_ok=True)
+        (reports / f"{SPRINT_ID}.find-a.round-1.json").write_text(json.dumps(FIXED))
+        (reports / f"{SPRINT_ID}.find-b.round-1.json").write_text("{not json")
+
+        partial = sprint(repo, env, "salvage")
+
+        assert partial.returncode == 2, partial.stdout
+        assert "round 1 recorded incomplete after find-a" in partial.stdout, partial.stdout
+        assert partial.stderr.startswith("refused:"), partial.stderr
+        assert "find-b" in partial.stderr and "unreadable" in partial.stderr, partial.stderr
+        round_ = json.loads(sprint_marker_path(tmp_path).read_text())["rounds"][-1]
+        assert round_["fixed"] == FIXED["fixed"], round_
+        assert "find-b" in round_["incomplete"], round_
+
+    def test_free_salvage_names_the_unrecorded_round_it_searched(self, tmp_path):
+        repo, env, g = free_repo(tmp_path)
+        assert free(repo, env, "fix-typo", "start").returncode == 0
+        key = g("branch", "--show-current").stdout.strip().split("/", 1)[1]
+        plan = tmp_path / "data" / "plan.md"
+        plan.write_text(
+            plan.read_text() + f"\n### Free\n#### {key} — fix typo   [planned]\nContext: release.\n"
+            "Files: src/free.py\nAC:\n- Given a patch, Then it lands.\nVerify: true\n"
+        )
+        (repo / "src" / "free.py").write_text("B = 1\n")
+        g("add", "-A")
+        g("commit", "-qm", "free work")
+        assert free(repo, env, "fix-typo", "review").returncode == 0
+
+        refused = free(repo, env, "fix-typo", "salvage")
+
+        assert refused.returncode == 2
+        assert f"{key}.round-2.json" in refused.stderr, refused.stderr
+
+    @pytest.mark.slow
     def test_the_kill_names_salvage_only_on_the_leg_that_has_one(self, tmp_path, monkeypatch):
-        """review.run's kill text is shared by four legs and only story close has a
-        salvage action to offer. Plan and sprint reviews write no launch marker, so
-        salvage there answers `no unrecorded review — Run review`, sending the lead
-        to a STORY close review after a PLAN review died. Both halves asserted:
-        dropping the advice from every leg would satisfy the second alone.
+        """review.run's kill text is shared by four legs; only plan review has no
+        salvage action. Both halves are asserted, so dropping all advice cannot pass.
         """
         import review
 
@@ -208,10 +271,37 @@ class TestSalvage:
             monkeypatch.setenv(key, value)
         # the COMMAND, never the bare word: pytest names tmp_path after the test, so
         # `salvage` is in the log path this text quotes and matches whatever it says
-        for name, noun in (("story-reviewer", "story story-042"), ("plan-reviewer", "")):
+        for name, noun in (
+            ("story-reviewer", "story story-042"),
+            ("sprint find-state", "sprint 2"),
+            ("plan-reviewer", ""),
+        ):
             _result, err = review.run("bundle", repo, name=name, noun=noun)
             assert "produced NO OUTPUT" in err and "XP_AGENT_TIMEOUT" in err, err
-            assert ("story story-042 salvage" in err) is bool(noun), (name, err)
+            command = f"close.py {noun} salvage"
+            assert (command in err) is bool(noun), (name, err)
+
+    @pytest.mark.slow
+    def test_the_sprint_leg_ITSELF_passes_the_noun_its_kill_text_needs(self, tmp_path):
+        """The case above hands review.run a noun, so it proves the `if noun` branch
+        that already worked — never that the sprint leg passes one, which WAS the
+        defect. Measured: delete `noun=` from sprint_close's review.run call and the
+        whole suite greens. Only driving the leg end to end reds."""
+        repo, env, _g = sprint_repo(tmp_path)
+        stub = tmp_path / "bin" / "claude"
+        stub.write_text(
+            "#!/bin/sh\n"
+            '[ "$1 $2 $3" = "plugin list --json" ] && echo '
+            '\'[{"id":"xp-plugin@xp-plugin","version":"fixture",'
+            '"scope":"user"}]\' && exit 0\n'
+            "sleep 30\n"
+        )
+        stub.chmod(0o755)
+
+        killed = sprint(repo, env | KILLED, "review")
+
+        assert killed.returncode == 2, killed.stdout
+        assert f"close.py sprint {SPRINT_ID} salvage" in killed.stderr, killed.stderr
 
     @pytest.mark.slow
     def test_a_launch_marker_written_before_the_noun_still_records(self, tmp_path):
@@ -231,3 +321,90 @@ class TestSalvage:
         rescued = salvage(repo, env)
         assert rescued.returncode == 0, rescued.stderr
         assert "close.py story story-042 land" in rescued.stdout, rescued.stdout
+
+
+class TestTheRouteThatDestroysWhatSalvageRescues:
+    """The seam a story-scoped reader cannot see: salvage rescues a killed review's
+    artifacts, and the resumed session's own next action routes straight past it.
+    session_start's NEXT line reads [in-progress] + a FINISHED worktree and says
+    run `/story-close`, whose step 2 is `close.py story <id> review` — and that
+    unlinks the report and the patch before it spawns, with a clean tree being
+    exactly what a reviewer killed after restoring it leaves. Issue #44's own
+    suggested recovery, 'run review again', destroys the artifact it would have
+    pointed at (bug 0b33b752), and nothing said so on the way past.
+    """
+
+    @pytest.mark.slow
+    def test_a_relaunched_review_says_what_it_is_about_to_delete(self, tmp_path):
+        repo, env, _ = make_repo(tmp_path)
+        dying_reviewer(tmp_path)
+        assert close(repo, env | KILLED, "review").returncode == 2
+        report = report_of(tmp_path)
+        patch = report.with_suffix(".patch")
+        assert report.exists() and patch.exists(), "the fixture wrote no artifacts to lose"
+
+        stub_reviewer(tmp_path)
+        again = close(repo, env, "review")
+        assert "salvage" in again.stderr, again.stderr
+        assert str(report) in again.stderr and str(patch) in again.stderr, again.stderr
+
+    @pytest.mark.slow
+    def test_a_first_review_warns_about_nothing(self, tmp_path):
+        """The pair, so the warning cannot become wallpaper printed every round:
+        no launched review means no artifacts, and a line that fires either way
+        is one a lead learns to skip past.
+        """
+        repo, env, _ = make_repo(tmp_path)
+        stub_reviewer(tmp_path)
+        first = close(repo, env, "review")
+        assert first.returncode == 0, first.stderr
+        assert "salvage" not in first.stderr, first.stderr
+
+    @pytest.mark.slow
+    def test_the_sprint_noun_says_it_too(self, tmp_path):
+        """The other implementation of the same rule, and the one issue #44 actually
+        hit: sprint cmd_review's leg() unlinks `<id>.<stage>.round-N.json` before it
+        spawns, so a finder's completed report is thrown away by the command a lead
+        runs to recover it. Fixing only the story noun would leave the field case
+        exactly as it was reported.
+        """
+        repo, env, _g = sprint_repo(tmp_path)
+        reports = tmp_path / "data" / "reports" / "sprint"
+        reports.mkdir(parents=True, exist_ok=True)
+        left = reports / f"{SPRINT_ID}.find-a.round-1.json"
+        left.write_text(json.dumps(FIXED))
+        stub = tmp_path / "bin" / "claude"
+        stub.write_text(
+            "#!/bin/sh\n"
+            '[ "$1 $2 $3" = "plugin list --json" ] && echo '
+            '\'[{"id":"xp-plugin@xp-plugin","version":"fixture",'
+            '"scope":"user"}]\' && exit 0\n'
+            "sleep 30\n"
+        )
+        stub.chmod(0o755)
+
+        killed = sprint(repo, env | KILLED, "review")
+
+        assert str(left) in killed.stderr, killed.stderr
+        assert f"close.py sprint {SPRINT_ID} salvage" in killed.stderr, killed.stderr
+        assert "DELETES" in killed.stderr, killed.stderr
+
+    @pytest.mark.slow
+    def test_the_sprint_noun_warns_about_nothing_on_a_first_round(self, tmp_path):
+        """The pair on this noun too — a line printed every round is one a lead
+        stops reading, and the kill hint below it is the one that must survive."""
+        repo, env, _g = sprint_repo(tmp_path)
+        stub = tmp_path / "bin" / "claude"
+        stub.write_text(
+            "#!/bin/sh\n"
+            '[ "$1 $2 $3" = "plugin list --json" ] && echo '
+            '\'[{"id":"xp-plugin@xp-plugin","version":"fixture",'
+            '"scope":"user"}]\' && exit 0\n'
+            "sleep 30\n"
+        )
+        stub.chmod(0o755)
+
+        killed = sprint(repo, env | KILLED, "review")
+
+        assert "DELETES" not in killed.stderr, killed.stderr
+        assert f"close.py sprint {SPRINT_ID} salvage" in killed.stderr, killed.stderr

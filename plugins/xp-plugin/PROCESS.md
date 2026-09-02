@@ -7,8 +7,12 @@ uninjected digest, recovery block and sprint slice. Artifacts win.
 
 ## The loop
 
-1. **Card review** — lead runs `/sprint-close`: a fresh reader checks full slate
-   and `sprint_cap`; free work slotless. The corrected slate precedes
+Each step names what carries it: a skill for judgment, a script for mechanics.
+Run what it names — the line is a pointer, not the procedure.
+
+1. **Card review** — lead uses `/create-sprint` to author, then runs
+   `/sprint-close`: a fresh reader checks full slate and `sprint_cap`; free work
+   slotless. The corrected slate precedes
    `spawn.py ready <story-id>`. For multi-file work, executor writes the plan and
    runs **plan review** with `plan_review.py <story-id> <plan-file>`; the lead never
    writes it. Human-only questions stop.

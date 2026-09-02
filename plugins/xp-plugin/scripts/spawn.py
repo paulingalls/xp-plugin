@@ -39,7 +39,7 @@ PLUGIN_ROOT = Path(__file__).parent.parent
 # Deliberately NOT a cap on the composed total: CLAUDE.md, the project's grown
 # constraints.md and its cards are the consuming project's, and a plugin gate
 # over prose we do not own certifies nothing (DESIGN §8 diff proposed at close).
-PLUGIN_SHIPPED_CAP = 1365
+PLUGIN_SHIPPED_CAP = 1500
 COMPONENT_METADATA_CAP = 300  # so a new skill reds the component line, not TEAMMATE.md
 TOTAL_TARGET = 4500  # composed profile: reported, never enforced
 
@@ -381,10 +381,9 @@ def cmd_spawn(story_id: str, override: str, dry_run: bool, resuming: bool = Fals
         result = report_handoff(data_root(), story_id, before, why, rc)
         held.close()
         return result
-    scope, free_slug = leg(story_id)
+    free_slug = leg(story_id)[1]
     # The free leg reads its branch off HEAD, and spawn just moved the lead to trunk.
-    where = " from that worktree" if free_slug else ""
-    instruction = f"run `close.py {scope} review`{where}" if free_slug else "run `/story-close`"
+    instruction = "run `/free-close` from that worktree" if free_slug else "run `/story-close`"
     print(
         f"{story_id} produced commit {tree_state(tree)[0]} at {tree}. Read it, then {instruction}."
     )

@@ -9,7 +9,8 @@ Undeclared `.xp/` path stops.
   **Plan review**: `python3 {PLUGIN_ROOT}/scripts/plan_review.py <story-id> {PLAN_PATH}`.
   It BLOCKS: stay with that run; never launch another. Re-read its disposition
   and plan file: reasoned edits land there; human-only questions stop.
-- **Escalate, don't guess.** Blocked/card wrong? Stop.
+- **Escalate, don't guess.** Blocked/card wrong? Stop. If a mandatory step fails
+  twice for infrastructure reasons, stop rather than proceed.
   File it: `python3 {PLUGIN_ROOT}/scripts/work.py note '...'`.
 - **Done = Verify green, then hand back.** Never close, never merge, never run
   `/story-close` — a self-close is an unreviewed merge.

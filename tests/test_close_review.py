@@ -262,65 +262,53 @@ class TestSprintCloseFindings:
         assert r.returncode == 2 and "Traceback" not in r.stderr
 
 
-class TestReviewLeg:
-    """The pipeline spawns the reviewer itself and records its structured report."""
+VERIFIED_PATCH = """diff --git a/src/thing.py b/src/thing.py
+--- a/src/thing.py
++++ b/src/thing.py
+@@ -1 +1,2 @@
+ A = 2
++guarded = True
+"""
 
-    def test_review_launches_the_reviewer_with_the_bundle_inlined(self, tmp_path):
-        repo, env, _g = make_repo(tmp_path)
-        r = close(repo, {**env, **LEAD_CREDS}, "review")
-        assert r.returncode == 0, r.stderr
-        (launch,) = launches(tmp_path)
-        argv = launch["argv"]
-        assert "--plugin-dir" in argv and "-p" in argv
-        assert argv[argv.index("--model") + 1] == "opus"
-        assert argv[argv.index("--output-format") + 1] == "stream-json"
-        assert "--verbose" in argv
-        # acceptEdits denies Bash and the data-root Write (story-034 close): the
-        # read-only bound is the missing credential below, not the permission mode.
-        assert "--dangerously-skip-permissions" in argv
-        assert "--permission-mode" not in argv
-        assert not [k for k in launch["env"] if k.startswith(("GIT_AUTHOR_", "GIT_COMMITTER_"))]
-        prompt = launch["stdin"]
-        assert "fault-inject" in prompt.lower()  # the charter, inlined
-        assert "demo story" in prompt  # the card
-        assert "-A = 1" in prompt and "+A = 2" in prompt  # the cumulative diff
-        assert "CONSTRAINT-SENTINEL" in prompt and "SYSTEM-SENTINEL" in prompt
-        assert "PATCH_PATH:" in prompt and "tree exactly as you found it" in prompt
 
-    def test_the_spawned_reviewer_is_not_a_lead_and_cannot_close(self, tmp_path):
-        """N10: the only thing pinning the reviewer's role otherwise lives in
-        test_spawn.py, which this story's Verify does not run."""
-        repo, env, _g = make_repo(tmp_path)
-        close(repo, {**env, **LEAD_CREDS}, "review")
-        (launch,) = launches(tmp_path)
-        assert launch["env"]["XP_ROLE"] == "reviewer"
-        assert not [k for k in launch["env"] if k.startswith(("GIT_AUTHOR_", "GIT_COMMITTER_"))]
-
-    def test_reviewer_crash_refuses_cleanly_surfacing_its_stderr(self, tmp_path):
-        repo, env, _g = make_repo(tmp_path)
-        stub_reviewer(tmp_path, raw="not json at all", exit_code=1)
-        r = close(repo, env, "review")
-        assert r.returncode == 2 and "Traceback" not in r.stderr
-
-    def test_reviewer_non_json_output_refuses_cleanly(self, tmp_path):
-        repo, env, _g = make_repo(tmp_path)
-        stub_reviewer(tmp_path, raw="not json at all", exit_code=0)
-        r = close(repo, env, "review")
-        assert r.returncode == 2 and "Traceback" not in r.stderr
-
-    def test_a_blocking_report_is_recorded_when_verify_is_red(self, tmp_path):
-        repo, env, _g = make_repo(tmp_path, verify="false")
-        finding = "the retry flag is inverted"
-        stub_reviewer(tmp_path, report={"fixed": [], "blocking": [finding], "noted": []})
+class TestCompletedVerifyState:
+    def test_land_names_the_completed_review_verify_failure_and_tree(self, tmp_path):
+        """The reviewer PATCHES, so Verify judges a tree the review was not launched
+        against and the two shas differ. Without the patch either sha satisfies this,
+        and land would point the lead at a tree Verify never ran on."""
+        repo, env, g = make_repo(tmp_path, verify="false")
+        stub_reviewer(tmp_path, patch=VERIFIED_PATCH)
+        launched = g("rev-parse", "HEAD").stdout.strip()
         assert close(repo, env, "review").returncode == 2
-        assert marker(tmp_path)["rounds"][-1]["blocking"] == [finding]
-        land = close(repo, env, "land")
-        assert land.returncode == 2 and finding in land.stderr and "blocking" in land.stderr
+        verified = g("rev-parse", "HEAD").stdout.strip()
+        assert verified != launched, "the reviewer patch did not move HEAD"
 
-    def test_dry_run_review_launches_nothing(self, tmp_path):
+        refused = close(repo, env, "land")
+
+        assert refused.returncode == 2
+        assert "completed" in refused.stderr and "false" in refused.stderr
+        assert verified[:8] in refused.stderr, refused.stderr
+        assert launched[:8] not in refused.stderr, refused.stderr
+        assert "no close in progress" not in refused.stderr
+
+    def test_a_re_review_clears_the_verify_red_refusal(self, tmp_path):
+        """What CLEARS the state land now reads. Nothing else does, so a story whose
+        Verify was fixed would refuse at land forever on a tree that is green."""
+        repo, env, _g = make_repo(tmp_path, verify="false")
+        assert close(repo, env, "review").returncode == 2
+        assert close(repo, env, "land").returncode == 2
+        plan = tmp_path / "data" / "plan.md"
+        plan.write_text(CARD.format(status="planned", verify="true"))
+        mint_ready(repo, env)
+
+        assert close(repo, env, "review").returncode == 0
+        assert close(repo, env, "land").returncode == 0
+
+    def test_green_verify_still_records_and_lands_the_clean_round(self, tmp_path):
         repo, env, _g = make_repo(tmp_path)
-        r = close(repo, env, "review", "--dry-run")
-        assert r.returncode == 0 and launches(tmp_path) == []
+        assert close(repo, env, "review").returncode == 0
+        assert marker(tmp_path)["rounds"][-1]["blocking"] == []
+        assert close(repo, env, "land").returncode == 0
 
 
 class TestTrunkMotionGuards:

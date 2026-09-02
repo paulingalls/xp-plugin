@@ -10,17 +10,18 @@ description: >-
 
 0. **Open the sprint first** (once, before its stories). Give a fresh `card-reviewer`
    the full proposed slate, `sprint_cap`, VALUES, JUDGMENT, constraints and system
-   context; do not give it the author's conclusions. Check every per-card and slate
-   result, record accepted and rejected conclusions with `work.py note`, and correct
-   the cards only. With corrected cards: `git switch -c sprint-<id:03d>`, then
-   `close.py sprint <id> start`; unfinished output says close checks wait.
+   context; do not give it the author's conclusions. Check EVERY per-card and slate
+   result from `card_review.py <id>`, record accepted and rejected conclusions with
+   `work.py note`, leaving corrected cards only. Then `git switch -c sprint-<id:03d>`
+   and `close.py sprint <id> start`; unfinished output says close checks wait.
 1. **Re-run `close.py sprint <id> start` at close** — the same recorded branch is
    a no-op; now it runs the batch and emits the close material.
    A red falsifier ABORTS the close and is re-filed as a bug (JUDGMENT.md carries
    the polarity contract).
 2. **Note triage, then the retro — YOURS, and they come FIRST.**
-   Promote each note through the retro diff, or archive it. A learning that changes
-   nothing executable is not recorded; every promotion displaces something. Write
+   Promote each note through the retro diff, or `work.py archive` it; then
+   `work.py compact` once. A learning that changes nothing executable is not
+   recorded; every promotion displaces something. Write
    the retro and REPLACE the digest: the pipeline emits facts; the
    narrative is the part with judgment.
    BEFORE the review, not after. Land refuses when code moved since the review,

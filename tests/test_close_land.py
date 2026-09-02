@@ -36,6 +36,20 @@ class TestLandFailureModes:
         assert "Traceback" not in r.stderr, r.stderr
         assert r.returncode == 2 and "no plan at" in r.stderr
 
+    def test_an_UNREADABLE_launch_marker_refuses_rather_than_reading_as_absent(self, tmp_path):
+        """Land reads this file for one thing — a completed round whose Verify redded.
+        A truncated one is exactly the artifact a killed process leaves, and swallowing
+        it merges a story on an earlier green round while the state that would have
+        refused sits unread (constraint 15). Salvage refuses on the same file."""
+        repo, env, _g = make_repo(tmp_path)
+        assert close(repo, env, "review").returncode == 0
+        (tmp_path / "data" / "markers" / "story-042.review-launch").write_text("{not json")
+
+        refused = close(repo, env, "land")
+
+        assert refused.returncode == 2 and "Traceback" not in refused.stderr, refused.stderr
+        assert "not readable" in refused.stderr, refused.stderr
+
     def test_a_card_that_vanished_between_review_and_land_refuses_before_merging(self, tmp_path):
         """The narrower half of the same failure, and the worse one: the plan is
         still there, only the CARD is gone. Everything land checks the card for —

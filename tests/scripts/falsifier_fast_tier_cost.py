@@ -11,11 +11,26 @@ bound lives with the assertion, in tests/test_repo_templates.py (MIN_SPEEDUP).
 THE SUITE BOUNDS BELOW ARE NOT THE RATCHET and must not be read as one. They are
 the unusability guard the debt actually asked for: 'a commit gate slow enough
 that someone stops running it, which is how --no-verify becomes tempting'. They
-have moved once already (04f4a71e, total-only -> both, after a total-only bound
-fired on healthy growth of 258 -> 691 tests at flat per-test cost). DO NOT MOVE
-THEM AGAIN, in EITHER direction: raising them to make a red pass is the move the
-debt forbids, and tightening them to prove a speed-up makes a load detector —
-the populations are ~16% apart and this box's own measurement noise is ~10%.
+have now moved twice, and BOTH moves were the same event: a total-only ceiling
+firing on healthy growth at flat per-test cost. 04f4a71e (total-only -> both,
+258 -> 691 tests). 2026-09-02, Sprint 16 close, Paul's call (691 -> 1,129 tests):
+MAX_SECONDS 120 -> 180, measured 141.3s raw / 141.0s normalized / 125ms each on
+an idle box, with the load control at 1.002x so almost nothing was normalized
+away. Workers were tested first and rejected as the lever — this suite is
+SUBPROCESS-bound, not CPU-bound, so more of them cost more: -n 8 129s, -n 12
+222s, -n 16 349s over the same 1,129 tests.
+WHAT GOVERNS A MOVE, since the old prose said simply DO NOT and this file just
+did: MAX_SECONDS_PER_TEST is the regression detector and it did NOT move — it
+measured 125ms against 150ms here, and moving IT to clear a red is the thing the
+debt forbids. MAX_SECONDS is an absolute usability ceiling that healthy growth
+will keep crossing, so re-cutting it is a LEAD act carrying a dated measurement
+and an unchanged per-test bound. Clearing a red by raising a ceiling with no
+measurement remains forbidden, as does tightening either to prove a speed-up —
+that makes a load detector, the populations being ~16% apart against ~10% noise.
+THE THIRD RE-CUT SHOULD NOT HAPPEN: a ceiling re-cut every time the suite grows
+is measuring the wrong invariant. Per-test cost is what stays true as a suite
+grows; 'will a human still wait for this' is a product decision that wants a
+periodic review, not a tripwire that fires on success.
 Measure what a story CHANGED, in an arm of its own, as the fixture arm does.
 DELETING THEM WAS TRIED AT THE v0.9.0 RELEASE AND REVERTED at that sprint's
 review: the 129.13s red that motivated it was two gates sharing -n auto, and
@@ -37,7 +52,7 @@ import subprocess
 import sys
 import time
 
-MAX_SECONDS = 120
+MAX_SECONDS = 180  # re-cut 2026-09-02 at 1,129 tests; see the docstring's ledger
 MAX_SECONDS_PER_TEST = 0.15
 REFERENCE_GIT_MS = 200
 MAX_LOAD_FACTOR = 2.0

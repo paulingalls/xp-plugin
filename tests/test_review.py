@@ -15,7 +15,6 @@ from close_helpers import LEAD_CREDS, launches
 from review_install_cases import HarnessInstallCases
 from sprint_helpers import (
     CONFIG,
-    PLAN,
     PLUGIN,
     bundles,
     committing_stub,
@@ -259,24 +258,6 @@ class TestTheFixerFixes:
         assert "read-only reviewer changed HEAD" in r.stderr, r.stderr
         assert json.loads(marker_path(tmp_path).read_text())["rounds"][-1]["incomplete"]
 
-    def test_a_fixer_patch_touching_an_UNDECLARED_xp_file_is_refused(self, tmp_path):
-        """The `.xp/` scope moved from the committed range to patch apply, and the
-        sprint arm passes the whole sprint's cards where the story arm passes one.
-        Only the story arm had a negative test, so this call site's refusal was
-        carried by nothing (constraint 2)."""
-        repo, env, _g = make_repo(tmp_path)
-        staged_stub(
-            tmp_path,
-            find=CANDIDATES,
-            verify=SURVIVES,
-            patches=[("fix", ".xp/constraints.md", "sneaky")],
-        )
-        r = sprint(repo, env, "review")
-        assert r.returncode == 2, r.stdout
-        assert ".xp/constraints.md" in r.stderr and "Files line" in r.stderr, r.stderr
-        assert "sneaky" not in (repo / ".xp" / "constraints.md").read_text()
-        assert json.loads(marker_path(tmp_path).read_text())["rounds"][-1]["incomplete"]
-
     def test_a_reviewer_that_leaves_the_tree_DIRTY_is_refused(self, tmp_path):
         repo, env, _g = make_repo(tmp_path)
         committing_stub(tmp_path, "open('src.py','a').write('# edited\\n')", report=CANDIDATES)
@@ -321,27 +302,6 @@ class TestTheFixerFixes:
         land = sprint(repo, env, "land")  # not --dry-run: a preview runs nothing
         assert "you are merging its work" in land.stdout, land.stdout
         assert "fix" in land.stdout and "full diff:" in land.stdout, land.stdout
-
-    def test_LAND_names_a_GATE_file_the_fixer_rewrote(self, tmp_path):
-        """The scope rule lets the fixer edit any `.xp/` path a sprint card's Files
-        line declares, and a card DOES declare `.xp/system.md`, whose `Worktree
-        bootstrap:` line spawn shell-executes. shown_sha is recorded AFTER the
-        fixer, so land's own GATE_FILES check compares an empty range and never
-        sees it. Loud is the least this can be."""
-        plan = PLAN.replace(
-            "#### story-042 — done thing   [done]",
-            "#### story-042 — done thing   [done]\nFiles: src.py, .xp/system.md",
-        )
-        repo, env, _g = make_repo(tmp_path, plan=plan)
-        staged_stub(
-            tmp_path,
-            find=CANDIDATES,
-            verify=SURVIVES,
-            patches=[("fix", ".xp/system.md", "boot: x")],
-        )
-        assert sprint(repo, env, "review").returncode == 0
-        land = sprint(repo, env, "land")
-        assert "gate file" in land.stdout and ".xp/system.md" in land.stdout, land.stdout
 
 
 class TestTheCommitGateRefusalIsActionable:

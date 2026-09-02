@@ -13,7 +13,7 @@ import lifecycle as lc
 import milestone
 import overlap
 import stages
-from close import config_flat, default_branch, fail, git, story_card
+from close import config_flat, default_branch, fail, git, sprint_unrecorded_notice, story_card
 from env import record_sprint_branch, refuse_direct_invocation, sprint_branch
 from release import cmd_post_merge as release_post_merge
 from release import next_version, refuse_unbumpable
@@ -139,6 +139,9 @@ def cmd_review(sprint_id: str, dry_run: bool) -> int:
     if diff_base and (missing := _shown_diff(sprint_id, diff_base, head)[1]):
         return fail(missing)
 
+    if not dry_run and (left := sprint_unrecorded_notice(sprint_id, round_n)):
+        print("warning: " + left, file=sys.stderr)  # every leg below unlinks its own
+
     ran, reports = [], []
 
     def stop(err: str) -> int:
@@ -161,7 +164,14 @@ def cmd_review(sprint_id: str, dry_run: bool) -> int:
         stage_head = git("rev-parse", "HEAD").stdout.strip()
         role = stage if not complete_n else ""
         result, err = review.run(
-            bundle, Path.cwd(), dry_run, f"sprint {key}", cards if role else "", role, bool(role)
+            bundle,
+            Path.cwd(),
+            dry_run,
+            f"sprint {key}",
+            cards if role else "",
+            role,
+            bool(role),
+            noun=f"sprint {sprint_id}",
         )
         if dry_run:  # an EMPTY report, not a shapeless one: a preview walks
             empty = {k: [] for k in review.REPORT_KEYS}
@@ -235,6 +245,50 @@ def cmd_review(sprint_id: str, dry_run: bool) -> int:
         f" {len(round_['fixed'])} fixed, {len(round_['blocking'])} blocking"
     )
     return 0
+
+
+def cmd_salvage(sprint_id: str) -> int:
+    """Record reports left by a host-killed sprint review as incomplete."""
+    import glob
+
+    import review
+
+    marker = sprint_marker(sprint_id)
+    state = json.loads(marker.read_text()) if marker.exists() else {}
+    round_n = len(state.get("rounds", [])) + 1
+    root = data_root() / "reports" / "sprint"
+    shown = f"{sprint_id}.*.round-{round_n}.json"
+    paths = sorted(root.glob(f"{glob.escape(sprint_id)}.*.round-{round_n}.json"))
+    recovered, unreadable = [], []
+    prefix, suffix = f"{sprint_id}.", f".round-{round_n}.json"
+    for path in paths:
+        report, err = review.read_report(path)
+        if err:
+            unreadable.append(f"{path}: {err}")
+        else:
+            recovered.append((path.name[len(prefix) : -len(suffix)], report))
+    if not recovered:
+        if unreadable:  # distinct states stay distinct: missing is not unreadable
+            return fail(
+                f"refused: every sprint report at {root / shown} is UNREADABLE, not"
+                f" absent: {'; '.join(unreadable)}. Repair or delete them, then review"
+            )
+        return fail(
+            f"refused: no unrecorded sprint reports for round {round_n}; looked for"
+            f" {root / shown}. Run review"
+        )
+    seen = {
+        key: dict.fromkeys(item for _stage, report in recovered for item in report[key])
+        for key in review.REPORT_KEYS
+    }
+    why = f"the sprint review process ended before round {round_n} could be recorded"
+    if unreadable:
+        why += "; unreadable artifacts: " + "; ".join(unreadable)
+    round_ = {key: list(items) for key, items in seen.items()}
+    round_.update(incomplete=why, stages=[stage for stage, _report in recovered])
+    review.write_round(marker, state, round_)
+    print(f"round {round_n} recorded incomplete after {', '.join(round_['stages'])}")
+    return fail(f"refused: {why}") if unreadable else 0
 
 
 def cmd_start(sprint_id: str) -> int:
