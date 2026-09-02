@@ -34,6 +34,7 @@ class TestBudget:
         shipped = plugin_shipped_chars() // 4
         assert shipped <= PLUGIN_SHIPPED_CAP, (
             f"plugin-shipped profile is {shipped} tokens (cap {PLUGIN_SHIPPED_CAP});"
+            f" TEAMMATE.md and shared rules account for {shipped - components};"
             f" components account for {components}"
         )
 
@@ -45,6 +46,18 @@ class TestBudget:
         with pytest.raises(AssertionError, match=rf"cap {moved}\)") as failure:
             self.test_plugin_shipped_profile_within_cap()
         assert "always-on component metadata" in str(failure.value)
+
+    def test_profile_cap_names_the_shared_prose_that_grew(self, monkeypatch):
+        import spawn as spawn_module
+
+        moved = spawn_module.plugin_shipped_chars() // 4 - 1
+        monkeypatch.setattr(spawn_module, "PLUGIN_SHIPPED_CAP", moved)
+        with pytest.raises(AssertionError, match=rf"cap {moved}\)") as failure:
+            self.test_plugin_shipped_profile_within_cap()
+        # The static name is accurate while plugin_shipped_chars enumerates only
+        # TEAMMATE.md, the shared rules, and component metadata.
+        assert "TEAMMATE.md and shared rules" in str(failure.value)
+        assert "components account for" in str(failure.value)
 
     def test_new_frontmatter_fails_the_component_wall_first(self, tmp_path, monkeypatch):
         import spawn as spawn_module
