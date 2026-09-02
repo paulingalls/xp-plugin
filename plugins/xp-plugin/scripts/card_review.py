@@ -10,7 +10,6 @@ import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
-sys.path.insert(0, str(Path(__file__).parent / "close"))
 
 from close import fail
 from work import chdir_repo_root, data_root, plan_path
@@ -70,7 +69,9 @@ def _detach(identifier: str, kind: str, out: Path, argv: list[str]) -> tuple[int
     marker = review_marker(identifier, kind)
     marker.parent.mkdir(parents=True, exist_ok=True)
     label = kind.upper()
-    next_command = " ".join(argv[:-2]) if argv[-2:] == ["--_review", str(out)] else " ".join(argv)
+    # `python3` because the scripts ship non-executable: a next action a lead
+    # cannot paste is a next action it guesses at
+    next_command = "python3 " + " ".join(argv)
     marker.write_text(
         json.dumps(
             {
@@ -90,8 +91,10 @@ def _detach(identifier: str, kind: str, out: Path, argv: list[str]) -> tuple[int
         stdin=subprocess.DEVNULL,
         start_new_session=True,
     )
-    state = _marker_state(identifier, kind) | {"pid": child.pid}
-    marker.write_text(json.dumps(state))
+    # only if it is still there: a child that finished first has ALREADY removed
+    # it, and re-creating it reports a completed review as a dead one
+    if state := _marker_state(identifier, kind):
+        marker.write_text(json.dumps(state | {"pid": child.pid}))
     print(f"{kind} review running (pid {child.pid}); live log: {log}", file=sys.stderr)
     return child.pid, child
 
@@ -113,7 +116,10 @@ def _wait(
         except OSError:
             tail = ""
         action = state.get("next", f"run the {kind} review again")
-        return fail(f"{tail}\n(the {kind} review ended without a verdict; {action})")
+        log = state.get("log", "(no log)")
+        return fail(
+            f"{tail}\n(the {kind} review ended without a verdict; full output in {log}; {action})"
+        )
     print(out.read_text().strip() if out.is_file() else "")
     handoff = (
         "read the disposition and re-read the reviewed plan before coding"
@@ -150,18 +156,24 @@ def build_bundle(charter: str, cards: str, sprint_cap: str, debt_budget: str, ou
     return "".join(f"## {title}\n\n{body}\n\n" for title, body in sections)
 
 
-def _inputs(sprint_id: str) -> tuple[str, str, str, str]:
-    import review
-    from close import config_flat
+def _slate(sprint_id: str) -> str:
+    """The cards under review, read before AND after: plan.md lives outside the
+    repo, so tree_state cannot see a reviewer that rewrites the slate it judges."""
     from sprint_close import sprint_cards
 
     try:
-        cards = sprint_cards(plan_path().read_text(), sprint_id)
+        return sprint_cards(plan_path().read_text(), sprint_id)
     except OSError:
-        cards = ""
+        return ""
+
+
+def _inputs(sprint_id: str) -> tuple[str, str, str, str]:
+    import review
+    from close import config_flat
+
     return (
         review.charter("card-reviewer"),
-        cards,
+        _slate(sprint_id),
         config_flat("sprint_cap"),
         config_flat("debt_budget"),
     )
@@ -172,7 +184,7 @@ def _run_review(sprint_id: str, out: Path, dry_run: bool) -> int:
     from spawn import tree_state
 
     charter, cards, sprint_cap, debt_budget = _inputs(sprint_id)
-    before = tree_state(Path.cwd())
+    before = tree_state(Path.cwd()), cards
     _result, error = review.run(
         build_bundle(charter, cards, sprint_cap, debt_budget, out),
         Path.cwd(),
@@ -181,9 +193,10 @@ def _run_review(sprint_id: str, out: Path, dry_run: bool) -> int:
     )
     if dry_run:
         return fail("refused: " + error) if error else 0
-    if tree_state(Path.cwd()) != before:
+    if (tree_state(Path.cwd()), _slate(sprint_id)) != before:
         return fail(
-            "refused: the card reviewer changed the repository — restore it and review again"
+            "refused: the card reviewer changed the repository or the slate — restore it"
+            " and review again. The plan lives outside the repo, so no diff shows it"
         )
     if error:
         return fail(error)

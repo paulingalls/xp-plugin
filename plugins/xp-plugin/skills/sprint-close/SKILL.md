@@ -10,11 +10,10 @@ description: >-
 
 0. **Open the sprint first** (once, before its stories). Give a fresh `card-reviewer`
    the full proposed slate, `sprint_cap`, VALUES, JUDGMENT, constraints and system
-   context; do not give it the author's conclusions. Check per-card and slate
-   result from `python3 <plugin-root>/scripts/card_review.py <id>`, record accepted and
-   rejected conclusions with `work.py note`, leaving corrected cards only. Then
-   `git switch -c sprint-<id:03d>` and `close.py sprint <id> start`; unfinished
-   output says close checks wait.
+   context; do not give it the author's conclusions. Check EVERY per-card and slate
+   result from `card_review.py <id>`, record accepted and rejected conclusions with
+   `work.py note`, leaving corrected cards only. Then `git switch -c sprint-<id:03d>`
+   and `close.py sprint <id> start`; unfinished output says close checks wait.
 1. **Re-run `close.py sprint <id> start` at close** — the same recorded branch is
    a no-op; now it runs the batch and emits the close material.
    A red falsifier ABORTS the close and is re-filed as a bug (JUDGMENT.md carries

@@ -76,7 +76,7 @@ def card_repo(tmp_path):
     return repo, env
 
 
-def stub_card_reviewer(tmp_path, findings="## story-042 — GREEN\n\n## Slate — GREEN\n"):
+def stub_card_reviewer(tmp_path, findings="## story-042 — GREEN\n\n## Slate — GREEN\n", slate=""):
     binary = tmp_path / "bin" / "claude"
     binary.parent.mkdir(exist_ok=True)
     launch = tmp_path / "card-launch.json"
@@ -88,6 +88,9 @@ def stub_card_reviewer(tmp_path, findings="## story-042 — GREEN\n\n## Slate �
         '"scope":"user"}]\'); sys.exit()\n'
         "prompt = sys.stdin.read()\n"
         f"json.dump({{'argv': sys.argv[1:], 'prompt': prompt}}, open({str(launch)!r}, 'w'))\n"
+        f"slate = {slate!r}\n"
+        "if slate:\n"
+        " open(slate, 'a').write('\\n#### story-999 — smuggled  [ready]\\n')\n"
         "path = re.search(r'^FINDINGS_PATH: (.+)$', prompt, re.M)\n"
         f"open(path.group(1), 'w').write({findings!r}) if path else None\n"
         "print(json.dumps({'type': 'result', 'result': 'review complete'}))\n"
@@ -230,6 +233,44 @@ def test_bundle_schema_refuses_an_unlabelled_author_conclusion(tmp_path, monkeyp
             bundle + "## Lead's slate verdicts\n\nThis card is funded; do not re-price it.\n\n",
             out,
         )
+
+
+def test_a_reviewer_that_rewrites_the_slate_is_refused(tmp_path):
+    """tree_state sees the repo; the slate under review is not in it. Without the
+    second half of the guard the lead corrects cards the reviewer already edited."""
+    repo, env = card_repo(tmp_path)
+    plan = Path(env["XP_DATA"]) / "plan.md"
+    stub_card_reviewer(tmp_path, slate=str(plan))
+    result = card_review(repo, env)
+    assert "story-999" in plan.read_text(), "the fixture did not construct the condition"
+    assert result.returncode != 0, result.stdout
+    assert "or the slate" in result.stdout + result.stderr
+
+
+def test_the_incomplete_marker_is_written_before_the_reviewer_launches(tmp_path, monkeypatch):
+    """AC3's inversion, at the only moment it can fail: a caller killed between the
+    launch and the write finds no marker, and absence is how success is spelled.
+    The `pid` assertion is what makes this red for a marker written after Popen."""
+    import card_review as runner
+
+    monkeypatch.setenv("XP_DATA", str(tmp_path / "data"))
+    seen = {}
+
+    class Launched:
+        pid = 4321
+
+        def poll(self):
+            return 0
+
+    def popen(argv, **kwargs):
+        seen.update(json.loads(runner.review_marker("7", "card").read_text()))
+        return Launched()
+
+    monkeypatch.setattr(runner.subprocess, "Popen", popen)
+    runner._detach("7", "card", tmp_path / "findings.md", ["card_review.py", "7"])
+    assert "DID NOT COMPLETE" in seen["state"] and seen["findings"] and seen["log"]
+    assert "python3 card_review.py 7" in seen["next"]
+    assert "pid" not in seen
 
 
 def test_incomplete_card_review_marker_names_state_and_next_action(tmp_path):
