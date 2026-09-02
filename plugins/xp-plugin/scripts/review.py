@@ -37,7 +37,9 @@ def charter(name: str = "story-reviewer") -> str:
 
 
 def plan_review_notice(story_id: str) -> str:
-    marker = data_root() / "markers" / f"{story_id}.plan-review-incomplete"
+    from card_review import review_marker
+
+    marker = review_marker(story_id, "plan")
     if not marker.exists():
         return ""
     try:
