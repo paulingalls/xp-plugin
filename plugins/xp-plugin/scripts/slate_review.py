@@ -85,7 +85,7 @@ def run_detached(identifier: str, kind: str, out: Path, argv: list[str]) -> int:
 
 
 def _detach(identifier: str, kind: str, out: Path, argv: list[str]) -> tuple[int, subprocess.Popen]:
-    log = data_root() / "logs" / f"{identifier}-{kind}-review.log"
+    log = data_root() / "logs" / f"{identifier}-{ACTIVITY_NOUN[kind].replace(' ', '-')}.log"
     log.parent.mkdir(parents=True, exist_ok=True)
     marker = review_marker(identifier, kind)
     marker.parent.mkdir(parents=True, exist_ok=True)
@@ -141,12 +141,12 @@ def _wait(
             f"{tail}\n(the {ACTIVITY_NOUN[kind]} ended without a verdict; full output in"
             f" {log}; {action})"
         )
+    if kind == "refresh":
+        return _refresh_handoff(identifier, out)
     print(out.read_text().strip() if out.is_file() else "")
     handoff = (
         "read the disposition and re-read the reviewed plan before coding"
         if kind == "plan"
-        else "read the receipt and the rewritten card before accepting it"
-        if kind == "refresh"
         else "read every finding before accepting or rejecting its conclusion"
     )
     print(f"findings: {out.resolve()} — {handoff}", file=sys.stderr)
@@ -306,11 +306,30 @@ def _run_refresh(story_id: str, out: Path, dry_run: bool) -> int:
     if error:
         return fail(error)
     review_marker(story_id, "refresh").unlink(missing_ok=True)
-    changed = new_card != card
-    ready.write_refresh_receipt(story_id, new_card, changed)
-    handoff = "the card changed" if changed else "the card was already correct"
+    ready.write_refresh_receipt(story_id, new_card, new_card != card)
+    return 0
+
+
+def _refresh_handoff(story_id: str, out: Path) -> int:
+    """The lead's ONLY surface: _run_refresh runs detached, so its own stdout is
+    the child's log. Refusing on a missing receipt keeps `ready` from meeting the
+    one state neither side can name — a refresh that cleared its incomplete
+    marker and left nothing behind."""
+    import ready
+
     receipt = ready.refresh_receipt_path(story_id)
-    print(f"receipt: {receipt} — {handoff}; read it, then `spawn.py ready {story_id}`")
+    try:
+        changed = json.loads(receipt.read_text())["changed"]
+    except (OSError, ValueError, KeyError, TypeError):
+        return fail(
+            f"refused: the card refresh recorded no receipt at {receipt} — refresh {story_id} again"
+        )
+    state = "the card CHANGED" if changed else "the card was already correct"
+    corrections = f"; what it read: {out.resolve()}" if out.is_file() else ""
+    print(
+        f"{story_id} card refresh ran — {state}. Receipt {receipt}{corrections}."
+        f" Read it and the card, then `spawn.py ready {story_id}`"
+    )
     return 0
 
 

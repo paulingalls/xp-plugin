@@ -23,3 +23,7 @@ Edit ONLY the one card named in your bundle, at the absolute PLAN_PATH given —
 no other card in that file, no other file, no repository path. The plan holds
 every other story's card too; touch none of them. Finding nothing stale and
 making no edit is itself the correct outcome, not a failure to find something.
+
+Write to FINDINGS_PATH one line per claim you checked and corrected — the claim,
+what HEAD says instead, and how you checked it — or `nothing stale` when you
+changed nothing. The lead reads that beside your card diff.

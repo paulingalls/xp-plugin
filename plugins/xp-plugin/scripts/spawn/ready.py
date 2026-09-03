@@ -5,7 +5,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from close import fail, git, story_card, verify_commands
+from close import fail, git, leg, story_card, verify_commands
 from handoff import marker_path as handoff_marker_path
 from work import (
     card_digest,
@@ -150,8 +150,7 @@ def check_refresh(story_id: str, card: str) -> str:
         if declared not in receipt["files"]:
             return (
                 f"refused: {story_id}'s card refresh receipt does not cover {declared}"
-                f" — the card was refreshed before that Files entry was added."
-                f" {REFRESH.format(story_id)}"
+                f" — it predates the path being declared. {REFRESH.format(story_id)}"
             )
         if path_state(declared) != receipt["files"][declared]:
             return (
@@ -161,7 +160,7 @@ def check_refresh(story_id: str, card: str) -> str:
     return ""
 
 
-def mint(story_id: str, require_refresh: bool = False) -> int:
+def mint(story_id: str, require_refresh: bool) -> int:
     if not plan_path().exists():
         return fail("refused: " + missing_plan_refusal())
     try:
@@ -197,4 +196,7 @@ def main(argv: list[str], action: str = "ready") -> int:
         return fail("refused: not inside a git repository")
     if action == "amend":
         return amend(args.story_id, args.reason)
-    return mint(args.story_id, require_refresh=True)
+    # exempt BY LANE, matching close/free.py's own mint: a free card is authored
+    # and reviewed on a branch cut minutes ago and never ages in a slate, and one
+    # operation must not answer two ways depending on which leg reached it
+    return mint(args.story_id, require_refresh=not leg(args.story_id)[1])

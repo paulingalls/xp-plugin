@@ -30,7 +30,7 @@ from close_helpers import (
     marker_file,
     stub_reviewer,
 )
-from spawn_helpers import in_tree, seed_refresh_receipt, spawn, stub_claude
+from spawn_helpers import in_tree, spawn, stub_claude
 from spawn_helpers import make_repo as make_spawn_repo
 
 
@@ -71,7 +71,8 @@ def carded_free_patch(tmp_path):
     _branch, key = free_identity(g)
     add_free_card(env, key)
     commit_on_free(repo, g)
-    seed_refresh_receipt(repo, env, key)
+    # NO refresh receipt: the free lane is exempt, and a fixture that seeds one
+    # stops walking that exemption (constraint 12)
     assert spawn(repo, env, "ready", key).returncode == 0
     return repo, env, g
 
@@ -135,6 +136,9 @@ class TestFreeStart:
         assert freed.stdout.endswith("Read it, then run `/free-close` from that worktree.\n")
 
     def test_free_start_names_release_timing_without_telling_the_lead_to_commit(self, tmp_path):
+        """The printed next action is RUN, not just named (constraint 12): the
+        card refresh story-103 put in front of the mint has no free lane, so
+        `spawn.py ready <key>` refuses here unless the exemption is the lane's."""
         outputs = []
         for name, slug in (("one", "fix-one"), ("two", "fix-two")):
             repo, env, g = free_repo(tmp_path / name)
@@ -145,6 +149,10 @@ class TestFreeStart:
             assert result.stdout.index(f"spawn.py ready {key}") < result.stdout.index("review")
             assert result.stdout.index("release artifacts") < result.stdout.index("review")
             assert "Commit, then" not in result.stdout
+            add_free_card(env, key)
+            commit_on_free(repo, g)
+            minted = spawn(repo, env, "ready", key)
+            assert minted.returncode == 0, minted.stderr
         assert outputs[0] != outputs[1]
 
     def test_a_spawn_from_off_the_free_branch_names_the_checkout(self, tmp_path):

@@ -232,3 +232,74 @@ def assert_review_vocabulary(sources, design, template):
         assert token in migration, f"review-name migration no longer states {token}"
     assert template.startswith("# Roadmap\n")
     assert "plan.md                        roadmap:" in design
+
+
+SIBLING = """#### story-043 — the card refresh must not touch this one   [planned]
+Context: untouched by story-042's refresh.
+Files: src/other.py
+AC:
+- Given A, When B, Then C
+Verify: true
+"""
+
+
+def refresh_repo(tmp_path):
+    """A [planned] card with a SIBLING beside it, and no receipt: the two states
+    `ready` must tell apart are "refreshed" and "never refreshed", so a fixture
+    that inherits make_repo's mint would start past the guard under test."""
+    repo, env, g = make_repo(tmp_path, status="planned")
+    plan = Path(env["XP_DATA"]) / "plan.md"
+    plan.write_text(plan.read_text() + SIBLING)
+    return repo, env, g, plan
+
+
+def stub_card_refresher(
+    tmp_path, correction="", sibling=False, repo_file="", status="", findings="corrected 1 claim\n"
+):
+    """A fake `claude` standing in for the refresher, with one knob per motion the
+    runner must refuse: `correction` edits its OWN card (the sanctioned edit),
+    `sibling` a second card in the same plan, `repo_file` a path in the repo, and
+    `status` the card's own lifecycle bracket."""
+    binary = tmp_path / "bin" / "claude"
+    binary.parent.mkdir(exist_ok=True)
+    launch = tmp_path / "refresh-launch.json"
+    binary.write_text(
+        "#!/usr/bin/env python3\n"
+        "import json, re, sys\n"
+        "if sys.argv[1:] == ['plugin', 'list', '--json']:\n"
+        ' print(\'[{"id":"xp-plugin@xp-plugin","version":"fixture",'
+        '"scope":"user"}]\'); sys.exit()\n'
+        "prompt = sys.stdin.read()\n"
+        f"json.dump({{'argv': sys.argv[1:], 'prompt': prompt}}, open({str(launch)!r}, 'w'))\n"
+        "plan = re.search(r'^PLAN_PATH: (.+)$', prompt, re.M).group(1)\n"
+        "text = open(plan).read()\n"
+        f"correction = {correction!r}\n"
+        "if correction:\n"
+        " text = text.replace('Context: demo.', correction, 1)\n"
+        f"if {sibling!r}:\n"
+        " text = text.replace('Context: untouched', 'Context: MEDDLED', 1)\n"
+        f"if {status!r}:\n"
+        f" text = text.replace('demo story   [planned]', 'demo story   [{status}]', 1)\n"
+        "open(plan, 'w').write(text)\n"
+        f"stray = {repo_file!r}\n"
+        "open(stray, 'w').write('the refresher wrote here\\n') if stray else None\n"
+        "path = re.search(r'^FINDINGS_PATH: (.+)$', prompt, re.M)\n"
+        f"open(path.group(1), 'w').write({findings!r}) if path and {findings!r} else None\n"
+        "print(json.dumps({'type': 'result', 'result': 'refresh complete'}))\n"
+    )
+    binary.chmod(0o755)
+    return launch
+
+
+def card_refresh(repo, env, story_id="story-042"):
+    return subprocess.run(
+        [sys.executable, str(SLATE_REVIEW), story_id, "--refresh"],
+        cwd=repo,
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+
+
+def receipt_of(env, story_id="story-042"):
+    return Path(env["XP_DATA"]) / "card-refreshes" / f"{story_id}.json"
