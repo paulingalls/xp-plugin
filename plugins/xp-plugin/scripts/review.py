@@ -37,7 +37,7 @@ def charter(name: str = "story-reviewer") -> str:
 
 
 def plan_review_notice(story_id: str) -> str:
-    from card_review import review_marker
+    from slate_review import review_marker
 
     marker = review_marker(story_id, "plan")
     if not marker.exists():

@@ -7,14 +7,14 @@ uninjected digest, recovery block and sprint slice. Artifacts win.
 
 ## The loop
 
-Each step names what carries it: a skill for judgment, a script for mechanics.
-Run what it names — the line is a pointer, not the procedure.
+Every review is named for the artifact it reads:
+**slate review** → **card refresh** → **execution plan review** → **diff review**.
 
-1. **Card review** — lead uses `/create-sprint` to author, then runs
-   `/sprint-close`: a fresh reader checks full slate and `sprint_cap`; free work
+1. **Slate review** — `/create-sprint` authors, then `/sprint-close` runs
+   a fresh reader over the full slate and `sprint_cap`; free work
    slotless. The corrected slate precedes
    `spawn.py ready <story-id>`. For multi-file work, executor writes the plan and
-   runs **plan review** with `plan_review.py <story-id> <plan-file>`; the lead never
+   runs **execution plan review** with `plan_review.py <story-id> <plan-file>`; the lead never
    writes it. Human-only questions stop.
 2. **Story** — `spawn.py <story-id>` launches. Red → green → refactor, small commits. Carded story or free work
    stays in its worktree, never in the lead's checkout; practice, not a wall:

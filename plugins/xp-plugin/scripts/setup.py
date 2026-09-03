@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Scaffold a repo for the xp process: .xp/ artifacts + the git-hook wall.
 
-The execution plan is NOT among them — it is per clone, so it scaffolds into the
+The roadmap is NOT among them — it is per clone, so it scaffolds into the
 state root and three clones of one repo get three plans.
 
 Never overwrites, hooks included: pre-existing routing (core.hooksPath,

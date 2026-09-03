@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run the shipped card-reviewer charter over a sprint slate."""
+"""Run the shipped slate-reviewer charter over a sprint slate."""
 
 import argparse
 import json
@@ -20,7 +20,7 @@ LOG_TAIL = 2000
 
 
 def review_findings_path(identifier: str, kind: str) -> Path:
-    parent = data_root() / ("plans" if kind == "plan" else "card-reviews")
+    parent = data_root() / ("plans" if kind == "plan" else "slate-reviews")
     stem = identifier if kind == "plan" else f"sprint-{identifier}"
     path, round_n = parent / f"{stem}.md", 1
     while path.exists():
@@ -32,10 +32,10 @@ def review_findings_path(identifier: str, kind: str) -> Path:
 def review_marker(identifier: str, kind: str) -> Path:
     r"""One spelling for the writer and the reader. A sprint id is typed by the lead
     and read back by session_start from `### Sprint (\d+)` through int(), so `07`
-    and `7` MUST name one marker — two spellings make an incomplete card review
+    and `7` MUST name one marker — two spellings make an incomplete slate review
     indistinguishable from a completed one, and absence of the marker is the
     success signal. A story id is not numeric and survives verbatim."""
-    suffix = "plan-review-incomplete" if kind == "plan" else "card-review-incomplete"
+    suffix = "plan-review-incomplete" if kind == "plan" else "slate-review-incomplete"
     name = str(int(identifier)) if identifier.isdigit() else identifier
     return data_root() / "markers" / f"{name}.{suffix}"
 
@@ -178,7 +178,7 @@ def _inputs(sprint_id: str) -> tuple[str, str, str, str]:
     from close import config_flat
 
     return (
-        review.charter("card-reviewer"),
+        review.charter("slate-reviewer"),
         _slate(sprint_id),
         config_flat("sprint_cap"),
         config_flat("debt_budget"),
@@ -195,13 +195,13 @@ def _run_review(sprint_id: str, out: Path, dry_run: bool) -> int:
         build_bundle(charter, cards, sprint_cap, debt_budget, out),
         Path.cwd(),
         dry_run,
-        name="card-reviewer",
+        name="slate-reviewer",
     )
     if dry_run:
         return fail("refused: " + error) if error else 0
     if (tree_state(Path.cwd()), _slate(sprint_id)) != before:
         return fail(
-            "refused: the card reviewer changed the repository or the slate — restore it"
+            "refused: the slate reviewer changed the repository or the slate — restore it"
             " and review again. The plan lives outside the repo, so no diff shows it"
         )
     if error:
@@ -211,8 +211,8 @@ def _run_review(sprint_id: str, out: Path, dry_run: bool) -> int:
     except OSError:
         findings = ""
     if not findings:
-        return fail(f"refused: the card reviewer wrote no findings at {out.resolve()}")
-    review_marker(sprint_id, "card").unlink(missing_ok=True)
+        return fail(f"refused: the slate reviewer wrote no findings at {out.resolve()}")
+    review_marker(sprint_id, "slate").unlink(missing_ok=True)
     print(findings)
     return 0
 
@@ -220,17 +220,17 @@ def _run_review(sprint_id: str, out: Path, dry_run: bool) -> int:
 def cmd_review(sprint_id: str, dry_run: bool) -> int:
     charter, cards, sprint_cap, debt_budget = _inputs(sprint_id)
     if not charter:
-        return fail("refused: card-reviewer.md carries no charter — restore it")
+        return fail("refused: slate-reviewer.md carries no charter — restore it")
     if not cards:
         return fail(f"refused: no Sprint {sprint_id} slate in {plan_path()}")
     if not sprint_cap:
         return fail("refused: .xp/config.yml carries no sprint_cap")
     if not debt_budget:
         return fail("refused: .xp/config.yml carries no debt_budget")
-    out = review_findings_path(sprint_id, "card")
+    out = review_findings_path(sprint_id, "slate")
     if dry_run:
         return _run_review(sprint_id, out, True)
-    return run_detached(sprint_id, "card", out, [str(Path(__file__).resolve()), sprint_id])
+    return run_detached(sprint_id, "slate", out, [str(Path(__file__).resolve()), sprint_id])
 
 
 def main() -> int:

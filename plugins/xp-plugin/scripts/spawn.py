@@ -423,7 +423,7 @@ def main() -> int:
         )
     p = argparse.ArgumentParser(
         description=__doc__,
-        epilog="ready <story-id>: after the card review, mint the card's digest and"
+        epilog="ready <story-id>: after the slate review, mint the card's digest and"
         " flip [planned] -> [ready]. amend <story-id> --reason: record a later card edit."
         " resume <story-id>: hand a STOPPED or FINISHED tree to a fresh teammate.",
     )

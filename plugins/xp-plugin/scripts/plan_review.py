@@ -17,8 +17,8 @@ sys.path.insert(0, str(Path(__file__).parent))
 sys.path.insert(0, str(Path(__file__).parent / "spawn"))
 
 import review
-from card_review import review_findings_path, review_marker, run_detached
 from close import fail, story_card
+from slate_review import review_findings_path, review_marker, run_detached
 from spawn import _read, _read_shipped, tree_state
 from work import chdir_repo_root, plan_path
 

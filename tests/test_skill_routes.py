@@ -85,7 +85,7 @@ def _assert_skill_routes(skills_dir, process, prose_docs, nudges, refusals):
 
 
 def _assert_template_owns_card_fields(skill, template):
-    fields = ("# Execution Plan", "Context:", "Files:", "AC:", "Verify:", "Close review:")
+    fields = ("# Roadmap", "Context:", "Files:", "AC:", "Verify:", "Close review:")
     missing = [field for field in fields if field not in template]
     assert not missing, f"plan template is missing: {', '.join(missing)}"
     # `Verify:` exactly, not "at most one field": the budget is one because the skill
@@ -154,10 +154,10 @@ def test_the_template_owns_the_card_field_list():
     skill = CREATE_SPRINT.read_text()
     template = PLAN_TEMPLATE.read_text()
     _assert_template_owns_card_fields(skill, template)
-    for field in ("# Execution Plan", "Context:", "Files:", "AC:", "Verify:", "Close review:"):
+    for field in ("# Roadmap", "Context:", "Files:", "AC:", "Verify:", "Close review:"):
         with pytest.raises(AssertionError, match="plan template is missing"):
             _assert_template_owns_card_fields(skill, template.replace(field, "omitted", 1))
-    duplicate = skill + "\n# Execution Plan\nContext:\nFiles:\nAC:\nVerify:\nClose review:\n"
+    duplicate = skill + "\n# Roadmap\nContext:\nFiles:\nAC:\nVerify:\nClose review:\n"
     with pytest.raises(AssertionError, match="restates"):
         _assert_template_owns_card_fields(duplicate, template)
     with pytest.raises(AssertionError, match="restates"):

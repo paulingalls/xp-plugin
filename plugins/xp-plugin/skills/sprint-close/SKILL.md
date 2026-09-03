@@ -8,10 +8,10 @@ description: >-
 
 `close.py sprint <id>` runs the mechanics; judgment stays here.
 
-0. **Open the sprint first** (once, before its stories). Give a fresh `card-reviewer`
+0. **Open the sprint first** (once, before its stories). Give a fresh `slate-reviewer`
    the full proposed slate, `sprint_cap`, VALUES, JUDGMENT, constraints and system
    context; do not give it the author's conclusions. Check EVERY per-card and slate
-   result from `card_review.py <id>`, record accepted and rejected conclusions with
+   result from `slate_review.py <id>`, record accepted and rejected conclusions with
    `work.py note`, leaving corrected cards only. Then `git switch -c sprint-<id:03d>`
    and `close.py sprint <id> start`; unfinished output says close checks wait.
 1. **Re-run `close.py sprint <id> start` at close** — the same recorded branch is
