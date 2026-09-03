@@ -15,7 +15,7 @@ CARD = """# plan
 ### Sprint 1
 #### story-042 — demo story   [{status}]
 Context: demo.
-Files: src/thing.py
+Files: {files}
 AC:
 - Given X, When Y, Then Z
 Verify: true
@@ -25,15 +25,17 @@ Executor: {executor}
 CONFIG = """release: sprint
 roles:
   lead: claude/opus
+  planner: claude/haiku/low
   executor: claude/sonnet/medium
   reviewer: claude/opus
+  plan-reviewer: claude/opus
 
 tests:
   story: true
 """
 
 
-def make_repo(tmp_path, status="ready", executor="(default)", trunk="main"):
+def make_repo(tmp_path, status="ready", executor="(default)", trunk="main", files="src/thing.py"):
     """A repo whose HEAD is NOT the integration target, with a divergent commit:
     a spawn that omits the base argument branches off HEAD and the test reds."""
     repo = tmp_path / "repo"
@@ -59,7 +61,9 @@ def make_repo(tmp_path, status="ready", executor="(default)", trunk="main"):
     plan = tmp_path / "data" / "plan.md"
     plan.parent.mkdir(parents=True, exist_ok=True)
     plan.write_text(
-        CARD.format(status="planned" if status == "ready" else status, executor=executor)
+        CARD.format(
+            status="planned" if status == "ready" else status, executor=executor, files=files
+        )
     )
     (plan.parent / "sprint_branch").write_text(f"{trunk}\n")
     if full:
@@ -112,14 +116,32 @@ def stub_claude(
         '"scope":"user"}]\'); sys.exit()',
         "argv = sys.argv[1:]",
         "stdin = sys.stdin.read()",
-        f"json.dump({{'argv': argv, 'env': dict(os.environ), 'stdin': stdin}},"
-        f" open({str(rec)!r}, 'w'))",
+        # BEHAVIOUR follows the role AND the bundle, never XP_ROLE alone: a stub
+        # that commits while asked to be the reviewer reds as "the read-only
+        # reviewer changed HEAD" three files away, but XP_ROLE is INHERITED from
+        # whatever agent runs the suite, and a story-reviewer running it turned two
+        # tests that drive this stub bare red. RECORDING still follows the test
+        # flag: the reviewer launch must not clobber the teammate's record inside a
+        # spawn run, while the close-review leg's own tests read that same record.
+        "spawn_review = os.environ.get('XP_ROLE') == 'reviewer' and 'REPORT_PATH: ' in stdin",
+        "keep_record = not (os.environ.get('XP_SPAWN_TEST') and spawn_review)",
+        f"record = {{'argv': argv, 'env': dict(os.environ), 'stdin': stdin}}; path = {str(rec)!r}",
+        "json.dump(record, open(path, 'w')) if keep_record else None",
+        "if spawn_review:",
+        " import re",
+        " match = re.search(r'^REPORT_PATH: (.+)$', stdin, re.M); assert match",
+        " report = {'fixed': [], 'blocking': [], 'noted': []}",
+        " open(match.group(1).strip(), 'w').write(json.dumps(report))",
     ]
     if execute_escalation:
         body += [
-            "line = next(ln for ln in stdin.splitlines() if ln.startswith('  File it: `'))",
-            "command = line.split('`', 2)[1].replace(\"'...'\", \"'fixture'\")",
-            f"subprocess.run([{sys.executable!r}, *shlex.split(command)[1:]], check=True)",
+            # not as the reviewer: its bundle carries no escalation line, and the
+            # unguarded next() exits 1 as "reviewer exited 1" two files away.
+            "line = next((ln for ln in stdin.splitlines() "
+            "if ln.startswith('  File it: `')), None) if not spawn_review else None",
+            "command = line.split('`', 2)[1].replace(\"'...'\", \"'fixture'\") if line else None",
+            f"subprocess.run([{sys.executable!r}, *shlex.split(command)[1:]], check=True)"
+            " if command else None",
         ]
     if write_file:
         body.append("open('teammate-left-this-uncommitted.txt', 'w').write('oops')")
@@ -129,21 +151,27 @@ def stub_claude(
         # — except with add_all=False, which is the teammate that stages only
         # its own files and leaves a pre-existing leftover where it found it
         if add_all:
-            body.append("subprocess.run(['git', 'add', '-A'])")
-        body.append("subprocess.run(['git', 'commit', '--allow-empty', '-qm', 'teammate work'])")
+            body.append("subprocess.run(['git', 'add', '-A']) if not spawn_review else None")
+        body.append(
+            "subprocess.run(['git', 'commit', '--allow-empty', '-qm', 'teammate work'])"
+            " if not spawn_review else None"
+        )
     if break_git:
         body.append("open('.git', 'w').write('not a gitdir pointer')")
     if emit_result:
-        body.append(
-            "print(json.dumps({'type': 'result', 'num_turns': 3, 'duration_ms': 1200,"
-            " 'total_cost_usd': 0.05, 'is_error': False}))"
-        )
+        body += [
+            "event = {'type': 'result', 'num_turns': 3, 'duration_ms': 1200,"
+            " 'total_cost_usd': 0.05, 'is_error': False}",
+            "event['result'] = json.dumps(report) if spawn_review else ''",
+            "print(json.dumps(event))",
+        ]
     (bin_dir / "claude").write_text("\n".join(body) + "\n")
     (bin_dir / "claude").chmod(0o755)
     return rec
 
 
 def spawn(repo, env, *args):
+    env = dict(env, XP_SPAWN_TEST="1")
     return subprocess.run(
         [sys.executable, str(SPAWN), *args],
         cwd=repo,
@@ -271,9 +299,24 @@ def stub_codex(
         "if want is not None and posture != want:",
         "    die('launched under sandbox ' + (posture or '(none)') + ', want ' + want)",
         "stdin = sys.stdin.read()",
-        f"json.dump({{'argv': argv, 'env': dict(os.environ), 'stdin': stdin}},"
-        f" open({str(rec)!r}, 'w'))",
+        # BEHAVIOUR follows the role AND the bundle, never XP_ROLE alone: a stub
+        # that commits while asked to be the reviewer reds as "the read-only
+        # reviewer changed HEAD" three files away, but XP_ROLE is INHERITED from
+        # whatever agent runs the suite, and a story-reviewer running it turned two
+        # tests that drive this stub bare red. RECORDING still follows the test
+        # flag: the reviewer launch must not clobber the teammate's record inside a
+        # spawn run, while the close-review leg's own tests read that same record.
+        "spawn_review = os.environ.get('XP_ROLE') == 'reviewer' and 'REPORT_PATH: ' in stdin",
+        "keep_record = not (os.environ.get('XP_SPAWN_TEST') and spawn_review)",
+        f"record = {{'argv': argv, 'env': dict(os.environ), 'stdin': stdin}}; path = {str(rec)!r}",
+        "json.dump(record, open(path, 'w')) if keep_record else None",
     ]
+    if report is None:
+        body += [
+            "if spawn_review:",
+            " m = re.search(r'^REPORT_PATH: (.+)$', stdin, re.M); assert m",
+            ' open(m.group(1).strip(), \'w\').write(\'{"fixed":[],"blocking":[],"noted":[]}\')',
+        ]
     if report is not None:
         body += [
             "m = re.search(r'^REPORT_PATH: (.+)$', stdin, re.M)",
@@ -290,8 +333,11 @@ def stub_codex(
     if write_file:
         body.append("open('teammate-left-this-uncommitted.txt', 'w').write('oops')")
     if commit:
-        body.append("subprocess.run(['git', 'add', '-A'])")
-        body.append("subprocess.run(['git', 'commit', '--allow-empty', '-qm', 'teammate work'])")
+        body.append("subprocess.run(['git', 'add', '-A']) if not spawn_review else None")
+        body.append(
+            "subprocess.run(['git', 'commit', '--allow-empty', '-qm', 'teammate work'])"
+            " if not spawn_review else None"
+        )
     body += [
         "if '--json' not in argv: die('native JSON stream was not requested')",
         "print(json.dumps({'type': 'thread.started', 'thread_id': 'stub-thread'}))",
@@ -303,4 +349,19 @@ def stub_codex(
     ]
     (bin_dir / "codex").write_text("\n".join(body) + "\n")
     (bin_dir / "codex").chmod(0o755)
+    claude = bin_dir / "claude"
+    if not claude.exists():
+        claude.write_text(
+            "#!/usr/bin/env python3\n"
+            "import json, re, sys\n"
+            "if sys.argv[1:] == ['plugin', 'list', '--json']:\n"
+            ' print(\'[{"id":"xp-plugin@xp-plugin","version":"fixture",'
+            '"scope":"user"}]\'); sys.exit()\n'
+            "stdin = sys.stdin.read(); "
+            "p = re.search(r'^REPORT_PATH: (.+)$', stdin, re.M); assert p\n"
+            "report = {'fixed': [], 'blocking': [], 'noted': []}\n"
+            "open(p.group(1).strip(), 'w').write(json.dumps(report))\n"
+            "print(json.dumps({'type':'result','result':json.dumps(report)}))\n"
+        )
+        claude.chmod(0o755)
     return rec

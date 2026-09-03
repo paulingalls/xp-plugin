@@ -44,11 +44,18 @@ def stub_escalating(
     rec = tmp_path / "launch.json"
     body = [
         "#!/usr/bin/env python3",
-        "import json, os, subprocess, sys, time",
+        "import json, os, re, subprocess, sys, time",
         "if sys.argv[1:] == ['plugin', 'list', '--json']: print("
         '\'[{"id":"xp-plugin@xp-plugin","version":"fixture",'
         '"scope":"user"}]\'); sys.exit()',
         "stdin = sys.stdin.read()",
+        "spawn_review = (os.environ.get('XP_SPAWN_TEST') and "
+        "os.environ.get('XP_ROLE') == 'reviewer')",
+        "if spawn_review:",
+        "    match = re.search(r'^REPORT_PATH: (.+)$', stdin, re.M); assert match",
+        "    report = {'fixed': [], 'blocking': [], 'noted': []}",
+        "    open(match.group(1).strip(), 'w').write(json.dumps(report))",
+        "    print(json.dumps({'type': 'result', 'result': json.dumps(report)})); sys.exit()",
         f"json.dump({{'env': dict(os.environ), 'stdin': stdin}}, open({str(rec)!r}, 'w'))",
         f"if {write_file!r} or {commit!r}:",
         "    open('half-done.py', 'w').write('# WIP\\n')",

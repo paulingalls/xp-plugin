@@ -146,8 +146,8 @@ class TestCodexExecutor:
         expected = {
             "workspace-write": (
                 "codex sandbox: workspace-write — no outbound network — DNS, loopback,"
-                " docker and a nested harness are all denied, so TEAMMATE.md's mandatory"
-                " plan_review.py cannot reach an API from a teammate's shell;"
+                " docker and a nested harness are all denied, so a foreground plan reviewer"
+                " cannot reach an API;"
                 " danger-full-access lifts them"
             ),
             "danger-full-access": (

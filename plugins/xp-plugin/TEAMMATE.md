@@ -3,12 +3,12 @@
 One story. Card is scope; Files maps it: extend and report deviations.
 Undeclared `.xp/` path stops.
 
-- **Multi-file change?** The lead owns **slate review**. You write the
-  implementation plan; the lead never does.
+- **Multi-file change?** The lead owns **slate review**; the lead never writes
+  the implementation plan. Spawn runs it and its **execution plan review** as
+  stages before you, so start no review yourself — nothing you launch outlives
+  your turn. Re-read the reviewed plan file: reasoned edits land there, and
+  human-only questions stop the run before it reaches you.
   Persistent PLAN_PATH: {PLAN_PATH}
-  **Execution plan review**: `python3 {PLUGIN_ROOT}/scripts/plan_review.py <story-id> {PLAN_PATH}`.
-  It BLOCKS: stay with that run; never launch another. Re-read its disposition
-  and plan file: reasoned edits land there; human-only questions stop.
 - **Escalate, don't guess.** Blocked/card wrong? Stop. If a mandatory step fails
   twice for infrastructure reasons, stop rather than proceed.
   File it: `python3 {PLUGIN_ROOT}/scripts/work.py note '...'`.

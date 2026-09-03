@@ -65,11 +65,21 @@ def stub_takeover(tmp_path, adopted=(), nested=False):
     body = [
         "#!/usr/bin/env python3",
         "import json, os, subprocess, sys",
+        "REPORT = json.dumps({'fixed': [], 'blocking': [], 'noted': []})",
         "if sys.argv[1:] == ['plugin', 'list', '--json']: print("
         '\'[{"id":"xp-plugin@xp-plugin","version":"fixture",'
         '"scope":"user"}]\'); sys.exit()',
+        "import re",
         "stdin = sys.stdin.read()",
-        f"json.dump({{'stdin': stdin}}, open({str(rec)!r}, 'w'))",
+        # spawn now runs the diff review as its own stage, with the SAME binary:
+        # a stub that commits and answers with a bare result event fails the
+        # reviewer contract, and the run dies before the assertion under test.
+        "spawn_review = (os.environ.get('XP_SPAWN_TEST') and "
+        "os.environ.get('XP_ROLE') == 'reviewer')",
+        f"json.dump({{'stdin': stdin}}, open({str(rec)!r}, 'w')) if not spawn_review else None",
+        "if spawn_review:",
+        " m = re.search(r'^REPORT_PATH: (.+)$', stdin, re.M); assert m",
+        " open(m.group(1).strip(), 'w').write(REPORT)",
         f"if os.environ.get('NESTED_RESUME'): open({str(second_launch)!r}, 'w').write('launched')",
     ]
     if nested:
@@ -83,12 +93,19 @@ def stub_takeover(tmp_path, adopted=(), nested=False):
         ]
     if adopted:
         body += [
-            f"subprocess.run(['git', 'add', {', '.join(repr(p) for p in adopted)}], check=True)",
-            "subprocess.run(['git', 'commit', '-qm', 'adopt predecessor work'], check=True)",
+            "if not spawn_review:",
+            f" subprocess.run(['git', 'add', {', '.join(repr(p) for p in adopted)}], check=True)",
+            " subprocess.run(['git', 'commit', '-qm', 'adopt predecessor work'], check=True)",
         ]
     else:
-        body.append("subprocess.run(['git', 'commit', '--allow-empty', '-qm', 'successor work'])")
-    body.append("print(json.dumps({'type': 'result', 'subtype': 'success'}))")
+        body.append(
+            "subprocess.run(['git', 'commit', '--allow-empty', '-qm', 'successor work'])"
+            " if not spawn_review else None"
+        )
+    body.append(
+        "print(json.dumps({'type': 'result', 'subtype': 'success',"
+        " 'result': REPORT if spawn_review else ''}))"
+    )
     path = bin_dir / "claude"
     path.write_text("\n".join(body) + "\n")
     path.chmod(0o755)
