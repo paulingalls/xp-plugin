@@ -68,3 +68,26 @@ def test_a_legacy_round_is_migrated_before_new_coverage_overwrites_it(tmp_path):
         ("round-1-start", "round-1-end"),
         ("round-2-start", "round-2-end"),
     ]
+
+
+def test_a_round_that_recorded_no_coverage_still_holds_its_ROUND_NUMBER(tmp_path):
+    """The sprint-17 blocking finding, one round further on: land was fixed to name
+    each round's own diff, but covered_ranges DROPS an uncovered round instead of
+    holding its place, so every later round shifts down one and is disclosed under an
+    earlier round's diff. `sprint_close.stop` and `cmd_salvage` both write exactly such
+    a round — a review killed mid-flight — so this needs no legacy state to reach."""
+    import review
+
+    killed = {"fixed": [], "blocking": [], "noted": [], "incomplete": "host killed it"}
+    done = {"reviewed_head": "r2-start", "shown_sha": "r2-end"}
+    state = {"rounds": [killed, done], "reviewed_head": "r2-start", "shown_sha": "r2-end"}
+    assert review.covered_ranges(state, "head") == [("head", "head"), ("r2-start", "r2-end")]
+
+    # pre-0.18 state: no round kept coverage and only the LAST one's survives at top
+    # level, so it must land at index 2 — never at index 0 under round 1's diff name
+    legacy = {"rounds": [{}, {}, {}], "reviewed_head": "r3-start", "shown_sha": "r3-end"}
+    assert review.covered_ranges(legacy, "head") == [
+        ("head", "head"),
+        ("head", "head"),
+        ("r3-start", "r3-end"),
+    ]

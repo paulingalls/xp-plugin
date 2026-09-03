@@ -357,28 +357,28 @@ def reviewer_range(start: str, end: str) -> str:
 
 
 def covered_ranges(state: dict, head: str) -> list[tuple[str, str]]:
+    """One range PER ROUND, in round order: disclose numbers them by position and names
+    each round's own diff. A round that recorded no coverage — killed mid-round, or
+    pre-0.18 — holds its PLACE; only the LAST of them left its coverage at top level."""
     rounds = state.get("rounds", [])
     ranges = [
-        (r["reviewed_head"], r["shown_sha"])
+        (r["reviewed_head"], r.get("shown_sha", head)) if "reviewed_head" in r else (head, head)
         for r in rounds
-        if "reviewed_head" in r and "shown_sha" in r
     ]
     legacy = (state.get("reviewed_head", head), state.get("shown_sha", head))
-    if any("reviewed_head" not in r for r in rounds) and legacy not in ranges:
-        ranges.insert(0, legacy)
+    if (head, head) in ranges and legacy not in ranges:
+        ranges[max(i for i, c in enumerate(ranges) if c == (head, head))] = legacy
     return ranges or [legacy]
 
 
-def disclose(state: dict, head: str, diff: Path | None = None) -> None:
+def disclose(state: dict, head: str, diff_for=None) -> None:
     """Show every reviewed range plus work committed after the last one."""
-    shown = state.get("shown_sha", head)
     for round_n, (reviewed, round_shown) in enumerate(covered_ranges(state, head), 1):
         if work := reviewer_range(reviewed, round_shown):
-            print("the reviewer changed this tree — you are merging its work:")
-            print(work, end="")
-            if diff:
-                print(f"full diff: {diff(round_n) if callable(diff) else diff}")
-    if late := reviewer_range(shown, head):
+            print(f"the reviewer changed this tree — you are merging its work:\n{work}", end="")
+            if diff_for:
+                print(f"full diff: {diff_for(round_n)}")
+    if late := reviewer_range(state.get("shown_sha", head), head):
         print("you committed after the review you were shown — merging unreviewed:")
         print(late, end="")
 

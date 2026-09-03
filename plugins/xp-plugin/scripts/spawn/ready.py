@@ -102,9 +102,9 @@ def amend(story_id: str, reason: str) -> int:
 
 def refresh_receipt_path(story_id: str) -> Path:
     """The card refresh's story-scoped proof, outside the repository."""
-    if not story_id or Path(story_id).name != story_id or story_id in (".", ".."):
-        raise ValueError(f"refused: {story_id!r} is not a safe story id")
-    return data_root() / "card-refreshes" / f"{story_id}.json"
+    from slate_review import safe_story_id  # ONE traversal rule; a second copy only drifts
+
+    return data_root() / "card-refreshes" / f"{safe_story_id(story_id)}.json"
 
 
 def path_state(path: str) -> str | None:

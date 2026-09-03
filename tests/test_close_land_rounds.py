@@ -272,3 +272,26 @@ class TestLandNamesEachRoundsOwnDiff:
         assert "round-1.diff" in out[first : out.index("REVIEWER-ROUND-2")], (
             "round 1's commits were disclosed under another round's diff:\n" + out
         )
+
+    def test_a_killed_first_round_does_not_shift_the_second_onto_its_diff(self, tmp_path):
+        """The same defect reached through the NUMBERING rather than the path. A round
+        killed mid-review records no coverage (`sprint_close.stop`, `cmd_salvage`), and
+        dropping it renumbers round 2 as round 1 — so land names round-1.diff over
+        round 2's commits, a file holding a different diff or none at all."""
+        repo, env, g = make_repo(tmp_path)
+        stub_reviewer(tmp_path)
+        assert close(repo, env, "review").returncode == 0
+        state = json.loads(marker_file(tmp_path).read_text())
+        start = g("rev-parse", "HEAD").stdout.strip()
+        (repo / "round-2.py").write_text("ROUND_2 = True\n")
+        g("add", "-A")
+        g("commit", "-qm", "REVIEWER-ROUND-2")
+        shown = g("rev-parse", "HEAD").stdout.strip()
+        killed = {**CLEAN, "incomplete": "the host killed round 1"}
+        done = {**CLEAN, "reviewed_head": start, "shown_sha": shown}
+        marker_file(tmp_path).write_text(json.dumps({**state, "rounds": [killed, done], **done}))
+        r = close(repo, env, "land")
+        assert "REVIEWER-ROUND-2" in r.stdout, (r.returncode, r.stdout[-1500:], r.stderr[-1500:])
+        assert "round-2.diff" in r.stdout and "round-1.diff" not in r.stdout, (
+            "round 2 was disclosed under the killed round's diff name:\n" + r.stdout
+        )
