@@ -364,7 +364,8 @@ and `xp-setup` joins the tuple it was absent from — the one skill with no cap 
 one whose defect was a stale claim rather than an amputation. Raised, each priced against
 its measured fix and not guessed: story-close 380 -> 410, sprint-close 290 -> 315,
 free-close 85 -> 115, create-sprint 190 -> 205, xp-setup none -> 340, PROCESS.md
-1,600 -> 1,775, PLUGIN_SHIPPED_CAP 1,500 -> 1,930 (the port into templates/constraints.md
+1,600 -> 1,775 -> 1,815 (the late timeout correction measures 1,629/1,815),
+PLUGIN_SHIPPED_CAP 1,500 -> 1,930 (the port into templates/constraints.md
 alone costs 209 tokens against 58 free).
 CONSTRAINT 1 GAINS ITS EXEMPTION and it is what funds the rest: a CORRECTION creates no new
 obligation for the reader, so it displaces nothing. Without it, three separate squeezes had
