@@ -75,6 +75,7 @@ class TestSpawnStages:
         }
         close = json.loads((tmp_path / "data/markers/story-042.close.json").read_text())
         assert close["shown_sha"] == close["reviewed_head"]
+        assert "planner=ran · plan-reviewer=ran · executor=ran · reviewer=ran" in result.stdout
 
     def test_the_plan_review_is_spawns_own_and_the_executor_launches_none(self, tmp_path):
         """AC2, and the ONLY thing that separates this card from the defect it names:
@@ -117,6 +118,7 @@ class TestSpawnStages:
             "executor": "ran",
             "reviewer": "ran",
         }
+        assert "planner=skipped" in result.stdout, result.stdout
 
     def test_a_blocking_plan_stops_before_executor(self, tmp_path):
         repo, env, _g = make_repo(tmp_path, files="src/thing.py, src/other.py")
@@ -124,6 +126,37 @@ class TestSpawnStages:
         result = spawn(repo, env, "story-042")
         assert result.returncode != 0
         assert event_roles(events) == ["planner", "plan-reviewer"]
+        # A human-only question is the plan review WORKING. Reporting it as a death
+        # is this card's own context — "a correct refusal naming the wrong cause" —
+        # and it is what sends the lead to the harness log instead of the question.
+        assert "DIED" not in result.stderr, result.stderr
+        assert "blocked for the human: choose" in result.stderr, result.stderr
+        # planner=ran and no plan-reviewer entry: the stage that stopped is the one
+        # the line omits, and the refusal above names it.
+        assert "stages: planner=ran\n" in result.stdout, result.stdout
+
+    def test_a_stop_before_any_stage_says_none_reached_rather_than_nothing(self, tmp_path):
+        """Constraint 15 the other way: no stages line at all is how "the executor
+        never got a reviewed plan" reads exactly like "the run was fine"."""
+        repo, env, _g = make_repo(tmp_path, files="src/thing.py, src/other.py")
+        binary = tmp_path / "bin" / "claude"
+        stub_stages(tmp_path)
+        binary.write_text(binary.read_text().replace("if role == 'planner':", "if False:"))
+        result = spawn(repo, env, "story-042")
+        assert result.returncode != 0
+        assert "stages: none reached" in result.stdout, result.stdout
+
+    def test_resume_refuses_a_marker_whose_stage_state_is_not_ran_or_skipped(self, tmp_path):
+        repo, env, _g = make_repo(tmp_path, files="src/thing.py, src/other.py")
+        stub_stages(tmp_path, blocking_plan=True)
+        assert spawn(repo, env, "story-042").returncode != 0
+        marker = tmp_path / "data/plans/story-042.handoff.json"
+        state = json.loads(marker.read_text())
+        state["stages"]["planner"] = "half"
+        marker.write_text(json.dumps(state))
+        result = spawn(repo, env, "resume", "story-042")
+        assert result.returncode == 2, result.stderr
+        assert "invalid stage state" in result.stderr, result.stderr
 
     def test_blocking_diff_review_is_a_stopped_not_finished_handback(self, tmp_path):
         repo, env, _g = make_repo(tmp_path)

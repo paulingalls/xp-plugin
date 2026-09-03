@@ -10,13 +10,16 @@ def run_planner(story_id: str, card: str, tree: Path, handoff: str) -> tuple[int
     draft = draft_path(data_root(), story_id)
     before = draft.read_bytes() if draft.is_file() else None
     sections = teammate_sections(card, story_id, handoff, PLUGIN_ROOT)
-    instruction = f"PLAN_PATH: {draft}\nWrite the plan, change no repo file, exit."
+    # Says which half of the brief above to ignore: that brief is the EXECUTOR's and
+    # tells its reader to write code and commit, which the refusal below then reds on.
+    instruction = f"PLAN_PATH: {draft}\nWrite the plan there and exit. This stage runs"
+    instruction += " BEFORE the executor: change no repo file, commit nothing, run nothing."
     sections.append(("Your stage", instruction))
     head = tree_state(tree)
     _result, error = review.run(build_prompt(sections), tree, name="planner", card=card)
     after = draft.read_bytes() if draft.is_file() else None
     if error:
-        return 2, error
+        return 2, f"the planner stage stopped: {error}"
     if tree_state(tree) != head:
         return 2, "the planner changed the repository; it owns only the external plan"
     if not after or after == before or not after.strip():

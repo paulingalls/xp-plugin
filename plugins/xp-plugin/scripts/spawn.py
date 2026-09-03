@@ -184,6 +184,8 @@ def run_agent(
 ) -> subprocess.CompletedProcess:
     """Run one role with its prompt off argv and the reviewer silence bound on."""
     env = os.environ | {"XP_ROLE": role, "XP_HARNESS": harness}
+    # Never the executor or planner: cmd_spawn's call sites have no except, so a
+    # bound there kills a whole story and abandons its worktree (rejected design).
     timeout = None
     if role.endswith("reviewer"):
         timeout = float(os.environ.get("XP_AGENT_TIMEOUT", 3600))
@@ -364,7 +366,13 @@ def cmd_spawn(story_id: str, override: str, dry_run: bool, resuming: bool = Fals
     handed_over = tree_state(tree)
     before = {eid for eid, _ in entries(data_root())}
 
+    def stage_line() -> str:
+        ran = (handoff_state(data_root(), story_id) or {}).get("stages", {})
+        return "stages: " + (" · ".join(f"{n}={r}" for n, r in ran.items()) or "none reached")
+
     def stop(why: str, code: int) -> int:
+        # EVERY exit: on a stop it is what says whether a plan was reviewed at all.
+        print(stage_line())
         result = report_handoff(data_root(), story_id, before, why, code)
         held.close()
         return result
@@ -373,8 +381,10 @@ def cmd_spawn(story_id: str, override: str, dry_run: bool, resuming: bool = Fals
     prior_stages = (handoff_state(data_root(), story_id) or {}).get("stages", {})
     if multifile and prior_stages.get("planner") != "ran":
         rc, why = stages.run_planner(story_id, card, tree, handoff)
+        # 0, because stop's code is the HARNESS rc: a stage that refused or blocked
+        # for the human did not DIE, and saying so sends the lead to the wrong log.
         if rc:
-            return stop(why, rc)
+            return stop(why, 0)
         mark_stage(data_root(), story_id, "planner", "ran")
     elif not multifile:
         mark_stage(data_root(), story_id, "planner", "skipped")
@@ -385,7 +395,7 @@ def cmd_spawn(story_id: str, override: str, dry_run: bool, resuming: bool = Fals
             rc = plan_review.run_foreground(story_id, draft_path(data_root(), story_id))
         if rc:
             why = "execution plan review blocked or failed; read its disposition before resuming"
-            return stop(why, rc)
+            return stop(why, 0)
         mark_stage(data_root(), story_id, "plan-reviewer", "ran")
     elif not multifile:
         mark_stage(data_root(), story_id, "plan-reviewer", "skipped")
@@ -408,8 +418,7 @@ def cmd_spawn(story_id: str, override: str, dry_run: bool, resuming: bool = Fals
         return stop(why, 0)
     free_slug = leg(story_id)[1]
     instruction = "run `/free-close` from that worktree" if free_slug else "run `/story-close`"
-    stage_results = (handoff_state(data_root(), story_id) or {}).get("stages", {})
-    print("stages: " + " · ".join(f"{name}={result}" for name, result in stage_results.items()))
+    print(stage_line())
     print(
         f"{story_id} produced commit {tree_state(tree)[0]} at {tree}. Read it, then {instruction}."
     )
