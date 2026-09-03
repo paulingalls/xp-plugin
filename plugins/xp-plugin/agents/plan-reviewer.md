@@ -39,7 +39,7 @@ ones in the disposition. Edit nothing else.
    preserved contracts, environment). Report only ones whose failure means rework.
    Zero is a valid count.
 
-Sprint capacity belongs to the lead's card review: an implementation plan cannot
+Sprint capacity belongs to the lead's slate review: an execution plan cannot
 change the slate, so neither inspect nor block on its capacity.
 
 ## Close-review depth

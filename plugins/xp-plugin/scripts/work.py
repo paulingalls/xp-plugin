@@ -44,7 +44,7 @@ def chdir_repo_root() -> bool:
 
 
 def plan_path() -> Path:
-    """The clone's execution plan: shared by its every worktree, by nothing outside."""
+    """The clone's roadmap: shared by its every worktree, by nothing outside."""
     return data_root() / "plan.md"
 
 

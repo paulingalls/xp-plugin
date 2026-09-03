@@ -18,6 +18,16 @@ Before writing:
   chain commands; every other shell metacharacter is refused, as are `cd` and an
   argv[0] absent from PATH.
 
-When the slate is complete, run `/sprint-close` for independent slate review and
-correction; it owns the reviewer mechanics. Do not run
-`spawn.py ready <story-id>` for any card until that review is complete.
+## Open
+
+When the slate is complete, give a fresh `slate-reviewer` the full proposed slate,
+`sprint_cap`, VALUES, JUDGMENT, constraints and system context; do not give it the
+author's conclusions. Check EVERY per-card and slate result from
+`slate_review.py <id>`, record accepted and rejected conclusions with `work.py note`,
+leaving corrected cards only. Then `git switch -c sprint-<id:03d>` and
+`close.py sprint <id> start`; unfinished output says close checks wait.
+
+## Done
+
+Do not run `spawn.py ready <story-id>` for any card until the review and sprint
+open are complete.

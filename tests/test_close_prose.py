@@ -93,15 +93,15 @@ class TestShippedProseMatchesTheMechanism:
         (bug 898ad9e1, note c3d8e2a7): one word covered two artifacts and no
         lead-facing sentence said whose each was. Pinned in both copies rather
         than read-and-judged because TEAMMATE.md shares an enforced profile cap
-        (`spawn.PLUGIN_SHIPPED_CAP`, 1363/1365 today) — the next component that
+        (`spawn.PLUGIN_SHIPPED_CAP`, 1442/1500 today) — the next component that
         lands forces a cut there, and the newest sentence is the one that looks
         least load-bearing. "sprint review" is excluded by name: `close.py sprint
         <id> review` already holds that phrase.
         """
         for path in (PLUGIN / "PROCESS.md", PLUGIN / "TEAMMATE.md"):
             text = prose(path).lower()
-            assert "card review" in text, f"{path.name}: the lead's review is unnamed"
-            assert "plan review" in text, f"{path.name}: the executor's review is unnamed"
+            assert "slate review" in text, f"{path.name}: the lead's review is unnamed"
+            assert "execution plan review" in text, f"{path.name}: executor review unnamed"
             assert "the lead never" in text, f"{path.name}: the plan's owner is unnamed"
             assert "sprint review" not in text, f"{path.name}: close.py owns that phrase"
 
@@ -228,9 +228,9 @@ class TestShippedProseMatchesTheMechanism:
         """
         for skill, cap in (
             ("story-close", 330),
-            ("sprint-close", 350),
+            ("sprint-close", 290),
             ("free-close", 85),
-            ("create-sprint", 130),
+            ("create-sprint", 190),
         ):
             body = prose(PLUGIN / "skills" / skill / "SKILL.md")
             assert len(body.split()) <= cap, f"{skill} regrew to {len(body.split())} words"
@@ -283,7 +283,7 @@ class TestShippedProseMatchesTheMechanism:
     def test_the_plan_reviewer_charter_has_five_checks(self):
         """A structural count, not a token grep — it certifies the count only,
         not that the duty is followed. The sprint-cap clause is NOT one of the
-        five: capacity is the lead's card review, and the charter says so in its
+        five: capacity is the lead's slate review, and the charter says so in its
         own paragraph (story-052). Restoring it here would keep this green."""
         charter = (PLUGIN / "agents" / "plan-reviewer.md").read_text()
         section = charter.split("## Checks, in order of payoff")[1]

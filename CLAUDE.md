@@ -13,10 +13,10 @@ instead.
 
 ## The process, enforced
 
-- **Card review**: at sprint open a fresh `card-reviewer` reads the whole slate and
+- **Slate review**: at sprint open a fresh `slate-reviewer` reads the whole slate and
   the lead judges every result;
   `spawn.py ready <story-id>` is the lead's per-card commitment, not a review.
-  **Plan review**: only the executor writes the implementation plan and runs
+  **Execution plan review**: only the executor writes the implementation plan and runs
   `scripts/plan_review.py <story-id> <plan-file>`; the lead never writes one. The
   executor re-reads its edits before code. Red test first; for config/docs commits,
   never fake a red — say so in the commit body.

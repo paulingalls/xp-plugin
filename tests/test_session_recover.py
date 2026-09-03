@@ -61,13 +61,13 @@ class TestTheNextLoopAction:
 
         assert next_lines(out) == [expected]
 
-    def test_a_failed_card_review_precedes_the_planned_card_boundary(self, tmp_path):
+    def test_a_failed_slate_review_precedes_the_planned_card_boundary(self, tmp_path):
         repo, _g = xp_repo(tmp_path)
         root = tmp_path / "xp"
         (root / "plan.md").write_text(
             "# plan\n### Sprint 1\n#### story-042 — demo   [planned]\nVerify: true\n"
         )
-        marker = root / "markers" / "1.card-review-incomplete"
+        marker = root / "markers" / "1.slate-review-incomplete"
         marker.parent.mkdir()
         marker.write_text("{}")
 
@@ -75,23 +75,23 @@ class TestTheNextLoopAction:
         marker.unlink()
         unreviewed = next_lines(run_hook_as(repo, tmp_path, role="lead").stdout)
 
-        assert incomplete == [
-            "NEXT: Sprint 1 card review did not complete — run `card_review.py 1`"
-        ]
+        assert incomplete == ["NEXT: Sprint 1 slate review incomplete — run `slate_review.py 1`"]
         assert unreviewed == ["NEXT: story-042 is [planned] — run `spawn.py ready story-042`"]
 
-    def test_a_padded_sprint_names_a_card_review_command_that_resolves(self, tmp_path, monkeypatch):
+    def test_a_padded_sprint_names_a_slate_review_command_that_resolves(
+        self, tmp_path, monkeypatch
+    ):
         """The seam story-091's runner and story-084's hook share, one layer past
         round 2's marker fix, and BOTH halves are asserted here because either
         alone greens against a spelling the other does not share. The marker is
         normalised through int() so a killed review is found at all; the slate is
         NOT — close/milestone.py matches `### Sprint <id>` literally, so `07` and
-        `7` are different sprints to card_review.py. Measured: a runner that
+        `7` are different sprints to slate_review.py. Measured: a runner that
         normalised to `007` agreed with itself and vanished from the hook, and a
-        hook that printed its int named `card_review.py 7` against a `Sprint 07`
+        hook that printed its int named `slate_review.py 7` against a `Sprint 07`
         plan — a NEXT line whose one job is to be runnable, refusing `no Sprint 7
         slate`."""
-        import card_review
+        import slate_review
         from sprint_close import sprint_cards
 
         repo, _g = xp_repo(tmp_path)
@@ -99,15 +99,15 @@ class TestTheNextLoopAction:
         plan = "# plan\n### Sprint 07\n#### story-042 — demo   [planned]\nVerify: true\n"
         (root / "plan.md").write_text(plan)
         monkeypatch.setenv("XP_DATA", str(root))
-        marker = card_review.review_marker("07", "card")
+        marker = slate_review.review_marker("07", "slate")
         marker.parent.mkdir(parents=True, exist_ok=True)
         marker.write_text("{}")
 
         named = next_lines(run_hook_as(repo, tmp_path, role="lead").stdout)
 
-        assert named == ["NEXT: Sprint 07 card review did not complete — run `card_review.py 07`"]
-        spelling = named[0].rsplit("card_review.py ", 1)[1].rstrip("`")
-        assert sprint_cards(plan, spelling), f"`card_review.py {spelling}` names no slate"
+        assert named == ["NEXT: Sprint 07 slate review incomplete — run `slate_review.py 07`"]
+        spelling = named[0].rsplit("slate_review.py ", 1)[1].rstrip("`")
+        assert sprint_cards(plan, spelling), f"`slate_review.py {spelling}` names no slate"
 
     def test_a_plan_story_id_cannot_append_a_shell_command(self, tmp_path):
         repo, _g = xp_repo(tmp_path)
