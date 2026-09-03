@@ -162,7 +162,7 @@ def marker_digest(path: Path) -> str:
 
 
 def write_round(marker: Path, state: dict, round_: dict, **coverage: str) -> None:
-    state.setdefault("rounds", []).append(round_)
+    state.setdefault("rounds", []).append(round_ | coverage)
     state.update(coverage)
     marker.write_text(json.dumps(state))
 
@@ -364,11 +364,15 @@ def disclose(state: dict, head: str, diff: Path | None = None) -> None:
     """Both ranges the lead assents to by RUNNING land. Printing only one of them
     puts the lead's own commits under the reviewer's name."""
     shown = state.get("shown_sha", head)
-    if work := reviewer_range(state.get("reviewed_head", head), shown):
-        print("the reviewer changed this tree — you are merging its work:")
-        print(work, end="")
-        if diff:
-            print(f"full diff: {diff}")
+    # EVERY round that recorded its own coverage: round 2's top-level coverage
+    # overwrites round 1's, so a lead used to assent to a merge hiding the first
+    # reviewer's work. Older markers fall back to the top level and read as before.
+    for covered in [r for r in state.get("rounds", []) if "reviewed_head" in r] or [state]:
+        if work := reviewer_range(covered.get("reviewed_head", head), covered["shown_sha"]):
+            print("the reviewer changed this tree — you are merging its work:")
+            print(work, end="")
+            if diff:
+                print(f"full diff: {diff}")
     if late := reviewer_range(shown, head):
         print("you committed after the review you were shown — merging unreviewed:")
         print(late, end="")
