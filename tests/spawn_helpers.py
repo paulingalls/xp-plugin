@@ -345,16 +345,19 @@ def stub_codex(
     ]
     (bin_dir / "codex").write_text("\n".join(body) + "\n")
     (bin_dir / "codex").chmod(0o755)
-    (bin_dir / "claude").write_text(
-        "#!/usr/bin/env python3\n"
-        "import json, re, sys\n"
-        "if sys.argv[1:] == ['plugin', 'list', '--json']:\n"
-        ' print(\'[{"id":"xp-plugin@xp-plugin","version":"fixture",'
-        '"scope":"user"}]\'); sys.exit()\n'
-        "stdin = sys.stdin.read(); p = re.search(r'^REPORT_PATH: (.+)$', stdin, re.M); assert p\n"
-        "report = {'fixed': [], 'blocking': [], 'noted': []}\n"
-        "open(p.group(1).strip(), 'w').write(json.dumps(report))\n"
-        "print(json.dumps({'type':'result','result':json.dumps(report)}))\n"
-    )
-    (bin_dir / "claude").chmod(0o755)
+    claude = bin_dir / "claude"
+    if not claude.exists():
+        claude.write_text(
+            "#!/usr/bin/env python3\n"
+            "import json, re, sys\n"
+            "if sys.argv[1:] == ['plugin', 'list', '--json']:\n"
+            ' print(\'[{"id":"xp-plugin@xp-plugin","version":"fixture",'
+            '"scope":"user"}]\'); sys.exit()\n'
+            "stdin = sys.stdin.read(); "
+            "p = re.search(r'^REPORT_PATH: (.+)$', stdin, re.M); assert p\n"
+            "report = {'fixed': [], 'blocking': [], 'noted': []}\n"
+            "open(p.group(1).strip(), 'w').write(json.dumps(report))\n"
+            "print(json.dumps({'type':'result','result':json.dumps(report)}))\n"
+        )
+        claude.chmod(0o755)
     return rec
