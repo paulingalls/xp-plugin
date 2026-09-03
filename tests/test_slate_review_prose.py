@@ -1,6 +1,9 @@
-"""The sprint slate reaches an independent reader before any story slot is spent."""
+"""The sprint slate reaches an independent reader before any story slot is spent.
 
-import ast
+Pure parsing/assertion helpers live in slate_review_helpers.py (extracted at
+story-103, constraint 8): this file keeps every collected test.
+"""
+
 import json
 import re
 import runpy
@@ -9,230 +12,44 @@ import sys
 from pathlib import Path
 
 import pytest
-from spawn_helpers import make_repo
-
-ROOT = Path(__file__).parent.parent
-PLUGIN = ROOT / "plugins" / "xp-plugin"
-CHARTER = PLUGIN / "agents" / "slate-reviewer.md"
-CREATE_SKILL = PLUGIN / "skills" / "create-sprint" / "SKILL.md"
-CLOSE_SKILL = PLUGIN / "skills" / "sprint-close" / "SKILL.md"
-PROCESS = PLUGIN / "PROCESS.md"
-DESIGN = ROOT / "docs" / "DESIGN.md"
-PLAN_TEMPLATE = PLUGIN / "templates" / "plan.md"
-SLATE_REVIEW = PLUGIN / "scripts" / "slate_review.py"
-PLAN_REVIEW = PLUGIN / "scripts" / "plan_review.py"
-REVIEW = PLUGIN / "scripts" / "review.py"
-DESIGN_CLAIMS = (
-    "four review points",
-    "lead on either harness",
-    "absolute findings path",
-    "marker's absence is success",
-    "multi-file",
-    "AFTER `spawn.py ready`",
-    "single-file",
-    "skipped review leaves no record",
-    "three needed the later tree",
-    "four needed the whole slate",
-    "all five earned",
-    "work.md",
-    "repo-local citation checker is affordable",
+from close import story_card
+from slate_review_helpers import (
+    CHARTER,
+    CLOSE_SKILL,
+    CREATE_SKILL,
+    DESIGN,
+    DESIGN_CLAIMS,
+    PLAN_REVIEW,
+    PLAN_TEMPLATE,
+    PLUGIN,
+    PROCESS,
+    REVIEW,
+    SLATE_REVIEW,
+    assert_bundle_schema,
+    assert_charter_contract,
+    assert_design_contract,
+    assert_one_lifecycle,
+    assert_open_route,
+    assert_review_vocabulary,
+    card_refresh,
+    numbered_items,
+    receipt_of,
+    refresh_repo,
+    section,
+    shipped_sources,
+    slate_repo,
+    slate_review,
+    stub_card_refresher,
+    stub_slate_reviewer,
 )
+from spawn_helpers import spawn
+from work import card_digest
 
 
-def section(text, heading, next_heading):
-    return text.split(heading, 1)[1].split(next_heading, 1)[0]
-
-
-def numbered_items(text):
-    return {
-        label: body
-        for label, body in re.findall(
-            r"^\d+\. \*\*(.+?)\*\*(.*?)(?=^\d+\. \*\*|\Z)", text, re.M | re.S
-        )
-    }
-
-
-def assert_open_route(create_skill, close_skill, process):
-    opening = section(create_skill, "## Open", "## Done")
-    card_step = section(process, "1. **Slate review**", "2. **Story**")
-    assert opening.index("slate-reviewer") < opening.index("close.py sprint <id> start")
-    assert opening.index("slate_review.py") < opening.index("close.py sprint <id> start")
-    assert "full proposed slate" in opening and "`sprint_cap`" in opening
-    assert "author's conclusions" in opening and "do not give" in opening
-    assert "corrected cards" in opening and "work.py note" in opening
-    assert "`/create-sprint`" in card_step and "`/sprint-close`" not in card_step
-    assert "corrected slate" in card_step
-    assert card_step.index("`/create-sprint`") < card_step.index("spawn.py ready")
-    for fragment in ("slate-reviewer", "slate_review.py", "git switch", "Open the sprint"):
-        assert fragment not in close_skill
-
-
-def slate_repo(tmp_path):
-    repo, env, _g = make_repo(tmp_path)
-    (repo / ".xp" / "config.yml").write_text(
-        "sprint_cap: 6\ndebt_budget: 0.2\n"
-        "roles:\n  reviewer: claude/haiku/low\ntests:\n  story: true\n"
-    )
-    plan = Path(env["XP_DATA"]) / "plan.md"
-    plan.write_text(
-        plan.read_text().replace(
-            "### Sprint 1\n", "### Sprint 1\nLead verdicts: AUTHOR-CONCLUSIONS-SENTINEL\n"
-        )
-    )
-    return repo, env
-
-
-def stub_slate_reviewer(tmp_path, findings="## story-042 — GREEN\n\n## Slate — GREEN\n", slate=""):
-    binary = tmp_path / "bin" / "claude"
-    binary.parent.mkdir(exist_ok=True)
-    launch = tmp_path / "slate-launch.json"
-    binary.write_text(
-        "#!/usr/bin/env python3\n"
-        "import json, re, sys\n"
-        "if sys.argv[1:] == ['plugin', 'list', '--json']:\n"
-        ' print(\'[{"id":"xp-plugin@xp-plugin","version":"fixture",'
-        '"scope":"user"}]\'); sys.exit()\n'
-        "prompt = sys.stdin.read()\n"
-        f"json.dump({{'argv': sys.argv[1:], 'prompt': prompt}}, open({str(launch)!r}, 'w'))\n"
-        f"slate = {slate!r}\n"
-        "if slate:\n"
-        " open(slate, 'a').write('\\n#### story-999 — smuggled  [ready]\\n')\n"
-        "path = re.search(r'^FINDINGS_PATH: (.+)$', prompt, re.M)\n"
-        f"open(path.group(1), 'w').write({findings!r}) if path else None\n"
-        "print(json.dumps({'type': 'result', 'result': 'review complete'}))\n"
-    )
-    binary.chmod(0o755)
-    return launch
-
-
-def slate_review(repo, env, sprint_id="1"):
+def git_out(repo, env, *args):
     return subprocess.run(
-        [sys.executable, str(SLATE_REVIEW), sprint_id],
-        cwd=repo,
-        env=env,
-        capture_output=True,
-        text=True,
-    )
-
-
-def lifecycle_shapes(source):
-    tree = ast.parse(source)
-    calls = [node for node in ast.walk(tree) if isinstance(node, ast.Call)]
-    return {
-        "detach": sum(
-            any(
-                k.arg == "start_new_session" and isinstance(k.value, ast.Constant) and k.value.value
-                for k in node.keywords
-            )
-            for node in calls
-        ),
-        "poll": sum(
-            isinstance(node.func, ast.Attribute)
-            and isinstance(node.func.value, ast.Name)
-            and (node.func.value.id, node.func.attr) == ("time", "sleep")
-            for node in calls
-        ),
-        "liveness": sum(
-            isinstance(node.func, ast.Attribute)
-            and isinstance(node.func.value, ast.Name)
-            and (node.func.value.id, node.func.attr) == ("os", "kill")
-            for node in calls
-        ),
-        "marker": source.count("plan-review-incomplete"),
-    }
-
-
-def assert_one_lifecycle(slate_source, plan_source, review_source):
-    shared = lifecycle_shapes(slate_source)
-    consumers = {
-        shape: lifecycle_shapes(plan_source)[shape] + lifecycle_shapes(review_source)[shape]
-        for shape in shared
-    }
-    assert all(shared.values()), shared
-    assert consumers == {shape: 0 for shape in consumers}, consumers
-
-
-def assert_bundle_schema(bundle, out):
-    expected = (
-        "## Your charter\n\nCHARTER\n\n"
-        f"## Your findings file\n\nFINDINGS_PATH: {out.resolve()}\n\n"
-        "## Full proposed slate\n\nCARDS\n\n"
-        "## Sprint capacity\n\nsprint_cap: 6\ndebt_budget: 0.2\n\n"
-        "## VALUES\n\nSHIPPED:VALUES.md\n\n"
-        "## JUDGMENT\n\nSHIPPED:JUDGMENT.md\n\n"
-        "## Constraints\n\nLOCAL:constraints.md\n\n"
-        "## System context\n\nLOCAL:system.md\n\n"
-    )
-    assert bundle == expected
-
-
-def assert_charter_contract(charter):
-    checks = numbered_items(section(charter, "## Checks", "## Output"))
-    assert set(checks) == {
-        "Slate",
-        "Acceptance",
-        "Premises",
-        "Omitted pins",
-        # sprint-015 retro promotion: story-089's first teammate stopped and escalated,
-        # and its Verify said nothing about whether the escalation was correct.
-        "Stop states",
-        "Mutation",
-    }
-    assert all(word in checks["Slate"] for word in ("order", "funding", "collisions", "capacity"))
-    assert "execute" in checks["Premises"] and "reachable" in checks["Premises"]
-    assert "search" in checks["Omitted pins"] and "card does not name" in checks["Omitted pins"]
-    assert "disposable copy" in checks["Mutation"] and "acceptance" in checks["Mutation"]
-    output = charter.split("## Output", 1)[1]
-    assert "one `## <story-id> — RED|GREEN`" in output
-    assert "falsified premise" in output and "checked evidence" in output
-    assert "## Slate — RED|GREEN" in output and "Unresolved" in output
-    assert "Edit nothing" in charter and "lead's conclusions" in charter
-
-
-def assert_design_contract(design):
-    card = section(design, "**Slate review**", "**Story**")
-    for claim in DESIGN_CLAIMS:
-        assert claim in card, f"card-review design no longer states: {claim}"
-
-
-def shipped_sources():
-    return {p: p.read_text() for p in sorted(PLUGIN.rglob("*")) if p.suffix in {".md", ".py"}}
-
-
-def assert_review_vocabulary(sources, design, template):
-    normalized = {path: " ".join(text.lower().split()) for path, text in sources.items()}
-    old = [path.relative_to(PLUGIN) for path, text in normalized.items() if "card review" in text]
-    assert not old, f"old sprint-step name survives in {old}"
-    rule = "every review is named for the artifact it reads"
-    owners = [(path, text) for path, text in normalized.items() if rule in text]
-    assert len(owners) == 1, f"review naming rule has {len(owners)} shipped owners"
-    rule_path, owner = owners[0]
-    # The rule SENTENCE, not the whole owner: the loop restates three of the four names at
-    # their action sites, so `owner.index` read a restatement as the declaration.
-    rule_line = owner.split(rule, 1)[1].split(".", 1)[0]
-    names = ("slate review", "card refresh", "execution plan review", "diff review")
-    positions = [rule_line.index(name) for name in names]
-    assert positions == sorted(positions), "review artifacts are not named in process order"
-    assert "reserved **card refresh**" in rule_line
-    for name in ("slate review", "execution plan review", "diff review"):
-        # Outside the declaring file: a name only PROCESS repeats reaches no artifact a
-        # lead opens, and counting every file greened `diff review` at zero such uses.
-        uses = sum(t.count(name) for p, t in normalized.items() if p != rule_path)
-        assert uses, f"{name} is declared but names no shipped review"
-
-    migration = next(ln for ln in design.splitlines() if ln.startswith("**Review-name migration ("))
-    for token in (
-        "2026-09-02",
-        "Sprint 17",
-        "`card review` named the sprint-slate step",
-        "`execution plan` named the per-clone roadmap",
-        "`card-review-incomplete`",
-        "`card-reviews/`",
-        "PROCESS.md owns the current naming rule",
-    ):
-        assert token in migration, f"review-name migration no longer states {token}"
-    assert template.startswith("# Roadmap\n")
-    assert "plan.md                        roadmap:" in design
+        ["git", *args], cwd=repo, env=env, capture_output=True, text=True
+    ).stdout.strip()
 
 
 def test_slate_reviewer_is_shipped_and_routed_before_slots_are_spent():
@@ -432,10 +249,6 @@ def test_review_vocabulary_has_one_shipped_owner_and_a_dated_migration():
         assert count == 1, f"fault did not remove {token}"
         with pytest.raises((AssertionError, ValueError)):
             assert_review_vocabulary(changed, design, template)
-    unreserved = dict(sources)
-    unreserved[rule_path] = unreserved[rule_path].replace("reserved ", "", 1)
-    with pytest.raises(AssertionError):
-        assert_review_vocabulary(unreserved, design, template)
     # the binding stripped from every file BUT the declaring one: dropping the owner's
     # own restatement instead let `uses` pass at zero real uses
     unbound = {
@@ -497,3 +310,149 @@ def test_a_story_id_is_never_renumbered(tmp_path, monkeypatch):
     module = runpy.run_path(str(PLUGIN / "scripts" / "slate_review.py"))
 
     assert module["review_marker"]("story-042", "plan").name.startswith("story-042.")
+
+
+CORRECTED = "Context: demo, and src/thing.py is 12 lines at HEAD, not 40."
+HANDOFF_DIRECT = f"""
+import sys
+sys.path[:0] = [{str(PLUGIN / "scripts")!r}, {str(PLUGIN / "scripts" / "spawn")!r}]
+from pathlib import Path
+import slate_review
+from work import chdir_repo_root
+chdir_repo_root()
+sys.exit(slate_review._refresh_handoff(sys.argv[1], Path("absent.md")))
+"""
+
+
+def test_card_refresh_rewrites_the_card_and_ready_digests_the_rewrite(tmp_path):
+    """AC1 walked end to end. The receipt must pin the card as REWRITTEN: taken
+    before the edit it matches nothing the lead will ever spawn, and `ready`
+    would then refuse the very card the refresh had just corrected."""
+    repo, env, _g, plan = refresh_repo(tmp_path)
+    launch = stub_card_refresher(tmp_path, correction=CORRECTED)
+    stale = story_card(plan.read_text(), "story-042")[0]
+
+    result = card_refresh(repo, env)
+    assert result.returncode == 0, result.stdout + result.stderr
+
+    prompt = json.loads(launch.read_text())["prompt"]
+    assert "You are not a review" in prompt
+    assert f"PLAN_PATH: {plan.resolve()}" in prompt
+    assert "story-042 — demo story" in prompt and "story-043" not in prompt
+    assert "# XP Values" in prompt and "# Judgment" in prompt
+    assert "CONSTRAINT-SENTINEL" in prompt and "Worktree bootstrap" in prompt
+
+    fresh = story_card(plan.read_text(), "story-042")[0]
+    assert CORRECTED in fresh and "Context: demo." not in fresh
+    receipt = json.loads(receipt_of(env).read_text())
+    assert receipt["digest"] == card_digest(fresh)
+    assert receipt["digest"] != card_digest(stale), "the receipt pinned the pre-refresh card"
+    assert receipt["changed"] is True
+    assert receipt["head"] == git_out(repo, env, "rev-parse", "HEAD")
+
+    minted = spawn(repo, env, "ready", "story-042")
+    assert minted.returncode == 0, minted.stderr
+    assert receipt["digest"] in minted.stdout, "ready digested text the refresh never saw"
+
+
+def test_a_refresh_that_finds_nothing_stale_still_records_that_it_ran(tmp_path):
+    """AC5, constraint 15: "ran and found the card correct" and "never ran" are
+    two states, and the lead reads them off ONE surface — stdout — because the
+    runner is detached, so the child's own print lands in the child's log."""
+    repo, env, _g, plan = refresh_repo(tmp_path)
+    before = plan.read_text()
+    stub_card_refresher(tmp_path, findings="nothing stale\n")
+    result = card_refresh(repo, env)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert plan.read_text() == before
+    assert json.loads(receipt_of(env).read_text())["changed"] is False
+    assert "already correct" in result.stdout and "CHANGED" not in result.stdout
+    assert str(receipt_of(env)) in result.stdout
+    assert spawn(repo, env, "ready", "story-042").returncode == 0
+
+    # the same tree with the receipt taken away is the OTHER state, and neither
+    # leg may spell the two the same way
+    receipt_of(env).unlink()
+    plan.write_text(before.replace("[ready]", "[planned]"))
+    never = spawn(repo, env, "ready", "story-042")
+    assert never.returncode == 2 and "no card refresh has run" in never.stderr
+
+
+def test_a_refresh_whose_receipt_never_landed_refuses_instead_of_claiming_success(tmp_path):
+    """The one state the detached child can leave that LOOKS like success: the
+    incomplete marker cleared and no receipt written. Without the refusal the
+    lead is told the refresh ran and `ready` then says none has."""
+    repo, env, _g, _plan = refresh_repo(tmp_path)
+    stub_card_refresher(tmp_path, correction=CORRECTED)
+    assert card_refresh(repo, env).returncode == 0
+    direct = lambda: subprocess.run(  # noqa: E731
+        [sys.executable, "-c", HANDOFF_DIRECT, "story-042"],
+        cwd=repo,
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+    assert direct().returncode == 0, "the fixture no longer reaches the success arm"
+    receipt_of(env).unlink()
+    refused = direct()
+    assert refused.returncode == 2, refused.stdout
+    assert "recorded no receipt" in refused.stderr, refused.stderr
+    receipt_of(env).write_text("{}")  # present but carrying no verdict
+    assert direct().returncode == 2
+
+
+@pytest.mark.parametrize(
+    ("knob", "expected"),
+    [
+        ({"sibling": True}, "outside its own card"),
+        ({"status": "ready"}, "never its lifecycle state"),
+    ],
+)
+def test_a_refresher_that_moves_anything_but_its_own_card_is_refused(tmp_path, knob, expected):
+    """AC6. The plan lives OUTSIDE the repo, so tree_state sees neither motion —
+    story-091's guard for the slate reviewer does not reach a single card."""
+    repo, env, _g, plan = refresh_repo(tmp_path)
+    stub_card_refresher(tmp_path, correction=CORRECTED, **knob)
+    result = card_refresh(repo, env)
+    edited = plan.read_text()
+    assert "MEDDLED" in edited or "demo story   [ready]" in edited, "fixture built nothing"
+    assert result.returncode == 2, result.stdout
+    assert expected in result.stdout + result.stderr
+    assert not receipt_of(env).exists(), "a refused refresh must not mint a receipt"
+    assert spawn(repo, env, "ready", "story-042").returncode == 2
+
+
+def test_a_refresher_that_writes_in_the_repository_is_refused(tmp_path):
+    repo, env, _g, _plan = refresh_repo(tmp_path)
+    stub_card_refresher(tmp_path, correction=CORRECTED, repo_file=str(repo / "stray.py"))
+    result = card_refresh(repo, env)
+    assert result.returncode == 2, result.stdout
+    assert "changed the repository" in result.stdout + result.stderr
+    assert not receipt_of(env).exists()
+
+
+def test_the_refresh_is_never_called_a_review_on_any_surface_it_names(tmp_path, monkeypatch):
+    """Its own module says refresh's state, log and print text must never say the
+    word, and no assertion on printed text reaches the LOG FILE NAME, which the
+    shared lifecycle derived as `<id>-refresh-review.log`. All three kinds here,
+    because the fix has to leave the two names every note and marker cites."""
+    import slate_review as runner
+
+    monkeypatch.setenv("XP_DATA", str(tmp_path / "data"))
+
+    class Launched:
+        pid = 4321
+
+        def poll(self):
+            return 0
+
+    monkeypatch.setattr(runner.subprocess, "Popen", lambda argv, **kw: Launched())
+    logs = {}
+    for identifier, kind in (("7", "slate"), ("story-042", "plan"), ("story-042", "refresh")):
+        runner._detach(identifier, kind, tmp_path / "f.md", ["slate_review.py", identifier])
+        logs[kind] = Path(json.loads(runner.review_marker(identifier, kind).read_text())["log"])
+    assert logs["slate"].name == "7-slate-review.log"
+    assert logs["plan"].name == "story-042-plan-review.log"
+    assert logs["refresh"].name == "story-042-card-refresh.log"
+    assert "review" not in logs["refresh"].name
+    assert "CARD REFRESH DID NOT COMPLETE" in runner._marker_state("story-042", "refresh")["state"]

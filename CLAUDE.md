@@ -15,7 +15,10 @@ instead.
 
 - **Slate review**: at sprint open a fresh `slate-reviewer` reads the whole slate and
   the lead judges every result;
-  `spawn.py ready <story-id>` is the lead's per-card commitment, not a review.
+  `spawn.py ready <story-id>` now REFUSES until card refresh has run — `slate_review.py
+  --refresh <story-id>` rewrites the card's stale claims against HEAD, not a review, and
+  the lead owns the result. ready runs nothing itself; it remains the lead's per-card
+  commitment, not a review.
   **Execution plan review**: only the executor writes the implementation plan and runs
   `scripts/plan_review.py <story-id> <plan-file>`; the lead never writes one. The
   executor re-reads its edits before code. Red test first; for config/docs commits,

@@ -92,7 +92,9 @@ def cmd_review(slug: str, dry_run: bool) -> int:
             _card, status = story_card(plan_path().read_text(), key)
         except KeyError as e:  # the heading above is hand-written; a typo'd one is a refusal
             return fail(f"refused: {e.args[0]}")
-        if status == "planned" and ready.mint(key):
+        # the free lane is exempt from card refresh BY LANE, not by key shape: this
+        # card was authored and reviewed on a branch cut minutes ago and never aged
+        if status == "planned" and ready.mint(key, require_refresh=False):
             return 2
         if status in ("planned", "ready") and not flip_card(key, "ready", "in-progress"):
             return fail(f"refused: could not move {key} to [in-progress]")
