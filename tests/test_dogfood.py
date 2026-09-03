@@ -11,6 +11,8 @@ import json
 import os
 import shutil
 import subprocess
+import sys
+import tempfile
 from pathlib import Path
 from unittest.mock import patch
 
@@ -189,10 +191,38 @@ class TestDogfoodMatchesTheScaffold:
             assert red.returncode != 0, f"run_tier {tier} passed an over-cap constraints.md"
             assert "4500" in red.stderr, red.stderr
 
+    # The banner prints the plugin path and the data root, so BOTH lengths are
+    # subtracted from the constraints' room. Budgeted, not inherited: an installed
+    # adopter sits near 70/45, our own spawn worktrees near 102/40. Measured frontier: 110/100 is
+    # 9,498 of 9,500, so these budgets keep 32 bytes and red if a region grows.
+    PLUGIN_PATH_BUDGET = 110
+    DATA_ROOT_BUDGET = 70
+
+    def _at_path_length(self, base, name, target):
+        """A directory whose ABSOLUTE path is exactly `target` chars.
+
+        CONSTRUCTED, never inherited: read off wherever the checkout happens to
+        live, this test passed at a 59-char path and failed at 102 — reporting the
+        machine, not the guarantee (constraint 11). It does NOT skip when the base
+        is too long: a skip is a measurement of nothing that reads as a pass.
+        """
+        pad = target - len(str(base / name))
+        assert pad >= 0, (
+            f"cannot measure: {base}/{name} is already {-pad} chars over the"
+            f" {target}-char budget, so nothing was tested. Run from a shorter TMPDIR"
+        )
+        return base / (name + "d" * pad)
+
     def test_ascii_constraints_at_the_full_cap_fit_the_byte_profile(self, tmp_path):
         from session_start import OUTPUT_CAP
-        from session_start_helpers import run_hook
 
+        # NOT tmp_path: pytest's own is ~110 chars, over the data-root budget, so
+        # the budgets could never be met and every run would silently skip.
+        base = Path(tempfile.mkdtemp())
+        plugin_root = self._at_path_length(base, "p", self.PLUGIN_PATH_BUDGET)
+        data_root = self._at_path_length(base, "d", self.DATA_ROOT_BUDGET)
+        shutil.copytree(self.REPO / "plugins" / "xp-plugin", plugin_root)
+        data_root.mkdir(parents=True, exist_ok=True)
         repo = tmp_path / "repo"
         xp = repo / ".xp"
         xp.mkdir(parents=True)
@@ -203,9 +233,19 @@ class TestDogfoodMatchesTheScaffold:
         assert len(constraints) == cap
         (xp / "constraints.md").write_text(constraints)
         subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
-        out = run_hook(repo, tmp_path).stdout
-        assert len(out.encode()) <= OUTPUT_CAP
-        assert constraints in out, "the full ASCII character ceiling does not reach the lead"
+        out = subprocess.run(
+            [sys.executable, str(plugin_root / "scripts" / "session_start.py")],
+            input=json.dumps({"cwd": str(repo), "session_id": "s", "source": "startup"}),
+            env={"PATH": "/usr/bin:/bin", "HOME": str(data_root), "XP_DATA": str(data_root)},
+            cwd=repo,
+            capture_output=True,
+            text=True,
+        ).stdout
+        try:
+            assert len(out.encode()) <= OUTPUT_CAP
+            assert constraints in out, "the full ASCII ceiling does not reach the lead"
+        finally:
+            shutil.rmtree(base, ignore_errors=True)
 
     def test_the_scaffold_ships_no_key_we_invented_without_seeding(self):
         """The reverse drift: a key we rely on that a scaffolded repo never gets."""
