@@ -5,6 +5,7 @@ import json
 import subprocess
 from pathlib import Path
 
+import pytest
 from spawn_helpers import (  # noqa: F401
     CARD,
     CONFIG,
@@ -477,21 +478,21 @@ class TestCommonDirWidening:
 
 
 def test_the_brief_states_the_commit_the_handback_guard_requires(tmp_path, monkeypatch):
-    """handback.py:76 refuses when HEAD equals the flip head, so committing is a
-    precondition of finishing that only the refusal states. Two independent reports
-    on 2026-09-02 of executors handing back a correct, verified, UNCOMMITTED tree;
-    one had done both suite baselines and two fault injections, and the resumed
-    teammate rightly refused to inherit evidence it could not see.
-    A bare `"commit" in brief` is VACUOUS and was measured passing before the fix:
-    JUDGMENT.md already says "no-red commits say why". The instruction is what is
-    missing, so the instruction is what this asserts."""
+    """The executor's exit condition, not incidental commit prose, carries the rule."""
     import spawn
 
     monkeypatch.setenv("XP_DATA", str(tmp_path))
     sections = spawn.teammate_sections("card", "story-x", "", spawn.PLUGIN_ROOT)
-    brief = " ".join(b for _, b in sections)
-    told = ("commit your", "small commits", "your own commits")
-    assert any(p in brief.lower() for p in told), "the brief never tells the executor to commit"
+    profile = dict(sections)["How you work"]
+
+    def assert_commit_precedes_handback(text):
+        done = text.split("**Done =", 1)[1].split("hand back", 1)[0]
+        assert "commit" in done.lower(), "commit is not a precondition of handback"
+
+    assert_commit_precedes_handback(profile)
+    broken = profile.replace("work COMMITTED, then hand back", "hand back; the lead commits")
+    with pytest.raises(AssertionError):
+        assert_commit_precedes_handback(broken)
 
 
 from test_spawn_stages import TestSpawnStages  # noqa: E402,F401

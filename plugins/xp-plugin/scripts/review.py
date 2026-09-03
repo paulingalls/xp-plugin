@@ -9,7 +9,6 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
-# Module level: importers must reach env.py's 3.11 floor before the `Path | None` below
 from env import refuse_direct_invocation
 from work import data_root
 
@@ -25,7 +24,6 @@ REVIEWER_EMAIL = "story-reviewer@xp.local"
 
 
 def charter(name: str = "story-reviewer") -> str:
-    """Inline a top-level headless agent's charter; its harness loads no agent file."""
     from spawn import _read_shipped
 
     text = _read_shipped(PLUGIN_ROOT / "agents" / f"{name}.md")
@@ -66,14 +64,12 @@ def plan_review_notice(story_id: str) -> str:
 
 
 def report_path(story_id: str, round_n: int) -> Path:
-    """Round-scoped; the caller unlinks leftovers before an unrecorded retry."""
     p = data_root() / "reports" / f"{story_id}.round-{round_n}.json"
     p.parent.mkdir(parents=True, exist_ok=True)
     return p
 
 
 def sprint_report_path(sprint_id: str, stage: str, round_n: int) -> Path:
-    """Use a directory because free-text story ids can spell any prefix separator."""
     d = data_root() / "reports" / "sprint"
     d.mkdir(parents=True, exist_ok=True)
     return d / f"{sprint_id}.{stage}.round-{round_n}.json"
@@ -162,7 +158,11 @@ def marker_digest(path: Path) -> str:
 
 
 def write_round(marker: Path, state: dict, round_: dict, **coverage: str) -> None:
-    state.setdefault("rounds", []).append(round_ | coverage)
+    rounds = state.setdefault("rounds", [])
+    if old := next((r for r in reversed(rounds) if "reviewed_head" not in r), None):
+        prior = {key: state[key] for key in coverage if key in state}
+        old.update(prior)
+    rounds.append(round_ | coverage)
     state.update(coverage)
     marker.write_text(json.dumps(state))
 
@@ -337,7 +337,6 @@ def apply_patch(report: Path, card: str) -> str:
 
 
 def card_now(story_id: str) -> str:
-    """The story's card as the plan holds it now, or "" if unreadable."""
     from close import story_card
     from work import plan_path
 
@@ -348,10 +347,7 @@ def card_now(story_id: str) -> str:
 
 
 def reviewer_range(start: str, end: str) -> str:
-    """`git log` + `--stat` over one range, or "" if it is empty. TWO ranges now:
-    HEAD may move past the review, so a single reviewed_head..HEAD would put the
-    lead's own commits under the reviewer's name. land re-prints both because
-    assent is given by RUNNING land, not by having read an earlier command."""
+    """Show the commits and stat in one covered range."""
     from close import git
 
     if start == end:
@@ -360,27 +356,34 @@ def reviewer_range(start: str, end: str) -> str:
     return git("log", "--format=%h %an %s", rng).stdout + git("diff", "--stat", rng).stdout
 
 
+def covered_ranges(state: dict, head: str) -> list[tuple[str, str]]:
+    rounds = state.get("rounds", [])
+    ranges = [
+        (r["reviewed_head"], r["shown_sha"])
+        for r in rounds
+        if "reviewed_head" in r and "shown_sha" in r
+    ]
+    legacy = (state.get("reviewed_head", head), state.get("shown_sha", head))
+    if any("reviewed_head" not in r for r in rounds) and legacy not in ranges:
+        ranges.insert(0, legacy)
+    return ranges or [legacy]
+
+
 def disclose(state: dict, head: str, diff: Path | None = None) -> None:
-    """Both ranges the lead assents to by RUNNING land. Printing only one of them
-    puts the lead's own commits under the reviewer's name."""
+    """Show every reviewed range plus work committed after the last one."""
     shown = state.get("shown_sha", head)
-    # EVERY round that recorded its own coverage: round 2's top-level coverage
-    # overwrites round 1's, so a lead used to assent to a merge hiding the first
-    # reviewer's work. Older markers fall back to the top level and read as before.
-    for covered in [r for r in state.get("rounds", []) if "reviewed_head" in r] or [state]:
-        if work := reviewer_range(covered.get("reviewed_head", head), covered["shown_sha"]):
+    for round_n, (reviewed, round_shown) in enumerate(covered_ranges(state, head), 1):
+        if work := reviewer_range(reviewed, round_shown):
             print("the reviewer changed this tree — you are merging its work:")
             print(work, end="")
             if diff:
-                print(f"full diff: {diff}")
+                print(f"full diff: {diff(round_n) if callable(diff) else diff}")
     if late := reviewer_range(shown, head):
         print("you committed after the review you were shown — merging unreviewed:")
         print(late, end="")
 
 
 def diff_path(report: Path) -> Path:
-    """One spelling: review writes it, review unlinks the stale one, land prints
-    it — three sites that would otherwise drift."""
     return report.with_suffix(".diff")
 
 
@@ -438,10 +441,7 @@ def run(
         harness, model, effort = stage_role(stage, card)
     else:
         role = name if name in ("planner", "plan-reviewer") else "reviewer"
-        # `planner` postdates every config we have ever shipped, and spawn reaches
-        # it before the executor on EVERY multi-file card: refusing on the absent
-        # key would strand the whole default path, so it falls back to the role
-        # whose plan it writes. A config that sets roles.planner still wins.
+        # Old configs lack planner; executor is its behavioral fallback.
         harness, model, effort = stage_role(role, card, "executor" if role == "planner" else "")
     sandbox, problem = resolve_codex_sandbox(harness, config_flat("codex_sandbox"))
     if problem:

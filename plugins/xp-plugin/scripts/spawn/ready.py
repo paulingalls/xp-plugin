@@ -1,6 +1,7 @@
 import argparse
 import difflib
 import json
+import shlex
 import sys
 from pathlib import Path
 
@@ -21,7 +22,11 @@ from work import (
 AMEND = "Run `spawn.py amend {} --reason '<why this declaration changed>'`."
 REMINT = "Put the heading back to [planned] and run `spawn.py ready {}`."
 DOC = "The plan-review credential: minted from [planned], amended only with a recorded reason."
-REFRESH = f"Run `python3 {Path(__file__).parent.parent / 'slate_review.py'} {{}} --refresh`."
+
+
+def refresh_instruction(story_id: str) -> str:
+    script = str(Path(__file__).parent.parent / "slate_review.py")
+    return f"Run `{shlex.join(['python3', script, story_id, '--refresh'])}`."
 
 
 def progressed(story_id: str) -> bool:
@@ -96,15 +101,14 @@ def amend(story_id: str, reason: str) -> int:
 
 
 def refresh_receipt_path(story_id: str) -> Path:
-    """Story-scoped, outside the repo — the card refresh's proof that it ran
-    against a card ready is about to digest, distinct from never having run."""
+    """The card refresh's story-scoped proof, outside the repository."""
+    if not story_id or Path(story_id).name != story_id or story_id in (".", ".."):
+        raise ValueError(f"refused: {story_id!r} is not a safe story id")
     return data_root() / "card-refreshes" / f"{story_id}.json"
 
 
 def path_state(path: str) -> str | None:
-    """The SHA of the latest commit touching `path` at HEAD, or None if HEAD
-    does not have it — committed state, never filesystem mtimes or working-tree
-    contents, so an uncommitted local edit cannot forge or stale a receipt."""
+    """Latest commit touching `path`, or None; working-tree edits do not count."""
     exists = git("cat-file", "-e", f"HEAD:{path}", check=False).returncode == 0
     if not exists:
         return None
@@ -128,34 +132,36 @@ def write_refresh_receipt(story_id: str, card: str, changed: bool) -> None:
 
 
 def check_refresh(story_id: str, card: str) -> str:
-    """ "" when a card refresh ran against exactly this card and every path it
-    declares still matches HEAD as the refresh last saw it; else the refusal."""
+    """Return a refusal unless the receipt matches this card and its paths."""
     import review
 
-    path = refresh_receipt_path(story_id)
+    try:
+        path = refresh_receipt_path(story_id)
+    except ValueError as error:
+        return f"{error}. {refresh_instruction(story_id)}"
     if not path.exists():
-        return f"refused: no card refresh has run for {story_id}. {REFRESH.format(story_id)}"
+        return f"refused: no card refresh has run for {story_id}. {refresh_instruction(story_id)}"
     try:
         receipt = json.loads(path.read_text())
     except (OSError, ValueError):
-        return f"refused: {path} is unreadable. {REFRESH.format(story_id)}"
+        return f"refused: {path} is unreadable. {refresh_instruction(story_id)}"
     if not isinstance(receipt, dict) or not isinstance(receipt.get("files"), dict):
-        return f"refused: {path} is not a card refresh receipt. {REFRESH.format(story_id)}"
+        return f"refused: {path} is not a card refresh receipt. {refresh_instruction(story_id)}"
     if receipt.get("digest") != card_digest(card):
         return (
             f"refused: {story_id}'s card refresh receipt does not match the current card"
-            f" — it ran against different text. {REFRESH.format(story_id)}"
+            f" — it ran against different text. {refresh_instruction(story_id)}"
         )
     for declared in review.declared_files(card):
         if declared not in receipt["files"]:
             return (
                 f"refused: {story_id}'s card refresh receipt does not cover {declared}"
-                f" — it predates the path being declared. {REFRESH.format(story_id)}"
+                f" — it predates the path being declared. {refresh_instruction(story_id)}"
             )
         if path_state(declared) != receipt["files"][declared]:
             return (
                 f"refused: {declared} changed since {story_id}'s card refresh"
-                f" — the receipt no longer reflects HEAD. {REFRESH.format(story_id)}"
+                f" — the receipt no longer reflects HEAD. {refresh_instruction(story_id)}"
             )
     return ""
 
@@ -196,7 +202,6 @@ def main(argv: list[str], action: str = "ready") -> int:
         return fail("refused: not inside a git repository")
     if action == "amend":
         return amend(args.story_id, args.reason)
-    # exempt BY LANE, matching close/free.py's own mint: a free card is authored
-    # and reviewed on a branch cut minutes ago and never ages in a slate, and one
-    # operation must not answer two ways depending on which leg reached it
+    # Free cards are authored and reviewed on a fresh branch, never aged in a slate;
+    # the exemption is by lane so both entry points answer alike.
     return mint(args.story_id, require_refresh=not leg(args.story_id)[1])

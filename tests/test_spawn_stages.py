@@ -31,7 +31,7 @@ def stub_stages(tmp_path, blocking_plan=False, blocking_diff=False):
         " f.write(json.dumps({'role': role, 'argv': sys.argv[1:], 'prompt': prompt}) + '\\n')\n"
         "if role == 'planner':\n"
         " p = re.search(r'^PLAN_PATH: (.+)$', prompt, re.M); assert p\n"
-        " open(p.group(1).strip(), 'w').write('# execution plan\\nred then green\\n')\n"
+        " open(p.group(1).strip(), 'a').write('# execution plan\\nred then green\\n')\n"
         "elif role == 'plan-reviewer':\n"
         " p = re.search(r'^FINDINGS_PATH: (.+)$', prompt, re.M); assert p\n"
         f" open(p.group(1).strip(), 'w').write({json.dumps(plan)!r})\n"
@@ -188,4 +188,7 @@ class TestSpawnStages:
         spawn(repo, env, "resume", "story-042")
         assert event_roles(events).count("planner") == 2, (
             "resume re-reviewed the same draft instead of replanning: " + str(event_roles(events))
+        )
+        assert event_roles(events).count("plan-reviewer") == 2, (
+            "resume skipped review after replanning: " + str(event_roles(events))
         )

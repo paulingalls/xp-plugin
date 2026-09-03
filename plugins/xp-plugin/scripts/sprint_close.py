@@ -466,19 +466,19 @@ def cmd_land(sprint_id: str, dry_run: bool) -> int:
     if red := overlap.gates(ref, "", "full", pending):
         return fail(red)
     state = json.loads(sprint_marker(sprint_id).read_text())
-    shown, rounds = state.get("shown_sha", ""), len(state.get("rounds", []))
-    rng = f"{state.get('reviewed_head', shown)}..{shown}"
-    if work := review.reviewer_range(state.get("reviewed_head", shown), shown):
-        print("the reviewer changed this tree — you are merging its work:")
-        print(work, end="")
-        print(f"full diff: {review.diff_path(review.sprint_report_path(sprint_id, 'fix', rounds))}")
+    head = git("rev-parse", "HEAD").stdout.strip()
+    review.disclose(
+        state,
+        head,
+        lambda n: review.diff_path(review.sprint_report_path(sprint_id, "fix", n)),
+    )
     if gates := [
-        f for f in git("diff", "--name-only", rng).stdout.splitlines() if f in overlap.GATE_FILES
+        f
+        for start, end in review.covered_ranges(state, head)
+        for f in git("diff", "--name-only", f"{start}..{end}").stdout.splitlines()
+        if f in overlap.GATE_FILES
     ]:
         print(f"among them a gate file, which no later check re-reads: {', '.join(gates)}")
-    if stale := review.reviewer_range(shown, git("rev-parse", "HEAD").stdout.strip()):
-        print("reviewer commits from a round that never recorded — nothing covers these:")
-        print(stale, end="")
     if not shutil.which("gh"):
         return fail(
             "refused: pr mode needs the gh CLI on PATH — install it, or open the PR by hand"

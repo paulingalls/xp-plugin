@@ -172,6 +172,30 @@ class TestLandRunsTheTierItReleasesOn:
         assert r.returncode == 2, r.stdout + r.stderr
         assert "tier" in r.stderr.lower(), r.stderr
 
+    def test_land_discloses_reviewer_work_from_every_round(self, tmp_path):
+        repo, env, g = make_repo(tmp_path)
+        shas = [head(repo, env)]
+        for n in (1, 2):
+            (repo / f"round-{n}.py").write_text(f"ROUND_{n} = True\n")
+            g("add", "-A")
+            g("commit", "-qm", f"REVIEWER-ROUND-{n}")
+            shas.append(head(repo, env))
+        marker = marker_path(tmp_path)
+        marker.parent.mkdir(parents=True, exist_ok=True)
+        rounds = [
+            {
+                "fixed": [],
+                "blocking": [],
+                "noted": [],
+                "reviewed_head": shas[n],
+                "shown_sha": shas[n + 1],
+            }
+            for n in range(2)
+        ]
+        marker.write_text(json.dumps({"rounds": rounds, **rounds[-1]}))
+        result = sprint(repo, env, "land")
+        assert "REVIEWER-ROUND-1" in result.stdout and "REVIEWER-ROUND-2" in result.stdout
+
     def test_dry_run_does_not_run_the_tier(self, tmp_path):
         """af9023f put the tier ABOVE the `if dry_run` return, so a preview paid
         the whole sprint suite and a red tier turned a preview into a refusal.

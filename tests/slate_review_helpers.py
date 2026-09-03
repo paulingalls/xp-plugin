@@ -196,7 +196,11 @@ def assert_design_contract(design):
 
 
 def shipped_sources():
-    return {p: p.read_text() for p in sorted(PLUGIN.rglob("*")) if p.suffix in {".md", ".py"}}
+    return {
+        p: p.read_text()
+        for p in sorted(PLUGIN.rglob("*"))
+        if p.is_file() and "__pycache__" not in p.parts
+    }
 
 
 def assert_review_vocabulary(sources, design, template):

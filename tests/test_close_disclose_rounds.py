@@ -4,6 +4,7 @@ overwrites round 1's. The lead then assents at land to a merge that hides what t
 first reviewer changed. Constructs two rounds with real commits and asserts BOTH
 reviewer ranges reach stdout."""
 
+import json
 import subprocess
 import sys
 
@@ -47,3 +48,23 @@ def test_disclose_shows_every_rounds_reviewer_work(tmp_path, capsys, monkeypatch
     assert "ROUND1WORK" in out, (
         "round 1's reviewer commits are hidden at the moment of assent:\n" + out
     )
+
+
+def test_a_legacy_round_is_migrated_before_new_coverage_overwrites_it(tmp_path):
+    import review
+
+    marker = tmp_path / "marker.json"
+    legacy = {"fixed": [], "blocking": [], "noted": []}
+    state = {"rounds": [legacy], "reviewed_head": "round-1-start", "shown_sha": "round-1-end"}
+    review.write_round(
+        marker,
+        state,
+        {"fixed": [], "blocking": [], "noted": []},
+        reviewed_head="round-2-start",
+        shown_sha="round-2-end",
+    )
+    written = json.loads(marker.read_text())
+    assert review.covered_ranges(written, "head") == [
+        ("round-1-start", "round-1-end"),
+        ("round-2-start", "round-2-end"),
+    ]

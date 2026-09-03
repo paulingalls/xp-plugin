@@ -7,6 +7,7 @@ story-103, constraint 8): this file keeps every collected test.
 import json
 import re
 import runpy
+import shlex
 import subprocess
 import sys
 from pathlib import Path
@@ -277,6 +278,11 @@ def test_review_vocabulary_has_one_shipped_owner_and_a_dated_migration():
             )
     with pytest.raises(AssertionError):
         assert_review_vocabulary(sources, design, template.replace("# Roadmap", "# Execution Plan"))
+    config = PLUGIN / "templates" / "config.yml"
+    changed = dict(sources)
+    changed[config] = changed[config].replace("lead:", "lead: # card review over the slate", 1)
+    with pytest.raises(AssertionError):
+        assert_review_vocabulary(changed, design, template)
 
 
 def test_a_zero_padded_sprint_id_names_the_marker_the_hook_reads(tmp_path, monkeypatch):
@@ -412,14 +418,30 @@ def test_a_refresher_that_moves_anything_but_its_own_card_is_refused(tmp_path, k
     """AC6. The plan lives OUTSIDE the repo, so tree_state sees neither motion —
     story-091's guard for the slate reviewer does not reach a single card."""
     repo, env, _g, plan = refresh_repo(tmp_path)
+    original = plan.read_text()
     stub_card_refresher(tmp_path, correction=CORRECTED, **knob)
     result = card_refresh(repo, env)
-    edited = plan.read_text()
-    assert "MEDDLED" in edited or "demo story   [ready]" in edited, "fixture built nothing"
     assert result.returncode == 2, result.stdout
     assert expected in result.stdout + result.stderr
+    assert "outside the repo" in result.stderr and "no git diff" in result.stderr
+    assert plan.read_text() == original, "the refused refresh left its plan corruption behind"
     assert not receipt_of(env).exists(), "a refused refresh must not mint a receipt"
     assert spawn(repo, env, "ready", "story-042").returncode == 2
+
+
+def test_a_story_id_cannot_escape_the_refresh_data_root(tmp_path):
+    repo, env, _g, plan = refresh_repo(tmp_path)
+    hostile = "../../victim/target"
+    plan.write_text(plan.read_text().replace("story-042", hostile, 1))
+    result = card_refresh(repo, env, hostile)
+    assert result.returncode == 2 and "safe story id" in result.stderr
+    assert not (tmp_path / "victim").exists(), "the refresh wrote outside XP_DATA"
+
+    import ready
+
+    quoted = "story-'quoted"
+    command = ready.refresh_instruction(quoted).removeprefix("Run `").removesuffix("`.")
+    assert shlex.split(command)[-2:] == [quoted, "--refresh"]
 
 
 def test_a_refresher_that_writes_in_the_repository_is_refused(tmp_path):
@@ -456,3 +478,12 @@ def test_the_refresh_is_never_called_a_review_on_any_surface_it_names(tmp_path, 
     assert logs["refresh"].name == "story-042-card-refresh.log"
     assert "review" not in logs["refresh"].name
     assert "CARD REFRESH DID NOT COMPLETE" in runner._marker_state("story-042", "refresh")["state"]
+    quoted = "story-'quoted"
+    runner._detach(quoted, "refresh", tmp_path / "f.md", ["slate_review.py", quoted, "--refresh"])
+    action = runner._marker_state(quoted, "refresh")["next"].removeprefix("run ")
+    assert shlex.split(action.split(" again", 1)[0]) == [
+        "python3",
+        "slate_review.py",
+        quoted,
+        "--refresh",
+    ]
