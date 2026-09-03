@@ -14,7 +14,7 @@ def git(repo, *args):
     return subprocess.run(["git", *args], cwd=repo, capture_output=True, text=True, check=True)
 
 
-def test_disclose_shows_every_rounds_reviewer_work(tmp_path, capsys):
+def test_disclose_shows_every_rounds_reviewer_work(tmp_path, capsys, monkeypatch):
     import review
 
     repo = tmp_path / "r"
@@ -29,6 +29,10 @@ def test_disclose_shows_every_rounds_reviewer_work(tmp_path, capsys):
         git(repo, "commit", "-qm", f"c{n} ROUND1WORK" if n in (1, 2) else f"c{n} ROUND2WORK")
         shas.append(git(repo, "rev-parse", "HEAD").stdout.strip())
 
+    # monkeypatch.chdir, never os.chdir: reviewer_range shells out to git in cwd, and
+    # a bare chdir leaks to every later test on this xdist worker. It did — the first
+    # version of this file poisoned test_release's config read, which resolves from cwd.
+    monkeypatch.chdir(repo)
     state = {
         "rounds": [
             {"reviewed_head": shas[0], "shown_sha": shas[2]},
@@ -37,9 +41,6 @@ def test_disclose_shows_every_rounds_reviewer_work(tmp_path, capsys):
         "reviewed_head": shas[2],
         "shown_sha": shas[4],
     }
-    import os
-
-    os.chdir(repo)
     review.disclose(state, shas[4])
     out = capsys.readouterr().out
     assert "ROUND2WORK" in out, "the last round's reviewer work is missing entirely"
