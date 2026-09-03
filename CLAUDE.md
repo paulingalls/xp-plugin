@@ -71,6 +71,8 @@ round it must cover and AFTER any land in flight — the wall runs the tree's
 own ratchet, so an in-flight branch blocked by old caps applies the identical
 edit in its own tree (twin edits merge clean). Measured: notes 86575dfa,
 story-023's second round.
+Cap and budget moves are reserved to the lead; an executor stops and files a
+note rather than choosing a displacement.
 THE THIRD CASE HAS NO COMPLIANT ORDERING, so pay it rather than hunt for one:
 when the in-flight story is the one the rebalance UNBLOCKS, before-the-land
 invalidates its round and after-the-land cannot happen, because there is no

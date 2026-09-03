@@ -279,7 +279,7 @@ def run_stream(
         print(f"warning: log open failed ({exc}); continuing without it", file=sys.stderr)
         log = None
     else:
-        print(f"live log: {path}", file=sys.stderr)
+        print(f"live log: {path}; let long legs finish; never time them out", file=sys.stderr)
     pointed = False
 
     def log_write(line: str) -> None:
