@@ -300,8 +300,12 @@ def _run_refresh(story_id: str, out: Path, dry_run: bool) -> int:
         )
 
     def reject_plan_edit(why: str) -> int:
-        plan_path().write_text(plan_before)
-        return fail(why + " Restored the plan outside the repo; no git diff shows the edit")
+        # THIS CARD, never plan_before: plan.md is project-global and the refresher ran
+        # detached for minutes, so restoring the snapshot silently reverts another lane's
+        # write (bug 5a1abadb). Unattributable motion is LEFT and named.
+        plan_path().write_text(plan_path().read_text().replace(new_card, card, 1))
+        rest = "" if plan_path().read_text() == plan_before else " Text outside it changed too"
+        return fail(why + f" Restored the card outside the repo; no git diff shows it.{rest}")
 
     if new_status != status:
         return reject_plan_edit(

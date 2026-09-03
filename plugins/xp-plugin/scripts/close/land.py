@@ -134,7 +134,7 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
     if not free and (red := lc.run(close.config_flat(lc.KEY), "story-close", story_id)):
         return close.fail(red)
 
-    review.disclose(state, head, review.diff_path(review.report_path(story_id, len(rounds))))
+    review.disclose(state, head, lambda n: review.diff_path(review.report_path(story_id, n)))
     if free:
         if not shutil.which("gh"):
             return close.fail(
