@@ -24,7 +24,8 @@ yourself doing by hand is a defect in the pipeline — file it.
    Stopping rule: the REVIEWER's fixes cost no confirming round — inside the round
    that found them, and your read of its diff is the judgment. YOUR fixes move HEAD
    past what the review covered and still cost one confirming round — land REPORTS
-   that delta now rather than refusing, so this half is yours to honour. What ends
+   that delta now rather than refusing, so re-run `close.py story <id> review`
+   before land. What ends
    the rounds is the finding bar — silent or corrupting earns another, loud does
    not — never a count.
 4. **`close.py story <id> land`** — deterministic, and it never spawns. Run it from
