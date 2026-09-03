@@ -30,6 +30,7 @@ DESIGN_CLAIMS = (
     "AFTER `spawn.py ready`",
     "single-file",
     "a receipt binds it to HEAD",
+    "skipped review leaves no record",
     "three needed the later tree",
     "four needed the whole slate",
     "all five earned",

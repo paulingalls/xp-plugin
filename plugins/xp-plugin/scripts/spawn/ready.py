@@ -21,7 +21,7 @@ from work import (
 AMEND = "Run `spawn.py amend {} --reason '<why this declaration changed>'`."
 REMINT = "Put the heading back to [planned] and run `spawn.py ready {}`."
 DOC = "The plan-review credential: minted from [planned], amended only with a recorded reason."
-REFRESH = "Run `python3 <plugin-root>/scripts/slate_review.py {} --refresh`."
+REFRESH = f"Run `python3 {Path(__file__).parent.parent / 'slate_review.py'} {{}} --refresh`."
 
 
 def progressed(story_id: str) -> bool:

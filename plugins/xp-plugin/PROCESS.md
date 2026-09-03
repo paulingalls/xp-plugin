@@ -13,9 +13,9 @@ Every review is named for the artifact it reads:
 1. **Slate review** — `/create-sprint` authors and opens with a fresh reader over
    the full slate and `sprint_cap`; free work
    slotless. The corrected slate precedes
-   `spawn.py ready <story-id>`, which first runs `slate_review.py --refresh
-   <story-id>`: not a review — it rewrites stale claims against HEAD, the lead
-   owns the result. For multi-file work, spawn stages a planner and then
+   `spawn.py ready <story-id>`, which refuses until `slate_review.py --refresh
+   <story-id>` has run: not a review — it rewrites stale claims against HEAD,
+   the lead owns the result. For multi-file work, spawn stages a planner and then
    **execution plan review** (`plan_review.py`, also runnable by hand); the
    lead never writes it. Human-only questions stop.
 2. **Story** — `spawn.py <story-id>` launches. Red → green → refactor, small commits. Carded story or free work
