@@ -11,8 +11,8 @@ Undeclared `.xp/` path stops.
   Persistent PLAN_PATH: {PLAN_PATH}
 - **Escalate, don't guess.** Blocked/card wrong/a decision reserved to the lead?
   Stop. If a mandatory step fails twice for infrastructure reasons, stop rather
-  than proceed. Commit a coherent in-flight change or discard only your own edits;
-  then file it and hand back.
+  than proceed. Commit a coherent in-flight change or discard only your own
+  edits, then hand back.
   File it: `python3 {PLUGIN_ROOT}/scripts/work.py note '...'`.
 - **Done = Verify green, work COMMITTED, then hand back.** Small commits. Never
   close, never merge, never run

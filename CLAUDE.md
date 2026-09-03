@@ -44,6 +44,8 @@ refusal reads as success, and block buffering swallows its last line — measure
 completed review rounds died mid-commit reading as "exit code 0", and the note I filed
 blamed the pipeline before I proved it was mine (75842bb4, corrected by de7bc1aa).
 Redirect to a file and read it: `close.py ... > /tmp/leg.txt 2>&1; echo "rc=$?"`.
+PROCESS.md's "background every long leg" is `run_in_background: true` on the Bash
+call, set from the FIRST call, with no explicit timeout.
 
 ## Size discipline
 

@@ -104,19 +104,36 @@ class TestDogfoodMatchesTheScaffold:
         the guard. This scans Markdown only, so it says nothing about shipped
         Python strings or ordinary repository vocabulary such as "cap move".
         It deliberately rejects a consuming project's titled document too; use
-        a project-neutral phrase."""
+        a project-neutral phrase.
+
+        AN INITIAL CAPITAL IS REQUIRED and that is not laziness: `plan.md`,
+        `work.md`, `system.md` and `round-N.md` are state-root artifacts the
+        plugin creates and does not ship, and shipped prose names all four
+        legitimately. A case-insensitive pattern reds on every one of them, so
+        an all-lowercase leak (`design.md`) passes here by design — the third
+        arm below pins that, so a later widening has to face it deliberately."""
         plugin = self.REPO / "plugins" / "xp-plugin"
         corpus = sorted(plugin.rglob("*.md"))
+        texts = {str(path.relative_to(plugin)): path.read_text() for path in corpus}
+        assert texts, "document discovery found nothing — a green would certify"
         allowed = {path.name for path in corpus}
-        assert allowed and corpus, "document discovery found nothing — a green would certify"
-        document = re.compile(r"(?<![A-Za-z0-9_.-])([A-Z][A-Za-z0-9_-]*\.md)\b")
-        leaked = [
-            (str(path.relative_to(plugin)), name)
-            for path in corpus
-            for name in document.findall(path.read_text())
-            if name not in allowed
-        ]
+        leaked = self.unshipped_documents(texts, allowed)
         assert not leaked, f"shipped Markdown names unshipped documents: {leaked}"
+        # constraint 2, against the two leaks this guard was written for and the
+        # one it is not: DESIGN.md is ours alone, SKILL.md ships eight times.
+        assert self.unshipped_documents({"p": "see DESIGN.md"}, allowed)
+        assert not self.unshipped_documents({"p": "see SKILL.md"}, allowed)
+        assert not self.unshipped_documents({"p": "see design.md"}, allowed)
+
+    @staticmethod
+    def unshipped_documents(texts, allowed):
+        document = re.compile(r"(?<![A-Za-z0-9_.-])([A-Z][A-Za-z0-9_-]*\.md)\b")
+        return [
+            (name, doc)
+            for name, text in texts.items()
+            for doc in document.findall(text)
+            if doc not in allowed
+        ]
 
     def cap_value(self, path):
         line = next(
@@ -215,10 +232,13 @@ class TestDogfoodMatchesTheScaffold:
             assert red.returncode != 0, f"run_tier {tier} passed an over-cap constraints.md"
             assert "4500" in red.stderr, red.stderr
 
-    # The plugin path rides in the banner and the data root in the NEXT line, so
-    # BOTH lengths are subtracted from the constraints' room. Budgeted, not inherited: an installed
-    # adopter sits near 70/45, our own spawn worktrees near 102/40. Measured frontier: 110/100 is
-    # 9,498 of 9,500, so these budgets keep 32 bytes and red if a region grows.
+    # The plugin path rides in the banner (twice, so it costs 2 bytes a char) and
+    # the data root in the NEXT line, so BOTH lengths are subtracted from the
+    # constraints' room. Budgeted, not inherited, and past every path measured:
+    # an installed adopter sits near 70/45 and our own spawn worktrees near
+    # 102/40, so 110/70 holds 46 bytes over the worst real case. NO MARGIN
+    # FIGURE LIVES HERE — it moves on every shipped-prose edit, and the last one
+    # rotted from 32 bytes to 2 inside this story. The assertion measures it.
     PLUGIN_PATH_BUDGET = 110
     DATA_ROOT_BUDGET = 70
 

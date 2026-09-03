@@ -27,6 +27,6 @@ Background every long leg; no timeout.
 4. **Sprint close** — `/sprint-close`: uncovered falsifiers precede full. Triage and retro follow;
    review covers retro. With the human, schedule debt under budget or
    drop it. Nothing carries.
-5. **Free** — `/free-close`: start, dated card, spawn, release artifacts, review, land, post-merge.
+5. **Free** — `close.py free <slug> start`, dated card, spawn, then `/free-close`.
 
 Replace the ≤30-line session digest at story/sprint close; never append it.
