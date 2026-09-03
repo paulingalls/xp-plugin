@@ -407,17 +407,18 @@ def write_reviewer_diff(report: Path, reviewed_head: str, noun: str) -> str:
     return ""
 
 
-def stage_role(stage: str, card: str) -> tuple[str, str, str]:
-    """(harness, model, effort) for one round-1 review stage. A config predating
-    these keys falls back to `reviewer` AND DROPS THE CARD: `Reviewer:` is the
-    story leg's per-story twin of `Executor:`, and one card carrying it must not
-    retarget a whole sprint's review. Resolving REFUSES on a bad spec, which is
-    why cmd_review walks every stage before the first launch."""
+def stage_role(stage: str, card: str, fallback: str = "") -> tuple[str, str, str]:
+    """(harness, model, effort) for one role whose config key may be absent. The
+    default fallback is `reviewer` AND DROPS THE CARD: `Reviewer:` is the story
+    leg's per-story twin of `Executor:`, and one card carrying it must not
+    retarget a whole sprint's review. A NAMED fallback keeps the card, because it
+    stands in for a role the card may legitimately pin. Resolving REFUSES on a bad
+    spec, which is why cmd_review walks every stage before the first launch."""
     from spawn import card_role, config_role, resolve_role
 
     if card_role(card, stage) or config_role(stage, "\0") != "\0":
         return resolve_role(stage, card)
-    return resolve_role("reviewer", "")
+    return resolve_role(fallback or "reviewer", card if fallback else "")
 
 
 def run(
@@ -426,14 +427,18 @@ def run(
     """Launch a configured reviewer, returning (result text, error).
     Function-local imports avoid spawn -> close -> review cycling at import time."""
     from close import config_flat
-    from spawn import agent_argv, missing_harness, resolve_codex_sandbox, resolve_role, run_agent
+    from spawn import agent_argv, missing_harness, resolve_codex_sandbox, run_agent
 
     name = name or "story-reviewer"
     if stage := role:
         harness, model, effort = stage_role(stage, card)
     else:
         role = name if name in ("planner", "plan-reviewer") else "reviewer"
-        harness, model, effort = resolve_role(role, card)
+        # `planner` postdates every config we have ever shipped, and spawn reaches
+        # it before the executor on EVERY multi-file card: refusing on the absent
+        # key would strand the whole default path, so it falls back to the role
+        # whose plan it writes. A config that sets roles.planner still wins.
+        harness, model, effort = stage_role(role, card, "executor" if role == "planner" else "")
     sandbox, problem = resolve_codex_sandbox(harness, config_flat("codex_sandbox"))
     if problem:
         return "", problem

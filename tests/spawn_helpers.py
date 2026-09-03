@@ -116,12 +116,14 @@ def stub_claude(
         '"scope":"user"}]\'); sys.exit()',
         "argv = sys.argv[1:]",
         "stdin = sys.stdin.read()",
-        # BEHAVIOUR follows the role, because spawn sets XP_ROLE on every launch and
-        # a stub that commits while asked to be the reviewer reds as "the read-only
-        # reviewer changed HEAD" three files away. RECORDING still follows the test
+        # BEHAVIOUR follows the role AND the bundle, never XP_ROLE alone: a stub
+        # that commits while asked to be the reviewer reds as "the read-only
+        # reviewer changed HEAD" three files away, but XP_ROLE is INHERITED from
+        # whatever agent runs the suite, and a story-reviewer running it turned two
+        # tests that drive this stub bare red. RECORDING still follows the test
         # flag: the reviewer launch must not clobber the teammate's record inside a
         # spawn run, while the close-review leg's own tests read that same record.
-        "spawn_review = os.environ.get('XP_ROLE') == 'reviewer'",
+        "spawn_review = os.environ.get('XP_ROLE') == 'reviewer' and 'REPORT_PATH: ' in stdin",
         "keep_record = not (os.environ.get('XP_SPAWN_TEST') and spawn_review)",
         f"record = {{'argv': argv, 'env': dict(os.environ), 'stdin': stdin}}; path = {str(rec)!r}",
         "json.dump(record, open(path, 'w')) if keep_record else None",
@@ -297,12 +299,14 @@ def stub_codex(
         "if want is not None and posture != want:",
         "    die('launched under sandbox ' + (posture or '(none)') + ', want ' + want)",
         "stdin = sys.stdin.read()",
-        # BEHAVIOUR follows the role, because spawn sets XP_ROLE on every launch and
-        # a stub that commits while asked to be the reviewer reds as "the read-only
-        # reviewer changed HEAD" three files away. RECORDING still follows the test
+        # BEHAVIOUR follows the role AND the bundle, never XP_ROLE alone: a stub
+        # that commits while asked to be the reviewer reds as "the read-only
+        # reviewer changed HEAD" three files away, but XP_ROLE is INHERITED from
+        # whatever agent runs the suite, and a story-reviewer running it turned two
+        # tests that drive this stub bare red. RECORDING still follows the test
         # flag: the reviewer launch must not clobber the teammate's record inside a
         # spawn run, while the close-review leg's own tests read that same record.
-        "spawn_review = os.environ.get('XP_ROLE') == 'reviewer'",
+        "spawn_review = os.environ.get('XP_ROLE') == 'reviewer' and 'REPORT_PATH: ' in stdin",
         "keep_record = not (os.environ.get('XP_SPAWN_TEST') and spawn_review)",
         f"record = {{'argv': argv, 'env': dict(os.environ), 'stdin': stdin}}; path = {str(rec)!r}",
         "json.dump(record, open(path, 'w')) if keep_record else None",

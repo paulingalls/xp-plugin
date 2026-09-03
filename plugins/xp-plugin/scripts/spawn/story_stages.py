@@ -31,12 +31,14 @@ def review_story(tree: Path, story_id: str) -> tuple[int, dict]:
     from close import cmd_review, git, marker_path
 
     with contextlib.chdir(tree):
+        # By SHA: refs/stash is one stack per clone, so a pop takes whoever pushed last.
         dirty = bool(git("status", "--porcelain").stdout.strip())
-        if dirty and git("stash", "push", "-qu", check=False).returncode:
+        if dirty and git("stash", "push", "-qu", "-m", story_id, check=False).returncode:
             return 2, {}
+        entry = git("rev-parse", "-q", "--verify", "stash@{0}", check=False).stdout.strip()
         try:
             rc = cmd_review(story_id)
             state = json.loads(marker_path(story_id).read_text()) if not rc else {}
         finally:
-            restored = git("stash", "pop", "-q", check=False) if dirty else None
+            restored = git("stash", "apply", "-q", entry, check=False) if dirty else None
     return (2, {}) if restored and restored.returncode else (rc, state)

@@ -389,10 +389,10 @@ def cmd_spawn(story_id: str, override: str, dry_run: bool, resuming: bool = Fals
         mark_stage(data_root(), story_id, "plan-reviewer", "ran")
     elif not multifile:
         mark_stage(data_root(), story_id, "plan-reviewer", "skipped")
-    # NOT recomputed: mark_handoff above set this run to RUNNING, so a second
-    # inheritance() would tell the successor it inherits its own state and drop
-    # the predecessor's commits. The executor reads the plan by PLAN_PATH.
-    prompt = build_prompt(teammate_sections(card, story_id, handoff, PLUGIN_ROOT))
+    # The prompt is the one built above, NEVER rebuilt here: mark_handoff has since
+    # set this run RUNNING, so a second inheritance() would tell the successor it
+    # inherits its own state and drop the predecessor's commits. The stages changed
+    # nothing it reads — the executor reaches the reviewed plan by PLAN_PATH.
     rc = run_teammate(argv, tree, prompt, story_id, data_root(), harness)
     err = unclean_teammate_result(tree, handed_over, story_id, resuming)
     if err or rc:
@@ -401,7 +401,7 @@ def cmd_spawn(story_id: str, override: str, dry_run: bool, resuming: bool = Fals
     mark_stage(data_root(), story_id, "executor", "ran")
     rc, state = stages.review_story(tree, story_id)
     if rc:
-        return stop("diff review failed", rc)
+        return stop(f"the diff review leg refused (rc {rc}) — its refusal is above", rc)
     mark_stage(data_root(), story_id, "reviewer", "ran")
     if state["rounds"][-1]["blocking"]:
         why = "diff review recorded blocking findings; resume with a fresh executor to fix them"

@@ -58,8 +58,7 @@ def validate(root: Path, story_id: str, tree: Path, branch: str) -> str:
         return f"refused: invalid handoff state {kind!r} in {marker} — {recovery}"
     stages = state.get("stages", {})
     if not isinstance(stages, dict) or any(
-        name not in STAGES or result not in ("ran", "skipped")
-        for name, result in getattr(stages, "items", lambda: ())()
+        name not in STAGES or result not in ("ran", "skipped") for name, result in stages.items()
     ):
         return f"refused: invalid stage state in {marker} — restore ran/skipped stage values"
     if not tree.is_dir():
