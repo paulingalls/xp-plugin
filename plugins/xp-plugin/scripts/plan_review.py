@@ -193,6 +193,15 @@ def cmd_review(story_id: str, plan_file: Path, dry_run: bool) -> int:
     )
 
 
+def run_foreground(story_id: str, plan_file: Path) -> int:
+    plan, card, out = plan_file.read_text(), card_for(story_id), findings_path(story_id)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    marker = incomplete_marker(story_id)
+    marker.parent.mkdir(parents=True, exist_ok=True)
+    marker.write_text(json.dumps({"state": "PLAN REVIEW DID NOT COMPLETE", "findings": str(out)}))
+    return _run_review(story_id, plan_file, review.charter("plan-reviewer"), plan, card, out, False)
+
+
 def _run_review(
     story_id: str, plan_file: Path, charter: str, plan: str, card: str, out: Path, dry_run: bool
 ) -> int:

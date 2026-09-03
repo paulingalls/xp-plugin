@@ -2,6 +2,7 @@
 """Spawn or resume a fresh teammate in a story worktree."""
 
 import argparse
+import contextlib
 import os
 import subprocess
 import sys
@@ -11,10 +12,11 @@ sys.path.insert(0, str(Path(__file__).parent))
 sys.path.insert(0, str(Path(__file__).parent / "spawn"))
 # close must import back FUNCTION-LOCALLY: a module-level edge cycles
 # (close -> spawn -> close) and fails before fail/git exist (story-008).
+import stages
 from bookkeep import bootstrap_command
 from close import config_flat, fail, git, integration_target, leg, story_card
 from handback import tree_state, unclean_teammate_result
-from handoff import draft_path, inheritance, mark_handoff, report_handoff
+from handoff import draft_path, handoff_state, inheritance, mark_handoff, mark_stage, report_handoff
 from harness import HARNESS_INSTALL, agent_argv, missing_harness, resolve_codex_sandbox
 from role_config import card_role, config_role
 from teammate_tee import run_stream, run_teammate
@@ -182,13 +184,6 @@ def run_agent(
 ) -> subprocess.CompletedProcess:
     """Run one role with its prompt off argv and the reviewer silence bound on."""
     env = os.environ | {"XP_ROLE": role, "XP_HARNESS": harness}
-    # BOTH reviewer legs: a review is the one launch both long-running AND
-    # writing, and a hung one owns the lead's tree, with edit rights, forever. A
-    # teammate legitimately outruns any bound, and cmd_spawn's call site has no
-    # except — bounding it would kill a whole story and abandon its worktree.
-    # The number is the longest SILENCE tolerated, not a total budget: run_stream
-    # restarts it on every streamed line. Read from the environment because every
-    # test drives these as subprocesses.
     timeout = None
     if role.endswith("reviewer"):
         timeout = float(os.environ.get("XP_AGENT_TIMEOUT", 3600))
@@ -246,10 +241,6 @@ def story_branch(card: str, story_id: str) -> str:
     return f"{user_ns()}/{story_id}-{slugify(card_title(card))}"
 
 
-def current_branch() -> str:
-    return git("branch", "--show-current").stdout.strip()
-
-
 def cmd_spawn(story_id: str, override: str, dry_run: bool, resuming: bool = False) -> int:
     if not plan_path().exists():
         return fail("refused: " + missing_plan_refusal())
@@ -266,17 +257,20 @@ def cmd_spawn(story_id: str, override: str, dry_run: bool, resuming: bool = Fals
         return fail(f"refused: {story_id} is [{status}], spawn requires [ready]. {hint}")
     if not resuming and (drift := ready().drift(story_id, card)):
         return fail(drift)
+    from review import declared_files
+
+    multifile = len(declared_files(card)) > 1
     harness, model, effort = resolve_role("executor", card, override)
     sandbox, problem = resolve_codex_sandbox(harness, config_flat("codex_sandbox"))
     if problem:
         return fail("refused: " + problem)
     if gone := missing_harness(harness):
         return fail("refused: " + gone)
+    argv = agent_argv(harness, model, effort, "stream-json", sandbox)
     branch = story_branch(card, story_id)
     tree = worktree_path(story_id)
     trunk = integration_target()
-    reuse = bool(leg(story_id)[1]) and current_branch() == branch
-    argv = agent_argv(harness, model, effort, "stream-json", sandbox)
+    reuse = bool(leg(story_id)[1]) and git("branch", "--show-current").stdout.strip() == branch
     handoff = inheritance(data_root(), story_id)
     if resuming and tree.is_dir():
         handoff += resume().inherited_evidence(tree, trunk)
@@ -363,27 +357,57 @@ def cmd_spawn(story_id: str, override: str, dry_run: bool, resuming: bool = Fals
                     f" a teammate into a broken tree. Worktree left at {tree}"
                 )
         flip_to_in_progress(story_id)
-    # The teammate is the FIRST writer of plans/ — it drafts before plan_review.py,
-    # which is what creates the directory today — and a shell redirect does not
-    # make one. Left to fail, the model's own recovery is to draft inside the
-    # worktree, which is exactly the loss this path exists to prevent.
+    # The external plan must survive a stopped or removed worktree.
     draft_path(data_root(), story_id).parent.mkdir(parents=True, exist_ok=True)
     cut = "resumed" if resuming else ("continued, not cut" if reuse else f"off {trunk}")
     print(f"{branch} at {tree} ({cut})")
     handed_over = tree_state(tree)
     before = {eid for eid, _ in entries(data_root())}
+
+    def stop(why: str, code: int) -> int:
+        result = report_handoff(data_root(), story_id, before, why, code)
+        held.close()
+        return result
+
     mark_handoff(data_root(), story_id)
+    prior_stages = (handoff_state(data_root(), story_id) or {}).get("stages", {})
+    if multifile and prior_stages.get("planner") != "ran":
+        rc, why = stages.run_planner(story_id, card, tree, handoff)
+        if rc:
+            return stop(why, rc)
+        mark_stage(data_root(), story_id, "planner", "ran")
+    elif not multifile:
+        mark_stage(data_root(), story_id, "planner", "skipped")
+    if multifile and prior_stages.get("plan-reviewer") != "ran":
+        import plan_review
+
+        with contextlib.chdir(tree):
+            rc = plan_review.run_foreground(story_id, draft_path(data_root(), story_id))
+        if rc:
+            why = "execution plan review blocked or failed; read its disposition before resuming"
+            return stop(why, rc)
+        mark_stage(data_root(), story_id, "plan-reviewer", "ran")
+    elif not multifile:
+        mark_stage(data_root(), story_id, "plan-reviewer", "skipped")
+    handoff = inheritance(data_root(), story_id)
+    prompt = build_prompt(teammate_sections(card, story_id, handoff, PLUGIN_ROOT))
     rc = run_teammate(argv, tree, prompt, story_id, data_root(), harness)
-    # A crashed teammate is the likeliest one to leave work uncommitted.
     err = unclean_teammate_result(tree, handed_over, story_id, resuming)
     if err or rc:
         why = err or f"the teammate left a clean commit in {tree} before its harness failed"
-        result = report_handoff(data_root(), story_id, before, why, rc)
-        held.close()
-        return result
+        return stop(why, rc)
+    mark_stage(data_root(), story_id, "executor", "ran")
+    rc, state = stages.review_story(tree, story_id)
+    if rc:
+        return stop("diff review failed", rc)
+    mark_stage(data_root(), story_id, "reviewer", "ran")
+    if state["rounds"][-1]["blocking"]:
+        why = "diff review recorded blocking findings; resume with a fresh executor to fix them"
+        return stop(why, 0)
     free_slug = leg(story_id)[1]
-    # The free leg reads its branch off HEAD, and spawn just moved the lead to trunk.
     instruction = "run `/free-close` from that worktree" if free_slug else "run `/story-close`"
+    stage_results = (handoff_state(data_root(), story_id) or {}).get("stages", {})
+    print("stages: " + " · ".join(f"{name}={result}" for name, result in stage_results.items()))
     print(
         f"{story_id} produced commit {tree_state(tree)[0]} at {tree}. Read it, then {instruction}."
     )

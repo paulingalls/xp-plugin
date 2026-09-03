@@ -432,7 +432,7 @@ def run(
     if stage := role:
         harness, model, effort = stage_role(stage, card)
     else:
-        role = name if name == "plan-reviewer" else "reviewer"
+        role = name if name in ("planner", "plan-reviewer") else "reviewer"
         harness, model, effort = resolve_role(role, card)
     sandbox, problem = resolve_codex_sandbox(harness, config_flat("codex_sandbox"))
     if problem:

@@ -1,0 +1,101 @@
+import json
+
+from spawn_helpers import make_repo, spawn
+
+CLEAN = {"fixed": [], "blocking": [], "noted": []}
+
+
+def stub_stages(tmp_path, blocking_plan=False, blocking_diff=False):
+    binary = tmp_path / "bin" / "claude"
+    binary.parent.mkdir(exist_ok=True)
+    events = tmp_path / "events.jsonl"
+    plan = (
+        {"status": "blocked", "question": "choose"}
+        if blocking_plan
+        else {
+            "status": "clean",
+            "reasons": [],
+        }
+    )
+    report = {"fixed": [], "blocking": ["cannot land"], "noted": []} if blocking_diff else CLEAN
+    binary.write_text(
+        "#!/usr/bin/env python3\n"
+        "import json, os, re, subprocess, sys\n"
+        "if sys.argv[1:] == ['plugin', 'list', '--json']:\n"
+        ' print(\'[{"id":"xp-plugin@xp-plugin","version":"fixture",'
+        '"scope":"user"}]\'); sys.exit()\n'
+        "prompt = sys.stdin.read(); role = os.environ['XP_ROLE']\n"
+        f"events = {str(events)!r}\n"
+        "with open(events, 'a') as f:\n"
+        " f.write(json.dumps({'role': role, 'argv': sys.argv[1:]}) + '\\n')\n"
+        "if role == 'planner':\n"
+        " p = re.search(r'^PLAN_PATH: (.+)$', prompt, re.M); assert p\n"
+        " open(p.group(1).strip(), 'w').write('# execution plan\\nred then green\\n')\n"
+        "elif role == 'plan-reviewer':\n"
+        " p = re.search(r'^FINDINGS_PATH: (.+)$', prompt, re.M); assert p\n"
+        f" open(p.group(1).strip(), 'w').write({json.dumps(plan)!r})\n"
+        "elif role == 'teammate':\n"
+        " os.makedirs('src', exist_ok=True)\n"
+        " open('src/thing.py', 'a').write('\\nDONE = True\\n')\n"
+        " subprocess.run(['git', 'add', '-A'], check=True)\n"
+        " subprocess.run(['git', 'commit', '-qm', 'executor work'], check=True)\n"
+        "elif role == 'reviewer':\n"
+        " p = re.search(r'^REPORT_PATH: (.+)$', prompt, re.M); assert p\n"
+        f" report = {report!r}\n"
+        " open(p.group(1).strip(), 'w').write(json.dumps(report))\n"
+        "print(json.dumps({'type':'result','subtype':'success','result':'done'}))\n"
+    )
+    binary.chmod(0o755)
+    return events
+
+
+def event_roles(path):
+    return [json.loads(line)["role"] for line in path.read_text().splitlines()]
+
+
+class TestSpawnStages:
+    def test_multifile_runs_the_four_roles_in_order_and_records_the_close_round(self, tmp_path):
+        repo, env, _g = make_repo(tmp_path, files="src/thing.py, src/other.py")
+        events = stub_stages(tmp_path)
+        result = spawn(repo, env, "story-042")
+        assert result.returncode == 0, result.stderr
+        assert event_roles(events) == ["planner", "plan-reviewer", "teammate", "reviewer"]
+        handoff = json.loads((tmp_path / "data/plans/story-042.handoff.json").read_text())
+        assert handoff["stages"] == {
+            "planner": "ran",
+            "plan-reviewer": "ran",
+            "executor": "ran",
+            "reviewer": "ran",
+        }
+        close = json.loads((tmp_path / "data/markers/story-042.close.json").read_text())
+        assert close["shown_sha"] == close["reviewed_head"]
+
+    def test_single_file_distinguishes_skipped_planning_from_ran_stages(self, tmp_path):
+        repo, env, _g = make_repo(tmp_path)
+        events = stub_stages(tmp_path)
+        result = spawn(repo, env, "story-042")
+        assert result.returncode == 0, result.stderr
+        assert event_roles(events) == ["teammate", "reviewer"]
+        state = json.loads((tmp_path / "data/plans/story-042.handoff.json").read_text())
+        assert state["stages"] == {
+            "planner": "skipped",
+            "plan-reviewer": "skipped",
+            "executor": "ran",
+            "reviewer": "ran",
+        }
+
+    def test_a_blocking_plan_stops_before_executor(self, tmp_path):
+        repo, env, _g = make_repo(tmp_path, files="src/thing.py, src/other.py")
+        events = stub_stages(tmp_path, blocking_plan=True)
+        result = spawn(repo, env, "story-042")
+        assert result.returncode != 0
+        assert event_roles(events) == ["planner", "plan-reviewer"]
+
+    def test_blocking_diff_review_is_a_stopped_not_finished_handback(self, tmp_path):
+        repo, env, _g = make_repo(tmp_path)
+        events = stub_stages(tmp_path, blocking_diff=True)
+        result = spawn(repo, env, "story-042")
+        assert result.returncode != 0
+        assert event_roles(events) == ["teammate", "reviewer"]
+        state = json.loads((tmp_path / "data/plans/story-042.handoff.json").read_text())
+        assert state["state"] == "STOPPED" and state["stages"]["reviewer"] == "ran"

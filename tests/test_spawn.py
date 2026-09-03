@@ -490,3 +490,6 @@ def test_the_brief_states_the_commit_the_handback_guard_requires(tmp_path, monke
     brief = " ".join(b for _, b in sections)
     told = ("commit your", "small commits", "your own commits")
     assert any(p in brief.lower() for p in told), "the brief never tells the executor to commit"
+
+
+from test_spawn_stages import TestSpawnStages  # noqa: E402,F401
