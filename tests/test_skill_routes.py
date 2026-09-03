@@ -80,7 +80,7 @@ def _assert_skill_routes(skills_dir, process, prose_docs, nudges, refusals):
     )
     missing = sorted(set(shipped) - action_tokens)
     assert not missing, f"shipped but named at no action site: {', '.join(missing)}"
-    references = set(token.findall("\n".join([*prose_docs, *nudges, *refusals])))
+    references = set(token.findall("\n".join([process, *prose_docs, *nudges, *refusals])))
     unknown = sorted(references - set(shipped))
     assert not unknown, f"named but not shipped: {', '.join(unknown)}"
 
@@ -149,8 +149,6 @@ def test_each_loop_step_names_its_command_or_skill():
     _walk_step_routes(process)
     with pytest.raises(AssertionError, match=r"missing\.py"):
         _walk_step_routes(process.replace("plan_review.py", "missing.py"))
-    with pytest.raises(AssertionError, match="bogus"):
-        _walk_step_routes(process.replace("close.py free", "close.py bogus"))
     with pytest.raises(AssertionError, match="redy"):
         _walk_step_routes(process.replace("spawn.py ready", "spawn.py redy"))
     with pytest.raises(AssertionError, match="step 2 names no"):
@@ -265,6 +263,14 @@ def test_every_shipped_skill_is_named_by_shipped_prose(tmp_path):
     refusals = [refusal.stderr]
     _assert_skill_routes(skills, process, prose_docs, nudges, refusals)
 
+    with pytest.raises(AssertionError, match="not-shipped"):
+        _assert_skill_routes(
+            skills,
+            process.replace("`/free-close`", "`/not-shipped`"),
+            prose_docs,
+            nudges,
+            refusals,
+        )
     mention_only = process.replace("`/story-close`", "the story skill").replace(
         "`/sprint-close`", "the sprint skill"
     )
