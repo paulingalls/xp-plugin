@@ -93,7 +93,7 @@ class TestShippedProseMatchesTheMechanism:
         (bug 898ad9e1, note c3d8e2a7): one word covered two artifacts and no
         lead-facing sentence said whose each was. Pinned in both copies rather
         than read-and-judged because TEAMMATE.md shares an enforced profile cap
-        (`spawn.PLUGIN_SHIPPED_CAP`, 1442/1500 today) — the next component that
+        (`spawn.PLUGIN_SHIPPED_CAP`, 1,753/1,930 today) — the next component that
         lands forces a cut there, and the newest sentence is the one that looks
         least load-bearing. "sprint review" is excluded by name: `close.py sprint
         <id> review` already holds that phrase.
@@ -194,9 +194,13 @@ class TestShippedProseMatchesTheMechanism:
         """Constraint 1. The cap is the LIVE size, never a historical one: left at
         5,454 for a file that had shrunk to 2,928, it passed with 2,277 characters
         of padding spliced in — a ratchet with slack certifies instead of checking.
-        Re-measure and lower it whenever this file legitimately shrinks."""
+        Re-measure and lower it whenever this file legitimately shrinks.
+
+        RAISED 1,600 -> 1,775 with the floor below. The sentence above is about
+        slack by NEGLECT, and it still binds: a floor tracks the live size, an
+        abandoned cap does not."""
         raw = (PLUGIN / "PROCESS.md").read_text()
-        assert len(raw) <= 1600, "the execution rule stopped paying for itself"
+        assert len(raw) <= 1775, "the execution rule stopped paying for itself"
         process = " ".join(raw.split())
         story = process.split("2. **Story", 1)[1].split("3. **Story close", 1)[0]
         assert "free work" in story and "worktree" in story
@@ -233,12 +237,22 @@ class TestShippedProseMatchesTheMechanism:
         muscle to fit is measuring the wrong thing. What this pins against is
         REGROWN ENUMERATION, and that is still pinned; the room is for saying a
         new thing without paying for it in an old one.
+
+        EVERY CAP NOW CARRIES A FLOOR: >=10% free against the live size, re-cut
+        when a fix lands. A ten-way audit found ONE defect nine times — the
+        second half of something squeezed out — and measured every capped
+        artifact at 96-100% of its ceiling. Ceilings were never the problem;
+        ceilings without a floor were, because the cheapest words to cut are the
+        ones supplying a referent. xp-setup JOINS the tuple: it was the only
+        skill with no cap and the only one whose defect was a stale claim rather
+        than an amputation, which is the same finding from the other side.
         """
         for skill, cap in (
-            ("story-close", 380),
-            ("sprint-close", 290),
-            ("free-close", 85),
-            ("create-sprint", 190),
+            ("story-close", 410),
+            ("sprint-close", 315),
+            ("free-close", 115),
+            ("create-sprint", 205),
+            ("xp-setup", 340),
         ):
             body = prose(PLUGIN / "skills" / skill / "SKILL.md")
             assert len(body.split()) <= cap, f"{skill} regrew to {len(body.split())} words"

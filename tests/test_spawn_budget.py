@@ -93,7 +93,7 @@ class TestBudget:
         shutil.copytree(spawn_module.PLUGIN_ROOT, root)
         monkeypatch.setattr(spawn_module, "PLUGIN_ROOT", root)
         judgment = root / "JUDGMENT.md"
-        assert spawn_module.PLUGIN_SHIPPED_CAP == 1500
+        assert spawn_module.PLUGIN_SHIPPED_CAP == 1930
         assert judgment.exists(), "the universal document is absent"
         prompt = spawn_module.build_prompt(
             spawn_module.teammate_sections("card", "story-042", "", root)
