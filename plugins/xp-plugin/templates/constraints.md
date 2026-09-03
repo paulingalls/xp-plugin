@@ -15,3 +15,14 @@ the cap requires retiring one. Reviewers enforce these — cite the item.
    something is wrong; no fallback that masks a defect.
 5. **Test at boundaries** — validate at system edges (input, APIs, I/O); trust
    internal logic.
+6. **Require independent challenge**: a check or review must be capable of
+   disagreeing with the premise it examines, not merely repeat its author.
+7. **Walk shipped paths**: a substitute does not verify a user-facing or
+   instructed path. Execute each changed path end to end before release.
+8. **Check behavior claims first**: read or run existing behavior before a
+   plan, review, or decision relies on a claim about it.
+9. **Name one release version**: before publication, the tag, package or
+   manifest metadata, and release notes must name the same version.
+10. **Keep states distinct**: never infer one state only from another's
+    absence. Represent active and terminal states, and test refusal boundaries
+    between them.
