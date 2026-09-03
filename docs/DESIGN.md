@@ -359,23 +359,12 @@ times: the second half of something squeezed out. Not vagueness, AMPUTATION — 
 says "your release artifacts are yours" and never names `post-merge`, which is what tags.
 The mechanism is that the ratchet turns one way and the cheapest words to cut are the ones
 supplying a referent, so nine independent squeezes reached for the same kind of word. THE
-RULE NOW: every prose cap carries >=10% free against its live size, re-cut when a fix lands,
-and `xp-setup` joins the tuple it was absent from — the one skill with no cap was also the
-one whose defect was a stale claim rather than an amputation. Raised, each priced against
-its measured fix and not guessed: story-close 380 -> 410, sprint-close 290 -> 315,
-free-close 85 -> 115, create-sprint 190 -> 205, xp-setup none -> 340, PROCESS.md
-1,600 -> 1,775 -> 1,815, PLUGIN_SHIPPED_CAP 1,500 -> 1,930.
-THE RAISES LANDED AND FOUR OF THE FIXES THEY WERE PRICED FOR DID NOT (the story
-reviewer's round 1, escalated by the executor before it): PROCESS.md is unchanged
-at 1,590/1,815 and the shipped profile at 1,475/1,930, so the two largest raises
-bought 225 characters and 455 tokens of slack for work that is not in the tree —
-a ratchet with slack certifies instead of checking, which is the failure this
-same section warns about two paragraphs up. Re-cut both to the live sizes, or
-land the fixes; do not leave the numbers standing on the intention.
-AND THE FLOOR DOES NOT HOLD ON THE COMMIT THAT WRITES IT: sprint-close is
-286/315 (9.2% free) and xp-setup 307/340 (9.7%), because both caps were priced
-at 282 and 303 and then their own carded fixes added four words each. That is
-the fourth time scope arrived after a cap was priced. Price caps LAST.
+RULE NOW: every purchasable prose cap is at least live / 0.9, so at least 10% of the cap
+stays free; re-cut when a fix lands. `xp-setup` joins the tuple it was absent from — the one
+skill with no cap was also the one whose defect was a stale claim rather than an amputation.
+Final caps, priced after the fixes: story-close 410 (364 live), sprint-close 320 (286),
+free-close 115 (103), create-sprint 205 (182), xp-setup 345 (307), and
+PLUGIN_SHIPPED_CAP 1,930.
 CONSTRAINT 1 GAINS ITS EXEMPTION and it is what funds the rest: a CORRECTION creates no new
 obligation for the reader, so it displaces nothing. Without it, three separate squeezes had
 already paid for corrections out of muscle.
@@ -390,6 +379,10 @@ removing equal weight" as redundant with its own headline: 4,425 -> 4,481 of 4,5
 THE PRICE, recorded rather than dressed up: this one file keeps a 19-char ceiling with no
 floor, and no floor is available to it while OUTPUT_CAP is external. The honest reading is
 that the lead injection, not the char cap, is what the next constraint competes against.
+PROCESS.md is the second external-ceiling exception. Bisection against that same byte profile
+puts its real bound at 1,620 characters; the abandoned 1,775 and 1,815 caps were looser than
+the wall and therefore certified prose the lead could not receive. It cannot grow without
+displacement, because no larger floor is purchasable while OUTPUT_CAP is external.
 
 The 6,150-line total is **sub-budgeted**, because the two surviving big components already threaten it (the predecessor's spawn subsystem alone is ~1.7k+ lines, and the Codex leg's measured requirements — sandbox flags, install preflight, catalog re-enumeration, tier handling — are feature surface, not prose): The twenty-fifth re-cut is **1,480/2,625/665/1,380** (2026-09-03, Paul, at story-102's close) — 20 more misc -> spawn, total unmoved at 6,150, and the SECOND re-cut in one day, which DESIGN's own ledger warns against. Measured at b1605cf: story-102 consumed the twenty-fourth re-cut EXACTLY, leaving spawn 1,460/1,460 — flush, zero free — while story-103 still owes `spawn` a ready.py refusal. Paul asked for a displacement to be sought FIRST: an AST scan over the whole component found no unused module-level function, and story-102 had already shed docstrings from teammate_tee.py to fit, so there was nothing to remove that a reader would not miss. misc funds it again at 1,348/1,380, 32 free. THE LEDGER'S OWN WARNING STANDS AND IS NOT DISCHARGED BY THIS ENTRY: two re-cuts in a day is the pattern the note calls measuring the wrong invariant. The honest reading is that Milestone 8 moves work INTO spawn by design — four staged roles where there was one teammate — so the component's share of a fixed total is what needs re-deciding at the next planning, not its ceiling under pressure. THE TWENTY-SIXTH RE-CUT IS THE FIRST THAT MOVES THE TOTAL, 6,150 -> 6,300 (2026-09-03,
 Paul, at story-103's third escalation), and it is the entry every later raise must argue

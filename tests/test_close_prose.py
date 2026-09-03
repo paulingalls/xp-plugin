@@ -199,16 +199,11 @@ class TestShippedProseMatchesTheMechanism:
         of padding spliced in — a ratchet with slack certifies instead of checking.
         Re-measure and lower it whenever this file legitimately shrinks.
 
-        RAISED 1,600 -> 1,775 -> 1,815 with the floor below, to fund the loop-map
-        and timeout corrections. NEITHER LANDED — this file is unchanged at 1,590,
-        so 225 of those characters are slack, and the sentence above is about
-        exactly that. What actually bounds this file is 32 characters, not 225:
-        test_dogfood's byte profile truncates the constraints past that (measured
-        by bisection at HEAD), so the cap and the wall disagree by 7x and the
-        LOUDER number is the wrong one. Re-cut this to the live size, or land the
-        corrections, before the next reader trusts the 1,815."""
+        PROCESS is an external-ceiling exception to the floor below. Bisection
+        against test_dogfood's byte profile found a 1,620-character real bound;
+        a looser prose cap would certify text the lead injection truncates."""
         raw = (PLUGIN / "PROCESS.md").read_text()
-        assert len(raw) <= 1815, "the execution rule stopped paying for itself"
+        assert len(raw) <= 1620, "the execution rule stopped paying for itself"
         process = " ".join(raw.split())
         story = process.split("2. **Story", 1)[1].split("3. **Story close", 1)[0]
         assert "free work" in story and "worktree" in story
@@ -265,8 +260,8 @@ class TestShippedProseMatchesTheMechanism:
         REGROWN ENUMERATION, and that is still pinned; the room is for saying a
         new thing without paying for it in an old one.
 
-        EVERY CAP NOW CARRIES A FLOOR: >=10% free against the live size, re-cut
-        when a fix lands. A ten-way audit found ONE defect nine times — the
+        EVERY PURCHASABLE CAP NOW CARRIES A FLOOR: cap >= live / 0.9, re-cut when
+        a fix lands. A ten-way audit found ONE defect nine times — the
         second half of something squeezed out — and measured every capped
         artifact at 96-100% of its ceiling. Ceilings were never the problem;
         ceilings without a floor were, because the cheapest words to cut are the
@@ -276,13 +271,13 @@ class TestShippedProseMatchesTheMechanism:
         """
         for skill, cap in (
             ("story-close", 410),
-            ("sprint-close", 315),
+            ("sprint-close", 320),
             ("free-close", 115),
             ("create-sprint", 205),
-            ("xp-setup", 340),
+            ("xp-setup", 345),
         ):
             body = prose(PLUGIN / "skills" / skill / "SKILL.md")
-            assert len(body.split()) <= cap, f"{skill} regrew to {len(body.split())} words"
+            assert cap >= len(body.split()) / 0.9, f"{skill} lost its 10% floor"
 
     def test_the_skills_keep_the_negative_space_that_earns_its_words(self):
         """The counterweight to the cut: what deliberately does NOT exist cannot be
