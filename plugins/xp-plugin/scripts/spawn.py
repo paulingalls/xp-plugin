@@ -12,7 +12,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 sys.path.insert(0, str(Path(__file__).parent / "spawn"))
 # close must import back FUNCTION-LOCALLY: a module-level edge cycles
 # (close -> spawn -> close) and fails before fail/git exist (story-008).
-import stages
+import story_stages as stages
 from bookkeep import bootstrap_command
 from close import config_flat, fail, git, integration_target, leg, story_card
 from handback import tree_state, unclean_teammate_result
@@ -389,7 +389,9 @@ def cmd_spawn(story_id: str, override: str, dry_run: bool, resuming: bool = Fals
         mark_stage(data_root(), story_id, "plan-reviewer", "ran")
     elif not multifile:
         mark_stage(data_root(), story_id, "plan-reviewer", "skipped")
-    handoff = inheritance(data_root(), story_id)
+    # NOT recomputed: mark_handoff above set this run to RUNNING, so a second
+    # inheritance() would tell the successor it inherits its own state and drop
+    # the predecessor's commits. The executor reads the plan by PLAN_PATH.
     prompt = build_prompt(teammate_sections(card, story_id, handoff, PLUGIN_ROOT))
     rc = run_teammate(argv, tree, prompt, story_id, data_root(), harness)
     err = unclean_teammate_result(tree, handed_over, story_id, resuming)

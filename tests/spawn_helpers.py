@@ -116,10 +116,15 @@ def stub_claude(
         '"scope":"user"}]\'); sys.exit()',
         "argv = sys.argv[1:]",
         "stdin = sys.stdin.read()",
-        "spawn_review = (os.environ.get('XP_SPAWN_TEST') and "
-        "os.environ.get('XP_ROLE') == 'reviewer')",
+        # BEHAVIOUR follows the role, because spawn sets XP_ROLE on every launch and
+        # a stub that commits while asked to be the reviewer reds as "the read-only
+        # reviewer changed HEAD" three files away. RECORDING still follows the test
+        # flag: the reviewer launch must not clobber the teammate's record inside a
+        # spawn run, while the close-review leg's own tests read that same record.
+        "spawn_review = os.environ.get('XP_ROLE') == 'reviewer'",
+        "keep_record = not (os.environ.get('XP_SPAWN_TEST') and spawn_review)",
         f"record = {{'argv': argv, 'env': dict(os.environ), 'stdin': stdin}}; path = {str(rec)!r}",
-        "json.dump(record, open(path, 'w')) if not spawn_review else None",
+        "json.dump(record, open(path, 'w')) if keep_record else None",
         "if spawn_review:",
         " import re",
         " match = re.search(r'^REPORT_PATH: (.+)$', stdin, re.M); assert match",
@@ -128,9 +133,13 @@ def stub_claude(
     ]
     if execute_escalation:
         body += [
-            "line = next(ln for ln in stdin.splitlines() if ln.startswith('  File it: `'))",
-            "command = line.split('`', 2)[1].replace(\"'...'\", \"'fixture'\")",
-            f"subprocess.run([{sys.executable!r}, *shlex.split(command)[1:]], check=True)",
+            # not as the reviewer: its bundle carries no escalation line, and the
+            # unguarded next() exits 1 as "reviewer exited 1" two files away.
+            "line = next((ln for ln in stdin.splitlines() "
+            "if ln.startswith('  File it: `')), None) if not spawn_review else None",
+            "command = line.split('`', 2)[1].replace(\"'...'\", \"'fixture'\") if line else None",
+            f"subprocess.run([{sys.executable!r}, *shlex.split(command)[1:]], check=True)"
+            " if command else None",
         ]
     if write_file:
         body.append("open('teammate-left-this-uncommitted.txt', 'w').write('oops')")
@@ -288,10 +297,15 @@ def stub_codex(
         "if want is not None and posture != want:",
         "    die('launched under sandbox ' + (posture or '(none)') + ', want ' + want)",
         "stdin = sys.stdin.read()",
-        "spawn_review = (os.environ.get('XP_SPAWN_TEST') and "
-        "os.environ.get('XP_ROLE') == 'reviewer')",
+        # BEHAVIOUR follows the role, because spawn sets XP_ROLE on every launch and
+        # a stub that commits while asked to be the reviewer reds as "the read-only
+        # reviewer changed HEAD" three files away. RECORDING still follows the test
+        # flag: the reviewer launch must not clobber the teammate's record inside a
+        # spawn run, while the close-review leg's own tests read that same record.
+        "spawn_review = os.environ.get('XP_ROLE') == 'reviewer'",
+        "keep_record = not (os.environ.get('XP_SPAWN_TEST') and spawn_review)",
         f"record = {{'argv': argv, 'env': dict(os.environ), 'stdin': stdin}}; path = {str(rec)!r}",
-        "json.dump(record, open(path, 'w')) if not spawn_review else None",
+        "json.dump(record, open(path, 'w')) if keep_record else None",
     ]
     if report is None:
         body += [
