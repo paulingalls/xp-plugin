@@ -114,8 +114,7 @@ SANDBOX_NOTE = {
     "danger-full-access": "no OS confinement — network, docker and nested codex all reachable",
     "workspace-write": (
         "no outbound network — DNS, loopback, docker and a nested harness are all denied,"
-        " so TEAMMATE.md's mandatory plan_review.py cannot reach an API from a teammate's"
-        " shell; danger-full-access lifts them"
+        " so a foreground plan reviewer cannot reach an API; danger-full-access lifts them"
     ),
 }
 
@@ -165,18 +164,12 @@ def _feed_stdin(proc: subprocess.Popen, prompt: str) -> None:
 
 
 def _session_id(harness: str, line: str) -> str:
-    """The harness's own id for this run, off the first event that carries one:
-    claude stamps `session_id` on every event, codex `thread_id` on
-    `thread.started`, which it emits first."""
     if (evt := event(line)) is None:
         return ""
     return str(evt.get("session_id" if harness == "claude" else "thread_id") or "")
 
 
 def _result_text(harness: str, result: dict) -> str:
-    """What the caller reads. Claude's whole envelope, because review.py wants
-    its `result` key and closing_line its counters; codex has no envelope, so
-    the terminal agent_message's text IS the result."""
     if harness == "claude":
         return json.dumps(result)
     return str((result.get("item") or {}).get("text", ""))

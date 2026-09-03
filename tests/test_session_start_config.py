@@ -20,16 +20,17 @@ class TestConfigAge:
     def test_lead_profile_names_one_missing_key_once_with_its_line(self, tmp_path):
         repo, _g = xp_repo(tmp_path)
         current = TEMPLATE.read_text()
-        old_line = (
-            "  plan-reviewer: claude/opus   # scripts/plan_review.py; a teammate runs it itself\n"
-        )
+        # Found rather than spelled: the pin was the whole line INCLUDING its comment,
+        # so an edit to that comment redded here as a missing key nobody had removed.
+        (old_line,) = [ln for ln in current.splitlines(True) if ln.startswith("  plan-reviewer:")]
         stale = current.replace(old_line, "")
         (repo / ".xp" / "config.yml").write_text(stale)
 
         out = run_hook(repo, tmp_path).stdout
 
         assert out.count("roles.plan-reviewer") == 1
-        assert ".xp/config.yml" in out and "`  plan-reviewer: claude/opus`" in out
+        # Comment-STRIPPED, which is what the lead is told to paste back.
+        assert ".xp/config.yml" in out and f"`{old_line.split('#')[0].rstrip()}`" in out
 
     def test_lead_profile_is_silent_for_the_complete_shipped_config(self, tmp_path):
         repo, _g = xp_repo(tmp_path)

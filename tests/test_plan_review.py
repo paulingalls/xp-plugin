@@ -296,10 +296,13 @@ class TestTheLaunch:
 
 
 class TestTheProfileCarriesTheInvocation:
-    """AC2: the teammate profile's plan-review section IS the invocation. A codex
-    teammate has no --plugin-dir, so the charter is not in its tree at all — and
-    the profile may not carry the charter body either (3693 tokens against a 2500
-    target). What it carries is the command that reaches both."""
+    """story-102 INVERTED this class's AC2. The profile used to carry the review's
+    invocation, and a teammate that ran it had to wait on a detached child across a
+    turn boundary — which it cannot, so two of three field-reported multi-file runs
+    lost their work inventing `sleep 90`. Spawn now runs that review as its own
+    stage, so what the profile must carry is the reviewed plan's path and NO
+    command. Kept for both harnesses because a codex teammate has no --plugin-dir:
+    whatever is not in the profile does not reach it at all."""
 
     def rendered(self, tmp_path, executor):
         root = tmp_path / executor.split("/")[0]
@@ -309,13 +312,13 @@ class TestTheProfileCarriesTheInvocation:
         assert r.returncode == 0, r.stderr
         return r.stdout
 
-    def test_both_harnesses_are_handed_the_command(self, tmp_path):
+    def test_neither_harness_is_handed_a_review_to_launch(self, tmp_path):
         for executor in ("claude/opus", "codex/gpt-5.6-terra/high"):
             profile = self.rendered(tmp_path, executor)
             (bullet,) = [b for b in profile.split("- **") if b.startswith("Multi-file change?")]
             section = bullet.split("- **")[0]
-            assert str(PLAN_REVIEW) in section, section
-            assert "python3" in section, section
+            assert str(PLAN_REVIEW) not in section, section
+            assert "Persistent PLAN_PATH: " in section, section
 
     def test_the_launched_plan_path_survives_worktree_removal(self, tmp_path):
         repo, env, g = make_repo(tmp_path)
