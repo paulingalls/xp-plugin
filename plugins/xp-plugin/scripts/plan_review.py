@@ -17,8 +17,8 @@ sys.path.insert(0, str(Path(__file__).parent))
 sys.path.insert(0, str(Path(__file__).parent / "spawn"))
 
 import review
-from card_review import review_findings_path, review_marker, run_detached
 from close import fail, story_card
+from slate_review import review_findings_path, review_marker, run_detached
 from spawn import _read, _read_shipped, tree_state
 from work import chdir_repo_root, plan_path
 
@@ -166,7 +166,7 @@ def disposition(text: str, before: bytes | None, after: bytes | None) -> str:
     return ""
 
 
-def cmd_review(story_id: str, plan_file: Path, dry_run: bool) -> int:
+def cmd_review(story_id: str, plan_file: Path, dry_run: bool, detach: bool = True) -> int:
     if not plan_file.is_file():
         return fail(f"refused: no plan at {plan_file} — draft it to a file first")
     plan = plan_file.read_text()
@@ -183,14 +183,26 @@ def cmd_review(story_id: str, plan_file: Path, dry_run: bool) -> int:
     card = card_for(story_id)
     if not card:
         return fail(f"refused: no {story_id} card in {plan_path()}")
+    out = findings_path(story_id)
     if dry_run:
-        return _run_review(story_id, plan_file, charter, plan, card, findings_path(story_id), True)
+        return _run_review(story_id, plan_file, charter, plan, card, out, True)
+    if not detach:
+        for path in (out, incomplete_marker(story_id)):
+            path.parent.mkdir(parents=True, exist_ok=True)
+        incomplete_marker(story_id).write_text(
+            json.dumps({"state": "PLAN REVIEW DID NOT COMPLETE", "findings": str(out)})
+        )
+        return _run_review(story_id, plan_file, charter, plan, card, out, False)
     return run_detached(
-        story_id,
-        "plan",
-        findings_path(story_id),
-        [str(Path(__file__).resolve()), story_id, str(plan_file)],
+        story_id, "plan", out, [str(Path(__file__).resolve()), story_id, str(plan_file)]
     )
+
+
+def run_foreground(story_id: str, plan_file: Path) -> int:
+    """spawn's own stage: no detached child, and cmd_review's guards all still run
+    — an absent plan, an empty one, an empty charter and a missing card each end a
+    round that would otherwise report a verdict nothing produced."""
+    return cmd_review(story_id, plan_file, False, detach=False)
 
 
 def _run_review(

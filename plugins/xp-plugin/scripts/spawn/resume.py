@@ -5,7 +5,7 @@ import fcntl
 import subprocess
 from pathlib import Path
 
-from handoff import handoff_state, marker_path
+from handoff import RESULTS, STAGES, handoff_state, marker_path
 
 
 def parse(argv: list[str]):
@@ -56,6 +56,11 @@ def validate(root: Path, story_id: str, tree: Path, branch: str) -> str:
     if kind not in ("STOPPED", "FINISHED", "RUNNING", "NEVER SPAWNED"):
         recovery = "discard/re-spawn or record a real STOPPED recovery; never forge FINISHED"
         return f"refused: invalid handoff state {kind!r} in {marker} — {recovery}"
+    stages = state.get("stages", {})
+    if not isinstance(stages, dict) or any(
+        name not in STAGES or result not in RESULTS for name, result in stages.items()
+    ):
+        return f"refused: invalid stage state in {marker} — restore {RESULTS} stage values"
     if not tree.is_dir():
         return f"refused: {kind} worktree {tree} is missing — recover it before resuming"
     if kind in ("RUNNING", "NEVER SPAWNED"):

@@ -321,6 +321,10 @@ def cmd_start(sprint_id: str) -> int:
     for eid, head, falsifier, covered in batch:
         grouped.setdefault(falsifier, []).append((eid, head, covered))
     tier = config_block_value("tests", "full")
+    # EDIT-ME ONLY — an absent full tier is a tested position (test_falsifier_batch runs
+    # the batch without one); EDIT-ME reached `sh -c`, returned 127, and refused as red.
+    if tier == "EDIT-ME":
+        return fail(overlap.tier_refusal(tier, "full"))
     deferred = {
         command: records
         for command, records in grouped.items()
@@ -442,11 +446,13 @@ def cmd_land(sprint_id: str, dry_run: bool) -> int:
     ref = overlap.merge_source(default_branch(), "pr")
     pending = overlap.unmerged(ref)
     if dry_run:
+        full = config_block_value("tests", "full")
+        if refusal := overlap.tier_refusal(full, "full"):
+            return fail(refusal)
+        print(f"would run: {full}")
         for c in cmds:
             print(" ".join(c))
         print(f"(then: close.py sprint {sprint_id} post-merge — tag {version}, retire the key)")
-        full = config_block_value("tests", "full") or "none configured"
-        print(f"(and first: the full tier — {full})")
         if pending:
             print(f"...on a trial merge with {ref} — staged, then aborted either way")
         return 0
@@ -460,19 +466,19 @@ def cmd_land(sprint_id: str, dry_run: bool) -> int:
     if red := overlap.gates(ref, "", "full", pending):
         return fail(red)
     state = json.loads(sprint_marker(sprint_id).read_text())
-    shown, rounds = state.get("shown_sha", ""), len(state.get("rounds", []))
-    rng = f"{state.get('reviewed_head', shown)}..{shown}"
-    if work := review.reviewer_range(state.get("reviewed_head", shown), shown):
-        print("the reviewer changed this tree — you are merging its work:")
-        print(work, end="")
-        print(f"full diff: {review.diff_path(review.sprint_report_path(sprint_id, 'fix', rounds))}")
+    head = git("rev-parse", "HEAD").stdout.strip()
+    review.disclose(
+        state,
+        head,
+        lambda n: review.diff_path(review.sprint_report_path(sprint_id, "fix", n)),
+    )
     if gates := [
-        f for f in git("diff", "--name-only", rng).stdout.splitlines() if f in overlap.GATE_FILES
+        f
+        for start, end in review.covered_ranges(state, head)
+        for f in git("diff", "--name-only", f"{start}..{end}").stdout.splitlines()
+        if f in overlap.GATE_FILES
     ]:
         print(f"among them a gate file, which no later check re-reads: {', '.join(gates)}")
-    if stale := review.reviewer_range(shown, git("rev-parse", "HEAD").stdout.strip()):
-        print("reviewer commits from a round that never recorded — nothing covers these:")
-        print(stale, end="")
     if not shutil.which("gh"):
         return fail(
             "refused: pr mode needs the gh CLI on PATH — install it, or open the PR by hand"

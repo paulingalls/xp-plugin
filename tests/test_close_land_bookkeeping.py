@@ -83,7 +83,9 @@ class TestLandBookkeeping:
         assert len(lines) == 1
         rec = json.loads(lines[0])
         assert rec["story"] == "story-042" and rec["title"] == "demo story"
-        assert rec["rounds"] == [{"fixed": [], "blocking": [], "noted": []}]
+        (round_,) = rec["rounds"]
+        assert round_ | {"fixed": [], "blocking": [], "noted": []} == round_, round_
+        assert round_["reviewed_head"] and round_["shown_sha"]
         assert rec["merge_sha"] == g("rev-parse", "main").stdout.strip()
         assert g("cat-file", "-t", rec["merge_sha"]).stdout.strip() == "commit"
 
@@ -112,3 +114,20 @@ class TestLandBookkeeping:
             )
         records = (tmp_path / "data" / "closes.jsonl").read_text().splitlines()
         assert [json.loads(r)["story"] for r in records] == ["story-042", "story-043"]
+
+    def test_a_failed_push_is_reported_with_its_cause(self, tmp_path):
+        """land inspects only the returncode of `git push origin <trunk>` and
+        captures its stderr, so the one step that reaches the network is the one
+        that explains itself least. Measured 2026-09-02: sprint-017's push failed
+        inside land, the retry of the same command succeeded, and the cause is
+        now unrecoverable — a transient nobody can name is a transient nobody
+        can fix."""
+        repo, env, g = make_repo(tmp_path)
+        g("remote", "add", "origin", str(tmp_path / "gone.git"))
+        close(repo, env, "review")
+
+        out = close(repo, env, "land")
+
+        assert out.returncode == 3, out.stdout + out.stderr
+        assert "git push origin" in out.stderr, out.stderr
+        assert "gone.git" in out.stderr, "the failure names the command but not the cause"

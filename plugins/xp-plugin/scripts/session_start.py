@@ -326,8 +326,8 @@ def _next_action() -> str:
     if unknown := [(story, status) for story, status in cards if status not in known]:
         story, status = unknown[0]
         return f"NEXT: recovery required — {story} has unknown status [{status}]"
-    if (data_root() / "markers" / f"{int(sprint)}.card-review-incomplete").exists():
-        return f"NEXT: Sprint {sprint} card review did not complete — run `card_review.py {sprint}`"
+    if (data_root() / "markers" / f"{int(sprint)}.slate-review-incomplete").exists():
+        return f"NEXT: Sprint {sprint} slate review incomplete — run `slate_review.py {sprint}`"
     active = [card for card in cards if card[1] == "in-progress"]
     if len(active) > 1:
         return f"NEXT: recovery required — multiple [in-progress] cards in Sprint {sprint}"

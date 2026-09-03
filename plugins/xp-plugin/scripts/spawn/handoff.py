@@ -20,6 +20,10 @@ def _is_authored(text: str, story_id: str) -> bool:
 
 
 READ_THEM = " Read them (`work.py list`), then fix the card or take the work over."
+STAGES = ("planner", "plan-reviewer", "executor", "reviewer")
+# Shared so a new result cannot pass the writer and red the reader: mark_stage
+# and resume.validate spelled ("ran", "skipped") separately until story-102.
+RESULTS = ("ran", "skipped", "blocked")
 
 
 def handoff_state(root: Path, story_id: str) -> dict | None:
@@ -62,7 +66,8 @@ def record_handoff(
     kept = [eid for eid in previous.get("records", []) if eid not in authored]
     # Written whole and MOVED into place: a stop interrupted mid-write is how the
     # unreadable marker above gets made, and this is its one producer.
-    _write(root, story_id, {"state": "STOPPED", "why": why, "records": kept + authored})
+    previous.update(state="STOPPED", why=why, records=kept + authored)
+    _write(root, story_id, previous)
     recovery = f"\nWhat the handback guard saw: {why}"
     if rc:
         if authored:
@@ -84,6 +89,14 @@ def mark_handoff(root: Path, story_id: str, finished: bool = False) -> None:
     state = handoff_state(root, story_id) or {}
     kind = "FINISHED" if finished else "RUNNING"
     state.update(state=kind, why=f"the teammate is {kind.lower()}")
+    _write(root, story_id, state)
+
+
+def mark_stage(root: Path, story_id: str, stage: str, result: str) -> None:
+    if stage not in STAGES or result not in RESULTS:
+        raise ValueError(f"invalid spawn stage {stage}={result}")
+    state = handoff_state(root, story_id) or {}
+    state.setdefault("stages", {})[stage] = result
     _write(root, story_id, state)
 
 

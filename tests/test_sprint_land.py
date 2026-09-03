@@ -172,6 +172,30 @@ class TestLandRunsTheTierItReleasesOn:
         assert r.returncode == 2, r.stdout + r.stderr
         assert "tier" in r.stderr.lower(), r.stderr
 
+    def test_land_discloses_reviewer_work_from_every_round(self, tmp_path):
+        repo, env, g = make_repo(tmp_path)
+        shas = [head(repo, env)]
+        for n in (1, 2):
+            (repo / f"round-{n}.py").write_text(f"ROUND_{n} = True\n")
+            g("add", "-A")
+            g("commit", "-qm", f"REVIEWER-ROUND-{n}")
+            shas.append(head(repo, env))
+        marker = marker_path(tmp_path)
+        marker.parent.mkdir(parents=True, exist_ok=True)
+        rounds = [
+            {
+                "fixed": [],
+                "blocking": [],
+                "noted": [],
+                "reviewed_head": shas[n],
+                "shown_sha": shas[n + 1],
+            }
+            for n in range(2)
+        ]
+        marker.write_text(json.dumps({"rounds": rounds, **rounds[-1]}))
+        result = sprint(repo, env, "land")
+        assert "REVIEWER-ROUND-1" in result.stdout and "REVIEWER-ROUND-2" in result.stdout
+
     def test_dry_run_does_not_run_the_tier(self, tmp_path):
         """af9023f put the tier ABOVE the `if dry_run` return, so a preview paid
         the whole sprint suite and a red tier turned a preview into a refusal.
@@ -181,6 +205,16 @@ class TestLandRunsTheTierItReleasesOn:
         record_reviews(tmp_path, repo, env)
         r = sprint(repo, env, "land", "--dry-run")
         assert r.returncode == 0, r.stdout + r.stderr
+
+    def test_dry_run_says_when_the_full_tier_cannot_run(self, tmp_path):
+        config = CONFIG.replace("  full: true\n", "  full: EDIT-ME\n")
+        repo, env, _g = make_repo(tmp_path, config=config)
+        record_reviews(tmp_path, repo, env)
+        preview = sprint(repo, env, "land", "--dry-run")
+        assert preview.returncode == 2 and "Set tests.full" in preview.stderr
+        assert "gh pr create" not in preview.stdout and "EDIT-ME" not in preview.stdout
+        landed = sprint(repo, env, "land")
+        assert landed.returncode == 2 and "Set tests.full" in landed.stderr
 
     def test_land_proceeds_on_a_green_tier(self, tmp_path):
         """Absence of a refusal also passes an implementation that deleted the

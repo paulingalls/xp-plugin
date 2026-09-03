@@ -5,6 +5,7 @@ import json
 import subprocess
 from pathlib import Path
 
+import pytest
 from spawn_helpers import (  # noqa: F401
     CARD,
     CONFIG,
@@ -13,6 +14,7 @@ from spawn_helpers import (  # noqa: F401
     block_commits,
     in_tree,
     make_repo,
+    seed_refresh_receipt,
     set_system_md,
     spawn,
     stub_claude,
@@ -168,6 +170,7 @@ class TestWorktree:
         plan2.write_text(
             (tmp_path / "data" / "plan.md").read_text().replace("[in-progress]", "[planned]")
         )
+        seed_refresh_receipt(other, env2)
         assert spawn(other, env2, "ready", "story-042").returncode == 0
         second_run = spawn(other, env2, "story-042")
         assert second_run.returncode == 0
@@ -472,3 +475,24 @@ class TestCommonDirWidening:
         from spawn import common_dir_widening
 
         assert common_dir_widening(tmp_path) == []
+
+
+def test_the_brief_states_the_commit_the_handback_guard_requires(tmp_path, monkeypatch):
+    """The executor's exit condition, not incidental commit prose, carries the rule."""
+    import spawn
+
+    monkeypatch.setenv("XP_DATA", str(tmp_path))
+    sections = spawn.teammate_sections("card", "story-x", "", spawn.PLUGIN_ROOT)
+    profile = dict(sections)["How you work"]
+
+    def assert_commit_precedes_handback(text):
+        done = text.split("**Done =", 1)[1].split("hand back", 1)[0]
+        assert "commit" in done.lower(), "commit is not a precondition of handback"
+
+    assert_commit_precedes_handback(profile)
+    broken = profile.replace("work COMMITTED, then hand back", "hand back; the lead commits")
+    with pytest.raises(AssertionError):
+        assert_commit_precedes_handback(broken)
+
+
+from test_spawn_stages import TestSpawnStages  # noqa: E402,F401

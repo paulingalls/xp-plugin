@@ -9,7 +9,6 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
-# Module level: importers must reach env.py's 3.11 floor before the `Path | None` below
 from env import refuse_direct_invocation
 from work import data_root
 
@@ -17,6 +16,8 @@ PLUGIN_ROOT = Path(__file__).parent.parent
 
 REPORT_KEYS = ("fixed", "blocking", "noted")
 NO_ROUND = "No round was recorded."
+# Either key means the round accounts for its own range, so top-level coverage is not its.
+ACCOUNTED = {"reviewed_head", "incomplete"}
 ITEM_CAP = 400
 LIST_CAP = 20
 
@@ -25,7 +26,6 @@ REVIEWER_EMAIL = "story-reviewer@xp.local"
 
 
 def charter(name: str = "story-reviewer") -> str:
-    """Inline a top-level headless agent's charter; its harness loads no agent file."""
     from spawn import _read_shipped
 
     text = _read_shipped(PLUGIN_ROOT / "agents" / f"{name}.md")
@@ -37,7 +37,7 @@ def charter(name: str = "story-reviewer") -> str:
 
 
 def plan_review_notice(story_id: str) -> str:
-    from card_review import review_marker
+    from slate_review import review_marker
 
     marker = review_marker(story_id, "plan")
     if not marker.exists():
@@ -66,14 +66,12 @@ def plan_review_notice(story_id: str) -> str:
 
 
 def report_path(story_id: str, round_n: int) -> Path:
-    """Round-scoped; the caller unlinks leftovers before an unrecorded retry."""
     p = data_root() / "reports" / f"{story_id}.round-{round_n}.json"
     p.parent.mkdir(parents=True, exist_ok=True)
     return p
 
 
 def sprint_report_path(sprint_id: str, stage: str, round_n: int) -> Path:
-    """Use a directory because free-text story ids can spell any prefix separator."""
     d = data_root() / "reports" / "sprint"
     d.mkdir(parents=True, exist_ok=True)
     return d / f"{sprint_id}.{stage}.round-{round_n}.json"
@@ -162,7 +160,11 @@ def marker_digest(path: Path) -> str:
 
 
 def write_round(marker: Path, state: dict, round_: dict, **coverage: str) -> None:
-    state.setdefault("rounds", []).append(round_)
+    rounds = state.setdefault("rounds", [])
+    if old := next((r for r in reversed(rounds) if not r.keys() & ACCOUNTED), None):
+        prior = {key: state[key] for key in coverage if key in state}
+        old.update(prior)
+    rounds.append(round_ | coverage)
     state.update(coverage)
     marker.write_text(json.dumps(state))
 
@@ -337,7 +339,6 @@ def apply_patch(report: Path, card: str) -> str:
 
 
 def card_now(story_id: str) -> str:
-    """The story's card as the plan holds it now, or "" if unreadable."""
     from close import story_card
     from work import plan_path
 
@@ -348,10 +349,7 @@ def card_now(story_id: str) -> str:
 
 
 def reviewer_range(start: str, end: str) -> str:
-    """`git log` + `--stat` over one range, or "" if it is empty. TWO ranges now:
-    HEAD may move past the review, so a single reviewed_head..HEAD would put the
-    lead's own commits under the reviewer's name. land re-prints both because
-    assent is given by RUNNING land, not by having read an earlier command."""
+    """Show the commits and stat in one covered range."""
     from close import git
 
     if start == end:
@@ -360,23 +358,32 @@ def reviewer_range(start: str, end: str) -> str:
     return git("log", "--format=%h %an %s", rng).stdout + git("diff", "--stat", rng).stdout
 
 
-def disclose(state: dict, head: str, diff: Path | None = None) -> None:
-    """Both ranges the lead assents to by RUNNING land. Printing only one of them
-    puts the lead's own commits under the reviewer's name."""
-    shown = state.get("shown_sha", head)
-    if work := reviewer_range(state.get("reviewed_head", head), shown):
-        print("the reviewer changed this tree — you are merging its work:")
-        print(work, end="")
-        if diff:
-            print(f"full diff: {diff}")
-    if late := reviewer_range(shown, head):
+def covered_ranges(state: dict, head: str) -> list[tuple[str, str]]:
+    """One range PER ROUND, in round order: disclose numbers them by position and names
+    each round's own diff. A round with no coverage holds its PLACE, and only a PRE-0.18
+    one may claim the top-level pair: a killed round reviewed nothing (constraint 15)."""
+    rounds = state.get("rounds", [])
+    ranges = [(r.get("reviewed_head", head), r.get("shown_sha", head)) for r in rounds]
+    legacy = (state.get("reviewed_head", head), state.get("shown_sha", head))
+    stale = [i for i, r in enumerate(rounds) if not r.keys() & ACCOUNTED]
+    if stale and legacy not in ranges:
+        ranges[stale[-1]] = legacy
+    return ranges or [legacy]
+
+
+def disclose(state: dict, head: str, diff_for=None) -> None:
+    """Show every reviewed range plus work committed after the last one."""
+    for round_n, (reviewed, round_shown) in enumerate(covered_ranges(state, head), 1):
+        if work := reviewer_range(reviewed, round_shown):
+            print(f"the reviewer changed this tree — you are merging its work:\n{work}", end="")
+            if diff_for:
+                print(f"full diff: {diff_for(round_n)}")
+    if late := reviewer_range(state.get("shown_sha", head), head):
         print("you committed after the review you were shown — merging unreviewed:")
         print(late, end="")
 
 
 def diff_path(report: Path) -> Path:
-    """One spelling: review writes it, review unlinks the stale one, land prints
-    it — three sites that would otherwise drift."""
     return report.with_suffix(".diff")
 
 
@@ -407,17 +414,18 @@ def write_reviewer_diff(report: Path, reviewed_head: str, noun: str) -> str:
     return ""
 
 
-def stage_role(stage: str, card: str) -> tuple[str, str, str]:
-    """(harness, model, effort) for one round-1 review stage. A config predating
-    these keys falls back to `reviewer` AND DROPS THE CARD: `Reviewer:` is the
-    story leg's per-story twin of `Executor:`, and one card carrying it must not
-    retarget a whole sprint's review. Resolving REFUSES on a bad spec, which is
-    why cmd_review walks every stage before the first launch."""
+def stage_role(stage: str, card: str, fallback: str = "") -> tuple[str, str, str]:
+    """(harness, model, effort) for one role whose config key may be absent. The
+    default fallback is `reviewer` AND DROPS THE CARD: `Reviewer:` is the story
+    leg's per-story twin of `Executor:`, and one card carrying it must not
+    retarget a whole sprint's review. A NAMED fallback keeps the card, because it
+    stands in for a role the card may legitimately pin. Resolving REFUSES on a bad
+    spec, which is why cmd_review walks every stage before the first launch."""
     from spawn import card_role, config_role, resolve_role
 
     if card_role(card, stage) or config_role(stage, "\0") != "\0":
         return resolve_role(stage, card)
-    return resolve_role("reviewer", "")
+    return resolve_role(fallback or "reviewer", card if fallback else "")
 
 
 def run(
@@ -426,14 +434,15 @@ def run(
     """Launch a configured reviewer, returning (result text, error).
     Function-local imports avoid spawn -> close -> review cycling at import time."""
     from close import config_flat
-    from spawn import agent_argv, missing_harness, resolve_codex_sandbox, resolve_role, run_agent
+    from spawn import agent_argv, missing_harness, resolve_codex_sandbox, run_agent
 
     name = name or "story-reviewer"
     if stage := role:
         harness, model, effort = stage_role(stage, card)
     else:
-        role = name if name == "plan-reviewer" else "reviewer"
-        harness, model, effort = resolve_role(role, card)
+        role = name if name in ("planner", "plan-reviewer") else "reviewer"
+        # Old configs lack planner; executor is its behavioral fallback.
+        harness, model, effort = stage_role(role, card, "executor" if role == "planner" else "")
     sandbox, problem = resolve_codex_sandbox(harness, config_flat("codex_sandbox"))
     if problem:
         return "", problem

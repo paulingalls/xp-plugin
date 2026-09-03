@@ -4,6 +4,40 @@ Release notes started at v0.6.0; earlier entries are summarized from their
 tag and merge messages. Full detail lives in the merge history and the
 per-sprint review reports.
 
+## v0.18.0 — the default path finishes a multi-file card
+
+Milestone 8's spine. `spawn` runs a story as four staged roles that each do one
+thing and exit — planner, execution plan review, executor, diff review — so no
+agent waits on a detached child across a turn boundary, which is how the field
+report lost 2 of 3 multi-file stories on 0.16.0.
+
+WALKED, not asserted: a real multi-file card, on the scaffold-default
+`claude/sonnet/medium`, through all four stages against a live harness
+(`walks/story-102-four-stages.md`). Every stage started, completed and exited.
+The fourth stage earned its place immediately — it caught the executor shipping
+a feature with ZERO executing tests, proven by mutation rather than by reading:
+neutering the guard left the card's own Verify reporting the same count the
+commit cited.
+
+- **Four artifacts, four names** — every review is now named for what it reads:
+  slate review → card refresh → execution plan review → diff review. The sprint
+  step's old name, `card review`, moved rather than rotated, so no record filed
+  before this release silently inverts.
+- **Card refresh** rewrites one card's stale existing-code claims against HEAD
+  before `ready` mints its digest, and `ready` REFUSES until it has run. A receipt
+  binds it to HEAD and to each declared path's committed state.
+- **A blocked plan review can be resumed out of.** It records `blocked` rather
+  than nothing, so a resume replans instead of re-reviewing the same draft
+  forever — "blocked" and "never ran" no longer spell the same.
+- **Land discloses every round's reviewer work**, not just the last. A second
+  round used to overwrite the first's coverage, so a lead assented to a merge
+  that hid what the first reviewer had changed.
+- **An unset test tier is answered identically in both legs** — the git hook and
+  the close leg now give the same refusal, discharging a debt filed 2026-08-25
+  that asked planning to pick one deliberately.
+- **The commit gate got its time back**: the fast tier is partitioned by measured
+  duration rather than by hand, taking pre-commit from ~166s to ~58s.
+
 ## v0.17.0 — the process runs itself, or it is not a process
 
 Milestone 7 closes. Card review now reaches a lead on **either harness**: a Codex

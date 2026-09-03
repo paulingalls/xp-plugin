@@ -11,6 +11,7 @@ from close_free_card_cases import free_identity
 from close_helpers import PLUGIN, close, make_repo
 
 CREATE_SPRINT = PLUGIN / "skills" / "create-sprint" / "SKILL.md"
+SPRINT_CLOSE = PLUGIN / "skills" / "sprint-close" / "SKILL.md"
 PLAN_TEMPLATE = PLUGIN / "templates" / "plan.md"
 
 
@@ -85,7 +86,7 @@ def _assert_skill_routes(skills_dir, process, prose_docs, nudges, refusals):
 
 
 def _assert_template_owns_card_fields(skill, template):
-    fields = ("# Execution Plan", "Context:", "Files:", "AC:", "Verify:", "Close review:")
+    fields = ("# Roadmap", "Context:", "Files:", "AC:", "Verify:", "Close review:")
     missing = [field for field in fields if field not in template]
     assert not missing, f"plan template is missing: {', '.join(missing)}"
     # `Verify:` exactly, not "at most one field": the budget is one because the skill
@@ -96,17 +97,23 @@ def _assert_template_owns_card_fields(skill, template):
     assert restated == ["Verify:"], f"create-sprint restates {restated}, not ['Verify:']"
 
 
-def _assert_authoring_content(skill):
+def _assert_authoring_content(skill, closing):
     """The skill's own list, pinned as vocabulary. No harness reaches the judgment
     behind it, so the reachable failure is a later edit trimming an item to buy
     words against the skill's word cap — which is silent and looks like tightening.
     """
     for token in ("`sprint_cap`", "`debt_budget`", "merge order", "collisions", "argv", "`cd`"):
         assert token in skill, f"create-sprint no longer names {token}"
-    assert "`/sprint-close`" in skill and "`spawn.py ready" in skill
-    assert skill.index("`/sprint-close`") < skill.index("`spawn.py ready"), (
-        "slate review must precede any `spawn.py ready`"
+    for token in ("slate_review.py", "close.py sprint <id> start", "`spawn.py ready"):
+        assert token in skill, f"create-sprint no longer names {token}"
+    assert skill.index("slate_review.py") < skill.index("close.py sprint <id> start"), (
+        "slate review must precede sprint start"
     )
+    assert skill.index("close.py sprint <id> start") < skill.index("`spawn.py ready"), (
+        "sprint start must precede spawn ready"
+    )
+    for token in ("slate_review.py", "git switch", "Open the sprint"):
+        assert token not in closing, f"sprint-close still opens via {token}"
 
 
 def _walk_skill_commands(skills_dir):
@@ -154,10 +161,10 @@ def test_the_template_owns_the_card_field_list():
     skill = CREATE_SPRINT.read_text()
     template = PLAN_TEMPLATE.read_text()
     _assert_template_owns_card_fields(skill, template)
-    for field in ("# Execution Plan", "Context:", "Files:", "AC:", "Verify:", "Close review:"):
+    for field in ("# Roadmap", "Context:", "Files:", "AC:", "Verify:", "Close review:"):
         with pytest.raises(AssertionError, match="plan template is missing"):
             _assert_template_owns_card_fields(skill, template.replace(field, "omitted", 1))
-    duplicate = skill + "\n# Execution Plan\nContext:\nFiles:\nAC:\nVerify:\nClose review:\n"
+    duplicate = skill + "\n# Roadmap\nContext:\nFiles:\nAC:\nVerify:\nClose review:\n"
     with pytest.raises(AssertionError, match="restates"):
         _assert_template_owns_card_fields(duplicate, template)
     with pytest.raises(AssertionError, match="restates"):
@@ -172,13 +179,16 @@ def test_the_template_owns_the_card_field_list():
 
 def test_create_sprint_carries_what_the_template_cannot():
     skill = CREATE_SPRINT.read_text()
-    _assert_authoring_content(skill)
+    closing = SPRINT_CLOSE.read_text()
+    _assert_authoring_content(skill, closing)
     for token in ("`sprint_cap`", "`debt_budget`", "merge order", "collisions", "argv", "`cd`"):
         with pytest.raises(AssertionError, match="no longer names"):
-            _assert_authoring_content(skill.replace(token, "the slate"))
+            _assert_authoring_content(skill.replace(token, "the slate"), closing)
     # same words, order destroyed: the ordering claim must red on its own
     with pytest.raises(AssertionError, match="precede"):
-        _assert_authoring_content("\n".join(reversed(skill.split("\n"))))
+        _assert_authoring_content("\n".join(reversed(skill.split("\n"))), closing)
+    with pytest.raises(AssertionError, match="still opens"):
+        _assert_authoring_content(skill, closing + "\nOpen the sprint with slate_review.py")
 
 
 def test_every_shipped_skill_command_is_walkable(tmp_path):

@@ -7,7 +7,7 @@ import shutil
 from pathlib import Path
 
 import pytest
-from spawn_helpers import _total, make_repo, spawn, stub_claude
+from spawn_helpers import _total, make_repo, seed_refresh_receipt, spawn, stub_claude
 
 
 class TestBudget:
@@ -119,6 +119,7 @@ class TestBudget:
             .replace("Context: demo.", "Context: " + "x" * 4000)
             .replace("[ready]", "[planned]")
         )
+        seed_refresh_receipt(repo, env, "story-042")
         assert spawn(repo, env, "ready", "story-042").returncode == 0
         after = spawn(repo, env, "story-042", "--dry-run").stdout
         assert _total(before) != _total(after)

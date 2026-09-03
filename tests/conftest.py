@@ -15,12 +15,15 @@ hook runner plus a registry and a mirror test; the runner is not the only way to
 invoke pytest, and this is one file.
 """
 
+import json
 import os
 import shutil
 import subprocess
 import sys
 import tempfile
 from pathlib import Path
+
+import pytest
 
 for _var in ("GIT_DIR", "GIT_WORK_TREE", "GIT_COMMON_DIR", "GIT_INDEX_FILE"):
     os.environ.pop(_var, None)
@@ -35,6 +38,21 @@ sys.path.insert(0, str(_SCRIPTS))
 sys.path.insert(0, str(_SCRIPTS / "spawn"))
 
 _TEMPLATE_ENV = "XP_TEST_REPO_TEMPLATES"
+_SLOW = Path(__file__).parent / "slow_tests.json"
+
+
+def pytest_collection_modifyitems(items):
+    """Mark by MEASURED duration, because hand-marking drifted. The 31 hand marks
+    named tests someone found annoying — salvage, teardown, concurrency — while
+    the suite's real cost is a PLATEAU: 969 tests, mean 1024ms, median 730ms,
+    because nearly every test spawns subprocesses. The top 40 are 19% of the
+    cost, so a slow-LIST could never have bought the gate back; only a threshold
+    can. Hand marks stay: they are deliberate and cheap to keep."""
+    slow = pytest.mark.slow
+    ids = set(json.loads(_SLOW.read_text())["ids"])
+    for item in items:
+        if item.nodeid in ids:
+            item.add_marker(slow)
 
 
 def pytest_configure(config):

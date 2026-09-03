@@ -1,11 +1,12 @@
 import argparse
 import difflib
 import json
+import shlex
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from close import fail, story_card, verify_commands
+from close import fail, git, leg, story_card, verify_commands
 from handoff import marker_path as handoff_marker_path
 from work import (
     card_digest,
@@ -21,6 +22,11 @@ from work import (
 AMEND = "Run `spawn.py amend {} --reason '<why this declaration changed>'`."
 REMINT = "Put the heading back to [planned] and run `spawn.py ready {}`."
 DOC = "The plan-review credential: minted from [planned], amended only with a recorded reason."
+
+
+def refresh_instruction(story_id: str) -> str:
+    script = str(Path(__file__).parent.parent / "slate_review.py")
+    return f"Run `{shlex.join(['python3', script, story_id, '--refresh'])}`."
 
 
 def progressed(story_id: str) -> bool:
@@ -94,7 +100,73 @@ def amend(story_id: str, reason: str) -> int:
     return 0
 
 
-def mint(story_id: str) -> int:
+def refresh_receipt_path(story_id: str) -> Path:
+    """The card refresh's story-scoped proof, outside the repository."""
+    from slate_review import safe_story_id  # ONE traversal rule; a second copy only drifts
+
+    return data_root() / "card-refreshes" / f"{safe_story_id(story_id)}.json"
+
+
+def path_state(path: str) -> str | None:
+    """Latest commit touching `path`, or None; working-tree edits do not count."""
+    exists = git("cat-file", "-e", f"HEAD:{path}", check=False).returncode == 0
+    if not exists:
+        return None
+    sha = git("log", "-1", "--format=%H", "HEAD", "--", path, check=False).stdout.strip()
+    return sha or None
+
+
+def write_refresh_receipt(story_id: str, card: str, changed: bool) -> None:
+    import review  # function-local: slate_review -> spawn -> ready would cycle
+
+    path = refresh_receipt_path(story_id)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    files = {p: path_state(p) for p in sorted(review.declared_files(card))}
+    receipt = {
+        "head": git("rev-parse", "HEAD", check=False).stdout.strip(),
+        "digest": card_digest(card),
+        "changed": changed,
+        "files": files,
+    }
+    path.write_text(json.dumps(receipt, ensure_ascii=False))
+
+
+def check_refresh(story_id: str, card: str) -> str:
+    """Return a refusal unless the receipt matches this card and its paths."""
+    import review
+
+    try:
+        path = refresh_receipt_path(story_id)
+    except ValueError as error:
+        return f"{error}. {refresh_instruction(story_id)}"
+    if not path.exists():
+        return f"refused: no card refresh has run for {story_id}. {refresh_instruction(story_id)}"
+    try:
+        receipt = json.loads(path.read_text())
+    except (OSError, ValueError):
+        return f"refused: {path} is unreadable. {refresh_instruction(story_id)}"
+    if not isinstance(receipt, dict) or not isinstance(receipt.get("files"), dict):
+        return f"refused: {path} is not a card refresh receipt. {refresh_instruction(story_id)}"
+    if receipt.get("digest") != card_digest(card):
+        return (
+            f"refused: {story_id}'s card refresh receipt does not match the current card"
+            f" — it ran against different text. {refresh_instruction(story_id)}"
+        )
+    for declared in review.declared_files(card):
+        if declared not in receipt["files"]:
+            return (
+                f"refused: {story_id}'s card refresh receipt does not cover {declared}"
+                f" — it predates the path being declared. {refresh_instruction(story_id)}"
+            )
+        if path_state(declared) != receipt["files"][declared]:
+            return (
+                f"refused: {declared} changed since {story_id}'s card refresh"
+                f" — the receipt no longer reflects HEAD. {refresh_instruction(story_id)}"
+            )
+    return ""
+
+
+def mint(story_id: str, require_refresh: bool) -> int:
     if not plan_path().exists():
         return fail("refused: " + missing_plan_refusal())
     try:
@@ -109,6 +181,8 @@ def mint(story_id: str) -> int:
         verify_commands(story_id, card)
     except ValueError as e:
         return fail(str(e) + " — fix it before the review, not after the story")
+    if require_refresh and (problem := check_refresh(story_id, card)):
+        return fail(problem)
     digest = card_digest(card)
     marker = ready_marker_path(story_id)
     marker.parent.mkdir(parents=True, exist_ok=True)
@@ -126,4 +200,8 @@ def main(argv: list[str], action: str = "ready") -> int:
     args = p.parse_args(argv)
     if not chdir_repo_root():
         return fail("refused: not inside a git repository")
-    return amend(args.story_id, args.reason) if action == "amend" else mint(args.story_id)
+    if action == "amend":
+        return amend(args.story_id, args.reason)
+    # Free cards are authored and reviewed on a fresh branch, never aged in a slate;
+    # the exemption is by lane so both entry points answer alike.
+    return mint(args.story_id, require_refresh=not leg(args.story_id)[1])

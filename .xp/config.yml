@@ -26,6 +26,8 @@ roles:                 # harness/model[/effort]; lead overrides per story in pla
   closer: claude/opus/high
 
 tests:
-  fast: pytest -q -n 8 -m "not slow"        # pre-commit; 16 workers oversubscribe this suite
-  story: pytest -q -n 12          # pre-push + story close; 12 = this host's performance cores
-  full: pytest -q -n 12           # sprint close (diverges when e2e/meta lands)
+  fast: pytest -q -n 4 -m "not slow"        # pre-commit; measured 2026-09-03 on 729 tests:
+                                            # serial 134s, -n2 69s, -n4 59s, -n6 62s, -n8 78s
+  story: pytest -q -n 6           # pre-push + story close; measured 2026-09-03 on 1184
+  full: pytest -q -n 6            # tests: -n 6 182s, -n 12 220s. Was 12 for the core
+                                  # count, which is the wrong lever: subprocess-bound

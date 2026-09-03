@@ -18,13 +18,13 @@ adding over the cap requires retiring one (the plan reviewer enforces).
 5. **CLI-hook gates are advisory by declaration; hard properties live in git hooks or
    in close.py doing the thing itself.** (Measured: a gated model forged a hook
    marker; six command spellings evade bash-hook detection.)
-6. **Telemetry is never a record.** Test/lint failures are re-measured, not filed.
+6. **Telemetry is never a record.** Test/lint failures are re-measured, not filed —
+   but green alone / red in parallel is an ISOLATION defect, not telemetry.
 7. **Judgment only at LLM-present moments.** Hooks are deterministic Python; nothing
    in a hook may require summarizing, deciding, or interpreting.
 8. **Small files: target 300 lines, hard cap 500 — tests included.** Tests are
    production code: the cap and the comment rubric bind tests/ exactly as they
-   bind shipped code (if a test is not worth production discipline it is not
-   worth writing). Large files eat agent context on every read; over-cap means
+   bind shipped code. Large files eat agent context on every read; over-cap means
    extract, not scroll.
 9. **Comments exist only for what neither a test nor a name can carry** — the why,
    an external constraint, a rejected design; JUDGMENT.md gives every role the
@@ -35,11 +35,11 @@ adding over the cap requires retiring one (the plan reviewer enforces).
 11. **A falsifier must CONSTRUCT the condition it claims** — never observe ambient
    state, grep for an identifier, or assert a token's presence; and a resolution's
    replacement must COVER the claim, not merely be green, and it names a test by
-   NODE ID — `pytest -k <name>` matching nothing exits 5, so red-at-filing proves
-   only that no test bears the name, and it greens against any later test given
-   that name whatever it asserts. (A falsifier coupled to what the code is CALLED
-   reds when someone renames it and greens when the defect returns under a new
-   name.)
+   NODE ID — `-k` matching nothing exits 5, so it proves only that no test bears
+   the name and greens against any later one so named. PIN THE GUARANTEE, never
+   the wording or today's flaw: coupled to what code is CALLED or SAYS it reds on
+   a rename or a rephrase; coupled to the FLAW it INVERTS, and paying the debt is
+   what reds it.
 12. **A path we do not execute is not verified.** We are the only user and our tests
    build their own fixtures, so shipped surfaces go unwalked. Before releasing a
    surface a consuming project uses, walk it end to end. PROSE THAT INSTRUCTS AN
@@ -47,15 +47,14 @@ adding over the cap requires retiring one (the plan reviewer enforces).
    instruction (measured: v0.7.7 told two fixers to run a gate that inspects
    nothing over unstaged edits). Walking it costs minutes.
 13. **A claim about existing code is CHECKED before it is written down.** A card,
-   plan, review or PROMOTED note asserting what the code does, without running or
+   plan, review, CONFLICT RESOLUTION or PROMOTED note asserting what the code does, without running or
    reading it, spends a story on a premise. Cheap to check, expensive to inherit.
 14. **A release is the tag, the manifest and the CHANGELOG naming ONE version.**
    `plugin.json`'s version keys the consumer's plugin cache, so a tag that moves
    without it ships the previous cached copy under the new name — silently, and to
    everyone except us (measured: v0.6.0 tagged with the manifest at 0.5.0, surfaced
    by a field report still running "0.3.0"). Bump the manifest and write the entry
-   in the release commit, before the tag; tests/test_release.py is the wall, because
-   a step mandated in prose and enforced by nothing is a step that gets skipped.
+   in the release commit, before the tag; tests/test_release.py is the wall (constraint 5).
 15. **Distinct states stay distinct.** Never infer one state only from the absence
    of another. Missing is not unreadable; retired is not unfinished. Enumerate
    terminal and active states, and fault-inject every refusal boundary between them.

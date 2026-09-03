@@ -114,10 +114,15 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
     pr_bookkeep = [["git", "push", "origin", trunk]]
     pr_steps = (pr_cmds, pr_sync, pr_bookkeep)
     if dry_run:
+        # A preview of a land that refuses is the refusal: listing steps it will
+        # never take is the same lie in the other direction.
+        if refusal := overlap.tier_refusal(tier, tier_key):
+            return close.fail(refusal)
         if free:
+            print(f"would run: {tier}")
             for command in pr_cmds:
                 print(" ".join(command))
-            print(f"(first the story tier; then `close.py {noun} post-merge`)")
+            print(f"(then `close.py {noun} post-merge`)")
             return 0
         print(
             bookkeep.render_land_preview(raw, tier, merge_mode, branch, trunk, pr_steps, pending),
@@ -129,7 +134,7 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
     if not free and (red := lc.run(close.config_flat(lc.KEY), "story-close", story_id)):
         return close.fail(red)
 
-    review.disclose(state, head, review.diff_path(review.report_path(story_id, len(rounds))))
+    review.disclose(state, head, lambda n: review.diff_path(review.report_path(story_id, n)))
     if free:
         if not shutil.which("gh"):
             return close.fail(
@@ -181,10 +186,14 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
         failed.append(f"flip {story_id} to [done] in {work.plan_path()}")
     if merge_mode == "local":
         merge_sha = close.git("rev-parse", "HEAD").stdout.strip()
-        if bool(close.git("remote", check=False).stdout.strip()) and (
-            close.git("push", "origin", trunk, check=False).returncode != 0
-        ):
-            failed.append(f"git push origin {trunk}")
+        if bool(close.git("remote", check=False).stdout.strip()):
+            # The cause, not just the command: this is the only step here that
+            # reaches the network, and a transient nobody can name (bug 07ee145d,
+            # story-101's land) is one nobody can fix.
+            pushed = close.git("push", "origin", trunk, check=False)
+            if pushed.returncode != 0:
+                why = (pushed.stderr or pushed.stdout).strip().replace("\n", " ")
+                failed.append(f"git push origin {trunk} — {why[-300:]}")
     else:
         for c in pr_bookkeep:
             if subprocess.run(c, capture_output=True, text=True).returncode != 0:

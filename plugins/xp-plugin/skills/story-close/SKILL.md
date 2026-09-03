@@ -11,9 +11,11 @@ call on the reviewer's findings. Everything else is scripted, and a step you fin
 yourself doing by hand is a defect in the pipeline — file it.
 
 1. **Preflight**: `git status` clean, and you are on the story branch.
-2. **`close.py story <id> review`** spawns the story-reviewer, which FIXES what it
-   finds in your tree and commits. Reading its diff is your judgment point; running
-   land is how you accept it.
+2. **Read the round `spawn` already recorded** — the reviewer was its fourth stage.
+   Run `close.py story <id> review` only if the tree moved since; by reflex it spends
+   a second full reviewer on a diff already reviewed. The leg spawns the
+   story-reviewer, which FIXES what it finds in your tree and commits. Reading its
+   diff is your judgment point; running land is how you accept it.
    DOES NOT EXIST, so do not go looking: a delta review, a flag by which you supply
    a finding yourself, a round recorded without the reviewer's own report, a refusal
    because trunk moved (only files trunk and your story BOTH changed cost a round).

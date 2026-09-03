@@ -428,7 +428,12 @@ class TestCodexReviewerLeg:
         r = close(repo, env, "review")
         assert r.returncode == 0, r.stderr + r.stdout
         rounds = marker(tmp_path)["rounds"]
-        assert rounds == [CLEAN], rounds
+        # The round carries the reviewer's report AND the coverage it reviewed:
+        # top-level coverage is overwritten by a later round, so a round that
+        # does not carry its own cannot be disclosed once a second one exists.
+        (round_,) = rounds
+        assert round_ | CLEAN == round_, round_
+        assert round_["reviewed_head"] and round_["shown_sha"]
 
     @pytest.mark.parametrize("posture", ["workspace-write", "danger-full-access"])
     def test_the_reviewer_argv_is_the_same_one_the_teammate_leg_takes(self, tmp_path, posture):
@@ -483,4 +488,6 @@ class TestTheCardsReviewerLine:
         assert r.returncode == 0, r.stdout + r.stderr
         (launch,) = launches(tmp_path)
         assert launch["argv"][launch["argv"].index("--model") + 1] == "opus"
-        assert marker(tmp_path)["rounds"] == [CLEAN]
+        (round_,) = marker(tmp_path)["rounds"]
+        assert round_ | CLEAN == round_, round_
+        assert round_["reviewed_head"] and round_["shown_sha"]
