@@ -102,14 +102,14 @@ class TestDogfoodMatchesTheScaffold:
         times and a root-only enumeration red on prose naming it — a false red
         against a file every adopter has, which teaches the next author to weaken
         the guard. This scans Markdown only, so it says nothing about shipped
-        Python strings or ordinary repository vocabulary, and it sees only
-        ALL-CAPS names: `Design.md` passes. It deliberately rejects a consuming
-        project's uppercase document too; use a project-neutral phrase."""
+        Python strings or ordinary repository vocabulary such as "cap move".
+        It deliberately rejects a consuming project's titled document too; use
+        a project-neutral phrase."""
         plugin = self.REPO / "plugins" / "xp-plugin"
         corpus = sorted(plugin.rglob("*.md"))
         allowed = {path.name for path in corpus}
         assert allowed and corpus, "document discovery found nothing — a green would certify"
-        document = re.compile(r"(?<![A-Za-z0-9_.-])([A-Z][A-Z0-9_-]*\.md)\b")
+        document = re.compile(r"(?<![A-Za-z0-9_.-])([A-Z][A-Za-z0-9_-]*\.md)\b")
         leaked = [
             (str(path.relative_to(plugin)), name)
             for path in corpus
