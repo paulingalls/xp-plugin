@@ -225,9 +225,17 @@ class TestShippedProseMatchesTheMechanism:
         so the enumerations were duplicating text the lead is handed anyway.
         Pinned as a WORD BUDGET, not a token grep: a count reds when the
         enumerations grow back under any wording, which is the failure mode.
+
+        story-close RAISED 330 -> 380 (2026-09-03, Paul). Three separate squeezes
+        in one day made it shed the preflight's spelling, the second-reviewer
+        warning's teeth, and "every refusal names its own next action" — the last
+        being guidance, not enumeration. A budget that makes a skill trade away
+        muscle to fit is measuring the wrong thing. What this pins against is
+        REGROWN ENUMERATION, and that is still pinned; the room is for saying a
+        new thing without paying for it in an old one.
         """
         for skill, cap in (
-            ("story-close", 330),
+            ("story-close", 380),
             ("sprint-close", 290),
             ("free-close", 85),
             ("create-sprint", 190),
