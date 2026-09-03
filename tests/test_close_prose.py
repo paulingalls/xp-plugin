@@ -221,6 +221,25 @@ class TestShippedProseMatchesTheMechanism:
         missing = [name for name in shipped if name not in line]
         assert not missing, f"the reviewer is told the shipped set omits: {missing}"
 
+    def test_the_constraints_template_names_no_project_identifiers(self):
+        """The shipped seed is project-neutral. This hand-list covers identifiers
+        specific to this repository; the tree-wide document guard covers a
+        separate leak class, and neither substitutes for author judgment."""
+        text = (PLUGIN / "templates" / "constraints.md").read_text().casefold()
+        literals = (
+            "ratchet.py",
+            "design.md",
+            "judgment.md",
+            "session_start.py",
+            "plan_review",
+            "spawn.py",
+            "falsifier",
+            "xp-plugin",
+        )
+        leaked = [term for term in literals if term in text]
+        leaked.extend(re.findall(r"\b(?:story|sprint)-\d+\b", text))
+        assert not leaked, f"constraints template leaks project identifiers: {leaked}"
+
     def test_a_script_driving_skill_does_not_restate_the_mechanism(self):
         """Measured drift, three times in two sprints, caught by a READER every
         time and by no test: sprint-close's step count went stale when the

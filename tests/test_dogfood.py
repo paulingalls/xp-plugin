@@ -9,6 +9,7 @@ constraints and stories are legitimately its own.
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -93,6 +94,25 @@ class TestDogfoodMatchesTheScaffold:
             if "plugins/xp-plugin" in path.read_text(errors="replace")
         ]
         assert not leaked, leaked
+
+    def test_shipped_markdown_names_no_unshipped_root_document(self):
+        """Reject uppercase root-document references the plugin does not ship.
+
+        This scans Markdown only, so it says nothing about shipped Python strings
+        or ordinary repository vocabulary. It deliberately rejects a consuming
+        project's uppercase root document too; use a project-neutral phrase."""
+        plugin = self.REPO / "plugins" / "xp-plugin"
+        allowed = {path.name for path in plugin.glob("*.md")}
+        corpus = sorted(plugin.rglob("*.md"))
+        assert allowed and corpus, "document discovery found nothing — a green would certify"
+        document = re.compile(r"(?<![A-Za-z0-9_.-])([A-Z][A-Z0-9_-]*\.md)\b")
+        leaked = [
+            (str(path.relative_to(plugin)), name)
+            for path in corpus
+            for name in document.findall(path.read_text())
+            if name not in allowed
+        ]
+        assert not leaked, f"shipped Markdown names unshipped root documents: {leaked}"
 
     def cap_value(self, path):
         line = next(
