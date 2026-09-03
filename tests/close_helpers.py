@@ -9,6 +9,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+from spawn_helpers import seed_refresh_receipt
 from work import flip_status
 
 CLOSE = Path(__file__).parent.parent / "plugins" / "xp-plugin" / "scripts" / "close.py"
@@ -174,6 +175,7 @@ def mint_ready(repo, env, story_id="story-042"):
     plan = Path(env["XP_DATA"]) / "plan.md"
     for was in ("ready", "in-progress"):
         plan.write_text(flip_status(plan.read_text(), f"#### {story_id} ", was, "planned"))
+    seed_refresh_receipt(repo, env, story_id)
     minted = subprocess.run(
         [sys.executable, str(SPAWN), "ready", story_id],
         cwd=repo,

@@ -63,6 +63,7 @@ def make_repo(tmp_path, status="ready", executor="(default)", trunk="main"):
     )
     (plan.parent / "sprint_branch").write_text(f"{trunk}\n")
     if full:
+        seed_refresh_receipt(repo, env)
         minted = spawn(repo, env, "ready", "story-042")
         assert minted.returncode == 0, minted.stderr
         return repo, env, g
@@ -71,6 +72,7 @@ def make_repo(tmp_path, status="ready", executor="(default)", trunk="main"):
         # MINTED, never typed: a fixture that writes [ready] by hand hands out the
         # forgery story-023 removed, and every test below it stops walking the real
         # sequence (constraint 12). The forgery has its own test.
+        seed_refresh_receipt(repo, env)
         minted = spawn(repo, env, "ready", "story-042")
         assert minted.returncode == 0, minted.stderr
     (repo / ".xp" / "constraints.md").write_text("# Constraints\n1. CONSTRAINT-SENTINEL\n")
@@ -141,6 +143,33 @@ def stub_claude(
     (bin_dir / "claude").write_text("\n".join(body) + "\n")
     (bin_dir / "claude").chmod(0o755)
     return rec
+
+
+def seed_refresh_receipt(repo, env, story_id="story-042"):
+    """Route a fixture's `ready` mint through a REAL card-refresh receipt, via
+    the one production writer (`ready.write_refresh_receipt`) — never a
+    hand-built JSON shape, so a raw acceptance test still exercises the actual
+    refusal `check_refresh` would otherwise raise. A subprocess, not an
+    in-process import: `close.git` shells out with no explicit cwd, so calling
+    it from the pytest process itself would touch this repo's OWN git, and
+    under `-n auto` every worker shares that process."""
+    script = (
+        "import sys\n"
+        "sys.path.insert(0, sys.argv[1]); sys.path.insert(0, sys.argv[1] + '/spawn')\n"
+        "from close import story_card\n"
+        "from work import plan_path\n"
+        "import ready\n"
+        "card, _status = story_card(plan_path().read_text(), sys.argv[2])\n"
+        "ready.write_refresh_receipt(sys.argv[2], card, False)\n"
+    )
+    r = subprocess.run(
+        [sys.executable, "-c", script, str(SPAWN.parent), story_id],
+        cwd=repo,
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+    assert r.returncode == 0, r.stderr
 
 
 def spawn(repo, env, *args):

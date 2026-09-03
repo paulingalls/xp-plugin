@@ -10,18 +10,33 @@ import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
+sys.path.insert(0, str(Path(__file__).parent / "spawn"))
 
-from close import fail
-from work import chdir_repo_root, data_root, plan_path
+from close import fail, story_card
+from work import chdir_repo_root, data_root, missing_plan_refusal, plan_path
 
 PLUGIN_ROOT = Path(__file__).parent.parent
 POLL_SECONDS = 3
 LOG_TAIL = 2000
 
+# Activity nouns for the ONE shared lifecycle's messages: refresh is not a
+# review, so its state/log/print text must never say the word.
+ACTIVITY_NOUN = {"slate": "slate review", "plan": "plan review", "refresh": "card refresh"}
+INCOMPLETE_SUFFIX = {
+    "slate": "slate-review-incomplete",
+    "plan": "plan-review-incomplete",
+    "refresh": "card-refresh-incomplete",
+}
+
 
 def review_findings_path(identifier: str, kind: str) -> Path:
-    parent = data_root() / ("plans" if kind == "plan" else "slate-reviews")
-    stem = identifier if kind == "plan" else f"sprint-{identifier}"
+    parent = data_root() / ("plans" if kind in ("plan", "refresh") else "slate-reviews")
+    if kind == "plan":
+        stem = identifier
+    elif kind == "refresh":
+        stem = f"{identifier}.refresh"
+    else:
+        stem = f"sprint-{identifier}"
     path, round_n = parent / f"{stem}.md", 1
     while path.exists():
         round_n += 1
@@ -35,7 +50,7 @@ def review_marker(identifier: str, kind: str) -> Path:
     and `7` MUST name one marker — two spellings make an incomplete slate review
     indistinguishable from a completed one, and absence of the marker is the
     success signal. A story id is not numeric and survives verbatim."""
-    suffix = "plan-review-incomplete" if kind == "plan" else "slate-review-incomplete"
+    suffix = INCOMPLETE_SUFFIX[kind]
     name = str(int(identifier)) if identifier.isdigit() else identifier
     return data_root() / "markers" / f"{name}.{suffix}"
 
@@ -62,7 +77,7 @@ def _running(identifier: str, kind: str) -> tuple[Path, int] | None:
 def run_detached(identifier: str, kind: str, out: Path, argv: list[str]) -> int:
     if running := _running(identifier, kind):
         out, pid = running
-        print(f"joining the {kind} review already running (pid {pid})", file=sys.stderr)
+        print(f"joining the {ACTIVITY_NOUN[kind]} already running (pid {pid})", file=sys.stderr)
         return _wait(identifier, kind, out, pid)
     out.parent.mkdir(parents=True, exist_ok=True)
     pid, child = _detach(identifier, kind, out, argv)
@@ -74,7 +89,6 @@ def _detach(identifier: str, kind: str, out: Path, argv: list[str]) -> tuple[int
     log.parent.mkdir(parents=True, exist_ok=True)
     marker = review_marker(identifier, kind)
     marker.parent.mkdir(parents=True, exist_ok=True)
-    label = kind.upper()
     # `python3` because the scripts ship non-executable: a next action a lead
     # cannot paste is a next action it guesses at
     next_command = "python3 " + " ".join(argv)
@@ -83,7 +97,7 @@ def _detach(identifier: str, kind: str, out: Path, argv: list[str]) -> tuple[int
             {
                 "findings": str(out),
                 "log": str(log),
-                "state": f"{label} REVIEW DID NOT COMPLETE",
+                "state": f"{ACTIVITY_NOUN[kind].upper()} DID NOT COMPLETE",
                 "next": f"run {next_command} again to join or restart it",
             }
         )
@@ -101,7 +115,7 @@ def _detach(identifier: str, kind: str, out: Path, argv: list[str]) -> tuple[int
     # it, and re-creating it reports a completed review as a dead one
     if state := _marker_state(identifier, kind):
         marker.write_text(json.dumps(state | {"pid": child.pid}))
-    print(f"{kind} review running (pid {child.pid}); live log: {log}", file=sys.stderr)
+    print(f"{ACTIVITY_NOUN[kind]} running (pid {child.pid}); live log: {log}", file=sys.stderr)
     return child.pid, child
 
 
@@ -121,15 +135,18 @@ def _wait(
             tail = Path(state.get("log", "")).read_text(errors="replace")[-LOG_TAIL:].strip()
         except OSError:
             tail = ""
-        action = state.get("next", f"run the {kind} review again")
+        action = state.get("next", f"run the {ACTIVITY_NOUN[kind]} again")
         log = state.get("log", "(no log)")
         return fail(
-            f"{tail}\n(the {kind} review ended without a verdict; full output in {log}; {action})"
+            f"{tail}\n(the {ACTIVITY_NOUN[kind]} ended without a verdict; full output in"
+            f" {log}; {action})"
         )
     print(out.read_text().strip() if out.is_file() else "")
     handoff = (
         "read the disposition and re-read the reviewed plan before coding"
         if kind == "plan"
+        else "read the receipt and the rewritten card before accepting it"
+        if kind == "refresh"
         else "read every finding before accepting or rejecting its conclusion"
     )
     print(f"findings: {out.resolve()} — {handoff}", file=sys.stderr)
@@ -233,17 +250,107 @@ def cmd_review(sprint_id: str, dry_run: bool) -> int:
     return run_detached(sprint_id, "slate", out, [str(Path(__file__).resolve()), sprint_id])
 
 
+def build_refresh_bundle(charter: str, plan_file: Path, card: str, out: Path) -> str:
+    from spawn import _read, _read_shipped
+
+    sections = [
+        ("Your charter", charter),
+        ("Your findings file", f"FINDINGS_PATH: {out.resolve()}"),
+        ("The plan file", f"PLAN_PATH: {plan_file}"),
+        ("Story card", card),
+        ("VALUES", _read_shipped(PLUGIN_ROOT / "VALUES.md")),
+        ("JUDGMENT", _read_shipped(PLUGIN_ROOT / "JUDGMENT.md")),
+        ("Constraints", _read(Path(".xp/constraints.md"))),
+        ("System context", _read(Path(".xp/system.md"))),
+    ]
+    return "".join(f"## {title}\n\n{body}\n\n" for title, body in sections)
+
+
+def _run_refresh(story_id: str, out: Path, dry_run: bool) -> int:
+    import ready
+    import review
+    from spawn import tree_state
+
+    try:
+        card, status = story_card(plan_path().read_text(), story_id)
+    except KeyError as e:
+        return fail(f"refused: {e.args[0]}")
+    charter = review.charter("card-refresher")
+    plan_before = plan_path().read_text()
+    before = tree_state(Path.cwd())
+    bundle = build_refresh_bundle(charter, plan_path().resolve(), card, out)
+    _result, error = review.run(bundle, Path.cwd(), dry_run, name="card-refresher")
+    if dry_run:
+        return fail("refused: " + error) if error else 0
+    if tree_state(Path.cwd()) != before:
+        return fail(
+            "refused: the card refresher changed the repository — restore it and refresh again"
+        )
+    plan_after = plan_path().read_text()
+    try:
+        new_card, new_status = story_card(plan_after, story_id)
+    except KeyError as e:
+        return fail(
+            f"refused: the card refresher left {story_id} unparsable in the plan ({e.args[0]})"
+        )
+    if new_status != status:
+        return fail(
+            f"refused: the card refresher changed {story_id}'s status from [{status}] to"
+            f" [{new_status}] — it may correct the card only, never its lifecycle state"
+        )
+    if plan_before.replace(card, new_card, 1) != plan_after:
+        return fail(
+            "refused: the card refresher moved something outside its own card — it may"
+            f" replace only {story_id}'s block in the plan"
+        )
+    if error:
+        return fail(error)
+    review_marker(story_id, "refresh").unlink(missing_ok=True)
+    changed = new_card != card
+    ready.write_refresh_receipt(story_id, new_card, changed)
+    handoff = "the card changed" if changed else "the card was already correct"
+    receipt = ready.refresh_receipt_path(story_id)
+    print(f"receipt: {receipt} — {handoff}; read it, then `spawn.py ready {story_id}`")
+    return 0
+
+
+def cmd_refresh(story_id: str, dry_run: bool) -> int:
+    import review
+
+    charter = review.charter("card-refresher")
+    if not charter:
+        return fail("refused: card-refresher.md carries no charter — restore it")
+    if not plan_path().exists():
+        return fail("refused: " + missing_plan_refusal())
+    try:
+        story_card(plan_path().read_text(), story_id)
+    except KeyError as e:
+        return fail(f"refused: {e.args[0]}")
+    out = review_findings_path(story_id, "refresh")
+    if dry_run:
+        return _run_refresh(story_id, out, True)
+    argv = [str(Path(__file__).resolve()), story_id, "--refresh"]
+    return run_detached(story_id, "refresh", out, argv)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("sprint_id")
+    parser.add_argument("identifier", metavar="sprint-id-or-story-id")
+    parser.add_argument(
+        "--refresh", action="store_true", help="refresh one story card against HEAD, not a review"
+    )
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--_review", default="", help=argparse.SUPPRESS)
     args = parser.parse_args()
     if not chdir_repo_root():
         return fail("refused: not inside a git repository")
     if args._review:
-        return _run_review(args.sprint_id, Path(args._review), False)
-    return cmd_review(args.sprint_id, args.dry_run)
+        if args.refresh:
+            return _run_refresh(args.identifier, Path(args._review), False)
+        return _run_review(args.identifier, Path(args._review), False)
+    if args.refresh:
+        return cmd_refresh(args.identifier, args.dry_run)
+    return cmd_review(args.identifier, args.dry_run)
 
 
 if __name__ == "__main__":

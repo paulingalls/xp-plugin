@@ -8,12 +8,14 @@ uninjected digest, recovery block and sprint slice. Artifacts win.
 ## The loop
 
 Every review is named for the artifact it reads:
-**slate review** → reserved **card refresh** → **execution plan review** → **diff review**.
+**slate review** → **card refresh** → **execution plan review** → **diff review**.
 
 1. **Slate review** — `/create-sprint` authors and opens with a fresh reader over
    the full slate and `sprint_cap`; free work
    slotless. The corrected slate precedes
-   `spawn.py ready <story-id>`. For multi-file work, executor writes the plan and
+   `spawn.py ready <story-id>`, which now runs `slate_review.py --refresh <story-id>`
+   first: not a review, it rewrites stale claims against HEAD and the lead owns
+   the result. For multi-file work, executor writes the plan and
    runs **execution plan review** with `plan_review.py <story-id> <plan-file>`; the lead never
    writes it. Human-only questions stop.
 2. **Story** — `spawn.py <story-id>` launches. Red → green → refactor, small commits. Carded story or free work

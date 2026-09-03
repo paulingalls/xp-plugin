@@ -1,18 +1,18 @@
 ---
 name: xp-setup
-description: >-
-  Scaffold a repo for the xp process: .xp/ artifacts (constraints, config,
-  system) and the git-hook wall. The plan is NOT in the repo — it is per
-  clone, in the state root. Never overwrites.
+description: Scaffold a repo's .xp/ artifacts and the git-hook wall.
 ---
 
 # xp-setup
 
+The plan is NOT in the repo — it is per clone, in the state root.
+
 1. Run `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/setup.py` from anywhere in the
-   repo. It refuses if `.xp/` exists; pre-existing hook
+   repo. It refuses if `.xp/` exists — never overwrites; pre-existing hook
    routing (incl. live `.git/hooks`) makes it SKIP the wall half — read its
    output rather than assuming.
 2. With the human, fill in what the scaffold cannot know:
+   - `.xp/constraints.md`, seeded from the plugin template
    - `tests.fast/story/full` in `.xp/config.yml` — the wall reads these at run
      time, so this is the only place tiers live
    - `.xp/system.md`, especially **Surfaces & acceptance**: every surface the

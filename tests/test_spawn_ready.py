@@ -8,7 +8,7 @@ import subprocess
 import sys
 
 import pytest
-from spawn_helpers import SPAWN, make_repo, spawn, stub_claude
+from spawn_helpers import SPAWN, make_repo, seed_refresh_receipt, spawn, stub_claude
 
 
 class TestReadyCredential:
@@ -22,6 +22,7 @@ class TestReadyCredential:
         return tmp_path.joinpath(*self.MARKER)
 
     def mint(self, repo, env, story="story-042"):
+        seed_refresh_receipt(repo, env, story)
         r = spawn(repo, env, "ready", story)
         assert r.returncode == 0, r.stderr
         return r

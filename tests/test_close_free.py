@@ -30,7 +30,7 @@ from close_helpers import (
     marker_file,
     stub_reviewer,
 )
-from spawn_helpers import in_tree, spawn, stub_claude
+from spawn_helpers import in_tree, seed_refresh_receipt, spawn, stub_claude
 from spawn_helpers import make_repo as make_spawn_repo
 
 
@@ -71,6 +71,7 @@ def carded_free_patch(tmp_path):
     _branch, key = free_identity(g)
     add_free_card(env, key)
     commit_on_free(repo, g)
+    seed_refresh_receipt(repo, env, key)
     assert spawn(repo, env, "ready", key).returncode == 0
     return repo, env, g
 
