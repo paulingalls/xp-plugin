@@ -37,8 +37,21 @@ review: the 129.13s red that motivated it was two gates sharing -n auto, and
 re-measured alone this tree runs 84.4s / 873 tests = 97ms each. A deletion is
 the widest possible raise, and it left three live records (the ones above)
 certifying a wall-clock claim with a check that never starts a clock.
-The dogfood fast tier caps xdist at eight workers: measured on this 16-core box,
-auto took 135-253s while eight ran 934 tests in 98s under the same load.
+THE FOURTH RE-CUT DID NOT HAPPEN, and this is why (2026-09-03, Paul's call after
+a commit gate that was costing 150s several times per story): the suite was
+PARTITIONED instead of the ceiling raised. A full census on a quiet tree —
+`pytest -q -n 8 --durations=0`, 1149 tests, 993s of CPU — showed the cost is a
+PLATEAU, not a tail: mean 1024ms, median 730ms, top 40 tests only 19% of it.
+So no slow-LIST could work; only a threshold. tests/slow_tests.json now holds
+every test at or above 1.0s (421 of them), conftest marks them at collection,
+and they run at push. Measured after: 1149 -> 729 tests, 166s -> 59s.
+The worker count moved DOWN with them, which the earlier sweep never tested
+because it only went upward from eight: on the 729-test tier, serial 134s,
+-n 2 69s, -n 4 59s, -n 6 62s, -n 8 78s. Utilisation was 210% at -n 8, so this
+tier is bound by per-worker fixed cost (each xdist worker runs pytest_configure
+and builds four git template repos), not by cores. Superseded here: the earlier
+note that the dogfood tier caps xdist at eight workers, measured when the tier
+was the whole suite.
 
 The five-build git fixture is also the same-run load control. Wall clock alone
 measured 137-242s on this tree while unrelated simulator and build work moved
@@ -48,9 +61,11 @@ and still reds, while a faster host never tightens either declared bound.
 """
 
 import re
+import shlex
 import subprocess
 import sys
 import time
+from pathlib import Path
 
 MAX_SECONDS = 180  # re-cut 2026-09-02 at 1,129 tests; see the docstring's ledger
 MAX_SECONDS_PER_TEST = 0.15
@@ -87,16 +102,26 @@ def suite_cost_is_bounded(elapsed: float, count: int, git_ms: float, after_ms: f
     return bool(count and normalized <= MAX_SECONDS and per_test <= MAX_SECONDS_PER_TEST)
 
 
+def fast_tier() -> str:
+    """`tests.fast` from .xp/config.yml, via the parser the pipeline itself uses."""
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "plugins/xp-plugin/scripts"))
+    import work
+
+    tier = work.config_block_value("tests", "fast")
+    if not tier:
+        raise SystemExit("refused: no tests.fast in .xp/config.yml — nothing to measure")
+    return tier
+
+
 def main() -> int:
     fixture_ok, git_ms = fixture_cost_is_bounded()
     if not fixture_ok:
         return 1
     started = time.monotonic()
-    result = subprocess.run(
-        ["pytest", "-q", "-n", "8", "-m", "not slow"],
-        capture_output=True,
-        text=True,
-    )
+    # The tier this guard measures is the tier the WALL runs, read from the one
+    # place that owns it. Hardcoding the argv here made the guard measure a tier
+    # nobody runs the moment the worker count moved (2026-09-03).
+    result = subprocess.run(shlex.split(fast_tier()), capture_output=True, text=True)
     elapsed = time.monotonic() - started
     after_ok, after_ms = fixture_cost_is_bounded()
     match = re.search(r"(\d+) passed", result.stdout)
