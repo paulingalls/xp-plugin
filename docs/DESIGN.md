@@ -363,8 +363,15 @@ RULE NOW: every purchasable prose cap is at least live / 0.9, so at least 10% of
 stays free; re-cut when a fix lands. `xp-setup` joins the tuple it was absent from — the one
 skill with no cap was also the one whose defect was a stale claim rather than an amputation.
 Final caps, priced after the fixes: story-close 410 (364 live), sprint-close 320 (286),
-free-close 115 (103), create-sprint 205 (182), xp-setup 345 (307), and
-PLUGIN_SHIPPED_CAP 1,930.
+free-close 115 (103), create-sprint 205 (182), xp-setup 345 (307).
+PLUGIN_SHIPPED_CAP IS THE ONE NUMBER NOT PRICED AFTER ITS FIX: 1,500 -> 1,930 was priced
+against a port of five general rules into templates/constraints.md, and the port is not in
+the tree — live 1,475, so 24% of the cap is free against a floor of 10%, and the guard the
+port was to earn certifies an unported file. Land the port or re-cut the number; a cap
+standing on an intention is the slack this section's own ratchet warns about.
+THE FLOOR IS ONE-SIDED BY CONSTRUCTION and that is why it did not catch this: `cap >= live /
+0.9` bounds a cap from below only, so an arbitrarily loose cap satisfies it. What re-cuts a
+cap that has gone slack is still a reader.
 CONSTRAINT 1 GAINS ITS EXEMPTION and it is what funds the rest: a CORRECTION creates no new
 obligation for the reader, so it displaces nothing. Without it, three separate squeezes had
 already paid for corrections out of muscle.

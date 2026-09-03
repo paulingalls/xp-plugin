@@ -200,8 +200,11 @@ class TestShippedProseMatchesTheMechanism:
         Re-measure and lower it whenever this file legitimately shrinks.
 
         PROCESS is an external-ceiling exception to the floor below. Bisection
-        against test_dogfood's byte profile found a 1,620-character real bound;
-        a looser prose cap would certify text the lead injection truncates."""
+        against test_dogfood's byte profile reds at 1,623 characters, so the cap
+        is set two under the measured 1,622; a looser prose cap would certify
+        text the lead injection truncates. That profile silences the install
+        notice, which renders AHEAD of the constraints — with one present the
+        real bound is lower still, so never widen this to the bisected number."""
         raw = (PLUGIN / "PROCESS.md").read_text()
         assert len(raw) <= 1620, "the execution rule stopped paying for itself"
         process = " ".join(raw.split())
@@ -276,8 +279,12 @@ class TestShippedProseMatchesTheMechanism:
             ("create-sprint", 205),
             ("xp-setup", 345),
         ):
-            body = prose(PLUGIN / "skills" / skill / "SKILL.md")
-            assert cap >= len(body.split()) / 0.9, f"{skill} lost its 10% floor"
+            words = len(prose(PLUGIN / "skills" / skill / "SKILL.md").split())
+            assert cap >= words / 0.9, (
+                f"{skill} is {words} words against a {cap} cap: under the 10% floor."
+                " Regrown enumeration is cut; a needed correction is a cap move, and"
+                " that is the lead's"
+            )
 
     def test_the_skills_keep_the_negative_space_that_earns_its_words(self):
         """The counterweight to the cut: what deliberately does NOT exist cannot be
