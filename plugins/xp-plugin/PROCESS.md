@@ -10,8 +10,8 @@ uninjected digest, recovery block and sprint slice. Artifacts win.
 Every review is named for the artifact it reads:
 **slate review** → **card refresh** → **execution plan review** → **diff review**.
 
-1. **Slate review** — `/create-sprint` authors, then `/sprint-close` runs
-   a fresh reader over the full slate and `sprint_cap`; free work
+1. **Slate review** — `/create-sprint` authors and opens with a fresh reader over
+   the full slate and `sprint_cap`; free work
    slotless. The corrected slate precedes
    `spawn.py ready <story-id>`. For multi-file work, executor writes the plan and
    runs **execution plan review** with `plan_review.py <story-id> <plan-file>`; the lead never

@@ -14,7 +14,8 @@ from spawn_helpers import make_repo
 ROOT = Path(__file__).parent.parent
 PLUGIN = ROOT / "plugins" / "xp-plugin"
 CHARTER = PLUGIN / "agents" / "slate-reviewer.md"
-SKILL = PLUGIN / "skills" / "sprint-close" / "SKILL.md"
+CREATE_SKILL = PLUGIN / "skills" / "create-sprint" / "SKILL.md"
+CLOSE_SKILL = PLUGIN / "skills" / "sprint-close" / "SKILL.md"
 PROCESS = PLUGIN / "PROCESS.md"
 DESIGN = ROOT / "docs" / "DESIGN.md"
 PLAN_TEMPLATE = PLUGIN / "templates" / "plan.md"
@@ -51,18 +52,19 @@ def numbered_items(text):
     }
 
 
-def assert_open_route(skill, process):
-    opening = section(skill, "0. **", "1. **")
+def assert_open_route(create_skill, close_skill, process):
+    opening = section(create_skill, "## Open", "## Done")
     card_step = section(process, "1. **Slate review**", "2. **Story**")
     assert opening.index("slate-reviewer") < opening.index("close.py sprint <id> start")
     assert opening.index("slate_review.py") < opening.index("close.py sprint <id> start")
     assert "full proposed slate" in opening and "`sprint_cap`" in opening
     assert "author's conclusions" in opening and "do not give" in opening
     assert "corrected cards" in opening and "work.py note" in opening
-    assert "`/create-sprint`" in card_step and "`/sprint-close`" in card_step
+    assert "`/create-sprint`" in card_step and "`/sprint-close`" not in card_step
     assert "corrected slate" in card_step
-    assert card_step.index("`/create-sprint`") < card_step.index("`/sprint-close`")
-    assert card_step.index("`/sprint-close`") < card_step.index("spawn.py ready")
+    assert card_step.index("`/create-sprint`") < card_step.index("spawn.py ready")
+    for fragment in ("slate-reviewer", "slate_review.py", "git switch", "Open the sprint"):
+        assert fragment not in close_skill
 
 
 def slate_repo(tmp_path):
@@ -233,7 +235,7 @@ def assert_review_vocabulary(sources, design, template):
 def test_slate_reviewer_is_shipped_and_routed_before_slots_are_spent():
     agents = {path.stem for path in (PLUGIN / "agents").glob("*.md")}
     assert "slate-reviewer" in agents
-    assert_open_route(SKILL.read_text(), PROCESS.read_text())
+    assert_open_route(CREATE_SKILL.read_text(), CLOSE_SKILL.read_text(), PROCESS.read_text())
 
 
 def test_runner_builds_the_complete_bundle_and_returns_absolute_findings(tmp_path):
@@ -346,30 +348,29 @@ def {name}():
 
 
 def test_route_isolation_guard_reds_when_shipped_instructions_are_removed():
-    skill = SKILL.read_text()
+    create_skill = CREATE_SKILL.read_text()
+    close_skill = CLOSE_SKILL.read_text()
     process = PROCESS.read_text()
-    assert_open_route(skill, process)
+    assert_open_route(create_skill, close_skill, process)
+    opening = section(create_skill, "## Open", "## Done")
     with pytest.raises((AssertionError, IndexError, ValueError)):
-        assert_open_route(section(skill, "1. **", "2. **"), process)
+        assert_open_route(create_skill.replace(opening, ""), close_skill, process)
     for fragment in ("slate-reviewer", "slate_review.py", "author's conclusions", "work.py note"):
-        line = next(line for line in skill.splitlines() if fragment in line)
+        line = next(line for line in create_skill.splitlines() if fragment in line)
         with pytest.raises((AssertionError, IndexError, ValueError)):
-            assert_open_route(skill.replace(line + "\n", ""), process)
-    # token, not line: dropping the line takes the `1. **Card review**` heading with
-    # it, so `section` raises before any route assertion is reached and the mutation
-    # proves only that the heading exists
-    for token in ("`/create-sprint`", "`/sprint-close`", "corrected slate"):
+            assert_open_route(create_skill.replace(line + "\n", ""), close_skill, process)
+    for token in ("`/create-sprint`", "corrected slate"):
         with pytest.raises(AssertionError):
-            assert_open_route(skill, process.replace(token, "the lead", 1))
-    # both tokens present in the wrong order: authoring after review is the whole
-    # defect the ordering assertion exists for, and no dropped token exercises it
-    swapped = (
-        process.replace("`/create-sprint`", "\x00")
-        .replace("`/sprint-close`", "`/create-sprint`", 1)
-        .replace("\x00", "`/sprint-close`", 1)
-    )
+            assert_open_route(create_skill, close_skill, process.replace(token, "the lead", 1))
+    with pytest.raises((AssertionError, ValueError)):
+        reordered = process.replace("spawn.py ready", "/create-sprint")
+        assert_open_route(create_skill, close_skill, reordered)
     with pytest.raises(AssertionError):
-        assert_open_route(skill, swapped)
+        assert_open_route(create_skill, close_skill + opening, process)
+    with pytest.raises(AssertionError):
+        assert_open_route(
+            create_skill, close_skill, process.replace("fresh reader", "`/sprint-close`")
+        )
 
 
 def test_charter_contract_and_its_fault_injections():

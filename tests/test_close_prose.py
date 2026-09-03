@@ -228,9 +228,9 @@ class TestShippedProseMatchesTheMechanism:
         """
         for skill, cap in (
             ("story-close", 330),
-            ("sprint-close", 350),
+            ("sprint-close", 290),
             ("free-close", 85),
-            ("create-sprint", 130),
+            ("create-sprint", 190),
         ):
             body = prose(PLUGIN / "skills" / skill / "SKILL.md")
             assert len(body.split()) <= cap, f"{skill} regrew to {len(body.split())} words"
