@@ -283,7 +283,7 @@ class TestShippedProseMatchesTheMechanism:
     def test_the_plan_reviewer_charter_has_five_checks(self):
         """A structural count, not a token grep — it certifies the count only,
         not that the duty is followed. The sprint-cap clause is NOT one of the
-        five: capacity is the lead's card review, and the charter says so in its
+        five: capacity is the lead's slate review, and the charter says so in its
         own paragraph (story-052). Restoring it here would keep this green."""
         charter = (PLUGIN / "agents" / "plan-reviewer.md").read_text()
         section = charter.split("## Checks, in order of payoff")[1]

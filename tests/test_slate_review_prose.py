@@ -196,11 +196,7 @@ def assert_design_contract(design):
 
 
 def shipped_sources():
-    return {
-        path: path.read_text()
-        for path in sorted(PLUGIN.rglob("*"))
-        if path.suffix in {".md", ".py"}
-    }
+    return {p: p.read_text() for p in sorted(PLUGIN.rglob("*")) if p.suffix in {".md", ".py"}}
 
 
 def assert_review_vocabulary(sources, design, template):
@@ -210,18 +206,21 @@ def assert_review_vocabulary(sources, design, template):
     rule = "every review is named for the artifact it reads"
     owners = [(path, text) for path, text in normalized.items() if rule in text]
     assert len(owners) == 1, f"review naming rule has {len(owners)} shipped owners"
-    _path, owner = owners[0]
+    rule_path, owner = owners[0]
+    # The rule SENTENCE, not the whole owner: the loop restates three of the four names at
+    # their action sites, so `owner.index` read a restatement as the declaration.
+    rule_line = owner.split(rule, 1)[1].split(".", 1)[0]
     names = ("slate review", "card refresh", "execution plan review", "diff review")
-    positions = [owner.index(name) for name in names]
+    positions = [rule_line.index(name) for name in names]
     assert positions == sorted(positions), "review artifacts are not named in process order"
-    assert "reserved **card refresh**" in owner
+    assert "reserved **card refresh**" in rule_line
     for name in ("slate review", "execution plan review", "diff review"):
-        uses = sum(text.count(name) for text in normalized.values())
-        assert uses > 1, f"{name} is declared but names no shipped review"
+        # Outside the declaring file: a name only PROCESS repeats reaches no artifact a
+        # lead opens, and counting every file greened `diff review` at zero such uses.
+        uses = sum(t.count(name) for p, t in normalized.items() if p != rule_path)
+        assert uses, f"{name} is declared but names no shipped review"
 
-    migration = next(
-        line for line in design.splitlines() if line.startswith("**Review-name migration (")
-    )
+    migration = next(ln for ln in design.splitlines() if ln.startswith("**Review-name migration ("))
     for token in (
         "2026-09-02",
         "Sprint 17",
@@ -366,9 +365,13 @@ def test_route_isolation_guard_reds_when_shipped_instructions_are_removed():
     for token in ("`/create-sprint`", "corrected slate"):
         with pytest.raises(AssertionError):
             assert_open_route(create_skill, close_skill, process.replace(token, "the lead", 1))
-    with pytest.raises((AssertionError, ValueError)):
-        reordered = process.replace("spawn.py ready", "/create-sprint")
-        assert_open_route(create_skill, close_skill, reordered)
+    # both tokens present in the wrong order: ready before authoring is the whole defect
+    # the ordering assertion exists for, and no dropped token exercises it
+    step = section(process, "1. **Slate review**", "2. **Story**")
+    flip = step.replace("`/create-sprint`", "\x00").replace("spawn.py ready", "`/create-sprint`", 1)
+    with pytest.raises(AssertionError):
+        flipped = flip.replace("\x00", "spawn.py ready", 1)
+        assert_open_route(create_skill, close_skill, process.replace(step, flipped))
     with pytest.raises(AssertionError):
         assert_open_route(create_skill, close_skill + opening, process)
     with pytest.raises(AssertionError):
@@ -410,11 +413,8 @@ def test_review_vocabulary_has_one_shipped_owner_and_a_dated_migration():
     template = PLAN_TEMPLATE.read_text()
     assert_review_vocabulary(sources, design, template)
 
-    rule_path = next(
-        path
-        for path, text in sources.items()
-        if "every review is named for the artifact it reads" in text.lower()
-    )
+    rule = "every review is named for the artifact it reads"
+    rule_path = next(p for p, t in sources.items() if rule in t.lower())
     mutated = dict(sources)
     mutated[rule_path] = mutated[rule_path].replace("slate review", "card review", 1)
     with pytest.raises(AssertionError):
@@ -436,15 +436,23 @@ def test_review_vocabulary_has_one_shipped_owner_and_a_dated_migration():
     unreserved[rule_path] = unreserved[rule_path].replace("reserved ", "", 1)
     with pytest.raises(AssertionError):
         assert_review_vocabulary(unreserved, design, template)
-    unbound = dict(sources)
-    last = unbound[rule_path].lower().rfind("diff review")
-    before, after = unbound[rule_path][:last], unbound[rule_path][last + 11 :]
-    unbound[rule_path] = before + "unnamed review" + after
-    with pytest.raises(AssertionError):
+    # the binding stripped from every file BUT the declaring one: dropping the owner's
+    # own restatement instead let `uses` pass at zero real uses
+    unbound = {
+        p: t if p == rule_path else re.sub("diff review", "spawned", t, flags=re.I)
+        for p, t in sources.items()
+    }
+    with pytest.raises(AssertionError, match="names no shipped review"):
         assert_review_vocabulary(unbound, design, template)
-    migration = next(
-        line for line in design.splitlines() if line.startswith("**Review-name migration (")
+    # both names present, order destroyed: no removal exercises the ordering claim
+    order = "**execution plan review** → **diff review**"
+    swapped = dict(sources)
+    swapped[rule_path] = swapped[rule_path].replace(
+        order, " → ".join(reversed(order.split(" → "))), 1
     )
+    with pytest.raises(AssertionError, match="process order"):
+        assert_review_vocabulary(swapped, design, template)
+    migration = next(ln for ln in design.splitlines() if ln.startswith("**Review-name migration ("))
     for token in (
         "2026-09-02",
         "`card review` named the sprint-slate step",
