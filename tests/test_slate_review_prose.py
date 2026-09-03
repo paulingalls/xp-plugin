@@ -214,6 +214,10 @@ def assert_review_vocabulary(sources, design, template):
     names = ("slate review", "card refresh", "execution plan review", "diff review")
     positions = [owner.index(name) for name in names]
     assert positions == sorted(positions), "review artifacts are not named in process order"
+    assert "reserved **card refresh**" in owner
+    for name in ("slate review", "execution plan review", "diff review"):
+        uses = sum(text.count(name) for text in normalized.values())
+        assert uses > 1, f"{name} is declared but names no shipped review"
 
     migration = next(
         line for line in design.splitlines() if line.startswith("**Review-name migration (")
@@ -428,6 +432,16 @@ def test_review_vocabulary_has_one_shipped_owner_and_a_dated_migration():
         assert count == 1, f"fault did not remove {token}"
         with pytest.raises((AssertionError, ValueError)):
             assert_review_vocabulary(changed, design, template)
+    unreserved = dict(sources)
+    unreserved[rule_path] = unreserved[rule_path].replace("reserved ", "", 1)
+    with pytest.raises(AssertionError):
+        assert_review_vocabulary(unreserved, design, template)
+    unbound = dict(sources)
+    last = unbound[rule_path].lower().rfind("diff review")
+    before, after = unbound[rule_path][:last], unbound[rule_path][last + 11 :]
+    unbound[rule_path] = before + "unnamed review" + after
+    with pytest.raises(AssertionError):
+        assert_review_vocabulary(unbound, design, template)
     migration = next(
         line for line in design.splitlines() if line.startswith("**Review-name migration (")
     )
