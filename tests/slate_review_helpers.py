@@ -259,12 +259,19 @@ def refresh_repo(tmp_path):
 
 
 def stub_card_refresher(
-    tmp_path, correction="", sibling=False, repo_file="", status="", findings="corrected 1 claim\n"
+    tmp_path,
+    correction="",
+    sibling=False,
+    repo_file="",
+    status="",
+    findings="corrected 1 claim\n",
+    unparsable=False,
 ):
     """A fake `claude` standing in for the refresher, with one knob per motion the
     runner must refuse: `correction` edits its OWN card (the sanctioned edit),
-    `sibling` a second card in the same plan, `repo_file` a path in the repo, and
-    `status` the card's own lifecycle bracket."""
+    `sibling` a second card in the same plan, `repo_file` a path in the repo,
+    `status` the card's own lifecycle bracket, and `unparsable` its heading — the
+    one refusal that cannot restore, because it can no longer LOCATE the card."""
     binary = tmp_path / "bin" / "claude"
     binary.parent.mkdir(exist_ok=True)
     launch = tmp_path / "refresh-launch.json"
@@ -285,6 +292,8 @@ def stub_card_refresher(
         " text = text.replace('Context: untouched', 'Context: MEDDLED', 1)\n"
         f"if {status!r}:\n"
         f" text = text.replace('demo story   [planned]', 'demo story   [{status}]', 1)\n"
+        f"if {unparsable!r}:\n"
+        " text = text.replace('#### story-042', '#### mangled-042', 1)\n"
         "open(plan, 'w').write(text)\n"
         f"stray = {repo_file!r}\n"
         "open(stray, 'w').write('the refresher wrote here\\n') if stray else None\n"

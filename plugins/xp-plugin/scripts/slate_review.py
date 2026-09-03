@@ -296,7 +296,8 @@ def _run_refresh(story_id: str, out: Path, dry_run: bool) -> int:
         new_card, new_status = story_card(plan_after, story_id)
     except KeyError as e:
         return fail(
-            f"refused: the card refresher left {story_id} unparsable in the plan ({e.args[0]})"
+            f"refused: the card refresher left {story_id} unparsable ({e.args[0]}). Its edit"
+            f" stands and no git diff shows it: repair the card in {plan_path()}, then refresh"
         )
 
     def reject_plan_edit(why: str) -> int:

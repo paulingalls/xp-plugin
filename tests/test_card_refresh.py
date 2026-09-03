@@ -235,3 +235,20 @@ class TestRefreshRestoreIsCardScoped:
             "the rejection reverted a write it did not make and cannot see: "
             "plan.md is project-global and this restore is not scoped to its own card"
         )
+
+
+def test_a_refresher_that_leaves_the_card_unparsable_names_the_repair(tmp_path):
+    """The one rejection that CANNOT restore — with the heading gone there is no card
+    block to put back, and the plan is outside the repo where no git diff shows it.
+    This repo's own rule is that every refusal names its next action, and this arm
+    named none: the lead was told the card was unparsable and nothing else."""
+    repo, env, _g, plan = refresh_repo(tmp_path)
+    stub_card_refresher(tmp_path, correction=CORRECTED, unparsable=True)
+    result = card_refresh(repo, env)
+    assert result.returncode == 2, result.stdout
+    said = result.stdout + result.stderr
+    assert "unparsable" in said
+    assert str(plan.resolve()) in said, f"the refusal names no plan to repair:\n{said}"
+    assert "no git diff" in said, "it does not say the edit is invisible to git"
+    assert not receipt_of(env).exists(), "a refused refresh must not mint a receipt"
+    assert spawn(repo, env, "ready", "story-042").returncode == 2

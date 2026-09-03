@@ -91,3 +91,40 @@ def test_a_round_that_recorded_no_coverage_still_holds_its_ROUND_NUMBER(tmp_path
         ("head", "head"),
         ("r3-start", "r3-end"),
     ]
+
+
+def test_a_killed_round_is_not_stamped_with_the_PRIOR_rounds_coverage(tmp_path):
+    """The seam between this sprint's two disclosure fixes. Round 1 taught write_round to
+    migrate top-level coverage into the last round lacking it; round 2 taught
+    covered_ranges that a killed round holds its place. Both find that round by ABSENCE of
+    reviewed_head, and a killed round is absent the same way a pre-0.18 one is — so the
+    next complete round stamps the PRIOR round's range onto the killed one. The marker then
+    records coverage for a round that reviewed nothing, and land discloses round 1's
+    reviewer commits twice, the second time under round 2's diff name (constraint 15)."""
+    import review
+
+    marker = tmp_path / "marker.json"
+    covered = {"fixed": [], "blocking": [], "noted": []}
+    state = {"rounds": [covered | {"reviewed_head": "r1s", "shown_sha": "r1e"}]}
+    state |= {"reviewed_head": "r1s", "shown_sha": "r1e"}
+    review.write_round(marker, state, covered | {"incomplete": "the host killed it"})
+    state = json.loads(marker.read_text())
+    review.write_round(marker, state, dict(covered), reviewed_head="r3s", shown_sha="r3e")
+
+    written = json.loads(marker.read_text())
+    killed = written["rounds"][1]
+    assert "reviewed_head" not in killed, f"the killed round claims coverage it never had: {killed}"
+    assert review.covered_ranges(written, "HEAD") == [
+        ("r1s", "r1e"),
+        ("HEAD", "HEAD"),
+        ("r3s", "r3e"),
+    ]
+
+    # The same absence-blindness on the READ side, which no write can repair: a pre-0.18
+    # round left its coverage at top level and a later round was killed, so the last
+    # round lacking reviewed_head is the killed one and round 1's range is named as its.
+    mixed = {"rounds": [dict(covered), covered | {"incomplete": "killed"}]}
+    assert review.covered_ranges(mixed | {"reviewed_head": "r1s", "shown_sha": "r1e"}, "HEAD") == [
+        ("r1s", "r1e"),
+        ("HEAD", "HEAD"),
+    ]

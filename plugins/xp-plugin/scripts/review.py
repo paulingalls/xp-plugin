@@ -16,6 +16,8 @@ PLUGIN_ROOT = Path(__file__).parent.parent
 
 REPORT_KEYS = ("fixed", "blocking", "noted")
 NO_ROUND = "No round was recorded."
+# Either key means the round accounts for its own range, so top-level coverage is not its.
+ACCOUNTED = {"reviewed_head", "incomplete"}
 ITEM_CAP = 400
 LIST_CAP = 20
 
@@ -159,7 +161,7 @@ def marker_digest(path: Path) -> str:
 
 def write_round(marker: Path, state: dict, round_: dict, **coverage: str) -> None:
     rounds = state.setdefault("rounds", [])
-    if old := next((r for r in reversed(rounds) if "reviewed_head" not in r), None):
+    if old := next((r for r in reversed(rounds) if not r.keys() & ACCOUNTED), None):
         prior = {key: state[key] for key in coverage if key in state}
         old.update(prior)
     rounds.append(round_ | coverage)
@@ -358,16 +360,14 @@ def reviewer_range(start: str, end: str) -> str:
 
 def covered_ranges(state: dict, head: str) -> list[tuple[str, str]]:
     """One range PER ROUND, in round order: disclose numbers them by position and names
-    each round's own diff. A round that recorded no coverage — killed mid-round, or
-    pre-0.18 — holds its PLACE; only the LAST of them left its coverage at top level."""
+    each round's own diff. A round with no coverage holds its PLACE, and only a PRE-0.18
+    one may claim the top-level pair: a killed round reviewed nothing (constraint 15)."""
     rounds = state.get("rounds", [])
-    ranges = [
-        (r["reviewed_head"], r.get("shown_sha", head)) if "reviewed_head" in r else (head, head)
-        for r in rounds
-    ]
+    ranges = [(r.get("reviewed_head", head), r.get("shown_sha", head)) for r in rounds]
     legacy = (state.get("reviewed_head", head), state.get("shown_sha", head))
-    if (head, head) in ranges and legacy not in ranges:
-        ranges[max(i for i, c in enumerate(ranges) if c == (head, head))] = legacy
+    stale = [i for i, r in enumerate(rounds) if not r.keys() & ACCOUNTED]
+    if stale and legacy not in ranges:
+        ranges[stale[-1]] = legacy
     return ranges or [legacy]
 
 
