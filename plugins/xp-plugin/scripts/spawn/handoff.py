@@ -21,6 +21,9 @@ def _is_authored(text: str, story_id: str) -> bool:
 
 READ_THEM = " Read them (`work.py list`), then fix the card or take the work over."
 STAGES = ("planner", "plan-reviewer", "executor", "reviewer")
+# Shared so a new result cannot pass the writer and red the reader: mark_stage
+# and resume.validate spelled ("ran", "skipped") separately until story-102.
+RESULTS = ("ran", "skipped", "blocked")
 
 
 def handoff_state(root: Path, story_id: str) -> dict | None:
@@ -90,7 +93,7 @@ def mark_handoff(root: Path, story_id: str, finished: bool = False) -> None:
 
 
 def mark_stage(root: Path, story_id: str, stage: str, result: str) -> None:
-    if stage not in STAGES or result not in ("ran", "skipped"):
+    if stage not in STAGES or result not in RESULTS:
         raise ValueError(f"invalid spawn stage {stage}={result}")
     state = handoff_state(root, story_id) or {}
     state.setdefault("stages", {})[stage] = result

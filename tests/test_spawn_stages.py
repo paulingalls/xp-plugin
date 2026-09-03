@@ -131,9 +131,12 @@ class TestSpawnStages:
         # and it is what sends the lead to the harness log instead of the question.
         assert "DIED" not in result.stderr, result.stderr
         assert "blocked for the human: choose" in result.stderr, result.stderr
-        # planner=ran and no plan-reviewer entry: the stage that stopped is the one
-        # the line omits, and the refusal above names it.
-        assert "stages: planner=ran\n" in result.stdout, result.stdout
+        # Was "planner=ran and no plan-reviewer entry: the stage that stopped is the
+        # one the line OMITS". That made absence carry the meaning, which is
+        # constraint 15 and the release blocker this now fixes: a plan review that
+        # blocked read identically to one that never ran, and resume therefore
+        # skipped replanning and re-reviewed the same draft forever.
+        assert "stages: planner=ran · plan-reviewer=blocked" in result.stdout, result.stdout
 
     def test_a_stop_before_any_stage_says_none_reached_rather_than_nothing(self, tmp_path):
         """Constraint 15 the other way: no stages line at all is how "the executor
@@ -166,3 +169,23 @@ class TestSpawnStages:
         assert event_roles(events) == ["teammate", "reviewer"]
         state = json.loads((tmp_path / "data/plans/story-042.handoff.json").read_text())
         assert state["state"] == "STOPPED" and state["stages"]["reviewer"] == "ran"
+
+    def test_a_blocked_plan_review_replans_on_resume_instead_of_re_reviewing(self, tmp_path):
+        """Release blocker found by story-102's round-2 reviewer. `planner` is marked
+        "ran" BEFORE the plan review runs, so a block leaves it set and every resume
+        skips replanning and re-reviews the IDENTICAL draft — blocking again, forever.
+        Constructs the stall rather than observing it: the same stub blocks both times,
+        so a green here means the planner was re-run and the draft is new."""
+        repo, env, _g = make_repo(tmp_path, files="src/thing.py, src/other.py")
+        events = stub_stages(tmp_path, blocking_plan=True)
+        stopped = spawn(repo, env, "story-042")
+        assert stopped.returncode != 0, stopped.stdout
+        handoff = tmp_path / "data/plans/story-042.handoff.json"
+        assert json.loads(handoff.read_text())["stages"]["plan-reviewer"] == "blocked", (
+            "a plan review that blocked is recorded the same way as one that never ran"
+        )
+        handoff.write_text(json.dumps({**json.loads(handoff.read_text()), "state": "STOPPED"}))
+        spawn(repo, env, "resume", "story-042")
+        assert event_roles(events).count("planner") == 2, (
+            "resume re-reviewed the same draft instead of replanning: " + str(event_roles(events))
+        )

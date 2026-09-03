@@ -379,7 +379,11 @@ def cmd_spawn(story_id: str, override: str, dry_run: bool, resuming: bool = Fals
 
     mark_handoff(data_root(), story_id)
     prior_stages = (handoff_state(data_root(), story_id) or {}).get("stages", {})
-    if multifile and prior_stages.get("planner") != "ran":
+    # A blocked plan review REJECTED the draft, so the planner's work is what must
+    # be redone; without this a resume skips replanning and re-reviews the identical
+    # draft, blocking again forever.
+    replan = prior_stages.get("plan-reviewer") == "blocked"
+    if multifile and (replan or prior_stages.get("planner") != "ran"):
         rc, why = stages.run_planner(story_id, card, tree, handoff)
         # 0, because stop's code is the HARNESS rc: a stage that refused or blocked
         # for the human did not DIE, and saying so sends the lead to the wrong log.
@@ -388,12 +392,13 @@ def cmd_spawn(story_id: str, override: str, dry_run: bool, resuming: bool = Fals
         mark_stage(data_root(), story_id, "planner", "ran")
     elif not multifile:
         mark_stage(data_root(), story_id, "planner", "skipped")
-    if multifile and prior_stages.get("plan-reviewer") != "ran":
+    if multifile and (replan or prior_stages.get("plan-reviewer") != "ran"):
         import plan_review
 
         with contextlib.chdir(tree):
             rc = plan_review.run_foreground(story_id, draft_path(data_root(), story_id))
         if rc:
+            mark_stage(data_root(), story_id, "plan-reviewer", "blocked")
             why = "execution plan review blocked or failed; read its disposition before resuming"
             return stop(why, 0)
         mark_stage(data_root(), story_id, "plan-reviewer", "ran")
