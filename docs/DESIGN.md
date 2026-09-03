@@ -364,9 +364,18 @@ and `xp-setup` joins the tuple it was absent from — the one skill with no cap 
 one whose defect was a stale claim rather than an amputation. Raised, each priced against
 its measured fix and not guessed: story-close 380 -> 410, sprint-close 290 -> 315,
 free-close 85 -> 115, create-sprint 190 -> 205, xp-setup none -> 340, PROCESS.md
-1,600 -> 1,775 -> 1,815 (the late timeout correction measures 1,629/1,815),
-PLUGIN_SHIPPED_CAP 1,500 -> 1,930 (the port into templates/constraints.md
-alone costs 209 tokens against 58 free).
+1,600 -> 1,775 -> 1,815, PLUGIN_SHIPPED_CAP 1,500 -> 1,930.
+THE RAISES LANDED AND FOUR OF THE FIXES THEY WERE PRICED FOR DID NOT (the story
+reviewer's round 1, escalated by the executor before it): PROCESS.md is unchanged
+at 1,590/1,815 and the shipped profile at 1,475/1,930, so the two largest raises
+bought 225 characters and 455 tokens of slack for work that is not in the tree —
+a ratchet with slack certifies instead of checking, which is the failure this
+same section warns about two paragraphs up. Re-cut both to the live sizes, or
+land the fixes; do not leave the numbers standing on the intention.
+AND THE FLOOR DOES NOT HOLD ON THE COMMIT THAT WRITES IT: sprint-close is
+286/315 (9.2% free) and xp-setup 307/340 (9.7%), because both caps were priced
+at 282 and 303 and then their own carded fixes added four words each. That is
+the fourth time scope arrived after a cap was priced. Price caps LAST.
 CONSTRAINT 1 GAINS ITS EXEMPTION and it is what funds the rest: a CORRECTION creates no new
 obligation for the reader, so it displaces nothing. Without it, three separate squeezes had
 already paid for corrections out of muscle.

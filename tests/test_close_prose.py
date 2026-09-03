@@ -93,9 +93,12 @@ class TestShippedProseMatchesTheMechanism:
         (bug 898ad9e1, note c3d8e2a7): one word covered two artifacts and no
         lead-facing sentence said whose each was. Pinned in both copies rather
         than read-and-judged because TEAMMATE.md shares an enforced profile cap
-        (`spawn.PLUGIN_SHIPPED_CAP`, 1,442/1,930 today) — the next component that
-        lands forces a cut there, and the newest sentence is the one that looks
-        least load-bearing. "sprint review" is excluded by name: `close.py sprint
+        (`spawn.PLUGIN_SHIPPED_CAP`) whose next squeeze reaches for the newest
+        sentence, the one that looks least load-bearing. The cap no longer
+        supplies that pressure: it was raised to 1,930 to fund a port into
+        templates/constraints.md that this story did NOT land, so the live
+        profile is 1,475 with 455 tokens free. The PIN is what holds these two
+        sentences today. "sprint review" is excluded by name: `close.py sprint
         <id> review` already holds that phrase.
         """
         for path in (PLUGIN / "PROCESS.md", PLUGIN / "TEAMMATE.md"):
@@ -196,10 +199,14 @@ class TestShippedProseMatchesTheMechanism:
         of padding spliced in — a ratchet with slack certifies instead of checking.
         Re-measure and lower it whenever this file legitimately shrinks.
 
-        RAISED 1,600 -> 1,775 -> 1,815 with the floor below. The second move funds
-        a timeout correction added after the first pricing: measured final rendering
-        1,629/1,815. The sentence above is about slack by NEGLECT, and it still binds:
-        a floor tracks the live size, an abandoned cap does not."""
+        RAISED 1,600 -> 1,775 -> 1,815 with the floor below, to fund the loop-map
+        and timeout corrections. NEITHER LANDED — this file is unchanged at 1,590,
+        so 225 of those characters are slack, and the sentence above is about
+        exactly that. What actually bounds this file is 32 characters, not 225:
+        test_dogfood's byte profile truncates the constraints past that (measured
+        by bisection at HEAD), so the cap and the wall disagree by 7x and the
+        LOUDER number is the wrong one. Re-cut this to the live size, or land the
+        corrections, before the next reader trusts the 1,815."""
         raw = (PLUGIN / "PROCESS.md").read_text()
         assert len(raw) <= 1815, "the execution rule stopped paying for itself"
         process = " ".join(raw.split())

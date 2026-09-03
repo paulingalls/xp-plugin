@@ -95,15 +95,19 @@ class TestDogfoodMatchesTheScaffold:
         ]
         assert not leaked, leaked
 
-    def test_shipped_markdown_names_no_unshipped_root_document(self):
-        """Reject uppercase root-document references the plugin does not ship.
+    def test_shipped_markdown_names_no_unshipped_document(self):
+        """Reject uppercase document references the plugin does not itself ship.
 
-        This scans Markdown only, so it says nothing about shipped Python strings
-        or ordinary repository vocabulary. It deliberately rejects a consuming
-        project's uppercase root document too; use a project-neutral phrase."""
+        Allowed is the WHOLE shipped tree, not its root: `SKILL.md` ships eight
+        times and a root-only enumeration red on prose naming it — a false red
+        against a file every adopter has, which teaches the next author to weaken
+        the guard. This scans Markdown only, so it says nothing about shipped
+        Python strings or ordinary repository vocabulary, and it sees only
+        ALL-CAPS names: `Design.md` passes. It deliberately rejects a consuming
+        project's uppercase document too; use a project-neutral phrase."""
         plugin = self.REPO / "plugins" / "xp-plugin"
-        allowed = {path.name for path in plugin.glob("*.md")}
         corpus = sorted(plugin.rglob("*.md"))
+        allowed = {path.name for path in corpus}
         assert allowed and corpus, "document discovery found nothing — a green would certify"
         document = re.compile(r"(?<![A-Za-z0-9_.-])([A-Z][A-Z0-9_-]*\.md)\b")
         leaked = [
@@ -112,7 +116,7 @@ class TestDogfoodMatchesTheScaffold:
             for name in document.findall(path.read_text())
             if name not in allowed
         ]
-        assert not leaked, f"shipped Markdown names unshipped root documents: {leaked}"
+        assert not leaked, f"shipped Markdown names unshipped documents: {leaked}"
 
     def cap_value(self, path):
         line = next(
@@ -211,8 +215,8 @@ class TestDogfoodMatchesTheScaffold:
             assert red.returncode != 0, f"run_tier {tier} passed an over-cap constraints.md"
             assert "4500" in red.stderr, red.stderr
 
-    # The banner prints the plugin path and the data root, so BOTH lengths are
-    # subtracted from the constraints' room. Budgeted, not inherited: an installed
+    # The plugin path rides in the banner and the data root in the NEXT line, so
+    # BOTH lengths are subtracted from the constraints' room. Budgeted, not inherited: an installed
     # adopter sits near 70/45, our own spawn worktrees near 102/40. Measured frontier: 110/100 is
     # 9,498 of 9,500, so these budgets keep 32 bytes and red if a region grows.
     PLUGIN_PATH_BUDGET = 110
