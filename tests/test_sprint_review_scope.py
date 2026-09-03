@@ -200,7 +200,7 @@ class TestConfirmingRound:
         assert [stage_key(r["stdin"]) for r in launches(tmp_path)[split:]] == ["fix"]
         assert head(repo, env) != before and "REVIEW_FIX = 1" in (repo / "src.py").read_text()
         state = json.loads(marker_path(tmp_path).read_text())
-        assert state["rounds"][-1] == report
+        assert state["rounds"][-1] | report == state["rounds"][-1], state["rounds"][-1]
         diff = tmp_path / "data/reports/sprint/2.fix.round-2.diff"
         assert diff.is_file() and "REVIEW_FIX = 1" in diff.read_text()
         assert str(diff) in result.stdout and "landing accepts it" in result.stdout
@@ -215,7 +215,11 @@ class TestConfirmingRound:
         assert sprint(repo, env, "review").returncode == 0
         assert [stage_key(r["stdin"]) for r in launches(tmp_path)[split:]] == ["fix"]
         state = json.loads(marker_path(tmp_path).read_text())
-        assert state["rounds"][-1] == CLEAN
+        # The round carries its own coverage as well as the report: top-level
+        # coverage is overwritten by a later round, so a round that does not
+        # carry its own cannot be disclosed once a second one exists.
+        assert state["rounds"][-1] | CLEAN == state["rounds"][-1], state["rounds"][-1]
+        assert state["rounds"][-1]["reviewed_head"]
 
     def test_an_unreadable_ALTITUDE_refuses_before_the_reviewer_is_launched(self, tmp_path):
         """The sprint rule lives in the charter this round does NOT carry, so it
