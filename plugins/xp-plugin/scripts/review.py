@@ -364,7 +364,7 @@ def reviewer_range(start: str, end: str) -> str:
 def covered_ranges(state: dict, head: str) -> list[tuple[str, str]]:
     """One range PER ROUND, in round order: disclose numbers them by position and names
     each round's own diff. A round with no coverage holds its PLACE, and only a PRE-0.18
-    one may claim the top-level pair: a killed round reviewed nothing (constraint 15)."""
+    one may claim the top-level pair: a killed round reviewed nothing (distinct-state rule)."""
     rounds = state.get("rounds", [])
     ranges = [(r.get("reviewed_head", head), r.get("shown_sha", head)) for r in rounds]
     legacy = (state.get("reviewed_head", head), state.get("shown_sha", head))
