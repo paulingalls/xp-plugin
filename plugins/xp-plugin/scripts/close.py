@@ -237,7 +237,7 @@ def _record_round(
     import review
 
     head = at["head"]
-    report, err = review.read_report(path)
+    report, err = review.read_report(path) if salvage else ({}, "")
     if err:
         return fail(review.stamp(path, review.abort_text(head, err, salvage=salvage)))
     motion = review.check_reviewer_motion(
@@ -245,6 +245,10 @@ def _record_round(
     )
     if motion:
         return fail(review.stamp(path, motion))
+    if not salvage:
+        report, err = review.read_report(path)
+        if err:
+            return fail(review.stamp(path, review.abort_text(head, err)))
     if err := review.apply_patch(path, card):
         return fail(review.stamp(path, review.abort_text(head, err, salvage=salvage)))
     verify_err = verify_on_reviewed_tree(story_id, card)

@@ -132,6 +132,25 @@ class TestSalvage:
         assert "git reset --hard" not in refused.stderr, refused.stderr
 
     @pytest.mark.slow
+    def test_ordinary_review_names_marker_motion_before_an_absent_report(self, tmp_path):
+        repo, env, _g = make_repo(tmp_path)
+        marker = marker_file(tmp_path)
+        stub_reviewer(tmp_path, report=None)
+        stub = tmp_path / "bin" / "claude"
+        stub.write_text(
+            stub.read_text().replace(
+                "sys.exit(0)",
+                f"open({str(marker)!r}, 'w').write('{{}}')\nsys.exit(0)",
+            )
+        )
+
+        refused = close(repo, env, "review")
+
+        assert refused.returncode == 2
+        assert "close marker changed during the review" in refused.stderr, refused.stderr
+        assert "wrote no report" not in refused.stderr, refused.stderr
+
+    @pytest.mark.slow
     def test_salvage_keeps_the_launch_card_as_its_scope_contract(self, tmp_path):
         repo, env, _g = make_repo(tmp_path)
         dying_reviewer(tmp_path, patch=NEW_FILE_PATCH)
