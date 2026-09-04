@@ -60,6 +60,17 @@ def git(*args: str, check: bool = True) -> subprocess.CompletedProcess:
     return subprocess.run(["git", *args], capture_output=True, text=True, check=check)
 
 
+def salvage_dirty_refusal() -> str:
+    dirty = git("status", "--porcelain").stdout.strip()
+    if not dirty:
+        return ""
+    return (
+        "the working tree may contain a dead reviewer's uninspected work; read it"
+        " before committing or discarding it, then retry salvage with a clean tree;"
+        " uncommitted:\n  " + dirty
+    )
+
+
 def story_card(plan: str, story_id: str) -> tuple[str, str]:
     lines = plan.splitlines(keepends=True)
     start = next((i for i, ln in enumerate(lines) if ln.startswith(f"#### {story_id} ")), None)
@@ -180,7 +191,7 @@ def build_bundle(card: str, base: str, report: Path, prior: str = "", notice: st
 
 
 def _preflight(story_id: str, action: str, dry_run: bool = False) -> tuple[str, str, str]:
-    if git("status", "--porcelain").stdout.strip():
+    if action != "salvage" and git("status", "--porcelain").stdout.strip():
         return "", "", "refused: working tree is dirty — commit or stash first"
     _noun, free_slug = leg(story_id)
     card, trunk = "", default_branch() if free_slug else integration_target()
@@ -219,28 +230,30 @@ def verify_on_reviewed_tree(story_id: str, card: str) -> str:
     return red.removeprefix("refused: ")
 
 
-def _record_round(story_id: str, card: str, path: Path, marker: Path, state: dict, at: dict) -> int:
+def _record_round(
+    story_id: str, card: str, path: Path, marker: Path, state: dict, at: dict, salvage=False
+) -> int:
     """Share review and salvage guards; `at` is the tree the launch marker names."""
     import review
 
     head = at["head"]
+    report, err = review.read_report(path)
+    if err:
+        return fail(review.stamp(path, review.abort_text(head, err, salvage=salvage)))
     motion = review.check_reviewer_motion(
-        head, marker, at["digest"], card, story_id, at.get("moved", "")
+        head, marker, at["digest"], card, story_id, at.get("moved", ""), salvage=salvage
     )
     if motion:
         return fail(review.stamp(path, motion))
-    report, err = review.read_report(path)
-    if err:
-        return fail(review.stamp(path, review.abort_text(head, err)))
     if err := review.apply_patch(path, card):
-        return fail(review.stamp(path, review.abort_text(head, err)))
+        return fail(review.stamp(path, review.abort_text(head, err, salvage=salvage)))
     verify_err = verify_on_reviewed_tree(story_id, card)
     if verify_err and not report["blocking"]:
         at.update(verify_red=verify_err, verify_head=git("rev-parse", "HEAD").stdout.strip())
         review.launch_marker(story_id).write_text(json.dumps(at))
-        return fail(review.stamp(path, review.abort_text(head, verify_err)))
+        return fail(review.stamp(path, review.abort_text(head, verify_err, salvage=salvage)))
     kept = "The round IS recorded, and it names this tree — a reset here orphans it."
-    refusal = review.abort_text(head, verify_err, kept) if verify_err else ""
+    refusal = review.abort_text(head, verify_err, kept, salvage=salvage) if verify_err else ""
     review.stamp(path, refusal)
     if err := review.write_reviewer_diff(path, head, at.get("noun", leg(story_id)[0])):
         return fail(review.stamp(path, err))  # already a whole refusal, prefix and all
@@ -329,7 +342,7 @@ def cmd_salvage(story_id: str) -> int:
         " did since the kill — a reviewer runs with the git credentials stripped, so"
         " authorship says YOU either way. Reset to that sha, or review again"
     )
-    return _record_round(story_id, at["card"], path, marker, state, at)
+    return _record_round(story_id, at["card"], path, marker, state, at, salvage=True)
 
 
 def _read(path: str) -> str:

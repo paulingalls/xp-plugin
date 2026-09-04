@@ -31,6 +31,13 @@ PATCH = """diff --git a/src/thing.py b/src/thing.py
  A = 2
 +guarded = True
 """
+NEW_FILE_PATCH = """diff --git a/src/fixed.py b/src/fixed.py
+new file mode 100644
+--- /dev/null
++++ b/src/fixed.py
+@@ -0,0 +1 @@
++fixed = True
+"""
 
 
 def dying_reviewer(tmp_path, extra="", patch=PATCH):
@@ -109,6 +116,36 @@ class TestSalvage:
         assert len(spawns) == 1, "salvage spawned a second reviewer"
         assert "guarded = True" in (repo / "src" / "thing.py").read_text()
         assert g("log", "-1", "--format=%an").stdout.strip() == "xp story-reviewer"
+
+    @pytest.mark.slow
+    def test_an_absent_report_wins_over_a_dirty_tree(self, tmp_path):
+        repo, env, _g = make_repo(tmp_path)
+        dying_reviewer(tmp_path, extra='rm "$p"\n')
+        assert close(repo, env | KILLED, "review").returncode == 2
+        (repo / "dead-reviewer-work.py").write_text("uninspected = True\n")
+
+        refused = salvage(repo, env)
+
+        assert refused.returncode == 2
+        assert "wrote no report" in refused.stderr, refused.stderr
+        assert "working tree is dirty" not in refused.stderr, refused.stderr
+        assert "git reset --hard" not in refused.stderr, refused.stderr
+
+    @pytest.mark.slow
+    def test_salvage_keeps_the_launch_card_as_its_scope_contract(self, tmp_path):
+        repo, env, _g = make_repo(tmp_path)
+        dying_reviewer(tmp_path, patch=NEW_FILE_PATCH)
+        assert close(repo, env | KILLED, "review").returncode == 2
+        plan = tmp_path / "data" / "plan.md"
+        plan.write_text(
+            plan.read_text().replace("Files: src/thing.py", "Files: src/thing.py, src/fixed.py")
+        )
+
+        refused = salvage(repo, env)
+
+        assert refused.returncode == 2 and "card changed" in refused.stderr, refused.stderr
+        assert not (repo / "src" / "fixed.py").exists()
+        assert not marker_file(tmp_path).exists(), "the widened fresh card authorized a round"
 
     @pytest.mark.slow
     def test_a_salvaged_round_no_longer_reads_as_refused(self, tmp_path):

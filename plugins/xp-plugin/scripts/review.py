@@ -169,7 +169,7 @@ def write_round(marker: Path, state: dict, round_: dict, **coverage: str) -> Non
     marker.write_text(json.dumps(state))
 
 
-def abort_text(reviewed_head: str, why: str, recorded: str = NO_ROUND) -> str:
+def abort_text(reviewed_head: str, why: str, recorded: str = NO_ROUND, salvage=False) -> str:
     """EVERY abort in the review leg, not only the motion checks: a refused run can
     still have left commits behind. The undo is offered only when something
     actually moved — offered on an untouched tree, it teaches the lead to skip it
@@ -180,7 +180,7 @@ def abort_text(reviewed_head: str, why: str, recorded: str = NO_ROUND) -> str:
     from close import git
 
     moved = git("rev-parse", "HEAD").stdout.strip() != reviewed_head
-    if not (moved or git("status", "--porcelain").stdout.strip()):
+    if salvage or not (moved or git("status", "--porcelain").stdout.strip()):
         return f"refused: {why}" if recorded == NO_ROUND else f"refused: {why}\n\n{recorded}"
     stat = git("diff", "--stat", f"{reviewed_head}..HEAD").stdout
     return (
@@ -196,6 +196,7 @@ def check_reviewer_motion(
     card: str = "",
     story_id: str = "",
     moved: str = "",
+    salvage=False,
 ) -> str:
     """The complete refusal text, or "" if the reviewer behaved.
 
@@ -205,11 +206,13 @@ def check_reviewer_motion(
     reviewer subprocess; salvage runs after unbounded lead time, so it passes
     its own text.
     """
-    from close import git
+    from close import git, salvage_dirty_refusal
 
     def refuse(why: str) -> str:
-        return abort_text(reviewed_head, why)
+        return abort_text(reviewed_head, why, salvage=salvage)
 
+    if salvage and (dirty := salvage_dirty_refusal()):
+        return refuse(dirty)
     dirty = git("status", "--porcelain").stdout.strip()
     if dirty:
         return refuse(

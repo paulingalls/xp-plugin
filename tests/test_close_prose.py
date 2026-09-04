@@ -1,5 +1,6 @@
 """Shipped prose matches the mechanism. Split from test_close.py at sprint-004 open."""
 
+import json
 import re
 import subprocess
 import sys
@@ -53,6 +54,40 @@ class TestShippedProseMatchesTheMechanism:
             text=True,
         )
         assert r.returncode == 0 and "salvage" in r.stdout, r.stderr
+
+    def test_review_and_salvage_give_distinct_dirty_tree_advice(self, tmp_path):
+        repo, env, g = make_repo(tmp_path)
+        data = tmp_path / "data"
+        plan = (data / "plan.md").read_text()
+        card = "####" + plan.split("####", 1)[1]
+        launch = data / "markers" / "story-042.review-launch"
+        launch.write_text(
+            json.dumps(
+                {
+                    "head": g("rev-parse", "HEAD").stdout.strip(),
+                    "digest": "",
+                    "base": g("merge-base", "main", "HEAD").stdout.strip(),
+                    "card": card,
+                    "noun": "story story-042",
+                }
+            )
+        )
+        report = data / "reports" / "story-042.round-1.json"
+        report.parent.mkdir(parents=True)
+        report.write_text(json.dumps({"fixed": [], "blocking": [], "noted": []}))
+        dirt = repo / "uninspected.txt"
+        dirt.write_text("dead reviewer work\n")
+
+        ordinary = close(repo, env, "review")
+        recovery = close(repo, env, "salvage")
+
+        assert ordinary.returncode == recovery.returncode == 2
+        assert "commit or stash first" in ordinary.stderr, ordinary.stderr
+        assert "dead reviewer's uninspected work" in recovery.stderr, recovery.stderr
+        assert "read it before committing or discarding it" in recovery.stderr, recovery.stderr
+        assert ordinary.stderr != recovery.stderr
+        assert "git reset --hard" not in ordinary.stderr + recovery.stderr
+        assert dirt.read_text() == "dead reviewer work\n"
 
     def test_no_verdict_token_survives_in_the_shipped_prose(self):
         for path in (
