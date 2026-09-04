@@ -472,7 +472,7 @@ class TestSprintCharter:
             assert token in shared, f"the charter never names {token}"
         closer = text.split("\n## closer\n", 1)[1]
         assert '"clearable_by_full"' in closer and "tests.full" in closer
-        assert '"clearable_by_full"' not in shared
+        assert '"clearable_by_full"' in shared and "only `closer`" in shared
 
 
 class TestShippedProse:

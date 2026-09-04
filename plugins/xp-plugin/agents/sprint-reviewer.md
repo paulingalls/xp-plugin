@@ -17,9 +17,10 @@ story-level finding is noise. What earns effort is what no story-scoped reader
 could see — a seam between stories, a rule fixed in one of its two
 implementations, an invariant one story set and another dropped.
 
-Write `{"fixed": [...], "blocking": [...], "noted": [...]}` to the REPORT_PATH
-your bundle names. The pipeline records nothing else and a stage that skips it
-never ran. One sentence per item, no newlines, naming the file.
+Write `{"fixed": [...], "blocking": [...], "noted": [...]}` to the REPORT_PATH.
+Every stage writes these lists; only `closer` may add optional
+`"clearable_by_full"` below. Nothing else is recorded; skipping the report means
+the stage never ran. One sentence per item, no newlines, name files.
 
 ## finder
 
