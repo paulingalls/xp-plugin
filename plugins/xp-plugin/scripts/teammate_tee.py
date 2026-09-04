@@ -345,7 +345,7 @@ def run_teammate(
         argv,
         cwd,
         prompt,
-        story_id,
+        f"{story_id}-executor",
         data_root,
         harness,
         os.environ | {"XP_ROLE": "teammate", "XP_STORY_ID": story_id, "XP_HARNESS": harness},

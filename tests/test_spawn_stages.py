@@ -66,6 +66,13 @@ class TestSpawnStages:
         result = spawn(repo, env, "story-042")
         assert result.returncode == 0, result.stderr
         assert event_roles(events) == ["planner", "plan-reviewer", "teammate", "reviewer"]
+        logs = tmp_path / "data/logs"
+        assert {path.name for path in logs.glob("story-042*.log")} == {
+            "story-042-planner.log",
+            "story-042-plan-reviewer.log",
+            "story-042-executor.log",
+            "story-042-reviewer.log",
+        }
         handoff = json.loads((tmp_path / "data/plans/story-042.handoff.json").read_text())
         assert handoff["stages"] == {
             "planner": "ran",
