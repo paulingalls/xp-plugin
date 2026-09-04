@@ -322,7 +322,10 @@ class InstallProbeCases:
         r = self.run(repo, tmp_path, running, "claude", XP_ROLE="teammate")
         assert "teammate session" in r.stdout, r.stdout
         assert "installed 1.0.0" in r.stdout and "running 2.0.0" in r.stdout, r.stdout
-        assert r.stdout.splitlines()[0].endswith("never close, never merge"), r.stdout
+        assert r.stdout.splitlines()[0] == (
+            "xp-plugin 2.0.0 · teammate session · your card, VALUES and "
+            "constraints are in your prompt"
+        ), r.stdout
         fenced = r.stdout.split("BEGIN project content", 1)[1].split("END project content", 1)[0]
         assert "installed 1.0.0" in fenced
 

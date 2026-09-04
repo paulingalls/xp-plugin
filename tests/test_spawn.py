@@ -22,6 +22,7 @@ from spawn_helpers import (  # noqa: F401
     stub_codex,
 )
 from test_spawn_escalation import ESCALATION, stub_escalating
+from test_spawn_role_briefs import TestRoleBriefs  # noqa: F401
 
 
 class TestLaunchContract:
@@ -38,8 +39,7 @@ class TestLaunchContract:
         assert "-p" in argv
         assert argv[argv.index("--model") + 1] == "sonnet"
         assert argv[argv.index("--effort") + 1] == "medium"
-        # without --plugin-dir the teammate loads no hooks, agents or skills:
-        # a worktree session applies no project-scoped marketplace enablement
+        # Worktree sessions have no project-scoped marketplace enablement.
         assert Path(argv[argv.index("--plugin-dir") + 1]).name == "xp-plugin"
         # headless denies tool permission by default -> prose-only teammate, exit 0.
         # bypass specifically: acceptEdits was MEASURED to deny `git add`/`git
@@ -72,7 +72,7 @@ class TestLaunchContract:
         assert spawn(repo, env, "story-042").returncode == 0
         stdin = json.loads(rec.read_text())["stdin"]
         assert "Honesty > Courage > Simplicity" in stdin  # VALUES.md
-        assert "never merge, never run" in stdin  # TEAMMATE.md
+        assert "Run the card's exact Verify" in " ".join(stdin.split())  # EXECUTOR.md
         assert "demo story" in stdin  # the card
         assert "CONSTRAINT-SENTINEL" in stdin  # constraints
         assert "(missing:" not in stdin  # generic: every shipped-path defect
@@ -450,7 +450,7 @@ class TestCommonDirWidening:
         assert adds == [str(tmp_path / "data")], launched
         assert str((main / ".git").resolve()) not in adds
 
-    def test_the_TEAMMATE_launch_applies_it_too(self, tmp_path, monkeypatch):
+    def test_the_executor_launch_applies_it_too(self, tmp_path, monkeypatch):
         """ONE rule, one launch path. It had two: while the widening lived in
         run_agent alone, a codex teammate in a linked worktree could not commit —
         measured on this story's own author, which hand-committed instead."""
@@ -488,11 +488,11 @@ def test_the_brief_states_the_commit_the_handback_guard_requires(tmp_path, monke
     profile = dict(sections)["How you work"]
 
     def assert_commit_precedes_handback(text):
-        done = text.split("**Done =", 1)[1].split("hand back", 1)[0]
+        done = text.split("**Finish green.**", 1)[1].split("hand back", 1)[0]
         assert "commit" in done.lower(), "commit is not a precondition of handback"
 
     assert_commit_precedes_handback(profile)
-    broken = profile.replace("work COMMITTED, then hand back", "hand back; the lead commits")
+    broken = profile.replace("commit the green change with hooks enabled", "hand back; later")
     with pytest.raises(AssertionError):
         assert_commit_precedes_handback(broken)
 

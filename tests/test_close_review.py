@@ -390,7 +390,7 @@ class TestAReviewerMayNotREWRITEWhatItWasGiven:
 
 
 class TestSelfCloseRefusal:
-    """story-008 AC 6: the hard property behind TEAMMATE.md's declaration."""
+    """story-008 AC 6: close.py's XP_ROLE refusal is the property's home."""
 
     def test_non_lead_roles_are_refused(self, tmp_path):
         """N3: parametrized, or this fault-injects the AC and not the widening."""
