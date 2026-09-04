@@ -29,7 +29,7 @@ def delete_story_markers(story_id: str) -> None:
         path.unlink(missing_ok=True)
 
 
-def render_merge_body(rounds: list[dict]) -> str:
+def _render_rounds(rounds: list[dict], select_items) -> str:
     out = []
     for i, r in enumerate(rounds, 1):
         counts = " · ".join(f"{len(r[k])} {k}" for k in ("fixed", "blocking", "noted"))
@@ -38,13 +38,22 @@ def render_merge_body(rounds: list[dict]) -> str:
         )
         out.append(f"Review round {i}: {counts}{stopped}")
         for k in ("fixed", "blocking", "noted"):
-            out += [f"  {k}: {item}" for item in review.cap_display(r[k], data_root() / "reports")]
+            out += [f"  {k}: {item}" for item in select_items(r[k], i)]
     return "\n".join(out)
+
+
+def render_merge_body(rounds: list[dict], story_id: str) -> str:
+    return _render_rounds(
+        rounds,
+        lambda items, round_n: review.cap_display(
+            items, Path(f"reports/{story_id}.round-{round_n}.json")
+        ),
+    )
 
 
 def render_prior_rounds(rounds: list[dict]) -> str:
     """Give later rounds enough memory not to reverse settled fixes."""
-    body = render_merge_body(rounds)
+    body = _render_rounds(rounds, lambda items, _round_n: items)
     if not body:
         return ""
     return body + (
@@ -54,7 +63,7 @@ def render_prior_rounds(rounds: list[dict]) -> str:
 
 
 def render_sprint_prior(rounds: list[dict]) -> str:
-    body = render_merge_body(rounds)
+    body = _render_rounds(rounds, lambda items, _round_n: items)
     if not body:
         return "none — run the full pass yourself"
     return body + "\n\nvalidate that each was addressed; do not re-derive the diff."

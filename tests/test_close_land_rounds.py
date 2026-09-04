@@ -9,15 +9,29 @@ disclosure here, land's other failure modes and bookkeeping there.
 import json
 
 import pytest
+from close_free_card_cases import add_free_card, commit_on_free, free_identity
 from close_helpers import (
     CLEAN,
     close,
+    free,
+    free_repo,
+    gh_calls,
     launches,
     make_repo,
     marker,
     marker_file,
     stub_reviewer,
 )
+
+
+def overflowing_findings():
+    return {status: [f"{status}-{i:02}" for i in range(25)] for status in CLEAN}
+
+
+def story_prior(bundle):
+    start = bundle.index("## Earlier rounds of THIS review\n\n")
+    start += len("## Earlier rounds of THIS review\n\n")
+    return bundle[start : bundle.index("\n\n## Cumulative diff", start)]
 
 
 class TestStructuredGate:
@@ -149,26 +163,6 @@ class TestStructuredGate:
         r = close(repo, env, "land")
         assert r.returncode == 2 and "did not cover" in r.stderr
 
-    def test_report_items_keep_the_item_bound_and_list_cap_only_at_display(self, tmp_path):
-        import bookkeep
-        import review
-
-        repo, env, _g = make_repo(tmp_path)
-        stub_reviewer(
-            tmp_path,
-            report={
-                "fixed": ["x" * 5000],
-                "blocking": [],
-                "noted": [f"n{i}" for i in range(review.LIST_CAP + 5)],
-            },
-        )
-        assert close(repo, env, "review").returncode == 0
-        round1 = marker(tmp_path)["rounds"][0]
-        assert len(round1["fixed"][0]) <= 400
-        assert len(round1["noted"]) == review.LIST_CAP + 5
-        body = bookkeep.render_merge_body([round1])
-        assert "n24" not in body and "more, in full" in body
-
     def test_a_prose_only_reviewer_is_refused_and_its_output_is_printed_first(self, tmp_path):
         repo, env, _g = make_repo(tmp_path)
         stub_reviewer(
@@ -241,6 +235,110 @@ class TestStructuredGate:
         body = g("log", "-1", "--format=%B").stdout
         for i in (1, 2, 3):
             assert f"Review round {i}" in body and f"round {i} fix" in body
+
+
+class TestReviewMemory:
+    def test_every_story_item_reaches_the_next_round_once(self, tmp_path):
+        repo, env, _g = make_repo(tmp_path)
+        findings = overflowing_findings()
+        stub_reviewer(tmp_path, report=findings)
+        assert close(repo, env, "review").returncode == 0
+        stub_reviewer(tmp_path, report=CLEAN)
+        assert close(repo, env, "review").returncode == 0
+
+        prior = story_prior(launches(tmp_path)[-1]["stdin"])
+        for status, items in findings.items():
+            assert prior.count(items[0]) == prior.count(items[-1]) == 1, status
+            assert all(prior.count(item) == 1 for item in items), status
+        assert "more, in full" not in prior
+
+    def test_an_ordinary_round_keeps_its_prompt_and_merge_text(self, tmp_path):
+        repo, env, g = make_repo(tmp_path)
+        first = {
+            "fixed": ["ordinary fix"],
+            "blocking": ["ordinary blocker"],
+            "noted": ["ordinary note"],
+        }
+        stub_reviewer(tmp_path, report=first)
+        assert close(repo, env, "review").returncode == 0
+        stub_reviewer(tmp_path, report=CLEAN)
+        assert close(repo, env, "review").returncode == 0
+
+        round1 = (
+            "Review round 1: 1 fixed · 1 blocking · 1 noted\n"
+            "  fixed: ordinary fix\n"
+            "  blocking: ordinary blocker\n"
+            "  noted: ordinary note"
+        )
+        prior = round1 + (
+            "\n\nDo NOT re-litigate a settled fix. DO verify each `fixed` item still"
+            " holds in the tree you were given."
+        )
+        assert story_prior(launches(tmp_path)[-1]["stdin"]) == prior
+        assert close(repo, env, "land").returncode == 0
+        body = g("log", "-1", "--format=%B", "main").stdout.split("\n\n", 1)[1].strip()
+        assert body == round1 + "\nReview round 2: 0 fixed · 0 blocking · 0 noted"
+
+
+class TestBoundedDurableBody:
+    def test_story_body_names_complete_round_reports_that_outlive_cleanup(self, tmp_path):
+        repo, env, g = make_repo(tmp_path)
+        findings = overflowing_findings()
+        findings["fixed"][0] = "x" * 5000
+        stub_reviewer(tmp_path, report=findings)
+        assert close(repo, env, "review").returncode == 0
+        stub_reviewer(tmp_path, report=CLEAN)
+        assert close(repo, env, "review").returncode == 0
+
+        reports = tmp_path / "data" / "reports"
+        paths = [reports / f"story-042.round-{n}.json" for n in (1, 2)]
+        saved = json.loads(paths[0].read_text())
+        recorded = marker(tmp_path)["rounds"][0]
+        assert all(path.is_file() for path in paths)
+        assert len(recorded["fixed"][0]) <= 400
+        assert len(recorded["noted"]) == len(findings["noted"])
+        assert all(saved[status][-1] == findings[status][-1] for status in CLEAN)
+
+        assert close(repo, env, "land").returncode == 0
+        body = g("log", "-1", "--format=%B", "main").stdout
+        for status in CLEAN:
+            assert recorded[status][0] in body and recorded[status][-1] not in body
+            assert sum(line.startswith(f"  {status}:") for line in body.splitlines()) == 20
+        notice = "(+6 more, in full at reports/story-042.round-1.json)"
+        assert body.count(notice) == 3
+        assert str(tmp_path / "data") not in body
+        assert "at reports)" not in body and "closes.jsonl" not in body
+        assert not marker_file(tmp_path).exists()
+        assert all(path.is_file() for path in paths)
+        assert json.loads(paths[0].read_text()) == saved
+
+    def test_free_pr_body_names_its_complete_report_after_cleanup(self, tmp_path):
+        repo, env, g = free_repo(tmp_path)
+        assert free(repo, env, "fix-typo", "start").returncode == 0
+        branch, key = free_identity(g)
+        commit_on_free(repo, g)
+        add_free_card(env, key)
+        findings = {"fixed": [], "blocking": [], "noted": [f"free-note-{i:02}" for i in range(25)]}
+        stub_reviewer(tmp_path, report=findings)
+        assert free(repo, env, "fix-typo", "review").returncode == 0
+        report = tmp_path / "data" / "reports" / f"{key}.round-1.json"
+        saved = json.loads(report.read_text())
+        assert saved["noted"][-1] == "free-note-24"
+
+        assert free(repo, env, "fix-typo", "land").returncode == 0
+        create = next(call for call in gh_calls(tmp_path) if call[:2] == ["pr", "create"])
+        body = create[create.index("--body") + 1]
+        assert "free-note-00" in body and "free-note-24" not in body
+        assert sum(line.startswith("  noted:") for line in body.splitlines()) == 20
+        assert body.count(f"(+6 more, in full at reports/{key}.round-1.json)") == 1
+        assert str(tmp_path / "data") not in body
+        assert "at reports)" not in body and "closes.jsonl" not in body
+
+        g("checkout", "-q", "main")
+        g("merge", "-q", "--no-ff", branch, "-m", "merge free release")
+        assert free(repo, env, "fix-typo", "post-merge").returncode == 0
+        assert not marker_file(tmp_path, key).exists()
+        assert json.loads(report.read_text()) == saved
 
 
 class TestLandNamesEachRoundsOwnDiff:
