@@ -92,7 +92,7 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
     tier_key = "story"
     tier = work.config_block_value("tests", tier_key)
     branch = close.git("rev-parse", "--abbrev-ref", "HEAD").stdout.strip()
-    verdict = bookkeep.render_merge_body(rounds)
+    verdict = bookkeep.render_merge_body(rounds, story_id)
     version = next_version("patch", ref) if free else ""
     if free and not version:
         return refuse_unbumpable(ref)

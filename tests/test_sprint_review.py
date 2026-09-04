@@ -330,6 +330,36 @@ class TestModeSwitch:
         assert "validate that each was addressed; do not re-derive the diff" in bundle
         assert "run the full pass yourself" not in bundle, "handed findings AND told to re-derive"
 
+    def test_prior_items_are_once_only_in_the_confirming_round_not_sprint_land(self, tmp_path):
+        repo, env, _g = make_repo(tmp_path)
+        prior = {
+            "fixed": [f"prior-fixed-{i:02}" for i in range(25)],
+            "blocking": ["prior-blocking-0", "prior-blocking-1"],
+            "noted": ["prior-noted-0", "prior-noted-1"],
+        }
+        path = marker_path(tmp_path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps({"rounds": [prior], "shown_sha": head(repo, env)}))
+
+        assert sprint(repo, env, "review").returncode == 0
+        ran = launches(tmp_path)
+        assert len(ran) == 1
+        carried = section(
+            ran[0]["stdin"],
+            "Findings from earlier rounds",
+            f"The stories in sprint {SPRINT_ID}",
+        )
+        items = [item for status_items in prior.values() for item in status_items]
+        for item in items:
+            assert carried.count(item) == 1, item
+        assert "more, in full" not in carried
+
+        landed = sprint(repo, env, "land", "--dry-run")
+        assert landed.returncode == 0, landed.stderr
+        assert "--body Sprint 2" in landed.stdout
+        assert "Review round" not in landed.stdout
+        assert all(item not in landed.stdout for item in items)
+
 
 class TestMotionIsBoundedByAMechanism:
     """story-014's AC 2, surviving story-022's reversal: report-only is gone — the
@@ -363,10 +393,7 @@ class TestMotionIsBoundedByAMechanism:
         assert json.loads(marker_path(tmp_path).read_text())["rounds"][-1]["incomplete"]
 
     def test_an_incomplete_round_is_LABELLED_where_the_next_round_reads_it(self, tmp_path):
-        """render_merge_body feeds the next round's bundle and the merge body both.
-        Unlabelled, this round's finder candidates — which no verifier ever judged,
-        because the abort came first — read there as findings a full pass confirmed.
-        """
+        """The sprint prompt must label candidates no verifier ever judged."""
         import bookkeep
 
         repo, env, _g = make_repo(tmp_path)
@@ -374,7 +401,7 @@ class TestMotionIsBoundedByAMechanism:
         committing_stub(tmp_path, "open('src.py','a').write('# edited\\n')\n", report=candidates)
         assert sprint(repo, env, "review").returncode == 2
         rounds = json.loads(marker_path(tmp_path).read_text())["rounds"]
-        assert "a silent one" in (body := bookkeep.render_merge_body(rounds))
+        assert "a silent one" in (body := bookkeep.render_sprint_prior(rounds))
         assert "INCOMPLETE after find-security" in body, body
 
     def test_a_reviewer_that_rewrites_the_MARKER_is_refused(self, tmp_path):
