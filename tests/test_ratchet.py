@@ -97,7 +97,7 @@ def test_every_named_component_member_reports_to_its_component():
     ratchet = _ratchet()
     expected = {
         "spawn": {"spawn", "teammate_tee"},
-        "close": {"close", "review", "bookkeep", "sprint_close"},
+        "close": {"close", "review", "review_report", "bookkeep", "sprint_close"},
         "hooks": {"hooks", "session_start", "stop_gate", "bash_status"},
     }
     for component, names in expected.items():

@@ -15,7 +15,7 @@ CLOSE_GUIDELINE = 2598
 HOOKS_GUIDELINE = 655
 MISC_GUIDELINE = 1489
 
-CLOSE_NAMES = {"close", "review", "bookkeep", "sprint_close"}
+CLOSE_NAMES = {"close", "review", "review_report", "bookkeep", "sprint_close"}
 HOOKS_NAMES = {"hooks", "session_start", "stop_gate", "bash_status"}
 SPAWN_NAMES = {"spawn", "teammate_tee"}
 
