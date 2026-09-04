@@ -53,7 +53,7 @@ def component_metadata_chars() -> int:
 
 
 def plugin_shipped_chars() -> int:
-    names = ("VALUES.md", "JUDGMENT.md", "TEAMMATE.md")
+    names = ("VALUES.md", "JUDGMENT.md", "EXECUTOR.md")
     shipped = [PLUGIN_ROOT / name for name in names]
     shipped.append(PLUGIN_ROOT / "templates" / "constraints.md")
     return sum(len(_read(p)) for p in shipped) + component_metadata_chars()
@@ -130,8 +130,9 @@ def build_prompt(sections: list[tuple[str, str]]) -> str:
 
 
 def teammate_sections(
-    card: str, story_id: str, handoff: str, plugin_root: Path
+    card: str, story_id: str, handoff: str, plugin_root: Path, brief: str | None = None
 ) -> list[tuple[str, str]]:
+    brief = _read_shipped(PLUGIN_ROOT / "EXECUTOR.md") if brief is None else brief
     sections = [
         ("VALUES", _read_shipped(PLUGIN_ROOT / "VALUES.md")),
         ("JUDGMENT", _read_shipped(PLUGIN_ROOT / "JUDGMENT.md")),
@@ -140,9 +141,9 @@ def teammate_sections(
         # arrive literal. A teammate hitting "command not found" guesses instead.
         (
             "How you work",
-            _read_shipped(PLUGIN_ROOT / "TEAMMATE.md")
-            .replace("{PLUGIN_ROOT}", str(plugin_root))
-            .replace("{PLAN_PATH}", str(draft_path(data_root(), story_id))),
+            brief.replace("{PLUGIN_ROOT}", str(plugin_root)).replace(
+                "{PLAN_PATH}", str(draft_path(data_root(), story_id))
+            ),
         ),
         ("Your story card", card),
         ("Constraints", _read(Path(".xp/constraints.md"))),

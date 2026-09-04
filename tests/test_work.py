@@ -81,7 +81,7 @@ class TestNote:
         assert text in (tmp_path / "work.md").read_text()
 
     def test_the_shipped_escalation_command_preserves_backticks_through_a_shell(self, tmp_path):
-        teammate = (WORK.parent.parent / "TEAMMATE.md").read_text()
+        teammate = (WORK.parent.parent / "EXECUTOR.md").read_text()
         (line,) = [ln.strip() for ln in teammate.splitlines() if "scripts/work.py note" in ln]
         text = "the load-bearing `code quotation` stays"
         command = line.removeprefix("File it: `").removesuffix("`.")

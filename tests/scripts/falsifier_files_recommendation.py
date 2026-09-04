@@ -2,7 +2,7 @@
 ever starts treating a card's `Files:` line as a permission list.
 
 The bug's cost was prose — the plan-reviewer charter called a bare files-list
-omission a broken-gate catch, and TEAMMATE.md made the card the whole scope, so
+omission a broken-gate catch, and EXECUTOR.md makes the card the whole scope, so
 an implementation-known file outside Files became "card is wrong -> stop": five
 plan-gate exits and ~500k teammate tokens at story-028. NO SCRIPT CAN HOLD THAT
 HALF. Prose is judged by a reader, and a check that greps the charter for its

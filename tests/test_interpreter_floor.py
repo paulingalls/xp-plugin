@@ -7,9 +7,8 @@ there — and `python3` on a stock mac IS 3.9 (note 1e7b1197). README says 3.11+
 nothing enforced it, so a consuming project met a TypeError naming nothing. env.py
 is the guard's home because it is the one module free of those annotations, so the
 floor speaks for an entry point only if that entry point's imports REACH env before
-any annotated module's body finishes. Measured false for plan_review.py — the one
-surface TEAMMATE.md tells a teammate to run — which imported review.py first and
-tracebacked exactly as before the guard existed.
+any annotated module's body finishes. Measured false for plan_review.py, which
+imported review.py first and tracebacked exactly as before the guard existed.
 """
 
 import ast

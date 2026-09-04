@@ -168,22 +168,25 @@ class TestShippedProseMatchesTheMechanism:
         """The lead drafted the executor's implementation plan twice in one week
         (bug 898ad9e1, note c3d8e2a7): one word covered two artifacts and no
         lead-facing sentence said whose each was. The executable pin holds both
-        copies directly so a later edit cannot silently remove the newest,
-        least-obvious sentence. "sprint review" is
+        copies directly — ownership in the LEAD's, where that bug was written, and
+        the handoff in the executor's — so a later edit cannot silently remove the
+        newest, least-obvious sentence. "sprint review" is
         excluded by name: `close.py sprint <id> review` already holds it.
         """
-        for path in (PLUGIN / "PROCESS.md", PLUGIN / "TEAMMATE.md"):
-            text = prose(path).lower()
-            assert "slate review" in text, f"{path.name}: the lead's review is unnamed"
-            assert "execution plan review" in text, f"{path.name}: executor review unnamed"
-            assert "the lead never" in text, f"{path.name}: the plan's owner is unnamed"
-            assert "sprint review" not in text, f"{path.name}: close.py owns that phrase"
+        process = prose(PLUGIN / "PROCESS.md").lower()
+        executor = prose(PLUGIN / "EXECUTOR.md").lower()
+        for name, text in (("PROCESS.md", process), ("EXECUTOR.md", executor)):
+            assert "slate review" in text, f"{name}: the lead's review is unnamed"
+            assert "execution plan review" in text, f"{name}: plan review unnamed"
+            assert "sprint review" not in text, f"{name}: close.py owns that phrase"
+        assert "the planner writes the plan" in process, "PROCESS.md: the plan's owner is unnamed"
+        assert "re-read the reviewed plan" in executor, "EXECUTOR.md drops the handoff"
 
     def test_a_mandatory_step_failing_twice_routes_to_escalation(self):
-        teammate = " ".join(prose(PLUGIN / "TEAMMATE.md").lower().split())
+        teammate = " ".join(prose(PLUGIN / "EXECUTOR.md").lower().split())
         assert "mandatory step fails twice for infrastructure reasons" in teammate
-        assert "stop rather than proceed" in teammate
         assert "scripts/work.py note" in teammate
+        assert "commit the coherent in-flight change and hand back" in teammate
 
     def test_the_story_bundle_carries_JUDGMENT_but_not_PROCESS(self, tmp_path):
         repo, env, _g = make_repo(tmp_path)
@@ -284,6 +287,29 @@ class TestShippedProseMatchesTheMechanism:
         assert shipped, "no shipped prose found — the enumeration itself broke"
         missing = [name for name in shipped if name not in line]
         assert not missing, f"the reviewer is told the shipped set omits: {missing}"
+
+    def test_agents_register_only_directly_invocable_read_only_roles(self):
+        system = (Path(__file__).parent.parent / ".xp" / "system.md").read_text()
+        charters = sorted((PLUGIN / "agents").glob("*.md"))
+        assert charters, "no directly invocable role charters found"
+        for path in charters:
+            frontmatter = path.read_text().split("---", 2)[1]
+            fields = dict(line.split(":", 1) for line in frontmatter.splitlines() if ":" in line)
+            assert fields["name"].strip() == path.stem, f"{path.name}: role name drifted"
+            assert fields["tools"].strip() == "Read, Grep, Glob, Bash", (
+                f"{path.name}: directly invocable role is not read-only"
+            )
+        spawn_only = PLUGIN / "EXECUTOR.md"
+        assert spawn_only.is_file(), "the worktree-spawned brief left the plugin root"
+        # The rejected design, and the one a directory tidy-up reaches for: registering
+        # the executor here makes it invocable in the lead's checkout, with no worktree,
+        # no minted card and no handback. Comparing PATHS cannot see that — a COPY at
+        # agents/executor.md leaves the root file exactly where this asserts it is.
+        assert spawn_only.stem.lower() not in {p.stem.lower() for p in charters}, (
+            "the worktree-spawned executor is registered as a directly invocable subagent"
+        )
+        assert "directly invocable read-only role charters" in system
+        assert "isolated worktree" in system and "EXECUTOR.md" in system
 
     def test_the_constraints_template_names_no_project_identifiers(self):
         """The shipped seed is project-neutral. This hand-list covers identifiers

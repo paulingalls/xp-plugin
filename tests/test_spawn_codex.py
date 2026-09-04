@@ -320,7 +320,7 @@ class TestCodexExecutor:
     def test_the_teammates_shell_keeps_codexs_own_long_process_facility(self, tmp_path):
         """unified_exec is codex's persistent-session exec tool — start a process,
         poll it, write its stdin — and it is what carries a tool call past the bound
-        codex puts on one. Disabling it made TEAMMATE.md's mandatory plan review
+        codex puts on one. Disabling it made the mandatory minutes-long review leg
         unrunnable on the harness that mechanism was written FOR: the bound is
         `timeout_ms` on codex's own shell action, a per-call value THE MODEL supplies
         with no config override, and a model with nothing telling it a review takes

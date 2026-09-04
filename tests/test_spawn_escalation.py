@@ -2,14 +2,14 @@
 
 Verify: pytest -q -n auto tests/test_spawn_escalation.py
 
-TEAMMATE.md tells a blocked teammate to say so, file a note, and stop. spawn then
+EXECUTOR.md tells a blocked teammate to say so, file a note, and stop. spawn then
 refused that exact handback — "the teammate made no commits of its own" — and
 stranded the worktree. Field-measured (Legacy): four runs, ~$38, three with zero
 commits, two of them correct escalations; one carried a plan three review rounds
 deep and was reported as having done nothing.
 
 The record filed during the run is what separates the two, because it is what
-TEAMMATE.md already tells the teammate to leave. Forging it is not a hole: a
+EXECUTOR.md already tells the teammate to leave. Forging it is not a hole: a
 teammate that files a note and stops has claimed exactly what stopping claims.
 """
 
