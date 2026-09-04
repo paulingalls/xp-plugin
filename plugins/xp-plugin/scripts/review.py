@@ -173,7 +173,7 @@ def abort_text(reviewed_head: str, why: str, recorded: str = NO_ROUND, salvage=F
     """EVERY abort in the review leg, not only the motion checks: a refused run can still have
     left commits behind. The undo is offered only when something actually MOVED: on an untouched
     tree it teaches the lead to skip it on the run where it is real, and under `salvage` a merely
-    dirty tree may be the dead reviewer's uninspected work, which the reset would discard.
+    dirty tree may be the dead reviewer's uninspected work: the reset is dropped, or put behind it.
     `recorded` is what became of the round: a leg that records one before refusing must not offer
     the undo under a sentence saying it did not — and the reset may be what orphans the sha.
     """
@@ -183,10 +183,10 @@ def abort_text(reviewed_head: str, why: str, recorded: str = NO_ROUND, salvage=F
     if not moved and (salvage or not git("status", "--porcelain").stdout.strip()):
         return f"refused: {why}" if recorded == NO_ROUND else f"refused: {why}\n\n{recorded}"
     stat = git("diff", "--stat", f"{reviewed_head}..HEAD").stdout
-    return (
-        f"refused: {why}\n\n{stat}\n{recorded} The reviewer's work is in your tree —"
-        f" yours to keep or undo: git reset --hard {reviewed_head[:8]}"
-    )
+    undo = f" yours to keep or undo: git reset --hard {reviewed_head[:8]}"
+    if salvage and git("status", "--porcelain").stdout.strip():
+        undo = f" but reset --hard {reviewed_head[:8]} only after reading the uncommitted lines"
+    return f"refused: {why}\n\n{stat}\n{recorded} The reviewer's work is in your tree —{undo}"
 
 
 def check_reviewer_motion(
@@ -328,9 +328,9 @@ def apply_patch(report: Path, card: str) -> str:
         # ANSI frames and colour put the one line that matters screens deep inside
         # a box (field-reported, Legacy 0.7.4). Strip and tail to the cause.
         lines = (_plain(committed.stderr) or _plain(committed.stdout)).splitlines()
-        # abort_text appends `git reset --hard` right under this, which discards the
-        # staged patch this text just told the human to commit. Naming the patch file
-        # is what keeps the two from reading as opposite instructions.
+        # Under review abort_text appends `git reset --hard` right under this, which
+        # discards the staged patch this text just told the human to commit. Naming the
+        # patch file is what keeps the two from reading as opposite instructions.
         return (
             "the reviewer patch did not commit — the commit gate refused it. The"
             " fixer is gone, so this is yours: fix what the gate names, commit the"
