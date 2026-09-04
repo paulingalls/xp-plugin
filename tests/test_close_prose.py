@@ -1,5 +1,6 @@
 """Shipped prose matches the mechanism. Split from test_close.py at sprint-004 open."""
 
+import json
 import re
 import subprocess
 import sys
@@ -43,6 +44,23 @@ def project_identifiers(text):
     )
 
 
+def killed_review(tmp_path, g, head=None):
+    """The disk a killed reviewer leaves — the tree it was launched against and a
+    readable report — without paying for a spawn to produce it."""
+    data = tmp_path / "data"
+    at = {
+        "head": head or g("rev-parse", "HEAD").stdout.strip(),
+        "digest": "",
+        "base": g("merge-base", "main", "HEAD").stdout.strip(),
+        "card": "####" + (data / "plan.md").read_text().split("####", 1)[1],
+        "noun": "story story-042",
+    }
+    (data / "markers" / "story-042.review-launch").write_text(json.dumps(at))
+    report = data / "reports" / "story-042.round-1.json"
+    report.parent.mkdir(parents=True, exist_ok=True)
+    report.write_text(json.dumps({"fixed": [], "blocking": [], "noted": []}))
+
+
 class TestShippedProseMatchesTheMechanism:
     """The prose is what a consuming project believes. story-012a AC 11/12."""
 
@@ -53,6 +71,44 @@ class TestShippedProseMatchesTheMechanism:
             text=True,
         )
         assert r.returncode == 0 and "salvage" in r.stdout, r.stderr
+
+    def test_review_and_salvage_give_distinct_dirty_tree_advice(self, tmp_path):
+        repo, env, g = make_repo(tmp_path)
+        killed_review(tmp_path, g)
+        dirt = repo / "uninspected.txt"
+        dirt.write_text("dead reviewer work\n")
+
+        ordinary = close(repo, env, "review")
+        recovery = close(repo, env, "salvage")
+
+        assert ordinary.returncode == recovery.returncode == 2
+        assert "commit or stash first" in ordinary.stderr, ordinary.stderr
+        assert "dead reviewer's uninspected work" in recovery.stderr, recovery.stderr
+        assert "read it before committing or discarding it" in recovery.stderr, recovery.stderr
+        assert ordinary.stderr != recovery.stderr
+        assert "git reset --hard" not in ordinary.stderr + recovery.stderr
+        assert dirt.read_text() == "dead reviewer work\n"
+
+    def test_a_moved_head_does_not_order_a_reset_over_the_lines_it_says_to_read(self, tmp_path):
+        """Both hazards at once. HEAD moving still has to be disclosed by sha — a
+        salvage that moved it silently is the worse defect — but `git reset --hard`
+        must not be the unconditional offer there: it discards the uninspected work
+        this same refusal sends the lead to read, which is the tree story-093 kept."""
+        repo, env, g = make_repo(tmp_path)
+        launched = g("rev-parse", "HEAD").stdout.strip()
+        (repo / "lead.py").write_text("committed after the kill\n")
+        g("add", "-A")
+        g("-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "the lead moved HEAD")
+        killed_review(tmp_path, g, launched)
+        dirt = repo / "uninspected.txt"
+        dirt.write_text("dead reviewer work\n")
+
+        recovery = close(repo, env, "salvage")
+
+        assert recovery.returncode == 2 and launched[:8] in recovery.stderr, recovery.stderr
+        assert "yours to keep or undo" not in recovery.stderr, recovery.stderr
+        assert "only after reading the uncommitted lines" in recovery.stderr, recovery.stderr
+        assert dirt.read_text() == "dead reviewer work\n"
 
     def test_no_verdict_token_survives_in_the_shipped_prose(self):
         for path in (

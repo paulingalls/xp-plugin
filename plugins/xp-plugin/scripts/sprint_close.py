@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Sprint opening and close: branch state, checks, review, release."""
 
+import glob
 import json
 import re
 import subprocess
@@ -9,6 +10,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 sys.path.insert(0, str(Path(__file__).parent / "close"))
+import close as story_close
 import lifecycle as lc
 import milestone
 import overlap
@@ -249,8 +251,6 @@ def cmd_review(sprint_id: str, dry_run: bool) -> int:
 
 def cmd_salvage(sprint_id: str) -> int:
     """Record reports left by a host-killed sprint review as incomplete."""
-    import glob
-
     import review
 
     marker = sprint_marker(sprint_id)
@@ -259,8 +259,7 @@ def cmd_salvage(sprint_id: str) -> int:
     root = data_root() / "reports" / "sprint"
     shown = f"{sprint_id}.*.round-{round_n}.json"
     paths = sorted(root.glob(f"{glob.escape(sprint_id)}.*.round-{round_n}.json"))
-    recovered, unreadable = [], []
-    prefix, suffix = f"{sprint_id}.", f".round-{round_n}.json"
+    recovered, unreadable, prefix, suffix = [], [], f"{sprint_id}.", f".round-{round_n}.json"
     for path in paths:
         report, err = review.read_report(path)
         if err:
@@ -277,6 +276,8 @@ def cmd_salvage(sprint_id: str) -> int:
             f"refused: no unrecorded sprint reports for round {round_n}; looked for"
             f" {root / shown}. Run review"
         )
+    if dirty := story_close.salvage_dirty_refusal():
+        return fail(f"refused: {dirty}")
     seen = {
         key: dict.fromkeys(item for _stage, report in recovered for item in report[key])
         for key in review.REPORT_KEYS

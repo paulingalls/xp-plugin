@@ -31,6 +31,13 @@ PATCH = """diff --git a/src/thing.py b/src/thing.py
  A = 2
 +guarded = True
 """
+NEW_FILE_PATCH = """diff --git a/src/fixed.py b/src/fixed.py
+new file mode 100644
+--- /dev/null
++++ b/src/fixed.py
+@@ -0,0 +1 @@
++fixed = True
+"""
 
 
 def dying_reviewer(tmp_path, extra="", patch=PATCH):
@@ -111,6 +118,55 @@ class TestSalvage:
         assert g("log", "-1", "--format=%an").stdout.strip() == "xp story-reviewer"
 
     @pytest.mark.slow
+    def test_an_absent_report_wins_over_a_dirty_tree(self, tmp_path):
+        repo, env, _g = make_repo(tmp_path)
+        dying_reviewer(tmp_path, extra='rm "$p"\n')
+        assert close(repo, env | KILLED, "review").returncode == 2
+        (repo / "dead-reviewer-work.py").write_text("uninspected = True\n")
+
+        refused = salvage(repo, env)
+
+        assert refused.returncode == 2
+        assert "wrote no report" in refused.stderr, refused.stderr
+        assert "working tree is dirty" not in refused.stderr, refused.stderr
+        assert "git reset --hard" not in refused.stderr, refused.stderr
+
+    @pytest.mark.slow
+    def test_ordinary_review_names_marker_motion_before_an_absent_report(self, tmp_path):
+        repo, env, _g = make_repo(tmp_path)
+        marker = marker_file(tmp_path)
+        stub_reviewer(tmp_path, report=None)
+        stub = tmp_path / "bin" / "claude"
+        stub.write_text(
+            stub.read_text().replace(
+                "sys.exit(0)",
+                f"open({str(marker)!r}, 'w').write('{{}}')\nsys.exit(0)",
+            )
+        )
+
+        refused = close(repo, env, "review")
+
+        assert refused.returncode == 2
+        assert "close marker changed during the review" in refused.stderr, refused.stderr
+        assert "wrote no report" not in refused.stderr, refused.stderr
+
+    @pytest.mark.slow
+    def test_salvage_keeps_the_launch_card_as_its_scope_contract(self, tmp_path):
+        repo, env, _g = make_repo(tmp_path)
+        dying_reviewer(tmp_path, patch=NEW_FILE_PATCH)
+        assert close(repo, env | KILLED, "review").returncode == 2
+        plan = tmp_path / "data" / "plan.md"
+        plan.write_text(
+            plan.read_text().replace("Files: src/thing.py", "Files: src/thing.py, src/fixed.py")
+        )
+
+        refused = salvage(repo, env)
+
+        assert refused.returncode == 2 and "card changed" in refused.stderr, refused.stderr
+        assert not (repo / "src" / "fixed.py").exists()
+        assert not marker_file(tmp_path).exists(), "the widened fresh card authorized a round"
+
+    @pytest.mark.slow
     def test_a_salvaged_round_no_longer_reads_as_refused(self, tmp_path):
         """The kill stamps the report, so a reader between the two commands is
         not told a dead round passed. A salvage clears it — the two must not
@@ -159,12 +215,17 @@ class TestSalvage:
         """Salvage runs the same round recorder, so the card's first gate binds
         it. Asserted rather than assumed: a salvage leg with its own checks is
         exactly how the timeout door was open in the first place."""
-        repo, env, _ = make_repo(tmp_path, verify="false")
+        repo, env, g = make_repo(tmp_path, verify="false")
         dying_reviewer(tmp_path)
+        head = g("rev-parse", "HEAD").stdout.strip()
         assert close(repo, env | KILLED, "review").returncode == 2
         refused = salvage(repo, env)
         assert refused.returncode == 2 and "Verify red" in refused.stderr, refused.stderr
         assert not marker_file(tmp_path).exists()
+        # The patch is already COMMITTED when Verify reds, and no round survives to name
+        # it, so this refusal is the only disclosure the lead gets that HEAD moved.
+        assert g("rev-parse", "HEAD").stdout.strip() != head, "no reviewer commit to disclose"
+        assert head[:8] in refused.stderr and "reset --hard" in refused.stderr, refused.stderr
 
     def test_nothing_to_salvage_and_something_unreadable_are_different(self, tmp_path):
         """Constraint 15. One says run the review, the other says the file on
