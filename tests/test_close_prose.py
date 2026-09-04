@@ -23,6 +23,26 @@ from close_helpers import (  # noqa: F401
 )
 
 
+def project_identifiers(text):
+    """Identifiers of THIS repository, in prose seeded into somebody else's. A
+    hand-list, and scoped to the template on purpose: JUDGMENT.md, spawn.py and
+    `falsifier` are all named legitimately elsewhere in the shipped tree."""
+    body = text.casefold()
+    literals = (
+        "ratchet.py",
+        "design.md",
+        "judgment.md",
+        "session_start.py",
+        "plan_review",
+        "spawn.py",
+        "falsifier",
+        "xp-plugin",
+    )
+    return [term for term in literals if term in body] + re.findall(
+        r"\b(?:story|sprint)-\d+\b", body
+    )
+
+
 class TestShippedProseMatchesTheMechanism:
     """The prose is what a consuming project believes. story-012a AC 11/12."""
 
@@ -93,10 +113,12 @@ class TestShippedProseMatchesTheMechanism:
         (bug 898ad9e1, note c3d8e2a7): one word covered two artifacts and no
         lead-facing sentence said whose each was. Pinned in both copies rather
         than read-and-judged because TEAMMATE.md shares an enforced profile cap
-        (`spawn.PLUGIN_SHIPPED_CAP`, 1442/1500 today) — the next component that
-        lands forces a cut there, and the newest sentence is the one that looks
-        least load-bearing. "sprint review" is excluded by name: `close.py sprint
-        <id> review` already holds that phrase.
+        (`spawn.PLUGIN_SHIPPED_CAP`) whose next squeeze reaches for the newest
+        sentence, the one that looks least load-bearing. The cap supplies less
+        of that pressure than it did: raised to 1,930 to fund the port into
+        templates/constraints.md, which cost 184 of the 430 tokens it bought.
+        The PIN is what holds these two sentences today. "sprint review" is
+        excluded by name: `close.py sprint <id> review` already holds it.
         """
         for path in (PLUGIN / "PROCESS.md", PLUGIN / "TEAMMATE.md"):
             text = prose(path).lower()
@@ -194,9 +216,18 @@ class TestShippedProseMatchesTheMechanism:
         """Constraint 1. The cap is the LIVE size, never a historical one: left at
         5,454 for a file that had shrunk to 2,928, it passed with 2,277 characters
         of padding spliced in — a ratchet with slack certifies instead of checking.
-        Re-measure and lower it whenever this file legitimately shrinks."""
+        Re-measure and lower it whenever this file legitimately shrinks.
+
+        PROCESS is an external-ceiling exception to the floor below. Bisection
+        against test_dogfood's byte profile reds at 1,624 characters, so the cap
+        sits three under the measured 1,623; a looser prose cap would certify
+        text the lead injection truncates. THE BOUND IS NOT THIS FILE'S ALONE —
+        it moves with every other region of that injection, so re-bisect rather
+        than trusting this number. That profile also silences the install
+        notice, which renders AHEAD of the constraints — with one present the
+        real bound is lower still, so never widen this to the bisected number."""
         raw = (PLUGIN / "PROCESS.md").read_text()
-        assert len(raw) <= 1600, "the execution rule stopped paying for itself"
+        assert len(raw) <= 1620, "the execution rule stopped paying for itself"
         process = " ".join(raw.split())
         story = process.split("2. **Story", 1)[1].split("3. **Story close", 1)[0]
         assert "free work" in story and "worktree" in story
@@ -216,6 +247,18 @@ class TestShippedProseMatchesTheMechanism:
         missing = [name for name in shipped if name not in line]
         assert not missing, f"the reviewer is told the shipped set omits: {missing}"
 
+    def test_the_constraints_template_names_no_project_identifiers(self):
+        """The shipped seed is project-neutral. This hand-list covers identifiers
+        specific to this repository; the tree-wide document guard covers a
+        separate leak class, and neither substitutes for author judgment."""
+        seed = (PLUGIN / "templates" / "constraints.md").read_text()
+        leaked = project_identifiers(seed)
+        assert not leaked, f"constraints template leaks project identifiers: {leaked}"
+        # constraint 2, against a REAL ported rule rather than a bare string: each
+        # class of identifier goes into the shipped seed and must come back out.
+        for term in ("spawn.py", "DESIGN.md", "a falsifier", "at story-042"):
+            assert project_identifiers(seed + f"\n11. **Ported** — see {term}.\n"), term
+
     def test_a_script_driving_skill_does_not_restate_the_mechanism(self):
         """Measured drift, three times in two sprints, caught by a READER every
         time and by no test: sprint-close's step count went stale when the
@@ -233,15 +276,35 @@ class TestShippedProseMatchesTheMechanism:
         muscle to fit is measuring the wrong thing. What this pins against is
         REGROWN ENUMERATION, and that is still pinned; the room is for saying a
         new thing without paying for it in an old one.
+
+        EVERY PURCHASABLE CAP NOW CARRIES A FLOOR: cap >= live / 0.9, re-cut when
+        a fix lands. A ten-way audit found ONE defect nine times — the
+        second half of something squeezed out — and measured every capped
+        artifact at 96-100% of its ceiling. Ceilings were never the problem;
+        ceilings without a floor were, because the cheapest words to cut are the
+        ones supplying a referent. xp-setup JOINS the tuple: it was the only
+        skill with no cap and the only one whose defect was a stale claim rather
+        than an amputation, which is the same finding from the other side.
         """
-        for skill, cap in (
-            ("story-close", 380),
-            ("sprint-close", 290),
-            ("free-close", 85),
-            ("create-sprint", 190),
-        ):
-            body = prose(PLUGIN / "skills" / skill / "SKILL.md")
-            assert len(body.split()) <= cap, f"{skill} regrew to {len(body.split())} words"
+        caps = {
+            "story-close": 410,
+            "sprint-close": 320,
+            "free-close": 125,
+            "create-sprint": 205,
+            "xp-setup": 345,
+        }
+        shipped = {d.name for d in (PLUGIN / "skills").iterdir() if (d / "SKILL.md").is_file()}
+        assert shipped == set(caps), (
+            f"uncapped or retired skills: {shipped ^ set(caps)}. A skill nobody priced is"
+            " how xp-setup reached 303 words unnoticed; the cap is the lead's to choose"
+        )
+        for skill, cap in caps.items():
+            words = len(prose(PLUGIN / "skills" / skill / "SKILL.md").split())
+            assert cap >= words / 0.9, (
+                f"{skill} is {words} words against a {cap} cap: under the 10% floor."
+                " Regrown enumeration is cut; a needed correction is a cap move, and"
+                " that is the lead's"
+            )
 
     def test_the_skills_keep_the_negative_space_that_earns_its_words(self):
         """The counterweight to the cut: what deliberately does NOT exist cannot be

@@ -19,9 +19,9 @@ description: >-
    the retro and REPLACE the digest: the pipeline emits facts; the
    narrative is the part with judgment.
    BEFORE the review, not after. Land refuses when code moved since the review,
-   and a retro that promotes into DESIGN.md, JUDGMENT.md or PROCESS.md is code motion — run it
+   and a retro that promotes into a project design document, JUDGMENT.md or PROCESS.md is code motion — run it
    last and you must review again, which invalidates what you just wrote.
-3. **The review**, which the pipeline marshals — you do not compose it:
+3. **The review**, several stages the pipeline marshals — you do not compose it:
    `close.py sprint <id> review`. You receive only what it could not fix.
    Lead changes after a completed round cost a confirming round, except any
    land names as exempt: re-run `close.py sprint <id> review` to get one. That

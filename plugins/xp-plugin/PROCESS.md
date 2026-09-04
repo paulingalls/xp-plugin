@@ -10,6 +10,8 @@ uninjected digest, recovery block and sprint slice. Artifacts win.
 Every review is named for the artifact it reads:
 **slate review** → **card refresh** → **execution plan review** → **diff review**.
 
+Background every long leg; no timeout.
+
 1. **Slate review** — `/create-sprint` authors and opens with a fresh reader over
    the full slate and `sprint_cap`; free work
    slotless. The corrected slate precedes
@@ -25,6 +27,6 @@ Every review is named for the artifact it reads:
 4. **Sprint close** — `/sprint-close`: uncovered falsifiers precede full. Triage and retro follow;
    review covers retro. With the human, schedule debt under budget or
    drop it. Nothing carries.
-5. **Free** — `close.py free <slug>`: start, add dated card, cut release artifacts, review, land, post-merge.
+5. **Free** — `close.py free <slug> start`, dated card, spawn, then `/free-close`.
 
 Replace the ≤30-line session digest at story/sprint close; never append it.

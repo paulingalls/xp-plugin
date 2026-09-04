@@ -4,6 +4,34 @@ Release notes started at v0.6.0; earlier entries are summarized from their
 tag and merge messages. Full detail lives in the merge history and the
 per-sprint review reports.
 
+## v0.18.1 — the ceilings got a floor, and the prose got its second halves back
+
+A ten-way audit — five skills, five always-on injectibles, each auditor given the
+artifact's goal from OUTSIDE it — found ONE defect nine times: the second half of
+something squeezed out. Not vagueness, amputation. `free-close` said "your release
+artifacts are yours" and never named `post-merge`, which is what tags. Every capped
+prose artifact measured 96-100% of its ceiling, and the cheapest words to cut are
+the ones supplying a referent, so nine independent squeezes reached for the same
+kind of word.
+
+- **Every prose cap carries a floor** — `cap >= live/0.9`, re-cut when a fix lands,
+  and the five skill caps are now enumerated from the skills directory rather than
+  hand-listed. `xp-setup` joins them: the one skill with no cap was also the only
+  one whose defect was a stale claim rather than an amputation.
+- **`free-close` names `post-merge`** — `land` opens the PR; `post-merge` tags. A
+  lead following the old text shipped an unmerged PR and no tag at all.
+- **The loop map names the free lane's entry and its spawn**, and says
+  `Background every long leg; no timeout` — a lead who read the old map went from
+  `start` straight to `review` and built in their own checkout.
+- **`JUDGMENT`'s Bar is a condition on the deviation**, not a second competing rule;
+  **`VALUES`' Courage** says fix OR record, now.
+- **Five general rules seeded into `templates/constraints.md`**, phrased to carry no
+  trace of this repo, with a guard that reds if one does.
+- **The byte-profile guard measures its claim, not the machine** — it constructed
+  nothing and read whatever path the checkout happened to sit at, so it passed for
+  a lead at 59 characters and silently forbade every spawned teammate at 102 from
+  committing anything at all.
+
 ## v0.18.0 — the default path finishes a multi-file card
 
 Milestone 8's spine. `spawn` runs a story as four staged roles that each do one

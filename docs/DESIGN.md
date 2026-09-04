@@ -350,6 +350,49 @@ These are acceptance criteria for the build, not aspirations: `ratchet.py` measu
 
 **Prose inside code is budgeted like any other prose**: comments + docstrings ≤ 20% of shipped Python lines — every line under `plugins/xp-plugin/**`, blanks included in the denominator as in the component counts, which is the LENIENT of the two readings and materially so; the ratchet only ever lowers it, and the non-blank denominator is where it lowers to first. The predecessor reached 33% with no counter-pressure. The reason it needs a number rather than good intentions: a comment is the one artifact no test can check, so it goes stale SILENTLY — sprint-002 found a comment still describing a block that had moved away from it, asserting something false, with the suite green. JUDGMENT.md is the one shipped copy of the rubric and finding bar; reviewer charters point at it and every reviewer bundle carries it. This also closes the sprint fixer's prior gap: it edits files under the same rubric as the executor and story reviewer. The lead injection is net-negative because PROCESS sheds more than JUDGMENT adds. The teammate cap moves from a flush 1,200 to 1,365 tokens (and to 1,500 at Sprint 16's open, below), funded by removing the shared rules from TEAMMATE rather than adding a second copy. Measured at story-090, which spent 34 of the 36 tokens that move bought on `card-reviewer`'s always-on frontmatter: 1,363/1,365 shipped and 247/300 component metadata — TWO free tokens, so the next skill or agent is funded by a displacement here, not by headroom. The number lives here because only CI can count.
 
+**THE PROSE CEILINGS GET A FLOOR** (2026-09-03, Paul, at free-2026-09-03-prose-sufficiency).
+Every capped prose artifact was measured at 96-100% of its ceiling — PROCESS.md 1,590/1,600,
+free-close 85/85 with ZERO free, create-sprint 182/190, sprint-close 282/290, story-close
+363/380, .xp/constraints.md 4,425/4,500 — and a ten-way audit (five skills, five always-on
+injectibles, each auditor given the artifact's goal from OUTSIDE it) found ONE defect NINE
+times: the second half of something squeezed out. Not vagueness, AMPUTATION — a skill that
+says "your release artifacts are yours" and never names `post-merge`, which is what tags.
+The mechanism is that the ratchet turns one way and the cheapest words to cut are the ones
+supplying a referent, so nine independent squeezes reached for the same kind of word. THE
+RULE NOW: every purchasable prose cap is at least live / 0.9, so at least 10% of the cap
+stays free; re-cut when a fix lands. `xp-setup` joins the tuple it was absent from — the one
+skill with no cap was also the one whose defect was a stale claim rather than an amputation.
+Final caps, priced after the fixes: story-close 410 (364 live), sprint-close 320 (286),
+free-close 125 (109), create-sprint 205 (182), xp-setup 345 (307).
+PLUGIN_SHIPPED_CAP WAS PRICED BEFORE ITS FIX AND IS THE ONE NUMBER THE FIX DID NOT MEET:
+1,500 -> 1,930 was priced against a port of five general rules into templates/constraints.md;
+the port landed and cost 184 of the 430 tokens the raise bought. Live is 1,659, so 14% of the
+cap is free against a floor of 10% — the floor holds, and 87 tokens of the raise stand on
+nothing. Re-cut it at the next prose story rather than spending it, and price caps LAST.
+THE FLOOR IS ONE-SIDED BY CONSTRUCTION and that is why it did not catch this: `cap >= live /
+0.9` bounds a cap from below only, so an arbitrarily loose cap satisfies it. What re-cuts a
+cap that has gone slack is still a reader.
+CONSTRAINT 1 GAINS ITS EXEMPTION and it is what funds the rest: a CORRECTION creates no new
+obligation for the reader, so it displaces nothing. Without it, three separate squeezes had
+already paid for corrections out of muscle.
+constraints_chars_cap DOES NOT MOVE, and the reason is the one exception to the floor: it is
+NOT a budget we choose. test_dogfood's ascii-at-the-full-cap check requires a constraints.md
+AT the ceiling to still reach the lead WHOLE, and session_start's OUTPUT_CAP is a MEASURED
+harness limit (Codex retained 10,000 bytes in six samples; 500 reserved for notices and
+fences), not an allowance. Raising the char cap to 4,700 reds that check — driven, not
+reasoned: the raise was made, the wall refused, the raise was reverted. So constraint 1's
+exemption PAYS FOR ITSELF instead, dropping "New prose, hooks, or checks land only by
+removing equal weight" as redundant with its own headline: 4,425 -> 4,481 of 4,500.
+THE PRICE, recorded rather than dressed up: this one file keeps a 19-char ceiling with no
+floor, and no floor is available to it while OUTPUT_CAP is external. The honest reading is
+that the lead injection, not the char cap, is what the next constraint competes against.
+PROCESS.md is the second external-ceiling exception. Bisection against that same byte profile
+puts its real bound at 1,623 characters and the cap three under it; the abandoned 1,775 and
+1,815 caps were looser than the wall and therefore certified prose the lead could not receive.
+That bound is not PROCESS.md's alone — it moves with VALUES.md, the banner and the next-action
+line, so it is re-bisected, never cited. It cannot grow without displacement, because no larger
+floor is purchasable while OUTPUT_CAP is external.
+
 The 6,150-line total is **sub-budgeted**, because the two surviving big components already threaten it (the predecessor's spawn subsystem alone is ~1.7k+ lines, and the Codex leg's measured requirements — sandbox flags, install preflight, catalog re-enumeration, tier handling — are feature surface, not prose): The twenty-fifth re-cut is **1,480/2,625/665/1,380** (2026-09-03, Paul, at story-102's close) — 20 more misc -> spawn, total unmoved at 6,150, and the SECOND re-cut in one day, which DESIGN's own ledger warns against. Measured at b1605cf: story-102 consumed the twenty-fourth re-cut EXACTLY, leaving spawn 1,460/1,460 — flush, zero free — while story-103 still owes `spawn` a ready.py refusal. Paul asked for a displacement to be sought FIRST: an AST scan over the whole component found no unused module-level function, and story-102 had already shed docstrings from teammate_tee.py to fit, so there was nothing to remove that a reader would not miss. misc funds it again at 1,348/1,380, 32 free. THE LEDGER'S OWN WARNING STANDS AND IS NOT DISCHARGED BY THIS ENTRY: two re-cuts in a day is the pattern the note calls measuring the wrong invariant. The honest reading is that Milestone 8 moves work INTO spawn by design — four staged roles where there was one teammate — so the component's share of a fixed total is what needs re-deciding at the next planning, not its ceiling under pressure. THE TWENTY-SIXTH RE-CUT IS THE FIRST THAT MOVES THE TOTAL, 6,150 -> 6,300 (2026-09-03,
 Paul, at story-103's third escalation), and it is the entry every later raise must argue
 AGAINST rather than cite. What forced it: story-103's implementation needed 95 misc lines

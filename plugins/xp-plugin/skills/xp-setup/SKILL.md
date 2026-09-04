@@ -21,7 +21,7 @@ The plan is NOT in the repo — it is per clone, in the state root.
      the first debt worth filing. Wire acceptance harnesses with the project's
      own tooling (browser, subprocess, request harnesses, …) — judgment work,
      not scaffolding
-   - a linter in the pre-commit hook
+   - a linter in the pre-commit hook, where one was scaffolded
 3. Set `roles.executor` with the human — the scaffold ships a default, so reading
    it unasked offers the harness the template guessed, not the team's. That
    harness's teammates need a user install of this plugin; offer to run its pair:

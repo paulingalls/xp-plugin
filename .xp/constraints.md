@@ -3,8 +3,9 @@
 Reversing one of these makes it a different project. Cap: 15 lines of constraint;
 adding over the cap requires retiring one (the plan reviewer enforces).
 
-1. **Every rule must displace one.** New prose, hooks, or checks land only by removing
-   equal weight. The size budgets in DESIGN §9 are acceptance criteria, measured by ratchet.py at pre-push.
+1. **Every rule must displace one; a CORRECTION displaces nothing** — it creates no NEW
+   obligation, only makes an existing one findable or non-contradictory. Size budgets in
+   DESIGN §9 are acceptance criteria, measured by ratchet.py at pre-push.
 2. **Fault-inject every guard.** A check that cannot red against its target defect is
    vacuous and worse than no check — it certifies. This applies to the plugin's own
    gates, tests, and filed falsifiers. (The predecessor's audit: 7 vacuous guards

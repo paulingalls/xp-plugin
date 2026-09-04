@@ -6,9 +6,9 @@
 - **Comments** — restates the code → delete · explains WHAT → rename it ·
   a checkable claim → write the test · narrates history → delete, git holds it.
   Keep only the why, external constraints or rejected designs.
-- **Review** — Generalization, uncovered behavior or resolved conflict = deviation
-  owed a round. Bar: silent or corrupting (false green, corrupted
-  record, unreviewed merge) earns a round; loud does not.
+- **Review** — Generalization, uncovered behavior or resolved conflict is a
+  deviation, owed a round when silent or corrupting (false green, corrupted
+  record, unreviewed merge); loud does not.
 
 ## Records (`work.py` only)
 
