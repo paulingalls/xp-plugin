@@ -73,17 +73,15 @@ class TestProfile:
         assert loud.returncode == 0  # reports, never refuses: the project's tradeoff
 
     def test_an_inherited_handoff_is_a_contributor_the_breakdown_names(self, tmp_path):
-        """It is the only contributor that grows while every file the breakdown
-        lists holds still, so omitting it blames a 34-token card for the overage
-        and the lead cannot find the tokens. Listed only when there IS one."""
+        """The warning must identify an oversized inline handoff."""
         repo, env, _g = make_repo(tmp_path)
         stub_claude(tmp_path)
         assert "predecessor handoff" not in spawn(repo, env, "story-042", "--dry-run").stdout
 
         plans = Path(env["XP_DATA"]) / "plans"
         plans.mkdir(parents=True, exist_ok=True)
-        (plans / "story-042.handoff.json").write_text('{"why": "no commits", "records": []}')
-        (plans / "story-042.plan.md").write_text("PLAN\n" + "bloat\n" * 3000)
+        why = "bloat\\n" * 3000
+        (plans / "story-042.handoff.json").write_text(f'{{"why": "{why}", "records": []}}')
         loud = spawn(repo, env, "story-042", "--dry-run")
         assert "predecessor handoff" in loud.stdout, loud.stdout
         assert "predecessor handoff" in loud.stderr and "over the" in loud.stderr, loud.stderr
