@@ -216,23 +216,33 @@ def test_a_stale_grandfather_pin_reds_so_it_is_deleted(tmp_path):
 
 
 def test_fixture_dense_comments_reports_and_exits_zero(tmp_path):
+    guideline = f"{_ratchet().DENSITY_GUIDELINE:.2%}"  # derived: moving it is the lead's
     lines = ["# comment line\n"] * 90 + ["x = 1\n"] * 10
     root = build_plugin_tree(tmp_path, {"scripts/chatty.py": "".join(lines)})
     result = run_ratchet(root)
     assert result.returncode == 0, result.stdout
-    assert re.search(r"^density\s+90\.00%\s+20\.00%", result.stdout, re.M)
+    assert re.search(rf"^density\s+90\.00%\s+{re.escape(guideline)}", result.stdout, re.M)
     assert "chatty.py" in result.stdout
 
 
 def test_density_is_the_aggregate_not_the_worst_file(tmp_path):
     """One chatty small file does not breach a repo that is overwhelmingly code.
-    The table reports the ratio across shipped Python, not any single file."""
+    THE PRINTED RATIO is what carries the claim now that density only reports:
+    exit 0 no longer separates the two implementations, and a per-file ratchet
+    still names chatty.py as worst — measured, `density = worst[0]` left every
+    other arm in this file green."""
+    comments, code, bulk = 9, 1, 200
     root = build_plugin_tree(
         tmp_path,
-        {"scripts/chatty.py": "# comment\n" * 9 + "x = 1\n", "scripts/bulk.py": "x = 1\n" * 200},
+        {
+            "scripts/chatty.py": "# comment\n" * comments + "x = 1\n" * code,
+            "scripts/bulk.py": "x = 1\n" * bulk,
+        },
     )
     result = run_ratchet(root)
     assert result.returncode == 0, result.stdout
+    aggregate = f"{comments / (comments + code + bulk):.2%}"  # 90.00% per-file
+    assert re.search(rf"^density\s+{re.escape(aggregate)}\s", result.stdout, re.M), result.stdout
     assert "chatty.py" in result.stdout, result.stdout  # still named as worst
 
 
