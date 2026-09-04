@@ -176,11 +176,7 @@ class TestDeliberateStop:
         assert "died" in r.stderr.lower() and "escalat" not in r.stderr.lower(), r.stderr
 
     def test_records_accumulate_across_successive_stops(self, tmp_path):
-        """A record filed at stop 1 is in `before` at stop 2 and can never be
-        `during` again, so a marker that overwrites hands stop 3 only stop 2's
-        words. story-028 stopped five times; the draft and the findings survive
-        all five because they are files, and the records must not be the one
-        artifact that does not."""
+        """Prior IDs are excluded from the next run's record delta."""
         repo, env, g = make_repo(tmp_path)
         later = "still blocked: the field the card names is still absent"
         for text in (ESCALATION, later):
@@ -192,7 +188,9 @@ class TestDeliberateStop:
             plan = Path(env["XP_DATA"]) / "plan.md"
             plan.write_text(plan.read_text().replace("[in-progress]", "[ready]"))
         inherited = spawn(repo, env, "story-042", "--dry-run").stdout
-        assert ESCALATION in inherited and later in inherited, inherited
+        ids = [line.split()[0] for line in records(env)]
+        assert all(rid in inherited for rid in ids) and "Read them (`work.py list`)" in inherited
+        assert ESCALATION not in inherited and later not in inherited, inherited
 
     def test_no_record_is_still_refused(self, tmp_path):
         """The guard is not weakened: a teammate that simply did not finish, and
@@ -281,12 +279,6 @@ class TestDeliberateStop:
 
 
 class TestAnUnreadableHandoffMarkerIsNotAFirstSpawn:
-    """Constraint 15 at the one site where conflating the two is SILENT: `{}` meant
-    "first spawn ever", so a truncated or unreadable marker discarded the draft,
-    its plan-review findings and the escalation record — all readable on disk
-    right beside it — and the successor re-derived the plan its predecessor was
-    stopped for, which is the entire cost story-041 exists to remove."""
-
     def artifacts(self, tmp_path, marker_text):
         import spawn  # noqa: F401  — seeds scripts/spawn on sys.path
         from handoff import draft_path, marker_path
@@ -306,12 +298,26 @@ class TestAnUnreadableHandoffMarkerIsNotAFirstSpawn:
         from handoff import inheritance
 
         handed = inheritance(root, "story-042")
-        assert "DRAFT-SENTINEL" in handed and "FINDING-ONE" in handed, handed
+        assert str(root / "plans" / "story-042.plan.md") in handed
+        assert f"round 1\n\nRead {root / 'plans' / 'story-042.md'}" in handed
+        assert "DRAFT-SENTINEL" not in handed and "FINDING-ONE" not in handed
         assert "unreadable" in handed, "the successor is not told why the why is missing"
 
+    def test_a_draft_that_is_not_there_is_SAID_to_be_missing(self, tmp_path):
+        """A path the successor cannot open sends it hunting for a plan that was
+        never written; the two states must not read alike (constraint 15)."""
+        import spawn  # noqa: F401
+        from handoff import inheritance
+
+        root = self.artifacts(tmp_path, '{"state": "STOPPED"}')
+        draft = root / "plans" / "story-042.plan.md"
+        draft.unlink()
+        missing = inheritance(root, "story-042")
+        assert "plan draft is missing" in missing.lower() and str(draft) not in missing
+
     def test_a_marker_that_never_EXISTED_still_hands_over_nothing(self, tmp_path):
-        """The other arm, or the fix above turns every FIRST spawn into an
-        inheriting one and every card pays for a section saying nothing."""
+        """The other arm: the fix above otherwise turns every FIRST spawn into an
+        inheriting one, and every card pays for a section saying nothing."""
         import spawn  # noqa: F401
         from handoff import draft_path, inheritance
 

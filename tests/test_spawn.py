@@ -117,7 +117,6 @@ class TestLaunchContract:
         repo, env, g = make_repo(tmp_path)
         rec = stub_escalating(tmp_path, artifacts=True)
         assert spawn(repo, env, "story-042").returncode == 3
-        first = json.loads(rec.read_text())["stdin"]
         tree = Path(env["XP_DATA"]) / "worktrees" / "story-042"
         g("worktree", "remove", "--force", str(tree))
         g("branch", "-D", "ada/story-042-demo-story")
@@ -125,14 +124,17 @@ class TestLaunchContract:
         rec = stub_claude(tmp_path)
         assert spawn(repo, env, "story-042").returncode == 0
         inherited = json.loads(rec.read_text())["stdin"]
-        assert inherited.startswith(first)
+        plans = Path(env["XP_DATA"]) / "plans"
         for mark in ("DRAFT-SENTINEL", "FINDING-ONE", "FINDING-TWO", ESCALATION):
-            assert mark in inherited
+            assert mark not in inherited
+        assert f"plan draft\n\n{plans / 'story-042.plan.md'}" in inherited
+        assert f"round 1\n\nRead {plans / 'story-042.md'}" in inherited
+        assert f"round 2\n\nRead {plans / 'story-042.round-2.md'}" in inherited
+        rid = json.loads((plans / "story-042.handoff.json").read_text())["records"][0]
+        assert f"records\n\n{rid}. Read them (`work.py list`)" in inherited
 
 
 def reset_to_ready(tmp_path):
-    """The flip is no longer branch-local, so a second spawn of one story refuses on
-    [in-progress] before it ever reaches the worktree and branch guards below."""
     plan = tmp_path / "data" / "plan.md"
     plan.write_text(plan.read_text().replace("[in-progress]", "[ready]"))
 

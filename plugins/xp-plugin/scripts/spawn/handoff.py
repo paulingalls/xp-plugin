@@ -128,14 +128,13 @@ def inheritance(root: Path, story_id: str) -> str:
         why = str(state.get("why", ""))
     parts = [(f"Predecessor handback — {label}", why)]
     draft = draft_path(root, story_id)
-    if draft.is_file():
-        parts.append(("Predecessor plan draft", draft.read_text()))
-    for path in _findings(root, story_id):
-        parts.append((f"Plan-review findings: {path.name}", path.read_text()))
-    indexed = dict(entries(root))
-    for record_id in state.get("records", []):
-        if record_id in indexed:
-            parts.append((f"Predecessor escalation record: {record_id}", indexed[record_id]))
+    absent = "The plan draft is missing: nothing was at PLAN_PATH when this handoff was composed."
+    parts.append(("Predecessor plan draft", str(draft.resolve()) if draft.is_file() else absent))
+    for round_number, path in enumerate(_findings(root, story_id), 1):
+        parts.append((f"Plan-review findings round {round_number}", f"Read {path.resolve()}"))
+    records = state.get("records", [])
+    if records:
+        parts.append(("Predecessor escalation records", f"{', '.join(records)}.{READ_THEM}"))
     return "\n".join(f"### {title}\n\n{body.rstrip()}\n" for title, body in parts)
 
 
