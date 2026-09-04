@@ -2,6 +2,7 @@ import json
 import subprocess
 
 import pytest
+from review_report import ITEM_CAP
 from sprint_helpers import (
     CONFIG,
     commit_as_reviewer,
@@ -36,7 +37,7 @@ def config_for(command):
     return CONFIG.replace("full: true", f"full: {command}")
 
 
-def release_tools(tmp_path, repo, env, g):
+def release_tools(tmp_path, env, g):
     origin = tmp_path / "origin.git"
     subprocess.run(["git", "init", "-q", "--bare", str(origin)], check=True, env=env)
     g("remote", "add", "origin", str(origin))
@@ -51,13 +52,26 @@ class TestBoundFullClearance:
         repo, env, g = make_repo(tmp_path, config=config_for(f"/usr/bin/touch {sentinel}"))
         record_round(tmp_path, repo, env, ["GATE-ME"], ["GATE-ME"])
         marker_before = marker_path(tmp_path).read_bytes()
-        release_tools(tmp_path, repo, env, g)
+        release_tools(tmp_path, env, g)
         result = sprint(repo, env, "land")
         assert result.returncode == 0, result.stderr
         assert sentinel.exists()
         assert "cleared these closer-bound blockers:\n  GATE-ME" in result.stdout
         assert marker_path(tmp_path).read_bytes() == marker_before
         assert not (tmp_path / "launches.jsonl").exists()
+
+    def test_a_blocker_over_the_item_cap_clears_under_its_own_binding(self, tmp_path):
+        # CONSTRUCTED at the cap: the parser matches the report's RAW strings and
+        # records CAPPED ones, so any second count of the binding here compares two
+        # different lists.
+        sentinel = tmp_path / "full-ran"
+        repo, env, g = make_repo(tmp_path, config=config_for(f"/usr/bin/touch {sentinel}"))
+        over_cap = "x" * (ITEM_CAP + 1)
+        record_round(tmp_path, repo, env, [over_cap], [over_cap])
+        release_tools(tmp_path, env, g)
+        result = sprint(repo, env, "land")
+        assert result.returncode == 0, result.stderr
+        assert "Traceback" not in result.stderr and sentinel.exists()
 
     @pytest.mark.parametrize(
         "command,diagnosis",
@@ -191,6 +205,21 @@ class TestClearanceBoundary:
         assert result.returncode == 0, result.stderr
         assert "if green, the full gate clears these closer-bound blockers:\n  B" in result.stdout
         assert not sentinel.exists() and marker_path(tmp_path).read_bytes() == before
+
+    def test_the_preview_names_the_bound_blocker_when_the_tier_cannot_run(self, tmp_path):
+        repo, env, _g = make_repo(tmp_path, config=config_for(None))
+        record_round(tmp_path, repo, env, ["BOUND-IDENTITY"], ["BOUND-IDENTITY"])
+        result = sprint(repo, env, "land", "--dry-run")
+        assert result.returncode == 2 and "tests.full is unset" in result.stderr
+        assert "did not clear these bound blockers:\n  BOUND-IDENTITY" in result.stderr
+
+    def test_an_unbound_sprint_keeps_both_tier_refusals_undecorated(self, tmp_path):
+        repo, env, _g = make_repo(tmp_path, config=config_for(None))
+        record_round(tmp_path, repo, env, [], [])
+        for preview in ([], ["--dry-run"]):
+            result = sprint(repo, env, "land", *preview)
+            assert result.returncode == 2 and "tests.full is unset" in result.stderr
+            assert "bound blockers" not in result.stderr
 
 
 class TestClearancePrecedence:

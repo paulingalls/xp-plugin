@@ -38,20 +38,25 @@ def _report_data(path: Path) -> tuple[dict, str]:
     return data, ""
 
 
-def validate_clearable(data: dict, stage: str = "") -> tuple[list[str], str]:
+def validate_clearable(data: dict, stage: str = "") -> tuple[list[str], list[str], str]:
+    """(bound blockers, the blockers still unbound, error). Land refuses on what is
+    left over, so the matching is HANDED to it rather than counted again there: this
+    matches raw strings and returns capped ones, so a second count would compare two
+    different lists and raise where it promised a refusal."""
     if not stage or CLEARABLE_BY_FULL not in data:
-        return [], ""
+        return [], [], ""
     if stage != "closer":
-        return [], f"the {stage} report may not contain {CLEARABLE_BY_FULL}"
+        return [], [], f"the {stage} report may not contain {CLEARABLE_BY_FULL}"
     bound = data[CLEARABLE_BY_FULL]
     if not isinstance(bound, list) or not all(isinstance(item, str) for item in bound):
-        return [], f"the closer report's {CLEARABLE_BY_FULL} must be a list of strings"
+        return [], [], f"the closer report's {CLEARABLE_BY_FULL} must be a list of strings"
     remaining = list(data["blocking"])
     for item in bound:
         if item not in remaining:
-            return [], f"the closer report's {CLEARABLE_BY_FULL} names no matching blocker: {item}"
+            why = f"the closer report's {CLEARABLE_BY_FULL} names no matching blocker: {item}"
+            return [], [], why
         remaining.remove(item)
-    return cap_items(bound), ""
+    return cap_items(bound), remaining, ""
 
 
 def read_report(path: Path, stage: str = "") -> tuple[dict, str]:
@@ -59,7 +64,7 @@ def read_report(path: Path, stage: str = "") -> tuple[dict, str]:
     data, error = _report_data(path)
     if error:
         return {}, error
-    clearable, error = validate_clearable(data, stage)
+    clearable, _, error = validate_clearable(data, stage)
     if error:
         return {}, error
     report = {k: cap_items([str(i) for i in data[k]]) for k in REPORT_KEYS}

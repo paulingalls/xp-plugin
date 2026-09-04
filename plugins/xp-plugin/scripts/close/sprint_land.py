@@ -56,17 +56,13 @@ def _coverage_refusal(sprint_id: str, head: str) -> str:
         )
     round_ = rounds[-1]
     blocking = round_["blocking"]
+    bound, unbound = [], blocking
     if CLEARABLE_BY_FULL in round_:
-        bound, error = validate_clearable(round_, stage="closer")
+        bound, unbound, error = validate_clearable(round_, stage="closer")
         if error:
             return f"refused: corrupt sprint review marker: {error}. {rerun}"
-    else:
-        bound = []
     if bound:
-        remaining = list(blocking)
-        for item in bound:
-            remaining.remove(item)
-        if remaining:
+        if unbound:
             return _blocking_refusal(blocking)
         # No reviewer-stray or .xp/-only exemption here: those forgive motion the
         # lead still reads before merging, and clearance is the one path where no
