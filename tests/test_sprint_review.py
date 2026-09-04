@@ -470,6 +470,9 @@ class TestSprintCharter:
         # prose: `noted` reads fine in a sentence that never states the JSON
         for token in ('"fixed"', '"blocking"', '"noted"'):
             assert token in shared, f"the charter never names {token}"
+        closer = text.split("\n## closer\n", 1)[1]
+        assert '"clearable_by_full"' in closer and "tests.full" in closer
+        assert '"clearable_by_full"' in shared and "only `closer`" in shared
 
 
 class TestShippedProse:

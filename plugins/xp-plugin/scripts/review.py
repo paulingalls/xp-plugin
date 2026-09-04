@@ -11,6 +11,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 from env import refuse_direct_invocation
 from review_report import (
+    CLEARABLE_BY_FULL,  # noqa: F401
     ITEM_CAP,  # noqa: F401
     LIST_CAP,  # noqa: F401
     NO_ROUND,
@@ -18,6 +19,7 @@ from review_report import (
     cap_display,  # noqa: F401
     cap_items,  # noqa: F401
     read_report,  # noqa: F401
+    validate_clearable,  # noqa: F401
 )
 from work import data_root
 

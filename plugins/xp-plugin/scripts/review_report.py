@@ -2,6 +2,7 @@ import json
 from pathlib import Path
 
 REPORT_KEYS = ("fixed", "blocking", "noted")
+CLEARABLE_BY_FULL = "clearable_by_full"
 NO_ROUND = "No round was recorded."
 ITEM_CAP = 400
 LIST_CAP = 20
@@ -37,9 +38,36 @@ def _report_data(path: Path) -> tuple[dict, str]:
     return data, ""
 
 
-def read_report(path: Path) -> tuple[dict, str]:
+def validate_clearable(data: dict, stage: str = "") -> tuple[list[str], list[str], str]:
+    """(bound blockers, the blockers still unbound, error). Land refuses on what is
+    left over, so the matching is HANDED to it rather than counted again there: this
+    matches raw strings and returns capped ones, so a second count would compare two
+    different lists and raise where it promised a refusal."""
+    if not stage or CLEARABLE_BY_FULL not in data:
+        return [], [], ""
+    if stage != "closer":
+        return [], [], f"the {stage} report may not contain {CLEARABLE_BY_FULL}"
+    bound = data[CLEARABLE_BY_FULL]
+    if not isinstance(bound, list) or not all(isinstance(item, str) for item in bound):
+        return [], [], f"the closer report's {CLEARABLE_BY_FULL} must be a list of strings"
+    remaining = list(data["blocking"])
+    for item in bound:
+        if item not in remaining:
+            why = f"the closer report's {CLEARABLE_BY_FULL} names no matching blocker: {item}"
+            return [], [], why
+        remaining.remove(item)
+    return cap_items(bound), remaining, ""
+
+
+def read_report(path: Path, stage: str = "") -> tuple[dict, str]:
     """Parse and cap a report; a reviewer under bypass can still forge its path."""
     data, error = _report_data(path)
     if error:
         return {}, error
-    return {k: cap_items([str(i) for i in data[k]]) for k in REPORT_KEYS}, ""
+    clearable, _, error = validate_clearable(data, stage)
+    if error:
+        return {}, error
+    report = {k: cap_items([str(i) for i in data[k]]) for k in REPORT_KEYS}
+    if stage == "closer":
+        report[CLEARABLE_BY_FULL] = clearable
+    return report, ""

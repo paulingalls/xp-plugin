@@ -6,13 +6,40 @@ import subprocess
 import overlap
 from release import cmd_post_merge as release_post_merge
 from release import next_version, refuse_unbumpable
-from review import reviewer_strays
+from review import CLEARABLE_BY_FULL, covered_ranges, reviewer_strays, validate_clearable
 from sprint_close import _shown_diff, default_branch, fail, git, sprint_marker
 from work import config_block_value
 
 
 def _is_retro_prose(path: str) -> bool:
     return path.startswith(".xp/") and path not in overlap.GATE_FILES
+
+
+def _blocking_refusal(blocking: list) -> str:
+    return (
+        "refused: the last round left blocking findings:\n  "
+        + "\n  ".join(blocking)
+        + "\nFix them, then review again — a flag cannot clear these"
+    )
+
+
+def _clearance_failure(red: str, bound: list[str]) -> str:
+    return red + "\nThe full gate did not clear these bound blockers:\n  " + "\n  ".join(bound)
+
+
+def _clearance_notice(verb: str, bound: list[str]) -> str:
+    return f"the full gate {verb} these closer-bound blockers:\n  " + "\n  ".join(bound)
+
+
+def _covered_gate_files(state: dict, head: str) -> list[str]:
+    """Gate files the REVIEWER moved inside a round's own range — what land runs,
+    changed by the agent whose round says land may run it."""
+    return [
+        path
+        for start, end in covered_ranges(state, head)
+        for path in git("diff", "--name-only", f"{start}..{end}").stdout.splitlines()
+        if path in overlap.GATE_FILES
+    ]
 
 
 def _coverage_refusal(sprint_id: str, head: str) -> str:
@@ -27,12 +54,42 @@ def _coverage_refusal(sprint_id: str, head: str) -> str:
             f"refused: the last review round is incomplete:\n  {detail}\n"
             f"Its findings are recorded and stand; clear what it names, then {rerun}"
         )
-    if blocking := rounds[-1]["blocking"]:
-        return (
-            "refused: the last round left blocking findings:\n  "
-            + "\n  ".join(blocking)
-            + "\nFix them, then review again — a flag cannot clear these"
-        )
+    round_ = rounds[-1]
+    blocking = round_["blocking"]
+    bound, unbound = [], blocking
+    if CLEARABLE_BY_FULL in round_:
+        bound, unbound, error = validate_clearable(round_, stage="closer")
+        if error:
+            return f"refused: corrupt sprint review marker: {error}. {rerun}"
+    if bound:
+        if unbound:
+            return _blocking_refusal(blocking)
+        # No reviewer-stray or .xp/-only exemption here: those forgive motion the
+        # lead still reads before merging, and clearance is the one path where no
+        # judgment follows the gate.
+        shown = str(state.get("shown_sha"))
+        if shown != head:
+            moved, missing = _shown_diff(sprint_id, shown, head)
+            if missing:
+                return missing
+            return (
+                f"refused: the review did not cover HEAD — {', '.join(moved.stdout.splitlines())}"
+                f" changed since {shown[:8]}. {rerun}"
+            )
+        if gates := _covered_gate_files(state, head):
+            return (
+                "refused: deterministic clearance cannot use a reviewer-changed gate file"
+                f" from the covered range: {', '.join(gates)}. {rerun}"
+            )
+        ref = overlap.merge_source(default_branch(), "pr")
+        if overlap.unmerged(ref):
+            return (
+                f"refused: deterministic clearance cannot include pending {ref}. Merge it"
+                f" here and {rerun} so the combined tree is reviewed"
+            )
+        return ""
+    if blocking:
+        return _blocking_refusal(blocking)
     if (shown := str(state.get("shown_sha"))) == head:
         return ""
     moved, missing = _shown_diff(sprint_id, shown, head)
@@ -74,11 +131,15 @@ def cmd_land(sprint_id: str, dry_run: bool) -> int:
     ]
     ref = overlap.merge_source(default_branch(), "pr")
     pending = overlap.unmerged(ref)
+    state = json.loads(sprint_marker(sprint_id).read_text())
+    bound = state["rounds"][-1].get(CLEARABLE_BY_FULL) or []
     if dry_run:
         full = config_block_value("tests", "full")
         if refusal := overlap.tier_refusal(full, "full"):
-            return fail(refusal)
+            return fail(_clearance_failure(refusal, bound) if bound else refusal)
         print(f"would run: {full}")
+        if bound:
+            print("if green, " + _clearance_notice("clears", bound))
         for c in cmds:
             print(" ".join(c))
         print(f"(then: close.py sprint {sprint_id} post-merge — tag {version}, retire the key)")
@@ -93,20 +154,16 @@ def cmd_land(sprint_id: str, dry_run: bool) -> int:
         )
     # Triage can stale start's tier, so land measures the shipping merge again.
     if red := overlap.gates(ref, "", "full", pending):
-        return fail(red)
-    state = json.loads(sprint_marker(sprint_id).read_text())
+        return fail(_clearance_failure(red, bound) if bound else red)
+    if bound:
+        print(_clearance_notice("cleared", bound))
     head = git("rev-parse", "HEAD").stdout.strip()
     review.disclose(
         state,
         head,
         lambda n: review.diff_path(review.sprint_report_path(sprint_id, "fix", n)),
     )
-    if gates := [
-        f
-        for start, end in review.covered_ranges(state, head)
-        for f in git("diff", "--name-only", f"{start}..{end}").stdout.splitlines()
-        if f in overlap.GATE_FILES
-    ]:
+    if gates := _covered_gate_files(state, head):
         print(f"among them a gate file, which no later check re-reads: {', '.join(gates)}")
     if not shutil.which("gh"):
         return fail(
