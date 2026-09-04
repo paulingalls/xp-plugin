@@ -169,7 +169,7 @@ class TestResume:
         assert in_tree(tree, env, "branch", "--show-current") == "ada/story-042-demo-story"
         assert predecessor in in_tree(tree, env, "log", "--format=%H")
         prompt = json.loads(rec.read_text())["stdin"]
-        assert str(tmp_path / "data" / "plans" / "story-042.plan.md") in prompt
+        assert f"plan draft\n\n{tmp_path / 'data' / 'plans' / 'story-042.plan.md'}" in prompt
         assert "DRAFT-SENTINEL" not in prompt and "no commits" in prompt.lower()
 
     def test_a_tree_off_its_stopped_branch_is_never_taken_over(self, tmp_path):
@@ -247,7 +247,7 @@ class TestResume:
         assert resume(repo, env).returncode == 0
 
         prompt = json.loads(rec.read_text())["stdin"]
-        assert "FINISHED" in prompt and "deadbeef" in prompt and "work.py list" in prompt
+        assert "FINISHED" in prompt and "deadbeef. Read them (`work.py list`)" in prompt
         assert "RECORD-SENTINEL" not in prompt
 
     @pytest.mark.parametrize("state", ["STOPPED", "FINISHED"])

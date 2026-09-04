@@ -73,7 +73,9 @@ class TestProfile:
         assert loud.returncode == 0  # reports, never refuses: the project's tradeoff
 
     def test_an_inherited_handoff_is_a_contributor_the_breakdown_names(self, tmp_path):
-        """The warning must identify an oversized inline handoff."""
+        """Listed only when there IS one, and named as the largest when it is:
+        an overage the breakdown cannot attribute blames a 34-token card, and the
+        lead goes looking for tokens that are not in any file it lists."""
         repo, env, _g = make_repo(tmp_path)
         stub_claude(tmp_path)
         assert "predecessor handoff" not in spawn(repo, env, "story-042", "--dry-run").stdout

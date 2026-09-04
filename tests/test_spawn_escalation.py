@@ -189,7 +189,7 @@ class TestDeliberateStop:
             plan.write_text(plan.read_text().replace("[in-progress]", "[ready]"))
         inherited = spawn(repo, env, "story-042", "--dry-run").stdout
         ids = [line.split()[0] for line in records(env)]
-        assert all(record_id in inherited for record_id in ids) and "work.py list" in inherited
+        assert all(rid in inherited for rid in ids) and "Read them (`work.py list`)" in inherited
         assert ESCALATION not in inherited and later not in inherited, inherited
 
     def test_no_record_is_still_refused(self, tmp_path):
@@ -293,22 +293,31 @@ class TestAnUnreadableHandoffMarkerIsNotAFirstSpawn:
     def test_a_truncated_marker_still_hands_over_what_survived(self, tmp_path):
         import spawn  # noqa: F401
 
+        # exactly what a stop interrupted mid-write leaves: a valid JSON PREFIX
         root = self.artifacts(tmp_path, '{"why": "no commits", "record')
         from handoff import inheritance
 
         handed = inheritance(root, "story-042")
         assert str(root / "plans" / "story-042.plan.md") in handed
-        assert f"round 1\n\n{root / 'plans' / 'story-042.md'}" in handed
+        assert f"round 1\n\nRead {root / 'plans' / 'story-042.md'}" in handed
         assert "DRAFT-SENTINEL" not in handed and "FINDING-ONE" not in handed
         assert "unreadable" in handed, "the successor is not told why the why is missing"
+
+    def test_a_draft_that_is_not_there_is_SAID_to_be_missing(self, tmp_path):
+        """A path the successor cannot open sends it hunting for a plan that was
+        never written; the two states must not read alike (constraint 15)."""
+        import spawn  # noqa: F401
+        from handoff import inheritance
+
+        root = self.artifacts(tmp_path, '{"state": "STOPPED"}')
         draft = root / "plans" / "story-042.plan.md"
         draft.unlink()
-        (root / "plans" / "story-042.handoff.json").write_text('{"state": "STOPPED"}')
         missing = inheritance(root, "story-042")
         assert "plan draft is missing" in missing.lower() and str(draft) not in missing
 
     def test_a_marker_that_never_EXISTED_still_hands_over_nothing(self, tmp_path):
-        """A first spawn has no inheritance even when artifacts exist."""
+        """The other arm: the fix above otherwise turns every FIRST spawn into an
+        inheriting one, and every card pays for a section saying nothing."""
         import spawn  # noqa: F401
         from handoff import draft_path, inheritance
 

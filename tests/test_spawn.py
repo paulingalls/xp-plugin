@@ -127,11 +127,11 @@ class TestLaunchContract:
         plans = Path(env["XP_DATA"]) / "plans"
         for mark in ("DRAFT-SENTINEL", "FINDING-ONE", "FINDING-TWO", ESCALATION):
             assert mark not in inherited
-        assert str(plans / "story-042.plan.md") in inherited
-        assert f"round 1\n\n{plans / 'story-042.md'}" in inherited
-        assert f"round 2\n\n{plans / 'story-042.round-2.md'}" in inherited
-        record_id = json.loads((plans / "story-042.handoff.json").read_text())["records"][0]
-        assert record_id in inherited and "work.py list" in inherited
+        assert f"plan draft\n\n{plans / 'story-042.plan.md'}" in inherited
+        assert f"round 1\n\nRead {plans / 'story-042.md'}" in inherited
+        assert f"round 2\n\nRead {plans / 'story-042.round-2.md'}" in inherited
+        rid = json.loads((plans / "story-042.handoff.json").read_text())["records"][0]
+        assert f"records\n\n{rid}. Read them (`work.py list`)" in inherited
 
 
 def reset_to_ready(tmp_path):
