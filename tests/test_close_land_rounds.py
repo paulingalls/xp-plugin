@@ -312,6 +312,21 @@ class TestBoundedDurableBody:
         assert all(path.is_file() for path in paths)
         assert json.loads(paths[0].read_text()) == saved
 
+    def test_each_rounds_elision_names_that_rounds_own_report(self, tmp_path):
+        """A body with ONE overflowing round greens against a static `round-1`, which
+        is the defect TestLandNamesEachRoundsOwnDiff below caught in the other renderer."""
+        repo, env, g = make_repo(tmp_path)
+        for prefix in ("first", "second"):
+            report = CLEAN | {"fixed": [f"{prefix}-{i:02}" for i in range(25)]}
+            stub_reviewer(tmp_path, report=report)
+            assert close(repo, env, "review").returncode == 0
+        assert close(repo, env, "land").returncode == 0
+
+        one, two = g("log", "-1", "--format=%B", "main").stdout.split("Review round 2:")
+        assert "first-18" in one and "second-18" in two
+        assert "in full at reports/story-042.round-1.json" in one and "round-2" not in one
+        assert "in full at reports/story-042.round-2.json" in two and "round-1" not in two
+
     def test_free_pr_body_names_its_complete_report_after_cleanup(self, tmp_path):
         repo, env, g = free_repo(tmp_path)
         assert free(repo, env, "fix-typo", "start").returncode == 0
