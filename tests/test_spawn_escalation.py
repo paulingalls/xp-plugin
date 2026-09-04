@@ -132,7 +132,7 @@ class TestDeliberateStop:
 
     def test_the_escalation_names_the_record_the_lead_must_read(self, tmp_path):
         """Naming the tree is not enough: the lead's next action is reading WHY,
-        and the id is what `work.py list` is searched by."""
+        and the id is what `work.py show` resolves."""
         repo, env, _g = make_repo(tmp_path)
         stub_escalating(tmp_path)
         r = spawn(repo, env, "story-042")
@@ -163,7 +163,7 @@ class TestDeliberateStop:
         assert "rc 9" in r.stderr, r.stderr
         assert records(env)[-1].split()[0] in r.stderr, r.stderr
         # naming records without naming what to do with them is half a refusal
-        assert "work.py list" in r.stderr, r.stderr
+        assert "work.py show <id>" in r.stderr, r.stderr
 
     def test_a_death_that_filed_nothing_is_still_reported_as_a_death(self, tmp_path):
         """rc discriminates before any record does. The seam reads the two halves
@@ -189,7 +189,8 @@ class TestDeliberateStop:
             plan.write_text(plan.read_text().replace("[in-progress]", "[ready]"))
         inherited = spawn(repo, env, "story-042", "--dry-run").stdout
         ids = [line.split()[0] for line in records(env)]
-        assert all(rid in inherited for rid in ids) and "Read them (`work.py list`)" in inherited
+        assert all(rid in inherited for rid in ids)
+        assert "Read each with `work.py show <id>`" in inherited
         assert ESCALATION not in inherited and later not in inherited, inherited
 
     def test_no_record_is_still_refused(self, tmp_path):

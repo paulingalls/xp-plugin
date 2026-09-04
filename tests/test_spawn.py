@@ -131,7 +131,7 @@ class TestLaunchContract:
         assert f"round 1\n\nRead {plans / 'story-042.md'}" in inherited
         assert f"round 2\n\nRead {plans / 'story-042.round-2.md'}" in inherited
         rid = json.loads((plans / "story-042.handoff.json").read_text())["records"][0]
-        assert f"records\n\n{rid}. Read them (`work.py list`)" in inherited
+        assert f"records\n\n{rid}. Read each with `work.py show <id>`" in inherited
 
 
 def reset_to_ready(tmp_path):

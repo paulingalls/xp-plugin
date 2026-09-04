@@ -247,7 +247,7 @@ class TestResume:
         assert resume(repo, env).returncode == 0
 
         prompt = json.loads(rec.read_text())["stdin"]
-        assert "FINISHED" in prompt and "deadbeef. Read them (`work.py list`)" in prompt
+        assert "FINISHED" in prompt and "deadbeef. Read each with `work.py show <id>`" in prompt
         assert "RECORD-SENTINEL" not in prompt
 
     @pytest.mark.parametrize("state", ["STOPPED", "FINISHED"])

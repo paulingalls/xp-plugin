@@ -10,6 +10,18 @@ from spawn_helpers import _total, make_repo, seed_refresh_receipt, spawn, stub_c
 
 
 class TestProfile:
+    def test_new_agent_frontmatter_is_included_in_component_metadata(self, tmp_path, monkeypatch):
+        import spawn as spawn_module
+
+        root = tmp_path / "plugin"
+        shutil.copytree(spawn_module.PLUGIN_ROOT, root)
+        monkeypatch.setattr(spawn_module, "PLUGIN_ROOT", root)
+        before = spawn_module.component_metadata_chars()
+        charter = root / "agents" / "new-role.md"
+        charter.write_text("---\nname: new-role\ntools: Read\n---\n# New role\n")
+        frontmatter = charter.read_text().split("---", 2)[1]
+        assert spawn_module.component_metadata_chars() == before + len(frontmatter)
+
     def test_JUDGMENT_is_injected_counted_and_required(self, tmp_path, monkeypatch):
         import spawn as spawn_module
 

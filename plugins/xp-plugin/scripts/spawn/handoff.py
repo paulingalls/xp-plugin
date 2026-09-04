@@ -19,7 +19,7 @@ def _is_authored(text: str, story_id: str) -> bool:
     return f"\nStory: {story_id}\n" in text
 
 
-READ_THEM = " Read them (`work.py list`), then fix the card or take the work over."
+READ_THEM = " Read each with `work.py show <id>`, then fix the card or take the work over."
 STAGES = ("planner", "plan-reviewer", "executor", "reviewer")
 # Shared so a new result cannot pass the writer and red the reader: mark_stage
 # and resume.validate spelled ("ran", "skipped") separately until story-102.

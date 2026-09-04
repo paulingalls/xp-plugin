@@ -93,6 +93,18 @@ def _ratchet():
         sys.path.remove(str(RATCHET.parent))
 
 
+def test_every_named_component_member_reports_to_its_component():
+    ratchet = _ratchet()
+    expected = {
+        "spawn": {"spawn", "teammate_tee"},
+        "close": {"close", "review", "bookkeep", "sprint_close"},
+        "hooks": {"hooks", "session_start", "stop_gate", "bash_status"},
+    }
+    for component, names in expected.items():
+        for name in names:
+            assert ratchet.component_for(Path("scripts") / f"{name}.py") == component
+
+
 def test_extracted_subpackage_counts_against_its_component(tmp_path):
     """Constraint 8 hard-caps a file at 500 lines, so a component's growth path is
     close.py -> close/. Scanning one directory level certified a tree with 3,000
