@@ -168,8 +168,9 @@ class TestShippedProseMatchesTheMechanism:
         """The lead drafted the executor's implementation plan twice in one week
         (bug 898ad9e1, note c3d8e2a7): one word covered two artifacts and no
         lead-facing sentence said whose each was. The executable pin holds both
-        copies directly so a later edit cannot silently remove the newest,
-        least-obvious sentence. "sprint review" is
+        copies directly — ownership in the LEAD's, where that bug was written, and
+        the handoff in the executor's — so a later edit cannot silently remove the
+        newest, least-obvious sentence. "sprint review" is
         excluded by name: `close.py sprint <id> review` already holds it.
         """
         process = prose(PLUGIN / "PROCESS.md").lower()
@@ -178,7 +179,7 @@ class TestShippedProseMatchesTheMechanism:
             assert "slate review" in text, f"{name}: the lead's review is unnamed"
             assert "execution plan review" in text, f"{name}: plan review unnamed"
             assert "sprint review" not in text, f"{name}: close.py owns that phrase"
-        assert "the planner writes it" in process, "PROCESS.md: the plan's owner is unnamed"
+        assert "the planner writes the plan" in process, "PROCESS.md: the plan's owner is unnamed"
         assert "re-read the reviewed plan" in executor, "EXECUTOR.md drops the handoff"
 
     def test_a_mandatory_step_failing_twice_routes_to_escalation(self):
@@ -298,8 +299,15 @@ class TestShippedProseMatchesTheMechanism:
             assert fields["tools"].strip() == "Read, Grep, Glob, Bash", (
                 f"{path.name}: directly invocable role is not read-only"
             )
-        executor = PLUGIN / "EXECUTOR.md"
-        assert executor.is_file() and executor not in charters
+        spawn_only = PLUGIN / "EXECUTOR.md"
+        assert spawn_only.is_file(), "the worktree-spawned brief left the plugin root"
+        # The rejected design, and the one a directory tidy-up reaches for: registering
+        # the executor here makes it invocable in the lead's checkout, with no worktree,
+        # no minted card and no handback. Comparing PATHS cannot see that — a COPY at
+        # agents/executor.md leaves the root file exactly where this asserts it is.
+        assert spawn_only.stem.lower() not in {p.stem.lower() for p in charters}, (
+            "the worktree-spawned executor is registered as a directly invocable subagent"
+        )
         assert "directly invocable read-only role charters" in system
         assert "isolated worktree" in system and "EXECUTOR.md" in system
 
