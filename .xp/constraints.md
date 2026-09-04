@@ -4,8 +4,7 @@ Reversing one of these makes it a different project. Cap: 15 lines of constraint
 adding over the cap requires retiring one (the plan reviewer enforces).
 
 1. **Every rule must displace one; a CORRECTION displaces nothing** — it creates no NEW
-   obligation, only makes an existing one findable or non-contradictory. Size budgets in
-   DESIGN §9 are acceptance criteria, measured by ratchet.py at pre-push.
+   obligation, only makes an existing one findable or non-contradictory.
 2. **Fault-inject every guard.** A check that cannot red against its target defect is
    vacuous and worse than no check — it certifies. This applies to the plugin's own
    gates, tests, and filed falsifiers. (The predecessor's audit: 7 vacuous guards
@@ -29,8 +28,7 @@ adding over the cap requires retiring one (the plan reviewer enforces).
    extract, not scroll.
 9. **Comments exist only for what neither a test nor a name can carry** — the why,
    an external constraint, a rejected design; JUDGMENT.md gives every role the
-   rubric. Prose in code is budgeted like any other prose because a comment is
-   the one artifact no test checks, so it rots silently.
+   rubric. A comment is the one artifact no test checks, so it rots silently.
 10. **Markers are always scoped** (story/plan/session) — a project-global mutable
    marker is a design error (measured: marker bleed between parallel stories).
 11. **A falsifier must CONSTRUCT the condition it claims** — never observe ambient

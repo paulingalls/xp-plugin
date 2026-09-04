@@ -1,8 +1,7 @@
-"""The teammate profile budget. Extracted from test_spawn_run.py at
+"""The teammate profile report. Extracted from test_spawn_run.py at
 story-021, which needed the room under constraint 8's 500-line cap for the
 codex leg's tee ACs — the card's Verify names test_spawn_run.py."""
 
-import re
 import shutil
 from pathlib import Path
 
@@ -10,81 +9,7 @@ import pytest
 from spawn_helpers import _total, make_repo, seed_refresh_receipt, spawn, stub_claude
 
 
-class TestBudget:
-    """(i) is a hard cap on prose WE ship. There is deliberately no assertion on
-    the composed total: CLAUDE.md, constraints.md and the cards belong to the
-    consuming project, and a plugin gate over prose we do not own would red on
-    someone else's file."""
-
-    def test_plugin_shipped_profile_within_cap(self):
-        from spawn import (
-            COMPONENT_METADATA_CAP,
-            PLUGIN_SHIPPED_CAP,
-            component_metadata_chars,
-            plugin_shipped_chars,
-        )
-
-        # inner cap FIRST: a newly added skill or agent must red THIS line, not
-        # the total — otherwise the ratchet blames TEAMMATE.md for a defect that
-        # is a new component shipping unbudgeted prose into every spawn
-        components = component_metadata_chars() // 4
-        assert components <= COMPONENT_METADATA_CAP, (
-            f"always-on component metadata is {components} tokens (cap {COMPONENT_METADATA_CAP}) —"
-            " a skill or agent grew; retire prose there, not in TEAMMATE.md"
-        )
-        shipped = plugin_shipped_chars() // 4
-        assert shipped <= PLUGIN_SHIPPED_CAP, (
-            f"plugin-shipped profile is {shipped} tokens (cap {PLUGIN_SHIPPED_CAP});"
-            f" TEAMMATE.md and shared rules account for {shipped - components};"
-            f" components account for {components}"
-        )
-
-    def test_component_cap_constant_moves_this_wall(self, monkeypatch):
-        import spawn as spawn_module
-
-        moved = spawn_module.component_metadata_chars() // 4 - 1
-        monkeypatch.setattr(spawn_module, "COMPONENT_METADATA_CAP", moved)
-        with pytest.raises(AssertionError, match=rf"cap {moved}\)") as failure:
-            self.test_plugin_shipped_profile_within_cap()
-        assert "always-on component metadata" in str(failure.value)
-
-    def test_profile_cap_names_the_shared_prose_that_grew(self, monkeypatch):
-        import spawn as spawn_module
-
-        moved = spawn_module.plugin_shipped_chars() // 4 - 1
-        monkeypatch.setattr(spawn_module, "PLUGIN_SHIPPED_CAP", moved)
-        with pytest.raises(AssertionError, match=rf"cap {moved}\)") as failure:
-            self.test_plugin_shipped_profile_within_cap()
-        # The static name is accurate while plugin_shipped_chars enumerates only
-        # TEAMMATE.md, the shared rules, and component metadata.
-        assert "TEAMMATE.md and shared rules" in str(failure.value)
-        # Both halves, because a name over a wrong number sends the next cut to the
-        # wrong file: the split must add back up to the profile the same line reports.
-        shared, components = (
-            int(re.search(rf"{label} account for (-?\d+)", str(failure.value)).group(1))
-            for label in ("shared rules", "components")
-        )
-        assert shared + components == moved + 1, str(failure.value)
-
-    def test_new_frontmatter_fails_the_component_wall_first(self, tmp_path, monkeypatch):
-        import spawn as spawn_module
-
-        root = tmp_path / "plugin"
-        shutil.copytree(spawn_module.PLUGIN_ROOT, root)
-        monkeypatch.setattr(spawn_module, "PLUGIN_ROOT", root)
-        before = spawn_module.component_metadata_chars() // 4
-        padding = (spawn_module.COMPONENT_METADATA_CAP - before + 1) * 4
-        skill = root / "skills" / "story-close" / "SKILL.md"
-        parts = skill.read_text().split("---", 2)
-        parts[1] += "x" * padding
-        skill.write_text("---".join(parts))
-
-        assert spawn_module.component_metadata_chars() // 4 > spawn_module.COMPONENT_METADATA_CAP
-        assert spawn_module.plugin_shipped_chars() // 4 <= spawn_module.PLUGIN_SHIPPED_CAP
-        with pytest.raises(AssertionError) as failure:
-            self.test_plugin_shipped_profile_within_cap()
-        assert "always-on component metadata" in str(failure.value)
-
+class TestProfile:
     def test_JUDGMENT_is_injected_counted_and_required(self, tmp_path, monkeypatch):
         import spawn as spawn_module
 
@@ -93,7 +18,6 @@ class TestBudget:
         shutil.copytree(spawn_module.PLUGIN_ROOT, root)
         monkeypatch.setattr(spawn_module, "PLUGIN_ROOT", root)
         judgment = root / "JUDGMENT.md"
-        assert spawn_module.PLUGIN_SHIPPED_CAP == 1930
         assert judgment.exists(), "the universal document is absent"
         prompt = spawn_module.build_prompt(
             spawn_module.teammate_sections("card", "story-042", "", root)
@@ -125,16 +49,17 @@ class TestBudget:
         assert _total(before) != _total(after)
         assert _total(after) > _total(before)
 
-    def test_printed_plugin_shipped_is_the_capped_quantity(self, tmp_path):
+    def test_printed_plugin_shipped_is_the_computed_quantity(self, tmp_path):
         """Two computations shipped under one name: the printed figure omitted
         templates/constraints.md, so a lead read ~300 tokens of headroom where
         the ratchet had 52 — the story-009 note's failure, in the instrument."""
-        from spawn import PLUGIN_SHIPPED_CAP, plugin_shipped_chars
+        from spawn import plugin_shipped_chars
 
         repo, env, _g = make_repo(tmp_path)
         stub_claude(tmp_path)
         out = spawn(repo, env, "story-042", "--dry-run").stdout
-        assert f"plugin-shipped {plugin_shipped_chars() // 4}/{PLUGIN_SHIPPED_CAP}" in out
+        assert f"plugin-shipped {plugin_shipped_chars() // 4}" in out
+        assert f"plugin-shipped {plugin_shipped_chars() // 4}/" not in out
 
     def test_warning_names_the_largest_project_owned_contributor(self, tmp_path):
         repo, env, _g = make_repo(tmp_path)
