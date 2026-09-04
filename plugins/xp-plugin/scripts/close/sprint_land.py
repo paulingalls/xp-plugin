@@ -27,6 +27,21 @@ def _clearance_failure(red: str, bound: list[str]) -> str:
     return red + "\nThe full gate did not clear these bound blockers:\n  " + "\n  ".join(bound)
 
 
+def _clearance_notice(verb: str, bound: list[str]) -> str:
+    return f"the full gate {verb} these closer-bound blockers:\n  " + "\n  ".join(bound)
+
+
+def _covered_gate_files(state: dict, head: str) -> list[str]:
+    """Gate files the REVIEWER moved inside a round's own range — what land runs,
+    changed by the agent whose round says land may run it."""
+    return [
+        path
+        for start, end in covered_ranges(state, head)
+        for path in git("diff", "--name-only", f"{start}..{end}").stdout.splitlines()
+        if path in overlap.GATE_FILES
+    ]
+
+
 def _coverage_refusal(sprint_id: str, head: str) -> str:
     marker = sprint_marker(sprint_id)
     state = json.loads(marker.read_text()) if marker.exists() else {}
@@ -53,6 +68,9 @@ def _coverage_refusal(sprint_id: str, head: str) -> str:
             remaining.remove(item)
         if remaining:
             return _blocking_refusal(blocking)
+        # No reviewer-stray or .xp/-only exemption here: those forgive motion the
+        # lead still reads before merging, and clearance is the one path where no
+        # judgment follows the gate.
         shown = str(state.get("shown_sha"))
         if shown != head:
             moved, missing = _shown_diff(sprint_id, shown, head)
@@ -62,13 +80,7 @@ def _coverage_refusal(sprint_id: str, head: str) -> str:
                 f"refused: the review did not cover HEAD — {', '.join(moved.stdout.splitlines())}"
                 f" changed since {shown[:8]}. {rerun}"
             )
-        gates = [
-            path
-            for start, end in covered_ranges(state, head)
-            for path in git("diff", "--name-only", f"{start}..{end}").stdout.splitlines()
-            if path in overlap.GATE_FILES
-        ]
-        if gates:
+        if gates := _covered_gate_files(state, head):
             return (
                 "refused: deterministic clearance cannot use a reviewer-changed gate file"
                 f" from the covered range: {', '.join(gates)}. {rerun}"
@@ -130,6 +142,8 @@ def cmd_land(sprint_id: str, dry_run: bool) -> int:
         if refusal := overlap.tier_refusal(full, "full"):
             return fail(_clearance_failure(refusal, bound) if bound else refusal)
         print(f"would run: {full}")
+        if bound:
+            print("if green, " + _clearance_notice("clears", bound))
         for c in cmds:
             print(" ".join(c))
         print(f"(then: close.py sprint {sprint_id} post-merge — tag {version}, retire the key)")
@@ -145,18 +159,15 @@ def cmd_land(sprint_id: str, dry_run: bool) -> int:
     # Triage can stale start's tier, so land measures the shipping merge again.
     if red := overlap.gates(ref, "", "full", pending):
         return fail(_clearance_failure(red, bound) if bound else red)
+    if bound:
+        print(_clearance_notice("cleared", bound))
     head = git("rev-parse", "HEAD").stdout.strip()
     review.disclose(
         state,
         head,
         lambda n: review.diff_path(review.sprint_report_path(sprint_id, "fix", n)),
     )
-    if gates := [
-        f
-        for start, end in review.covered_ranges(state, head)
-        for f in git("diff", "--name-only", f"{start}..{end}").stdout.splitlines()
-        if f in overlap.GATE_FILES
-    ]:
+    if gates := _covered_gate_files(state, head):
         print(f"among them a gate file, which no later check re-reads: {', '.join(gates)}")
     if not shutil.which("gh"):
         return fail(

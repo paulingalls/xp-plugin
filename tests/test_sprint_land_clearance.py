@@ -55,6 +55,7 @@ class TestBoundFullClearance:
         result = sprint(repo, env, "land")
         assert result.returncode == 0, result.stderr
         assert sentinel.exists()
+        assert "cleared these closer-bound blockers:\n  GATE-ME" in result.stdout
         assert marker_path(tmp_path).read_bytes() == marker_before
         assert not (tmp_path / "launches.jsonl").exists()
 
@@ -188,6 +189,7 @@ class TestClearanceBoundary:
         before = marker_path(tmp_path).read_bytes()
         result = sprint(repo, env, "land", "--dry-run")
         assert result.returncode == 0, result.stderr
+        assert "if green, the full gate clears these closer-bound blockers:\n  B" in result.stdout
         assert not sentinel.exists() and marker_path(tmp_path).read_bytes() == before
 
 

@@ -1,7 +1,7 @@
 import json
 
 import pytest
-from review_report import ITEM_CAP, read_report
+from review_report import ITEM_CAP, cap_items, read_report
 from sprint_helpers import make_repo, marker_path, sprint, staged_stub
 
 
@@ -56,8 +56,11 @@ class TestCloserOnlySchema:
         assert "clearable_by_full" in error
 
     def test_binding_is_checked_before_items_are_capped(self, tmp_path):
-        prefix = "x" * (ITEM_CAP - 1)
+        prefix = "x" * ITEM_CAP
         first, second = prefix + "a", prefix + "b"
+        # CONSTRUCTED: two distinct findings the cap collapses onto one string, so a
+        # membership test run after capping would accept a binding to neither.
+        assert cap_items([first]) == cap_items([second])
         path = self.write(tmp_path, blocking=[first], clearable_by_full=[second])
         report, error = read_report(path, stage="closer")
         assert report == {}
