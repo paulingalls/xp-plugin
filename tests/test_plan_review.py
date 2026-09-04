@@ -315,23 +315,21 @@ class TestTheProfileCarriesTheInvocation:
     def test_neither_harness_is_handed_a_review_to_launch(self, tmp_path):
         for executor in ("claude/opus", "codex/gpt-5.6-terra/high"):
             profile = self.rendered(tmp_path, executor)
-            (bullet,) = [b for b in profile.split("- **") if b.startswith("Multi-file change?")]
-            section = bullet.split("- **")[0]
-            assert str(PLAN_REVIEW) not in section, section
-            assert "Persistent PLAN_PATH: " in section, section
+            draft = tmp_path / executor.split("/")[0] / "data/plans/story-042.plan.md"
+            assert str(PLAN_REVIEW) not in profile, profile
+            assert str(draft) in profile, profile
 
     def test_the_launched_plan_path_survives_worktree_removal(self, tmp_path):
         repo, env, g = make_repo(tmp_path)
         rec = stub_claude(tmp_path)
         assert spawn(repo, env, "story-042").returncode == 0
         prompt = json.loads(rec.read_text())["stdin"]
-        (line,) = [ln for ln in prompt.splitlines() if "Persistent PLAN_PATH: " in ln]
-        draft = Path(line.split("Persistent PLAN_PATH: ", 1)[1])
+        draft = Path(env["XP_DATA"]) / "plans/story-042.plan.md"
+        assert str(draft) in prompt
         tree = Path(env["XP_DATA"]) / "worktrees" / "story-042"
         assert not draft.is_relative_to(tree)
-        # spawn must MAKE it: the teammate drafts before plan_review.py, which is
-        # the only other creator, and a shell redirect into a missing directory
-        # sends the model back to the worktree this path exists to avoid
+        # spawn must MAKE it: the planner writes before plan_review.py, and a shell
+        # redirect into a missing directory sends it back to the worktree.
         assert draft.parent.is_dir(), draft
         draft.write_text("SURVIVES-UNWIND\n")
         assert g("worktree", "remove", "--force", str(tree)).returncode == 0
@@ -491,8 +489,8 @@ class TestPlanEditsInPlace:
             assert draft.read_bytes() == before
 
     def test_the_teammate_is_told_to_reread_the_plan(self):
-        teammate = (PLUGIN / "TEAMMATE.md").read_text().lower()
-        assert "re-read" in teammate and "plan file" in teammate
+        teammate = (PLUGIN / "EXECUTOR.md").read_text().lower()
+        assert "re-read" in teammate and "reviewed plan" in teammate
 
 
 from plan_review_liveness import TestTheReviewOutlivesItsCaller  # noqa: E402,F401

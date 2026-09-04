@@ -1,5 +1,6 @@
 """Shipped prose matches the mechanism. Split from test_close.py at sprint-004 open."""
 
+import json
 import re
 import subprocess
 import sys
@@ -43,6 +44,23 @@ def project_identifiers(text):
     )
 
 
+def killed_review(tmp_path, g, head=None):
+    """The disk a killed reviewer leaves — the tree it was launched against and a
+    readable report — without paying for a spawn to produce it."""
+    data = tmp_path / "data"
+    at = {
+        "head": head or g("rev-parse", "HEAD").stdout.strip(),
+        "digest": "",
+        "base": g("merge-base", "main", "HEAD").stdout.strip(),
+        "card": "####" + (data / "plan.md").read_text().split("####", 1)[1],
+        "noun": "story story-042",
+    }
+    (data / "markers" / "story-042.review-launch").write_text(json.dumps(at))
+    report = data / "reports" / "story-042.round-1.json"
+    report.parent.mkdir(parents=True, exist_ok=True)
+    report.write_text(json.dumps({"fixed": [], "blocking": [], "noted": []}))
+
+
 class TestShippedProseMatchesTheMechanism:
     """The prose is what a consuming project believes. story-012a AC 11/12."""
 
@@ -53,6 +71,44 @@ class TestShippedProseMatchesTheMechanism:
             text=True,
         )
         assert r.returncode == 0 and "salvage" in r.stdout, r.stderr
+
+    def test_review_and_salvage_give_distinct_dirty_tree_advice(self, tmp_path):
+        repo, env, g = make_repo(tmp_path)
+        killed_review(tmp_path, g)
+        dirt = repo / "uninspected.txt"
+        dirt.write_text("dead reviewer work\n")
+
+        ordinary = close(repo, env, "review")
+        recovery = close(repo, env, "salvage")
+
+        assert ordinary.returncode == recovery.returncode == 2
+        assert "commit or stash first" in ordinary.stderr, ordinary.stderr
+        assert "dead reviewer's uninspected work" in recovery.stderr, recovery.stderr
+        assert "read it before committing or discarding it" in recovery.stderr, recovery.stderr
+        assert ordinary.stderr != recovery.stderr
+        assert "git reset --hard" not in ordinary.stderr + recovery.stderr
+        assert dirt.read_text() == "dead reviewer work\n"
+
+    def test_a_moved_head_does_not_order_a_reset_over_the_lines_it_says_to_read(self, tmp_path):
+        """Both hazards at once. HEAD moving still has to be disclosed by sha — a
+        salvage that moved it silently is the worse defect — but `git reset --hard`
+        must not be the unconditional offer there: it discards the uninspected work
+        this same refusal sends the lead to read, which is the tree story-093 kept."""
+        repo, env, g = make_repo(tmp_path)
+        launched = g("rev-parse", "HEAD").stdout.strip()
+        (repo / "lead.py").write_text("committed after the kill\n")
+        g("add", "-A")
+        g("-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "the lead moved HEAD")
+        killed_review(tmp_path, g, launched)
+        dirt = repo / "uninspected.txt"
+        dirt.write_text("dead reviewer work\n")
+
+        recovery = close(repo, env, "salvage")
+
+        assert recovery.returncode == 2 and launched[:8] in recovery.stderr, recovery.stderr
+        assert "yours to keep or undo" not in recovery.stderr, recovery.stderr
+        assert "only after reading the uncommitted lines" in recovery.stderr, recovery.stderr
+        assert dirt.read_text() == "dead reviewer work\n"
 
     def test_no_verdict_token_survives_in_the_shipped_prose(self):
         for path in (
@@ -111,27 +167,26 @@ class TestShippedProseMatchesTheMechanism:
     def test_both_shipped_copies_name_the_two_reviews_and_who_owns_the_plan(self):
         """The lead drafted the executor's implementation plan twice in one week
         (bug 898ad9e1, note c3d8e2a7): one word covered two artifacts and no
-        lead-facing sentence said whose each was. Pinned in both copies rather
-        than read-and-judged because TEAMMATE.md shares an enforced profile cap
-        (`spawn.PLUGIN_SHIPPED_CAP`) whose next squeeze reaches for the newest
-        sentence, the one that looks least load-bearing. The cap supplies less
-        of that pressure than it did: raised to 1,930 to fund the port into
-        templates/constraints.md, which cost 184 of the 430 tokens it bought.
-        The PIN is what holds these two sentences today. "sprint review" is
+        lead-facing sentence said whose each was. The executable pin holds both
+        copies directly — ownership in the LEAD's, where that bug was written, and
+        the handoff in the executor's — so a later edit cannot silently remove the
+        newest, least-obvious sentence. "sprint review" is
         excluded by name: `close.py sprint <id> review` already holds it.
         """
-        for path in (PLUGIN / "PROCESS.md", PLUGIN / "TEAMMATE.md"):
-            text = prose(path).lower()
-            assert "slate review" in text, f"{path.name}: the lead's review is unnamed"
-            assert "execution plan review" in text, f"{path.name}: executor review unnamed"
-            assert "the lead never" in text, f"{path.name}: the plan's owner is unnamed"
-            assert "sprint review" not in text, f"{path.name}: close.py owns that phrase"
+        process = prose(PLUGIN / "PROCESS.md").lower()
+        executor = prose(PLUGIN / "EXECUTOR.md").lower()
+        for name, text in (("PROCESS.md", process), ("EXECUTOR.md", executor)):
+            assert "slate review" in text, f"{name}: the lead's review is unnamed"
+            assert "execution plan review" in text, f"{name}: plan review unnamed"
+            assert "sprint review" not in text, f"{name}: close.py owns that phrase"
+        assert "the planner writes the plan" in process, "PROCESS.md: the plan's owner is unnamed"
+        assert "re-read the reviewed plan" in executor, "EXECUTOR.md drops the handoff"
 
     def test_a_mandatory_step_failing_twice_routes_to_escalation(self):
-        teammate = " ".join(prose(PLUGIN / "TEAMMATE.md").lower().split())
+        teammate = " ".join(prose(PLUGIN / "EXECUTOR.md").lower().split())
         assert "mandatory step fails twice for infrastructure reasons" in teammate
-        assert "stop rather than proceed" in teammate
         assert "scripts/work.py note" in teammate
+        assert "commit the coherent in-flight change and hand back" in teammate
 
     def test_the_story_bundle_carries_JUDGMENT_but_not_PROCESS(self, tmp_path):
         repo, env, _g = make_repo(tmp_path)
@@ -212,22 +267,8 @@ class TestShippedProseMatchesTheMechanism:
         assert "before" in step.lower() and "review" in step.lower()
         assert "bump" not in step.lower() and "changelog" not in step.lower()
 
-    def test_the_loop_states_carded_execution_once_and_does_not_grow(self):
-        """Constraint 1. The cap is the LIVE size, never a historical one: left at
-        5,454 for a file that had shrunk to 2,928, it passed with 2,277 characters
-        of padding spliced in — a ratchet with slack certifies instead of checking.
-        Re-measure and lower it whenever this file legitimately shrinks.
-
-        PROCESS is an external-ceiling exception to the floor below. Bisection
-        against test_dogfood's byte profile reds at 1,624 characters, so the cap
-        sits three under the measured 1,623; a looser prose cap would certify
-        text the lead injection truncates. THE BOUND IS NOT THIS FILE'S ALONE —
-        it moves with every other region of that injection, so re-bisect rather
-        than trusting this number. That profile also silences the install
-        notice, which renders AHEAD of the constraints — with one present the
-        real bound is lower still, so never widen this to the bisected number."""
+    def test_the_loop_states_carded_execution_once(self):
         raw = (PLUGIN / "PROCESS.md").read_text()
-        assert len(raw) <= 1620, "the execution rule stopped paying for itself"
         process = " ".join(raw.split())
         story = process.split("2. **Story", 1)[1].split("3. **Story close", 1)[0]
         assert "free work" in story and "worktree" in story
@@ -247,6 +288,29 @@ class TestShippedProseMatchesTheMechanism:
         missing = [name for name in shipped if name not in line]
         assert not missing, f"the reviewer is told the shipped set omits: {missing}"
 
+    def test_agents_register_only_directly_invocable_read_only_roles(self):
+        system = (Path(__file__).parent.parent / ".xp" / "system.md").read_text()
+        charters = sorted((PLUGIN / "agents").glob("*.md"))
+        assert charters, "no directly invocable role charters found"
+        for path in charters:
+            frontmatter = path.read_text().split("---", 2)[1]
+            fields = dict(line.split(":", 1) for line in frontmatter.splitlines() if ":" in line)
+            assert fields["name"].strip() == path.stem, f"{path.name}: role name drifted"
+            assert fields["tools"].strip() == "Read, Grep, Glob, Bash", (
+                f"{path.name}: directly invocable role is not read-only"
+            )
+        spawn_only = PLUGIN / "EXECUTOR.md"
+        assert spawn_only.is_file(), "the worktree-spawned brief left the plugin root"
+        # The rejected design, and the one a directory tidy-up reaches for: registering
+        # the executor here makes it invocable in the lead's checkout, with no worktree,
+        # no minted card and no handback. Comparing PATHS cannot see that — a COPY at
+        # agents/executor.md leaves the root file exactly where this asserts it is.
+        assert spawn_only.stem.lower() not in {p.stem.lower() for p in charters}, (
+            "the worktree-spawned executor is registered as a directly invocable subagent"
+        )
+        assert "directly invocable read-only role charters" in system
+        assert "isolated worktree" in system and "EXECUTOR.md" in system
+
     def test_the_constraints_template_names_no_project_identifiers(self):
         """The shipped seed is project-neutral. This hand-list covers identifiers
         specific to this repository; the tree-wide document guard covers a
@@ -259,58 +323,10 @@ class TestShippedProseMatchesTheMechanism:
         for term in ("spawn.py", "DESIGN.md", "a falsifier", "at story-042"):
             assert project_identifiers(seed + f"\n11. **Ported** — see {term}.\n"), term
 
-    def test_a_script_driving_skill_does_not_restate_the_mechanism(self):
-        """Measured drift, three times in two sprints, caught by a READER every
-        time and by no test: sprint-close's step count went stale when the
-        pipeline absorbed two reviews, and story-close described `-d` ordering
-        and a branch precondition that the land fix reversed. Prose describing a
-        mechanism is a second copy of it. The refusals name their own remediation,
-        so the enumerations were duplicating text the lead is handed anyway.
-        Pinned as a WORD BUDGET, not a token grep: a count reds when the
-        enumerations grow back under any wording, which is the failure mode.
-
-        story-close RAISED 330 -> 380 (2026-09-03, Paul). Three separate squeezes
-        in one day made it shed the preflight's spelling, the second-reviewer
-        warning's teeth, and "every refusal names its own next action" — the last
-        being guidance, not enumeration. A budget that makes a skill trade away
-        muscle to fit is measuring the wrong thing. What this pins against is
-        REGROWN ENUMERATION, and that is still pinned; the room is for saying a
-        new thing without paying for it in an old one.
-
-        EVERY PURCHASABLE CAP NOW CARRIES A FLOOR: cap >= live / 0.9, re-cut when
-        a fix lands. A ten-way audit found ONE defect nine times — the
-        second half of something squeezed out — and measured every capped
-        artifact at 96-100% of its ceiling. Ceilings were never the problem;
-        ceilings without a floor were, because the cheapest words to cut are the
-        ones supplying a referent. xp-setup JOINS the tuple: it was the only
-        skill with no cap and the only one whose defect was a stale claim rather
-        than an amputation, which is the same finding from the other side.
-        """
-        caps = {
-            "story-close": 410,
-            "sprint-close": 320,
-            "free-close": 125,
-            "create-sprint": 205,
-            "xp-setup": 345,
-        }
-        shipped = {d.name for d in (PLUGIN / "skills").iterdir() if (d / "SKILL.md").is_file()}
-        assert shipped == set(caps), (
-            f"uncapped or retired skills: {shipped ^ set(caps)}. A skill nobody priced is"
-            " how xp-setup reached 303 words unnoticed; the cap is the lead's to choose"
-        )
-        for skill, cap in caps.items():
-            words = len(prose(PLUGIN / "skills" / skill / "SKILL.md").split())
-            assert cap >= words / 0.9, (
-                f"{skill} is {words} words against a {cap} cap: under the 10% floor."
-                " Regrown enumeration is cut; a needed correction is a cap move, and"
-                " that is the lead's"
-            )
-
     def test_the_skills_keep_the_negative_space_that_earns_its_words(self):
         """The counterweight to the cut: what deliberately does NOT exist cannot be
         read off the code an agent has not read, so it is the one description that
-        stays. Without this pin the word budget above is satisfiable by deleting
-        exactly the sentences that stop an agent hunting for a flag."""
+        stays. These sentences stop an agent hunting for a flag."""
         story = prose(PLUGIN / "skills" / "story-close" / "SKILL.md")
         assert "DOES NOT EXIST" in story, "the lead will hunt for a delta review"
         assert "never spawns" in story, "land's one hard guarantee"

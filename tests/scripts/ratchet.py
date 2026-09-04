@@ -1,10 +1,5 @@
 #!/usr/bin/env python3
-"""Size ratchet: measure shipped Python against the sub-budgets, red if over.
-
-Sole holder of the sub-budget numbers in code; DESIGN §9 keeps the total and
-the rationale (its pre-named reserve is empty), and test_ratchet pins its copy of
-the sub-allocation to the constants below so the two cannot drift (bug c2d7ffdf
-was that drift, between two prose copies nobody could run).
+"""Report shipped Python size; refuse only structural measurement defects.
 
 Usage: python3 ratchet.py [--root PATH]
 """
@@ -15,17 +10,16 @@ import sys
 import tokenize
 from pathlib import Path
 
-SPAWN = 1558
-CLOSE = 2598
-HOOKS = 655
-MISC = 1489
-TOTAL = 6300
+SPAWN_GUIDELINE = 1558
+CLOSE_GUIDELINE = 2598
+HOOKS_GUIDELINE = 655
+MISC_GUIDELINE = 1489
 
 CLOSE_NAMES = {"close", "review", "bookkeep", "sprint_close"}
 HOOKS_NAMES = {"hooks", "session_start", "stop_gate", "bash_status"}
 SPAWN_NAMES = {"spawn", "teammate_tee"}
 
-DENSITY_THRESHOLD = 0.20
+DENSITY_GUIDELINE = 0.20
 # Sized to what this walk consumes today (measured at story-033). Legal under
 # constraint 11 because it counts a structurally enumerated set, never a name.
 PLUGIN_FILE_FLOOR = 21
@@ -142,34 +136,22 @@ def measure(root):
 
 def report(root):
     totals, density, worst, file_findings = measure(root)
-    budgets = {"spawn": SPAWN, "close": CLOSE, "hooks": HOOKS, "misc": MISC}
-    lines = ["component   measured   cap"]
+    guidelines = {
+        "spawn": SPAWN_GUIDELINE,
+        "close": CLOSE_GUIDELINE,
+        "hooks": HOOKS_GUIDELINE,
+        "misc": MISC_GUIDELINE,
+    }
+    lines = ["component   measured   guideline"]
     violations = []
 
     for name in ("spawn", "close", "hooks", "misc"):
-        measured, cap = totals[name], budgets[name]
-        lines.append(f"{name:<10}  {measured:>6}   {cap}")
-        if measured > cap:
-            violations.append(
-                f"BUDGET EXCEEDED: {name} measured {measured}, cap {cap}, over by {measured - cap}"
-                "\n  fix by displacing equal weight in this component; or move budget"
-                " between components (here + DESIGN §9, zero-sum, the human's call);"
-                " or cut real surface, priced against what DESIGN §9 measures —"
-                " never a gate, never a test"
-            )
+        lines.append(f"{name:<10}  {totals[name]:>6}   {guidelines[name]}")
 
     worst_path = worst[1]
     lines.append(
-        f"density     {density:>6.2%}   {DENSITY_THRESHOLD:.2%}  (worst file: {worst_path.name})"
+        f"density     {density:>6.2%}   {DENSITY_GUIDELINE:.2%}  (worst file: {worst_path.name})"
     )
-    if density > DENSITY_THRESHOLD:
-        violations.append(
-            f"DENSITY EXCEEDED: comments+docstrings {density:.2%} of shipped Python, "
-            f"cap {DENSITY_THRESHOLD:.2%}, worst file {worst_path}"
-            "\n  before deleting words: a comment carrying a checkable claim becomes a"
-            " test (it leaves the ratio and rots loudly); one explaining WHAT becomes a"
-            " rename; one restating the code just goes. Keep the why (constraint 9)"
-        )
 
     for kind, rel, n, cap in file_findings:
         if kind == "over":
@@ -201,7 +183,7 @@ def main():
         directory, floor, measured = exc.args
         print(
             f"COVERAGE SHRANK under {directory}: a broken glob silently shrinks coverage"
-            " while every component still reports under cap"
+            " while every component still reports under guideline"
             f"\n  fix the glob; or, if files were deliberately deleted, lower {floor}"
             f" in tests/scripts/ratchet.py to the {measured} this walk consumed"
         )

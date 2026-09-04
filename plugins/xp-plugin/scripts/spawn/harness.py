@@ -85,8 +85,8 @@ def resolve_codex_sandbox(harness: str, configured: str) -> tuple[str, str]:
 def codex_argv(model: str, effort: str, sandbox: str) -> list[str]:
     """unified_exec stays ENABLED (reversed 2026-08-23, Paul; DESIGN §3): it is
     codex's persistent-session exec tool, and without it a teammate's shell call
-    cannot outlive codex's per-command bound — which made TEAMMATE.md's mandatory
-    plan review unrunnable on the harness that mechanism exists for. It was
+    cannot outlive codex's per-command bound, which breaks mandatory long-running
+    executor commands. It was
     disabled to protect `PreToolUse`; this plugin ships no PreToolUse hook.
     `-` reads the prompt from stdin, keeping ~2k tokens out of `ps`."""
     argv = ["codex", "exec", "--json"]

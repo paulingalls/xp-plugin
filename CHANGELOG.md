@@ -4,6 +4,29 @@ Release notes started at v0.6.0; earlier entries are summarized from their
 tag and merge messages. Full detail lives in the merge history and the
 per-sprint review reports.
 
+## v0.19.0 — the loop gets cheaper to run and recover
+
+Five changes remove recurring work without weakening the independent feedback
+that catches real defects.
+
+- **Component and density caps are guidance, not gates.** The ratchet still
+  reports every component, refuses empty measurements, and enforces the hard
+  500-line file cap. Shipped Python remains 88.0% smaller than the predecessor.
+- **Handoffs carry durable artifact references.** Successors receive paths and
+  record ids instead of inlined plans, reviews, and logs; state and rationale
+  remain in the prompt.
+- **Every story stage has its own transcript name.** Planner, execution-plan
+  reviewer, executor, and diff reviewer logs no longer overwrite one another.
+- **Salvage protects evidence before diagnosing repository dirt.** Story and
+  sprint recovery distinguish absent, unreadable, moved, and dirty states and
+  name role-specific repairs without destructive reset advice.
+- **Planner and executor receive separate briefs.** The planner gets a resolved
+  read-only charter; the executor gets a declarative root brief. The redundant
+  close prohibition and manual plan-review affordance are gone.
+
+At close, the falsifier batch caught and fixed one shipped numeric constraint
+citation that resolved to no rule in a freshly scaffolded consumer.
+
 ## v0.18.1 — the ceilings got a floor, and the prose got its second halves back
 
 A ten-way audit — five skills, five always-on injectibles, each auditor given the

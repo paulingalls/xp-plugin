@@ -95,8 +95,8 @@ def cap_display(items: list, path: Path) -> list:
 
 def _report_data(path: Path) -> tuple[dict, str]:
     if not path.exists():
-        message = f"the reviewer wrote no report at {path} — its findings are above"
-        return {}, f"{message} and are all that survives. {NO_ROUND}"
+        message = f"the reviewer wrote no report at {path} — nothing it found can be"
+        return {}, f"{message} recorded; only what it printed survives. {NO_ROUND}"
     try:
         data = json.loads(path.read_text())
     except OSError as e:
@@ -169,24 +169,24 @@ def write_round(marker: Path, state: dict, round_: dict, **coverage: str) -> Non
     marker.write_text(json.dumps(state))
 
 
-def abort_text(reviewed_head: str, why: str, recorded: str = NO_ROUND) -> str:
-    """EVERY abort in the review leg, not only the motion checks: a refused run can
-    still have left commits behind. The undo is offered only when something
-    actually moved — offered on an untouched tree, it teaches the lead to skip it
-    on the run where it is real. `recorded` is what became of the round, because a
-    leg that records one before refusing must not offer the undo under a sentence
-    saying it did not — and the reset may be what orphans the sha it names.
+def abort_text(reviewed_head: str, why: str, recorded: str = NO_ROUND, salvage=False) -> str:
+    """EVERY abort in the review leg, not only the motion checks: a refused run can still have
+    left commits behind. The undo is offered only when something actually MOVED: on an untouched
+    tree it teaches the lead to skip it on the run where it is real, and under `salvage` a merely
+    dirty tree may be the dead reviewer's uninspected work: the reset is dropped, or put behind it.
+    `recorded` is what became of the round: a leg that records one before refusing must not offer
+    the undo under a sentence saying it did not — and the reset may be what orphans the sha.
     """
     from close import git
 
     moved = git("rev-parse", "HEAD").stdout.strip() != reviewed_head
-    if not (moved or git("status", "--porcelain").stdout.strip()):
+    if not moved and (salvage or not git("status", "--porcelain").stdout.strip()):
         return f"refused: {why}" if recorded == NO_ROUND else f"refused: {why}\n\n{recorded}"
     stat = git("diff", "--stat", f"{reviewed_head}..HEAD").stdout
-    return (
-        f"refused: {why}\n\n{stat}\n{recorded} The reviewer's work is in your tree —"
-        f" yours to keep or undo: git reset --hard {reviewed_head[:8]}"
-    )
+    undo = f" yours to keep or undo: git reset --hard {reviewed_head[:8]}"
+    if salvage and git("status", "--porcelain").stdout.strip():
+        undo = f" but reset --hard {reviewed_head[:8]} only after reading the uncommitted lines"
+    return f"refused: {why}\n\n{stat}\n{recorded} The reviewer's work is in your tree —{undo}"
 
 
 def check_reviewer_motion(
@@ -196,6 +196,7 @@ def check_reviewer_motion(
     card: str = "",
     story_id: str = "",
     moved: str = "",
+    salvage=False,
 ) -> str:
     """The complete refusal text, or "" if the reviewer behaved.
 
@@ -205,11 +206,13 @@ def check_reviewer_motion(
     reviewer subprocess; salvage runs after unbounded lead time, so it passes
     its own text.
     """
-    from close import git
+    from close import git, salvage_dirty_refusal
 
     def refuse(why: str) -> str:
-        return abort_text(reviewed_head, why)
+        return abort_text(reviewed_head, why, salvage=salvage)
 
+    if salvage and (dirty := salvage_dirty_refusal()):
+        return refuse(dirty)
     dirty = git("status", "--porcelain").stdout.strip()
     if dirty:
         return refuse(
@@ -325,9 +328,9 @@ def apply_patch(report: Path, card: str) -> str:
         # ANSI frames and colour put the one line that matters screens deep inside
         # a box (field-reported, Legacy 0.7.4). Strip and tail to the cause.
         lines = (_plain(committed.stderr) or _plain(committed.stdout)).splitlines()
-        # abort_text appends `git reset --hard` right under this, which discards the
-        # staged patch this text just told the human to commit. Naming the patch file
-        # is what keeps the two from reading as opposite instructions.
+        # Under review abort_text appends `git reset --hard` right under this, which
+        # discards the staged patch this text just told the human to commit. Naming the
+        # patch file is what keeps the two from reading as opposite instructions.
         return (
             "the reviewer patch did not commit — the commit gate refused it. The"
             " fixer is gone, so this is yours: fix what the gate names, commit the"
@@ -361,7 +364,7 @@ def reviewer_range(start: str, end: str) -> str:
 def covered_ranges(state: dict, head: str) -> list[tuple[str, str]]:
     """One range PER ROUND, in round order: disclose numbers them by position and names
     each round's own diff. A round with no coverage holds its PLACE, and only a PRE-0.18
-    one may claim the top-level pair: a killed round reviewed nothing (constraint 15)."""
+    one may claim the top-level pair: a killed round reviewed nothing (distinct-state rule)."""
     rounds = state.get("rounds", [])
     ranges = [(r.get("reviewed_head", head), r.get("shown_sha", head)) for r in rounds]
     legacy = (state.get("reviewed_head", head), state.get("shown_sha", head))
@@ -453,10 +456,8 @@ def run(
         print("would launch: " + " ".join(argv))
         print(prompt)
         return "", ""
-    log_card = "" if stage else card
-    log_id = ((re.search(r"#### (story-\d+)", log_card) or [None, name])[1] + "-review").replace(
-        " ", "-"
-    )
+    story = re.search(r"#### (story-\d+)", card) if not stage else None
+    log_id = (f"{story[1]}-{role}" if story else f"{name}-review").replace(" ", "-")
     try:
         proc = run_agent(argv, cwd, prompt, "reviewer" if stage else role, harness, log_id)
     except OSError as e:  # claude absent from PATH

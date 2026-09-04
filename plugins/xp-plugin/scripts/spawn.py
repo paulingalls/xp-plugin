@@ -35,14 +35,6 @@ from work import (
 
 PLUGIN_ROOT = Path(__file__).parent.parent
 
-# Tokens (chars//4). The cap covers prose WE ship — VALUES, JUDGMENT, TEAMMATE.md, the
-# seed constraints file and always-on component metadata — because ownership is
-# about who authored the prose, not which directory it lands in after install.
-# Deliberately NOT a cap on the composed total: CLAUDE.md, the project's grown
-# constraints.md and its cards are the consuming project's, and a plugin gate
-# over prose we do not own certifies nothing (DESIGN §8 diff proposed at close).
-PLUGIN_SHIPPED_CAP = 1930
-COMPONENT_METADATA_CAP = 300  # so a new skill reds the component line, not TEAMMATE.md
 TOTAL_TARGET = 4500  # composed profile: reported, never enforced
 
 
@@ -61,7 +53,7 @@ def component_metadata_chars() -> int:
 
 
 def plugin_shipped_chars() -> int:
-    names = ("VALUES.md", "JUDGMENT.md", "TEAMMATE.md")
+    names = ("VALUES.md", "JUDGMENT.md", "EXECUTOR.md")
     shipped = [PLUGIN_ROOT / name for name in names]
     shipped.append(PLUGIN_ROOT / "templates" / "constraints.md")
     return sum(len(_read(p)) for p in shipped) + component_metadata_chars()
@@ -79,8 +71,7 @@ def profile_report(card: str, prompt: str, handoff: str) -> tuple[str, str]:
     total = (len(prompt) + project["CLAUDE.md"] + component_metadata_chars()) // 4
     shares = " · ".join(f"{k} {v // 4}" for k, v in project.items())
     line = (
-        f"profile: total {total} tokens · plugin-shipped"
-        f" {plugin_shipped_chars() // 4}/{PLUGIN_SHIPPED_CAP} · {shares}"
+        f"profile: total {total} tokens · plugin-shipped {plugin_shipped_chars() // 4} · {shares}"
     )
     if total <= TOTAL_TARGET:
         return line, ""
@@ -139,8 +130,9 @@ def build_prompt(sections: list[tuple[str, str]]) -> str:
 
 
 def teammate_sections(
-    card: str, story_id: str, handoff: str, plugin_root: Path
+    card: str, story_id: str, handoff: str, plugin_root: Path, brief: str | None = None
 ) -> list[tuple[str, str]]:
+    brief = _read_shipped(PLUGIN_ROOT / "EXECUTOR.md") if brief is None else brief
     sections = [
         ("VALUES", _read_shipped(PLUGIN_ROOT / "VALUES.md")),
         ("JUDGMENT", _read_shipped(PLUGIN_ROOT / "JUDGMENT.md")),
@@ -149,9 +141,9 @@ def teammate_sections(
         # arrive literal. A teammate hitting "command not found" guesses instead.
         (
             "How you work",
-            _read_shipped(PLUGIN_ROOT / "TEAMMATE.md")
-            .replace("{PLUGIN_ROOT}", str(plugin_root))
-            .replace("{PLAN_PATH}", str(draft_path(data_root(), story_id))),
+            brief.replace("{PLUGIN_ROOT}", str(plugin_root)).replace(
+                "{PLAN_PATH}", str(draft_path(data_root(), story_id))
+            ),
         ),
         ("Your story card", card),
         ("Constraints", _read(Path(".xp/constraints.md"))),

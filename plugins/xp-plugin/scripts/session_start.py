@@ -374,7 +374,7 @@ def teammate_marker() -> str:
     inlines teammate rules; repeating the lead profile spends DESIGN §8 budget."""
     return (
         f"xp-plugin {plugin_version(PLUGIN_ROOT)} · teammate session · your card, VALUES and "
-        "constraints are in your prompt · you never close, never merge"
+        "constraints are in your prompt"
     )
 
 

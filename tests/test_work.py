@@ -81,7 +81,7 @@ class TestNote:
         assert text in (tmp_path / "work.md").read_text()
 
     def test_the_shipped_escalation_command_preserves_backticks_through_a_shell(self, tmp_path):
-        teammate = (WORK.parent.parent / "TEAMMATE.md").read_text()
+        teammate = (WORK.parent.parent / "EXECUTOR.md").read_text()
         (line,) = [ln.strip() for ln in teammate.splitlines() if "scripts/work.py note" in ln]
         text = "the load-bearing `code quotation` stays"
         command = line.removeprefix("File it: `").removesuffix("`.")
@@ -189,6 +189,14 @@ class TestRecordIdentity:
         listed = run(["list"], tmp_path, check=True).stdout
         assert r.stdout.strip(), "append printed no id"
         assert r.stdout.strip().split()[-1] in listed
+
+    def test_show_recovers_the_whole_record_named_by_id(self, tmp_path):
+        body = "first sixty characters hide the load-bearing tail " + "x" * 80 + " FULL-TAIL"
+        record_id = run(["note", body], tmp_path, check=True).stdout.strip()
+        listed = run(["list"], tmp_path, check=True).stdout
+        shown = run(["show", record_id], tmp_path)
+        assert "FULL-TAIL" not in listed, listed
+        assert shown.returncode == 0 and body in shown.stdout, shown.stderr
 
 
 class TestResolution:

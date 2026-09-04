@@ -13,6 +13,7 @@ from close_helpers import PLUGIN, close, make_repo
 CREATE_SPRINT = PLUGIN / "skills" / "create-sprint" / "SKILL.md"
 SPRINT_CLOSE = PLUGIN / "skills" / "sprint-close" / "SKILL.md"
 PLAN_TEMPLATE = PLUGIN / "templates" / "plan.md"
+EXPECTED_SKILLS = {"create-sprint", "free-close", "sprint-close", "story-close", "xp-setup"}
 
 
 def _step_regions(process):
@@ -89,19 +90,15 @@ def _assert_template_owns_card_fields(skill, template):
     fields = ("# Roadmap", "Context:", "Files:", "AC:", "Verify:", "Close review:")
     missing = [field for field in fields if field not in template]
     assert not missing, f"plan template is missing: {', '.join(missing)}"
-    # `Verify:` exactly, not "at most one field": the budget is one because the skill
-    # teaches the grammar the template cannot carry, so a count alone lets a later edit
-    # spend it on a different field. A second field is the shape drifting into prose;
-    # none means the grammar no longer names the field it governs.
+    # `Verify:` exactly, not "at most one field": the skill teaches grammar the
+    # template cannot carry. Another field duplicates that grammar; none loses it.
     restated = [field for field in fields if field in skill]
     assert restated == ["Verify:"], f"create-sprint restates {restated}, not ['Verify:']"
 
 
 def _assert_authoring_content(skill, closing):
     """The skill's own list, pinned as vocabulary. No harness reaches the judgment
-    behind it, so the reachable failure is a later edit trimming an item to buy
-    words against the skill's word cap — which is silent and looks like tightening.
-    """
+    behind it, so a later trim must red on the missing behavior."""
     for token in ("`sprint_cap`", "`debt_budget`", "merge order", "collisions", "argv", "`cd`"):
         assert token in skill, f"create-sprint no longer names {token}"
     for token in ("slate_review.py", "close.py sprint <id> start", "`spawn.py ready"):
@@ -126,7 +123,10 @@ def _walk_skill_commands(skills_dir):
     mentions `.py` at all must yield a command, so the span regex silently matching
     nothing reds instead of walking an empty list.
     """
-    for skill in sorted(skills_dir.glob("*/SKILL.md")):
+    skills = sorted(skills_dir.glob("*/SKILL.md"))
+    shipped = {skill.parent.name for skill in skills}
+    assert shipped == EXPECTED_SKILLS, f"unexpected shipped skills: {shipped ^ EXPECTED_SKILLS}"
+    for skill in skills:
         text = skill.read_text()
         commands = dict.fromkeys(s for s in re.findall(r"`([^`]+)`", text) if _command_words(s))
         assert commands or ".py" not in text, f"{skill.parent.name} names no command to walk"

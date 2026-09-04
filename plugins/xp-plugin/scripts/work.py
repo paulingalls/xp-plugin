@@ -229,9 +229,7 @@ def _single_line(value: str, field: str) -> bool:
     return True
 
 
-def _kind_of(root: Path, ref: str) -> str | None:
-    """The referenced record's kind, or None having printed why not — None, so a
-    heading whose kind reads EMPTY still reaches the refusal below that names it."""
+def _record(root: Path, ref: str) -> str | None:
     matches = [text for eid, text in entries(root) if eid == ref]
     if len(matches) != 1:
         print(
@@ -240,7 +238,14 @@ def _kind_of(root: Path, ref: str) -> str | None:
             file=sys.stderr,
         )
         return None
-    return matches[0].split(" ", 2)[1]
+    return matches[0]
+
+
+def _kind_of(root: Path, ref: str) -> str | None:
+    """The referenced record's kind, or None having printed why not — None, so a
+    heading whose kind reads EMPTY still reaches the refusal below that names it."""
+    text = _record(root, ref)
+    return text.split(" ", 2)[1] if text is not None else None
 
 
 def _archived(root: Path, ref: str) -> bool:
@@ -329,6 +334,7 @@ def main() -> int:
         p.add_argument("--covered-by", metavar="TIER", help="a configured tier that runs it")
     sub.add_parser("note").add_argument("text")
     sub.add_parser("list")
+    sub.add_parser("show").add_argument("ref")
     sub.add_parser("compact")
     sub.add_parser("env", help="print the installed plugin root recorded in the data root")
     a = sub.add_parser("archive")
@@ -352,6 +358,11 @@ def main() -> int:
         for eid, text in entries(root):
             heading, body = record_summary(text)
             print(f"{eid} {heading[3:]} — {body[:60]}")
+        return 0
+    if args.kind == "show":
+        if (text := _record(root, args.ref)) is None:
+            return 2
+        print(text, end="" if text.endswith("\n") else "\n")
         return 0
     if args.kind == "archive":
         return archive(root, args)

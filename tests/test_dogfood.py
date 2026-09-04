@@ -258,6 +258,15 @@ class TestDogfoodMatchesTheScaffold:
         return base / (name + "d" * pad)
 
     def test_ascii_constraints_at_the_full_cap_fit_the_byte_profile(self, tmp_path):
+        """PROCESS.md and every other document in the lead injection are walled
+        HERE, which is why none of them carries a character cap of its own.
+
+        THE INSTALL NOTICE IS SILENT IN THIS PROFILE — no harness variable is set,
+        so install_status reports "ambiguous" and renders nothing — while a real
+        stale install renders AHEAD of the constraints. The true bound is
+        therefore LOWER than this one, so the margin this leaves is not room to
+        spend: re-measure against the case at hand, never cite this test's.
+        """
         from session_start import OUTPUT_CAP
 
         # NOT tmp_path: pytest's own is ~110 chars, over the data-root budget, so

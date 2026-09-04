@@ -7,7 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 xp-plugin: a lightweight XP process plugin for coding agents (Claude Code + Codex),
 the successor to ../xp-agents. We **dogfood the process while building it** — this
 repo runs under the same artifacts the plugin will ship. docs/AUDIT.md (evidence)
-and docs/DESIGN.md (architecture, decided, including the size budget in §9) are
+and docs/DESIGN.md (architecture and completed build record) are
 the authorities; don't re-litigate settled decisions, propose diffs to them
 instead.
 
@@ -49,13 +49,13 @@ call, set from the FIRST call, with no explicit timeout.
 
 ## Size discipline
 
-Budgets and rationale live in DESIGN.md §9; `tests/scripts/ratchet.py` measures the
-Python ones live at pre-push (the prose budgets are still read-and-judge) — run it
-and read the table, never a cached number. It measures the SHIPPED plugin, so it
-lives outside it: nothing under `plugins/xp-plugin/` may exist for our benefit
-rather than a consuming project's. Every added rule displaces one. When in doubt:
-VALUES.md, conflicts resolve Honesty > Courage > Simplicity > Feedback >
-Communication.
+At close, run `python3 tests/scripts/ratchet.py`, read its table, and give the
+measured component and density values to the reviewer as guidance. They report;
+they do not refuse growth. Constraint 8's 500-line hard cap remains structural,
+tests included. The report measures the SHIPPED plugin, so it lives outside it:
+nothing under `plugins/xp-plugin/` may exist for our benefit rather than a
+consuming project's. Every added rule displaces one. When in doubt: VALUES.md;
+conflicts resolve Honesty > Courage > Simplicity > Feedback > Communication.
 
 ## Authoring skills (ours, not a consuming project's)
 
@@ -65,18 +65,3 @@ describing either ships a second copy that only drifts. Negative space — what
 deliberately does not exist — is the one description that earns its words.
 This only works if the script speaks: every refusal names its next action, and
 every CLI answers `--help` without doing anything.
-
-## Mid-sprint cap moves (this repo's convention, learned at Sprint 4)
-
-A rebalance edit (ratchet.py + DESIGN §9) lands on trunk BEFORE any review
-round it must cover and AFTER any land in flight — the wall runs the tree's
-own ratchet, so an in-flight branch blocked by old caps applies the identical
-edit in its own tree (twin edits merge clean). Measured: notes 86575dfa,
-story-023's second round.
-Cap and budget moves are reserved to the lead; an executor stops and files a
-note rather than choosing a displacement.
-THE THIRD CASE HAS NO COMPLIANT ORDERING, so pay it rather than hunt for one:
-when the in-flight story is the one the rebalance UNBLOCKS, before-the-land
-invalidates its round and after-the-land cannot happen, because there is no
-land without the commit. Buy the second round. Measured at story-103, which
-could not commit at all until 4df7254 moved trunk (note 7c661f70).

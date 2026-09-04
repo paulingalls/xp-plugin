@@ -16,7 +16,7 @@ Greps of lefthook.yml would green the day the stanza is renamed.
 A NONZERO EXIT IS NOT THE WALL, and reading it as one is how this falsifier
 would certify its own subject's absence: `lefthook run pre-push` also exits
 nonzero when a stanza it needs is broken, when a tool it drives is missing from
-PATH, or when the ratchet stub stops parsing — every one of which would report
+PATH, or when a stub it needs stops parsing — every one of which would report
 "walled" over a wall that had been deleted. So the run is bracketed. The CONTROL
 proves pre-push is GREEN on the same tree before the violation exists, which is
 where an unrelated failure now surfaces; and the refusal must NAME the file the
@@ -45,11 +45,10 @@ def main(tmp: Path) -> int:
     run("git", "config", "user.name", "the lead")
     shutil.copy(REPO / "lefthook.yml", tmp / "lefthook.yml")
     (tmp / "pyproject.toml").write_text("[tool.ruff]\n")
-    # The OTHER pre-push gates must PASS, or this reds on a missing ratchet
+    # The OTHER pre-push gates must PASS, or this reds on a missing script
     # rather than on the bypass — measured: it did, and passed vacuously.
     stub = tmp / "tests" / "scripts"
     stub.mkdir(parents=True)
-    (stub / "ratchet.py").write_text("raise SystemExit(0)\n")
     (stub / "check_falsifier_node_ids.py").write_text("raise SystemExit(0)\n")
     lib = tmp / "plugins" / "xp-plugin" / "templates"
     lib.mkdir(parents=True)

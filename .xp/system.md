@@ -13,15 +13,15 @@ the plugin *scaffolds* equivalent hooks into consuming projects.
 - `plugins/xp-plugin/` — the shipped plugin: .claude-plugin/plugin.json, skills/, agents/, hooks/ (one file, both harnesses), scripts/; root .claude-plugin/marketplace.json makes the repo a git marketplace
 - `.xp/` — this repo's own instance of the state the plugin manages (we dogfood)
 - `docs/` — audit, design
-- shipped prose (VALUES.md, JUDGMENT.md, PROCESS.md, TEAMMATE.md) lives in plugins/xp-plugin/ and is injected from there; .claude/ symlinks the skills and agent charters for dogfooding
+- shipped prose (VALUES.md, JUDGMENT.md, PROCESS.md, EXECUTOR.md) lives in plugins/xp-plugin/ and is injected from there; agents/ holds directly invocable read-only role charters, while the root EXECUTOR.md is consumed by the isolated worktree spawn; .claude/ symlinks the skills and agent charters for dogfooding
 
 **Surfaces & acceptance**: CLI (the scripts). Acceptance harness = the pytest suites
 driving them as subprocesses (tests/test_*.py) — exit codes, stdout, filesystem effects.
 Story ACs must be executed by a test named in the story's Verify.
 
 **Conventions**:
-- Size budgets are acceptance criteria (DESIGN.md §9, rationale and numbers); run
-  `tests/scripts/ratchet.py` for the live table — pre-push runs it too.
+- Component and density totals are review guidance; structural file and
+  measurement guards still refuse.
 - **Worktree bootstrap**: none needed (stdlib only, no install step).
 - **Concurrency**: at most two review streams and one `pytest -n auto` gate. Reviews
   have no wall-clock limit; rejoin instead of relaunching.

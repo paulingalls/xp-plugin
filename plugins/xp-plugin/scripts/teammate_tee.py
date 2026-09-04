@@ -22,8 +22,8 @@ LogWrite = Callable[[str], None]
 OutWrite = Callable[[str], None]
 
 
-def spawn_header(story_id: str, iso_ts: str) -> str:
-    return f"===== spawn {story_id} {iso_ts} =====\n"
+def spawn_header(log_id: str, iso_ts: str) -> str:
+    return f"===== spawn {log_id} {iso_ts} =====\n"
 
 
 def log_path(data_root: Path, log_id: str) -> Path:
@@ -345,7 +345,7 @@ def run_teammate(
         argv,
         cwd,
         prompt,
-        story_id,
+        f"{story_id}-executor",
         data_root,
         harness,
         os.environ | {"XP_ROLE": "teammate", "XP_STORY_ID": story_id, "XP_HARNESS": harness},
