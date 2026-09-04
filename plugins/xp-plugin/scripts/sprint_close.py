@@ -175,7 +175,7 @@ def cmd_review(sprint_id: str, dry_run: bool) -> int:
         if dry_run:  # an EMPTY report, not a shapeless one: a preview walks
             empty = {k: [] for k in review.REPORT_KEYS}
             return empty, review.abort_text(head, err) if err else ""
-        report, report_err = review.read_report(path)
+        report, report_err = review.read_report(path, stage=stage)
         if not report_err:  # `ran` is what the round CONTAINS: a stage that wrote
             ran.append(key)  # nothing did not cover it, whatever it was launched for
             reports.append(report)
@@ -231,6 +231,8 @@ def cmd_review(sprint_id: str, dry_run: bool) -> int:
         return stop(review.abort_text(shown_sha, changed))
     round_ = {k: fixed[k] for k in review.REPORT_KEYS}
     round_["blocking"] += closing["blocking"]
+    if clearable := closing.get(review.CLEARABLE_BY_FULL):
+        round_[review.CLEARABLE_BY_FULL] = clearable
     fix_report = review.sprint_report_path(sprint_id, "fix", round_n)
     if err := review.write_reviewer_diff(fix_report, head, f"sprint {sprint_id}"):
         # A rolled-back fix must not remain in the recorded round.

@@ -83,3 +83,8 @@ Nothing else is this pass's business. No style, no praise, no finding you
 merely dislike, no re-derivation of what earlier stages already settled.
 Finding nothing is the expected result and a legitimate one: write
 `{"fixed": [], "blocking": [], "noted": []}` and stop.
+
+When a blocker's sole remaining remediation is the configured `tests.full`
+gate, you may also name that exact blocker in an optional `"clearable_by_full"`
+string list. It is symbolic: it carries no shell, argv, command, or alternate
+gate.

@@ -249,7 +249,7 @@ class TestKilledReviewRecovery:
             "prompt = sys.stdin.read()\n"
             "report = re.search(r'^REPORT_PATH: (.+)$', prompt, re.M).group(1).strip()\n"
             'pathlib.Path(report).write_text(json.dumps({"fixed": [], "blocking": [],'
-            ' "noted": ["survived host kill"]}))\n'
+            ' "noted": ["survived host kill"], "clearable_by_full": []}))\n'
             f"pathlib.Path({str(ready)!r}).write_text('ready')\n"
             "time.sleep(30)\n"
         )
@@ -279,6 +279,7 @@ class TestKilledReviewRecovery:
         assert rescued.returncode == 0, rescued.stderr
         state = json.loads(marker_path(tmp_path).read_text())
         assert state["rounds"][-1]["noted"] == ["survived host kill"]
+        assert "clearable_by_full" not in state["rounds"][-1]
         assert state["rounds"][-1]["incomplete"] and state["rounds"][-1]["stages"]
         land = sprint(repo, env, "land", "--dry-run")
         assert land.returncode == 2 and "incomplete" in land.stderr

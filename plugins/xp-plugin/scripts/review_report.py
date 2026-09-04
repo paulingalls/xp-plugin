@@ -2,6 +2,7 @@ import json
 from pathlib import Path
 
 REPORT_KEYS = ("fixed", "blocking", "noted")
+CLEARABLE_BY_FULL = "clearable_by_full"
 NO_ROUND = "No round was recorded."
 ITEM_CAP = 400
 LIST_CAP = 20
@@ -37,9 +38,31 @@ def _report_data(path: Path) -> tuple[dict, str]:
     return data, ""
 
 
-def read_report(path: Path) -> tuple[dict, str]:
+def validate_clearable(data: dict, stage: str = "") -> tuple[list[str], str]:
+    if not stage or CLEARABLE_BY_FULL not in data:
+        return [], ""
+    if stage != "closer":
+        return [], f"the {stage} report may not contain {CLEARABLE_BY_FULL}"
+    bound = data[CLEARABLE_BY_FULL]
+    if not isinstance(bound, list) or not all(isinstance(item, str) for item in bound):
+        return [], f"the closer report's {CLEARABLE_BY_FULL} must be a list of strings"
+    remaining = list(data["blocking"])
+    for item in bound:
+        if item not in remaining:
+            return [], f"the closer report's {CLEARABLE_BY_FULL} names no matching blocker: {item}"
+        remaining.remove(item)
+    return cap_items(bound), ""
+
+
+def read_report(path: Path, stage: str = "") -> tuple[dict, str]:
     """Parse and cap a report; a reviewer under bypass can still forge its path."""
     data, error = _report_data(path)
     if error:
         return {}, error
-    return {k: cap_items([str(i) for i in data[k]]) for k in REPORT_KEYS}, ""
+    clearable, error = validate_clearable(data, stage)
+    if error:
+        return {}, error
+    report = {k: cap_items([str(i) for i in data[k]]) for k in REPORT_KEYS}
+    if stage == "closer":
+        report[CLEARABLE_BY_FULL] = clearable
+    return report, ""
