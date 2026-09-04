@@ -65,7 +65,7 @@ def test_reviewer_stream_reassembles_result_and_writes_log(
     assert (data / "logs" / "story-042-review.log").exists()
 
 
-def test_stream_without_terminal_result_is_loud(tmp_path, monkeypatch):
+def test_stream_without_terminal_result_is_loud(tmp_path, monkeypatch, capsys):
     from spawn import run_agent
 
     monkeypatch.setenv("XP_DATA", str(tmp_path / "data"))
@@ -78,7 +78,12 @@ def test_stream_without_terminal_result_is_loud(tmp_path, monkeypatch):
         "story-042-review",
     )
     assert proc.returncode == 1
-    assert "log" in proc.stderr
+    emitted = capsys.readouterr().err.splitlines()
+    live = Path(next(line for line in emitted if line.startswith("live log: "))[10:].split(";")[0])
+    terminal = next(line for line in emitted if "terminal result; see " in line)
+    missing = Path(terminal.rsplit("; see ", 1)[1])
+    returned = Path(proc.stderr.removeprefix("see live log: "))
+    assert live == missing == returned and live.is_file()
 
 
 def test_reviewer_watchdog_kills_a_quiet_stream(tmp_path, monkeypatch):
@@ -129,6 +134,21 @@ def test_cardless_sprint_review_gets_scoped_log(tmp_path, monkeypatch):
     )
     assert result and not error
     assert (tmp_path / "data" / "logs" / "sprint-release-review.log").exists()
+
+
+def test_a_heading_free_card_still_names_the_stage(tmp_path, monkeypatch):
+    import review
+    from close_helpers import make_repo
+
+    repo, env, _g = make_repo(tmp_path)
+    for key, value in env.items():
+        monkeypatch.setenv(key, value)
+    monkeypatch.chdir(repo)
+    card = "Planner: claude/sonnet/medium\nno story heading"
+    prompt = f"REPORT_PATH: {tmp_path / 'report.json'}\nheading-free card"
+    result, error = review.run(prompt, repo, name="planner", card=card)
+    assert result and not error
+    assert (tmp_path / "data" / "logs" / "planner-review.log").exists()
 
 
 def log_lines(tmp_path, log_id="story-042-review"):

@@ -200,7 +200,7 @@ class TestLiveLogDuringARun:
             args=([sys.executable, str(script)], tmp_path, "", "story-live", tmp_path / "data"),
         )
         run.start()
-        log = log_path(tmp_path / "data", "story-live")
+        log = log_path(tmp_path / "data", "story-live-executor")
         mid = ""
         deadline = time.monotonic() + 2
         while time.monotonic() < deadline and '"subtype": "init"' not in mid:
@@ -255,7 +255,7 @@ class TestLiveLogDuringARun:
             [sys.executable, str(script)], tmp_path, "", "story-kill", tmp_path / "data"
         )
         assert rc != 0  # killed mid-stream: no terminal result object survived
-        log = log_path(tmp_path / "data", "story-kill").read_text()
+        log = log_path(tmp_path / "data", "story-kill-executor").read_text()
         assert '"subtype": "init"' in log  # what it emitted before dying is on disk
 
 
@@ -376,10 +376,10 @@ class TestClosingLineAndLog:
         repo, env, _g = make_repo(tmp_path)
         stub_claude(tmp_path)
         assert spawn(repo, env, "story-042").returncode == 0
-        log = tmp_path / "data" / "logs" / "story-042.log"
+        log = tmp_path / "data" / "logs" / "story-042-executor.log"
         assert log.exists()
         first = log.read_text()
-        assert "===== spawn story-042 " in first
+        assert "===== spawn story-042-executor " in first
 
         # a re-spawn after removing the first worktree appends, not truncates
         tree = tmp_path / "data" / "worktrees" / "story-042"
@@ -395,7 +395,7 @@ class TestClosingLineAndLog:
         assert spawn(repo, env, "story-042").returncode == 0
         second = log.read_text()
         assert second.startswith(first)
-        assert second.count("===== spawn story-042 ") == 2
+        assert second.count("===== spawn story-042-executor ") == 2
 
 
 class TestFirstSpawnInAScaffoldedRepo:
@@ -458,8 +458,8 @@ class TestCodexTee:
                 tmp_path / "data",
                 harness="codex",
             )
-        log = (tmp_path / "data" / "logs" / "story-042.log").read_text()
-        assert log.count("===== spawn story-042 ") == 2, log
+        log = (tmp_path / "data" / "logs" / "story-042-executor.log").read_text()
+        assert log.count("===== spawn story-042-executor ") == 2, log
         assert log.count("one-line") == 2, log
 
     def test_a_log_write_failure_still_drains_the_codex_stream(self):

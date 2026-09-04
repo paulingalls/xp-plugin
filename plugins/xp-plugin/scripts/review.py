@@ -453,10 +453,8 @@ def run(
         print("would launch: " + " ".join(argv))
         print(prompt)
         return "", ""
-    log_card = "" if stage else card
-    log_id = ((re.search(r"#### (story-\d+)", log_card) or [None, name])[1] + "-review").replace(
-        " ", "-"
-    )
+    story = re.search(r"#### (story-\d+)", card) if not stage else None
+    log_id = (f"{story[1]}-{role}" if story else f"{name}-review").replace(" ", "-")
     try:
         proc = run_agent(argv, cwd, prompt, "reviewer" if stage else role, harness, log_id)
     except OSError as e:  # claude absent from PATH
