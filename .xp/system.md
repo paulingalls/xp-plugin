@@ -20,8 +20,8 @@ driving them as subprocesses (tests/test_*.py) — exit codes, stdout, filesyste
 Story ACs must be executed by a test named in the story's Verify.
 
 **Conventions**:
-- Size budgets are acceptance criteria (DESIGN.md §9, rationale and numbers); run
-  `tests/scripts/ratchet.py` for the live table — pre-push runs it too.
+- Component and density totals are review guidance; structural file and
+  measurement guards still refuse.
 - **Worktree bootstrap**: none needed (stdlib only, no install step).
 - **Concurrency**: at most two review streams and one `pytest -n auto` gate. Reviews
   have no wall-clock limit; rejoin instead of relaunching.

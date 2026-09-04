@@ -180,16 +180,16 @@ and [gitleaks](https://github.com/gitleaks/gitleaks) for the enforcement wall
 Negative space is a feature. There is no event log, no status-message-market,
 no per-commit review cadence, no conflict-detection telemetry, no force-close
 matrix, and no hook empire — four CLI hook bindings, advisory by design. The
-shipped plugin itself lives under a test-enforced size budget (~5.5k lines of
-Python, prose caps included): every added rule displaces one, and the total has
-moved once in fifteen re-cuts — priced against measurement, never a reserve.
+shipped plugin's component and prose-density measurements are reported at close
+for reviewer judgment. Every added rule still displaces one, and the 500-line
+structural file cap still binds shipped code and tests.
 
 ## Layout
 
 | Path | What |
 |---|---|
 | `plugins/xp-plugin/` | The shipped plugin: manifest, VALUES/PROCESS, agents, skills, scripts, hooks |
-| `docs/DESIGN.md` | Architecture, the measured dual-harness table, size budgets |
+| `docs/DESIGN.md` | Architecture, the measured dual-harness table, completed build record |
 | `.xp/` | This repo's own instance of the state the plugin manages |
 | `tests/` | The suite — production code, same 500-line file cap as the plugin |
 
@@ -202,7 +202,7 @@ of prose enforcing XP, until the machinery outweighed the values it served.
 The [audit](docs/AUDIT.md) of what those mechanisms actually delivered picked
 the survivors — fresh-context review, red-first TDD, executable acceptance,
 fault injection — and this plugin rebuilds exactly those on a git-hook floor,
-under a size budget its own release gate enforces. Same spirit, ~90% less
+with its size visible to close review. Same spirit, ~90% less
 machinery, and this repo is built by the process it ships: every mechanism
 here reviewed its own pull request.
 

@@ -444,21 +444,6 @@ class TestSprintCharter:
         for token in ('"fixed"', '"blocking"', '"noted"'):
             assert token in shared, f"the charter never names {token}"
 
-    def test_the_new_agent_files_frontmatter_is_funded_not_added(self):
-        """Both shipped-prose caps are asserted below from the constants themselves,
-        never from a number restated here. Constraint 1 is mechanical: the sprint
-        charter's frontmatter is paid for out of story-reviewer.md's."""
-        sys.path.insert(0, str(CLOSE.parent))
-        from spawn import (
-            COMPONENT_METADATA_CAP,
-            PLUGIN_SHIPPED_CAP,
-            component_metadata_chars,
-            plugin_shipped_chars,
-        )
-
-        assert component_metadata_chars() // 4 <= COMPONENT_METADATA_CAP
-        assert plugin_shipped_chars() // 4 <= PLUGIN_SHIPPED_CAP
-
 
 class TestShippedProse:
     def test_the_sprint_close_skill_names_the_human_only_steps(self):

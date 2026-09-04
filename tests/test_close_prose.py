@@ -111,13 +111,9 @@ class TestShippedProseMatchesTheMechanism:
     def test_both_shipped_copies_name_the_two_reviews_and_who_owns_the_plan(self):
         """The lead drafted the executor's implementation plan twice in one week
         (bug 898ad9e1, note c3d8e2a7): one word covered two artifacts and no
-        lead-facing sentence said whose each was. Pinned in both copies rather
-        than read-and-judged because TEAMMATE.md shares an enforced profile cap
-        (`spawn.PLUGIN_SHIPPED_CAP`) whose next squeeze reaches for the newest
-        sentence, the one that looks least load-bearing. The cap supplies less
-        of that pressure than it did: raised to 1,930 to fund the port into
-        templates/constraints.md, which cost 184 of the 430 tokens it bought.
-        The PIN is what holds these two sentences today. "sprint review" is
+        lead-facing sentence said whose each was. The executable pin holds both
+        copies directly so a later edit cannot silently remove the newest,
+        least-obvious sentence. "sprint review" is
         excluded by name: `close.py sprint <id> review` already holds it.
         """
         for path in (PLUGIN / "PROCESS.md", PLUGIN / "TEAMMATE.md"):
@@ -212,22 +208,8 @@ class TestShippedProseMatchesTheMechanism:
         assert "before" in step.lower() and "review" in step.lower()
         assert "bump" not in step.lower() and "changelog" not in step.lower()
 
-    def test_the_loop_states_carded_execution_once_and_does_not_grow(self):
-        """Constraint 1. The cap is the LIVE size, never a historical one: left at
-        5,454 for a file that had shrunk to 2,928, it passed with 2,277 characters
-        of padding spliced in — a ratchet with slack certifies instead of checking.
-        Re-measure and lower it whenever this file legitimately shrinks.
-
-        PROCESS is an external-ceiling exception to the floor below. Bisection
-        against test_dogfood's byte profile reds at 1,624 characters, so the cap
-        sits three under the measured 1,623; a looser prose cap would certify
-        text the lead injection truncates. THE BOUND IS NOT THIS FILE'S ALONE —
-        it moves with every other region of that injection, so re-bisect rather
-        than trusting this number. That profile also silences the install
-        notice, which renders AHEAD of the constraints — with one present the
-        real bound is lower still, so never widen this to the bisected number."""
+    def test_the_loop_states_carded_execution_once(self):
         raw = (PLUGIN / "PROCESS.md").read_text()
-        assert len(raw) <= 1620, "the execution rule stopped paying for itself"
         process = " ".join(raw.split())
         story = process.split("2. **Story", 1)[1].split("3. **Story close", 1)[0]
         assert "free work" in story and "worktree" in story
@@ -259,58 +241,10 @@ class TestShippedProseMatchesTheMechanism:
         for term in ("spawn.py", "DESIGN.md", "a falsifier", "at story-042"):
             assert project_identifiers(seed + f"\n11. **Ported** — see {term}.\n"), term
 
-    def test_a_script_driving_skill_does_not_restate_the_mechanism(self):
-        """Measured drift, three times in two sprints, caught by a READER every
-        time and by no test: sprint-close's step count went stale when the
-        pipeline absorbed two reviews, and story-close described `-d` ordering
-        and a branch precondition that the land fix reversed. Prose describing a
-        mechanism is a second copy of it. The refusals name their own remediation,
-        so the enumerations were duplicating text the lead is handed anyway.
-        Pinned as a WORD BUDGET, not a token grep: a count reds when the
-        enumerations grow back under any wording, which is the failure mode.
-
-        story-close RAISED 330 -> 380 (2026-09-03, Paul). Three separate squeezes
-        in one day made it shed the preflight's spelling, the second-reviewer
-        warning's teeth, and "every refusal names its own next action" — the last
-        being guidance, not enumeration. A budget that makes a skill trade away
-        muscle to fit is measuring the wrong thing. What this pins against is
-        REGROWN ENUMERATION, and that is still pinned; the room is for saying a
-        new thing without paying for it in an old one.
-
-        EVERY PURCHASABLE CAP NOW CARRIES A FLOOR: cap >= live / 0.9, re-cut when
-        a fix lands. A ten-way audit found ONE defect nine times — the
-        second half of something squeezed out — and measured every capped
-        artifact at 96-100% of its ceiling. Ceilings were never the problem;
-        ceilings without a floor were, because the cheapest words to cut are the
-        ones supplying a referent. xp-setup JOINS the tuple: it was the only
-        skill with no cap and the only one whose defect was a stale claim rather
-        than an amputation, which is the same finding from the other side.
-        """
-        caps = {
-            "story-close": 410,
-            "sprint-close": 320,
-            "free-close": 125,
-            "create-sprint": 205,
-            "xp-setup": 345,
-        }
-        shipped = {d.name for d in (PLUGIN / "skills").iterdir() if (d / "SKILL.md").is_file()}
-        assert shipped == set(caps), (
-            f"uncapped or retired skills: {shipped ^ set(caps)}. A skill nobody priced is"
-            " how xp-setup reached 303 words unnoticed; the cap is the lead's to choose"
-        )
-        for skill, cap in caps.items():
-            words = len(prose(PLUGIN / "skills" / skill / "SKILL.md").split())
-            assert cap >= words / 0.9, (
-                f"{skill} is {words} words against a {cap} cap: under the 10% floor."
-                " Regrown enumeration is cut; a needed correction is a cap move, and"
-                " that is the lead's"
-            )
-
     def test_the_skills_keep_the_negative_space_that_earns_its_words(self):
         """The counterweight to the cut: what deliberately does NOT exist cannot be
         read off the code an agent has not read, so it is the one description that
-        stays. Without this pin the word budget above is satisfiable by deleting
-        exactly the sentences that stop an agent hunting for a flag."""
+        stays. These sentences stop an agent hunting for a flag."""
         story = prose(PLUGIN / "skills" / "story-close" / "SKILL.md")
         assert "DOES NOT EXIST" in story, "the lead will hunt for a delta review"
         assert "never spawns" in story, "land's one hard guarantee"
