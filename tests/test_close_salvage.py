@@ -196,12 +196,17 @@ class TestSalvage:
         """Salvage runs the same round recorder, so the card's first gate binds
         it. Asserted rather than assumed: a salvage leg with its own checks is
         exactly how the timeout door was open in the first place."""
-        repo, env, _ = make_repo(tmp_path, verify="false")
+        repo, env, g = make_repo(tmp_path, verify="false")
         dying_reviewer(tmp_path)
+        head = g("rev-parse", "HEAD").stdout.strip()
         assert close(repo, env | KILLED, "review").returncode == 2
         refused = salvage(repo, env)
         assert refused.returncode == 2 and "Verify red" in refused.stderr, refused.stderr
         assert not marker_file(tmp_path).exists()
+        # The patch is already COMMITTED when Verify reds, and no round survives to name
+        # it, so this refusal is the only disclosure the lead gets that HEAD moved.
+        assert g("rev-parse", "HEAD").stdout.strip() != head, "no reviewer commit to disclose"
+        assert head[:8] in refused.stderr and "reset --hard" in refused.stderr, refused.stderr
 
     def test_nothing_to_salvage_and_something_unreadable_are_different(self, tmp_path):
         """Constraint 15. One says run the review, the other says the file on

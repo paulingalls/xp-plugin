@@ -342,6 +342,9 @@ def cmd_salvage(story_id: str) -> int:
         " did since the kill — a reviewer runs with the git credentials stripped, so"
         " authorship says YOU either way. Reset to that sha, or review again"
     )
+    # at["card"] and never the fresh card _preflight returns: the marker's copy is what
+    # the reviewer was shown, and a card edited between the kill and the salvage would
+    # otherwise widen what a dead reviewer is recorded as having been allowed to touch.
     return _record_round(story_id, at["card"], path, marker, state, at, salvage=True)
 
 

@@ -73,7 +73,7 @@ class TestShippedProseMatchesTheMechanism:
             )
         )
         report = data / "reports" / "story-042.round-1.json"
-        report.parent.mkdir(parents=True)
+        report.parent.mkdir(parents=True, exist_ok=True)
         report.write_text(json.dumps({"fixed": [], "blocking": [], "noted": []}))
         dirt = repo / "uninspected.txt"
         dirt.write_text("dead reviewer work\n")

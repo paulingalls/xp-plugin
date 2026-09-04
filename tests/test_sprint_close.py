@@ -297,8 +297,8 @@ class TestKilledReviewRecovery:
 
         refused = sprint(repo, env, "salvage")
 
-        assert refused.returncode == 2 and "dead reviewer's uninspected work" in refused.stderr
-        assert "read it before committing or discarding it" in refused.stderr
+        assert refused.returncode == 2 and refused.stderr.startswith("refused: "), refused.stderr
+        assert "dead reviewer's uninspected work; read it before committing" in refused.stderr
         assert not marker_path(tmp_path).exists(), "dirty salvage recorded a sprint round"
         assert report.read_text() == body and dirt.read_text() == "dead reviewer work\n"
 

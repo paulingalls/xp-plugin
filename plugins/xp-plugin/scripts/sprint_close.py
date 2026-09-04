@@ -277,7 +277,7 @@ def cmd_salvage(sprint_id: str) -> int:
             f" {root / shown}. Run review"
         )
     if dirty := story_close.salvage_dirty_refusal():
-        return fail(dirty)
+        return fail(f"refused: {dirty}")
     seen = {
         key: dict.fromkeys(item for _stage, report in recovered for item in report[key])
         for key in review.REPORT_KEYS

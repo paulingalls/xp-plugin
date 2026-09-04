@@ -95,8 +95,8 @@ def cap_display(items: list, path: Path) -> list:
 
 def _report_data(path: Path) -> tuple[dict, str]:
     if not path.exists():
-        message = f"the reviewer wrote no report at {path} — its findings are above"
-        return {}, f"{message} and are all that survives. {NO_ROUND}"
+        message = f"the reviewer wrote no report at {path} — nothing it found can be"
+        return {}, f"{message} recorded; only what it printed survives. {NO_ROUND}"
     try:
         data = json.loads(path.read_text())
     except OSError as e:
@@ -170,17 +170,17 @@ def write_round(marker: Path, state: dict, round_: dict, **coverage: str) -> Non
 
 
 def abort_text(reviewed_head: str, why: str, recorded: str = NO_ROUND, salvage=False) -> str:
-    """EVERY abort in the review leg, not only the motion checks: a refused run can
-    still have left commits behind. The undo is offered only when something
-    actually moved — offered on an untouched tree, it teaches the lead to skip it
-    on the run where it is real. `recorded` is what became of the round, because a
-    leg that records one before refusing must not offer the undo under a sentence
-    saying it did not — and the reset may be what orphans the sha it names.
+    """EVERY abort in the review leg, not only the motion checks: a refused run can still have
+    left commits behind. The undo is offered only when something actually MOVED: on an untouched
+    tree it teaches the lead to skip it on the run where it is real, and under `salvage` a merely
+    dirty tree may be the dead reviewer's uninspected work, which the reset would discard.
+    `recorded` is what became of the round: a leg that records one before refusing must not offer
+    the undo under a sentence saying it did not — and the reset may be what orphans the sha.
     """
     from close import git
 
     moved = git("rev-parse", "HEAD").stdout.strip() != reviewed_head
-    if salvage or not (moved or git("status", "--porcelain").stdout.strip()):
+    if not moved and (salvage or not git("status", "--porcelain").stdout.strip()):
         return f"refused: {why}" if recorded == NO_ROUND else f"refused: {why}\n\n{recorded}"
     stat = git("diff", "--stat", f"{reviewed_head}..HEAD").stdout
     return (
