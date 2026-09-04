@@ -134,6 +134,16 @@ def test_cardless_sprint_review_gets_scoped_log(tmp_path, monkeypatch):
     )
     assert result and not error
     assert (tmp_path / "data" / "logs" / "sprint-release-review.log").exists()
+
+
+def test_a_heading_free_card_still_names_the_stage(tmp_path, monkeypatch):
+    import review
+    from close_helpers import make_repo
+
+    repo, env, _g = make_repo(tmp_path)
+    for key, value in env.items():
+        monkeypatch.setenv(key, value)
+    monkeypatch.chdir(repo)
     card = "Planner: claude/sonnet/medium\nno story heading"
     prompt = f"REPORT_PATH: {tmp_path / 'report.json'}\nheading-free card"
     result, error = review.run(prompt, repo, name="planner", card=card)

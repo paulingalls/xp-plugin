@@ -22,8 +22,8 @@ LogWrite = Callable[[str], None]
 OutWrite = Callable[[str], None]
 
 
-def spawn_header(story_id: str, iso_ts: str) -> str:
-    return f"===== spawn {story_id} {iso_ts} =====\n"
+def spawn_header(log_id: str, iso_ts: str) -> str:
+    return f"===== spawn {log_id} {iso_ts} =====\n"
 
 
 def log_path(data_root: Path, log_id: str) -> Path:
