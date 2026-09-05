@@ -277,12 +277,13 @@ def stub_card_refresher(
     launch = tmp_path / "refresh-launch.json"
     binary.write_text(
         "#!/usr/bin/env python3\n"
-        "import json, re, sys\n"
+        "import json, os, re, sys\n"
         "if sys.argv[1:] == ['plugin', 'list', '--json']:\n"
         ' print(\'[{"id":"xp-plugin@xp-plugin","version":"fixture",'
         '"scope":"user"}]\'); sys.exit()\n'
         "prompt = sys.stdin.read()\n"
-        f"json.dump({{'argv': sys.argv[1:], 'prompt': prompt}}, open({str(launch)!r}, 'w'))\n"
+        f"record = {{'argv': sys.argv[1:], 'env': dict(os.environ), 'prompt': prompt}}\n"
+        f"json.dump(record, open({str(launch)!r}, 'w'))\n"
         "plan = re.search(r'^PLAN_PATH: (.+)$', prompt, re.M).group(1)\n"
         "text = open(plan).read()\n"
         f"correction = {correction!r}\n"

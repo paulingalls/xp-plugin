@@ -426,8 +426,14 @@ def run(
         harness, model, effort = stage_role(stage, card)
     else:
         role = name if name in ("planner", "plan-reviewer") else "reviewer"
-        # Old configs lack planner; executor is its behavioral fallback.
-        harness, model, effort = stage_role(role, card, "executor" if role == "planner" else "")
+        seat, fallback = {
+            "planner": ("planner", "executor"),
+            "plan-reviewer": ("plan-reviewer", ""),
+            "slate-reviewer": ("slate-reviewer", "reviewer"),
+            "card-refresher": ("card-refresher", "reviewer"),
+        }.get(name, ("reviewer", ""))
+        seat_card = "" if name in ("slate-reviewer", "card-refresher") else card
+        harness, model, effort = stage_role(seat, seat_card, fallback)
     sandbox, problem = resolve_codex_sandbox(harness, config_flat("codex_sandbox"))
     if problem:
         return "", problem

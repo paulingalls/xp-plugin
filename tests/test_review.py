@@ -65,6 +65,37 @@ def test_bad_codex_sandbox_is_a_review_error_not_an_exception(tmp_path, monkeypa
     assert "workspace-write" in error and "danger-full-access" in error
 
 
+def test_runtime_names_use_only_their_owned_config_seats(tmp_path, monkeypatch, capsys):
+    import review
+
+    repo, env, _g = make_repo(
+        tmp_path,
+        config=(
+            "roles:\n"
+            "  reviewer: claude/reviewer-only\n"
+            "  finder: claude/finder-only\n"
+            "  slate-reviewer: claude/slate-only\n"
+            "  card-refresher: claude/card-only\n"
+        ),
+    )
+    monkeypatch.chdir(repo)
+    for key, value in env.items():
+        monkeypatch.setenv(key, value)
+
+    def selected(name, role="", card=""):
+        review.run("prompt", repo, dry_run=True, name=name, role=role, card=card, checked=True)
+        line = capsys.readouterr().out.splitlines()[0].split()
+        return line[line.index("--model") + 1]
+
+    assert [
+        selected("story-reviewer"),
+        selected("sprint fix"),
+        selected("sprint find", role="finder"),
+        selected("slate-reviewer", card="Slate-reviewer: claude/card-owned"),
+        selected("card-refresher", card="Card-refresher: claude/card-owned"),
+    ] == ["reviewer-only", "reviewer-only", "finder-only", "slate-only", "card-only"]
+
+
 class TestTheFindersAreBlind:
     """AC 1. Each finder reads ONLY its own angle, over the WHOLE diff. The
     failure this guards is silent by construction: a finder whose angle never

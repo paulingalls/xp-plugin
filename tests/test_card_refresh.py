@@ -79,6 +79,45 @@ def test_card_refresh_rewrites_the_card_and_ready_digests_the_rewrite(tmp_path):
     assert receipt["digest"] in minted.stdout, "ready digested text the refresh never saw"
 
 
+def test_card_refresh_uses_its_configured_model(tmp_path):
+    repo, env, _g, _plan = refresh_repo(tmp_path)
+    (repo / ".xp/config.yml").write_text(
+        "roles:\n  reviewer: claude/reviewer-only\n  card-refresher: claude/card-only\n"
+    )
+    launch = stub_card_refresher(tmp_path)
+    result = card_refresh(repo, env)
+    assert result.returncode == 0, result.stderr
+    recorded = json.loads(launch.read_text())
+    argv = recorded["argv"]
+    assert argv[argv.index("--model") + 1] == "card-only"
+    assert recorded["env"]["XP_ROLE"].endswith("reviewer")
+
+
+def test_a_legacy_config_without_card_refresher_uses_reviewer(tmp_path):
+    repo, env, _g, _plan = refresh_repo(tmp_path)
+    (repo / ".xp/config.yml").write_text(
+        "roles:\n  reviewer: claude/legacy-card-reviewer\ntests:\n  story: true\n"
+    )
+    launch = stub_card_refresher(tmp_path)
+    result = card_refresh(repo, env)
+    assert result.returncode == 0, result.stderr
+    argv = json.loads(launch.read_text())["argv"]
+    assert argv[argv.index("--model") + 1] == "legacy-card-reviewer"
+
+
+def test_a_malformed_card_refresher_refuses_before_agent_launch(tmp_path):
+    repo, env, _g, _plan = refresh_repo(tmp_path)
+    (repo / ".xp/config.yml").write_text(
+        "roles:\n  reviewer: claude/reviewer-only\n  card-refresher: claude\n"
+    )
+    launch = stub_card_refresher(tmp_path)
+    result = card_refresh(repo, env)
+    assert result.returncode == 2
+    assert "roles.card-refresher" in result.stderr
+    assert "card-refresher: claude/opus" in result.stderr
+    assert not launch.exists(), "the malformed seat fell through to reviewer"
+
+
 def test_a_refresh_that_finds_nothing_stale_still_records_that_it_ran(tmp_path):
     """AC5, constraint 15: "ran and found the card correct" and "never ran" are
     two states, and the lead reads them off ONE surface — stdout — because the
