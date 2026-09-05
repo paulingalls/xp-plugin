@@ -7,7 +7,9 @@ the cap requires retiring one. Reviewers enforce these — cite the item.
    defect is vacuous and worse than no check — it certifies.
 2. **Small files: target 300 lines, hard cap 500 — tests included, because
    tests ARE production code**: same review bar, never skipped for test-only
-   changes. Large files eat agent context; over-cap means extract, not scroll.
+   changes. At or before the cap, extraction needs no separate approval:
+   before/after collection counts match and every collected test passes. Large
+   files eat agent context; extract, do not squeeze or scroll.
 3. **Comments exist only for what neither a test nor a name can carry** — the
    why, an external constraint, a rejected design. Restates the code → delete.
    Narrates history → delete (git holds it). Checkable claim → make it a test.
