@@ -61,18 +61,6 @@ def write_hook_lib() -> None:
     shutil.copy(TEMPLATES / "hook-lib.sh", ".githooks/hook-lib.sh")
 
 
-def force_lefthook_pre_push() -> bool:
-    hooks = subprocess.run(
-        ["git", "rev-parse", "--git-path", "hooks"], capture_output=True, text=True
-    ).stdout.strip()
-    path = Path(hooks) / "pre-push"
-    invocation = 'call_lefthook run "pre-push" "$@"'
-    if not path.exists() or invocation not in (text := path.read_text()):
-        return False
-    path.write_text(text.replace(invocation, 'call_lefthook run "pre-push" --force "$@"'))
-    return True
-
-
 def scaffold_wall() -> tuple[str, bool]:
     """(summary, wrote_a_hook). The flag exists because the closing advice named a
     pre-commit hook unconditionally, including where we deliberately wrote none."""
@@ -89,13 +77,13 @@ def scaffold_wall() -> tuple[str, bool]:
         write_hook_lib()
         shutil.copy(TEMPLATES / "lefthook.yml", "lefthook.yml")
         installed = subprocess.run(["lefthook", "install"], check=False)
-        if installed.returncode != 0 or not force_lefthook_pre_push():
+        if installed.returncode != 0:
             print(
-                "wall: lefthook setup FAILED — hooks must be installed and pre-push"
-                " must invoke `lefthook run pre-push --force`",
+                "wall: lefthook.yml written but `lefthook install` FAILED — run it"
+                " yourself and read its error",
                 file=sys.stderr,
             )
-            return "wall: lefthook.yml written; setup FAILED (see stderr)", True
+            return "wall: lefthook.yml written; install FAILED (see stderr)", True
         return "wall: lefthook.yml written and installed", True
     write_hook_lib()
     for hook in ("pre-commit", "pre-merge-commit", "pre-push"):

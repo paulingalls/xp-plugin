@@ -50,8 +50,8 @@ def find_real_tools():
         name: subprocess.run([path, "version"], capture_output=True, text=True).stdout.strip()
         for name, path in found.items()
     }
-    assert "8.30.1" in versions["gitleaks"], versions["gitleaks"]
-    assert "2.1.10" in versions["lefthook"], versions["lefthook"]
+    assert versions["gitleaks"] == "8.30.1", versions["gitleaks"]
+    assert versions["lefthook"] == "2.1.10", versions["lefthook"]
     return found
 
 
@@ -65,6 +65,19 @@ def test_absent_acceptance_tools_fail_instead_of_skip(monkeypatch):
     with pytest.raises(BaseException) as refusal:
         find_real_tools()
     assert isinstance(refusal.value, pytest.fail.Exception)
+
+
+def test_gitleaks_version_pin_rejects_superstring(monkeypatch):
+    monkeypatch.setattr(shutil, "which", lambda name: name)
+    monkeypatch.setattr(
+        subprocess,
+        "run",
+        lambda args, **kwargs: subprocess.CompletedProcess(
+            args, 0, stdout={"gitleaks": "8.30.10\n", "lefthook": "2.1.10\n"}[args[0]]
+        ),
+    )
+    with pytest.raises(AssertionError):
+        find_real_tools()
 
 
 def test_push_scanner_keeps_ref_stream_from_child_process(tmp_path):
@@ -133,7 +146,7 @@ def scaffold(repo, env, variant):
         assert not hooks_path
         assert (repo / "lefthook.yml").exists()
         assert os.access(repo / hooks / "pre-merge-commit", os.X_OK)
-        assert 'run "pre-push" --force "$@"' in (repo / hooks / "pre-push").read_text()
+        assert 'run "pre-push" "$@"' in (repo / hooks / "pre-push").read_text()
 
 
 def wall_repo(tmp_path, real_tools, variant, install=True):
@@ -300,6 +313,30 @@ def test_every_pushed_ref_line_is_scanned(tmp_path, real_tools, variant):
     assert not remote_sha(repo, env, "refs/heads/two-leaking")
 
 
+def test_lefthook_names_post_sync_empty_diff_push_skip(tmp_path, real_tools):
+    repo, env = wall_repo(tmp_path, real_tools, "lefthook")
+    base = publish_base(repo, env, tmp_path)
+    commit(repo, env, "secret.txt", generated_secret(), "secret", bypass=True)
+    (repo / "secret.txt").unlink()
+    git(repo, "add", "-u", env=env)
+    git(repo, "-c", "core.hooksPath=/dev/null", "commit", "-q", "-m", "remove", env=env)
+    config = repo / "lefthook.yml"
+    config.write_text(
+        config.read_text().replace(
+            "  commands:\n    secrets:",
+            '  commands:\n    user-linter:\n      run: "true"\n    secrets:',
+            1,
+        )
+    )
+
+    pushed = git(repo, "push", "origin", "main", env=env)
+
+    output = (pushed.stdout + pushed.stderr).lower()
+    assert pushed.returncode == 0 and remote_sha(repo, env) != base
+    assert "sync hooks" in output
+    assert "secrets (skip)" in output and "no matching push files" in output
+
+
 def construct_operation(repo, env, operation):
     if operation == "revert":
         commit(repo, env, "secret.txt", generated_secret(), "secret", bypass=True)
@@ -370,9 +407,8 @@ def test_remote_secret_is_excluded_but_outgoing_copy_reds(tmp_path, real_tools, 
     assert red.returncode != 0 and remote_sha(repo, env) == before
 
 
-@pytest.mark.parametrize("variant", ["githooks", "lefthook"])
-def test_push_remediation_requires_history_rewrite(tmp_path, real_tools, variant):
-    repo, env = wall_repo(tmp_path, real_tools, variant)
+def test_push_remediation_requires_history_rewrite(tmp_path, real_tools):
+    repo, env = wall_repo(tmp_path, real_tools, "githooks")
     base = publish_base(repo, env, tmp_path)
     commit(repo, env, "secret.txt", generated_secret(), "secret", bypass=True)
     first = git(repo, "push", "origin", "main", env=env)
