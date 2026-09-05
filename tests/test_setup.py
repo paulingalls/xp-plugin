@@ -217,6 +217,8 @@ class TestHookWall:
         assert "constraints_chars_cap" in summary
         assert "constraints_size" in summary
         assert "add" in summary.lower() and "existing wall" in summary.lower()
+        # the named enforcer has no referent in THIS tree — the message must say so
+        assert "hook-lib.sh" in summary and not (repo / ".githooks" / "hook-lib.sh").exists()
 
     def test_preexisting_routing_left_untouched(self, tmp_path):
         repo, env = bare_repo(tmp_path)

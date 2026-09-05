@@ -43,12 +43,15 @@ pre-push:
   # own timing tests teaches the lead to re-run until green, which is how
   # --no-verify becomes tempting (debt 15aec3fc's risk, arriving sideways).
   piped: true
+  # secrets FIRST: lefthook orders UNPRIORITISED commands alphabetically, which
+  # measured this scan running last, 5m21s behind the tier it is meant to guard.
   commands:
-    lint:
-      run: ruff check .
     secrets:
+      priority: 1
       run: sh -c '. plugins/xp-plugin/templates/hook-lib.sh; secrets_scan_push'
       use_stdin: true
+    lint:
+      run: ruff check .
     constraints-size:
       run: sh -c '. plugins/xp-plugin/templates/hook-lib.sh; constraints_size'
     full-tests:

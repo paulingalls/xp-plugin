@@ -44,6 +44,9 @@ class TestDogfoodMatchesTheScaffold:
         for route in (push, ours_push):
             scanner = route.split("secrets_scan_push", 1)[1].split("\n", 2)[1]
             assert scanner == "      use_stdin: true"
+            # lefthook orders UNPRIORITISED commands alphabetically, so dropping this
+            # runs the scan behind the whole tier instead of ahead of it
+            assert route.split("    secrets:\n", 1)[1].startswith("      priority: 1\n")
 
     def keys(self, path):
         lines = path.read_text().splitlines()

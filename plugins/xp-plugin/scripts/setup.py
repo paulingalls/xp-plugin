@@ -69,8 +69,10 @@ def scaffold_wall() -> tuple[str, bool]:
             f"existing hook routing found ({routing}) — left untouched. Point"
             " .xp/config.yml's tiers at that wall's OWN commands, so the two cannot"
             ' drift into different definitions of "fast". constraints_chars_cap is'
-            " declared but no reachable constraints_size enforcer was installed; add"
-            " an equivalent constraints_size command to the existing wall",
+            " declared but no reachable constraints_size enforcer was installed, and"
+            " this path wrote no hook-lib.sh to copy one from: add to the existing"
+            " wall a command that refuses when .xp/constraints.md exceeds the cap"
+            " (the plugin's templates/hook-lib.sh constraints_size is one)",
             False,
         )
     if shutil.which("lefthook"):
