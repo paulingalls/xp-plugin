@@ -2,6 +2,7 @@
 
 import shlex
 import sys
+from pathlib import Path
 
 import work as work_module
 from sprint_helpers import make_repo, snapshot, sprint, work
@@ -220,3 +221,48 @@ def test_diagnostics_cannot_forge_work_records(tmp_path):
     assert result.returncode == 2 and len(records) == before + 1
     bug = records[-1][1]
     assert [line for line in bug.splitlines() if line.startswith("Files: ")] == ["Files: real.py"]
+
+
+def test_a_shared_red_command_names_every_source_record_once(tmp_path):
+    repo, env, _g = make_repo(tmp_path)
+    flag = tmp_path / "shared-flag"
+    flag.write_text("ok")
+    command = (
+        f"test -f {shlex.quote(str(flag))} || "
+        "{ printf SHARED_OUT; printf SHARED_ERR >&2; false; }"
+    )
+    refs = [
+        file_debt(repo, env, claim, command, files)
+        for claim, files in (("first", "one.py, both.py"), ("second", "both.py, two.py"))
+    ]
+    flag.unlink()
+    root = tmp_path / "data"
+    before = snapshot(root)
+    result = sprint(repo, env, "start")
+    after = snapshot(root)
+    bug = next(t for _eid, t in work_module.entries(root) if t.startswith("## bug "))
+    assert result.returncode == 2, result.stdout
+    for text in (result.stderr, bug):
+        assert text.count("command: ") == 1
+        assert [text.count(f"source {ref} (") for ref in refs] == [1, 1]
+        assert "stdout:\nSHARED_OUT" in text and "stderr:\nSHARED_ERR" in text
+    claims = [line for line in bug.splitlines() if line.startswith("Claim: ")]
+    assert len(claims) == 1 and all(ref in claims[0] for ref in refs)
+    assert "Files: one.py, both.py, two.py\n" in bug
+    assert after[Path("work.md")].startswith(before[Path("work.md")]), "work.md was rewritten"
+    assert {k: v for k, v in after.items() if k != Path("work.md")} == {
+        k: v for k, v in before.items() if k != Path("work.md")
+    }
+
+
+def test_a_files_declaration_of_unknown_is_not_a_declaration(tmp_path):
+    """`unknown` is what the batch itself used to write; reading one back as a
+    declaration would launder it into the next record it files."""
+    repo, env, _g = make_repo(tmp_path)
+    item = red_debt(repo, env, tmp_path, "legacy", "LEGACY_OUT", "LEGACY_ERR", "unknown")
+    item[2].unlink()
+    before = snapshot(tmp_path / "data")
+    result = sprint(repo, env, "start")
+    assert result.returncode == 2 and snapshot(tmp_path / "data") == before
+    assert f"{item[0]} has no usable Files" in result.stderr
+    assert_evidence(result.stderr, [(*item[:2], "LEGACY_OUT", "LEGACY_ERR")])

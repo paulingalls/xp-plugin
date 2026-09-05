@@ -12,8 +12,8 @@ sys.path.insert(0, str(Path(__file__).parents[2] / "plugins" / "xp-plugin" / "sc
 
 
 def red(why: str) -> int:
-    """A batch falsifier that reds in silence names no next action: sprint close
-    files the bug from the COMMAND, so the message here is all the fixer gets."""
+    """A batch falsifier that reds in silence names no next action: the refusal
+    and the bug it files carry this stderr, and nothing else explains the red."""
     print(why, file=sys.stderr)
     return 1
 
