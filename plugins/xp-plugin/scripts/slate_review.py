@@ -327,6 +327,12 @@ def _run_refresh(story_id: str, out: Path, dry_run: bool) -> int:
         )
     if error:
         return fail(error)
+    try:
+        findings = out.read_text().strip()
+    except OSError:
+        findings = ""
+    if not findings:
+        return fail(f"refused: the card refresher wrote no findings at {out.resolve()}")
     review_marker(story_id, "refresh").unlink(missing_ok=True)
     ready.write_refresh_receipt(story_id, new_card, new_card != card)
     return 0

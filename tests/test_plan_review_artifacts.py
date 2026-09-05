@@ -3,6 +3,7 @@
 import json
 from pathlib import Path
 
+import pytest
 from close_helpers import CLAUDE_SH
 from slate_review import review_findings_path
 from spawn_helpers import make_repo
@@ -68,6 +69,20 @@ class TestPlanReviewArtifacts:
         plans.mkdir(parents=True)
         (plans / "story-042.md").write_text("legacy round one")
         assert review_findings_path("story-042", "plan") == plans / "story-042.round-2.md"
+
+    @pytest.mark.parametrize(
+        ("identifier", "kind", "stem"),
+        [("7", "slate", "sprint-7"), ("story-042", "refresh", "story-042.refresh")],
+    )
+    def test_slate_and_refresh_allocate_a_new_numbered_artifact_each_round(
+        self, tmp_path, monkeypatch, identifier, kind, stem
+    ):
+        _repo, env, _draft = self.repo(tmp_path)
+        monkeypatch.setenv("XP_DATA", env["XP_DATA"])
+        parent = Path(env["XP_DATA"]) / ("plans" if kind == "refresh" else "slate-reviews")
+        parent.mkdir(parents=True, exist_ok=True)
+        (parent / f"{stem}.round-1.md").write_text("round one")
+        assert review_findings_path(identifier, kind) == parent / f"{stem}.round-2.md"
 
     def test_success_without_the_required_findings_file_refuses(self, tmp_path):
         repo, env, draft = self.repo(tmp_path)

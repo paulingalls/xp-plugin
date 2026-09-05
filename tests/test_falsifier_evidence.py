@@ -158,6 +158,25 @@ def test_combined_bug_stays_red_until_every_source_command_is_green(tmp_path):
     assert sprint(repo, env, "start").returncode == 0
 
 
+def test_combined_bug_stays_red_when_only_its_last_source_is_green(tmp_path):
+    repo, env, _g = make_repo(tmp_path)
+    items = [
+        red_debt(repo, env, tmp_path, name, f"{name}_OUT", f"{name}_ERR")
+        for name in ("first", "second")
+    ]
+    for item in items:
+        item[2].unlink()
+    assert sprint(repo, env, "start").returncode == 2
+
+    items[-1][2].write_text("ok")
+    still_red = sprint(repo, env, "start")
+    assert still_red.returncode == 2 and "already filed" in still_red.stderr
+    assert (tmp_path / "data/work.md").read_text().count("## bug ") == 1
+
+    items[0][2].write_text("ok")
+    assert sprint(repo, env, "start").returncode == 0
+
+
 def test_a_green_batch_keeps_command_streams_silent_and_writes_nothing(tmp_path):
     repo, env, _g = make_repo(tmp_path)
     counters = [tmp_path / "green-one", tmp_path / "green-two"]

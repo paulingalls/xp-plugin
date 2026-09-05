@@ -157,6 +157,87 @@ class TestClearanceBoundary:
         assert result.returncode == 2 and ".xp/system.md" in result.stderr
         assert not sentinel.exists()
 
+    def test_renaming_a_gate_file_out_of_the_gate_set_refuses_before_clearance(self, tmp_path):
+        sentinel = tmp_path / "tier"
+        repo, env, g = make_repo(tmp_path, config=config_for(f"touch {sentinel}"))
+        reviewed = head(repo, env)
+        g("mv", ".xp/system.md", ".xp/system-old.md")
+        commit_as_reviewer(g, "reviewer renamed gate")
+        record_round(
+            tmp_path,
+            repo,
+            env,
+            ["B"],
+            ["B"],
+            reviewed_head=reviewed,
+            shown_sha=head(repo, env),
+        )
+        result = sprint(repo, env, "land")
+        assert result.returncode == 2 and ".xp/system.md" in result.stderr
+        assert not sentinel.exists()
+
+    @pytest.mark.parametrize("motion", ["add", "delete"])
+    def test_adding_or_deleting_a_gate_file_refuses_before_clearance(self, tmp_path, motion):
+        sentinel = tmp_path / "tier"
+        repo, env, g = make_repo(tmp_path, config=config_for(f"touch {sentinel}"))
+        gate = repo / ".xp/system.md"
+        if motion == "add":
+            gate.unlink()
+            g("commit", "-qam", "lead removes gate before review")
+        reviewed = head(repo, env)
+        if motion == "add":
+            gate.write_text("# reviewer restored gate\n")
+            g("add", ".xp/system.md")
+        else:
+            g("rm", ".xp/system.md")
+        commit_as_reviewer(g, f"reviewer {motion}s gate")
+        record_round(
+            tmp_path,
+            repo,
+            env,
+            ["B"],
+            ["B"],
+            reviewed_head=reviewed,
+            shown_sha=head(repo, env),
+        )
+        result = sprint(repo, env, "land")
+        assert result.returncode == 2 and ".xp/system.md" in result.stderr
+        assert not sentinel.exists()
+
+    def test_gate_motion_in_an_earlier_round_refuses_before_clearance(self, tmp_path):
+        sentinel = tmp_path / "tier"
+        repo, env, g = make_repo(tmp_path, config=config_for(f"touch {sentinel}"))
+        first_start = head(repo, env)
+        (repo / ".xp/system.md").write_text("# first-round gate motion\n")
+        commit_as_reviewer(g, "first round changes gate")
+        first_end = head(repo, env)
+        (repo / "src.py").write_text("A = 2\n")
+        commit_as_reviewer(g, "second round changes code")
+        second_end = head(repo, env)
+        rounds = [
+            {
+                "fixed": [],
+                "blocking": [],
+                "noted": [],
+                "reviewed_head": first_start,
+                "shown_sha": first_end,
+            },
+            {
+                "fixed": [],
+                "blocking": ["B"],
+                "noted": [],
+                "clearable_by_full": ["B"],
+                "reviewed_head": first_end,
+                "shown_sha": second_end,
+            },
+        ]
+        path = marker_path(tmp_path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps({"rounds": rounds, "shown_sha": second_end}))
+        result = sprint(repo, env, "land")
+        assert result.returncode == 2 and ".xp/system.md" in result.stderr
+        assert not sentinel.exists()
+
     def test_non_reviewer_gate_motion_keeps_the_code_motion_refusal(self, tmp_path):
         sentinel = tmp_path / "tier"
         repo, env, g = make_repo(tmp_path, config=config_for(f"touch {sentinel}"))

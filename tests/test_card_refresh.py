@@ -143,6 +143,20 @@ def test_a_refresh_that_finds_nothing_stale_still_records_that_it_ran(tmp_path):
     assert never.returncode == 2 and "no card refresh has run" in never.stderr
 
 
+def test_a_refresher_that_writes_no_findings_cannot_mint_a_receipt(tmp_path):
+    repo, env, _g, plan = refresh_repo(tmp_path)
+    before = plan.read_text()
+    stub_card_refresher(tmp_path, findings="")
+    result = card_refresh(repo, env)
+    assert result.returncode == 2
+    assert "ended without a verdict" in result.stderr
+    assert plan.read_text() == before
+    assert not receipt_of(env).exists()
+    marker = Path(env["XP_DATA"]) / "markers/story-042.card-refresh-incomplete"
+    assert marker.exists()
+    assert spawn(repo, env, "ready", "story-042").returncode == 2
+
+
 def test_a_refresh_whose_receipt_never_landed_refuses_instead_of_claiming_success(tmp_path):
     """The one state the detached child can leave that LOOKS like success: the
     incomplete marker cleared and no receipt written. Without the refusal the

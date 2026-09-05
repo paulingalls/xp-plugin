@@ -34,12 +34,14 @@ def _clearance_notice(verb: str, bound: list[str]) -> str:
 def _covered_gate_files(state: dict, head: str) -> list[str]:
     """Gate files the REVIEWER moved inside a round's own range — what land runs,
     changed by the agent whose round says land may run it."""
-    return [
-        path
-        for start, end in covered_ranges(state, head)
-        for path in git("diff", "--name-only", f"{start}..{end}").stdout.splitlines()
-        if path in overlap.GATE_FILES
-    ]
+    hits = {}
+    for start, end in covered_ranges(state, head):
+        changed = git("diff", "--name-status", "--find-renames", f"{start}..{end}")
+        for line in changed.stdout.splitlines():
+            for path in line.split("\t")[1:]:
+                if path in overlap.GATE_FILES:
+                    hits[path] = None
+    return list(hits)
 
 
 def _coverage_refusal(sprint_id: str, head: str) -> str:
