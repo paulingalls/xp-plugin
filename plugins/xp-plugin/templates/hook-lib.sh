@@ -10,15 +10,38 @@ tier_cmd() {
     | sed "s/[[:space:]][[:space:]]*#.*$//" \
     | sed "s/^[[:space:]]*//;s/[[:space:]]*$//"
 }
-# Both legs below REFUSE rather than warn. A gate that reports green having run
+# The scanners below REFUSE rather than warn. A gate that reports green having run
 # nothing is worse than no gate: the commit it passes looks scanned and tested.
-secrets_scan() {
+secrets_require_gitleaks() {
   if ! command -v gitleaks >/dev/null 2>&1; then
-    echo "xp wall: gitleaks not installed — refusing to pass a commit nothing scanned." >&2
+    echo "xp wall: gitleaks not installed — refusing to pass a Git path nothing scanned." >&2
     echo "  Install it (brew install gitleaks, or github.com/gitleaks/gitleaks), then retry." >&2
-    exit 1
+    return 1
   fi
-  gitleaks protect --staged --no-banner --redact || exit 1
+}
+secrets_scan_index() {
+  secrets_require_gitleaks || return 1
+  if ! gitleaks protect --staged --no-banner --redact; then
+    echo "xp wall: remove the secret from staged content, re-stage, and retry." >&2
+    return 1
+  fi
+}
+secrets_scan_push() {
+  secrets_require_gitleaks || return 1
+  while read -r local_ref local_sha remote_ref remote_sha; do
+    case "$local_sha" in
+      ""|*[!0]*) ;;
+      *) echo "xp wall: ref deletion ($local_ref); no outgoing commits to scan." >&2; continue;;
+    esac
+    case "$remote_sha" in
+      ""|*[!0]*) scan_range="$remote_sha..$local_sha";;
+      *) scan_range="$local_sha --not --remotes";;
+    esac
+    if ! gitleaks git --log-opts="$scan_range" --no-banner --redact </dev/null; then
+      echo "xp wall: rewrite the outgoing history to remove the secret, then retry." >&2
+      return 1
+    fi
+  done
 }
 constraints_size() {
   cap="$(sed -n 's/^constraints_chars_cap:[[:space:]]*//p' .xp/config.yml | head -1 | sed 's/[[:space:]][[:space:]]*#.*$//')"

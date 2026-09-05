@@ -142,6 +142,8 @@ class TestHookWall:
         pre = repo / ".githooks" / "pre-commit"
         assert pre.exists() and pre.stat().st_mode & stat.S_IEXEC
         assert (repo / ".githooks" / "pre-push").exists()
+        merge = repo / ".githooks" / "pre-merge-commit"
+        assert merge.exists() and merge.stat().st_mode & stat.S_IEXEC
         hooks_path = subprocess.run(
             ["git", "config", "core.hooksPath"],
             cwd=repo,
@@ -201,6 +203,20 @@ class TestHookWall:
         assert "add your linter" not in r.stdout, r.stdout
         assert "tiers at that wall" in r.stdout, r.stdout  # names the real task instead
         assert ";." not in r.stdout, "the dropped step left a dangling separator"
+
+    def test_setup_reports_unenforced_cap_when_existing_routing_is_preserved(self, tmp_path):
+        repo, env = bare_repo(tmp_path)
+        routing = repo / "lefthook.toml"
+        routing.write_text("# theirs\n")
+        before = routing.read_bytes()
+        result = run_setup(repo, env)
+        assert result.returncode == 0, result.stderr
+        assert routing.read_bytes() == before
+        assert not (repo / ".githooks").exists() and not (repo / "lefthook.yml").exists()
+        summary = result.stdout
+        assert "constraints_chars_cap" in summary
+        assert "constraints_size" in summary
+        assert "add" in summary.lower() and "existing wall" in summary.lower()
 
     def test_preexisting_routing_left_untouched(self, tmp_path):
         repo, env = bare_repo(tmp_path)
@@ -325,6 +341,7 @@ class TestCloseReviewFindings:
     def test_story_hook_refuses_the_same_invalid_tiers_as_land(self, tmp_path, tier_line):
         repo, env = bare_repo(tmp_path)
         run_setup(repo, env)
+        plant(tmp_path, "gitleaks", "#!/bin/sh\nexit 0\n")
         config = repo / ".xp" / "config.yml"
         kept = [ln for ln in config.read_text().splitlines(True) if "story:" not in ln]
         # UNDER `tests:`, never appended: at EOF this constructs EDIT-ME only while

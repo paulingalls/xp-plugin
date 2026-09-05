@@ -5,11 +5,21 @@ pre-commit:
   commands:
     secrets:
       priority: 1
-      run: sh -c '. .githooks/hook-lib.sh; secrets_scan'
+      run: sh -c '. .githooks/hook-lib.sh; secrets_scan_index'
     fast-tier:
       priority: 2
       run: sh -c '. .githooks/hook-lib.sh; run_tier fast'
-pre-push:
+pre-merge-commit:
   commands:
+    secrets:
+      run: sh -c '. .githooks/hook-lib.sh; secrets_scan_index'
+pre-push:
+  piped: true
+  commands:
+    secrets:
+      priority: 1
+      run: sh -c '. .githooks/hook-lib.sh; secrets_scan_push'
+      use_stdin: true
     story-tier:
+      priority: 2
       run: sh -c '. .githooks/hook-lib.sh; run_tier story'

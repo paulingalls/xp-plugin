@@ -15,7 +15,7 @@ pre-commit:
       stage_fixed: true
     secrets:
       priority: 3
-      run: gitleaks protect --staged --no-banner --redact
+      run: sh -c '. plugins/xp-plugin/templates/hook-lib.sh; secrets_scan_index'
     constraints-size:
       priority: 4
       run: sh -c '. plugins/xp-plugin/templates/hook-lib.sh; constraints_size'
@@ -24,7 +24,12 @@ pre-commit:
       # exit 5 = no tests collected — legal while the suite is growing
       run: sh -c '. plugins/xp-plugin/templates/hook-lib.sh; run_tier fast; s=$?; [ $s -eq 5 ] && exit 0; exit $s'
 
-# pre-push RE-CHECKS what pre-commit checked, over the whole tree rather than
+pre-merge-commit:
+  commands:
+    secrets:
+      run: sh -c '. plugins/xp-plugin/templates/hook-lib.sh; secrets_scan_index'
+
+# pre-push RE-CHECKS what pre-commit checked, over outgoing commits rather than
 # staged files. A `--no-verify` or `core.hooksPath` bypass leaves no trace in the
 # commit, so the ACT is unverifiable after the fact — but every commit-stage gate
 # here is a pure function of the tree, so the OUTCOME still is (a8195145).
@@ -42,7 +47,8 @@ pre-push:
     lint:
       run: ruff check .
     secrets:
-      run: gitleaks git --no-banner --redact
+      run: sh -c '. plugins/xp-plugin/templates/hook-lib.sh; secrets_scan_push'
+      use_stdin: true
     constraints-size:
       run: sh -c '. plugins/xp-plugin/templates/hook-lib.sh; constraints_size'
     full-tests:
