@@ -69,7 +69,7 @@ return it too:
 `{"status":"blocked","question":"the decision reserved for the human"}`.
 **Write your findings to a file** — the ABSOLUTE FINDINGS_PATH your bundle names,
 which is `<data-root>/plans/<story-id>.round-N.md`; every new artifact starts at
-`.round-1.md`. The legacy logical round one spelling is
+`<story-id>.round-1.md`. The legacy logical round one spelling is
 `<data-root>/plans/<story-id>.md`; it is never allocated for a new review. Never
 a relative `plans/` under the repo, which it would dirty. That file is this
 disposition, not another negotiation. No praise.

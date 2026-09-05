@@ -109,7 +109,7 @@ def _findings(root: Path, story_id: str) -> list[tuple[int, Path, bool]]:
         if not (path.is_file() and name.startswith(prefix) and name.endswith(".md")):
             continue
         encoded = name[len(prefix) : -3]
-        if encoded.isdigit() and int(encoded) > 0 and encoded == str(int(encoded)):
+        if encoded.isdecimal() and int(encoded) > 0 and encoded == str(int(encoded)):
             rounds.append((int(encoded), path, False))
     legacy = plans / f"{story_id}.md"
     if legacy.is_file() and not any(round_n == 1 for round_n, _path, _legacy in rounds):

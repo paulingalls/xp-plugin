@@ -54,7 +54,8 @@ class TestPlanReviewArtifacts:
         plans.mkdir(parents=True)
         (plans / "story-042.md").write_text("legacy round one")
         (plans / "story-042.round-3.md").write_text("round three")
-        for name in ("story-042.round-0.md", "story-042.round-04.md", "story-042.round-x.md"):
+        junk = ("round-0", "round-04", "round-x", "round-²")  # ²: isdigit, but int() refuses it
+        for name in (f"story-042.{tail}.md" for tail in junk):
             (plans / name).write_text("not a canonical positive round")
         assert not (plans / "story-042.round-1.md").exists()
         assert not (plans / "story-042.round-2.md").exists()

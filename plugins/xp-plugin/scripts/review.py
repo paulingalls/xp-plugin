@@ -28,6 +28,10 @@ PLUGIN_ROOT = Path(__file__).parent.parent
 # Either key means the round accounts for its own range, so top-level coverage is not its.
 ACCOUNTED = {"reviewed_head", "incomplete"}
 
+# A marker naming no artifact leaves the verdict UNKNOWN, which is neither "signed off"
+# nor "nobody signed": the lead is owed the state and the check, never a guessed file.
+UNKNOWN = " — what that review produced is UNKNOWN; confirm the plan was reviewed before close"
+
 REVIEWER_NAME = "xp story-reviewer"
 REVIEWER_EMAIL = "story-reviewer@xp.local"
 
@@ -52,16 +56,16 @@ def plan_review_notice(story_id: str) -> str:
     try:
         detail = marker.read_text().strip()
     except OSError as exc:
-        return f"{story_id}'s plan-review marker is UNREADABLE at {marker} ({exc})"
+        return f"{story_id}'s plan-review marker is UNREADABLE at {marker} ({exc}){UNKNOWN}"
     try:
         state = json.loads(detail)
     except ValueError:
-        return f"{story_id}'s plan review marker is CORRUPT at {marker}"
+        return f"{story_id}'s plan review marker is CORRUPT at {marker}{UNKNOWN}"
     if not isinstance(state, dict):
-        return f"{story_id}'s plan review marker is CORRUPT at {marker}"
+        return f"{story_id}'s plan review marker is CORRUPT at {marker}{UNKNOWN}"
     binding = state.get("findings")
     if not isinstance(binding, str) or not binding.strip():
-        return f"{story_id}'s plan review marker has no findings binding at {marker}"
+        return f"{story_id}'s plan review marker has no findings binding at {marker}{UNKNOWN}"
     findings = Path(binding)
     try:
         written = findings.read_text().strip()

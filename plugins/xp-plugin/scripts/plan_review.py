@@ -26,7 +26,6 @@ PLUGIN_ROOT = Path(__file__).parent.parent
 
 
 def findings_path(story_id: str) -> Path:
-    """Hand the reviewer the unique absolute artifact path bound to this round."""
     return review_findings_path(story_id, "plan")
 
 

@@ -294,7 +294,9 @@ class TestPlanReviewFindingsInheritance:
         legacy.write_text("legacy")
         first.write_text("numbered one")
         third.write_text("numbered three")
-        malformed = [plans / f"story-042.round-{round_n}.md" for round_n in ("0", "04", "x")]
+        # "²" is isdigit() but not an int(): a filter that cannot skip it crashes here.
+        junk = ("0", "04", "x", "²")
+        malformed = [plans / f"story-042.round-{round_n}.md" for round_n in junk]
         for path in malformed:
             path.write_text("not a canonical positive round")
 

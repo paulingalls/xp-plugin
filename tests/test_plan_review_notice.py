@@ -93,19 +93,28 @@ def test_written_bound_findings_are_reported_as_completed_work(tmp_path, monkeyp
     assert "no reviewer signed off" not in notice
 
 
-def test_dead_round_two_never_reads_complete_round_one(tmp_path, monkeypatch):
-    marker, _legacy = artifacts(tmp_path, monkeypatch)
+@pytest.mark.parametrize("bound", [True, False])
+def test_dead_round_two_never_reads_complete_round_one(tmp_path, monkeypatch, bound):
+    """The unbound arm is the one that discriminates: a marker that still names
+    round two is served round two by any implementation, so binding it proves
+    nothing about guessing. Round two dying BEFORE it bound its artifact is the
+    state a fallback resolves to an earlier round's file."""
+    marker, legacy = artifacts(tmp_path, monkeypatch)
     first = tmp_path / "plans" / "story-042.round-1.md"
     second = tmp_path / "plans" / "story-042.round-2.md"
     first.write_text("complete round one")
-    bind(marker, second)
+    if bound:
+        bind(marker, second)
+    else:
+        marker.write_text(json.dumps({"pid": 1234}))
+    earlier = (first, legacy)
     read_text = Path.read_text
 
-    def refuse_round_one(path, *args, **kwargs):
-        assert path != first, "round two guessed round one's findings"
+    def refuse_earlier_rounds(path, *args, **kwargs):
+        assert path not in earlier, f"dead round two read {path} as its own result"
         return read_text(path, *args, **kwargs)
 
-    monkeypatch.setattr(Path, "read_text", refuse_round_one)
+    monkeypatch.setattr(Path, "read_text", refuse_earlier_rounds)
     notice = review.plan_review_notice("story-042")
-    assert str(second) in notice
-    assert str(first) not in notice
+    assert all(str(path) not in notice for path in earlier)
+    assert str(second) in notice if bound else "no findings binding" in notice

@@ -47,7 +47,7 @@ def review_findings_path(identifier: str, kind: str) -> Path:
             if not (name.startswith(prefix) and name.endswith(".md")):
                 continue
             encoded = name[len(prefix) : -3]
-            if encoded.isdigit() and int(encoded) > 0 and encoded == str(int(encoded)):
+            if encoded.isdecimal() and int(encoded) > 0 and encoded == str(int(encoded)):
                 rounds.append(int(encoded))
     return parent / f"{stem}.round-{max(rounds, default=0) + 1}.md"
 
