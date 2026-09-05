@@ -115,6 +115,20 @@ def test_a_malformed_slate_reviewer_refuses_before_agent_launch(tmp_path):
     assert not launch.exists(), "the malformed seat fell through to reviewer"
 
 
+def test_an_unknown_slate_reviewer_harness_names_the_owned_seat(tmp_path):
+    repo, env = slate_repo(tmp_path)
+    (repo / ".xp/config.yml").write_text(
+        "sprint_cap: 6\ndebt_budget: 0.2\nroles:\n"
+        "  reviewer: claude/reviewer-only\n  slate-reviewer: bogus/opus\n"
+    )
+    launch = stub_slate_reviewer(tmp_path)
+    result = slate_review(repo, env)
+    assert result.returncode == 2
+    assert "roles.slate-reviewer" in result.stderr
+    assert "slate-reviewer: claude/opus" in result.stderr
+    assert not launch.exists(), "the unknown harness launched an agent"
+
+
 def test_bundle_schema_refuses_an_unlabelled_author_conclusion(tmp_path, monkeypatch):
     import slate_review as runner
     import spawn
