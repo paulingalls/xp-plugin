@@ -1,26 +1,18 @@
-"""Sprint review contract tests extracted for file headroom."""
+"""What the sprint review leg may not do — move the tree, rewrite this sprint's
+cards, drop a resolution — and the charter and prose that state the same bound."""
 
 import json
 
 from close_helpers import launches
-from sprint_helpers import (  # noqa: F401
-    CLOSE,
-    CONFIG,
-    PLAN,
+from sprint_helpers import (
     PLUGIN,
-    SPRINT_ID,
-    WORK,
     WORK_SECTION,
     committing_stub,
     head,
     make_repo,
     marker_path,
-    record_reviews,
     section,
-    snapshot,
     sprint,
-    stage_key,
-    staged_stub,
     work,
 )
 

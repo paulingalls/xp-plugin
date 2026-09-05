@@ -1,27 +1,20 @@
-"""Close review execution tests extracted for file headroom."""
+"""The story review leg as it runs: who may launch it, which harness the card
+and config pick, and what a red Verify leaves for land to read."""
 
 import json
 from itertools import pairwise
 
 import pytest
-from close_helpers import (  # noqa: F401
+from close_helpers import (
     CARD,
     CLAUDE_SH,
     CLEAN,
-    CLOSE,
-    CONFIG,
-    LEAD_CREDS,
-    PLUGIN,
-    REVIEWER_NAME,
-    WORK,
     close,
-    close_bare,
     launches,
     make_repo,
     marker,
     marker_file,
     mint_ready,
-    prose,
     stub_reviewer,
 )
 from spawn_helpers import stub_codex

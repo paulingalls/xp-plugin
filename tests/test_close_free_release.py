@@ -1,4 +1,5 @@
-"""Close free release tests extracted for file headroom."""
+"""Free mode's patch-release leg: the land guards, the bump it reads, and the
+judgment its skill carries that no script can."""
 
 import json
 import subprocess

@@ -7,25 +7,17 @@ import sys
 
 from close_helpers import launches
 from spawn_helpers import stub_codex
-from sprint_helpers import (  # noqa: F401
+from sprint_helpers import (
     CLOSE,
     CONFIG,
     PLAN,
-    PLUGIN,
     SPRINT_ID,
-    WORK,
-    WORK_SECTION,
-    committing_stub,
     head,
     make_repo,
     marker_path,
-    record_reviews,
     section,
-    snapshot,
     sprint,
-    stage_key,
     staged_stub,
-    work,
 )
 
 CLEAN = {"fixed": [], "blocking": [], "noted": []}

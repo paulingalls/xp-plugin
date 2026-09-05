@@ -1,24 +1,10 @@
-"""Close prose inventory tests extracted for file headroom."""
+"""Shipped prose the tree ENUMERATES rather than hand-lists: the document set,
+the script set, the role charters, and the shared rule pointers."""
 
 import re
 from pathlib import Path
 
-from close_helpers import (  # noqa: F401
-    CARD,
-    CLOSE,
-    CONFIG,
-    PLUGIN,
-    REVIEWER_NAME,
-    WORK,
-    close,
-    close_bare,
-    launches,
-    make_repo,
-    marker,
-    marker_file,
-    prose,
-    stub_reviewer,
-)
+from close_helpers import PLUGIN, prose
 
 
 def project_identifiers(text):

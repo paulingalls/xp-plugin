@@ -1,4 +1,5 @@
-"""Spawn ready refresh tests extracted for file headroom."""
+"""The card refresh gate the mint reads: what stales a receipt, what does not,
+and how a receipt that is not one refuses."""
 
 import json
 import subprocess

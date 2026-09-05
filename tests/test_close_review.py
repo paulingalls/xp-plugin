@@ -1,27 +1,17 @@
-"""The review leg against sprint integration, trunk motion and self-close.
+"""The review leg against sprint integration and trunk motion.
 Split from test_close.py at sprint-004 open."""
 
 import subprocess
 import sys
 
-from close_helpers import (  # noqa: F401
-    CARD,
-    CLAUDE_SH,
+from close_helpers import (
     CLEAN,
     CLOSE,
     CONFIG,
-    LEAD_CREDS,
-    PLUGIN,
-    REVIEWER_NAME,
-    WORK,
     close,
     close_bare,
     launches,
     make_repo,
-    marker,
-    marker_file,
-    mint_ready,
-    prose,
     stub_reviewer,
 )
 
