@@ -1,7 +1,7 @@
 import re
 from pathlib import Path
 
-from close import _read, git
+from close import git, review_authority_sections
 from work import data_root, entries, work_entries_since
 
 FALSIFIER = re.compile(r"^Falsifier: `(.+)`$", re.M)
@@ -9,7 +9,6 @@ COVERED_BY = re.compile(r"^Covered by: (.+)$", re.M)
 RESOLVES = re.compile(r"^Resolves: (\w+)$", re.M)
 ARCHIVES = re.compile(r"^Archives: (\w+)$", re.M)
 FILES = re.compile(r"^Files: (.*)$", re.M)
-PLUGIN_ROOT = Path(__file__).parent.parent.parent
 
 
 def _declared_files(text: str) -> list[str]:
@@ -77,9 +76,6 @@ def build(sprint_id, cards, base, report, charter, extra, diff_base="") -> str:
         (title, git("diff", f"{diff_base or base}..HEAD").stdout),
         ("Resolutions filed during the sprint", resolutions),
         ("work.md entries filed during the sprint", work_md),
-        ("JUDGMENT", _read(str(PLUGIN_ROOT / "JUDGMENT.md"))),
-        ("VALUES", _read(str(PLUGIN_ROOT / "VALUES.md"))),
-        ("Constraints", _read(".xp/constraints.md")),
-        ("System context", _read(".xp/system.md")),
+        *review_authority_sections(),
     ]
     return "".join(f"## {title}\n\n{body}\n\n" for title, body in sections)

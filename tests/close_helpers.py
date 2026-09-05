@@ -276,9 +276,9 @@ def close_bare(repo, env, *args):
     )
 
 
-def close(repo, env, *args):
+def close(repo, env, *args, close=CLOSE):
     return subprocess.run(
-        [sys.executable, str(CLOSE), "story", "story-042", *args, "--merge-mode", "local"],
+        [sys.executable, str(close), "story", "story-042", *args, "--merge-mode", "local"],
         cwd=repo,
         env=env,
         capture_output=True,
