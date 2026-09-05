@@ -58,6 +58,8 @@ def compact(root: Path, entry_id, record_summary) -> int:
                 lines.append(falsifier.group(0))
             if covered := re.search(r"^Covered by: .+$", source, re.M):
                 lines.append(covered.group(0))
+            if files := re.search(r"^Files: .*$", block, re.M):
+                lines.append(files.group(0))
             kept.append("\n".join(lines) + "\n\n")
             prose = [] if re.search(r"^Id: ", block, re.M) else [f"# Record {eid}\n\n{block}"]
             sections.append((eid, prose + [d[1] for d in decisions]))

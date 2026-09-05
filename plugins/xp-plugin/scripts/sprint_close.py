@@ -4,6 +4,7 @@
 import glob
 import json
 import re
+import shlex
 import subprocess
 import sys
 from pathlib import Path
@@ -17,14 +18,15 @@ import overlap
 import stages
 from close import config_flat, default_branch, fail, git, sprint_unrecorded_notice, story_card
 from env import record_sprint_branch, refuse_direct_invocation, sprint_branch
-from sprint_bundle import ARCHIVES, COVERED_BY, FALSIFIER, RESOLVES, build
+from sprint_bundle import ARCHIVES, COVERED_BY, FALSIFIER, RESOLVES, build, source_files
 from work import (
     append,
     config_block_value,
     data_root,
     entries,
-    falsifier_is_green,
+    falsifier_result,
     missing_plan_refusal,
+    neutralize,
     plan_path,
     record_summary,
     stamp,
@@ -64,23 +66,54 @@ def corpus(root: Path) -> list[tuple[str, str, str, str]]:
 
 
 def batch_refusal(root: Path, grouped: dict[str, list[tuple[str, str, str]]]) -> str:
+    red = []
     for falsifier, records in grouped.items():
-        if falsifier_is_green(falsifier):
-            continue
-        citations = "; ".join(f"{eid} ({head})" for eid, head, _covered in records)
-        known = any(head.startswith("bug ") for _eid, head, _covered in records)
-        if not known:
+        result = falsifier_result(falsifier)
+        if result.returncode:
+            red.append((falsifier, records, result))
+    if not red:
+        return ""
+    lines = ["batch falsifier RED:"]
+    refs = []
+    for falsifier, records, result in red:
+        lines.append(f"command: {falsifier}")
+        for eid, head, _covered in records:
+            refs.append(eid)
+            lines.append(f"source {eid} ({head})")
+        lines.extend(
+            (f"stdout:\n{result.stdout or '(empty)'}", f"stderr:\n{result.stderr or '(empty)'}")
+        )
+    evidence = "\n".join(lines)
+    known = any(head.startswith("bug ") for _f, records, _r in red for _e, head, _c in records)
+    if known:
+        decision = "No bug filed because an open source bug already filed this batch."
+    else:
+        files, missing, archive_error = source_files(root, refs)
+        if archive_error:
+            decision = f"No bug filed because {archive_error}."
+        elif missing:
+            malformed = "; ".join(f"{ref} has no usable Files declaration" for ref in missing)
+            decision = f"No bug filed because {malformed}."
+        else:
+            commands = [falsifier for falsifier, _records, _result in red]
+            combined = (
+                commands[0]
+                if len(commands) == 1
+                else "status=0; "
+                + "; ".join(
+                    f"/bin/sh -c {shlex.quote(command)} || status=1" for command in commands
+                )
+                + '; exit "$status"'
+            )
             append(
                 root,
-                f"## bug {stamp()}\nClaim: batch falsifier RED for records {citations};"
-                " debt/archive red means the latent problem materialised.\n"
-                f"Falsifier: `{falsifier}`\nFiles: unknown\n\n",
+                f"## bug {stamp()}\nClaim: batch falsifier RED for source records "
+                f"{', '.join(refs)}; debt/archive red means the latent problem materialised.\n"
+                f"{neutralize(evidence)}\nFalsifier: `{combined}`\n"
+                f"Files: {', '.join(files)}\n\n",
             )
-        return (
-            f"refused: batch falsifier RED for records {citations}:\n  {falsifier}\n"
-            f"{'already filed' if known else 'Re-filed'} as a bug. Fix it, then run start again"
-        )
-    return ""
+            decision = "Filed as one bug."
+    return f"refused: {evidence}\n{decision} Fix it, then run start again"
 
 
 def sprint_cards(plan: str, sprint_id: str) -> str:
