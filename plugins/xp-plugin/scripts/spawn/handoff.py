@@ -100,14 +100,21 @@ def mark_stage(root: Path, story_id: str, stage: str, result: str) -> None:
     _write(root, story_id, state)
 
 
-def _findings(root: Path, story_id: str) -> list[Path]:
+def _findings(root: Path, story_id: str) -> list[tuple[int, Path, bool]]:
     plans = root / "plans"
-    first = plans / f"{story_id}.md"
-    rounds = sorted(
-        plans.glob(f"{story_id}.round-*.md"),
-        key=lambda path: int(path.stem.rsplit("-", 1)[1]),
-    )
-    return ([first] if first.is_file() else []) + rounds
+    prefix = f"{story_id}.round-"
+    rounds = []
+    for path in plans.iterdir():
+        name = path.name
+        if not (path.is_file() and name.startswith(prefix) and name.endswith(".md")):
+            continue
+        encoded = name[len(prefix) : -3]
+        if encoded.isdecimal() and int(encoded) > 0 and encoded == str(int(encoded)):
+            rounds.append((int(encoded), path, False))
+    legacy = plans / f"{story_id}.md"
+    if legacy.is_file() and not any(round_n == 1 for round_n, _path, _legacy in rounds):
+        rounds.append((1, legacy, True))
+    return sorted(rounds)
 
 
 def inheritance(root: Path, story_id: str) -> str:
@@ -130,8 +137,9 @@ def inheritance(root: Path, story_id: str) -> str:
     draft = draft_path(root, story_id)
     absent = "The plan draft is missing: nothing was at PLAN_PATH when this handoff was composed."
     parts.append(("Predecessor plan draft", str(draft.resolve()) if draft.is_file() else absent))
-    for round_number, path in enumerate(_findings(root, story_id), 1):
-        parts.append((f"Plan-review findings round {round_number}", f"Read {path.resolve()}"))
+    for round_number, path, legacy in _findings(root, story_id):
+        label = f"Plan-review findings round {round_number}{' (legacy)' if legacy else ''}"
+        parts.append((label, f"Read {path.resolve()}"))
     records = state.get("records", [])
     if records:
         parts.append(("Predecessor escalation records", f"{', '.join(records)}.{READ_THEM}"))

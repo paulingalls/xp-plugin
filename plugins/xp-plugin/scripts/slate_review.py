@@ -38,11 +38,18 @@ def review_findings_path(identifier: str, kind: str) -> Path:
         stem = f"{identifier}.refresh"
     else:
         stem = f"sprint-{identifier}"
-    path, round_n = parent / f"{stem}.md", 1
-    while path.exists():
-        round_n += 1
-        path = parent / f"{stem}.round-{round_n}.md"
-    return path
+    legacy = parent / f"{stem}.md"
+    rounds = [1] if legacy.exists() else []
+    prefix = f"{stem}.round-"
+    if parent.is_dir():
+        for path in parent.iterdir():
+            name = path.name
+            if not (name.startswith(prefix) and name.endswith(".md")):
+                continue
+            encoded = name[len(prefix) : -3]
+            if encoded.isdecimal() and int(encoded) > 0 and encoded == str(int(encoded)):
+                rounds.append(int(encoded))
+    return parent / f"{stem}.round-{max(rounds, default=0) + 1}.md"
 
 
 def review_marker(identifier: str, kind: str) -> Path:

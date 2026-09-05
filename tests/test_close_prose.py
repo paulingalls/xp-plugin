@@ -422,6 +422,12 @@ class TestShippedProseMatchesTheMechanism:
         rounds = "<story-id>.round-N.md"
         assert rounds in charter, "the charter lost the round rule"
         assert rounds in design, "DESIGN.md lost the round rule"
+        # WHICH file is logical round one is pinned separately: story-114 moved round
+        # one to its own number, and `location` survived that move as the legacy name,
+        # so the two literals above green while the copies disagree about today.
+        numbered = "<story-id>.round-1.md"
+        assert numbered in charter, "the charter stopped naming round one's own artifact"
+        assert numbered in design, "DESIGN.md stopped naming round one's own artifact"
 
 
 class TestCharterBar:
