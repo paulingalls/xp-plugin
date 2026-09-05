@@ -1,5 +1,8 @@
-"""Shipped prose the tree ENUMERATES rather than hand-lists: the document set,
-the script set, the role charters, and the shared rule pointers."""
+"""Shipped prose held against the tree it describes: the sprint-close skill, the
+document/script/charter sets the tree can enumerate for itself, the constraints
+seed's hand-list, and the rule pointers every role shares. Split out of
+test_close_prose.py at story-120, which kept the story-close and walk-fixture
+prose."""
 
 import re
 from pathlib import Path

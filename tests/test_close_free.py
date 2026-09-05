@@ -1,4 +1,5 @@
-"""Free mode: the shared card lifecycle and distinct patch-release leg.
+"""Free mode: start, the shared card lifecycle, and the land guards it shares
+with the story leg. The patch-release leg is test_close_free_release.py.
 
 Every land test here has a twin on the story leg, because free mode's whole
 risk is a guard the story leg has and this one lacks (story-011's close note).

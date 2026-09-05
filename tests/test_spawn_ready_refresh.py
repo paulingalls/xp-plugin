@@ -1,5 +1,8 @@
 """The card refresh gate the mint reads: what stales a receipt, what does not,
-and how a receipt that is not one refuses."""
+and how a receipt that is not one refuses. The lone TestReadyCredential method
+below walks no gate this module owns: it rode along uncited to hold
+test_spawn_ready.py's 350-line ceiling (story-120), which is why that class name
+exists in both files."""
 
 import json
 import subprocess
