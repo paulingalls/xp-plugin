@@ -128,6 +128,7 @@ def sprint_marker(sprint_id: str) -> Path:
 
 def cmd_review(sprint_id: str, dry_run: bool) -> int:
     import review
+    import sprint_review_resume
     from bookkeep import render_sprint_prior
 
     if git("status", "--porcelain").stdout.strip():
@@ -146,13 +147,20 @@ def cmd_review(sprint_id: str, dry_run: bool) -> int:
     marker = sprint_marker(sprint_id)
     state = json.loads(marker.read_text()) if marker.exists() else {}
     rounds = state.get("rounds", [])
-    round_n = len(rounds) + 1
+    resume_round = sprint_review_resume.closer_round(rounds)
+    resume = resume_round is not None
+    round_n = len(rounds) if resume else len(rounds) + 1
     complete_n = max((n for n, r in enumerate(rounds, 1) if not r.get("incomplete")), default=0)
     found, cap, charters, altitude = [], 0, {}, ""
     if complete_n:
         altitude, err = stages.altitude()
         if err:
             return fail(err)
+    elif resume:
+        charters, err = stages.charters()
+        if err:
+            return fail(err)
+        stages.check_roles(cards)
     else:
         found, err = stages.angles()
         if err:
@@ -165,6 +173,14 @@ def cmd_review(sprint_id: str, dry_run: bool) -> int:
             return fail(err)
         stages.check_roles(cards)
     head = git("rev-parse", "HEAD").stdout.strip()
+    reviewed_head = head
+    if resume:
+        fix_patch = review.patch_path(review.sprint_report_path(sprint_id, "fix", round_n))
+        reviewed_head, error = sprint_review_resume.reviewed_head(
+            resume_round, head, fix_patch, git, review.REVIEWER_NAME
+        )
+        if error:
+            return fail(f"refused: {error}")
     base = git("merge-base", f"refs/heads/{trunk}", "HEAD").stdout.strip()
     digest_before = review.marker_digest(marker)
     diff_base = state["shown_sha"] if complete_n else ""
@@ -177,11 +193,20 @@ def cmd_review(sprint_id: str, dry_run: bool) -> int:
     ran, reports = [], []
 
     def stop(err: str) -> int:
+        if resume:
+            sprint_review_resume.keep_incomplete(marker, state, err)
+            print(f"round {round_n} remains incomplete after {', '.join(rounds[-1]['stages'])}")
+            return fail(err)
         if reports:
             err = err.replace(review.NO_ROUND, f"Round {round_n} IS recorded, incomplete.")
             seen = {k: dict.fromkeys(i for r in reports for i in r[k]) for k in review.REPORT_KEYS}
             round_ = {k: list(v) for k, v in seen.items()} | {"incomplete": err, "stages": ran}
-            review.write_round(marker, state, round_)
+            coverage = (
+                {"reviewed_head": head, "shown_sha": git("rev-parse", "HEAD").stdout.strip()}
+                if "fix" in ran
+                else {}
+            )
+            review.write_round(marker, state, round_, **coverage)
             print(f"round {round_n} recorded incomplete after {', '.join(ran)}")
         return fail(err)
 
@@ -222,7 +247,17 @@ def cmd_review(sprint_id: str, dry_run: bool) -> int:
         return report, review.abort_text(stage_head, report_err) if report_err else ""
 
     prior = [("Findings from earlier rounds", render_sprint_prior(rounds if complete_n else []))]
-    if complete_n:
+    if resume:
+        fix_report = review.sprint_report_path(sprint_id, "fix", round_n)
+        fixed, err = review.read_report(fix_report, stage="fixer")
+        if err:
+            return stop(review.abort_text(head, err))
+        closing, err = leg("closer", "close", [("What the fixer reported", json.dumps(fixed))])
+        if err:
+            return stop(err)
+        if dry_run:
+            return 0
+    elif complete_n:
         fixed, err = leg("fixer", "fix", [("Sprint altitude", altitude), *prior], review.charter())
         if err:
             return stop(err)
@@ -267,13 +302,16 @@ def cmd_review(sprint_id: str, dry_run: bool) -> int:
     if clearable := closing.get(review.CLEARABLE_BY_FULL):
         round_[review.CLEARABLE_BY_FULL] = clearable
     fix_report = review.sprint_report_path(sprint_id, "fix", round_n)
-    if err := review.write_reviewer_diff(fix_report, head, f"sprint {sprint_id}"):
+    if err := review.write_reviewer_diff(fix_report, reviewed_head, f"sprint {sprint_id}"):
         # A rolled-back fix must not remain in the recorded round.
         if "fix" in ran and git("rev-parse", "HEAD").stdout.strip() == head:
             reports.pop(ran.index("fix"))
             ran.remove("fix")
         return stop(err)
-    review.write_round(marker, state, round_, reviewed_head=head, shown_sha=shown_sha)
+    if resume:
+        sprint_review_resume.complete(marker, state, round_, reviewed_head, shown_sha)
+    else:
+        review.write_round(marker, state, round_, reviewed_head=head, shown_sha=shown_sha)
     print(
         f"round {round_n} recorded at {shown_sha[:8]}:"
         f" {len(round_['fixed'])} fixed, {len(round_['blocking'])} blocking"
