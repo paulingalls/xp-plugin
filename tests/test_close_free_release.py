@@ -8,9 +8,11 @@ import sys
 import pytest
 from close_free_card_cases import (
     add_free_card,
+    checkout_free,
     commit_on_free,
     control_subprocess_date,
     free_identity,
+    spawn_free,
 )
 from close_helpers import (
     CLOSE,
@@ -61,6 +63,7 @@ class TestFreeLand:
         gate — there is no flag that supplies one."""
         repo, env, g = free_repo(tmp_path)
         free(repo, env, "fix-typo", "start")
+        checkout_free(g)
         commit_on_free(repo, g)
         r = free(repo, env, "fix-typo", "land")
         assert r.returncode == 2
@@ -118,13 +121,16 @@ class TestFreeLand:
         repo, env, g = free_repo(tmp_path)
         control_subprocess_date(tmp_path, env, "2040-12-31")
         assert free(repo, env, "fix-typo", "start").returncode == 0
-        branch, key = free_identity(g)
+        branch, key = checkout_free(g)
         assert (branch, key) == (
             "t/free-2040-12-31-fix-typo",
             "free-2040-12-31-fix-typo",
         )
         commit_on_free(repo, g)
         add_free_card(env, key)
+        tree = spawn_free(repo, env, g, tmp_path, key)
+        assert g("worktree", "remove", "--force", str(tree)).returncode == 0
+        assert g("checkout", "-q", branch).returncode == 0
         assert free(repo, env, "fix-typo", "review").returncode == 0
         env["XP_TEST_TODAY"] = "2041-01-01"
         r = free(repo, env, "fix-typo", "land")
@@ -139,16 +145,19 @@ class TestFreeLand:
         tells the lead work happened but not where to read it."""
         repo, env, g = free_repo(tmp_path)
         free(repo, env, "fix-typo", "start")
-        _branch, key = free_identity(g)
+        branch, key = checkout_free(g)
         commit_on_free(repo, g)
         add_free_card(env, key)
+        tree = spawn_free(repo, env, g, tmp_path, key)
+        assert g("worktree", "remove", "--force", str(tree)).returncode == 0
+        assert g("checkout", "-q", branch).returncode == 0
         stub_reviewer(tmp_path, patch=NEW_FILE_PATCH)
         assert free(repo, env, "fix-typo", "review").returncode == 0
         r = free(repo, env, "fix-typo", "land")
         assert r.returncode == 0, r.stderr
         assert "the reviewer changed this tree" in r.stdout
         assert f"full diff: {tmp_path}" in r.stdout, r.stdout
-        assert f"{key}.round-1.diff" in r.stdout, r.stdout
+        assert f"{key}.round-2.diff" in r.stdout, r.stdout
 
     def test_land_reports_a_lead_commit_the_round_never_covered(self, tmp_path):
         repo, env, g = reviewed(tmp_path)

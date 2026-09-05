@@ -6,14 +6,17 @@ risk is a guard the story leg has and this one lacks (story-011's close note).
 """
 
 import re
+import shlex
 from pathlib import Path
 
 import pytest
 from close_free_card_cases import (
     FreeCardCases,
     add_free_card,
+    checkout_free,
     commit_on_free,
     free_identity,
+    spawn_free,
 )
 from close_helpers import (
     close,
@@ -21,7 +24,6 @@ from close_helpers import (
     free_repo,
     gh_calls,
     make_repo,
-    stub_reviewer,
 )
 from spawn_helpers import in_tree, spawn, stub_claude
 from spawn_helpers import make_repo as make_spawn_repo
@@ -43,9 +45,12 @@ def reviewed(tmp_path, slug="fix-typo", tiers=()):
         g("commit", "-qam", "configure distinct tiers")
         g("push", "-q", "origin", "main")
     assert free(repo, env, slug, "start").returncode == 0
-    _branch, key = free_identity(g)
+    _branch, key = checkout_free(g)
     commit_on_free(repo, g)
     add_free_card(env, key)
+    tree = spawn_free(repo, env, g, tmp_path, key)
+    assert g("worktree", "remove", "--force", str(tree)).returncode == 0
+    assert g("checkout", "-q", _branch).returncode == 0
     r = free(repo, env, slug, "review")
     assert r.returncode == 0, r.stderr + r.stdout
     return repo, env, g
@@ -54,63 +59,127 @@ def reviewed(tmp_path, slug="fix-typo", tiers=()):
 def carded_free_patch(tmp_path):
     """A carded free branch carrying one lead commit, minted [ready] for spawn."""
     repo, env, g = free_repo(tmp_path)
+    configure_executor(repo, g)
+    assert free(repo, env, "fix-typo", "start").returncode == 0
+    _branch, key = checkout_free(g)
+    add_free_card(env, key)
+    commit_on_free(repo, g)
+    # NO refresh receipt: the free lane is exempt, and a fixture that seeds one
+    # stops walking that exemption (constraint 12)
+    g("checkout", "-q", "main")
+    assert spawn(repo, env, "ready", key).returncode == 0
+    return repo, env, g
+
+
+def configure_executor(repo, g):
     config = repo / ".xp" / "config.yml"
     config.write_text(
         config.read_text().replace("roles:\n", "roles:\n  executor: claude/sonnet/medium\n")
     )
     g("add", "-A")
     g("commit", "-qm", "executor role")
-    assert free(repo, env, "fix-typo", "start").returncode == 0
-    _branch, key = free_identity(g)
-    add_free_card(env, key)
-    commit_on_free(repo, g)
-    # NO refresh receipt: the free lane is exempt, and a fixture that seeds one
-    # stops walking that exemption (constraint 12)
-    assert spawn(repo, env, "ready", key).returncode == 0
-    return repo, env, g
 
 
 class TestFreeStart:
-    def test_start_cuts_the_dated_branch_off_the_default_branch(self, tmp_path):
-        """AC 1: the branch is dated so two closes of the same slug never share
-        a name — and so never share the marker keyed off it."""
+    def test_start_creates_the_free_ref_without_changing_the_lead_checkout(self, tmp_path):
         repo, env, g = free_repo(tmp_path)
-        main = g("rev-parse", "main").stdout.strip()
+        before = (
+            g("branch", "--show-current").stdout.strip(),
+            g("rev-parse", "HEAD").stdout.strip(),
+            g("status", "--porcelain").stdout,
+        )
         r = free(repo, env, "fix-typo", "start")
         assert r.returncode == 0, r.stderr
-        branch, _key = free_identity(g)
+        branch, key = free_identity(g)
         assert branch.endswith("-fix-typo")
-        assert g("rev-parse", branch).stdout.strip() == main
+        assert key in r.stdout
+        assert g("rev-parse", branch).stdout.strip() == before[1]
+        assert (
+            g("branch", "--show-current").stdout.strip(),
+            g("rev-parse", "HEAD").stdout.strip(),
+            g("status", "--porcelain").stdout,
+        ) == before
 
     def test_start_names_the_card_required_before_review(self, tmp_path):
         repo, env, _g = free_repo(tmp_path)
         result = free(repo, env, "fix-typo", "start")
         assert result.returncode == 0 and "card required" in result.stdout
 
-    def test_a_carded_spawn_reuses_the_free_branch_and_lands_from_its_worktree(self, tmp_path):
-        repo, env, g = carded_free_patch(tmp_path)
-        branch, key = free_identity(g)
-        (repo / "lead-left.txt").write_text("mine\n")
-        refused = spawn(repo, env, key)
-        assert refused.returncode == 2 and "commit your work" in refused.stderr
-        assert g("branch", "--show-current").stdout.strip() == branch
-        (repo / "lead-left.txt").unlink()
+    def test_the_printed_route_spawns_in_the_free_worktree_without_moving_the_lead(self, tmp_path):
+        repo, env, g = free_repo(tmp_path)
+        configure_executor(repo, g)
+        started = free(repo, env, "fix-typo", "start")
+        assert started.returncode == 0, started.stderr
+        branch, key = checkout_free(g)
+        add_free_card(env, key)
+        commit_on_free(repo, g)
+        g("checkout", "-q", "main")
+        commands = re.findall(r"`(spawn\.py [^`]+)`", started.stdout)
+        assert commands == [f"spawn.py ready {key}", f"spawn.py {key}"]
+        assert spawn(repo, env, *shlex.split(commands[0])[1:]).returncode == 0
         stub_claude(tmp_path)
-        result = spawn(repo, env, key)
+        before = (
+            g("branch", "--show-current").stdout.strip(),
+            g("rev-parse", "HEAD").stdout.strip(),
+            g("status", "--porcelain").stdout,
+        )
+        result = spawn(repo, env, *shlex.split(commands[1])[1:])
         assert result.returncode == 0, result.stderr
         tree = Path(env["XP_DATA"]) / "worktrees" / key
+        after = (
+            g("branch", "--show-current").stdout.strip(),
+            g("rev-parse", "HEAD").stdout.strip(),
+            g("status", "--porcelain").stdout,
+        )
+        assert after == before
         assert in_tree(tree, env, "branch", "--show-current") == branch
         assert (tree / "src" / "free.py").read_text() == "B = 1\n"
+        assert "teammate work" in in_tree(tree, env, "log", "-1", "--format=%s")
         assert f"at {tree} (continued, not cut)" in result.stdout
         assert "`/free-close` from that worktree" in result.stdout
         assert "close.py story" not in result.stdout
-        stub_reviewer(tmp_path)
-        review = free(tree, env, "fix-typo", "review")
-        assert review.returncode == 0, review.stderr + review.stdout
-        land = free(tree, env, "fix-typo", "land")
-        assert land.returncode == 0, land.stderr + land.stdout
-        create = [call for call in gh_calls(tmp_path) if call[:2] == ["pr", "create"]]
-        assert len(create) == 1 and create[0][create[0].index("--base") + 1] == "main"
+        plan = Path(env["XP_DATA"]) / "plan.md"
+        plan.write_text(plan.read_text().replace("[in-progress]", "[ready]"))
+        launch = (tmp_path / "launch.json").read_bytes()
+        again = spawn(repo, env, key)
+        assert again.returncode == 2 and "already spawned" in again.stderr
+        assert (tmp_path / "launch.json").read_bytes() == launch
+
+    @pytest.mark.parametrize("location", ["worktree", "main-repo"])
+    def test_the_printed_artifact_locations_are_walkable(self, tmp_path, location):
+        repo, env, g = free_repo(tmp_path)
+        configure_executor(repo, g)
+        started = free(repo, env, "fix-typo", "start")
+        assert started.returncode == 0, started.stderr
+        branch, key = checkout_free(g)
+        add_free_card(env, key)
+        commit_on_free(repo, g)
+        g("checkout", "-q", "main")
+        commands = re.findall(r"`(spawn\.py [^`]+)`", started.stdout)
+        tree_match = re.search(r"in `([^`]+)` while that worktree exists", started.stdout)
+        checkout_match = re.search(r"after `(git checkout [^`]+)`", started.stdout)
+        assert commands == [f"spawn.py ready {key}", f"spawn.py {key}"]
+        assert tree_match and checkout_match
+        assert spawn(repo, env, *shlex.split(commands[0])[1:]).returncode == 0
+        stub_claude(tmp_path)
+        assert spawn(repo, env, *shlex.split(commands[1])[1:]).returncode == 0
+        tree = Path(tree_match[1])
+        assert tree == Path(env["XP_DATA"]) / "worktrees" / key
+        target = tree
+        if location == "main-repo":
+            assert g("worktree", "remove", "--force", str(tree)).returncode == 0
+            checkout = g(*shlex.split(checkout_match[1])[1:])
+            assert checkout.returncode == 0, checkout.stderr
+            target = repo
+        (target / "release-artifact.txt").write_text("release\n")
+        assert g("-C", str(target), "add", "release-artifact.txt").returncode == 0
+        committed = g("-C", str(target), "commit", "-qm", "release artifact")
+        assert committed.returncode == 0, committed.stderr
+
+        preview = free(target, env, "fix-typo", "review", "--dry-run")
+
+        assert preview.returncode == 0, preview.stderr
+        assert in_tree(target, env, "branch", "--show-current") == branch
 
     def test_spawn_handoff_routes_story_and_free_to_their_skills(self, tmp_path):
         story_root = tmp_path / "story"
@@ -143,21 +212,23 @@ class TestFreeStart:
             assert result.stdout.index("release artifacts") < result.stdout.index("review")
             assert "Commit, then" not in result.stdout
             add_free_card(env, key)
+            checkout_free(g)
             commit_on_free(repo, g)
             minted = spawn(repo, env, "ready", key)
             assert minted.returncode == 0, minted.stderr
         assert outputs[0] != outputs[1]
 
-    def test_a_spawn_from_off_the_free_branch_names_the_checkout(self, tmp_path):
-        """The lead's own checkout is the only thing missing, and `git branch -D`
-        is the obvious recovery from a bare already-exists — it discards the
-        release commits `free start` left on that branch."""
+    def test_spawn_refuses_to_move_a_lead_who_checked_out_the_free_branch(self, tmp_path):
         repo, env, g = carded_free_patch(tmp_path)
         branch, key = free_identity(g)
-        g("checkout", "-q", "main")
+        g("checkout", "-q", branch)
+        before = g("rev-parse", "HEAD").stdout.strip()
+        stub_claude(tmp_path)
         refused = spawn(repo, env, key)
-        assert refused.returncode == 2 and f"git checkout {branch}" in refused.stderr
-        assert g("rev-parse", "--verify", "-q", branch).returncode == 0
+        assert refused.returncode == 2 and "return to main" in refused.stderr
+        assert g("branch", "--show-current").stdout.strip() == branch
+        assert g("rev-parse", "HEAD").stdout.strip() == before
+        assert not (Path(env["XP_DATA"]) / "worktrees" / key).exists()
 
     def test_start_anywhere_but_the_default_branch_refuses_naming_it(self, tmp_path):
         """AC 2: a free branch cut off a story branch carries that story's
@@ -205,7 +276,8 @@ class TestFreeStart:
         repo, env, g = free_repo(tmp_path / tail)
         r = free(repo, env, slug, "start")
         assert r.returncode == 0, r.stderr
-        assert g("rev-parse", "--abbrev-ref", "HEAD").stdout.strip().endswith(f"-{tail}")
+        assert free_identity(g)[0].endswith(f"-{tail}")
+        assert g("rev-parse", "--abbrev-ref", "HEAD").stdout.strip() == "main"
 
 
 class TestFreeCardLifecycle(FreeCardCases):
@@ -220,7 +292,7 @@ class TestSharedLandGuards:
     def rewrite_history(self, g):
         """The 012b/N2 injection: the recorded round's sha stops being an
         ancestor of HEAD, so it describes a tree that no longer exists."""
-        g("commit", "-q", "--amend", "-m", "rewritten")
+        g("commit", "-q", "--amend", "--allow-empty", "-m", "rewritten")
 
     def edit_gate_file(self, repo, g):
         (repo / ".xp" / "config.yml").write_text("roles:\n  reviewer: claude/opus\n")

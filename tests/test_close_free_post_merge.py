@@ -9,7 +9,12 @@ import bookkeep
 import pytest
 from close_helpers import SPAWN, free, free_repo, marker_file, stub_reviewer
 from spawn_helpers import stub_claude
-from test_close_free import add_free_card, commit_on_free, free_identity
+from test_close_free import (
+    add_free_card,
+    checkout_free,
+    commit_on_free,
+    spawn_free,
+)
 
 
 class TestFreeTeardown:
@@ -31,9 +36,10 @@ class TestFreeTeardown:
         g("add", "-A")
         g("commit", "-qm", "spawn fixture")
         assert free(repo, env, "fix-typo", "start").returncode == 0
-        branch, key = free_identity(g)
+        branch, key = checkout_free(g)
         add_free_card(env, key)
         commit_on_free(repo, g)
+        g("checkout", "-q", "main")
         ready = subprocess.run(
             [sys.executable, str(SPAWN), "ready", key],
             cwd=repo,
@@ -69,12 +75,15 @@ class TestFreeTeardown:
         g("merge", "-q", "--no-ff", branch, "-m", "merge free release")
         return repo, env, g, tree, spawned_branch, branch, key
 
-    def unspawned(self, tmp_path):
+    def without_worktree(self, tmp_path):
         repo, env, g = free_repo(tmp_path)
         assert free(repo, env, "fix-typo", "start").returncode == 0
-        branch, key = free_identity(g)
+        branch, key = checkout_free(g)
         commit_on_free(repo, g)
         add_free_card(env, key)
+        tree = spawn_free(repo, env, g, tmp_path, key)
+        assert g("worktree", "remove", "--force", str(tree)).returncode == 0
+        assert g("checkout", "-q", branch).returncode == 0
         assert free(repo, env, "fix-typo", "review").returncode == 0
         g("checkout", "-q", "main")
         g("merge", "-q", "--no-ff", branch, "-m", "merge free release")
@@ -106,8 +115,8 @@ class TestFreeTeardown:
         assert tree.exists() and spawned_branch in branches and branch in branches
         assert "v0.2.1" not in g("tag").stdout.split()
 
-    def test_an_unspawned_free_close_has_no_missing_worktree_error(self, tmp_path):
-        repo, env, g, branch = self.unspawned(tmp_path)
+    def test_a_removed_free_worktree_has_no_missing_worktree_error(self, tmp_path):
+        repo, env, g, branch = self.without_worktree(tmp_path)
         result = free(repo, env, "fix-typo", "post-merge")
         assert result.returncode == 0, result.stderr
         assert branch not in g("branch", "--list").stdout
@@ -119,9 +128,12 @@ class TestFreePostMerge:
         post-merge leg must refuse from."""
         repo, env, g = free_repo(tmp_path)
         free(repo, env, "fix-typo", "start")
-        branch, key = free_identity(g)
+        branch, key = checkout_free(g)
         commit_on_free(repo, g)
         add_free_card(env, key)
+        tree = spawn_free(repo, env, g, tmp_path, key)
+        assert g("worktree", "remove", "--force", str(tree)).returncode == 0
+        assert g("checkout", "-q", branch).returncode == 0
         assert free(repo, env, "fix-typo", "review").returncode == 0
         if manifest:
             (repo / "plugin.json").write_text(json.dumps({"version": manifest}))

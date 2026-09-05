@@ -29,10 +29,14 @@ def refresh_instruction(story_id: str) -> str:
     return f"Run `{shlex.join(['python3', script, story_id, '--refresh'])}`."
 
 
+def spawned(story_id: str) -> bool:
+    return handoff_marker_path(data_root(), story_id).exists()
+
+
 def progressed(story_id: str) -> bool:
     root = data_root()
     close = root / "markers" / f"{story_id}.close.json"
-    return handoff_marker_path(root, story_id).exists() or close.exists()
+    return spawned(story_id) or close.exists()
 
 
 def credential(marker: Path) -> dict | None:

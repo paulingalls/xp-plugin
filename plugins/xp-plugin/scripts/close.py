@@ -241,9 +241,8 @@ def _preflight(story_id: str, action: str, dry_run: bool = False) -> tuple[str, 
         card, status = story_card(plan_path().read_text(), story_id)
     except KeyError as e:
         return "", "", f"refused: {e.args[0]}"
-    # Only a PREVIEW: free.cmd_review mints and flips before every real review, so a
-    # live one arriving here [planned] came in under the story noun, and reviewing it
-    # spends a round on a card nothing committed to.
+    # Spawn moves a free card to [in-progress], so a real review arriving [planned]
+    # or [ready] was never spawned; only a preview may proceed from those states.
     previewable = dry_run and free_slug and action == "review" and status in ("planned", "ready")
     if status != "in-progress" and not previewable:
         return "", "", f"refused: {story_id} is [{status}], {action} requires [in-progress]"

@@ -169,6 +169,7 @@ class TestReadyCredential:
         self.mint(repo, env)
         assert spawn(repo, env, "story-042").returncode == 0
         assert (tmp_path / "data" / "worktrees" / "story-042").is_dir()
+        assert (tmp_path / "data" / "plans" / "story-042.handoff.json").exists()
 
     def test_an_edit_below_an_untouched_heading_refuses(self, tmp_path):
         """AC2: every failure this sprint changed ACs, Files or Context and left
@@ -209,6 +210,7 @@ class TestReadyCredential:
         # pre-flip one, which is exactly why the digest ignores brackets
         assert marker["card"] == plan.split("### Sprint 1\n", 1)[1].replace("[ready]", "[planned]")
         assert marker["digest"] in out, "the lead is never shown what was minted"
+        assert not (tmp_path / "data" / "plans" / "story-042.handoff.json").exists()
 
     def test_ready_refuses_a_card_that_is_not_planned(self, tmp_path):
         """Re-minting is not a lead's typing decision: an already-[ready] card is
