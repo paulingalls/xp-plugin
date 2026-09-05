@@ -116,6 +116,11 @@ def test_a_malformed_slate_reviewer_refuses_before_agent_launch(tmp_path):
 
 
 def test_an_unknown_slate_reviewer_harness_names_the_owned_seat(tmp_path):
+    """The seat-owning refusal is the only one a config typo reaches, so it is
+    also the only place left that can say which harnesses exist to choose from —
+    the template line it offers names just one of them."""
+    from spawn import HARNESS_INSTALL
+
     repo, env = slate_repo(tmp_path)
     (repo / ".xp/config.yml").write_text(
         "sprint_cap: 6\ndebt_budget: 0.2\nroles:\n"
@@ -126,6 +131,9 @@ def test_an_unknown_slate_reviewer_harness_names_the_owned_seat(tmp_path):
     assert result.returncode == 2
     assert "roles.slate-reviewer" in result.stderr
     assert "slate-reviewer: claude/opus" in result.stderr
+    assert all(shipped in result.stderr for shipped in HARNESS_INSTALL), (
+        f"the refusal offers one harness and never says the others exist: {result.stderr}"
+    )
     assert not launch.exists(), "the unknown harness launched an agent"
 
 

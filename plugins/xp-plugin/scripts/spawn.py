@@ -123,7 +123,8 @@ def resolve_role(role: str, card: str = "", override: str = "") -> tuple[str, st
             raise SystemExit(
                 fail(
                     f"refused: roles.{role} in .xp/config.yml names unknown harness"
-                    f" {harness!r} — replace it with `{template_role_line(role)}`"
+                    f" {harness!r} — we ship {', '.join(HARNESS_INSTALL)}; replace it"
+                    f" with `{template_role_line(role)}`"
                 )
             )
         raise SystemExit(
