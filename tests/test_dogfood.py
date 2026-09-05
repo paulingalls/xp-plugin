@@ -57,11 +57,43 @@ class TestDogfoodMatchesTheScaffold:
 
     def test_our_config_carries_every_key_the_scaffold_ships(self):
         from session_start import missing_template_keys
+        from spawn import HARNESS_INSTALL
 
-        missing = missing_template_keys(
-            (self.SHIPPED / "config.yml").read_text(), (self.OURS / "config.yml").read_text()
-        )
-        assert not missing, f"we never exercise the shipped keys: {missing}"
+        shipped_text = (self.SHIPPED / "config.yml").read_text()
+        dogfood_text = (self.OURS / "config.yml").read_text()
+        missing = missing_template_keys(shipped_text, dogfood_text)
+        role_specs = {
+            label: {
+                key: line.split(":", 1)[1].split("#", 1)[0].strip()
+                for key, line in missing_template_keys(text, "")
+                if key.startswith("roles.")
+            }
+            for label, text in (("shipped", shipped_text), ("dogfood", dogfood_text))
+        }
+        required = {"roles.planner", "roles.slate-reviewer", "roles.card-refresher"}
+        redundant = {"roles.story-reviewer", "roles.sprint-reviewer"}
+        invalid = {
+            (label, key, spec)
+            for label, roles in role_specs.items()
+            for key, spec in roles.items()
+            if len(parts := spec.split("/")) not in (2, 3)
+            or not all(parts)
+            or parts[0] not in HARNESS_INSTALL
+        }
+        problems = {
+            "missing": missing,
+            "required": {label: required - roles.keys() for label, roles in role_specs.items()},
+            "parity": role_specs["shipped"].keys() ^ role_specs["dogfood"].keys(),
+            "redundant": {label: redundant & roles.keys() for label, roles in role_specs.items()},
+            "invalid": invalid,
+        }
+        assert (
+            not missing
+            and not any(problems["required"].values())
+            and not problems["parity"]
+            and not any(problems["redundant"].values())
+            and not invalid
+        ), problems
 
     def test_shipped_coverage_guidance_names_no_test_runner_or_selection_syntax(self):
         plugin = self.REPO / "plugins/xp-plugin"

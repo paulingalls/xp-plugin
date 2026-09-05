@@ -17,8 +17,11 @@ constraints_chars_cap: 4500  # hard character ceiling; retire or shorten a rule
 
 roles:               # harness/model[/effort]; the lead overrides per story in plan.md
   lead: claude/opus
-  executor: claude/sonnet/medium  # also where an absent `planner` key falls back
+  planner: claude/sonnet/medium  # falls back to `executor` when absent in an older config
+  executor: claude/sonnet/medium
   reviewer: claude/opus
+  slate-reviewer: claude/opus  # falls back to `reviewer` when absent in an older config
+  card-refresher: claude/opus  # falls back to `reviewer` when absent in an older config
   plan-reviewer: claude/opus   # spawn's own stage; no agent ever starts a review
   finder: claude/opus     # the four round-1 stages of `close.py sprint <id> review`;
   verifier: claude/opus   # each falls back to `reviewer` when its key is absent, so

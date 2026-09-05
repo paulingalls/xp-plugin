@@ -22,9 +22,10 @@ The plan is NOT in the repo — it is per clone, in the state root.
      own tooling (browser, subprocess, request harnesses, …) — judgment work,
      not scaffolding
    - a linter in the pre-commit hook, where one was scaffolded
-3. Set `roles.executor` with the human — the scaffold ships a default, so reading
-   it unasked offers the harness the template guessed, not the team's. That
-   harness's teammates need a user install of this plugin; offer to run its pair:
+3. Set `roles.executor` and `roles.planner` with the human — the scaffold ships
+   defaults, so reading them unasked offers the harness the template guessed, not
+   the team's. Every harness they name needs a user install of this plugin; offer
+   to run its pair:
    - Claude: `claude plugin marketplace add paulingalls/xp-plugin`, then
      `claude plugin install xp-plugin@xp-plugin --scope user`
    - Codex: `codex plugin marketplace add paulingalls/xp-plugin`, then
