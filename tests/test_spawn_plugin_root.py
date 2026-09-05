@@ -55,17 +55,17 @@ def test_a_consumer_plugin_tree_does_not_replace_the_installed_root(tmp_path):
 
 
 def test_a_free_consumer_plugin_tree_keeps_the_installed_root(tmp_path):
-    from test_close_free import carded_free_patch
+    from test_close_free import carded_free_patch, free_identity
 
     repo, env, g = carded_free_patch(tmp_path)
-    branch = g("rev-parse", "--abbrev-ref", "HEAD").stdout.strip()
-    key = branch.split("/", 1)[1]
-    g("checkout", "-q", "main")
+    branch, key = free_identity(g)
     write_plugin_source(repo)
     g("add", "-A")
     assert g("commit", "-qm", "fixture plugin source").returncode == 0
     g("checkout", "-q", branch)
     assert g("merge", "-q", "main").returncode == 0
+    # Back to trunk: spawn refuses to continue a ref the lead is standing on.
+    g("checkout", "-q", "main")
     stub_claude(tmp_path)
 
     result = spawn(repo, env, key)
@@ -79,16 +79,13 @@ def test_a_branch_lacking_the_plugin_keeps_the_installed_root(tmp_path):
     """The free branch is cut before the plugin reaches the default branch, so its
     worktree has no plugins/ at all — the arm where a layout-derived root is a path
     that does not exist rather than merely the wrong one."""
-    from test_close_free import carded_free_patch
+    from test_close_free import carded_free_patch, free_identity
 
     repo, env, g = carded_free_patch(tmp_path)
-    branch = g("rev-parse", "--abbrev-ref", "HEAD").stdout.strip()
-    key = branch.split("/", 1)[1]
-    g("checkout", "-q", "main")
+    _branch, key = free_identity(g)
     write_plugin_source(repo)
     g("add", "-A")
     assert g("commit", "-qm", "fixture plugin source").returncode == 0
-    g("checkout", "-q", branch)
     rec = stub_claude(tmp_path)
 
     result = spawn(repo, env, key)

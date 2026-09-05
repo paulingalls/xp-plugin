@@ -35,7 +35,7 @@ def normalize(refusal: str) -> str:
 
 
 def reviewed(tmp_path, slug="fix-typo", tiers=()):
-    """A free branch with one commit and one clean recorded round."""
+    """A free branch with one lead commit and two clean rounds: spawn's and close's."""
     repo, env, g = free_repo(tmp_path)
     if tiers:
         story = f"  story: {tiers[0]}\n" if tiers[0] is not None else ""

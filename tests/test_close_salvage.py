@@ -291,9 +291,13 @@ class TestSalvage:
         assert "find-b" in round_["incomplete"], round_
 
     def test_free_salvage_names_the_unrecorded_round_it_searched(self, tmp_path):
+        # In the test body: close_free_card_cases imports this module for its
+        # killed-reviewer stub, so a module-level import here is a cycle.
+        from close_free_card_cases import checkout_free, spawn_free
+
         repo, env, g = free_repo(tmp_path)
         assert free(repo, env, "fix-typo", "start").returncode == 0
-        key = g("branch", "--show-current").stdout.strip().split("/", 1)[1]
+        _branch, key = checkout_free(g)
         plan = tmp_path / "data" / "plan.md"
         plan.write_text(
             plan.read_text() + f"\n### Free\n#### {key} — fix typo   [planned]\nContext: release.\n"
@@ -302,12 +306,13 @@ class TestSalvage:
         (repo / "src" / "free.py").write_text("B = 1\n")
         g("add", "-A")
         g("commit", "-qm", "free work")
-        assert free(repo, env, "fix-typo", "review").returncode == 0
+        tree = spawn_free(repo, env, g, tmp_path, key)
+        assert free(tree, env, "fix-typo", "review").returncode == 0
 
-        refused = free(repo, env, "fix-typo", "salvage")
+        refused = free(tree, env, "fix-typo", "salvage")
 
         assert refused.returncode == 2
-        assert f"{key}.round-2.json" in refused.stderr, refused.stderr
+        assert f"{key}.round-3.json" in refused.stderr, refused.stderr
 
     @pytest.mark.slow
     def test_the_kill_names_salvage_only_on_the_leg_that_has_one(self, tmp_path, monkeypatch):

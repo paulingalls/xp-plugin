@@ -9,7 +9,7 @@ import pathlib
 
 import pytest
 from close import story_card
-from close_free_card_cases import add_free_card, free_identity
+from close_free_card_cases import add_free_card, checkout_free, spawn_free
 from close_helpers import (
     CLEAN,
     FIX_PATCH,
@@ -390,15 +390,16 @@ class TestTheFreeLegNamesItsOwnLandCommand:
         repo, env, g = free_repo(tmp_path)
         started = free(repo, env, "Fix Typo", "start")
         assert started.returncode == 0 and "free fix-typo review" in started.stdout
-        _branch, key = free_identity(g)
+        _branch, key = checkout_free(g)
         add_free_card(env, key)
         (repo / "src").mkdir(parents=True, exist_ok=True)
         (repo / "src" / "free.py").write_text("B = 1\n")
         g("add", "-A")
         g("commit", "-qm", "free work")
+        tree = spawn_free(repo, env, g, tmp_path, key)
         stub_reviewer(tmp_path, patch=NEW_FILE_PATCH)
 
-        r = free(repo, env, "Fix Typo", "review")
+        r = free(tree, env, "Fix Typo", "review")
 
         assert r.returncode == 0, r.stderr + r.stdout
         assert "the script-applied review fix changed the tree" in r.stdout, r.stdout

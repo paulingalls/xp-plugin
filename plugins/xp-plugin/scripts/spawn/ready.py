@@ -206,6 +206,6 @@ def main(argv: list[str], action: str = "ready") -> int:
         return fail("refused: not inside a git repository")
     if action == "amend":
         return amend(args.story_id, args.reason)
-    # Free cards are authored and reviewed on a fresh branch, never aged in a slate;
-    # the exemption is by lane so both entry points answer alike.
+    # Free cards are authored and reviewed on a fresh branch, never aged in a slate,
+    # so the refresh gate is exempted by LANE — not by any caller's choice.
     return mint(args.story_id, require_refresh=not leg(args.story_id)[1])
