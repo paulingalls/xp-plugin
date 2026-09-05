@@ -255,9 +255,33 @@ def make_repo(
     return repo, env, g
 
 
+def record_round(repo, env, tmp_path, story_id="story-042"):
+    """CONSTRUCT the state a recorded round leaves, for the trees `close review`
+    refuses to review at all: without .xp/system.md it names a MISSING review
+    authority (story-112), and land's own arms for that file would go unwalked."""
+    g = lambda *a: subprocess.run(  # noqa: E731
+        ["git", *a], cwd=repo, env=env, capture_output=True, text=True
+    ).stdout.strip()
+    head = g("rev-parse", "HEAD")
+    marker_file(tmp_path, story_id).write_text(
+        json.dumps(
+            {
+                "rounds": [{"fixed": [], "blocking": [], "noted": []}],
+                "reviewed_head": head,
+                "shown_sha": head,
+                "review_base": g("merge-base", "refs/heads/main", "HEAD"),
+                "branch": g("rev-parse", "--abbrev-ref", "HEAD"),
+            }
+        )
+    )
+
+
 def worktree_land_setup(tmp_path, verify="true", **repo_options):
     repo, env, g = make_repo(tmp_path, verify=verify, **repo_options)
-    assert close(repo, env, "review").returncode == 0
+    if repo_options.get("system", True):
+        assert close(repo, env, "review").returncode == 0
+    else:
+        record_round(repo, env, tmp_path)
     tree = tmp_path / "wt"
     branch = g("rev-parse", "--abbrev-ref", "HEAD").stdout.strip()
     g("checkout", "-q", "main")
@@ -276,9 +300,9 @@ def close_bare(repo, env, *args):
     )
 
 
-def close(repo, env, *args):
+def close(repo, env, *args, close=CLOSE):
     return subprocess.run(
-        [sys.executable, str(CLOSE), "story", "story-042", *args, "--merge-mode", "local"],
+        [sys.executable, str(close), "story", "story-042", *args, "--merge-mode", "local"],
         cwd=repo,
         env=env,
         capture_output=True,

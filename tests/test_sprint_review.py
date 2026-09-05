@@ -2,19 +2,23 @@
 Split from test_sprint_close.py at sprint-004 open."""
 
 import json
+import shutil
 import subprocess
 import sys
 
+import pytest
 from close_helpers import launches
 from spawn_helpers import stub_codex
 from sprint_helpers import (
     CLOSE,
     CONFIG,
     PLAN,
+    PLUGIN,
     SPRINT_ID,
     head,
     make_repo,
     marker_path,
+    record_reviews,
     section,
     sprint,
     staged_stub,
@@ -116,6 +120,16 @@ class TestReviewLeg:
         assert "story-099" not in bundle, "another sprint's card rode along"
         assert "## JUDGMENT\n\n" in bundle and "Polarity" in bundle
         assert "## PROCESS\n\n" not in bundle
+        sources = (
+            ("JUDGMENT", PLUGIN / "JUDGMENT.md", "VALUES"),
+            ("VALUES", PLUGIN / "VALUES.md", "Constraints"),
+            ("Constraints", repo / ".xp" / "constraints.md", "System context"),
+        )
+        for title, path, following in sources:
+            assert f"## {title}\n\n{path.read_text()}\n\n## {following}\n\n" in bundle
+        assert bundle.endswith(
+            f"## System context\n\n{(repo / '.xp' / 'system.md').read_text()}\n\n"
+        )
 
     def test_no_sprint_bundle_asks_for_a_merge_delta(self, tmp_path):
         """Planted, because a project upgrading from v0.13.0 still HAS the store on
@@ -224,6 +238,79 @@ class TestReviewLeg:
         assert "no round" not in r.stderr.lower(), "the refusal denies the round beside it"
         round_ = json.loads(marker_path(tmp_path).read_text())["rounds"][-1]
         assert "close" not in round_["stages"] and round_["stages"], round_["stages"]
+
+
+class TestReviewAuthority:
+    @pytest.mark.parametrize("name", ["JUDGMENT.md", "VALUES.md", "constraints.md", "system.md"])
+    @pytest.mark.parametrize("state", ["MISSING", "EMPTY", "UNREADABLE"])
+    def test_required_input_state_refuses_before_sprint_launch(self, tmp_path, name, state):
+        repo, env, g = make_repo(tmp_path)
+        plugin = tmp_path / "plugin-copy"
+        shutil.copytree(PLUGIN, plugin)
+        plugin_owned = name in {"JUDGMENT.md", "VALUES.md"}
+        target = plugin / name if plugin_owned else repo / ".xp" / name
+        target.unlink()
+        if state == "EMPTY":
+            target.write_text(" \n\t")
+        elif state == "UNREADABLE":
+            target.mkdir()
+        if not plugin_owned:
+            g("add", "-A")
+            assert g("commit", "-qm", f"construct {state.lower()} {name}").returncode == 0
+        record_reviews(tmp_path, repo, env)
+        marker = marker_path(tmp_path)
+        before = marker.read_bytes()
+
+        result = sprint(repo, env, "review", close=plugin / "scripts" / "close.py")
+
+        shown_path = str(target) if plugin_owned else f".xp/{name}"
+        assert result.returncode == 2
+        assert state in result.stderr and shown_path in result.stderr
+        assert "review again" in result.stderr
+        assert "Traceback" not in result.stderr
+        assert launches(tmp_path) == []
+        assert "(missing:" not in result.stdout + result.stderr
+        assert marker.read_bytes() == before
+
+    def test_a_fixer_that_deletes_a_rubric_still_records_the_round_it_ran(self, tmp_path):
+        """A rubric read per stage refuses from the CLOSER's bundle, and that exit
+        is a SystemExit past leg()'s error return — the one place the incomplete
+        round is written. Six launches and the fixer's committed patch are then
+        recorded nowhere. stages.check_roles resolves roles up front for this same
+        reason, one stage earlier."""
+        card = "#### story-042 — done thing   [done]"
+        declaring = PLAN.replace(card, f"{card}\nFiles: .xp/system.md")
+        repo, env, _g = make_repo(tmp_path, plan=declaring)
+        blocking = {"fixed": [], "blocking": ["a silent one"], "noted": []}
+        staged_stub(tmp_path, find=blocking, verify=blocking)
+        deletion = (
+            "diff --git a/.xp/system.md b/.xp/system.md\n"
+            "deleted file mode 100644\n"
+            "--- a/.xp/system.md\n"
+            "+++ /dev/null\n"
+            "@@ -1,2 +0,0 @@\n"
+            "-# System\n"
+            "-SYSTEM-SENTINEL\n"
+        )
+        claude = tmp_path / "bin" / "claude"
+        write = "sys.stdout.write("
+        claude.write_text(
+            claude.read_text().replace(
+                write,
+                f"open(pm.group(1).strip(), 'w').write({deletion!r}) if key == 'fix' else None\n"
+                + write,
+                1,
+            )
+        )
+        claude.chmod(0o755)
+
+        result = sprint(repo, env, "review")
+
+        assert not (repo / ".xp" / "system.md").exists(), "the fixer's patch never applied"
+        assert result.returncode == 0, result.stderr
+        recorded = json.loads(marker_path(tmp_path).read_text())["rounds"][-1]
+        assert "incomplete" not in recorded, recorded
+        assert recorded["shown_sha"] == head(repo, env), recorded
 
 
 class TestModeSwitch:
