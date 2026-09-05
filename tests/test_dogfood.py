@@ -76,12 +76,9 @@ class TestDogfoodMatchesTheScaffold:
             (label, key, spec)
             for label, roles in role_specs.items()
             for key, spec in roles.items()
-            if key in required
-            and (
-                len(parts := spec.split("/")) not in (2, 3)
-                or not all(parts)
-                or parts[0] not in HARNESS_INSTALL
-            )
+            if len(parts := spec.split("/")) not in (2, 3)
+            or not all(parts)
+            or parts[0] not in HARNESS_INSTALL
         }
         problems = {
             "missing": missing,

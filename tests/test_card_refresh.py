@@ -90,7 +90,9 @@ def test_card_refresh_uses_its_configured_model(tmp_path):
     recorded = json.loads(launch.read_text())
     argv = recorded["argv"]
     assert argv[argv.index("--model") + 1] == "card-only"
-    assert recorded["env"]["XP_ROLE"].endswith("reviewer")
+    assert recorded["env"]["XP_ROLE"].endswith("reviewer"), (
+        "run_agent binds the timeout and the credential strip off the RUNTIME role"
+    )
 
 
 def test_a_legacy_config_without_card_refresher_uses_reviewer(tmp_path):

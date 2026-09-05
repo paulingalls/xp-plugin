@@ -282,7 +282,8 @@ def stub_card_refresher(
         ' print(\'[{"id":"xp-plugin@xp-plugin","version":"fixture",'
         '"scope":"user"}]\'); sys.exit()\n'
         "prompt = sys.stdin.read()\n"
-        f"record = {{'argv': sys.argv[1:], 'env': dict(os.environ), 'prompt': prompt}}\n"
+        "env = {k: v for k, v in os.environ.items() if k.startswith('XP_')}\n"
+        "record = {'argv': sys.argv[1:], 'env': env, 'prompt': prompt}\n"
         f"json.dump(record, open({str(launch)!r}, 'w'))\n"
         "plan = re.search(r'^PLAN_PATH: (.+)$', prompt, re.M).group(1)\n"
         "text = open(plan).read()\n"

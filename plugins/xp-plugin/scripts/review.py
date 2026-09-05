@@ -426,6 +426,8 @@ def run(
         harness, model, effort = stage_role(stage, card)
     else:
         role = name if name in ("planner", "plan-reviewer") else "reviewer"
+        # `seat` is the config key ONLY — `role` stays "reviewer" for both read-only
+        # gates, because run_agent binds their timeout and credential strip off it.
         seat, fallback = {
             "planner": ("planner", "executor"),
             "plan-reviewer": ("plan-reviewer", ""),
