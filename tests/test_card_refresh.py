@@ -59,6 +59,12 @@ def test_card_refresh_rewrites_the_card_and_ready_digests_the_rewrite(tmp_path):
     assert "story-042 — demo story" in prompt and "story-043" not in prompt
     assert "# XP Values" in prompt and "# Judgment" in prompt
     assert "CONSTRAINT-SENTINEL" in prompt and "Worktree bootstrap" in prompt
+    findings = next(
+        Path(line.removeprefix("FINDINGS_PATH: "))
+        for line in prompt.splitlines()
+        if line.startswith("FINDINGS_PATH: ")
+    )
+    assert findings.name == "story-042.refresh.round-1.md" and findings.is_file()
 
     fresh = story_card(plan.read_text(), "story-042")[0]
     assert CORRECTED in fresh and "Context: demo." not in fresh
@@ -71,6 +77,47 @@ def test_card_refresh_rewrites_the_card_and_ready_digests_the_rewrite(tmp_path):
     minted = spawn(repo, env, "ready", "story-042")
     assert minted.returncode == 0, minted.stderr
     assert receipt["digest"] in minted.stdout, "ready digested text the refresh never saw"
+
+
+def test_card_refresh_uses_its_configured_model(tmp_path):
+    repo, env, _g, _plan = refresh_repo(tmp_path)
+    (repo / ".xp/config.yml").write_text(
+        "roles:\n  reviewer: claude/reviewer-only\n  card-refresher: claude/card-only\n"
+    )
+    launch = stub_card_refresher(tmp_path)
+    result = card_refresh(repo, env)
+    assert result.returncode == 0, result.stderr
+    recorded = json.loads(launch.read_text())
+    argv = recorded["argv"]
+    assert argv[argv.index("--model") + 1] == "card-only"
+    assert recorded["env"]["XP_ROLE"].endswith("reviewer"), (
+        "run_agent binds the timeout and the credential strip off the RUNTIME role"
+    )
+
+
+def test_a_legacy_config_without_card_refresher_uses_reviewer(tmp_path):
+    repo, env, _g, _plan = refresh_repo(tmp_path)
+    (repo / ".xp/config.yml").write_text(
+        "roles:\n  reviewer: claude/legacy-card-reviewer\ntests:\n  story: true\n"
+    )
+    launch = stub_card_refresher(tmp_path)
+    result = card_refresh(repo, env)
+    assert result.returncode == 0, result.stderr
+    argv = json.loads(launch.read_text())["argv"]
+    assert argv[argv.index("--model") + 1] == "legacy-card-reviewer"
+
+
+def test_a_malformed_card_refresher_refuses_before_agent_launch(tmp_path):
+    repo, env, _g, _plan = refresh_repo(tmp_path)
+    (repo / ".xp/config.yml").write_text(
+        "roles:\n  reviewer: claude/reviewer-only\n  card-refresher: claude\n"
+    )
+    launch = stub_card_refresher(tmp_path)
+    result = card_refresh(repo, env)
+    assert result.returncode == 2
+    assert "roles.card-refresher" in result.stderr
+    assert "card-refresher: claude/opus" in result.stderr
+    assert not launch.exists(), "the malformed seat fell through to reviewer"
 
 
 def test_a_refresh_that_finds_nothing_stale_still_records_that_it_ran(tmp_path):
@@ -94,6 +141,20 @@ def test_a_refresh_that_finds_nothing_stale_still_records_that_it_ran(tmp_path):
     plan.write_text(before.replace("[ready]", "[planned]"))
     never = spawn(repo, env, "ready", "story-042")
     assert never.returncode == 2 and "no card refresh has run" in never.stderr
+
+
+def test_a_refresher_that_writes_no_findings_cannot_mint_a_receipt(tmp_path):
+    repo, env, _g, plan = refresh_repo(tmp_path)
+    before = plan.read_text()
+    stub_card_refresher(tmp_path, findings="")
+    result = card_refresh(repo, env)
+    assert result.returncode == 2
+    assert "ended without a verdict" in result.stderr
+    assert plan.read_text() == before
+    assert not receipt_of(env).exists()
+    marker = Path(env["XP_DATA"]) / "markers/story-042.card-refresh-incomplete"
+    assert marker.exists()
+    assert spawn(repo, env, "ready", "story-042").returncode == 2
 
 
 def test_a_refresh_whose_receipt_never_landed_refuses_instead_of_claiming_success(tmp_path):

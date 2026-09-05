@@ -26,9 +26,6 @@ PLUGIN_ROOT = Path(__file__).parent.parent
 
 
 def findings_path(story_id: str) -> Path:
-    """The charter's own rule, computed HERE so the reviewer is handed exactly one
-    absolute path: <story-id>.md, then <story-id>.round-N.md beside it. One name
-    for a file written once per round destroys the earlier round on write."""
     return review_findings_path(story_id, "plan")
 
 

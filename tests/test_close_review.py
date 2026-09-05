@@ -304,11 +304,17 @@ class TestCompletedVerifyState:
         assert close(repo, env, "review").returncode == 0
         assert close(repo, env, "land").returncode == 0
 
-    def test_green_verify_still_records_and_lands_the_clean_round(self, tmp_path):
+    def test_story_report_schema_and_blocking_surface_ignore_clearance_key(self, tmp_path):
         repo, env, _g = make_repo(tmp_path)
+        report = {"fixed": [], "blocking": ["STORY-BLOCKER"], "noted": []}
+        stub_reviewer(tmp_path, report=report | {"clearable_by_full": ["STORY-BLOCKER"]})
         assert close(repo, env, "review").returncode == 0
-        assert marker(tmp_path)["rounds"][-1]["blocking"] == []
-        assert close(repo, env, "land").returncode == 0
+        round_ = marker(tmp_path)["rounds"][-1]
+        assert round_["blocking"] == ["STORY-BLOCKER"] and "clearable_by_full" not in round_
+        assert (landed := close(repo, env, "land")).returncode == 2 and landed.stderr == (
+            "refused: the last review round left blocking findings:\n  STORY-BLOCKER\n"
+            "Fix them (or review again once fixed) — a flag cannot clear these\n"
+        )
 
 
 class TestTrunkMotionGuards:

@@ -8,7 +8,36 @@ FALSIFIER = re.compile(r"^Falsifier: `(.+)`$", re.M)
 COVERED_BY = re.compile(r"^Covered by: (.+)$", re.M)
 RESOLVES = re.compile(r"^Resolves: (\w+)$", re.M)
 ARCHIVES = re.compile(r"^Archives: (\w+)$", re.M)
+FILES = re.compile(r"^Files: (.*)$", re.M)
 PLUGIN_ROOT = Path(__file__).parent.parent.parent
+
+
+def _declared_files(text: str) -> list[str]:
+    match = FILES.search(text)
+    paths = [path.strip() for path in match.group(1).split(",")] if match else []
+    return [] if not paths or "unknown" in paths else [path for path in paths if path]
+
+
+def source_files(root: Path, refs: list[str]) -> tuple[list[str], list[str], str]:
+    records = dict(entries(root))
+    found = {ref: _declared_files(records.get(ref, "")) for ref in refs}
+    unresolved = [ref for ref in refs if not found[ref]]
+    if unresolved:
+        archive_path = root / "archive.md"
+        try:
+            archive = archive_path.read_text(errors="replace") if archive_path.exists() else ""
+        except OSError as exc:
+            return [], [], f"archive.md is unreadable: {exc}"
+        for ref in unresolved:
+            section = re.search(
+                rf"^# Record {re.escape(ref)}\n(.*?)(?=^# Record |\Z)",
+                archive,
+                re.M | re.S,
+            )
+            if section:
+                found[ref] = _declared_files(section.group(1))
+    paths = list(dict.fromkeys(path for ref in refs for path in found[ref]))
+    return paths, [ref for ref in refs if not found[ref]], ""
 
 
 def _sprint_records(root: Path, since_epoch: int) -> tuple[str, str]:

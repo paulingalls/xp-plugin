@@ -119,6 +119,14 @@ def resolve_role(role: str, card: str = "", override: str = "") -> tuple[str, st
         )
     harness, model, effort = parts[0], parts[1], parts[2] if len(parts) > 2 else ""
     if harness not in HARNESS_INSTALL:
+        if config_source:
+            raise SystemExit(
+                fail(
+                    f"refused: roles.{role} in .xp/config.yml names unknown harness"
+                    f" {harness!r} — we ship {', '.join(HARNESS_INSTALL)}; replace it"
+                    f" with `{template_role_line(role)}`"
+                )
+            )
         raise SystemExit(
             fail(f"refused: harness {harness!r} — we ship {', '.join(HARNESS_INSTALL)}")
         )

@@ -79,8 +79,8 @@ def test_compact_preserves_the_executed_corpus_and_active_record(tmp_path):
     assert "Disposition: resolved" in compacted
     assert "archived note claim and evidence" not in compacted
     assert "archived note claim and evidence" in archived
-    assert "Files: d.py" not in compacted and "Files: d.py" in archived
-    assert "Files: b.py" not in compacted and "Files: b.py" in archived
+    assert "Files: d.py" in compacted and "Files: d.py" in archived
+    assert "Files: b.py" in compacted and "Files: b.py" in archived
 
 
 def test_archive_failure_leaves_the_only_work_copy_unchanged(tmp_path):

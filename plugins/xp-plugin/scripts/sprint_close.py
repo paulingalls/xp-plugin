@@ -4,6 +4,7 @@
 import glob
 import json
 import re
+import shlex
 import subprocess
 import sys
 from pathlib import Path
@@ -17,17 +18,15 @@ import overlap
 import stages
 from close import config_flat, default_branch, fail, git, sprint_unrecorded_notice, story_card
 from env import record_sprint_branch, refuse_direct_invocation, sprint_branch
-from release import cmd_post_merge as release_post_merge
-from release import next_version, refuse_unbumpable
-from review import reviewer_strays
-from sprint_bundle import ARCHIVES, COVERED_BY, FALSIFIER, RESOLVES, build
+from sprint_bundle import ARCHIVES, COVERED_BY, FALSIFIER, RESOLVES, build, source_files
 from work import (
     append,
     config_block_value,
     data_root,
     entries,
-    falsifier_is_green,
+    falsifier_result,
     missing_plan_refusal,
+    neutralize,
     plan_path,
     record_summary,
     stamp,
@@ -67,23 +66,54 @@ def corpus(root: Path) -> list[tuple[str, str, str, str]]:
 
 
 def batch_refusal(root: Path, grouped: dict[str, list[tuple[str, str, str]]]) -> str:
+    red = []
     for falsifier, records in grouped.items():
-        if falsifier_is_green(falsifier):
-            continue
-        citations = "; ".join(f"{eid} ({head})" for eid, head, _covered in records)
-        known = any(head.startswith("bug ") for _eid, head, _covered in records)
-        if not known:
+        result = falsifier_result(falsifier)
+        if result.returncode:
+            red.append((falsifier, records, result))
+    if not red:
+        return ""
+    lines = ["batch falsifier RED:"]
+    refs = []
+    for falsifier, records, result in red:
+        lines.append(f"command: {falsifier}")
+        for eid, head, _covered in records:
+            refs.append(eid)
+            lines.append(f"source {eid} ({head})")
+        lines.extend(
+            (f"stdout:\n{result.stdout or '(empty)'}", f"stderr:\n{result.stderr or '(empty)'}")
+        )
+    evidence = "\n".join(lines)
+    known = any(head.startswith("bug ") for _f, records, _r in red for _e, head, _c in records)
+    if known:
+        decision = "No bug filed because an open source bug already filed this batch."
+    else:
+        files, missing, archive_error = source_files(root, refs)
+        if archive_error:
+            decision = f"No bug filed because {archive_error}."
+        elif missing:
+            malformed = "; ".join(f"{ref} has no usable Files declaration" for ref in missing)
+            decision = f"No bug filed because {malformed}."
+        else:
+            commands = [falsifier for falsifier, _records, _result in red]
+            combined = (
+                commands[0]
+                if len(commands) == 1
+                else "status=0; "
+                + "; ".join(
+                    f"/bin/sh -c {shlex.quote(command)} || status=1" for command in commands
+                )
+                + '; exit "$status"'
+            )
             append(
                 root,
-                f"## bug {stamp()}\nClaim: batch falsifier RED for records {citations};"
-                " debt/archive red means the latent problem materialised.\n"
-                f"Falsifier: `{falsifier}`\nFiles: unknown\n\n",
+                f"## bug {stamp()}\nClaim: batch falsifier RED for source records "
+                f"{', '.join(refs)}; debt/archive red means the latent problem materialised.\n"
+                f"{neutralize(evidence)}\nFalsifier: `{combined}`\n"
+                f"Files: {', '.join(files)}\n\n",
             )
-        return (
-            f"refused: batch falsifier RED for records {citations}:\n  {falsifier}\n"
-            f"{'already filed' if known else 'Re-filed'} as a bug. Fix it, then run start again"
-        )
-    return ""
+            decision = "Filed as one bug."
+    return f"refused: {evidence}\n{decision} Fix it, then run start again"
 
 
 def sprint_cards(plan: str, sprint_id: str) -> str:
@@ -98,6 +128,7 @@ def sprint_marker(sprint_id: str) -> Path:
 
 def cmd_review(sprint_id: str, dry_run: bool) -> int:
     import review
+    import sprint_review_resume
     from bookkeep import render_sprint_prior
 
     if git("status", "--porcelain").stdout.strip():
@@ -116,13 +147,34 @@ def cmd_review(sprint_id: str, dry_run: bool) -> int:
     marker = sprint_marker(sprint_id)
     state = json.loads(marker.read_text()) if marker.exists() else {}
     rounds = state.get("rounds", [])
-    round_n = len(rounds) + 1
     complete_n = max((n for n, r in enumerate(rounds, 1) if not r.get("incomplete")), default=0)
+    head = git("rev-parse", "HEAD").stdout.strip()
+    reviewed_head, resume_round = head, None
+    # Only the round-one fanout HAS a closer to resume at: a later round is the fixer
+    # alone, and its charters are never loaded. Every unmet precondition falls back to
+    # a fresh round rather than refusing — `review` is the only command that runs one,
+    # so a refusal telling the lead to run a full review has no next action at all.
+    if not complete_n and (stopped := sprint_review_resume.closer_round(rounds)):
+        saved = review.sprint_report_path(sprint_id, "fix", len(rounds))
+        derived, why = sprint_review_resume.reviewed_head(
+            stopped, head, review.patch_path(saved), git, review.REVIEWER_NAME
+        )
+        if why:
+            print(f"warning: {why} — running a fresh round instead", file=sys.stderr)
+        else:
+            reviewed_head, resume_round = derived, stopped
+    resume = resume_round is not None
+    round_n = len(rounds) if resume else len(rounds) + 1
     found, cap, charters, altitude = [], 0, {}, ""
     if complete_n:
         altitude, err = stages.altitude()
         if err:
             return fail(err)
+    elif resume:
+        charters, err = stages.charters()
+        if err:
+            return fail(err)
+        stages.check_roles(cards)
     else:
         found, err = stages.angles()
         if err:
@@ -134,24 +186,36 @@ def cmd_review(sprint_id: str, dry_run: bool) -> int:
         if err:
             return fail(err)
         stages.check_roles(cards)
-    head = git("rev-parse", "HEAD").stdout.strip()
     base = git("merge-base", f"refs/heads/{trunk}", "HEAD").stdout.strip()
     digest_before = review.marker_digest(marker)
     diff_base = state["shown_sha"] if complete_n else ""
     if diff_base and (missing := _shown_diff(sprint_id, diff_base, head)[1]):
         return fail(missing)
 
-    if not dry_run and (left := sprint_unrecorded_notice(sprint_id, round_n)):
+    # The notice's precondition is a review that recorded no round. A resumed round IS
+    # recorded, and these reports are this run's INPUT, not what it is about to unlink.
+    if not (dry_run or resume) and (left := sprint_unrecorded_notice(sprint_id, round_n)):
         print("warning: " + left, file=sys.stderr)  # every leg below unlinks its own
 
     ran, reports = [], []
 
     def stop(err: str) -> int:
+        if resume:
+            if not dry_run:  # a preview must not rewrite the round it previews
+                sprint_review_resume.keep_incomplete(marker, state, err)
+                ran_before = ", ".join(rounds[-1]["stages"])
+                print(f"round {round_n} remains incomplete after {ran_before}")
+            return fail(err)
         if reports:
             err = err.replace(review.NO_ROUND, f"Round {round_n} IS recorded, incomplete.")
             seen = {k: dict.fromkeys(i for r in reports for i in r[k]) for k in review.REPORT_KEYS}
             round_ = {k: list(v) for k, v in seen.items()} | {"incomplete": err, "stages": ran}
-            review.write_round(marker, state, round_)
+            coverage = (
+                {"reviewed_head": head, "shown_sha": git("rev-parse", "HEAD").stdout.strip()}
+                if "fix" in ran
+                else {}
+            )
+            review.write_round(marker, state, round_, **coverage)
             print(f"round {round_n} recorded incomplete after {', '.join(ran)}")
         return fail(err)
 
@@ -178,7 +242,7 @@ def cmd_review(sprint_id: str, dry_run: bool) -> int:
         if dry_run:  # an EMPTY report, not a shapeless one: a preview walks
             empty = {k: [] for k in review.REPORT_KEYS}
             return empty, review.abort_text(head, err) if err else ""
-        report, report_err = review.read_report(path)
+        report, report_err = review.read_report(path, stage=stage)
         if not report_err:  # `ran` is what the round CONTAINS: a stage that wrote
             ran.append(key)  # nothing did not cover it, whatever it was launched for
             reports.append(report)
@@ -192,7 +256,17 @@ def cmd_review(sprint_id: str, dry_run: bool) -> int:
         return report, review.abort_text(stage_head, report_err) if report_err else ""
 
     prior = [("Findings from earlier rounds", render_sprint_prior(rounds if complete_n else []))]
-    if complete_n:
+    if resume:
+        fix_report = review.sprint_report_path(sprint_id, "fix", round_n)
+        fixed, err = review.read_report(fix_report, stage="fixer")
+        if err:
+            return stop(review.abort_text(head, err))
+        closing, err = leg("closer", "close", [("What the fixer reported", json.dumps(fixed))])
+        if err:
+            return stop(err)
+        if dry_run:
+            return 0
+    elif complete_n:
         fixed, err = leg("fixer", "fix", [("Sprint altitude", altitude), *prior], review.charter())
         if err:
             return stop(err)
@@ -234,14 +308,19 @@ def cmd_review(sprint_id: str, dry_run: bool) -> int:
         return stop(review.abort_text(shown_sha, changed))
     round_ = {k: fixed[k] for k in review.REPORT_KEYS}
     round_["blocking"] += closing["blocking"]
+    if clearable := closing.get(review.CLEARABLE_BY_FULL):
+        round_[review.CLEARABLE_BY_FULL] = clearable
     fix_report = review.sprint_report_path(sprint_id, "fix", round_n)
-    if err := review.write_reviewer_diff(fix_report, head, f"sprint {sprint_id}"):
+    if err := review.write_reviewer_diff(fix_report, reviewed_head, f"sprint {sprint_id}"):
         # A rolled-back fix must not remain in the recorded round.
         if "fix" in ran and git("rev-parse", "HEAD").stdout.strip() == head:
             reports.pop(ran.index("fix"))
             ran.remove("fix")
         return stop(err)
-    review.write_round(marker, state, round_, reviewed_head=head, shown_sha=shown_sha)
+    if resume:
+        sprint_review_resume.complete(marker, state, round_, reviewed_head, shown_sha)
+    else:
+        review.write_round(marker, state, round_, reviewed_head=head, shown_sha=shown_sha)
     print(
         f"round {round_n} recorded at {shown_sha[:8]}:"
         f" {len(round_['fixed'])} fixed, {len(round_['blocking'])} blocking"
@@ -371,10 +450,6 @@ def cmd_start(sprint_id: str) -> int:
     return 0
 
 
-def _is_retro_prose(path: str) -> bool:
-    return path.startswith(".xp/") and path not in overlap.GATE_FILES
-
-
 def _shown_diff(sprint_id: str, shown: str, head: str) -> tuple[subprocess.CompletedProcess, str]:
     moved = git("diff", "--name-only", shown, head, check=False)
     if moved.returncode:
@@ -387,113 +462,16 @@ def _shown_diff(sprint_id: str, shown: str, head: str) -> tuple[subprocess.Compl
     return moved, ""
 
 
-def _coverage_refusal(sprint_id: str, head: str) -> str:
-    marker = sprint_marker(sprint_id)
-    state = json.loads(marker.read_text()) if marker.exists() else {}
-    rerun = f"run `close.py sprint {sprint_id} review`"
-    if not (rounds := state.get("rounds") or []):
-        return f"refused: no recorded review for sprint {sprint_id} — {rerun}"
-    if incomplete := rounds[-1].get("incomplete"):
-        detail = incomplete.replace("\n", "\n  ")
-        return (
-            f"refused: the last review round is incomplete:\n  {detail}\n"
-            f"Its findings are recorded and stand; clear what it names, then {rerun}"
-        )
-    if blocking := rounds[-1]["blocking"]:
-        return (
-            "refused: the last round left blocking findings:\n  "
-            + "\n  ".join(blocking)
-            + "\nFix them, then review again — a flag cannot clear these"
-        )
-    if (shown := str(state.get("shown_sha"))) == head:
-        return ""
-    moved, missing = _shown_diff(sprint_id, shown, head)
-    if missing:
-        return missing
-    # BEFORE the authorship branch: an empty range reads there as "no strays"
-    if git("merge-base", "--is-ancestor", shown, head, check=False).returncode:
-        return (
-            f"refused: HEAD does not contain {shown[:8]}, the tree the round covered"
-            f" — the recorded round describes no tree that exists. {rerun}"
-        )
-    strays = reviewer_strays(shown, head)
-    if not strays and not any(f in overlap.GATE_FILES for f in moved.stdout.splitlines()):
-        print(f"the delta since {shown[:8]} is the reviewer's own fixes")
-        return ""
-    if code := [f for f in moved.stdout.splitlines() if not _is_retro_prose(f)]:
-        return (
-            f"refused: the review did not cover HEAD — {', '.join(code)}"
-            f" changed since {shown[:8]}. {rerun}"
-        )
-    if exempt := moved.stdout.splitlines():
-        print(f"reviewed earlier; the delta since is .xp/ only: {', '.join(sorted(set(exempt)))}")
-    return ""
-
-
 def cmd_land(sprint_id: str, dry_run: bool) -> int:
-    import shutil
+    import sprint_land
 
-    import review
-
-    if refusal := _coverage_refusal(sprint_id, git("rev-parse", "HEAD").stdout.strip()):
-        return fail(refusal)
-    branch = git("rev-parse", "--abbrev-ref", "HEAD").stdout.strip()
-    if not (version := next_version()):
-        return refuse_unbumpable()
-    cmds = [
-        ["git", "push", "-u", "origin", branch],
-        ["gh", "pr", "create", "--title", f"release {version}", "--body", f"Sprint {sprint_id}"],
-    ]
-    ref = overlap.merge_source(default_branch(), "pr")
-    pending = overlap.unmerged(ref)
-    if dry_run:
-        full = config_block_value("tests", "full")
-        if refusal := overlap.tier_refusal(full, "full"):
-            return fail(refusal)
-        print(f"would run: {full}")
-        for c in cmds:
-            print(" ".join(c))
-        print(f"(then: close.py sprint {sprint_id} post-merge — tag {version}, retire the key)")
-        if pending:
-            print(f"...on a trial merge with {ref} — staged, then aborted either way")
-        return 0
-
-    if dirty := git("status", "--porcelain").stdout.strip():
-        return fail(
-            "refused: the working tree is dirty — the tier must judge the tree"
-            " that ships, and these files are not in it:\n  " + dirty
-        )
-    # Triage can stale start's tier, so land measures the shipping merge again.
-    if red := overlap.gates(ref, "", "full", pending):
-        return fail(red)
-    state = json.loads(sprint_marker(sprint_id).read_text())
-    head = git("rev-parse", "HEAD").stdout.strip()
-    review.disclose(
-        state,
-        head,
-        lambda n: review.diff_path(review.sprint_report_path(sprint_id, "fix", n)),
-    )
-    if gates := [
-        f
-        for start, end in review.covered_ranges(state, head)
-        for f in git("diff", "--name-only", f"{start}..{end}").stdout.splitlines()
-        if f in overlap.GATE_FILES
-    ]:
-        print(f"among them a gate file, which no later check re-reads: {', '.join(gates)}")
-    if not shutil.which("gh"):
-        return fail(
-            "refused: pr mode needs the gh CLI on PATH — install it, or open the PR by hand"
-        )
-    for c in cmds:
-        r = subprocess.run(c, capture_output=True, text=True)
-        if r.returncode != 0:
-            return fail(f"{c[0]} failed: {r.stderr.strip()}")
-    print(f"release PR open. After it MERGES: close.py sprint {sprint_id} post-merge")
-    return 0
+    return sprint_land.cmd_land(sprint_id, dry_run)
 
 
 def cmd_post_merge(sprint_id: str) -> int:
-    return release_post_merge(sprint_id)
+    import sprint_land
+
+    return sprint_land.cmd_post_merge(sprint_id)
 
 
 if __name__ == "__main__":

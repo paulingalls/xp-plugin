@@ -24,8 +24,9 @@ adding over the cap requires retiring one (the plan reviewer enforces).
    in a hook may require summarizing, deciding, or interpreting.
 8. **Small files: target 300 lines, hard cap 500 — tests included.** Tests are
    production code: the cap and the comment rubric bind tests/ exactly as they
-   bind shipped code. Large files eat agent context on every read; over-cap means
-   extract, not scroll.
+   bind shipped code. At or before the cap, extraction needs no separate approval:
+   before/after collection counts match and every collected test passes. Large files
+   eat agent context; extract, do not squeeze or scroll.
 9. **Comments exist only for what neither a test nor a name can carry** — the why,
    an external constraint, a rejected design; JUDGMENT.md gives every role the
    rubric. A comment is the one artifact no test checks, so it rots silently.

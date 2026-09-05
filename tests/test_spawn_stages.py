@@ -1,7 +1,7 @@
 import json
 import subprocess
 
-from spawn_helpers import make_repo, spawn
+from spawn_helpers import make_repo, seed_refresh_receipt, spawn
 
 CLEAN = {"fixed": [], "blocking": [], "noted": []}
 
@@ -59,7 +59,37 @@ def prompt_for(path, role):
     return next(e["prompt"] for e in events if e["role"] == role)
 
 
+def model_of(event):
+    return event["argv"][event["argv"].index("--model") + 1]
+
+
 class TestSpawnStages:
+    def test_each_story_launch_uses_its_own_configured_model(self, tmp_path):
+        repo, env, g = make_repo(tmp_path, files="src/thing.py, src/other.py")
+        config = repo / ".xp/config.yml"
+        config.write_text(
+            "roles:\n"
+            "  planner: claude/planner-only\n"
+            "  executor: claude/executor-only\n"
+            "  reviewer: claude/reviewer-only\n"
+            "  plan-reviewer: claude/plan-reviewer-only\n"
+            "tests:\n  story: true\n"
+        )
+        assert g("commit", "-aqm", "distinct role models").returncode == 0
+        assert g("branch", "-f", "main", "HEAD").returncode == 0
+        events = stub_stages(tmp_path)
+        result = spawn(repo, env, "story-042")
+        assert result.returncode == 0, result.stderr
+        assert {
+            event["role"]: model_of(event)
+            for event in map(json.loads, events.read_text().splitlines())
+        } == {
+            "planner": "planner-only",
+            "plan-reviewer": "plan-reviewer-only",
+            "teammate": "executor-only",
+            "reviewer": "reviewer-only",
+        }
+
     def test_multifile_runs_the_four_roles_in_order_and_records_the_close_round(self, tmp_path):
         repo, env, _g = make_repo(tmp_path, files="src/thing.py, src/other.py")
         events = stub_stages(tmp_path)
@@ -98,9 +128,8 @@ class TestSpawnStages:
             assert "plan_review.py" not in brief, f"the {role} brief hands it a review to launch"
 
     def test_a_config_predating_roles_planner_still_stages_one(self, tmp_path):
-        """No config we have shipped carries roles.planner — the scaffold's does
-        not — so a refusal there strands every multi-file card in every existing
-        project, which is the one path the field report came from."""
+        """A deliberately constructed legacy config has no planner seat; refusing
+        it would strand existing multi-file projects."""
         repo, env, _g = make_repo(tmp_path, files="src/thing.py, src/other.py")
         cfg = repo / ".xp/config.yml"
         cfg.write_text(cfg.read_text().replace("  planner: claude/haiku/low\n", ""))
@@ -111,6 +140,48 @@ class TestSpawnStages:
         assert event_roles(events) == ["planner", "plan-reviewer", "teammate", "reviewer"]
         planner = next(json.loads(ln) for ln in events.read_text().splitlines())
         assert "sonnet" in " ".join(planner["argv"]), "the fallback is roles.executor, not reviewer"
+
+    def test_a_malformed_planner_refuses_before_any_stage_launch(self, tmp_path):
+        repo, env, g = make_repo(tmp_path, files="src/thing.py, src/other.py")
+        config = repo / ".xp/config.yml"
+        config.write_text(
+            config.read_text().replace("planner: claude/haiku/low", "planner: claude")
+        )
+        assert g("commit", "-aqm", "malformed planner").returncode == 0
+        events = stub_stages(tmp_path)
+        result = spawn(repo, env, "story-042")
+        assert result.returncode == 2
+        assert "roles.planner" in result.stderr and "planner: claude/sonnet/medium" in result.stderr
+        assert not events.exists(), "an agent launched before the malformed role was refused"
+
+    def test_a_card_planner_override_beats_the_new_project_default(self, tmp_path):
+        repo, env, g = make_repo(tmp_path, files="src/thing.py, src/other.py")
+        config = repo / ".xp/config.yml"
+        config.write_text(
+            config.read_text()
+            .replace("claude/haiku/low", "claude/project-planner")
+            .replace("claude/sonnet/medium", "claude/project-executor")
+            .replace("  reviewer: claude/opus\n", "  reviewer: claude/project-reviewer\n")
+        )
+        plan = tmp_path / "data/plan.md"
+        plan.write_text(
+            plan.read_text().replace("Executor:", "Planner: claude/card-planner\nExecutor:")
+        )
+        seed_refresh_receipt(repo, env)
+        amended = spawn(repo, env, "amend", "story-042", "--reason", "exercise planner override")
+        assert amended.returncode == 0, amended.stderr
+        assert g("commit", "-aqm", "distinct project roles").returncode == 0
+        assert g("branch", "-f", "main", "HEAD").returncode == 0
+        events = stub_stages(tmp_path)
+        result = spawn(repo, env, "story-042")
+        assert result.returncode == 0, result.stderr
+        models = {
+            event["role"]: model_of(event)
+            for event in map(json.loads, events.read_text().splitlines())
+        }
+        assert models["planner"] == "card-planner"
+        assert models["teammate"] == "project-executor"
+        assert models["reviewer"] == "project-reviewer"
 
     def test_single_file_distinguishes_skipped_planning_from_ran_stages(self, tmp_path):
         repo, env, _g = make_repo(tmp_path)

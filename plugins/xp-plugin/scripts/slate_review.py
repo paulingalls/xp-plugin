@@ -38,11 +38,18 @@ def review_findings_path(identifier: str, kind: str) -> Path:
         stem = f"{identifier}.refresh"
     else:
         stem = f"sprint-{identifier}"
-    path, round_n = parent / f"{stem}.md", 1
-    while path.exists():
-        round_n += 1
-        path = parent / f"{stem}.round-{round_n}.md"
-    return path
+    legacy = parent / f"{stem}.md"
+    rounds = [1] if legacy.exists() else []
+    prefix = f"{stem}.round-"
+    if parent.is_dir():
+        for path in parent.iterdir():
+            name = path.name
+            if not (name.startswith(prefix) and name.endswith(".md")):
+                continue
+            encoded = name[len(prefix) : -3]
+            if encoded.isdecimal() and int(encoded) > 0 and encoded == str(int(encoded)):
+                rounds.append(int(encoded))
+    return parent / f"{stem}.round-{max(rounds, default=0) + 1}.md"
 
 
 def review_marker(identifier: str, kind: str) -> Path:
@@ -320,6 +327,12 @@ def _run_refresh(story_id: str, out: Path, dry_run: bool) -> int:
         )
     if error:
         return fail(error)
+    try:
+        findings = out.read_text().strip()
+    except OSError:
+        findings = ""
+    if not findings:
+        return fail(f"refused: the card refresher wrote no findings at {out.resolve()}")
     review_marker(story_id, "refresh").unlink(missing_ok=True)
     ready.write_refresh_receipt(story_id, new_card, new_card != card)
     return 0

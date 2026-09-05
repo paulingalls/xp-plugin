@@ -6,8 +6,8 @@ findings and then lost its marker cleanup reads identically to one that never
 started. Field-measured (Legacy, 0.7.0): a sound 6.2KB review discarded and the
 story re-spawned. Absent, unreadable and UNSIGNED are three states; the notice
 enumerates two.
-CONSTRUCTED: both artifacts on disk at once — the stale marker AND the findings
-the review actually wrote. Never greps the notice text.
+CONSTRUCTED: both artifacts on disk at once — the stale marker explicitly binds
+the findings the review actually wrote. Never greps the notice text.
 """
 
 import json
@@ -25,9 +25,11 @@ with tempfile.TemporaryDirectory() as tmp:
     root = Path(tmp)
     (root / "markers").mkdir(parents=True)
     (root / "plans").mkdir(parents=True)
-    (root / "markers" / "story-042.plan-review-incomplete").write_text("pid 1234")
     findings = {"status": "edited", "reasons": ["a real reason the reviewer wrote"]}
-    (root / "plans" / "story-042.md").write_text(json.dumps(findings))
+    findings_path = root / "plans" / "story-042.md"
+    findings_path.write_text(json.dumps(findings))
+    marker = {"pid": 1234, "findings": str(findings_path)}
+    (root / "markers" / "story-042.plan-review-incomplete").write_text(json.dumps(marker))
 
     notice = review.plan_review_notice("story-042")
 

@@ -4,6 +4,30 @@ Release notes started at v0.6.0; earlier entries are summarized from their
 tag and merge messages. Full detail lives in the merge history and the
 per-sprint review reports.
 
+## v0.20.0 — release evidence stays complete and actionable
+
+Six changes keep release decisions bound to the evidence that actually earned
+them.
+
+- **Later review rounds retain every prior finding.** Presentation remains
+  bounded in human-facing merge summaries, which point to the exact durable
+  round artifact holding the complete result.
+- **The full gate can clear only an explicitly bound deterministic blocker.**
+  Sprint closers may bind their own blocker to the existing full tier, but code,
+  gate or trunk motion and every ordinary judgment blocker still require review.
+- **Every review round owns a numbered artifact.** Markers name that artifact;
+  missing or corrupt bindings refuse instead of guessing an older report, and
+  legacy round-one files migrate without first-gap reuse.
+- **Every launched role uses the configuration seat it names.** Planner, slate
+  reviewer and card refresher now have explicit routes while older configs keep
+  their documented fallbacks.
+- **A red falsifier batch preserves the whole diagnosis.** Close reports every
+  red command with bounded stdout and stderr and can file one combined bug with
+  the stable union of its source Files declarations.
+- **Cap-triggered extraction is standing authority.** It needs no separate
+  approval; the before/after collection count and green baseline are the
+  behavior-preservation wall.
+
 ## v0.19.0 — the loop gets cheaper to run and recover
 
 Five changes remove recurring work without weakening the independent feedback
