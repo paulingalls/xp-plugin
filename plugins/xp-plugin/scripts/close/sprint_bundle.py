@@ -1,7 +1,7 @@
 import re
 from pathlib import Path
 
-from close import git, review_authority_sections
+from close import git
 from work import data_root, entries, work_entries_since
 
 FALSIFIER = re.compile(r"^Falsifier: `(.+)`$", re.M)
@@ -63,8 +63,11 @@ def _sprint_records(root: Path, since_epoch: int) -> tuple[str, str]:
     return "\n".join(out) or "none", "\n".join(kept).strip() or "none"
 
 
-def build(sprint_id, cards, base, report, charter, extra, diff_base="") -> str:
-    """Build at launch so the closer sees the fixer's tree."""
+def build(sprint_id, cards, base, report, charter, extra, authority, diff_base="") -> str:
+    """Build at launch so the closer sees the fixer's tree — but the RUBRIC is the
+    caller's snapshot, read once before the first launch. Re-read here it would exit
+    from a later stage's bundle, past leg()'s error return and the incomplete round
+    it writes (stages.check_roles refuses up front for the same reason)."""
     epoch = int(git("show", "-s", "--format=%ct", base).stdout.strip())
     resolutions, work_md = _sprint_records(data_root(), epoch)
     title = "The delta since the last recorded round" if diff_base else "Cumulative sprint diff"
@@ -76,6 +79,6 @@ def build(sprint_id, cards, base, report, charter, extra, diff_base="") -> str:
         (title, git("diff", f"{diff_base or base}..HEAD").stdout),
         ("Resolutions filed during the sprint", resolutions),
         ("work.md entries filed during the sprint", work_md),
-        *review_authority_sections(),
+        *authority,
     ]
     return "".join(f"## {title}\n\n{body}\n\n" for title, body in sections)

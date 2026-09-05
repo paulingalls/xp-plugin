@@ -195,6 +195,13 @@ def review_authority_sections() -> list[tuple[str, str]]:
                     " readable, then run review again"
                 )
             ) from None
+        except UnicodeDecodeError as exc:
+            raise SystemExit(
+                fail(
+                    f"refused: required review authority {path} is NOT UTF-8 ({exc}) —"
+                    " rewrite it as UTF-8 text, then run review again"
+                )
+            ) from None
         if not text.strip():
             raise SystemExit(
                 fail(

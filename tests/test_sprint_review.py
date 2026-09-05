@@ -272,6 +272,46 @@ class TestReviewAuthority:
         assert "(missing:" not in result.stdout + result.stderr
         assert marker.read_bytes() == before
 
+    def test_a_fixer_that_deletes_a_rubric_still_records_the_round_it_ran(self, tmp_path):
+        """A rubric read per stage refuses from the CLOSER's bundle, and that exit
+        is a SystemExit past leg()'s error return — the one place the incomplete
+        round is written. Six launches and the fixer's committed patch are then
+        recorded nowhere. stages.check_roles resolves roles up front for this same
+        reason, one stage earlier."""
+        card = "#### story-042 — done thing   [done]"
+        declaring = PLAN.replace(card, f"{card}\nFiles: .xp/system.md")
+        repo, env, _g = make_repo(tmp_path, plan=declaring)
+        blocking = {"fixed": [], "blocking": ["a silent one"], "noted": []}
+        staged_stub(tmp_path, find=blocking, verify=blocking)
+        deletion = (
+            "diff --git a/.xp/system.md b/.xp/system.md\n"
+            "deleted file mode 100644\n"
+            "--- a/.xp/system.md\n"
+            "+++ /dev/null\n"
+            "@@ -1,2 +0,0 @@\n"
+            "-# System\n"
+            "-SYSTEM-SENTINEL\n"
+        )
+        claude = tmp_path / "bin" / "claude"
+        write = "sys.stdout.write("
+        claude.write_text(
+            claude.read_text().replace(
+                write,
+                f"open(pm.group(1).strip(), 'w').write({deletion!r}) if key == 'fix' else None\n"
+                + write,
+                1,
+            )
+        )
+        claude.chmod(0o755)
+
+        result = sprint(repo, env, "review")
+
+        assert not (repo / ".xp" / "system.md").exists(), "the fixer's patch never applied"
+        assert result.returncode == 0, result.stderr
+        recorded = json.loads(marker_path(tmp_path).read_text())["rounds"][-1]
+        assert "incomplete" not in recorded, recorded
+        assert recorded["shown_sha"] == head(repo, env), recorded
+
 
 class TestModeSwitch:
     """Note bae0b87b: findings handed in -> validate each; none handed in -> run

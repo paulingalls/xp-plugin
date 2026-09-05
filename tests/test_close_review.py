@@ -296,6 +296,39 @@ class TestReviewAuthority:
         assert not (tmp_path / "data" / "markers" / "story-042.review-launch").exists()
         assert marker.read_bytes() == before
 
+    def test_a_rubric_this_user_cannot_read_is_UNREADABLE_not_a_traceback(self, tmp_path):
+        """A directory raises IsADirectoryError; the state the card names is a
+        permission denial, and only chmod constructs it — narrowing the handler to
+        the directory alone leaves every case above green."""
+        repo, env, _g = make_repo(tmp_path)
+        plugin = tmp_path / "plugin-copy"
+        shutil.copytree(PLUGIN, plugin)
+        (plugin / "VALUES.md").chmod(0o000)
+
+        result = close(repo, env, "review", close=plugin / "scripts" / "close.py")
+
+        assert result.returncode == 2, result.stderr
+        assert "UNREADABLE" in result.stderr and str(plugin / "VALUES.md") in result.stderr
+        assert "Traceback" not in result.stderr
+        assert launches(tmp_path) == []
+
+    def test_a_rubric_that_is_not_utf8_is_named_rather_than_decoded(self, tmp_path):
+        """The fourth state of a read this guard exists to enumerate, and the one
+        the field has already produced: spawn.py and handback.py both name a
+        `.xp/system.md` that is not UTF-8, because UnicodeDecodeError is a
+        ValueError and no OSError arm catches it."""
+        repo, env, _g = make_repo(tmp_path)
+        plugin = tmp_path / "plugin-copy"
+        shutil.copytree(PLUGIN, plugin)
+        (plugin / "JUDGMENT.md").write_bytes(b"# Judgment\nred first, caf\xe9\n")
+
+        result = close(repo, env, "review", close=plugin / "scripts" / "close.py")
+
+        assert result.returncode == 2, result.stderr
+        assert "NOT UTF-8" in result.stderr and str(plugin / "JUDGMENT.md") in result.stderr
+        assert "Traceback" not in result.stderr
+        assert launches(tmp_path) == []
+
 
 class TestTrunkMotionGuards:
     """story-012a: trunk motion is refused at REVIEW, on both the local and the
