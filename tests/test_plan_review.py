@@ -29,6 +29,12 @@ tests:
 """
 
 
+def test_plan_reviewer_charter_numbers_round_one_and_labels_legacy():
+    charter = (PLUGIN / "agents" / "plan-reviewer.md").read_text()
+    assert ".round-1.md" in charter
+    assert "legacy logical round one" in charter
+
+
 def stub_planner(tmp_path, findings=CLEAN, write_findings=True, motion=""):
     """A fake `claude` that REFUSES a prompt carrying no charter.
 

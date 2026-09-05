@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 
 from close_helpers import CLAUDE_SH
+from slate_review import review_findings_path
 from spawn_helpers import make_repo
 from test_plan_review import CLEAN, CONFIG, plan_review, stub_planner
 
@@ -32,7 +33,7 @@ class TestPlanReviewArtifacts:
         first_run = plan_review(repo, env, "story-042", str(draft))
         assert first_run.returncode == 0
         first = findings_of(rec)
-        assert first.is_absolute() and first.name == "story-042.md"
+        assert first.is_absolute() and first.name == "story-042.round-1.md"
         rec = stub_planner(
             tmp_path, findings='{"status":"clean","reasons":[],"summary":"round two"}'
         )
@@ -45,6 +46,27 @@ class TestPlanReviewArtifacts:
         assert all("re-read the reviewed plan" in line for line in handoffs)
         assert str(first) in handoffs[0] and str(second) in handoffs[1]
         assert handoffs[0] != handoffs[1]
+
+    def test_a_gapped_legacy_tree_allocates_after_the_maximum_round(self, tmp_path, monkeypatch):
+        _repo, env, _draft = self.repo(tmp_path)
+        monkeypatch.setenv("XP_DATA", env["XP_DATA"])
+        plans = Path(env["XP_DATA"]) / "plans"
+        plans.mkdir(parents=True)
+        (plans / "story-042.md").write_text("legacy round one")
+        (plans / "story-042.round-3.md").write_text("round three")
+        for name in ("story-042.round-0.md", "story-042.round-04.md", "story-042.round-x.md"):
+            (plans / name).write_text("not a canonical positive round")
+        assert not (plans / "story-042.round-1.md").exists()
+        assert not (plans / "story-042.round-2.md").exists()
+        assert review_findings_path("story-042", "plan") == plans / "story-042.round-4.md"
+
+    def test_legacy_round_one_allocates_numbered_round_two(self, tmp_path, monkeypatch):
+        _repo, env, _draft = self.repo(tmp_path)
+        monkeypatch.setenv("XP_DATA", env["XP_DATA"])
+        plans = Path(env["XP_DATA"]) / "plans"
+        plans.mkdir(parents=True)
+        (plans / "story-042.md").write_text("legacy round one")
+        assert review_findings_path("story-042", "plan") == plans / "story-042.round-2.md"
 
     def test_success_without_the_required_findings_file_refuses(self, tmp_path):
         repo, env, draft = self.repo(tmp_path)
@@ -90,6 +112,18 @@ class TestIncompleteReviewIsVisibleToTheLead:
         r = plan_review(repo, env, "story-042", str(draft))
         assert r.returncode == 0, r.stderr
         assert not self.marker(tmp_path).exists(), "a clean review must not accuse itself"
+
+    def test_an_unbound_marker_is_not_joined_as_a_running_round(self, tmp_path, monkeypatch):
+        import slate_review as runner
+
+        monkeypatch.setenv("XP_DATA", str(tmp_path / "data"))
+        marker = self.marker(tmp_path)
+        marker.parent.mkdir(parents=True)
+        marker.write_text(json.dumps({"pid": 1234}))
+        probed = []
+        monkeypatch.setattr(runner.os, "kill", lambda *args: probed.append(args))
+        assert runner._running("story-042", "plan") is None
+        assert not probed
 
     def test_a_review_killed_from_outside_still_leaves_it(self, tmp_path):
         """The arm the whole design is for: SIGKILL, so nothing runs on the way out.

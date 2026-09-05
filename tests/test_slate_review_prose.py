@@ -69,7 +69,8 @@ def test_runner_builds_the_complete_bundle_and_returns_absolute_findings(tmp_pat
         for line in prompt.splitlines()
         if line.startswith("FINDINGS_PATH: ")
     )
-    assert findings.is_absolute() and findings.is_file()
+    assert findings.is_absolute() and findings.name == "sprint-1.round-1.md"
+    assert findings.is_file()
     assert str(findings) in result.stderr
     assert not (Path(env["XP_DATA"]) / "markers" / "1.slate-review-incomplete").exists()
 

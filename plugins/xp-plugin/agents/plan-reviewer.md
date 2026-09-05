@@ -68,6 +68,8 @@ return it too:
 `{"status":"edited","reasons":["exact reason text present in the plan"],"summary":""}`, or
 `{"status":"blocked","question":"the decision reserved for the human"}`.
 **Write your findings to a file** — the ABSOLUTE FINDINGS_PATH your bundle names,
-which is `<data-root>/plans/<story-id>.md`, or `<story-id>.round-N.md` beside it
-once an earlier round is there. Never a relative `plans/` under the repo, which it
-would dirty. That file is this disposition, not another negotiation. No praise.
+which is `<data-root>/plans/<story-id>.round-N.md`; every new artifact starts at
+`.round-1.md`. The legacy logical round one spelling is
+`<data-root>/plans/<story-id>.md`; it is never allocated for a new review. Never
+a relative `plans/` under the repo, which it would dirty. That file is this
+disposition, not another negotiation. No praise.

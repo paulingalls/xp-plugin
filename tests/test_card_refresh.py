@@ -59,6 +59,12 @@ def test_card_refresh_rewrites_the_card_and_ready_digests_the_rewrite(tmp_path):
     assert "story-042 — demo story" in prompt and "story-043" not in prompt
     assert "# XP Values" in prompt and "# Judgment" in prompt
     assert "CONSTRAINT-SENTINEL" in prompt and "Worktree bootstrap" in prompt
+    findings = next(
+        Path(line.removeprefix("FINDINGS_PATH: "))
+        for line in prompt.splitlines()
+        if line.startswith("FINDINGS_PATH: ")
+    )
+    assert findings.name == "story-042.refresh.round-1.md" and findings.is_file()
 
     fresh = story_card(plan.read_text(), "story-042")[0]
     assert CORRECTED in fresh and "Context: demo." not in fresh

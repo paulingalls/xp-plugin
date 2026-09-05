@@ -279,6 +279,33 @@ class TestDeliberateStop:
         assert Path(env["XP_DATA"], "worktrees", "story-042").exists()
 
 
+class TestPlanReviewFindingsInheritance:
+    def test_numbered_round_one_wins_over_legacy_and_gaps_keep_their_number(self, tmp_path):
+        import spawn  # noqa: F401
+        from handoff import inheritance, marker_path
+
+        root = tmp_path / "data"
+        plans = root / "plans"
+        plans.mkdir(parents=True)
+        marker_path(root, "story-042").write_text('{"state": "STOPPED"}')
+        legacy = plans / "story-042.md"
+        first = plans / "story-042.round-1.md"
+        third = plans / "story-042.round-3.md"
+        legacy.write_text("legacy")
+        first.write_text("numbered one")
+        third.write_text("numbered three")
+        malformed = [plans / f"story-042.round-{round_n}.md" for round_n in ("0", "04", "x")]
+        for path in malformed:
+            path.write_text("not a canonical positive round")
+
+        handed = inheritance(root, "story-042")
+        assert f"round 1\n\nRead {first.resolve()}" in handed
+        assert handed.count(str(first.resolve())) == 1
+        assert str(legacy.resolve()) not in handed
+        assert f"round 3\n\nRead {third.resolve()}" in handed
+        assert all(str(path.resolve()) not in handed for path in malformed)
+
+
 class TestAnUnreadableHandoffMarkerIsNotAFirstSpawn:
     def artifacts(self, tmp_path, marker_text):
         import spawn  # noqa: F401  — seeds scripts/spawn on sys.path
@@ -300,7 +327,7 @@ class TestAnUnreadableHandoffMarkerIsNotAFirstSpawn:
 
         handed = inheritance(root, "story-042")
         assert str(root / "plans" / "story-042.plan.md") in handed
-        assert f"round 1\n\nRead {root / 'plans' / 'story-042.md'}" in handed
+        assert f"round 1 (legacy)\n\nRead {root / 'plans' / 'story-042.md'}" in handed
         assert "DRAFT-SENTINEL" not in handed and "FINDING-ONE" not in handed
         assert "unreadable" in handed, "the successor is not told why the why is missing"
 

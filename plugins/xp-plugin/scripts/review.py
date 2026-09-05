@@ -51,23 +51,32 @@ def plan_review_notice(story_id: str) -> str:
         return ""
     try:
         detail = marker.read_text().strip()
-        state = json.loads(detail)
     except OSError as exc:
         return f"{story_id}'s plan-review marker is UNREADABLE at {marker} ({exc})"
+    try:
+        state = json.loads(detail)
     except ValueError:
-        state = {}
-    default = data_root() / "plans" / f"{story_id}.md"
-    findings = Path(state.get("findings") or default) if isinstance(state, dict) else default
+        return f"{story_id}'s plan review marker is CORRUPT at {marker}"
+    if not isinstance(state, dict):
+        return f"{story_id}'s plan review marker is CORRUPT at {marker}"
+    binding = state.get("findings")
+    if not isinstance(binding, str) or not binding.strip():
+        return f"{story_id}'s plan review marker has no findings binding at {marker}"
+    findings = Path(binding)
     try:
         written = findings.read_text().strip()
     except FileNotFoundError:
-        written = ""
+        return (
+            f"{story_id}'s plan review DID NOT COMPLETE — its bound findings are MISSING at"
+            f" {findings}; its marker remains. The story was written against a plan no reviewer"
+            " signed off"
+        )
     except OSError as exc:
         return f"{story_id}'s plan-review findings are UNREADABLE at {findings} ({exc})"
     if written:
         return f"{story_id}'s plan review PRODUCED FINDINGS at {findings}; its marker remains"
     return (
-        f"{story_id}'s plan review DID NOT COMPLETE — {detail}."
+        f"{story_id}'s plan review DID NOT COMPLETE at {findings} — its bound findings are empty."
         " The story was written against a plan no reviewer signed off"
     )
 
