@@ -147,10 +147,24 @@ def cmd_review(sprint_id: str, dry_run: bool) -> int:
     marker = sprint_marker(sprint_id)
     state = json.loads(marker.read_text()) if marker.exists() else {}
     rounds = state.get("rounds", [])
-    resume_round = sprint_review_resume.closer_round(rounds)
+    complete_n = max((n for n, r in enumerate(rounds, 1) if not r.get("incomplete")), default=0)
+    head = git("rev-parse", "HEAD").stdout.strip()
+    reviewed_head, resume_round = head, None
+    # Only the round-one fanout HAS a closer to resume at: a later round is the fixer
+    # alone, and its charters are never loaded. Every unmet precondition falls back to
+    # a fresh round rather than refusing — `review` is the only command that runs one,
+    # so a refusal telling the lead to run a full review has no next action at all.
+    if not complete_n and (stopped := sprint_review_resume.closer_round(rounds)):
+        saved = review.sprint_report_path(sprint_id, "fix", len(rounds))
+        derived, why = sprint_review_resume.reviewed_head(
+            stopped, head, review.patch_path(saved), git, review.REVIEWER_NAME
+        )
+        if why:
+            print(f"warning: {why} — running a fresh round instead", file=sys.stderr)
+        else:
+            reviewed_head, resume_round = derived, stopped
     resume = resume_round is not None
     round_n = len(rounds) if resume else len(rounds) + 1
-    complete_n = max((n for n, r in enumerate(rounds, 1) if not r.get("incomplete")), default=0)
     found, cap, charters, altitude = [], 0, {}, ""
     if complete_n:
         altitude, err = stages.altitude()
@@ -172,30 +186,25 @@ def cmd_review(sprint_id: str, dry_run: bool) -> int:
         if err:
             return fail(err)
         stages.check_roles(cards)
-    head = git("rev-parse", "HEAD").stdout.strip()
-    reviewed_head = head
-    if resume:
-        fix_patch = review.patch_path(review.sprint_report_path(sprint_id, "fix", round_n))
-        reviewed_head, error = sprint_review_resume.reviewed_head(
-            resume_round, head, fix_patch, git, review.REVIEWER_NAME
-        )
-        if error:
-            return fail(f"refused: {error}")
     base = git("merge-base", f"refs/heads/{trunk}", "HEAD").stdout.strip()
     digest_before = review.marker_digest(marker)
     diff_base = state["shown_sha"] if complete_n else ""
     if diff_base and (missing := _shown_diff(sprint_id, diff_base, head)[1]):
         return fail(missing)
 
-    if not dry_run and (left := sprint_unrecorded_notice(sprint_id, round_n)):
+    # The notice's precondition is a review that recorded no round. A resumed round IS
+    # recorded, and these reports are this run's INPUT, not what it is about to unlink.
+    if not (dry_run or resume) and (left := sprint_unrecorded_notice(sprint_id, round_n)):
         print("warning: " + left, file=sys.stderr)  # every leg below unlinks its own
 
     ran, reports = [], []
 
     def stop(err: str) -> int:
         if resume:
-            sprint_review_resume.keep_incomplete(marker, state, err)
-            print(f"round {round_n} remains incomplete after {', '.join(rounds[-1]['stages'])}")
+            if not dry_run:  # a preview must not rewrite the round it previews
+                sprint_review_resume.keep_incomplete(marker, state, err)
+                ran_before = ", ".join(rounds[-1]["stages"])
+                print(f"round {round_n} remains incomplete after {ran_before}")
             return fail(err)
         if reports:
             err = err.replace(review.NO_ROUND, f"Round {round_n} IS recorded, incomplete.")
