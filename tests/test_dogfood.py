@@ -33,6 +33,21 @@ class TestDogfoodMatchesTheScaffold:
     OURS = REPO / ".xp"
     SHIPPED = REPO / "plugins" / "xp-plugin" / "templates"
 
+    def test_secret_hook_routes_match(self):
+        shipped = (self.SHIPPED / "lefthook.yml").read_text()
+        ours = (self.REPO / "lefthook.yml").read_text()
+        for helper in ("secrets_scan_index", "secrets_scan_push"):
+            assert shipped.count(helper) == ours.count(helper)
+        push = shipped.split("pre-push:", 1)[1]
+        ours_push = ours.split("pre-push:", 1)[1]
+        assert "secrets_scan_push" in push
+        for route in (push, ours_push):
+            scanner = route.split("secrets_scan_push", 1)[1].split("\n", 2)[1]
+            assert scanner == "      use_stdin: true"
+            # lefthook orders UNPRIORITISED commands alphabetically, so dropping this
+            # runs the scan behind the whole tier instead of ahead of it
+            assert route.split("    secrets:\n", 1)[1].startswith("      priority: 1\n")
+
     def keys(self, path):
         lines = path.read_text().splitlines()
         candidates = {}

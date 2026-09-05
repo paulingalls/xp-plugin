@@ -68,7 +68,11 @@ def scaffold_wall() -> tuple[str, bool]:
         return (
             f"existing hook routing found ({routing}) — left untouched. Point"
             " .xp/config.yml's tiers at that wall's OWN commands, so the two cannot"
-            ' drift into different definitions of "fast"',
+            ' drift into different definitions of "fast". constraints_chars_cap is'
+            " declared but no reachable constraints_size enforcer was installed, and"
+            " this path wrote no hook-lib.sh to copy one from: add to the existing"
+            " wall a command that refuses when .xp/constraints.md exceeds the cap"
+            " (the plugin's templates/hook-lib.sh constraints_size is one)",
             False,
         )
     if shutil.which("lefthook"):
@@ -84,7 +88,7 @@ def scaffold_wall() -> tuple[str, bool]:
             return "wall: lefthook.yml written; install FAILED (see stderr)", True
         return "wall: lefthook.yml written and installed", True
     write_hook_lib()
-    for hook in ("pre-commit", "pre-push"):
+    for hook in ("pre-commit", "pre-merge-commit", "pre-push"):
         dst = Path(".githooks") / hook
         shutil.copy(TEMPLATES / f"githooks-{hook}", dst)
         dst.chmod(dst.stat().st_mode | stat.S_IEXEC | stat.S_IXGRP | stat.S_IXOTH)
