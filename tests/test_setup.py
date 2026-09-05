@@ -352,9 +352,11 @@ class TestCloseReviewFindings:
             ["sh", ".githooks/pre-push"], cwd=repo, env=env, capture_output=True, text=True
         )
         assert result.returncode != 0
-        assert result.stderr == (
+        # the LAST line, not the whole stream: this hook's secrets stage speaks first
+        # (it is handed no ref lines here), and the tier refusal is what is pinned.
+        assert result.stderr.splitlines()[-1] == (
             "refused: tests.story is unset or still EDIT-ME in .xp/config.yml — no test tier"
-            " ran. Set tests.story to your suite's command, then retry\n"
+            " ran. Set tests.story to your suite's command, then retry"
         )
 
 

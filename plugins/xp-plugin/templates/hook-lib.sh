@@ -28,13 +28,26 @@ secrets_scan_index() {
 }
 secrets_scan_push() {
   secrets_require_gitleaks || return 1
+  refs=0
   while read -r local_ref local_sha remote_ref remote_sha; do
+    refs=$((refs + 1))
     case "$local_sha" in
       ""|*[!0]*) ;;
       *) echo "xp wall: ref deletion ($local_ref); no outgoing commits to scan." >&2; continue;;
     esac
     case "$remote_sha" in
-      ""|*[!0]*) scan_range="$remote_sha..$local_sha";;
+      ""|*[!0]*)
+        # gitleaks EXITS 0 on a range git cannot resolve (measured on 8.30.1: a
+        # force-push over unfetched remote motion printed `Invalid revision
+        # range` and `no leaks found`, and the push landed unscanned), so the
+        # range has to be proved resolvable HERE or the wall passes what it
+        # never read.
+        if ! git rev-parse --quiet --verify "$remote_sha^{commit}" >/dev/null 2>&1; then
+          echo "xp wall: $remote_ref is at $remote_sha, which this clone does not have —" >&2
+          echo "  nothing could be scanned. Run \`git fetch\`, then retry." >&2
+          return 1
+        fi
+        scan_range="$remote_sha..$local_sha";;
       *) scan_range="$local_sha --not --remotes";;
     esac
     if ! gitleaks git --log-opts="$scan_range" --no-banner --redact </dev/null; then
@@ -42,6 +55,10 @@ secrets_scan_push() {
       return 1
     fi
   done
+  # Zero ref lines is `nothing to push` AND `stdin never arrived`; the second is a
+  # wall that greens having read nothing, so the state gets named rather than
+  # inferred from the silence.
+  [ "$refs" -gt 0 ] || echo "xp wall: git sent no ref updates — nothing to push, or stdin never reached this hook." >&2
 }
 constraints_size() {
   cap="$(sed -n 's/^constraints_chars_cap:[[:space:]]*//p' .xp/config.yml | head -1 | sed 's/[[:space:]][[:space:]]*#.*$//')"

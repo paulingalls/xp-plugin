@@ -77,10 +77,15 @@ def test_push_scanner_keeps_ref_stream_from_child_process(tmp_path):
         "CALLS": str(calls),
         "HOOK_LIB": str(ROOT / "plugins/xp-plugin/templates/hook-lib.sh"),
     }
-    first = f"refs/heads/one {'a' * 40} refs/heads/one {'b' * 40}"
-    second = f"refs/heads/two {'c' * 40} refs/heads/two {'d' * 40}"
+    # real shas: the scanner is only reached once the range resolves
+    repo = tmp_path / "stream"
+    init_repo(repo, env)
+    older = commit(repo, env, "a.txt", "a\n", "a")[1]
+    newer = commit(repo, env, "b.txt", "b\n", "b")[1]
+    first = f"refs/heads/one {newer} refs/heads/one {older}"
+    second = f"refs/heads/two {newer} refs/heads/two {older}"
     result = run(
-        tmp_path,
+        repo,
         "sh",
         "-c",
         '. "$HOOK_LIB"; secrets_scan_push',
@@ -403,6 +408,44 @@ def test_deleted_ref_takes_explicit_no_outgoing_commits_branch(tmp_path, real_to
     assert deleted.returncode == 0, deleted.stderr
     assert "deletion" in (deleted.stdout + deleted.stderr).lower()
     assert not remote_sha(repo, env, "refs/heads/doomed")
+
+
+@pytest.mark.parametrize("variant", ["githooks", "lefthook"])
+def test_unfetched_remote_sha_refuses_rather_than_scanning_nothing(tmp_path, real_tools, variant):
+    repo, env = wall_repo(tmp_path, real_tools, variant)
+    publish_base(repo, env, tmp_path)
+    peer = tmp_path / f"peer-{variant}"
+    cloned = git(tmp_path, "clone", "-q", str(tmp_path / f"{repo.name}.git"), str(peer), env=env)
+    assert cloned.returncode == 0, cloned.stderr
+    git(peer, "config", "user.name", "XP Test", env=env)
+    git(peer, "config", "user.email", "xp@example.test", env=env)
+    commit(peer, env, "peer.txt", "moved\n", "peer moves the remote")
+    assert git(peer, "push", "-q", "origin", "main", env=env).returncode == 0
+    moved = remote_sha(repo, env)
+
+    commit(repo, env, "secret.txt", generated_secret(), "secret", bypass=True)
+    refused = git(repo, "push", "--force", "origin", "main", env=env)
+    assert refused.returncode != 0 and remote_sha(repo, env) == moved
+    text = (refused.stdout + refused.stderr).lower()
+    assert "does not have" in text and "git fetch" in text
+    # the refusal's next action has to reach a scan that can red, not just quiet it
+    assert git(repo, "fetch", "-q", "origin", env=env).returncode == 0
+    scanned = git(repo, "push", "--force", "origin", "main", env=env)
+    assert scanned.returncode != 0 and remote_sha(repo, env) == moved
+    assert "rewrite the outgoing history" in (scanned.stdout + scanned.stderr).lower()
+
+
+def test_push_scanner_names_the_state_where_no_ref_lines_arrive(tmp_path):
+    scanner = tmp_path / "gitleaks"
+    scanner.write_text("#!/bin/sh\nexit 1\n")  # reds everything it is ever handed
+    scanner.chmod(scanner.stat().st_mode | stat.S_IEXEC)
+    env = os.environ | {
+        "PATH": f"{tmp_path}:/usr/bin:/bin",
+        "HOOK_LIB": str(ROOT / "plugins/xp-plugin/templates/hook-lib.sh"),
+    }
+    result = run(tmp_path, "sh", "-c", '. "$HOOK_LIB"; secrets_scan_push', env=env, input="")
+    assert result.returncode == 0, "an empty ref stream cannot be made to red by any scanner"
+    assert "no ref updates" in result.stderr
 
 
 @pytest.mark.parametrize("variant", ["githooks", "lefthook"])
