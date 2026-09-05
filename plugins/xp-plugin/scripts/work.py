@@ -10,6 +10,7 @@ import os
 import re
 import subprocess
 import sys
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -17,6 +18,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 from env import data_root, plugin_root
 
 NOTE_CAP = 4000  # chars; measured: p90 of 392 records is 1,799, so this binds rarely
+FALSIFIER_STREAM_CAP = 4000
 
 
 STRUCTURAL = re.compile(
@@ -191,8 +193,29 @@ def entries(root: Path) -> list[tuple[str, str]]:
     return [(entry_id(b), b) for b in blocks if b.strip()]
 
 
+@dataclass(frozen=True)
+class FalsifierResult:
+    returncode: int
+    stdout: str
+    stderr: str
+
+
+def _bounded_stream(stream: str) -> str:
+    if len(stream) <= FALSIFIER_STREAM_CAP:
+        return stream
+    dropped = len(stream) - FALSIFIER_STREAM_CAP
+    return f"[truncated: {dropped} leading chars dropped]\n{stream[-FALSIFIER_STREAM_CAP:]}"
+
+
+def falsifier_result(command: str) -> FalsifierResult:
+    result = subprocess.run(command, shell=True, capture_output=True, text=True, errors="replace")
+    return FalsifierResult(
+        result.returncode, _bounded_stream(result.stdout), _bounded_stream(result.stderr)
+    )
+
+
 def falsifier_is_green(command: str) -> bool:
-    return subprocess.run(command, shell=True, capture_output=True).returncode == 0
+    return falsifier_result(command).returncode == 0
 
 
 def checked_coverage(args: argparse.Namespace) -> str | None:
