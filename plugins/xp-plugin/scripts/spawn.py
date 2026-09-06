@@ -52,13 +52,6 @@ def component_metadata_chars() -> int:
     return total
 
 
-def plugin_shipped_chars() -> int:
-    names = ("VALUES.md", "JUDGMENT.md", "EXECUTOR.md")
-    shipped = [PLUGIN_ROOT / name for name in names]
-    shipped.append(PLUGIN_ROOT / "templates" / "constraints.md")
-    return sum(len(_read(p)) for p in shipped) + component_metadata_chars()
-
-
 def profile_report(card: str, prompt: str, handoff: str) -> tuple[str, str]:
     """Return the lead's profile breakdown and actionable overage warning."""
     project = {

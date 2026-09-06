@@ -48,9 +48,11 @@ class TestProfile:
             spawn_module.teammate_sections("card", "story-042", "", root)
         )
         assert "## JUDGMENT\n\n" in prompt and "Polarity" in prompt
-        before = spawn_module.plugin_shipped_chars()
         judgment.write_text(judgment.read_text() + "four")
-        assert spawn_module.plugin_shipped_chars() == before + 4
+        grown = spawn_module.build_prompt(
+            spawn_module.teammate_sections("card", "story-042", "", root)
+        )
+        assert len(grown) == len(prompt) + 4
         judgment.unlink()
         with pytest.raises(SystemExit):
             spawn_module.teammate_sections("card", "story-042", "", root)
@@ -124,14 +126,19 @@ class TestProfile:
         assert "profile:" not in result.stdout
 
     def test_printed_plugin_share_is_of_the_composed_total(self, tmp_path, monkeypatch):
+        """Both directions (constraint 2): prose the prompt CARRIES moves the
+        share; prose that only ships in the package must not."""
         import spawn as spawn_module
 
         repo, env, _g = make_repo(tmp_path)
         monkeypatch.chdir(repo)
+        root = tmp_path / "plugin"
+        shutil.copytree(spawn_module.PLUGIN_ROOT, root)
+        monkeypatch.setattr(spawn_module, "PLUGIN_ROOT", root)
         card = (Path(env["XP_DATA"]) / "plan.md").read_text().split("#### story-042", 1)[1]
         card = "#### story-042" + card
         prompt = spawn_module.build_prompt(
-            spawn_module.teammate_sections(card, "story-042", "", spawn_module.PLUGIN_ROOT)
+            spawn_module.teammate_sections(card, "story-042", "", root)
         )
         constraints_chars = len(spawn_module._read(Path(".xp/constraints.md")))
         claude_chars = len(spawn_module._read(Path("CLAUDE.md")))
@@ -142,15 +149,18 @@ class TestProfile:
         before, _warning = spawn_module.profile_report(card, prompt, "")
         assert f"plugin share {plugin_tokens}/{total_tokens}" in before
 
-        root = tmp_path / "plugin"
-        shutil.copytree(spawn_module.PLUGIN_ROOT, root)
-        monkeypatch.setattr(spawn_module, "PLUGIN_ROOT", root)
-        shipped_before = spawn_module.plugin_shipped_chars()
-        constraints = root / "templates/constraints.md"
-        constraints.write_text(constraints.read_text() + "package only")
+        packaged = root / "templates/constraints.md"
+        packaged.write_text(packaged.read_text() + "package only")
         after, _warning = spawn_module.profile_report(card, prompt, "")
-        assert spawn_module.plugin_shipped_chars() > shipped_before
-        assert after == before
+        assert after == before, "a packaged file the prompt never carries moved the share"
+
+        values = root / "VALUES.md"
+        values.write_text(values.read_text() + "x" * 400)
+        regrown = spawn_module.build_prompt(
+            spawn_module.teammate_sections(card, "story-042", "", root)
+        )
+        line, _warning = spawn_module.profile_report(card, regrown, "")
+        assert f"plugin share {plugin_tokens + 100}/{total_tokens + 100}" in line
 
     def test_the_note_names_the_plugin_when_its_actual_share_is_largest(self, tmp_path):
         repo, env, _g = make_repo(tmp_path)

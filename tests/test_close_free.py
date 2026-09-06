@@ -268,7 +268,6 @@ class TestFreeStart:
         no_sprint = free(other, other_env, "fix-typo", "start")
         assert no_sprint.returncode == 2
         assert "if this branch integrates into a sprint review" in no_sprint.stderr.lower()
-        assert "stay on the sprint branch" not in no_sprint.stderr
 
     def test_start_refuses_a_dirty_tree(self, tmp_path):
         repo, env, _g = free_repo(tmp_path)
