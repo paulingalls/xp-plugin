@@ -272,7 +272,7 @@ def cmd_spawn(story_id: str, override: str, dry_run: bool, resuming: bool = Fals
     branch = story_branch(card, story_id)
     tree = worktree_path(story_id)
     trunk = integration_target()
-    reuse = bool(leg(story_id)[1]) and git("branch", "--show-current").stdout.strip() == branch
+    free_ref = False
     handoff = inheritance(data_root(), story_id)
     if resuming and tree.is_dir():
         handoff += resume().inherited_evidence(tree, trunk)
@@ -328,25 +328,20 @@ def cmd_spawn(story_id: str, override: str, dry_run: bool, resuming: bool = Fals
         if tree.exists():
             return fail(f"refused: {tree} already exists — {story_id} is already spawned")
         exists = git("rev-parse", "--verify", "-q", f"refs/heads/{branch}", check=False)
-        if not reuse and exists.returncode == 0:
-            # Deleting the named branch is the obvious recovery, and on a free
-            # patch it discards the release commits `free start` left there.
-            stand = (
-                f" — `git checkout {branch}` first: it is this patch's free branch,"
-                " and spawn continues it rather than cutting a new one"
-                if leg(story_id)[1]
-                else ""
+        free_ref = bool(leg(story_id)[1]) and exists.returncode == 0
+        if free_ref and git("branch", "--show-current").stdout.strip() == branch:
+            return fail(
+                f"refused: {branch} is checked out by the lead — return to {trunk}; spawn"
+                " leaves the lead checkout untouched and continues this ref in its worktree"
             )
-            return fail(f"refused: branch {branch} already exists{stand}")
+        if not free_ref and exists.returncode == 0:
+            return fail(f"refused: branch {branch} already exists")
         tree.parent.mkdir(parents=True, exist_ok=True)
-        if reuse:
-            moved = git("checkout", "-q", trunk, check=False)
-            if moved.returncode:
-                return fail(f"git checkout {trunk} failed: {moved.stderr.strip()}")
-            print(f"lead checkout moved to {trunk}")
-        args = ("worktree", "add", str(tree), branch)
-        if not reuse:
-            args = ("worktree", "add", "-b", branch, str(tree), trunk)
+        args = (
+            ("worktree", "add", str(tree), branch)
+            if free_ref
+            else ("worktree", "add", "-b", branch, str(tree), trunk)
+        )
         added = git(*args, check=False)
         if added.returncode != 0:
             return fail(f"git worktree add failed: {added.stderr.strip()}")
@@ -361,7 +356,7 @@ def cmd_spawn(story_id: str, override: str, dry_run: bool, resuming: bool = Fals
         flip_to_in_progress(story_id)
     # The external plan must survive a stopped or removed worktree.
     draft_path(data_root(), story_id).parent.mkdir(parents=True, exist_ok=True)
-    cut = "resumed" if resuming else ("continued, not cut" if reuse else f"off {trunk}")
+    cut = "resumed" if resuming else ("continued, not cut" if free_ref else f"off {trunk}")
     print(f"{branch} at {tree} ({cut})")
     handed_over = tree_state(tree)
     before = {eid for eid, _ in entries(data_root())}

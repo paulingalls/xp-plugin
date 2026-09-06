@@ -29,10 +29,14 @@ def refresh_instruction(story_id: str) -> str:
     return f"Run `{shlex.join(['python3', script, story_id, '--refresh'])}`."
 
 
+def spawned(story_id: str) -> bool:
+    return handoff_marker_path(data_root(), story_id).exists()
+
+
 def progressed(story_id: str) -> bool:
     root = data_root()
     close = root / "markers" / f"{story_id}.close.json"
-    return handoff_marker_path(root, story_id).exists() or close.exists()
+    return spawned(story_id) or close.exists()
 
 
 def credential(marker: Path) -> dict | None:
@@ -202,6 +206,6 @@ def main(argv: list[str], action: str = "ready") -> int:
         return fail("refused: not inside a git repository")
     if action == "amend":
         return amend(args.story_id, args.reason)
-    # Free cards are authored and reviewed on a fresh branch, never aged in a slate;
-    # the exemption is by lane so both entry points answer alike.
+    # Free cards are authored and reviewed on a fresh branch, never aged in a slate,
+    # so the refresh gate is exempted by LANE — not by any caller's choice.
     return mint(args.story_id, require_refresh=not leg(args.story_id)[1])

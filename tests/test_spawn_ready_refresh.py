@@ -8,7 +8,7 @@ import json
 import subprocess
 
 import pytest
-from spawn_helpers import SPAWN, make_repo, seed_refresh_receipt, spawn
+from spawn_helpers import make_repo, seed_refresh_receipt, spawn
 
 
 class TestReadyCredential:
@@ -122,15 +122,11 @@ class TestCardRefreshGate:
         assert "does not cover src/thing.py" in r.stderr, r.stderr
 
     def test_the_gate_is_never_inherited_by_a_caller_that_did_not_ask_for_it(self):
-        """`mint` has TWO callers and the free lane exempts itself, so the flag
-        carries no default: the exemption has to be a decision at every call
-        site, not the value a caller added later silently gets. Which lane is
-        exempt is walked in test_close_free.py, not asserted here."""
+        """`mint` carries no default, so every caller must decide whether card
+        refresh applies. Which lane is exempt is walked in test_close_free.py."""
         import inspect
 
         import ready as credential
 
         signature = inspect.signature(credential.mint)
         assert signature.parameters["require_refresh"].default is inspect.Parameter.empty
-        free = (SPAWN.parent / "close" / "free.py").read_text()
-        assert "ready.mint(key, require_refresh=False)" in free
