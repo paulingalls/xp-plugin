@@ -394,6 +394,15 @@ class TestPlanEditsInPlace:
         problem = disposition_result(report, b"before", b"Reason: we contract nowhere else.\n")
         assert "every plan edit" in problem
 
+    def test_a_reason_assembled_from_scattered_plan_words_refuses(self):
+        """Adjacency, not the vocabulary a reason draws on, is what makes it present.
+        Every word below is in the plan, so relaxing the comparison to
+        `all(w in plan_words ...)` greens on a reason the plan never states."""
+        report = json.dumps({"status": "edited", "reasons": ["the guard needs a test"]})
+        plan = b"Simplicity: a guard the plan needs is\nnot a test it already needs.\n"
+        problem = disposition_result(report, b"before", plan)
+        assert "every plan edit" in problem
+
     def test_a_reason_with_no_content_words_refuses(self):
         report = json.dumps({"status": "edited", "reasons": ["***"]})
         problem = disposition_result(report, b"before", b"---\n")

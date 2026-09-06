@@ -100,8 +100,9 @@ def normalized_words(text: str) -> str:
     """The word stream both artifacts share, so a reason compares by content.
 
     Naming the markers to strip is the rejected design — it fixed the blockquote
-    and left the backtick. Dropping every non-word run is the widest reading that
-    still refuses a reason absent from the plan, or written there in other words.
+    and left the backtick. Dropping every non-word run ignores presentation as a
+    class; the words and their order must still match, so a reason absent from the
+    plan, or written there in other words, refuses.
     """
     return " ".join(re.findall(r"\w+", text))
 
