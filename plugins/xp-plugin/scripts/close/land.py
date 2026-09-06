@@ -163,7 +163,10 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
         if held:
             os.chdir(held)
     else:
-        os.chdir(held) if held else close.git("checkout", trunk)
+        if held:
+            os.chdir(held)
+        elif (left := close.git("checkout", trunk, check=False)).returncode:
+            return close.fail(f"cannot check out {trunk} to merge into: {left.stderr.strip()}")
         merged = close.git("merge", "--no-ff", branch, "-m", message, check=False)
         if merged.returncode != 0:
             unmerged = close.git("diff", "--name-only", "--diff-filter=U", check=False)

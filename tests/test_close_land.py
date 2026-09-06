@@ -19,6 +19,9 @@ from close_helpers import (
 
 
 def recording_git(tmp_path, env, construct_conflict=False):
+    """Real git behind a recorder: land's final merge is reachable ONLY when trunk
+    moves DURING the run — a conflict already on trunk is refused by the overlap
+    gate, and one landing before gates' dry run is refused there."""
     real_git = shutil.which("git", path=env["PATH"])
     assert real_git
     calls = tmp_path / "git-calls.jsonl"
@@ -90,7 +93,7 @@ class TestLandFailureModes:
         assert str(tree) in g("worktree", "list", "--porcelain").stdout
 
     def test_an_actual_final_merge_conflict_keeps_conflict_recovery_distinct(self, tmp_path):
-        _repo, env, _g, tree, branch = worktree_land_setup(tmp_path)
+        _repo, env, g, tree, branch = worktree_land_setup(tmp_path)
         calls, sentinel = recording_git(tmp_path, env, construct_conflict=True)
 
         refused = close(tree, env, "land")
@@ -99,7 +102,7 @@ class TestLandFailureModes:
         assert refused.returncode == 2 and "Traceback" not in refused.stderr, refused.stderr
         assert "resolve on the story branch" in refused.stderr
         assert "re-review" in refused.stderr
-        assert "index.lock" not in refused.stderr
+        assert g("status", "--porcelain").stdout == "", "the held trunk tree is left mid-merge"
         assert ["checkout", branch] not in git_calls(calls)
 
     def test_a_final_merge_conflict_without_a_held_tree_restores_the_story_branch(self, tmp_path):
@@ -114,6 +117,19 @@ class TestLandFailureModes:
         assert g("status", "--porcelain").stdout == ""
         assert "[in-progress]" in (tmp_path / "data" / "plan.md").read_text()
         assert g("rev-parse", "--abbrev-ref", "HEAD").stdout.strip() == "story-042-branch"
+
+    def test_a_locked_index_refuses_before_the_merge_when_no_tree_holds_trunk(self, tmp_path):
+        repo, env, g = make_repo(tmp_path)
+        assert close(repo, env, "review").returncode == 0
+        lock = repo / ".git" / "index.lock"
+        lock.write_bytes(b"")
+
+        refused = close(repo, env, "land")
+
+        assert refused.returncode == 2 and "Traceback" not in refused.stderr, refused.stderr
+        assert str(lock) in refused.stderr
+        assert g("rev-parse", "--abbrev-ref", "HEAD").stdout.strip() == "story-042-branch"
+        assert "[in-progress]" in (tmp_path / "data" / "plan.md").read_text()
 
     def test_an_UNREADABLE_launch_marker_refuses_rather_than_reading_as_absent(self, tmp_path):
         """Land reads this file for one thing — a completed round whose Verify redded.
