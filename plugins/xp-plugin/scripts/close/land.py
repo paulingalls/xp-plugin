@@ -166,12 +166,17 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
         os.chdir(held) if held else close.git("checkout", trunk)
         merged = close.git("merge", "--no-ff", branch, "-m", message, check=False)
         if merged.returncode != 0:
+            unmerged = close.git("diff", "--name-only", "--diff-filter=U", check=False)
             close.git("merge", "--abort", check=False)
-            close.git("checkout", branch)
-            return close.fail(
-                "merge conflict: resolve on the story branch, re-review the "
-                "post-resolution diff, then run review again to re-baseline"
-            )
+            if not held:
+                close.git("checkout", branch, check=False)
+            if unmerged.returncode == 0 and unmerged.stdout.strip():
+                return close.fail(
+                    "merge conflict: resolve on the story branch, re-review the "
+                    "post-resolution diff, then run review again to re-baseline"
+                )
+            why = (merged.stderr or merged.stdout).strip()
+            return close.fail(f"merge failed: {why}")
 
     print(bookkeep.render_noted(rounds), end="")
     failed = []

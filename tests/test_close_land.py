@@ -2,6 +2,7 @@
 Split from test_close.py at sprint-004 open."""
 
 import json
+import shutil
 import subprocess
 import sys
 
@@ -13,7 +14,47 @@ from close_helpers import (
     make_repo,
     marker,
     stub_reviewer,
+    worktree_land_setup,
 )
+
+
+def recording_git(tmp_path, env, construct_conflict=False):
+    real_git = shutil.which("git", path=env["PATH"])
+    assert real_git
+    calls = tmp_path / "git-calls.jsonl"
+    sentinel = tmp_path / "constructed-conflict"
+    bin_dir = tmp_path / "git-bin"
+    bin_dir.mkdir()
+    shim = bin_dir / "git"
+    shim.write_text(
+        "#!/usr/bin/env python3\n"
+        "import json, os, subprocess, sys\n"
+        f"real_git = {real_git!r}\n"
+        f"calls = {str(calls)!r}\n"
+        f"sentinel = {str(sentinel)!r}\n"
+        "args = sys.argv[1:]\n"
+        "with open(calls, 'a') as f: f.write(json.dumps(args) + '\\n')\n"
+        f"inject = {construct_conflict!r} and args[:3] == "
+        "['merge', '--no-ff', 'story-042-branch']\n"
+        "if inject and not os.path.exists(sentinel):\n"
+        "    open('src/thing.py', 'w').write('A = 9\\n')\n"
+        "    subprocess.run([real_git, 'add', 'src/thing.py'], check=True)\n"
+        "    subprocess.run([real_git, 'commit', '-qm', 'trunk moved during land'], check=True)\n"
+        "result = subprocess.run([real_git, *args])\n"
+        "if inject and result.returncode:\n"
+        "    unmerged = subprocess.run(\n"
+        "        [real_git, 'ls-files', '-u'], capture_output=True, text=True, check=True\n"
+        "    ).stdout\n"
+        "    if unmerged: open(sentinel, 'w').write(unmerged)\n"
+        "sys.exit(result.returncode)\n"
+    )
+    shim.chmod(0o755)
+    env["PATH"] = f"{bin_dir}:{env['PATH']}"
+    return calls, sentinel
+
+
+def git_calls(path):
+    return [json.loads(line) for line in path.read_text().splitlines()]
 
 
 class TestLandFailureModes:
@@ -32,6 +73,47 @@ class TestLandFailureModes:
         r = close(repo, env, "land")
         assert "Traceback" not in r.stderr, r.stderr
         assert r.returncode == 2 and "no plan at" in r.stderr
+
+    def test_a_locked_index_reports_gits_cause_without_checking_out_the_held_branch(self, tmp_path):
+        repo, env, g, tree, branch = worktree_land_setup(tmp_path)
+        lock = repo / ".git" / "index.lock"
+        lock.write_bytes(b"")
+        calls, _sentinel = recording_git(tmp_path, env)
+
+        refused = close(tree, env, "land")
+
+        assert refused.returncode == 2 and "Traceback" not in refused.stderr, refused.stderr
+        assert "fatal: Unable to write index" in refused.stderr
+        assert "resolve on the story branch" not in refused.stderr
+        assert ["checkout", branch] not in git_calls(calls)
+        assert "[in-progress]" in (tmp_path / "data" / "plan.md").read_text()
+        assert str(tree) in g("worktree", "list", "--porcelain").stdout
+
+    def test_an_actual_final_merge_conflict_keeps_conflict_recovery_distinct(self, tmp_path):
+        _repo, env, _g, tree, branch = worktree_land_setup(tmp_path)
+        calls, sentinel = recording_git(tmp_path, env, construct_conflict=True)
+
+        refused = close(tree, env, "land")
+
+        assert sentinel.read_text().strip(), "the final merge did not leave unmerged entries"
+        assert refused.returncode == 2 and "Traceback" not in refused.stderr, refused.stderr
+        assert "resolve on the story branch" in refused.stderr
+        assert "re-review" in refused.stderr
+        assert "index.lock" not in refused.stderr
+        assert ["checkout", branch] not in git_calls(calls)
+
+    def test_a_final_merge_conflict_without_a_held_tree_restores_the_story_branch(self, tmp_path):
+        repo, env, g = make_repo(tmp_path)
+        assert close(repo, env, "review").returncode == 0
+        _calls, sentinel = recording_git(tmp_path, env, construct_conflict=True)
+
+        refused = close(repo, env, "land")
+
+        assert sentinel.read_text().strip(), "the final merge did not leave unmerged entries"
+        assert refused.returncode == 2 and "Traceback" not in refused.stderr, refused.stderr
+        assert g("status", "--porcelain").stdout == ""
+        assert "[in-progress]" in (tmp_path / "data" / "plan.md").read_text()
+        assert g("rev-parse", "--abbrev-ref", "HEAD").stdout.strip() == "story-042-branch"
 
     def test_an_UNREADABLE_launch_marker_refuses_rather_than_reading_as_absent(self, tmp_path):
         """Land reads this file for one thing — a completed round whose Verify redded.
