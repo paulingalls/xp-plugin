@@ -51,6 +51,16 @@ class TestShippedProseMatchesTheMechanism:
         )
         assert r.returncode == 0 and "salvage" in r.stdout, r.stderr
 
+    def test_process_routes_each_mid_sprint_choice_by_release_outcome(self):
+        process = prose(PLUGIN / "PROCESS.md")
+        sentence = process.split("Mid-sprint:", 1)[1].split(".", 1)[0]
+        record, sprint, patch = sentence.split(";")
+        assert "record" in record and "never schedule" in record
+        assert "[sprint-direct]" in sprint and "sprint branch" in sprint
+        assert "sprint review" in sprint
+        assert "free" in patch and "patch tag" in patch and "ship now" in patch
+        assert "trunk" not in patch and "branch" not in patch
+
     def test_review_and_salvage_give_distinct_dirty_tree_advice(self, tmp_path):
         repo, env, g = make_repo(tmp_path)
         killed_review(tmp_path, g)
@@ -157,7 +167,8 @@ class TestShippedProseMatchesTheMechanism:
         for name, text in (("PROCESS.md", process), ("EXECUTOR.md", executor)):
             assert "slate review" in text, f"{name}: the lead's review is unnamed"
             assert "execution plan review" in text, f"{name}: plan review unnamed"
-            assert "sprint review" not in text, f"{name}: close.py owns that phrase"
+        assert process.count("sprint review") == 1, "PROCESS.md confuses the routed review"
+        assert "sprint review" not in executor, "EXECUTOR.md: close.py owns that phrase"
         assert "the planner writes the plan" in process, "PROCESS.md: the plan's owner is unnamed"
         assert "re-read the reviewed plan" in executor, "EXECUTOR.md drops the handoff"
 

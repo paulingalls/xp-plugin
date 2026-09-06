@@ -9,6 +9,19 @@ import pytest
 from spawn_helpers import _total, make_repo, seed_refresh_receipt, spawn, stub_claude
 
 
+def set_card(repo, env, text):
+    plan = Path(env["XP_DATA"]) / "plan.md"
+    changed = plan.read_text().replace("Context: demo.", f"Context: {text}")
+    plan.write_text(changed.replace("[ready]", "[planned]"))
+    seed_refresh_receipt(repo, env, "story-042")
+    assert spawn(repo, env, "ready", "story-042").returncode == 0
+
+
+def set_target(repo, value):
+    config = repo / ".xp" / "config.yml"
+    config.write_text(config.read_text() + f"profile_target: {value}\n")
+
+
 class TestProfile:
     def test_new_agent_frontmatter_is_included_in_component_metadata(self, tmp_path, monkeypatch):
         import spawn as spawn_module
@@ -35,9 +48,11 @@ class TestProfile:
             spawn_module.teammate_sections("card", "story-042", "", root)
         )
         assert "## JUDGMENT\n\n" in prompt and "Polarity" in prompt
-        before = spawn_module.plugin_shipped_chars()
         judgment.write_text(judgment.read_text() + "four")
-        assert spawn_module.plugin_shipped_chars() == before + 4
+        grown = spawn_module.build_prompt(
+            spawn_module.teammate_sections("card", "story-042", "", root)
+        )
+        assert len(grown) == len(prompt) + 4
         judgment.unlink()
         with pytest.raises(SystemExit):
             spawn_module.teammate_sections("card", "story-042", "", root)
@@ -61,17 +76,116 @@ class TestProfile:
         assert _total(before) != _total(after)
         assert _total(after) > _total(before)
 
-    def test_printed_plugin_shipped_is_the_computed_quantity(self, tmp_path):
-        """Two computations shipped under one name: the printed figure omitted
-        templates/constraints.md, so a lead read ~300 tokens of headroom where
-        the ratchet had 52 — the story-009 note's failure, in the instrument."""
-        from spawn import plugin_shipped_chars
+    def test_a_configured_profile_target_controls_the_card_note(self, tmp_path):
+        low, low_env, _g = make_repo(tmp_path / "low")
+        high, high_env, _g = make_repo(tmp_path / "high")
+        stub_claude(tmp_path / "low")
+        stub_claude(tmp_path / "high")
+        set_card(low, low_env, "evidence " * 600)
+        set_card(high, high_env, "evidence " * 600)
+        set_target(low, 100)
+        set_target(high, 2000)
 
+        loud = spawn(low, low_env, "story-042", "--dry-run")
+        quiet = spawn(high, high_env, "story-042", "--dry-run")
+        assert loud.returncode == quiet.returncode == 0
+        assert "100 story-card token allowance" in loud.stderr
+        assert "profile_target" not in quiet.stderr
+
+    def test_a_missing_profile_target_uses_the_documented_default(self, tmp_path):
+        from spawn import DEFAULT_PROFILE_TARGET, PLUGIN_ROOT
+
+        repo, env, _g = make_repo(tmp_path / "loud")
+        quiet_repo, quiet_env, _g = make_repo(tmp_path / "quiet")
+        stub_claude(tmp_path / "loud")
+        stub_claude(tmp_path / "quiet")
+        set_card(repo, env, "evidence " * 450)
+        result = spawn(repo, env, "story-042", "--dry-run")
+        quiet = spawn(quiet_repo, quiet_env, "story-042", "--dry-run")
+        scaffold = next(
+            line
+            for line in (PLUGIN_ROOT / "templates/config.yml").read_text().splitlines()
+            if line.startswith("profile_target:")
+        )
+        assert int(scaffold.split("#", 1)[0].split(":", 1)[1]) == DEFAULT_PROFILE_TARGET
+        assert f"{DEFAULT_PROFILE_TARGET} story-card token allowance" in result.stderr
+        assert "profile_target" not in quiet.stderr
+        assert result.returncode == quiet.returncode == 0
+
+    @pytest.mark.parametrize("value, received", [("many", "'many'"), ("", "empty")])
+    def test_a_declared_malformed_profile_target_refuses(self, tmp_path, value, received):
         repo, env, _g = make_repo(tmp_path)
         stub_claude(tmp_path)
-        out = spawn(repo, env, "story-042", "--dry-run").stdout
-        assert f"plugin-shipped {plugin_shipped_chars() // 4}" in out
-        assert f"plugin-shipped {plugin_shipped_chars() // 4}/" not in out
+        set_target(repo, value)
+        result = spawn(repo, env, "story-042", "--dry-run")
+        assert result.returncode == 2
+        assert ".xp/config.yml" in result.stderr
+        assert received in result.stderr
+        assert "non-negative integer" in result.stderr
+        assert "story-card tokens" in result.stderr
+        assert "profile:" not in result.stdout
+
+    def test_printed_plugin_share_is_of_the_composed_total(self, tmp_path, monkeypatch):
+        """Both directions (constraint 2): prose the prompt CARRIES moves the
+        share; prose that only ships in the package must not."""
+        import spawn as spawn_module
+
+        repo, env, _g = make_repo(tmp_path)
+        monkeypatch.chdir(repo)
+        root = tmp_path / "plugin"
+        shutil.copytree(spawn_module.PLUGIN_ROOT, root)
+        monkeypatch.setattr(spawn_module, "PLUGIN_ROOT", root)
+        card = (Path(env["XP_DATA"]) / "plan.md").read_text().split("#### story-042", 1)[1]
+        card = "#### story-042" + card
+        prompt = spawn_module.build_prompt(
+            spawn_module.teammate_sections(card, "story-042", "", root)
+        )
+        constraints_chars = len(spawn_module._read(Path(".xp/constraints.md")))
+        claude_chars = len(spawn_module._read(Path("CLAUDE.md")))
+        project_chars = len(card) + constraints_chars + claude_chars
+        total_chars = len(prompt) + claude_chars + spawn_module.component_metadata_chars()
+        plugin_tokens = (total_chars - project_chars) // 4
+        total_tokens = total_chars // 4
+        before, _warning = spawn_module.profile_report(card, prompt, "")
+        assert f"plugin share {plugin_tokens}/{total_tokens}" in before
+
+        packaged = root / "templates/constraints.md"
+        packaged.write_text(packaged.read_text() + "package only")
+        after, _warning = spawn_module.profile_report(card, prompt, "")
+        assert after == before, "a packaged file the prompt never carries moved the share"
+
+        values = root / "VALUES.md"
+        values.write_text(values.read_text() + "x" * 400)
+        regrown = spawn_module.build_prompt(
+            spawn_module.teammate_sections(card, "story-042", "", root)
+        )
+        line, _warning = spawn_module.profile_report(card, regrown, "")
+        assert f"plugin share {plugin_tokens + 100}/{total_tokens + 100}" in line
+
+    def test_the_note_names_the_plugin_when_its_actual_share_is_largest(self, tmp_path):
+        repo, env, _g = make_repo(tmp_path)
+        stub_claude(tmp_path)
+        set_target(repo, 0)
+        (repo / ".xp/constraints.md").unlink()
+        (repo / "CLAUDE.md").unlink(missing_ok=True)
+        result = spawn(repo, env, "story-042", "--dry-run")
+        assert result.returncode == 0
+        assert "plugin" in result.stderr.lower()
+        assert "largest contributor" in result.stderr.lower()
+        assert "yours" not in result.stderr
+        assert "retire" not in result.stderr
+
+    def test_a_checked_long_card_is_reported_without_being_called_waste(self, tmp_path):
+        repo, env, _g = make_repo(tmp_path)
+        stub_claude(tmp_path)
+        set_card(repo, env, "checked evidence " * 800)
+        set_target(repo, 100)
+        result = spawn(repo, env, "story-042", "--dry-run")
+        note = result.stderr.lower()
+        assert result.returncode == 0
+        assert "the story card" in note and "largest contributor" in note
+        assert "reconsider" in note and "allowance" in note
+        assert all(word not in note for word in ("retire", "waste", "yours to"))
 
     def test_warning_names_the_largest_project_owned_contributor(self, tmp_path):
         repo, env, _g = make_repo(tmp_path)
@@ -79,6 +193,7 @@ class TestProfile:
         quiet = spawn(repo, env, "story-042", "--dry-run")
         assert "over the" not in quiet.stderr
 
+        set_target(repo, 0)
         (repo / ".xp" / "constraints.md").write_text("# Constraints\n" + "bloat\n" * 3000)
         loud = spawn(repo, env, "story-042", "--dry-run")
         assert "constraints.md" in loud.stderr and "over the" in loud.stderr
@@ -96,6 +211,7 @@ class TestProfile:
         plans.mkdir(parents=True, exist_ok=True)
         why = "bloat\\n" * 3000
         (plans / "story-042.handoff.json").write_text(f'{{"why": "{why}", "records": []}}')
+        set_target(repo, 0)
         loud = spawn(repo, env, "story-042", "--dry-run")
         assert "predecessor handoff" in loud.stdout, loud.stdout
         assert "predecessor handoff" in loud.stderr and "over the" in loud.stderr, loud.stderr
