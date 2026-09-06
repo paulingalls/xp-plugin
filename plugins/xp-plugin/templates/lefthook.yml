@@ -18,7 +18,7 @@ pre-push:
   commands:
     secrets:
       priority: 1
-      run: sh -c '. .githooks/hook-lib.sh; secrets_scan_push'
+      run: sh -c '. .githooks/hook-lib.sh; secrets_scan_push "$1"' _ {1}
       use_stdin: true
     story-tier:
       priority: 2

@@ -34,14 +34,28 @@ class TestDogfoodMatchesTheScaffold:
     SHIPPED = REPO / "plugins" / "xp-plugin" / "templates"
 
     def test_secret_hook_routes_match(self):
-        shipped = (self.SHIPPED / "lefthook.yml").read_text()
-        ours = (self.REPO / "lefthook.yml").read_text()
-        for helper in ("secrets_scan_index", "secrets_scan_push"):
-            assert shipped.count(helper) == ours.count(helper)
-        push = shipped.split("pre-push:", 1)[1]
-        ours_push = ours.split("pre-push:", 1)[1]
-        assert "secrets_scan_push" in push
-        for route in (push, ours_push):
+        def hook(text, name):
+            lines = text.splitlines()
+            start = lines.index(f"{name}:")
+            end = next(
+                (i for i in range(start + 1, len(lines)) if lines[i] and not lines[i][0].isspace()),
+                len(lines),
+            )
+            return "\n".join(lines[start:end])
+
+        expected = {
+            "pre-commit": "secrets_scan_index",
+            "pre-merge-commit": "secrets_scan_index",
+            "pre-push": "secrets_scan_push",
+        }
+        for path in (self.SHIPPED / "lefthook.yml", self.REPO / "lefthook.yml"):
+            text = path.read_text()
+            for hook_name, helper in expected.items():
+                route = hook(text, hook_name)
+                assert route.count(helper) == 1, f"{path}: {hook_name} does not route {helper}"
+                other = {value for value in expected.values() if value != helper}
+                assert not any(value in route for value in other)
+            route = hook(text, "pre-push")
             scanner = route.split("secrets_scan_push", 1)[1].split("\n", 2)[1]
             assert scanner == "      use_stdin: true"
             # lefthook orders UNPRIORITISED commands alphabetically, so dropping this

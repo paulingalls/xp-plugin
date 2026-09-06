@@ -28,6 +28,7 @@ secrets_scan_index() {
 }
 secrets_scan_push() {
   secrets_require_gitleaks || return 1
+  push_remote="$1"
   refs=0
   while read -r local_ref local_sha remote_ref remote_sha; do
     refs=$((refs + 1))
@@ -48,7 +49,13 @@ secrets_scan_push() {
           return 1
         fi
         scan_range="$remote_sha..$local_sha";;
-      *) scan_range="$local_sha --not --remotes";;
+      *)
+        if [ -z "$push_remote" ]; then
+          echo "xp wall: the destination remote did not reach the pre-push scanner — refusing." >&2
+          echo "  Pass Git's pre-push remote name to secrets_scan_push, then retry." >&2
+          return 1
+        fi
+        scan_range="$local_sha --not --remotes=$push_remote";;
     esac
     if ! gitleaks git --log-opts="$scan_range" --no-banner --redact </dev/null; then
       echo "xp wall: rewrite the outgoing history to remove the secret, then retry." >&2

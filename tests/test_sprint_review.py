@@ -311,6 +311,9 @@ class TestReviewAuthority:
         recorded = json.loads(marker_path(tmp_path).read_text())["rounds"][-1]
         assert "incomplete" not in recorded, recorded
         assert recorded["shown_sha"] == head(repo, env), recorded
+        after_fixer = launches(tmp_path)[-1]["stdin"]
+        assert "## System context\n\n# System\nSYSTEM-SENTINEL\n\n" in after_fixer
+        assert "(missing:" not in after_fixer
 
 
 class TestModeSwitch:
