@@ -96,12 +96,14 @@ def plan_bytes(path: Path) -> bytes | None:
         return None
 
 
-def normalized_whitespace(text: str) -> str:
-    """Whitespace AND the markdown quote marker, because a blockquote is how a
-    reviewer sets a reason apart: it carries a `> ` on every wrapped line that
-    the reason string it also reports cannot (bug 6677e018 — six reasoned edits
-    landed in a plan and the whole round was discarded over the prefix)."""
-    return " ".join(w for ln in text.splitlines() for w in ln.lstrip("> ").split())
+def normalized_words(text: str) -> str:
+    """Return contiguous word content shared by Markdown plans and JSON reasons.
+
+    JSON reasons omit Markdown presentation punctuation, so the guard ignores
+    non-word runs while preserving case, word identity, and order to reject
+    absent or changed prose.
+    """
+    return " ".join(re.findall(r"\w+", text))
 
 
 def disposition(text: str, before: bytes | None, after: bytes | None) -> str:
@@ -154,9 +156,11 @@ def disposition(text: str, before: bytes | None, after: bytes | None) -> str:
     plan = (after or b"").decode(errors="replace")
     if not changed:
         return "an edited disposition left the plan unchanged"
-    normalized_plan = normalized_whitespace(plan)
+    normalized_plan = f" {normalized_words(plan)} "
     if not reasons or not all(
-        isinstance(reason, str) and normalized_whitespace(reason) in normalized_plan
+        isinstance(reason, str)
+        and (reason_words := normalized_words(reason))
+        and f" {reason_words} " in normalized_plan
         for reason in reasons
     ):
         return "every plan edit must carry its reason in the plan file"
