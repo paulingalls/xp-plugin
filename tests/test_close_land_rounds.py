@@ -9,7 +9,7 @@ disclosure here, land's other failure modes and bookkeeping there.
 import json
 
 import pytest
-from close_free_card_cases import add_free_card, commit_on_free, free_identity
+from close_free_card_cases import add_free_card, checkout_free, commit_on_free, spawn_free
 from close_helpers import (
     CLEAN,
     close,
@@ -330,22 +330,23 @@ class TestBoundedDurableBody:
     def test_free_pr_body_names_its_complete_report_after_cleanup(self, tmp_path):
         repo, env, g = free_repo(tmp_path)
         assert free(repo, env, "fix-typo", "start").returncode == 0
-        branch, key = free_identity(g)
+        branch, key = checkout_free(g)
         commit_on_free(repo, g)
         add_free_card(env, key)
+        tree = spawn_free(repo, env, g, tmp_path, key)
         findings = {"fixed": [], "blocking": [], "noted": [f"free-note-{i:02}" for i in range(25)]}
         stub_reviewer(tmp_path, report=findings)
-        assert free(repo, env, "fix-typo", "review").returncode == 0
-        report = tmp_path / "data" / "reports" / f"{key}.round-1.json"
+        assert free(tree, env, "fix-typo", "review").returncode == 0
+        report = tmp_path / "data" / "reports" / f"{key}.round-2.json"
         saved = json.loads(report.read_text())
         assert saved["noted"][-1] == "free-note-24"
 
-        assert free(repo, env, "fix-typo", "land").returncode == 0
+        assert free(tree, env, "fix-typo", "land").returncode == 0
         create = next(call for call in gh_calls(tmp_path) if call[:2] == ["pr", "create"])
         body = create[create.index("--body") + 1]
         assert "free-note-00" in body and "free-note-24" not in body
         assert sum(line.startswith("  noted:") for line in body.splitlines()) == 20
-        assert body.count(f"(+6 more, in full at reports/{key}.round-1.json)") == 1
+        assert body.count(f"(+6 more, in full at reports/{key}.round-2.json)") == 1
         assert str(tmp_path / "data") not in body
         assert "at reports)" not in body and "closes.jsonl" not in body
 

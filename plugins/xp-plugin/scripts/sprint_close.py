@@ -186,6 +186,7 @@ def cmd_review(sprint_id: str, dry_run: bool) -> int:
         if err:
             return fail(err)
         stages.check_roles(cards)
+    authority = story_close.review_authority_sections()
     base = git("merge-base", f"refs/heads/{trunk}", "HEAD").stdout.strip()
     digest_before = review.marker_digest(marker)
     diff_base = state["shown_sha"] if complete_n else ""
@@ -226,7 +227,9 @@ def cmd_review(sprint_id: str, dry_run: bool) -> int:
             review.patch_path(path).unlink(missing_ok=True)
         if stage == "fixer":
             extra = [("Your patch", f"PATCH_PATH: {review.patch_path(path)}"), *extra]
-        bundle = build(sprint_id, cards, base, path, charter or charters[stage], extra, diff_base)
+        bundle = build(
+            sprint_id, cards, base, path, charter or charters[stage], extra, authority, diff_base
+        )
         stage_head = git("rev-parse", "HEAD").stdout.strip()
         role = stage if not complete_n else ""
         result, err = review.run(

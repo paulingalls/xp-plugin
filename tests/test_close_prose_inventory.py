@@ -1,0 +1,215 @@
+"""Shipped prose held against the tree it describes: the sprint-close skill, the
+document/script/charter sets the tree can enumerate for itself, the constraints
+seed's hand-list, and the rule pointers every role shares. Split out of
+test_close_prose.py at story-120, which kept the story-close and walk-fixture
+prose."""
+
+import re
+from pathlib import Path
+
+from close_helpers import PLUGIN, prose
+
+
+def project_identifiers(text):
+    """Identifiers of THIS repository, in prose seeded into somebody else's. A
+    hand-list, and scoped to the template on purpose: JUDGMENT.md, spawn.py and
+    `falsifier` are all named legitimately elsewhere in the shipped tree."""
+    body = text.casefold()
+    literals = (
+        "ratchet.py",
+        "design.md",
+        "judgment.md",
+        "session_start.py",
+        "plan_review",
+        "spawn.py",
+        "falsifier",
+        "xp-plugin",
+    )
+    return [term for term in literals if term in body] + re.findall(
+        r"\b(?:story|sprint)-\d+\b", body
+    )
+
+
+class TestShippedProseMatchesTheMechanism:
+    def test_DESIGN_assigns_each_merge_reader_once(self):
+        """Sprint integration names a clean overlap to its lead; every other
+        unsafe overlap keeps its refusal."""
+        design = prose(Path(__file__).parent.parent / "docs" / "DESIGN.md")
+        for claim in (
+            "trial-merges",
+            "sprint integration branch",
+            "NAMED to the lead at land on stdout",
+            "Gate-file overlap still refuses",
+            "conflicts refuse",
+            "Free and story releases still refuse",
+        ):
+            assert claim in design, f"DESIGN §6 no longer states: {claim}"
+        assert "story-scoped path list" not in design
+        assert "every sprint-review stage reads" not in design
+
+    def test_the_sprint_close_skill_runs_the_reviews_rather_than_composing_them(self):
+        """Step 2 used to tell a human to do a broad review and a security review.
+        Both prompts were then hand-composed at sprint-002's close, and when four
+        fix-commits needed re-checking there were no prior findings to bound the
+        pass — an unbounded re-review (note bae0b87b)."""
+        skill = prose(PLUGIN / "skills" / "sprint-close" / "SKILL.md")
+        assert "close.py sprint <id> review" in skill, "the review is still hand-composed"
+
+    def test_the_sprint_close_skill_states_the_confirming_round_shape(self):
+        skill = prose(PLUGIN / "skills" / "sprint-close" / "SKILL.md")
+        assert "cost a confirming round, except any land names as exempt" in skill
+        assert "re-run `close.py sprint <id> review`" in skill
+        assert "one story-shaped reviewer over the delta, not another fanout" in skill
+
+    def test_sprint_opening_has_no_tracked_branch_ritual(self):
+        skill = prose(PLUGIN / "skills" / "sprint-close" / "SKILL.md")
+        assert "sprint_branch" not in skill and "retire" not in skill
+
+    def test_the_sprint_close_skill_orders_the_retro_BEFORE_the_reviews(self):
+        """Measured against the last real close: sprint-002's retro commit touched
+        CHANGELOG.md, docs/DESIGN.md, PROCESS.md and story-close/SKILL.md — five of
+        six paths outside .xp/, so land's exemption does not cover it. Retro last
+        means reviewing again, which invalidates the retro just written. The order
+        is the fix, and it also puts the retro diff under the review DESIGN §6
+        already says it deserves."""
+        skill = prose(PLUGIN / "skills" / "sprint-close" / "SKILL.md")
+        assert skill.index("Note triage") < skill.index("close.py sprint <id> review")
+        assert "BEFORE the review" in skill
+
+    def test_release_artifacts_are_project_owned_and_timed_without_enumeration(self):
+        skill = prose(PLUGIN / "skills" / "sprint-close" / "SKILL.md")
+        step = skill.split("5. **", 1)[1]
+        assert "Your release artifacts are yours" in step
+        assert "before" in step.lower() and "review" in step.lower()
+        assert "bump" not in step.lower() and "changelog" not in step.lower()
+
+    def test_system_context_names_every_shipped_prose_document(self):
+        """This line rides into every reviewer bundle, so a short list tells a
+        reviewer the shipped set is smaller than it is. ENUMERATED from the plugin
+        root, never a hand-list: the hand-list went short the day JUDGMENT.md
+        shipped and would again for the next document."""
+        system = (Path(__file__).parent.parent / ".xp" / "system.md").read_text()
+        line = next(line for line in system.splitlines() if line.startswith("- shipped prose"))
+        shipped = sorted(doc.name for doc in PLUGIN.glob("*.md"))
+        assert shipped, "no shipped prose found — the enumeration itself broke"
+        missing = [name for name in shipped if name not in line]
+        assert not missing, f"the reviewer is told the shipped set omits: {missing}"
+
+    def test_agents_register_only_directly_invocable_read_only_roles(self):
+        system = (Path(__file__).parent.parent / ".xp" / "system.md").read_text()
+        charters = sorted((PLUGIN / "agents").glob("*.md"))
+        assert charters, "no directly invocable role charters found"
+        for path in charters:
+            frontmatter = path.read_text().split("---", 2)[1]
+            fields = dict(line.split(":", 1) for line in frontmatter.splitlines() if ":" in line)
+            assert fields["name"].strip() == path.stem, f"{path.name}: role name drifted"
+            assert fields["tools"].strip() == "Read, Grep, Glob, Bash", (
+                f"{path.name}: directly invocable role is not read-only"
+            )
+        spawn_only = PLUGIN / "EXECUTOR.md"
+        assert spawn_only.is_file(), "the worktree-spawned brief left the plugin root"
+        # The rejected design, and the one a directory tidy-up reaches for: registering
+        # the executor here makes it invocable in the lead's checkout, with no worktree,
+        # no minted card and no handback. Comparing PATHS cannot see that — a COPY at
+        # agents/executor.md leaves the root file exactly where this asserts it is.
+        assert spawn_only.stem.lower() not in {p.stem.lower() for p in charters}, (
+            "the worktree-spawned executor is registered as a directly invocable subagent"
+        )
+        assert "directly invocable read-only role charters" in system
+        assert "isolated worktree" in system and "EXECUTOR.md" in system
+
+    def test_the_constraints_template_names_no_project_identifiers(self):
+        """The shipped seed is project-neutral. This hand-list covers identifiers
+        specific to this repository; the tree-wide document guard covers a
+        separate leak class, and neither substitutes for author judgment."""
+        seed = (PLUGIN / "templates" / "constraints.md").read_text()
+        leaked = project_identifiers(seed)
+        assert not leaked, f"constraints template leaks project identifiers: {leaked}"
+        # constraint 2, against a REAL ported rule rather than a bare string: each
+        # class of identifier goes into the shipped seed and must come back out.
+        for term in ("spawn.py", "DESIGN.md", "a falsifier", "at story-042"):
+            assert project_identifiers(seed + f"\n11. **Ported** — see {term}.\n"), term
+
+    def test_the_skills_keep_the_negative_space_that_earns_its_words(self):
+        """The counterweight to the cut: what deliberately does NOT exist cannot be
+        read off the code an agent has not read, so it is the one description that
+        stays. These sentences stop an agent hunting for a flag."""
+        story = prose(PLUGIN / "skills" / "story-close" / "SKILL.md")
+        assert "DOES NOT EXIST" in story, "the lead will hunt for a delta review"
+        assert "never spawns" in story, "land's one hard guarantee"
+
+    def test_every_shipped_script_is_reachable_from_the_plugin(self):
+        """ratchet.py sat in scripts/ for a sprint measuring OUR budgets against
+        OUR module names: nothing in the plugin invoked it, the shipped lefthook
+        template never ran it, and in a consuming repo it could only exit 2
+        ("MEASURED NOTHING"). Dev tooling shipped to every install.
+
+        IMPORT-OR-INVOKE, not a mention: ratchet was named once inside the plugin,
+        in a spawn.py comment, so a grep for the word would have certified it.
+        """
+        scripts = sorted((PLUGIN / "scripts").glob("*.py"))
+        assert len(scripts) > 5, "glob found nothing — a green here would certify"
+        corpus = {
+            p: p.read_text()
+            for p in PLUGIN.rglob("*")
+            if p.is_file() and p.suffix in (".py", ".md", ".json", ".yml", ".sh")
+        }
+        for script in scripts:
+            name = script.stem
+            forms = (f"import {name}", f"from {name} import", f"scripts/{name}.py")
+            reachable = any(
+                any(f in text for f in forms) for path, text in corpus.items() if path != script
+            )
+            assert reachable, (
+                f"{name}.py is shipped but nothing in the plugin imports or invokes it —"
+                " dev tooling belongs in tests/scripts/, not in every consumer's install"
+            )
+
+    def test_the_charter_names_the_report_path(self):
+        assert "REPORT_PATH" in (PLUGIN / "agents" / "story-reviewer.md").read_text()
+
+    def test_the_plan_reviewer_charter_asks_for_a_file(self):
+        assert (
+            "write your findings to a file"
+            in (PLUGIN / "agents" / "plan-reviewer.md").read_text().lower()
+        )
+
+    def test_the_plan_reviewer_charter_has_five_checks(self):
+        """A structural count, not a token grep — it certifies the count only,
+        not that the duty is followed. The sprint-cap clause is NOT one of the
+        five: capacity is the lead's slate review, and the charter says so in its
+        own paragraph (story-052). Restoring it here would keep this green."""
+        charter = (PLUGIN / "agents" / "plan-reviewer.md").read_text()
+        section = charter.split("## Checks, in order of payoff")[1]
+        section = section.split("## Close-review depth")[0]
+        numbered = [line for line in section.splitlines() if re.match(r"\d+\. ", line)]
+        assert len(numbered) == 5, f"expected 5 checks, found {len(numbered)}"
+
+
+class TestCharterBar:
+    def test_the_charter_states_the_three_buckets(self):
+        charter = (PLUGIN / "agents" / "story-reviewer.md").read_text().lower()
+        # the bucket NAMES as the charter writes them: "fix it" matched the
+        # blocking bullet's "could NOT fix it", so the `fixed` bucket the whole
+        # story turns on was the one token this loop never actually required.
+        for token in ("`fixed`", "`blocking`", "`noted`"):
+            assert token in charter
+        assert "heredoc" not in charter, "Write is allowed now; the heredoc route is stale"
+
+    def test_every_shared_rule_pointer_names_JUDGMENT(self):
+        bar = "silent or corrupting (false green, corrupted record, unreviewed merge)"
+        assert bar in prose(PLUGIN / "JUDGMENT.md")
+        for name in ("story-reviewer", "sprint-reviewer"):
+            charter = prose(PLUGIN / "agents" / f"{name}.md")
+            assert bar not in charter, f"{name} still ships a second copy of the bar"
+            assert "JUDGMENT" in charter, f"{name} dropped the copy without pointing"
+            assert "PROCESS" not in charter, f"{name} kept a stale pointer"
+        pointers = {
+            PLUGIN / "skills" / "story-close" / "SKILL.md": "file noted ones per JUDGMENT.md",
+            PLUGIN / "skills" / "sprint-close" / "SKILL.md": (
+                "JUDGMENT.md carries the polarity contract"
+            ),
+            PLUGIN / "scripts" / "bookkeep.py": "file these per JUDGMENT.md",
+        }
+        for path, pointer in pointers.items():
+            assert pointer in prose(path), f"stale rule pointer in {path}"

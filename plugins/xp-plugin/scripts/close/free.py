@@ -54,20 +54,24 @@ def cmd_start(slug: str) -> int:
     trunk = default_branch()
     if (branch := git("rev-parse", "--abbrev-ref", "HEAD").stdout.strip()) != trunk:
         return fail(
-            f"refused: free start cuts off {trunk}, and you are on {branch} — a free"
-            f" branch cut anywhere else carries that branch's unreleased work into a"
-            f" patch release. `git checkout {trunk}` first"
+            f"refused: free start cuts off {trunk} because it produces a patch tag; from"
+            f" {branch} it would include unreleased work. If this branch integrates into"
+            " a sprint review, commit there with `[sprint-direct]` so that review absorbs"
+            f" it. To ship now as a patch, `git checkout {trunk}`, then retry"
+            f" `close.py free {slug} start`"
         )
     new = branch_for(slug)
     if git("rev-parse", "--verify", "-q", f"refs/heads/{new}", check=False).returncode == 0:
         return fail(f"refused: branch {new} already exists")
-    if (made := git("checkout", "-q", "-b", new, trunk, check=False)).returncode:
-        return fail(f"git checkout -b failed: {made.stderr.strip()}")
+    if (made := git("branch", new, trunk, check=False)).returncode:
+        return fail(f"git branch failed: {made.stderr.strip()}")
     key = new.split("/", 1)[1]
     card = "card in the plan" if card_in_plan(key) else "card required, add it"
     print(
-        f"{new} off {trunk} — {card}. Cut your release artifacts, then "
-        f"`spawn.py ready {key}` before `close.py {leg(key)[0]} review`"
+        f"{new} off {trunk} — {card}. Next run `spawn.py ready {key}`, then"
+        f" `spawn.py {key}`. Cut release artifacts in `{spawn.worktree_path(key)}` while that"
+        f" worktree exists; otherwise in the main repo after `git checkout {new}`. Then run"
+        f" `close.py {leg(key)[0]} review` there"
     )
     return 0
 
@@ -87,17 +91,18 @@ def cmd_review(slug: str, dry_run: bool) -> int:
             f"refused: add `#### {key} — <title>   [planned]` with Context, Files, AC,"
             f" and Verify to {plan_path()}, then run `close.py {noun} review`"
         )
-    if not dry_run:
-        try:
-            _card, status = story_card(plan_path().read_text(), key)
-        except KeyError as e:  # the heading above is hand-written; a typo'd one is a refusal
-            return fail(f"refused: {e.args[0]}")
-        # the free lane is exempt from card refresh BY LANE, not by key shape: this
-        # card was authored and reviewed on a branch cut minutes ago and never aged
-        if status == "planned" and ready.mint(key, require_refresh=False):
-            return 2
-        if status in ("planned", "ready") and not flip_card(key, "ready", "in-progress"):
-            return fail(f"refused: could not move {key} to [in-progress]")
+    try:
+        _card, status = story_card(plan_path().read_text(), key)
+    except KeyError as e:  # the heading above is hand-written; a typo'd one is a refusal
+        return fail(f"refused: {e.args[0]}")
+    if not dry_run and not ready.spawned(key):
+        before_spawn = f"run `spawn.py ready {key}`, then " if status == "planned" else ""
+        if status == "in-progress":
+            before_spawn = "put its heading back to [ready], then "
+        return fail(
+            f"refused: {key} was never spawned — {before_spawn}run `spawn.py {key}` from"
+            " the main repo and review from its worktree"
+        )
     return close.cmd_review(key, dry_run)
 
 

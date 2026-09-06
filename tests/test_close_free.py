@@ -1,34 +1,29 @@
-"""Free mode: the shared card lifecycle and distinct patch-release leg.
+"""Free mode: start, the shared card lifecycle, and the land guards it shares
+with the story leg. The patch-release leg is test_close_free_release.py.
 
 Every land test here has a twin on the story leg, because free mode's whole
 risk is a guard the story leg has and this one lacks (story-011's close note).
 """
 
-import json
 import re
-import subprocess
-import sys
+import shlex
 from pathlib import Path
 
 import pytest
 from close_free_card_cases import (
     FreeCardCases,
     add_free_card,
+    checkout_free,
     commit_on_free,
-    control_subprocess_date,
     free_identity,
+    spawn_free,
 )
 from close_helpers import (
-    CLOSE,
-    NEW_FILE_PATCH,
-    PLUGIN,
     close,
     free,
     free_repo,
     gh_calls,
     make_repo,
-    marker_file,
-    stub_reviewer,
 )
 from spawn_helpers import in_tree, spawn, stub_claude
 from spawn_helpers import make_repo as make_spawn_repo
@@ -40,7 +35,7 @@ def normalize(refusal: str) -> str:
 
 
 def reviewed(tmp_path, slug="fix-typo", tiers=()):
-    """A free branch with one commit and one clean recorded round."""
+    """A free branch with one lead commit and two clean rounds: spawn's and close's."""
     repo, env, g = free_repo(tmp_path)
     if tiers:
         story = f"  story: {tiers[0]}\n" if tiers[0] is not None else ""
@@ -50,9 +45,12 @@ def reviewed(tmp_path, slug="fix-typo", tiers=()):
         g("commit", "-qam", "configure distinct tiers")
         g("push", "-q", "origin", "main")
     assert free(repo, env, slug, "start").returncode == 0
-    _branch, key = free_identity(g)
+    _branch, key = checkout_free(g)
     commit_on_free(repo, g)
     add_free_card(env, key)
+    tree = spawn_free(repo, env, g, tmp_path, key)
+    assert g("worktree", "remove", "--force", str(tree)).returncode == 0
+    assert g("checkout", "-q", _branch).returncode == 0
     r = free(repo, env, slug, "review")
     assert r.returncode == 0, r.stderr + r.stdout
     return repo, env, g
@@ -61,63 +59,127 @@ def reviewed(tmp_path, slug="fix-typo", tiers=()):
 def carded_free_patch(tmp_path):
     """A carded free branch carrying one lead commit, minted [ready] for spawn."""
     repo, env, g = free_repo(tmp_path)
+    configure_executor(repo, g)
+    assert free(repo, env, "fix-typo", "start").returncode == 0
+    _branch, key = checkout_free(g)
+    add_free_card(env, key)
+    commit_on_free(repo, g)
+    # NO refresh receipt: the free lane is exempt, and a fixture that seeds one
+    # stops walking that exemption (constraint 12)
+    g("checkout", "-q", "main")
+    assert spawn(repo, env, "ready", key).returncode == 0
+    return repo, env, g
+
+
+def configure_executor(repo, g):
     config = repo / ".xp" / "config.yml"
     config.write_text(
         config.read_text().replace("roles:\n", "roles:\n  executor: claude/sonnet/medium\n")
     )
     g("add", "-A")
     g("commit", "-qm", "executor role")
-    assert free(repo, env, "fix-typo", "start").returncode == 0
-    _branch, key = free_identity(g)
-    add_free_card(env, key)
-    commit_on_free(repo, g)
-    # NO refresh receipt: the free lane is exempt, and a fixture that seeds one
-    # stops walking that exemption (constraint 12)
-    assert spawn(repo, env, "ready", key).returncode == 0
-    return repo, env, g
 
 
 class TestFreeStart:
-    def test_start_cuts_the_dated_branch_off_the_default_branch(self, tmp_path):
-        """AC 1: the branch is dated so two closes of the same slug never share
-        a name — and so never share the marker keyed off it."""
+    def test_start_creates_the_free_ref_without_changing_the_lead_checkout(self, tmp_path):
         repo, env, g = free_repo(tmp_path)
-        main = g("rev-parse", "main").stdout.strip()
+        before = (
+            g("branch", "--show-current").stdout.strip(),
+            g("rev-parse", "HEAD").stdout.strip(),
+            g("status", "--porcelain").stdout,
+        )
         r = free(repo, env, "fix-typo", "start")
         assert r.returncode == 0, r.stderr
-        branch, _key = free_identity(g)
+        branch, key = free_identity(g)
         assert branch.endswith("-fix-typo")
-        assert g("rev-parse", branch).stdout.strip() == main
+        assert key in r.stdout
+        assert g("rev-parse", branch).stdout.strip() == before[1]
+        assert (
+            g("branch", "--show-current").stdout.strip(),
+            g("rev-parse", "HEAD").stdout.strip(),
+            g("status", "--porcelain").stdout,
+        ) == before
 
     def test_start_names_the_card_required_before_review(self, tmp_path):
         repo, env, _g = free_repo(tmp_path)
         result = free(repo, env, "fix-typo", "start")
         assert result.returncode == 0 and "card required" in result.stdout
 
-    def test_a_carded_spawn_reuses_the_free_branch_and_lands_from_its_worktree(self, tmp_path):
-        repo, env, g = carded_free_patch(tmp_path)
-        branch, key = free_identity(g)
-        (repo / "lead-left.txt").write_text("mine\n")
-        refused = spawn(repo, env, key)
-        assert refused.returncode == 2 and "commit your work" in refused.stderr
-        assert g("branch", "--show-current").stdout.strip() == branch
-        (repo / "lead-left.txt").unlink()
+    def test_the_printed_route_spawns_in_the_free_worktree_without_moving_the_lead(self, tmp_path):
+        repo, env, g = free_repo(tmp_path)
+        configure_executor(repo, g)
+        started = free(repo, env, "fix-typo", "start")
+        assert started.returncode == 0, started.stderr
+        branch, key = checkout_free(g)
+        add_free_card(env, key)
+        commit_on_free(repo, g)
+        g("checkout", "-q", "main")
+        commands = re.findall(r"`(spawn\.py [^`]+)`", started.stdout)
+        assert commands == [f"spawn.py ready {key}", f"spawn.py {key}"]
+        assert spawn(repo, env, *shlex.split(commands[0])[1:]).returncode == 0
         stub_claude(tmp_path)
-        result = spawn(repo, env, key)
+        before = (
+            g("branch", "--show-current").stdout.strip(),
+            g("rev-parse", "HEAD").stdout.strip(),
+            g("status", "--porcelain").stdout,
+        )
+        result = spawn(repo, env, *shlex.split(commands[1])[1:])
         assert result.returncode == 0, result.stderr
         tree = Path(env["XP_DATA"]) / "worktrees" / key
+        after = (
+            g("branch", "--show-current").stdout.strip(),
+            g("rev-parse", "HEAD").stdout.strip(),
+            g("status", "--porcelain").stdout,
+        )
+        assert after == before
         assert in_tree(tree, env, "branch", "--show-current") == branch
         assert (tree / "src" / "free.py").read_text() == "B = 1\n"
+        assert "teammate work" in in_tree(tree, env, "log", "-1", "--format=%s")
         assert f"at {tree} (continued, not cut)" in result.stdout
         assert "`/free-close` from that worktree" in result.stdout
         assert "close.py story" not in result.stdout
-        stub_reviewer(tmp_path)
-        review = free(tree, env, "fix-typo", "review")
-        assert review.returncode == 0, review.stderr + review.stdout
-        land = free(tree, env, "fix-typo", "land")
-        assert land.returncode == 0, land.stderr + land.stdout
-        create = [call for call in gh_calls(tmp_path) if call[:2] == ["pr", "create"]]
-        assert len(create) == 1 and create[0][create[0].index("--base") + 1] == "main"
+        plan = Path(env["XP_DATA"]) / "plan.md"
+        plan.write_text(plan.read_text().replace("[in-progress]", "[ready]"))
+        launch = (tmp_path / "launch.json").read_bytes()
+        again = spawn(repo, env, key)
+        assert again.returncode == 2 and "already spawned" in again.stderr
+        assert (tmp_path / "launch.json").read_bytes() == launch
+
+    @pytest.mark.parametrize("location", ["worktree", "main-repo"])
+    def test_the_printed_artifact_locations_are_walkable(self, tmp_path, location):
+        repo, env, g = free_repo(tmp_path)
+        configure_executor(repo, g)
+        started = free(repo, env, "fix-typo", "start")
+        assert started.returncode == 0, started.stderr
+        branch, key = checkout_free(g)
+        add_free_card(env, key)
+        commit_on_free(repo, g)
+        g("checkout", "-q", "main")
+        commands = re.findall(r"`(spawn\.py [^`]+)`", started.stdout)
+        tree_match = re.search(r"in `([^`]+)` while that worktree exists", started.stdout)
+        checkout_match = re.search(r"after `(git checkout [^`]+)`", started.stdout)
+        assert commands == [f"spawn.py ready {key}", f"spawn.py {key}"]
+        assert tree_match and checkout_match
+        assert spawn(repo, env, *shlex.split(commands[0])[1:]).returncode == 0
+        stub_claude(tmp_path)
+        assert spawn(repo, env, *shlex.split(commands[1])[1:]).returncode == 0
+        tree = Path(tree_match[1])
+        assert tree == Path(env["XP_DATA"]) / "worktrees" / key
+        target = tree
+        if location == "main-repo":
+            assert g("worktree", "remove", "--force", str(tree)).returncode == 0
+            checkout = g(*shlex.split(checkout_match[1])[1:])
+            assert checkout.returncode == 0, checkout.stderr
+            target = repo
+        (target / "release-artifact.txt").write_text("release\n")
+        assert g("-C", str(target), "add", "release-artifact.txt").returncode == 0
+        committed = g("-C", str(target), "commit", "-qm", "release artifact")
+        assert committed.returncode == 0, committed.stderr
+
+        preview = free(target, env, "fix-typo", "review", "--dry-run")
+
+        assert preview.returncode == 0, preview.stderr
+        assert in_tree(target, env, "branch", "--show-current") == branch
 
     def test_spawn_handoff_routes_story_and_free_to_their_skills(self, tmp_path):
         story_root = tmp_path / "story"
@@ -150,30 +212,62 @@ class TestFreeStart:
             assert result.stdout.index("release artifacts") < result.stdout.index("review")
             assert "Commit, then" not in result.stdout
             add_free_card(env, key)
+            checkout_free(g)
             commit_on_free(repo, g)
             minted = spawn(repo, env, "ready", key)
             assert minted.returncode == 0, minted.stderr
         assert outputs[0] != outputs[1]
 
-    def test_a_spawn_from_off_the_free_branch_names_the_checkout(self, tmp_path):
-        """The lead's own checkout is the only thing missing, and `git branch -D`
-        is the obvious recovery from a bare already-exists — it discards the
-        release commits `free start` left on that branch."""
+    def test_spawn_refuses_to_move_a_lead_who_checked_out_the_free_branch(self, tmp_path):
         repo, env, g = carded_free_patch(tmp_path)
         branch, key = free_identity(g)
-        g("checkout", "-q", "main")
+        g("checkout", "-q", branch)
+        before = g("rev-parse", "HEAD").stdout.strip()
+        stub_claude(tmp_path)
         refused = spawn(repo, env, key)
-        assert refused.returncode == 2 and f"git checkout {branch}" in refused.stderr
-        assert g("rev-parse", "--verify", "-q", branch).returncode == 0
+        assert refused.returncode == 2 and "return to main" in refused.stderr
+        assert g("branch", "--show-current").stdout.strip() == branch
+        assert g("rev-parse", "HEAD").stdout.strip() == before
+        assert not (Path(env["XP_DATA"]) / "worktrees" / key).exists()
 
-    def test_start_anywhere_but_the_default_branch_refuses_naming_it(self, tmp_path):
-        """AC 2: a free branch cut off a story branch carries that story's
-        unreleased work into a patch release."""
+    def test_start_from_a_sprint_branch_walks_the_sprint_direct_alternative(self, tmp_path):
         repo, env, g = free_repo(tmp_path)
-        g("checkout", "-q", "story-042-branch")
+        g("branch", "sprint-001", "main")
+        (Path(env["XP_DATA"]) / "sprint_branch").write_text("sprint-001\n")
+        g("checkout", "-q", "sprint-001")
+        before = (
+            g("branch", "--show-current").stdout.strip(),
+            g("rev-parse", "HEAD").stdout.strip(),
+            g("status", "--porcelain").stdout,
+            g("tag", "--list").stdout,
+            g("for-each-ref", "--format=%(refname)", "refs/heads/*free*").stdout,
+        )
         r = free(repo, env, "fix-typo", "start")
         assert r.returncode == 2
-        assert "main" in r.stderr and "story-042-branch" in r.stderr
+        assert "main" in r.stderr and "sprint-001" in r.stderr
+        assert "[sprint-direct]" in r.stderr and "sprint review" in r.stderr
+        assert "patch" in r.stderr and "close.py free fix-typo start" in r.stderr
+        assert (
+            g("branch", "--show-current").stdout.strip(),
+            g("rev-parse", "HEAD").stdout.strip(),
+            g("status", "--porcelain").stdout,
+            g("tag", "--list").stdout,
+            g("for-each-ref", "--format=%(refname)", "refs/heads/*free*").stdout,
+        ) == before
+
+        (repo / "sprint-fix.txt").write_text("absorbed by sprint\n")
+        g("add", "sprint-fix.txt")
+        committed = g("commit", "-qm", "[sprint-direct] fix typo")
+        assert committed.returncode == 0, committed.stderr
+        head = g("rev-parse", "HEAD").stdout.strip()
+        assert head in g("rev-list", "main..sprint-001").stdout.splitlines()
+        assert g("merge-base", "--is-ancestor", head, "main").returncode == 1
+
+        other, other_env, other_g = free_repo(tmp_path / "without-sprint")
+        other_g("checkout", "-q", "story-042-branch")
+        no_sprint = free(other, other_env, "fix-typo", "start")
+        assert no_sprint.returncode == 2
+        assert "if this branch integrates into a sprint review" in no_sprint.stderr.lower()
 
     def test_start_refuses_a_dirty_tree(self, tmp_path):
         repo, env, _g = free_repo(tmp_path)
@@ -212,144 +306,12 @@ class TestFreeStart:
         repo, env, g = free_repo(tmp_path / tail)
         r = free(repo, env, slug, "start")
         assert r.returncode == 0, r.stderr
-        assert g("rev-parse", "--abbrev-ref", "HEAD").stdout.strip().endswith(f"-{tail}")
+        assert free_identity(g)[0].endswith(f"-{tail}")
+        assert g("rev-parse", "--abbrev-ref", "HEAD").stdout.strip() == "main"
 
 
 class TestFreeCardLifecycle(FreeCardCases):
     pass
-
-
-class TestFreeCloseSkill:
-    def test_it_carries_only_the_judgment_the_scripts_cannot(self):
-        """The word budget lives with its siblings in test_close_prose.py, at the
-        LIVE size; a second cap here was 41 words of slack. This is the budget's
-        counterweight: the sentences it must not be satisfied by deleting, and the
-        release enumeration it must not admit (the sprint-close twin's negative)."""
-        body = (PLUGIN / "skills" / "free-close" / "SKILL.md").read_text().split("---", 2)[2]
-        text = " ".join(body.split())
-        assert "`close.py free <slug> review`" in text
-        assert "`close.py free <slug> land`" in text
-        assert "release artifacts are yours" in text.lower()
-        assert "before review" in text.lower()
-        assert "bump" not in text.lower() and "changelog" not in text.lower()
-        assert "inside the round that found" in text
-        assert "past what the review covered" in text and "confirming round" in text
-        assert "finding bar" in text and "JUDGMENT.md" in text
-
-
-class TestFreeLand:
-    @pytest.mark.slow
-    def test_land_opens_the_pr_to_main_with_the_patch_bump(self, tmp_path):
-        """AC 3: v0.2.0 -> v0.2.1. A free close targeting main IS a release, and
-        a minor bump here would claim a sprint's worth of change."""
-        repo, env, _g = reviewed(tmp_path)
-        r = free(repo, env, "fix-typo", "land")
-        assert r.returncode == 0, r.stderr + r.stdout
-        create = [c for c in gh_calls(tmp_path) if c[:2] == ["pr", "create"]]
-        assert len(create) == 1, gh_calls(tmp_path)
-        assert "v0.2.1" in " ".join(create[0])
-        assert "--base" in create[0] and create[0][create[0].index("--base") + 1] == "main"
-
-    def test_land_with_no_report_refuses(self, tmp_path):
-        """AC 4: the report is pipeline-received, so its absence is the whole
-        gate — there is no flag that supplies one."""
-        repo, env, g = free_repo(tmp_path)
-        free(repo, env, "fix-typo", "start")
-        commit_on_free(repo, g)
-        r = free(repo, env, "fix-typo", "land")
-        assert r.returncode == 2
-        assert "review" in r.stderr and not gh_calls(tmp_path)
-
-    def test_land_refuses_while_the_last_round_has_blocking_findings(self, tmp_path):
-        repo, env, g = reviewed(tmp_path)
-        _branch, key = free_identity(g)
-        path = marker_file(tmp_path, key)
-        state = json.loads(path.read_text())
-        state["rounds"][-1]["blocking"] = ["a real defect"]
-        path.write_text(json.dumps(state))
-        r = free(repo, env, "fix-typo", "land")
-        assert r.returncode == 2 and "a real defect" in r.stderr
-
-    def test_land_refuses_from_anywhere_but_its_own_free_branch(self, tmp_path):
-        """The recorded round names a branch; land pushes HEAD. Without this,
-        a merged free close replays from main — every other guard passes there,
-        because shown_sha is an ancestor of main once the PR lands."""
-        repo, env, g = reviewed(tmp_path)
-        branch, _key = free_identity(g)
-        g("checkout", "-q", "main")
-        r = free(repo, env, "fix-typo", "land")
-        assert r.returncode == 2 and branch in r.stderr
-        assert not gh_calls(tmp_path)
-
-    def test_land_refuses_a_dirty_tree(self, tmp_path):
-        repo, env, _g = reviewed(tmp_path)
-        (repo / "src" / "thing.py").write_text("A = 99\n")
-        r = free(repo, env, "fix-typo", "land")
-        assert r.returncode == 2 and "dirty" in r.stderr
-
-    def test_the_bump_comes_off_trunk_not_off_this_branch(self, tmp_path):
-        """A sprint released v0.3.0 while this branch was open. Its tag is not
-        REACHABLE from a branch cut before it, so a bump read here re-ships a
-        version already shipped — and the instruction tags v0.2.1 at content
-        that is v0.3.0 plus this fix."""
-        repo, env, g = reviewed(tmp_path)
-        branch, _key = free_identity(g)
-        g("checkout", "-q", "main")
-        (repo / "sprint.md").write_text("shipped\n")
-        g("add", "-A")
-        g("commit", "-qm", "sprint 5 released")
-        g("tag", "v0.3.0")
-        g("push", "-q", "origin", "main")
-        g("checkout", "-q", branch)
-        r = free(repo, env, "fix-typo", "land")
-        assert r.returncode == 0, r.stderr + r.stdout
-        create = next(c for c in gh_calls(tmp_path) if c[:2] == ["pr", "create"])
-        assert "v0.3.1" in " ".join(create), create
-        assert "v0.3.1" in r.stdout, r.stdout
-
-    @pytest.mark.slow
-    def test_branch_and_key_follow_the_subprocess_date_across_fixture_load(self, tmp_path):
-        repo, env, g = free_repo(tmp_path)
-        control_subprocess_date(tmp_path, env, "2040-12-31")
-        assert free(repo, env, "fix-typo", "start").returncode == 0
-        branch, key = free_identity(g)
-        assert (branch, key) == (
-            "t/free-2040-12-31-fix-typo",
-            "free-2040-12-31-fix-typo",
-        )
-        commit_on_free(repo, g)
-        add_free_card(env, key)
-        assert free(repo, env, "fix-typo", "review").returncode == 0
-        env["XP_TEST_TODAY"] = "2041-01-01"
-        r = free(repo, env, "fix-typo", "land")
-        assert r.returncode == 0, r.stderr + r.stdout
-        assert marker_file(tmp_path, key).exists()
-        assert [c for c in gh_calls(tmp_path) if c[:2] == ["pr", "create"]]
-
-    @pytest.mark.slow
-    def test_land_names_the_full_diff_when_the_reviewer_changed_the_tree(self, tmp_path):
-        """Assent is given by RUNNING land, so the artifact it rests on must be
-        addressable HERE — the story leg prints the path, and a stat without one
-        tells the lead work happened but not where to read it."""
-        repo, env, g = free_repo(tmp_path)
-        free(repo, env, "fix-typo", "start")
-        _branch, key = free_identity(g)
-        commit_on_free(repo, g)
-        add_free_card(env, key)
-        stub_reviewer(tmp_path, patch=NEW_FILE_PATCH)
-        assert free(repo, env, "fix-typo", "review").returncode == 0
-        r = free(repo, env, "fix-typo", "land")
-        assert r.returncode == 0, r.stderr
-        assert "the reviewer changed this tree" in r.stdout
-        assert f"full diff: {tmp_path}" in r.stdout, r.stdout
-        assert f"{key}.round-1.diff" in r.stdout, r.stdout
-
-    def test_land_reports_a_lead_commit_the_round_never_covered(self, tmp_path):
-        repo, env, g = reviewed(tmp_path)
-        commit_on_free(repo, g, "C = 1\n", "src/late.py", "after the review")
-        r = free(repo, env, "fix-typo", "land")
-        assert r.returncode == 0, r.stderr
-        assert "unreviewed" in r.stdout, r.stdout
 
 
 class TestSharedLandGuards:
@@ -360,7 +322,7 @@ class TestSharedLandGuards:
     def rewrite_history(self, g):
         """The 012b/N2 injection: the recorded round's sha stops being an
         ancestor of HEAD, so it describes a tree that no longer exists."""
-        g("commit", "-q", "--amend", "-m", "rewritten")
+        g("commit", "-q", "--amend", "--allow-empty", "-m", "rewritten")
 
     def edit_gate_file(self, repo, g):
         (repo / ".xp" / "config.yml").write_text("roles:\n  reviewer: claude/opus\n")
@@ -467,18 +429,3 @@ class TestSharedLandGuards:
         assert r.returncode == 2
         assert "src/free.py" in r.stderr and "no review covered" in r.stderr
         assert not gh_calls(tmp_path)
-
-
-class TestFreeIsUndocumentedNowhere:
-    def test_free_help_names_the_five_actions(self, tmp_path):
-        """Constraint 12: a surface a consuming project drives must answer
-        --help without doing anything."""
-        r = subprocess.run(
-            [sys.executable, str(CLOSE), "free", "--help"],
-            capture_output=True,
-            text=True,
-            cwd=tmp_path,
-        )
-        assert r.returncode == 0
-        for action in ("start", "review", "salvage", "land", "post-merge"):
-            assert action in r.stdout

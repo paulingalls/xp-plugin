@@ -9,6 +9,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
 from close_helpers import (
     CLOSE,
     CONFIG_PATCH,
@@ -18,13 +19,24 @@ from close_helpers import (
     marker_file,
     stub_reviewer,
 )
-from spawn_helpers import spawn
+from spawn_helpers import spawn, stub_claude
 from test_close_salvage import KILLED, dying_reviewer
 
 
 def free_identity(g):
-    branch = g("branch", "--show-current").stdout.strip()
+    branches = g(
+        "for-each-ref", "--format=%(refname:short)", "refs/heads/*/free-*"
+    ).stdout.splitlines()
+    assert len(branches) == 1, branches
+    branch = branches[0]
     return branch, branch.split("/", 1)[1]
+
+
+def checkout_free(g):
+    branch, key = free_identity(g)
+    result = g("checkout", "-q", branch)
+    assert result.returncode == 0, result.stderr
+    return branch, key
 
 
 def control_subprocess_date(tmp_path, env, day):
@@ -59,15 +71,27 @@ def commit_on_free(repo, g, text="B = 1\n", path="src/free.py", msg="free work")
     g("commit", "-qm", msg)
 
 
+def spawn_free(repo, env, g, tmp_path, key, expected=0):
+    g("checkout", "-q", "main")
+    assert spawn(repo, env, "ready", key).returncode == 0
+    stub_claude(tmp_path)
+    executor = "/".join(("claude", "sonnet", "medium"))
+    launched = spawn(repo, env, key, executor)
+    assert launched.returncode == expected, f"rc {launched.returncode}: {launched.stderr}"
+    stub_reviewer(tmp_path)
+    return Path(env["XP_DATA"]) / "worktrees" / key
+
+
 def carded_review(tmp_path, slug="fix-typo", verify="true"):
     repo, env, g = free_repo(tmp_path)
     assert free(repo, env, slug, "start").returncode == 0
-    branch, key = free_identity(g)
+    branch, key = checkout_free(g)
     commit_on_free(repo, g)
     add_free_card(env, key, verify)
-    reviewed = free(repo, env, slug, "review")
+    tree = spawn_free(repo, env, g, tmp_path, key)
+    reviewed = free(tree, env, slug, "review")
     assert reviewed.returncode == 0, reviewed.stderr + reviewed.stdout
-    return repo, env, g, branch, key
+    return tree, env, g, branch, key
 
 
 class FreeCardCases:
@@ -78,11 +102,12 @@ class FreeCardCases:
         gate.chmod(0o755)
         repo, env, g = free_repo(tmp_path)
         free(repo, env, "fix-typo", "start")
-        _branch, key = free_identity(g)
+        _branch, key = checkout_free(g)
         commit_on_free(repo, g)
         add_free_card(env, key, str(gate))
+        tree = spawn_free(repo, env, g, tmp_path, key, expected=3)
 
-        refused = free(repo, env, "fix-typo", "review")
+        refused = free(tree, env, "fix-typo", "review")
 
         assert refused.returncode == 2 and "Verify red" in refused.stderr
         assert sentinel.exists(), "the reviewed-tree Verify never ran"
@@ -91,7 +116,7 @@ class FreeCardCases:
     def test_a_dirty_refusal_does_not_advance_a_free_card(self, tmp_path):
         repo, env, g = free_repo(tmp_path)
         free(repo, env, "fix-typo", "start")
-        _branch, key = free_identity(g)
+        _branch, key = checkout_free(g)
         commit_on_free(repo, g)
         add_free_card(env, key)
         (repo / "dirty.py").write_text("dirty = True\n")
@@ -99,24 +124,72 @@ class FreeCardCases:
         assert result.returncode == 2 and "dirty" in result.stderr
         assert "[planned]" in (Path(env["XP_DATA"]) / "plan.md").read_text()
 
+    def test_a_never_spawned_free_card_refuses_before_credential_or_review(self, tmp_path):
+        repo, env, g = free_repo(tmp_path)
+        assert free(repo, env, "fix-typo", "start").returncode == 0
+        _branch, key = checkout_free(g)
+        commit_on_free(repo, g)
+        add_free_card(env, key)
+        plan = Path(env["XP_DATA"]) / "plan.md"
+        ready = Path(env["XP_DATA"]) / "markers" / f"{key}.ready.json"
+        handoff = Path(env["XP_DATA"]) / "plans" / f"{key}.handoff.json"
+        before = plan.read_bytes()
+        assert not ready.exists() and not handoff.exists()
+
+        refused = free(repo, env, "fix-typo", "review")
+
+        assert refused.returncode == 2 and "never spawned" in refused.stderr
+        assert plan.read_bytes() == before
+        assert not ready.exists() and not marker_file(tmp_path, key).exists()
+        assert launches(tmp_path) == []
+
+    @pytest.mark.parametrize("status", ["ready", "in-progress"])
+    def test_a_credential_or_bracket_is_not_spawn_proof(self, tmp_path, status):
+        repo, env, g = free_repo(tmp_path)
+        assert free(repo, env, "fix-typo", "start").returncode == 0
+        _branch, key = checkout_free(g)
+        commit_on_free(repo, g)
+        add_free_card(env, key)
+        plan = Path(env["XP_DATA"]) / "plan.md"
+        ready = Path(env["XP_DATA"]) / "markers" / f"{key}.ready.json"
+        if status == "ready":
+            assert spawn(repo, env, "ready", key).returncode == 0
+        else:
+            plan.write_text(plan.read_text().replace("[planned]", "[in-progress]"))
+        close_marker = marker_file(tmp_path, key)
+        close_marker.parent.mkdir(parents=True, exist_ok=True)
+        close_marker.write_text("{}")
+        handoff = Path(env["XP_DATA"]) / "plans" / f"{key}.handoff.json"
+        before = plan.read_bytes(), ready.read_bytes() if ready.exists() else None
+        assert not handoff.exists()
+
+        refused = free(repo, env, "fix-typo", "review")
+
+        assert refused.returncode == 2 and "never spawned" in refused.stderr
+        assert (plan.read_bytes(), ready.read_bytes() if ready.exists() else None) == before
+        assert close_marker.read_text() == "{}"
+        assert launches(tmp_path) == []
+
     def test_a_free_card_is_minted_reviewed_and_checked_for_drift(self, tmp_path):
         repo, env, g = free_repo(tmp_path)
         free(repo, env, "fix-typo", "start")
-        _branch, key = free_identity(g)
+        _branch, key = checkout_free(g)
         commit_on_free(repo, g)
         add_free_card(env, key)
-        reviewed = free(repo, env, "fix-typo", "review")
+        tree = spawn_free(repo, env, g, tmp_path, key)
+        reviewed = free(tree, env, "fix-typo", "review")
         assert reviewed.returncode == 0, reviewed.stderr
         assert f"#### {key}" in launches(tmp_path)[-1]["stdin"]
         plan = Path(env["XP_DATA"]) / "plan.md"
         assert "[in-progress]" in plan.read_text()
         assert (Path(env["XP_DATA"]) / "markers" / f"{key}.ready.json").exists()
         plan.write_text(plan.read_text().replace("Verify: true", "Verify: false"))
-        landed = free(repo, env, "fix-typo", "land")
+        landed = free(tree, env, "fix-typo", "land")
         assert landed.returncode == 2 and "edited after its plan review" in landed.stderr
         assert "--- reviewed" in landed.stderr and "+++ now" in landed.stderr
-        plan.write_text(plan.read_text().replace("[in-progress]", "[planned]"))
-        verified = free(repo, env, "fix-typo", "review")
+        amended = spawn(tree, env, "amend", key, "--reason", "exercise Verify on the edited card")
+        assert amended.returncode == 0, amended.stderr
+        verified = free(tree, env, "fix-typo", "review")
         assert verified.returncode == 2 and "Verify red" in verified.stderr
 
     def test_a_deleted_free_card_cannot_drop_its_credential(self, tmp_path):
@@ -129,18 +202,19 @@ class FreeCardCases:
     def test_a_free_reviewer_editing_a_gate_file_is_refused(self, tmp_path):
         repo, env, g = free_repo(tmp_path)
         free(repo, env, "fix-typo", "start")
-        _branch, key = free_identity(g)
+        _branch, key = checkout_free(g)
         commit_on_free(repo, g)
         add_free_card(env, key)
+        tree = spawn_free(repo, env, g, tmp_path, key)
         stub_reviewer(tmp_path, patch=CONFIG_PATCH)
-        result = free(repo, env, "fix-typo", "review")
+        result = free(tree, env, "fix-typo", "review")
         assert result.returncode == 2, result.stdout
         assert ".xp/config.yml" in result.stderr and "Files line" in result.stderr
 
     def test_cardless_review_refuses_with_the_card_heading_to_add(self, tmp_path):
         repo, env, g = free_repo(tmp_path)
         assert free(repo, env, "fix-typo", "start").returncode == 0
-        _branch, key = free_identity(g)
+        _branch, key = checkout_free(g)
         commit_on_free(repo, g)
 
         result = free(repo, env, "fix-typo", "review")
@@ -193,31 +267,33 @@ class FreeCardCases:
     def test_a_killed_free_review_names_and_runs_free_salvage(self, tmp_path):
         repo, env, g = free_repo(tmp_path)
         assert free(repo, env, "Fix Typo.", "start").returncode == 0
-        _branch, key = free_identity(g)
+        _branch, key = checkout_free(g)
         commit_on_free(repo, g)
         add_free_card(env, key)
+        tree = spawn_free(repo, env, g, tmp_path, key)
         dying_reviewer(tmp_path, patch="")
 
-        killed = free(repo, env | KILLED, "Fix Typo.", "review")
+        killed = free(tree, env | KILLED, "Fix Typo.", "review")
 
         assert killed.returncode == 2
         assert "close.py free fix-typo salvage" in killed.stderr, killed.stderr
-        salvaged = free(repo, env, "Fix Typo.", "salvage")
+        salvaged = free(tree, env, "Fix Typo.", "salvage")
         assert salvaged.returncode == 0, salvaged.stderr
-        assert len(json.loads(marker_file(tmp_path, key).read_text())["rounds"]) == 1
+        assert len(json.loads(marker_file(tmp_path, key).read_text())["rounds"]) == 2
         assert (tmp_path / "spawns").read_text().splitlines() == ["launched"]
 
     def test_free_land_uses_the_branch_derived_slug(self, tmp_path):
         repo, env, g = free_repo(tmp_path)
         started = free(repo, env, "Fix Typo.", "start")
         assert started.returncode == 0
-        _branch, key = free_identity(g)
+        _branch, key = checkout_free(g)
         commit_on_free(repo, g)
         add_free_card(env, key)
+        tree = spawn_free(repo, env, g, tmp_path, key)
         stub_reviewer(tmp_path)
-        assert free(repo, env, "Fix Typo.", "review").returncode == 0
+        assert free(tree, env, "Fix Typo.", "review").returncode == 0
 
-        preview = free(repo, env, "Fix Typo.", "land", "--dry-run")
+        preview = free(tree, env, "Fix Typo.", "land", "--dry-run")
 
         assert preview.returncode == 0, preview.stderr
         assert "free fix-typo" in preview.stdout
@@ -226,7 +302,7 @@ class FreeCardCases:
     def test_a_planned_free_card_review_preview_does_not_mint_or_flip(self, tmp_path):
         repo, env, g = free_repo(tmp_path)
         assert free(repo, env, "fix-typo", "start").returncode == 0
-        _branch, key = free_identity(g)
+        _branch, key = checkout_free(g)
         commit_on_free(repo, g)
         add_free_card(env, key)
 
@@ -242,7 +318,7 @@ class FreeCardCases:
         likeliest typo must reach a refusal rather than a traceback."""
         repo, env, g = free_repo(tmp_path)
         assert free(repo, env, "fix-typo", "start").returncode == 0
-        _branch, key = free_identity(g)
+        _branch, key = checkout_free(g)
         commit_on_free(repo, g)
         add_free_card(env, key)
         plan = Path(env["XP_DATA"]) / "plan.md"
@@ -259,7 +335,7 @@ class FreeCardCases:
         making; it must not buy a review round for a card still [planned]."""
         repo, env, g = free_repo(tmp_path)
         assert free(repo, env, "fix-typo", "start").returncode == 0
-        _branch, key = free_identity(g)
+        _branch, key = checkout_free(g)
         commit_on_free(repo, g)
         add_free_card(env, key)
 

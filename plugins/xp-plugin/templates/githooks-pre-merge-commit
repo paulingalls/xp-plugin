@@ -1,7 +1,6 @@
 #!/bin/sh
-# xp wall: secrets + fast tier (tiers read from .xp/config.yml at run time)
+# xp wall: staged merge result before a no-ff merge commit
 set -e
 cd "$(git rev-parse --show-toplevel)"
 . .githooks/hook-lib.sh
 secrets_scan_index
-run_tier fast

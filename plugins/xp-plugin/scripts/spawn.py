@@ -14,7 +14,7 @@ sys.path.insert(0, str(Path(__file__).parent / "spawn"))
 # (close -> spawn -> close) and fails before fail/git exist (story-008).
 import story_stages as stages
 from bookkeep import bootstrap_command
-from close import config_flat, fail, git, integration_target, leg, story_card
+from close import config_flat, config_has, fail, git, integration_target, leg, story_card
 from handback import tree_state, unclean_teammate_result
 from handoff import draft_path, handoff_state, inheritance, mark_handoff, mark_stage, report_handoff
 from harness import HARNESS_INSTALL, agent_argv, missing_harness, resolve_codex_sandbox
@@ -35,7 +35,7 @@ from work import (
 
 PLUGIN_ROOT = Path(__file__).parent.parent
 
-TOTAL_TARGET = 4500  # composed profile: reported, never enforced
+DEFAULT_PROFILE_TARGET = 806
 
 
 def component_metadata_chars() -> int:
@@ -52,13 +52,6 @@ def component_metadata_chars() -> int:
     return total
 
 
-def plugin_shipped_chars() -> int:
-    names = ("VALUES.md", "JUDGMENT.md", "EXECUTOR.md")
-    shipped = [PLUGIN_ROOT / name for name in names]
-    shipped.append(PLUGIN_ROOT / "templates" / "constraints.md")
-    return sum(len(_read(p)) for p in shipped) + component_metadata_chars()
-
-
 def profile_report(card: str, prompt: str, handoff: str) -> tuple[str, str]:
     """Return the lead's profile breakdown and actionable overage warning."""
     project = {
@@ -68,18 +61,37 @@ def profile_report(card: str, prompt: str, handoff: str) -> tuple[str, str]:
     }
     if handoff:
         project["predecessor handoff"] = len(handoff)
-    total = (len(prompt) + project["CLAUDE.md"] + component_metadata_chars()) // 4
+    total_chars = len(prompt) + project["CLAUDE.md"] + component_metadata_chars()
+    total = total_chars // 4
+    plugin = total_chars - sum(project.values())
     shares = " · ".join(f"{k} {v // 4}" for k, v in project.items())
-    line = (
-        f"profile: total {total} tokens · plugin-shipped {plugin_shipped_chars() // 4} · {shares}"
-    )
-    if total <= TOTAL_TARGET:
+    line = f"profile: total {total} tokens · plugin share {plugin // 4}/{total} · {shares}"
+    target = profile_target()
+    card_tokens = len(card) // 4
+    if card_tokens <= target:
         return line, ""
-    largest = max(project, key=lambda k: project[k])
+    contributors = {"the plugin": plugin, **project}
+    largest = max(contributors, key=contributors.get)
     return line, (
-        f"note: teammate profile is {total} tokens, over the {TOTAL_TARGET} target."
-        f" Largest project-owned contributor is {largest} ({project[largest] // 4} tokens)"
-        " — yours to retire, not the plugin's."
+        f"note: story card is {card_tokens} tokens, over the {target} story-card token"
+        f" allowance (profile_target). Largest contributor is {largest}"
+        f" ({contributors[largest] // 4} tokens). Reconsider that contributor or the"
+        " configured allowance."
+    )
+
+
+def profile_target() -> int:
+    if not config_has("profile_target"):
+        return DEFAULT_PROFILE_TARGET
+    raw = config_flat("profile_target")
+    if raw.isdecimal():
+        return int(raw)
+    received = "empty" if not raw else repr(raw)
+    raise SystemExit(
+        fail(
+            f"refused: profile_target in .xp/config.yml is {received}; expected a"
+            " non-negative integer number of story-card tokens"
+        )
     )
 
 
@@ -272,7 +284,7 @@ def cmd_spawn(story_id: str, override: str, dry_run: bool, resuming: bool = Fals
     branch = story_branch(card, story_id)
     tree = worktree_path(story_id)
     trunk = integration_target()
-    reuse = bool(leg(story_id)[1]) and git("branch", "--show-current").stdout.strip() == branch
+    free_ref = False
     handoff = inheritance(data_root(), story_id)
     if resuming and tree.is_dir():
         handoff += resume().inherited_evidence(tree, trunk)
@@ -328,25 +340,20 @@ def cmd_spawn(story_id: str, override: str, dry_run: bool, resuming: bool = Fals
         if tree.exists():
             return fail(f"refused: {tree} already exists — {story_id} is already spawned")
         exists = git("rev-parse", "--verify", "-q", f"refs/heads/{branch}", check=False)
-        if not reuse and exists.returncode == 0:
-            # Deleting the named branch is the obvious recovery, and on a free
-            # patch it discards the release commits `free start` left there.
-            stand = (
-                f" — `git checkout {branch}` first: it is this patch's free branch,"
-                " and spawn continues it rather than cutting a new one"
-                if leg(story_id)[1]
-                else ""
+        free_ref = bool(leg(story_id)[1]) and exists.returncode == 0
+        if free_ref and git("branch", "--show-current").stdout.strip() == branch:
+            return fail(
+                f"refused: {branch} is checked out by the lead — return to {trunk}; spawn"
+                " leaves the lead checkout untouched and continues this ref in its worktree"
             )
-            return fail(f"refused: branch {branch} already exists{stand}")
+        if not free_ref and exists.returncode == 0:
+            return fail(f"refused: branch {branch} already exists")
         tree.parent.mkdir(parents=True, exist_ok=True)
-        if reuse:
-            moved = git("checkout", "-q", trunk, check=False)
-            if moved.returncode:
-                return fail(f"git checkout {trunk} failed: {moved.stderr.strip()}")
-            print(f"lead checkout moved to {trunk}")
-        args = ("worktree", "add", str(tree), branch)
-        if not reuse:
-            args = ("worktree", "add", "-b", branch, str(tree), trunk)
+        args = (
+            ("worktree", "add", str(tree), branch)
+            if free_ref
+            else ("worktree", "add", "-b", branch, str(tree), trunk)
+        )
         added = git(*args, check=False)
         if added.returncode != 0:
             return fail(f"git worktree add failed: {added.stderr.strip()}")
@@ -361,7 +368,7 @@ def cmd_spawn(story_id: str, override: str, dry_run: bool, resuming: bool = Fals
         flip_to_in_progress(story_id)
     # The external plan must survive a stopped or removed worktree.
     draft_path(data_root(), story_id).parent.mkdir(parents=True, exist_ok=True)
-    cut = "resumed" if resuming else ("continued, not cut" if reuse else f"off {trunk}")
+    cut = "resumed" if resuming else ("continued, not cut" if free_ref else f"off {trunk}")
     print(f"{branch} at {tree} ({cut})")
     handed_over = tree_state(tree)
     before = {eid for eid, _ in entries(data_root())}

@@ -170,6 +170,49 @@ def marker_path(story_id: str) -> Path:
     return p
 
 
+def review_authority_sections() -> list[tuple[str, str]]:
+    paths = (
+        ("JUDGMENT", Path(__file__).parent.parent / "JUDGMENT.md"),
+        ("VALUES", Path(__file__).parent.parent / "VALUES.md"),
+        ("Constraints", Path(".xp/constraints.md")),
+        ("System context", Path(".xp/system.md")),
+    )
+    sections = []
+    for title, path in paths:
+        try:
+            text = path.read_text()
+        except FileNotFoundError:
+            raise SystemExit(
+                fail(
+                    f"refused: required review authority {path} is MISSING — restore its"
+                    " content, then run review again"
+                )
+            ) from None
+        except OSError:
+            raise SystemExit(
+                fail(
+                    f"refused: required review authority {path} is UNREADABLE — make it"
+                    " readable, then run review again"
+                )
+            ) from None
+        except UnicodeDecodeError as exc:
+            raise SystemExit(
+                fail(
+                    f"refused: required review authority {path} is NOT UTF-8 ({exc}) —"
+                    " rewrite it as UTF-8 text, then run review again"
+                )
+            ) from None
+        if not text.strip():
+            raise SystemExit(
+                fail(
+                    f"refused: required review authority {path} is EMPTY — restore its"
+                    " content, then run review again"
+                )
+            )
+        sections.append((title, text))
+    return sections
+
+
 def build_bundle(card: str, base: str, report: Path, prior: str = "", notice: str = "") -> str:
     import review  # function-local: spawn -> close -> review would close a cycle
 
@@ -182,10 +225,7 @@ def build_bundle(card: str, base: str, report: Path, prior: str = "", notice: st
         ("Earlier rounds of THIS review", prior or "none — you are round 1"),
         ("Cumulative diff", git("diff", f"{base}..HEAD").stdout),
         ("work.md entries filed during the story", work_entries_since(base_epoch) or "none"),
-        ("JUDGMENT", _read(str(review.PLUGIN_ROOT / "JUDGMENT.md"))),
-        ("VALUES", _read(str(Path(__file__).parent.parent / "VALUES.md"))),
-        ("Constraints", _read(".xp/constraints.md")),
-        ("System context", _read(".xp/system.md")),
+        *review_authority_sections(),
     ]
     return "".join(f"## {title}\n\n{body}\n\n" for title, body in sections)
 
@@ -201,9 +241,8 @@ def _preflight(story_id: str, action: str, dry_run: bool = False) -> tuple[str, 
         card, status = story_card(plan_path().read_text(), story_id)
     except KeyError as e:
         return "", "", f"refused: {e.args[0]}"
-    # Only a PREVIEW: free.cmd_review mints and flips before every real review, so a
-    # live one arriving here [planned] came in under the story noun, and reviewing it
-    # spends a round on a card nothing committed to.
+    # A preview writes nothing and launches nothing, so a free card may be read
+    # before spawn; the bracket never proves spawn — free.cmd_review's marker does.
     previewable = dry_run and free_slug and action == "review" and status in ("planned", "ready")
     if status != "in-progress" and not previewable:
         return "", "", f"refused: {story_id} is [{status}], {action} requires [in-progress]"
@@ -350,11 +389,6 @@ def cmd_salvage(story_id: str) -> int:
     # the reviewer was shown, and a card edited between the kill and the salvage would
     # otherwise widen what a dead reviewer is recorded as having been allowed to touch.
     return _record_round(story_id, at["card"], path, marker, state, at, salvage=True)
-
-
-def _read(path: str) -> str:
-    p = Path(path)
-    return p.read_text() if p.exists() else f"(missing: {path})"
 
 
 def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:

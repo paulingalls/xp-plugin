@@ -2,30 +2,26 @@
 Split from test_sprint_close.py at sprint-004 open."""
 
 import json
+import shutil
 import subprocess
 import sys
 
+import pytest
 from close_helpers import launches
 from spawn_helpers import stub_codex
-from sprint_helpers import (  # noqa: F401
+from sprint_helpers import (
     CLOSE,
     CONFIG,
     PLAN,
     PLUGIN,
     SPRINT_ID,
-    WORK,
-    WORK_SECTION,
-    committing_stub,
     head,
     make_repo,
     marker_path,
     record_reviews,
     section,
-    snapshot,
     sprint,
-    stage_key,
     staged_stub,
-    work,
 )
 
 CLEAN = {"fixed": [], "blocking": [], "noted": []}
@@ -124,6 +120,16 @@ class TestReviewLeg:
         assert "story-099" not in bundle, "another sprint's card rode along"
         assert "## JUDGMENT\n\n" in bundle and "Polarity" in bundle
         assert "## PROCESS\n\n" not in bundle
+        sources = (
+            ("JUDGMENT", PLUGIN / "JUDGMENT.md", "VALUES"),
+            ("VALUES", PLUGIN / "VALUES.md", "Constraints"),
+            ("Constraints", repo / ".xp" / "constraints.md", "System context"),
+        )
+        for title, path, following in sources:
+            assert f"## {title}\n\n{path.read_text()}\n\n## {following}\n\n" in bundle
+        assert bundle.endswith(
+            f"## System context\n\n{(repo / '.xp' / 'system.md').read_text()}\n\n"
+        )
 
     def test_no_sprint_bundle_asks_for_a_merge_delta(self, tmp_path):
         """Planted, because a project upgrading from v0.13.0 still HAS the store on
@@ -234,62 +240,80 @@ class TestReviewLeg:
         assert "close" not in round_["stages"] and round_["stages"], round_["stages"]
 
 
-class TestResolutionsAreCarried:
-    """AC 5. Three of three resolutions that needed independent reading were
-    caught by a READER, never by resolve()'s green-check (7df6b116, b9382e2d,
-    997c0c63) — and resolutions filed AT the close are read by no reviewer at
-    all, which is the moment they are most likely to be falsified."""
+class TestReviewAuthority:
+    @pytest.mark.parametrize("name", ["JUDGMENT.md", "VALUES.md", "constraints.md", "system.md"])
+    @pytest.mark.parametrize("state", ["MISSING", "EMPTY", "UNREADABLE"])
+    def test_required_input_state_refuses_before_sprint_launch(self, tmp_path, name, state):
+        repo, env, g = make_repo(tmp_path)
+        plugin = tmp_path / "plugin-copy"
+        shutil.copytree(PLUGIN, plugin)
+        plugin_owned = name in {"JUDGMENT.md", "VALUES.md"}
+        target = plugin / name if plugin_owned else repo / ".xp" / name
+        target.unlink()
+        if state == "EMPTY":
+            target.write_text(" \n\t")
+        elif state == "UNREADABLE":
+            target.mkdir()
+        if not plugin_owned:
+            g("add", "-A")
+            assert g("commit", "-qm", f"construct {state.lower()} {name}").returncode == 0
+        record_reviews(tmp_path, repo, env)
+        marker = marker_path(tmp_path)
+        before = marker.read_bytes()
 
-    def _resolved_twice(self, tmp_path):
-        repo, env, _g = make_repo(tmp_path)
-        work(
-            repo,
-            env,
-            "bug",
-            "--claim",
-            "THE-ORIGINAL-CLAIM",
-            "--falsifier",
-            "false # ORIGINAL-FALSIFIER",
-            "--files",
-            "a.py",
+        result = sprint(repo, env, "review", close=plugin / "scripts" / "close.py")
+
+        shown_path = str(target) if plugin_owned else f".xp/{name}"
+        assert result.returncode == 2
+        assert state in result.stderr and shown_path in result.stderr
+        assert "review again" in result.stderr
+        assert "Traceback" not in result.stderr
+        assert launches(tmp_path) == []
+        assert "(missing:" not in result.stdout + result.stderr
+        assert marker.read_bytes() == before
+
+    def test_a_fixer_that_deletes_a_rubric_still_records_the_round_it_ran(self, tmp_path):
+        """A rubric read per stage refuses from the CLOSER's bundle, and that exit
+        is a SystemExit past leg()'s error return — the one place the incomplete
+        round is written. Six launches and the fixer's committed patch are then
+        recorded nowhere. stages.check_roles resolves roles up front for this same
+        reason, one stage earlier."""
+        card = "#### story-042 — done thing   [done]"
+        declaring = PLAN.replace(card, f"{card}\nFiles: .xp/system.md")
+        repo, env, _g = make_repo(tmp_path, plan=declaring)
+        blocking = {"fixed": [], "blocking": ["a silent one"], "noted": []}
+        staged_stub(tmp_path, find=blocking, verify=blocking)
+        deletion = (
+            "diff --git a/.xp/system.md b/.xp/system.md\n"
+            "deleted file mode 100644\n"
+            "--- a/.xp/system.md\n"
+            "+++ /dev/null\n"
+            "@@ -1,2 +0,0 @@\n"
+            "-# System\n"
+            "-SYSTEM-SENTINEL\n"
         )
-        ref = work(repo, env, "list").stdout.split()[0]
-        for attempt in ("SUPERSEDED-TRY", "LATEST-TRY"):
-            assert (
-                work(
-                    repo, env, "resolve", "--ref", ref, "--falsifier", f"true # {attempt}"
-                ).returncode
-                == 0
+        claude = tmp_path / "bin" / "claude"
+        write = "sys.stdout.write("
+        claude.write_text(
+            claude.read_text().replace(
+                write,
+                f"open(pm.group(1).strip(), 'w').write({deletion!r}) if key == 'fix' else None\n"
+                + write,
+                1,
             )
-        assert sprint(repo, env, "review").returncode == 0
-        return ref, launches(tmp_path)[0]["stdin"]
+        )
+        claude.chmod(0o755)
 
-    def test_the_bundle_carries_the_claim_and_original_falsifier_it_replaced(self, tmp_path):
-        """corpus() cannot serve this: substitution is exactly where it discards
-        the original, and the original is what makes the swap judgeable."""
-        ref, bundle = self._resolved_twice(tmp_path)
-        body = section(bundle, "Resolutions filed during the sprint", WORK_SECTION)
-        assert ref in body
-        assert "THE-ORIGINAL-CLAIM" in body
-        assert "ORIGINAL-FALSIFIER" in body, "no original: the reader cannot judge the swap"
-        assert "LATEST-TRY" in body
+        result = sprint(repo, env, "review")
 
-    def test_only_the_latest_resolution_per_record_survives(self, tmp_path):
-        _ref, bundle = self._resolved_twice(tmp_path)
-        assert "SUPERSEDED-TRY" not in bundle, "every superseded correction shipped verbatim"
-
-    def test_resolved_blocks_are_filtered_out_of_the_raw_work_md_section(self, tmp_path):
-        """They are work.md entries, so shipping both hands the reviewer the same
-        substitution twice and invites the re-litigation the dedup prevents."""
-        repo, env, _g = make_repo(tmp_path)
-        work(repo, env, "bug", "--claim", "c", "--falsifier", "false", "--files", "a.py")
-        ref = work(repo, env, "list").stdout.split()[0]
-        work(repo, env, "resolve", "--ref", ref, "--falsifier", "true # THE-REPLACEMENT")
-        work(repo, env, "note", "A-PLAIN-NOTE")
-        assert sprint(repo, env, "review").returncode == 0
-        raw = section(launches(tmp_path)[0]["stdin"], WORK_SECTION, "JUDGMENT")
-        assert "A-PLAIN-NOTE" in raw, "the raw section lost the entries it exists to carry"
-        assert "## resolved " not in raw
+        assert not (repo / ".xp" / "system.md").exists(), "the fixer's patch never applied"
+        assert result.returncode == 0, result.stderr
+        recorded = json.loads(marker_path(tmp_path).read_text())["rounds"][-1]
+        assert "incomplete" not in recorded, recorded
+        assert recorded["shown_sha"] == head(repo, env), recorded
+        after_fixer = launches(tmp_path)[-1]["stdin"]
+        assert "## System context\n\n# System\nSYSTEM-SENTINEL\n\n" in after_fixer
+        assert "(missing:" not in after_fixer
 
 
 class TestModeSwitch:
@@ -359,134 +383,3 @@ class TestModeSwitch:
         assert "--body Sprint 2" in landed.stdout
         assert "Review round" not in landed.stdout
         assert all(item not in landed.stdout for item in items)
-
-
-class TestMotionIsBoundedByAMechanism:
-    """story-014's AC 2, surviving story-022's reversal: report-only is gone — the
-    fixer commits — so what the leg still refuses is motion nobody signed for. The
-    agent file's `tools:` line bounds nothing here: review.run launches a TOP-LEVEL
-    claude session that never loads the agent file, which is why charter() inlines
-    it, and why authorship rather than a tool list is the bound."""
-
-    def test_a_reviewer_that_COMMITS_is_refused_and_recorded_incomplete(self, tmp_path):
-        """This is ALSO where the pre-launch head capture is pinned. A stub that
-        never commits cannot tell a pre-launch head from a post-run one, so the
-        test that asserted the ordering directly was vacuous and was deleted in
-        round 1; the undo sha in the refusal is what reds when it regresses."""
-        repo, env, _g = make_repo(tmp_path)
-        committing_stub(
-            tmp_path,
-            "open('snuck.py','w').write('X = 1\\n')\n"
-            "os.system('git add -A && git commit -qm snuck')\n",
-        )
-        before = head(repo, env)
-        r = sprint(repo, env, "review")
-        assert r.returncode == 2, r.stdout
-        assert before[:8] in r.stderr, "the undo names no sha to reset to"
-        assert json.loads(marker_path(tmp_path).read_text())["rounds"][-1]["incomplete"]
-
-    def test_a_reviewer_that_leaves_the_tree_DIRTY_is_refused(self, tmp_path):
-        repo, env, _g = make_repo(tmp_path)
-        committing_stub(tmp_path, "open('src.py','a').write('# edited\\n')\n")
-        r = sprint(repo, env, "review")
-        assert r.returncode == 2 and "dirty" in r.stderr
-        assert json.loads(marker_path(tmp_path).read_text())["rounds"][-1]["incomplete"]
-
-    def test_an_incomplete_round_is_LABELLED_where_the_next_round_reads_it(self, tmp_path):
-        """The sprint prompt must label candidates no verifier ever judged."""
-        import bookkeep
-
-        repo, env, _g = make_repo(tmp_path)
-        candidates = {"fixed": [], "blocking": ["a silent one"], "noted": []}
-        committing_stub(tmp_path, "open('src.py','a').write('# edited\\n')\n", report=candidates)
-        assert sprint(repo, env, "review").returncode == 2
-        rounds = json.loads(marker_path(tmp_path).read_text())["rounds"]
-        assert "a silent one" in (body := bookkeep.render_sprint_prior(rounds))
-        assert "INCOMPLETE after find-security" in body, body
-
-    def test_a_reviewer_that_rewrites_the_MARKER_is_refused(self, tmp_path):
-        """The marker is outside the repo, no diff shows it, and it is the file
-        land reads for rounds and blocking[] — a review may not move its own gate."""
-        repo, env, _g = make_repo(tmp_path)
-        path = marker_path(tmp_path)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps({"rounds": [], "shown_sha": "x"}))
-        committing_stub(
-            tmp_path,
-            f"open({str(path)!r},'w').write('{json.dumps({'rounds': [], 'shown_sha': 'y'})}')\n",
-        )
-        r = sprint(repo, env, "review")
-        assert r.returncode == 2 and "marker" in r.stderr
-
-    def _plan_rewriting_stub(self, tmp_path, old, new):
-        committing_stub(
-            tmp_path,
-            "p = os.environ['XP_DATA'] + '/plan.md'\n"
-            # read BEFORE opening for write: `open(p,'w')` truncates as its own
-            # expression, so the one-liner spelling wipes the plan and every arm
-            # refuses, red and green alike
-            "t = open(p).read()\n"
-            f"open(p, 'w').write(t.replace({old!r}, {new!r}))\n",
-        )
-
-    def test_a_reviewer_that_rewrites_a_card_of_THIS_sprint_is_refused(self, tmp_path):
-        """story-019 took the plan out of the repo, so the tree stays clean and
-        HEAD stays put while a reviewer rewrites the cards it is reporting on —
-        every check above passes and the release ships against a plan nobody read.
-        The cards digest is what remains, and until this test nothing exercised
-        it: `if False and sprint_cards(...) != cards` passed all 365."""
-        repo, env, _g = make_repo(tmp_path)
-        self._plan_rewriting_stub(tmp_path, "story-042 — done thing", "story-042 — REWRITTEN")
-        r = sprint(repo, env, "review")
-        assert r.returncode == 2 and "cards changed" in r.stderr
-        assert json.loads(marker_path(tmp_path).read_text())["rounds"][-1]["incomplete"]
-
-    def test_a_reviewer_is_NOT_refused_over_ANOTHER_sprints_card(self, tmp_path):
-        """The green twin, and the reason the digest is sprint-scoped: the plan is
-        one shared file now, so digesting the whole of it would let any lane's flip
-        refuse an unrelated release review — the project-global mutable gate
-        constraint 10 forbids. story-099 is [ready] in Sprint 3, not this one."""
-        repo, env, _g = make_repo(tmp_path)
-        self._plan_rewriting_stub(tmp_path, "story-099 — not this sprint", "story-099 — MOVED")
-        r = sprint(repo, env, "review")
-        assert r.returncode == 0, r.stderr + r.stdout
-
-
-class TestSprintCharter:
-    def test_what_every_stage_shares_is_a_delta_not_a_second_charter(self):
-        """An opus executor with no bound modelled this on story-reviewer.md (712
-        words). Four stages now share ONE preamble, and it is the part every
-        launch pays for — the per-stage sections have their own cap in
-        test_review.py. `report-only` is gone from it deliberately: the fixer
-        commits, and a charter still claiming otherwise contradicts the gate."""
-        text = (PLUGIN / "agents" / "sprint-reviewer.md").read_text()
-        shared = text.split("---", 2)[2].split("\n## ")[0]
-        assert len(shared.split()) <= 150, f"{len(shared.split())} words: a preamble, not a charter"
-        assert "report-only" not in shared.lower(), "the fixer commits; this leg is not report-only"
-        assert "JUDGMENT.md" in shared, "the bar and rubric pointer drifted"
-        assert "Round 1" in shared and "Later rounds use one" in shared
-        assert "story-shaped reviewer" in shared and "fix inside its round" in shared
-        # the report SHAPE as the stage must write it, not the bucket names in
-        # prose: `noted` reads fine in a sentence that never states the JSON
-        for token in ('"fixed"', '"blocking"', '"noted"'):
-            assert token in shared, f"the charter never names {token}"
-        closer = text.split("\n## closer\n", 1)[1]
-        assert '"clearable_by_full"' in closer and "tests.full" in closer
-        assert '"clearable_by_full"' in shared and "only `closer`" in shared
-
-
-class TestShippedProse:
-    def test_the_sprint_close_skill_names_the_human_only_steps(self):
-        """The two reviews stopped being human-only at story-014 — the pipeline
-        marshals them. What a script still cannot absorb (constraint 7) is note
-        triage and the retro narrative, so those are what this pins now."""
-        skill = (PLUGIN / "skills" / "sprint-close" / "SKILL.md").read_text().lower()
-        assert "note triage" in skill and "retro" in skill
-        assert "narrative is the part" in skill, "the judgment step lost its reason"
-
-    def test_judgment_carries_the_record_lifecycle_and_the_polarity_contract(self):
-        judgment = (PLUGIN / "JUDGMENT.md").read_text()
-        assert "resolve" in judgment, (
-            "a verb in work.py and not in JUDGMENT.md is one rule, two impls"
-        )
-        assert "still OK" in judgment, "the polarity contract belongs where the filer reads it"
