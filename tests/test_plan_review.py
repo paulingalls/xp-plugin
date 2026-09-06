@@ -386,6 +386,14 @@ class TestPlanEditsInPlace:
         problem = disposition_result(report, b"before", plan)
         assert "every plan edit" in problem
 
+    def test_a_reason_matching_only_inside_longer_words_refuses(self):
+        """Drop the word boundaries around the comparison and this greens: "act now"
+        is a substring of "contract nowhere", so a reason the plan never carries
+        reports as present."""
+        report = json.dumps({"status": "edited", "reasons": ["act now"]})
+        problem = disposition_result(report, b"before", b"Reason: we contract nowhere else.\n")
+        assert "every plan edit" in problem
+
     def test_a_reason_with_no_content_words_refuses(self):
         report = json.dumps({"status": "edited", "reasons": ["***"]})
         problem = disposition_result(report, b"before", b"---\n")

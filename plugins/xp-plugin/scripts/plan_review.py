@@ -97,11 +97,11 @@ def plan_bytes(path: Path) -> bytes | None:
 
 
 def normalized_words(text: str) -> str:
-    """Return contiguous word content shared by Markdown plans and JSON reasons.
+    """The word stream both artifacts share, so a reason compares by content.
 
-    JSON reasons omit Markdown presentation punctuation, so the guard ignores
-    non-word runs while preserving case, word identity, and order to reject
-    absent or changed prose.
+    Naming the markers to strip is the rejected design — it fixed the blockquote
+    and left the backtick. Dropping every non-word run is the widest reading that
+    still refuses a reason absent from the plan, or written there in other words.
     """
     return " ".join(re.findall(r"\w+", text))
 
