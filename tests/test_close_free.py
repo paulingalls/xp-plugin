@@ -230,14 +230,45 @@ class TestFreeStart:
         assert g("rev-parse", "HEAD").stdout.strip() == before
         assert not (Path(env["XP_DATA"]) / "worktrees" / key).exists()
 
-    def test_start_anywhere_but_the_default_branch_refuses_naming_it(self, tmp_path):
-        """AC 2: a free branch cut off a story branch carries that story's
-        unreleased work into a patch release."""
+    def test_start_from_a_sprint_branch_walks_the_sprint_direct_alternative(self, tmp_path):
         repo, env, g = free_repo(tmp_path)
-        g("checkout", "-q", "story-042-branch")
+        g("branch", "sprint-001", "main")
+        (Path(env["XP_DATA"]) / "sprint_branch").write_text("sprint-001\n")
+        g("checkout", "-q", "sprint-001")
+        before = (
+            g("branch", "--show-current").stdout.strip(),
+            g("rev-parse", "HEAD").stdout.strip(),
+            g("status", "--porcelain").stdout,
+            g("tag", "--list").stdout,
+            g("for-each-ref", "--format=%(refname)", "refs/heads/*free*").stdout,
+        )
         r = free(repo, env, "fix-typo", "start")
         assert r.returncode == 2
-        assert "main" in r.stderr and "story-042-branch" in r.stderr
+        assert "main" in r.stderr and "sprint-001" in r.stderr
+        assert "[sprint-direct]" in r.stderr and "sprint review" in r.stderr
+        assert "patch" in r.stderr and "close.py free fix-typo start" in r.stderr
+        assert (
+            g("branch", "--show-current").stdout.strip(),
+            g("rev-parse", "HEAD").stdout.strip(),
+            g("status", "--porcelain").stdout,
+            g("tag", "--list").stdout,
+            g("for-each-ref", "--format=%(refname)", "refs/heads/*free*").stdout,
+        ) == before
+
+        (repo / "sprint-fix.txt").write_text("absorbed by sprint\n")
+        g("add", "sprint-fix.txt")
+        committed = g("commit", "-qm", "[sprint-direct] fix typo")
+        assert committed.returncode == 0, committed.stderr
+        head = g("rev-parse", "HEAD").stdout.strip()
+        assert head in g("rev-list", "main..sprint-001").stdout.splitlines()
+        assert g("merge-base", "--is-ancestor", head, "main").returncode == 1
+
+        other, other_env, other_g = free_repo(tmp_path / "without-sprint")
+        other_g("checkout", "-q", "story-042-branch")
+        no_sprint = free(other, other_env, "fix-typo", "start")
+        assert no_sprint.returncode == 2
+        assert "if this branch integrates into a sprint review" in no_sprint.stderr.lower()
+        assert "stay on the sprint branch" not in no_sprint.stderr
 
     def test_start_refuses_a_dirty_tree(self, tmp_path):
         repo, env, _g = free_repo(tmp_path)

@@ -14,7 +14,7 @@ sys.path.insert(0, str(Path(__file__).parent / "spawn"))
 # (close -> spawn -> close) and fails before fail/git exist (story-008).
 import story_stages as stages
 from bookkeep import bootstrap_command
-from close import config_flat, fail, git, integration_target, leg, story_card
+from close import config_flat, config_has, fail, git, integration_target, leg, story_card
 from handback import tree_state, unclean_teammate_result
 from handoff import draft_path, handoff_state, inheritance, mark_handoff, mark_stage, report_handoff
 from harness import HARNESS_INSTALL, agent_argv, missing_harness, resolve_codex_sandbox
@@ -35,7 +35,7 @@ from work import (
 
 PLUGIN_ROOT = Path(__file__).parent.parent
 
-TOTAL_TARGET = 4500  # composed profile: reported, never enforced
+DEFAULT_PROFILE_TARGET = 806
 
 
 def component_metadata_chars() -> int:
@@ -68,18 +68,37 @@ def profile_report(card: str, prompt: str, handoff: str) -> tuple[str, str]:
     }
     if handoff:
         project["predecessor handoff"] = len(handoff)
-    total = (len(prompt) + project["CLAUDE.md"] + component_metadata_chars()) // 4
+    total_chars = len(prompt) + project["CLAUDE.md"] + component_metadata_chars()
+    total = total_chars // 4
+    plugin = total_chars - sum(project.values())
     shares = " · ".join(f"{k} {v // 4}" for k, v in project.items())
-    line = (
-        f"profile: total {total} tokens · plugin-shipped {plugin_shipped_chars() // 4} · {shares}"
-    )
-    if total <= TOTAL_TARGET:
+    line = f"profile: total {total} tokens · plugin share {plugin // 4}/{total} · {shares}"
+    target = profile_target()
+    card_tokens = len(card) // 4
+    if card_tokens <= target:
         return line, ""
-    largest = max(project, key=lambda k: project[k])
+    contributors = {"the plugin": plugin, **project}
+    largest = max(contributors, key=contributors.get)
     return line, (
-        f"note: teammate profile is {total} tokens, over the {TOTAL_TARGET} target."
-        f" Largest project-owned contributor is {largest} ({project[largest] // 4} tokens)"
-        " — yours to retire, not the plugin's."
+        f"note: story card is {card_tokens} tokens, over the {target} story-card token"
+        f" allowance (profile_target). Largest contributor is {largest}"
+        f" ({contributors[largest] // 4} tokens). Reconsider that contributor or the"
+        " configured allowance."
+    )
+
+
+def profile_target() -> int:
+    if not config_has("profile_target"):
+        return DEFAULT_PROFILE_TARGET
+    raw = config_flat("profile_target")
+    if raw.isdecimal():
+        return int(raw)
+    received = "empty" if not raw else repr(raw)
+    raise SystemExit(
+        fail(
+            f"refused: profile_target in .xp/config.yml is {received}; expected a"
+            " non-negative integer number of story-card tokens"
+        )
     )
 
 

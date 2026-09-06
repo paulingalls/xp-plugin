@@ -54,9 +54,11 @@ def cmd_start(slug: str) -> int:
     trunk = default_branch()
     if (branch := git("rev-parse", "--abbrev-ref", "HEAD").stdout.strip()) != trunk:
         return fail(
-            f"refused: free start cuts off {trunk}, and you are on {branch} — a free"
-            f" branch cut anywhere else carries that branch's unreleased work into a"
-            f" patch release. `git checkout {trunk}` first"
+            f"refused: free start cuts off {trunk} because it produces a patch tag; from"
+            f" {branch} it would include unreleased work. If this branch integrates into"
+            " a sprint review, commit there with `[sprint-direct]` so that review absorbs"
+            f" it. To ship now as a patch, `git checkout {trunk}`, then retry"
+            f" `close.py free {slug} start`"
         )
     new = branch_for(slug)
     if git("rev-parse", "--verify", "-q", f"refs/heads/{new}", check=False).returncode == 0:
