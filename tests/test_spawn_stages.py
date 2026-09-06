@@ -10,18 +10,12 @@ def stub_stages(tmp_path, blocking_plan=False, blocking_diff=False, unreadable_p
     binary = tmp_path / "bin" / "claude"
     binary.parent.mkdir(exist_ok=True)
     events = tmp_path / "events.jsonl"
-    plan = (
-        '```json\n{"status":\n```'
-        if unreadable_plan
-        else {
-            "status": "blocked" if blocking_plan else "clean",
-            "question": "choose" if blocking_plan else None,
-            "reasons": [] if not blocking_plan else None,
-        }
-    )
-    if isinstance(plan, dict):
-        plan = {key: value for key, value in plan.items() if value is not None}
-    findings = plan if isinstance(plan, str) else json.dumps(plan)
+    if unreadable_plan:
+        findings = '```json\n{"status":\n```'  # a verdict the harness cannot READ
+    elif blocking_plan:
+        findings = json.dumps({"status": "blocked", "question": "choose"})
+    else:
+        findings = json.dumps({"status": "clean", "reasons": []})
     report = {"fixed": [], "blocking": ["cannot land"], "noted": []} if blocking_diff else CLEAN
     binary.write_text(
         "#!/usr/bin/env python3\n"
@@ -263,9 +257,11 @@ class TestSpawnStages:
         stopped = spawn(repo, env, "story-042")
         assert stopped.returncode != 0, stopped.stdout
         handoff = tmp_path / "data/plans/story-042.handoff.json"
-        assert json.loads(handoff.read_text())["stages"]["plan-reviewer"] == "blocked", (
+        state = json.loads(handoff.read_text())
+        assert state["stages"]["plan-reviewer"] == "blocked", (
             "a plan review that blocked is recorded the same way as one that never ran"
         )
+        assert "blocked" in state["why"] and "failed" not in state["why"], state["why"]
         handoff.write_text(json.dumps({**json.loads(handoff.read_text()), "state": "STOPPED"}))
         spawn(repo, env, "resume", "story-042")
         assert event_roles(events).count("planner") == 2, (
@@ -283,6 +279,9 @@ class TestSpawnStages:
         handoff = tmp_path / "data/plans/story-042.handoff.json"
         state = json.loads(handoff.read_text())
         assert state["stages"]["plan-reviewer"] == "failed"
+        # inheritance() hands the successor `why` and never `stages`, so the two
+        # states have to stay apart THERE too (constraint 15).
+        assert "failed" in state["why"] and "blocked" not in state["why"], state["why"]
         draft = tmp_path / "data/plans/story-042.plan.md"
         first_draft = draft.read_bytes()
         state["state"] = "STOPPED"

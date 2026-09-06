@@ -84,13 +84,16 @@ class TestPlanReviewArtifacts:
         (parent / f"{stem}.round-1.md").write_text("round one")
         assert review_findings_path(identifier, kind) == parent / f"{stem}.round-2.md"
 
-    def test_returned_disposition_recovers_an_omitted_findings_file(self, tmp_path):
+    # FENCED is the form the charter now instructs the reviewer to return, so the
+    # recovery must consume it; bare stays because the parser still accepts it.
+    @pytest.mark.parametrize("returned", [CLEAN, f"```json\n{CLEAN}\n```"], ids=["bare", "fenced"])
+    def test_returned_disposition_recovers_an_omitted_findings_file(self, tmp_path, returned):
         repo, env, draft = self.repo(tmp_path)
-        rec = stub_planner(tmp_path, write_findings=False)
+        rec = stub_planner(tmp_path, findings=returned, write_findings=False)
         r = plan_review(repo, env, "story-042", str(draft))
         assert r.returncode == 0, r.stderr
         assert CLEAN in r.stdout
-        assert (tmp_path / "data/plans/story-042.round-1.md").read_text() == CLEAN
+        assert (tmp_path / "data/plans/story-042.round-1.md").read_text() == returned
         assert rec.exists(), "the fault injection never reached the reviewer"
 
     def test_present_unreadable_findings_are_not_replaced_by_the_returned_result(self, tmp_path):

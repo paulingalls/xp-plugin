@@ -143,8 +143,12 @@ def evaluate_disposition(text: str, before: bytes | None, after: bytes | None) -
                 failed |= malformed or not objects
                 continue
         objects, malformed = _bare_objects("".join(masked))
+        # BEFORE the extend, so `values` is still only what the FENCES gave: the charter
+        # mandates a fenced verdict, so a brace in the prose beside one is prose, not a
+        # rival the harness failed to read. Ungate this and `{'a': 1}` quoted in a finding
+        # loses a complete review — the class this gate exists to close.
+        failed |= malformed and not values
         values.extend(objects)
-        failed |= malformed
         # A non-object in a fence is no rival verdict — kept only when none is an object,
         # so a fenced `[]` refuses by TYPE. Narrowing either discards a completed round.
         values = [v for v in values if isinstance(v, dict)] or values
@@ -154,8 +158,8 @@ def evaluate_disposition(text: str, before: bytes | None, after: bytes | None) -
             )
         if failed:
             return "failed", (
-                "the plan review wrote no structured disposition the harness could use:"
-                " it wrote a structured disposition the harness could not read"
+                "the plan review wrote a structured disposition the harness could not read"
+                " — write exactly one fenced json object"
             )
         if len(values) == 1:
             report = values[0]
@@ -189,10 +193,6 @@ def evaluate_disposition(text: str, before: bytes | None, after: bytes | None) -
     ):
         return "failed", "every plan edit must carry its reason in the plan file"
     return "ran", ""
-
-
-def disposition(text: str, before: bytes | None, after: bytes | None) -> str:
-    return evaluate_disposition(text, before, after)[1]
 
 
 def _cmd_review(

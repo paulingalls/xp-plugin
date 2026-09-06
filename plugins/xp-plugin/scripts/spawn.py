@@ -403,7 +403,9 @@ def cmd_spawn(story_id: str, override: str, dry_run: bool, resuming: bool = Fals
             rc, outcome = plan_review.run_foreground(story_id, draft_path(data_root(), story_id))
         if rc:
             mark_stage(data_root(), story_id, "plan-reviewer", outcome)
-            why = "execution plan review stopped; read its disposition before resuming"
+            # NAMED, because inheritance() hands the successor this sentence and never
+            # `stages`: a rejected plan and a verdict nothing could read read alike there.
+            why = f"execution plan review {outcome}; read its disposition before resuming"
             return stop(why, 0)
         mark_stage(data_root(), story_id, "plan-reviewer", "ran")
     elif not multifile:
