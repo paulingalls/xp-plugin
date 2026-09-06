@@ -26,6 +26,7 @@ from somewhere else, and attribution alone still passes on a repo where pre-push
 never worked. Both were absent, and the falsifier read green either way.
 """
 
+import re
 import shutil
 import subprocess
 import sys
@@ -43,7 +44,9 @@ def main(tmp: Path) -> int:
     run("git", "init", "-q", "-b", "main")
     run("git", "config", "user.email", "lead@xp.local")
     run("git", "config", "user.name", "the lead")
-    shutil.copy(REPO / "lefthook.yml", tmp / "lefthook.yml")
+    lefthook_yml = REPO / "lefthook.yml"
+    LEFTHOOK = lefthook_yml.read_text()
+    shutil.copy(lefthook_yml, tmp / "lefthook.yml")
     (tmp / "pyproject.toml").write_text("[tool.ruff]\n")
     # The OTHER pre-push gates must PASS, or this reds on a missing script
     # rather than on the bypass — measured: it did, and passed vacuously.
@@ -52,11 +55,19 @@ def main(tmp: Path) -> int:
     (stub / "check_falsifier_node_ids.py").write_text("raise SystemExit(0)\n")
     lib = tmp / "plugins" / "xp-plugin" / "templates"
     lib.mkdir(parents=True)
-    # BOTH helpers this repo's lefthook.yml sources, or the control run reds on an
-    # undefined function and the falsifier refuses instead of measuring the wall
-    # (measured at sprint-015 close: full-tests grew a `run_tier story` call and
-    # this stub still only defined constraints_size, so pre-push exited 127).
-    (lib / "hook-lib.sh").write_text("constraints_size() { :; }\nrun_tier() { :; }\n")
+    # DERIVED from lefthook.yml, never hand-listed: a stub that misses ONE helper
+    # the real file sources makes pre-push exit 127, and the falsifier then refuses
+    # instead of measuring the wall. Hand-listing has failed TWICE — sprint-015
+    # close (full-tests grew `run_tier story`) and sprint-020 close (the secrets
+    # stanza grew `secrets_scan_push`) — so the list is read from the same file
+    # the hook reads, and a stanza that sources a new helper cannot outrun it.
+    sourced = sorted(set(re.findall(r"hook-lib\.sh;\s*([a-z_][a-z0-9_]*)", LEFTHOOK)))
+    if not sourced:
+        raise SystemExit(
+            "refused: no `hook-lib.sh; <fn>` stanza found in lefthook.yml — the"
+            " stub would define nothing and pre-push would exit 127"
+        )
+    (lib / "hook-lib.sh").write_text("".join(f"{fn}() {{ :; }}\n" for fn in sourced))
     (tmp / "clean.py").write_text("A = 1\n")
     run("git", "add", "-A")
     run("git", "commit", "-qm", "base")
