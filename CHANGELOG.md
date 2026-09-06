@@ -11,16 +11,19 @@ per-sprint review reports.
   The recovery one exited 128 whenever a story worktree still held the branch — the
   normal arrangement at land time — so the refusal it was about to print never ran
   and the operator got a `CalledProcessError` naming a checkout instead. The forward
-  one crashed the same way when no separate worktree held trunk, which is what a
-  consuming project without one always has. Neither is attempted where a worktree
-  already holds the branch, and a checkout that does fail is now reported.
+  one is reached only when no separate worktree holds trunk — what a consuming project
+  without one always has — and it crashed the same way whenever that checkout itself
+  failed, which is how the reported stale lock surfaced there. Neither is attempted
+  where a worktree already holds the branch, and a checkout that does fail is now
+  reported.
 - **A merge failure says which failure it was.** The refusal asserted "merge
   conflict: resolve on the story branch" for every cause, and git's stderr was
   captured and dropped. The reported case was a stale `.git/index.lock` from an
   interrupted land — `fatal: Unable to write index.` — sent to conflict resolution,
   the one remedy that could not fix it. Unmerged paths are now probed before the
   abort clears them; a real conflict keeps its guidance and everything else carries
-  git's own reason (GitHub #65).
+  git's own reason plus the next action — nothing merged, so clearing the cause and
+  re-running land owes no re-review (GitHub #65).
 
 ## v0.21.2 — a verdict the harness cannot read is not a rejected plan
 

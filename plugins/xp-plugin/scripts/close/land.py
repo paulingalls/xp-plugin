@@ -166,7 +166,10 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
         if held:
             os.chdir(held)
         elif (left := close.git("checkout", trunk, check=False)).returncode:
-            return close.fail(f"cannot check out {trunk} to merge into: {left.stderr.strip()}")
+            return close.fail(
+                f"cannot check out {trunk} to merge into: {left.stderr.strip()}"
+                " — clear that, then run land again"
+            )
         merged = close.git("merge", "--no-ff", branch, "-m", message, check=False)
         if merged.returncode != 0:
             unmerged = close.git("diff", "--name-only", "--diff-filter=U", check=False)
@@ -179,7 +182,11 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
                     "post-resolution diff, then run review again to re-baseline"
                 )
             why = (merged.stderr or merged.stdout).strip()
-            return close.fail(f"merge failed: {why}")
+            return close.fail(
+                f"merge failed: {why}\nclear that, then run land again — nothing"
+                " merged and HEAD did not move, so the recorded review still covers"
+                " this tree"
+            )
 
     print(bookkeep.render_noted(rounds), end="")
     failed = []

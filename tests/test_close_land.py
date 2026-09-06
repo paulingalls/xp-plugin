@@ -92,6 +92,24 @@ class TestLandFailureModes:
         assert "[in-progress]" in (tmp_path / "data" / "plan.md").read_text()
         assert str(tree) in g("worktree", "list", "--porcelain").stdout
 
+    def test_the_next_action_a_failed_merge_names_is_walked_and_lands(self, tmp_path):
+        """Constraint 12: the refusal instructs, so run the instruction rather than
+        assert its wording. It also pins what the instruction rests on — no re-review
+        is owed because the failed merge left trunk where the review saw it."""
+        repo, env, g, tree, _branch = worktree_land_setup(tmp_path)
+        lock = repo / ".git" / "index.lock"
+        lock.write_bytes(b"")
+        trunk_before = g("rev-parse", "HEAD").stdout.strip()
+
+        refused = close(tree, env, "land")
+
+        assert refused.returncode == 2 and "run land again" in refused.stderr, refused.stderr
+        assert g("rev-parse", "HEAD").stdout.strip() == trunk_before
+        lock.unlink()
+        landed = close(tree, env, "land")
+        assert landed.returncode == 0, landed.stderr
+        assert g("rev-parse", "HEAD").stdout.strip() != trunk_before
+
     def test_an_actual_final_merge_conflict_keeps_conflict_recovery_distinct(self, tmp_path):
         _repo, env, g, tree, branch = worktree_land_setup(tmp_path)
         calls, sentinel = recording_git(tmp_path, env, construct_conflict=True)
@@ -130,6 +148,8 @@ class TestLandFailureModes:
         assert str(lock) in refused.stderr
         assert g("rev-parse", "--abbrev-ref", "HEAD").stdout.strip() == "story-042-branch"
         assert "[in-progress]" in (tmp_path / "data" / "plan.md").read_text()
+        lock.unlink()
+        assert close(repo, env, "land").returncode == 0, "the named next action does not land"
 
     def test_an_UNREADABLE_launch_marker_refuses_rather_than_reading_as_absent(self, tmp_path):
         """Land reads this file for one thing — a completed round whose Verify redded.
