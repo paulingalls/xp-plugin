@@ -62,14 +62,25 @@ return `clean` with its `summary`.
 
 A choice only the human can make is not yours to resolve: leave that choice
 unedited and stop. A blocked round carries its question alone; report any loud
-findings after the human answers. Write one JSON object to `FINDINGS_PATH` and
-return it too:
-`{"status":"clean","reasons":[],"summary":""}`,
-`{"status":"edited","reasons":["exact reason text present in the plan"],"summary":""}`, or
-`{"status":"blocked","question":"the decision reserved for the human"}`.
-**Write your findings to a file** — the ABSOLUTE FINDINGS_PATH your bundle names,
-which is `<data-root>/plans/<story-id>.round-N.md`; every new artifact starts at
-`<story-id>.round-1.md`. The legacy logical round one spelling is
+findings after the human answers. Write your findings to a file at the ABSOLUTE
+`FINDINGS_PATH` your bundle names. That file is Markdown containing exactly one
+fenced `json` disposition; return that same fenced disposition too. Use one of
+these forms:
+
+```json
+{"status":"clean","reasons":[],"summary":""}
+```
+
+```json
+{"status":"edited","reasons":["exact reason text present in the plan"],"summary":""}
+```
+
+```json
+{"status":"blocked","question":"the decision reserved for the human"}
+```
+
+The findings path is `<data-root>/plans/<story-id>.round-N.md`; every new
+artifact starts at `<story-id>.round-1.md`. The legacy logical round one spelling is
 `<data-root>/plans/<story-id>.md`; it is never allocated for a new review. Never
 a relative `plans/` under the repo, which it would dirty. That file is this
 disposition, not another negotiation. No praise.

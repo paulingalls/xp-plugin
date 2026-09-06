@@ -84,13 +84,27 @@ class TestPlanReviewArtifacts:
         (parent / f"{stem}.round-1.md").write_text("round one")
         assert review_findings_path(identifier, kind) == parent / f"{stem}.round-2.md"
 
-    def test_success_without_the_required_findings_file_refuses(self, tmp_path):
+    def test_returned_disposition_recovers_an_omitted_findings_file(self, tmp_path):
         repo, env, draft = self.repo(tmp_path)
         rec = stub_planner(tmp_path, write_findings=False)
         r = plan_review(repo, env, "story-042", str(draft))
-        assert r.returncode == 2 and "no findings" in r.stderr.lower(), r.stderr
-        assert CLEAN not in r.stdout
+        assert r.returncode == 0, r.stderr
+        assert CLEAN in r.stdout
+        assert (tmp_path / "data/plans/story-042.round-1.md").read_text() == CLEAN
         assert rec.exists(), "the fault injection never reached the reviewer"
+
+    def test_present_unreadable_findings_are_not_replaced_by_the_returned_result(self, tmp_path):
+        repo, env, draft = self.repo(tmp_path)
+        malformed = '```json\n{"status":\n```'
+        stub_planner(tmp_path, findings=malformed)
+        binary = tmp_path / "bin/claude"
+        binary.write_text(
+            binary.read_text().replace(f"'result': {malformed!r}", f"'result': {CLEAN!r}")
+        )
+        r = plan_review(repo, env, "story-042", str(draft))
+        assert r.returncode == 2
+        assert "the harness could not read" in r.stderr, r.stderr
+        assert (tmp_path / "data/plans/story-042.round-1.md").read_text() == malformed
 
 
 class TestIncompleteReviewIsVisibleToTheLead:
@@ -116,7 +130,7 @@ class TestIncompleteReviewIsVisibleToTheLead:
 
     def test_a_review_that_writes_no_findings_leaves_the_marker(self, tmp_path):
         repo, env, draft = self.repo(tmp_path)
-        stub_planner(tmp_path, write_findings=False)
+        stub_planner(tmp_path, findings="", write_findings=False)
         r = plan_review(repo, env, "story-042", str(draft))
         assert r.returncode != 0, r.stdout
         assert self.marker(tmp_path).exists(), "nothing records that the gate did not run"

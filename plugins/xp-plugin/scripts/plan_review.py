@@ -6,7 +6,6 @@ makes the shipped charter reachable there.
 """
 
 import argparse
-import contextlib
 import json
 import re
 import subprocess
@@ -107,56 +106,80 @@ def normalized_words(text: str) -> str:
     return " ".join(re.findall(r"\w+", text))
 
 
-def disposition(text: str, before: bytes | None, after: bytes | None) -> str:
+def _bare_objects(text: str) -> tuple[list[dict], bool]:
+    decoder, objects, end, failed = json.JSONDecoder(), [], 0, False
+    for start in (i for i, char in enumerate(text) if char == "{"):
+        if start < end:
+            continue
+        try:
+            value, end = decoder.raw_decode(text, start)
+        except ValueError:
+            failed = True
+            continue
+        if isinstance(value, dict):
+            objects.append(value)
+    return objects, failed
+
+
+def evaluate_disposition(text: str, before: bytes | None, after: bytes | None) -> tuple[str, str]:
     changed = before != after
     try:
         report = json.loads(text)
     except ValueError:
-        values = []
-        for fence in re.findall(r"```[^\n]*\n(.*?)```", text, flags=re.S):
-            with contextlib.suppress(ValueError):
-                values.append(json.loads(fence))
+        values, failed, masked = [], False, list(text)
+        fences = list(re.finditer(r"```([^\n]*)\n(.*?)```", text, flags=re.S))
+        for fence in fences:
+            language, body = fence.group(1).strip().lower(), fence.group(2)
+            candidate = language == "json" or body.lstrip().startswith(("{", "["))
+            if not candidate:
+                continue
+            for index in range(fence.start(), fence.end()):
+                masked[index] = " "
+            try:
+                values.append(json.loads(body))
+            except ValueError:
+                objects, malformed = _bare_objects(body)
+                values.extend(objects)
+                failed |= malformed or not objects
+                continue
+        objects, malformed = _bare_objects("".join(masked))
+        values.extend(objects)
+        failed |= malformed
         # A non-object in a fence is no rival verdict — kept only when none is an object,
         # so a fenced `[]` refuses by TYPE. Narrowing either discards a completed round.
         values = [v for v in values if isinstance(v, dict)] or values
+        if len(values) > 1:
+            return "failed", (
+                "the plan review wrote an ambiguous disposition — write exactly one JSON object"
+            )
+        if failed:
+            return "failed", (
+                "the plan review wrote no structured disposition the harness could use:"
+                " it wrote a structured disposition the harness could not read"
+            )
         if len(values) == 1:
             report = values[0]
-        elif len(values) > 1:
-            return "the plan review wrote an ambiguous disposition — write exactly one JSON object"
         else:
-            decoder, objects, end = json.JSONDecoder(), [], 0
-            for start in (i for i, char in enumerate(text) if char == "{"):
-                if start < end:
-                    continue
-                try:
-                    value, end = decoder.raw_decode(text, start)
-                except ValueError:
-                    continue
-                if isinstance(value, dict):
-                    objects.append(value)
-            if len(objects) > 1:
-                return (
-                    "the plan review wrote an ambiguous disposition — write exactly one JSON object"
-                )
-            return "the plan review wrote no structured disposition"
+            return "failed", "the plan review wrote no structured disposition"
     if not isinstance(report, dict):
-        return "the plan disposition must be a JSON object"
+        return "failed", "the plan disposition must be a JSON object"
     status = report.get("status")
     if status == "blocked":
         question = report.get("question", "")
         if changed:
-            return "a human-only question changed the plan instead of stopping"
-        return f"blocked for the human: {question}" if question else "blocked without a question"
+            return "failed", "a human-only question changed the plan instead of stopping"
+        problem = f"blocked for the human: {question}" if question else "blocked without a question"
+        return "blocked", problem
     if status == "clean":
-        return "" if not changed else "a clean review changed the plan"
+        return ("ran", "") if not changed else ("failed", "a clean review changed the plan")
     if status != "edited":
-        return "plan disposition status must be clean, edited, or blocked"
+        return "failed", "plan disposition status must be clean, edited, or blocked"
     reasons = report.get("reasons", [])
     if not isinstance(reasons, list):
-        return "edited plan reasons must be a JSON list"
+        return "failed", "edited plan reasons must be a JSON list"
     plan = (after or b"").decode(errors="replace")
     if not changed:
-        return "an edited disposition left the plan unchanged"
+        return "failed", "an edited disposition left the plan unchanged"
     normalized_plan = f" {normalized_words(plan)} "
     if not reasons or not all(
         isinstance(reason, str)
@@ -164,27 +187,34 @@ def disposition(text: str, before: bytes | None, after: bytes | None) -> str:
         and f" {reason_words} " in normalized_plan
         for reason in reasons
     ):
-        return "every plan edit must carry its reason in the plan file"
-    return ""
+        return "failed", "every plan edit must carry its reason in the plan file"
+    return "ran", ""
 
 
-def cmd_review(story_id: str, plan_file: Path, dry_run: bool, detach: bool = True) -> int:
+def disposition(text: str, before: bytes | None, after: bytes | None) -> str:
+    return evaluate_disposition(text, before, after)[1]
+
+
+def _cmd_review(
+    story_id: str, plan_file: Path, dry_run: bool, detach: bool = True
+) -> tuple[int, str]:
     if not plan_file.is_file():
-        return fail(f"refused: no plan at {plan_file} — draft it to a file first")
+        return fail(f"refused: no plan at {plan_file} — draft it to a file first"), "failed"
     plan = plan_file.read_text()
     if not plan.strip():
-        return fail(f"refused: the draft plan at {plan_file} is empty")
+        return fail(f"refused: the draft plan at {plan_file} is empty"), "failed"
     # An empty read would spend a whole review on no rubric and still exit 0 with
     # plausible prose: nothing downstream can tell that from a real round.
     charter = review.charter("plan-reviewer")
     if not charter:
-        return fail(
+        rc = fail(
             f"refused: {PLUGIN_ROOT / 'agents' / 'plan-reviewer.md'} carries no charter"
             " — a review with an empty rubric certifies. Restore the file"
         )
+        return rc, "failed"
     card = card_for(story_id)
     if not card:
-        return fail(f"refused: no {story_id} card in {plan_path()}")
+        return fail(f"refused: no {story_id} card in {plan_path()}"), "failed"
     out = findings_path(story_id)
     if dry_run:
         return _run_review(story_id, plan_file, charter, plan, card, out, True)
@@ -195,52 +225,65 @@ def cmd_review(story_id: str, plan_file: Path, dry_run: bool, detach: bool = Tru
             json.dumps({"state": "PLAN REVIEW DID NOT COMPLETE", "findings": str(out)})
         )
         return _run_review(story_id, plan_file, charter, plan, card, out, False)
-    return run_detached(
+    rc = run_detached(
         story_id, "plan", out, [str(Path(__file__).resolve()), story_id, str(plan_file)]
     )
+    return rc, "ran" if rc == 0 else "failed"
 
 
-def run_foreground(story_id: str, plan_file: Path) -> int:
+def cmd_review(story_id: str, plan_file: Path, dry_run: bool, detach: bool = True) -> int:
+    return _cmd_review(story_id, plan_file, dry_run, detach)[0]
+
+
+def run_foreground(story_id: str, plan_file: Path) -> tuple[int, str]:
     """spawn's own stage: no detached child, and cmd_review's guards all still run
     — an absent plan, an empty one, an empty charter and a missing card each end a
     round that would otherwise report a verdict nothing produced."""
-    return cmd_review(story_id, plan_file, False, detach=False)
+    return _cmd_review(story_id, plan_file, False, detach=False)
 
 
 def _run_review(
     story_id: str, plan_file: Path, charter: str, plan: str, card: str, out: Path, dry_run: bool
-) -> int:
+) -> tuple[int, str]:
     try:
         before = review_state(plan_file, story_id)
     except OSError as e:
-        return fail(f"refused: cannot snapshot the repository before review: {e}")
+        return fail(f"refused: cannot snapshot the repository before review: {e}"), "failed"
     before_plan = plan_bytes(plan_file)
     bundle = build_bundle(charter, plan, card, plan_file, out)
-    _result, err = review.run(bundle, Path.cwd(), dry_run, name="plan-reviewer", card=card)
+    result, err = review.run(bundle, Path.cwd(), dry_run, name="plan-reviewer", card=card)
     if dry_run:
-        return fail("refused: " + err) if err else 0
+        return (fail("refused: " + err), "failed") if err else (0, "ran")
     try:
         changed = review_state(plan_file, story_id) != before
     except OSError as e:
-        return fail(f"refused: the plan reviewer left the repository unreadable: {e}")
+        return fail(f"refused: the plan reviewer left the repository unreadable: {e}"), "failed"
     if changed:
-        return fail(
+        rc = fail(
             "refused: the plan reviewer changed the repository or story card"
             " — inspect and restore its changes before continuing"
         )
+        return rc, "failed"
     if err:
-        return fail(err)
+        return fail(err), "failed"
     try:
         findings = out.read_text().strip() if out.is_file() else ""
-    except OSError:
-        findings = ""
+    except OSError as error:
+        return fail(f"refused: cannot read plan-review findings at {out}: {error}"), "failed"
     if not findings:
-        return fail(f"refused: the plan reviewer wrote no findings at {out}")
-    if problem := disposition(findings, before_plan, plan_bytes(plan_file)):
-        return fail(f"refused: {problem}")
+        findings = result.strip()
+        if not findings:
+            return fail(f"refused: the plan reviewer wrote no findings at {out}"), "failed"
+        try:
+            out.write_text(findings)
+        except OSError as error:
+            return fail(f"refused: cannot write plan-review findings at {out}: {error}"), "failed"
+    outcome, problem = evaluate_disposition(findings, before_plan, plan_bytes(plan_file))
+    if problem:
+        return fail(f"refused: {problem}"), outcome
     incomplete_marker(story_id).unlink(missing_ok=True)  # the child's own verdict
     print(findings)
-    return 0
+    return 0, outcome
 
 
 def main() -> int:
@@ -260,7 +303,7 @@ def main() -> int:
         card = card_for(a.story_id)
         return _run_review(
             a.story_id, plan_file, charter, plan_file.read_text(), card, Path(a._review), False
-        )
+        )[0]
     return cmd_review(a.story_id, plan_file, a.dry_run)
 
 

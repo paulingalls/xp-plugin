@@ -6,18 +6,22 @@ from spawn_helpers import make_repo, seed_refresh_receipt, spawn
 CLEAN = {"fixed": [], "blocking": [], "noted": []}
 
 
-def stub_stages(tmp_path, blocking_plan=False, blocking_diff=False):
+def stub_stages(tmp_path, blocking_plan=False, blocking_diff=False, unreadable_plan=False):
     binary = tmp_path / "bin" / "claude"
     binary.parent.mkdir(exist_ok=True)
     events = tmp_path / "events.jsonl"
     plan = (
-        {"status": "blocked", "question": "choose"}
-        if blocking_plan
+        '```json\n{"status":\n```'
+        if unreadable_plan
         else {
-            "status": "clean",
-            "reasons": [],
+            "status": "blocked" if blocking_plan else "clean",
+            "question": "choose" if blocking_plan else None,
+            "reasons": [] if not blocking_plan else None,
         }
     )
+    if isinstance(plan, dict):
+        plan = {key: value for key, value in plan.items() if value is not None}
+    findings = plan if isinstance(plan, str) else json.dumps(plan)
     report = {"fixed": [], "blocking": ["cannot land"], "noted": []} if blocking_diff else CLEAN
     binary.write_text(
         "#!/usr/bin/env python3\n"
@@ -34,7 +38,7 @@ def stub_stages(tmp_path, blocking_plan=False, blocking_diff=False):
         " open(p.group(1).strip(), 'a').write('# execution plan\\nred then green\\n')\n"
         "elif role == 'plan-reviewer':\n"
         " p = re.search(r'^FINDINGS_PATH: (.+)$', prompt, re.M); assert p\n"
-        f" open(p.group(1).strip(), 'w').write({json.dumps(plan)!r})\n"
+        f" open(p.group(1).strip(), 'w').write({findings!r})\n"
         "elif role == 'teammate':\n"
         " os.makedirs('src', exist_ok=True)\n"
         " open('src/thing.py', 'a').write('\\nDONE = True\\n')\n"
@@ -270,3 +274,23 @@ class TestSpawnStages:
         assert event_roles(events).count("plan-reviewer") == 2, (
             "resume skipped review after replanning: " + str(event_roles(events))
         )
+
+    def test_an_unreadable_plan_review_reuses_the_draft_on_resume(self, tmp_path):
+        repo, env, _g = make_repo(tmp_path, files="src/thing.py, src/other.py")
+        events = stub_stages(tmp_path, unreadable_plan=True)
+        stopped = spawn(repo, env, "story-042")
+        assert stopped.returncode != 0, stopped.stdout + stopped.stderr
+        handoff = tmp_path / "data/plans/story-042.handoff.json"
+        state = json.loads(handoff.read_text())
+        assert state["stages"]["plan-reviewer"] == "failed"
+        draft = tmp_path / "data/plans/story-042.plan.md"
+        first_draft = draft.read_bytes()
+        state["state"] = "STOPPED"
+        handoff.write_text(json.dumps(state))
+
+        stub_stages(tmp_path)
+        resumed = spawn(repo, env, "resume", "story-042")
+        assert resumed.returncode == 0, resumed.stdout + resumed.stderr
+        assert event_roles(events).count("planner") == 1
+        assert event_roles(events).count("plan-reviewer") == 2
+        assert draft.read_bytes() == first_draft
