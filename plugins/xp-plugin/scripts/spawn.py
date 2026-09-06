@@ -386,9 +386,6 @@ def cmd_spawn(story_id: str, override: str, dry_run: bool, resuming: bool = Fals
 
     mark_handoff(data_root(), story_id)
     prior_stages = (handoff_state(data_root(), story_id) or {}).get("stages", {})
-    # A blocked plan review REJECTED the draft, so the planner's work is what must
-    # be redone; without this a resume skips replanning and re-reviews the identical
-    # draft, blocking again forever.
     replan = prior_stages.get("plan-reviewer") == "blocked"
     if multifile and (replan or prior_stages.get("planner") != "ran"):
         rc, why = stages.run_planner(story_id, card, tree, handoff)
@@ -403,10 +400,12 @@ def cmd_spawn(story_id: str, override: str, dry_run: bool, resuming: bool = Fals
         import plan_review
 
         with contextlib.chdir(tree):
-            rc = plan_review.run_foreground(story_id, draft_path(data_root(), story_id))
+            rc, outcome = plan_review.run_foreground(story_id, draft_path(data_root(), story_id))
         if rc:
-            mark_stage(data_root(), story_id, "plan-reviewer", "blocked")
-            why = "execution plan review blocked or failed; read its disposition before resuming"
+            mark_stage(data_root(), story_id, "plan-reviewer", outcome)
+            # NAMED, because inheritance() hands the successor this sentence and never
+            # `stages`: a rejected plan and a verdict nothing could read read alike there.
+            why = f"execution plan review {outcome}; read its disposition before resuming"
             return stop(why, 0)
         mark_stage(data_root(), story_id, "plan-reviewer", "ran")
     elif not multifile:

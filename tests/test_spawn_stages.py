@@ -6,18 +6,16 @@ from spawn_helpers import make_repo, seed_refresh_receipt, spawn
 CLEAN = {"fixed": [], "blocking": [], "noted": []}
 
 
-def stub_stages(tmp_path, blocking_plan=False, blocking_diff=False):
+def stub_stages(tmp_path, blocking_plan=False, blocking_diff=False, unreadable_plan=False):
     binary = tmp_path / "bin" / "claude"
     binary.parent.mkdir(exist_ok=True)
     events = tmp_path / "events.jsonl"
-    plan = (
-        {"status": "blocked", "question": "choose"}
-        if blocking_plan
-        else {
-            "status": "clean",
-            "reasons": [],
-        }
-    )
+    if unreadable_plan:
+        findings = '```json\n{"status":\n```'  # a verdict the harness cannot READ
+    elif blocking_plan:
+        findings = json.dumps({"status": "blocked", "question": "choose"})
+    else:
+        findings = json.dumps({"status": "clean", "reasons": []})
     report = {"fixed": [], "blocking": ["cannot land"], "noted": []} if blocking_diff else CLEAN
     binary.write_text(
         "#!/usr/bin/env python3\n"
@@ -34,7 +32,7 @@ def stub_stages(tmp_path, blocking_plan=False, blocking_diff=False):
         " open(p.group(1).strip(), 'a').write('# execution plan\\nred then green\\n')\n"
         "elif role == 'plan-reviewer':\n"
         " p = re.search(r'^FINDINGS_PATH: (.+)$', prompt, re.M); assert p\n"
-        f" open(p.group(1).strip(), 'w').write({json.dumps(plan)!r})\n"
+        f" open(p.group(1).strip(), 'w').write({findings!r})\n"
         "elif role == 'teammate':\n"
         " os.makedirs('src', exist_ok=True)\n"
         " open('src/thing.py', 'a').write('\\nDONE = True\\n')\n"
@@ -259,9 +257,11 @@ class TestSpawnStages:
         stopped = spawn(repo, env, "story-042")
         assert stopped.returncode != 0, stopped.stdout
         handoff = tmp_path / "data/plans/story-042.handoff.json"
-        assert json.loads(handoff.read_text())["stages"]["plan-reviewer"] == "blocked", (
+        state = json.loads(handoff.read_text())
+        assert state["stages"]["plan-reviewer"] == "blocked", (
             "a plan review that blocked is recorded the same way as one that never ran"
         )
+        assert "blocked" in state["why"] and "failed" not in state["why"], state["why"]
         handoff.write_text(json.dumps({**json.loads(handoff.read_text()), "state": "STOPPED"}))
         spawn(repo, env, "resume", "story-042")
         assert event_roles(events).count("planner") == 2, (
@@ -270,3 +270,26 @@ class TestSpawnStages:
         assert event_roles(events).count("plan-reviewer") == 2, (
             "resume skipped review after replanning: " + str(event_roles(events))
         )
+
+    def test_an_unreadable_plan_review_reuses_the_draft_on_resume(self, tmp_path):
+        repo, env, _g = make_repo(tmp_path, files="src/thing.py, src/other.py")
+        events = stub_stages(tmp_path, unreadable_plan=True)
+        stopped = spawn(repo, env, "story-042")
+        assert stopped.returncode != 0, stopped.stdout + stopped.stderr
+        handoff = tmp_path / "data/plans/story-042.handoff.json"
+        state = json.loads(handoff.read_text())
+        assert state["stages"]["plan-reviewer"] == "failed"
+        # inheritance() hands the successor `why` and never `stages`, so the two
+        # states have to stay apart THERE too (constraint 15).
+        assert "failed" in state["why"] and "blocked" not in state["why"], state["why"]
+        draft = tmp_path / "data/plans/story-042.plan.md"
+        first_draft = draft.read_bytes()
+        state["state"] = "STOPPED"
+        handoff.write_text(json.dumps(state))
+
+        stub_stages(tmp_path)
+        resumed = spawn(repo, env, "resume", "story-042")
+        assert resumed.returncode == 0, resumed.stdout + resumed.stderr
+        assert event_roles(events).count("planner") == 1
+        assert event_roles(events).count("plan-reviewer") == 2
+        assert draft.read_bytes() == first_draft

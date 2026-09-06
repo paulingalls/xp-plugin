@@ -4,6 +4,19 @@ Release notes started at v0.6.0; earlier entries are summarized from their
 tag and merge messages. Full detail lives in the merge history and the
 per-sprint review reports.
 
+## v0.21.2 — a verdict the harness cannot read is not a rejected plan
+
+- **A plan review is no longer lost to how its verdict was written.** A disposition
+  written as a bare JSON object inside prose was found by the parser's own scan and
+  then refused anyway — the scan collected it and never used it — with the same
+  message as a file carrying no verdict at all. The charter now names one
+  unambiguous format, the parser accepts what the charter instructs, and a verdict
+  returned by the reviewer but absent from the file is still consumed.
+- **A verdict the harness could not read is distinguished from a plan the reviewer
+  rejected.** `replan` treated both as "blocked", so `spawn.py resume` discarded a
+  clean plan and re-ran planner and reviewer into the same wall — a gate that fails
+  closed but is unreachable by retry, at two agent rounds per attempt (GitHub #62).
+
 ## v0.21.1 — a passing plan review stops blocking itself over markdown
 
 - **Plan-review reasons are compared by words, not by punctuation.** A reviewer that

@@ -23,7 +23,7 @@ READ_THEM = " Read each with `work.py show <id>`, then fix the card or take the 
 STAGES = ("planner", "plan-reviewer", "executor", "reviewer")
 # Shared so a new result cannot pass the writer and red the reader: mark_stage
 # and resume.validate spelled ("ran", "skipped") separately until story-102.
-RESULTS = ("ran", "skipped", "blocked")
+RESULTS = ("ran", "skipped", "blocked", "failed")
 
 
 def handoff_state(root: Path, story_id: str) -> dict | None:
