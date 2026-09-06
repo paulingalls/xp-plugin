@@ -4,6 +4,16 @@ Release notes started at v0.6.0; earlier entries are summarized from their
 tag and merge messages. Full detail lives in the merge history and the
 per-sprint review reports.
 
+## v0.21.1 — a passing plan review stops blocking itself over markdown
+
+- **Plan-review reasons are compared by words, not by punctuation.** A reviewer that
+  wrote a reason as ordinary markdown in the plan and as plain text in its JSON
+  disposition had the whole round discarded (GitHub #60, the sibling of bug
+  6677e018 which fixed the blockquote marker the same way). Enumerating markers one
+  at a time fixed the blockquote and left the backtick; the comparison now ignores
+  presentation as a class, while a reason genuinely absent from the plan — or
+  present with different words — still refuses.
+
 ## v0.21.0 — what we ship says what it does
 
 Five changes close gaps between what a shipped surface claims and what it does.
