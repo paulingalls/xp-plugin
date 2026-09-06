@@ -4,6 +4,32 @@ Release notes started at v0.6.0; earlier entries are summarized from their
 tag and merge messages. Full detail lives in the merge history and the
 per-sprint review reports.
 
+## v0.21.0 — what we ship says what it does
+
+Five changes close gaps between what a shipped surface claims and what it does.
+
+- **Every git path runs a secrets wall that can red.** A no-ff merge now hits a
+  scaffolded `pre-merge-commit` on both hook variants, and the push arm proves its
+  scan range resolves before trusting it — gitleaks exits 0 on a range git cannot
+  resolve, so an unfetched remote sha previously published unscanned. The push
+  refusal names the remediation that actually works: rewriting outgoing history,
+  not a later removal commit. The lefthook push arm is documented as best-effort
+  and its skip is pinned by a test, because lefthook's hook sync erases any patch
+  we apply to the generated hook.
+- **A review refuses without the rubric that defines its judgment.** Story and
+  sprint review bundles no longer hand an agent `(missing: JUDGMENT.md)`; missing,
+  empty, unreadable and non-UTF-8 are four named states, each with its next action.
+- **Free work starts from trunk without moving the lead off it.** `free start`
+  leaves the lead on trunk, names where release artifacts get cut, and the review
+  path can no longer mint its own credential for work that was never spawned.
+- **The teammate profile target is a project's own number.** `profile_target` is
+  declared in `.xp/config.yml` (default 806) as a story-card allowance measured
+  against each project's floor, replacing a fixed 4,500 that gave different
+  projects a 50% different card budget. The note names the plugin's own share when
+  the plugin is the largest contributor.
+- **The process document names what a lead does mid-sprint.** Record, keep work on
+  the sprint branch with `[sprint-direct]`, or cut a patch tag off trunk to ship now.
+
 ## v0.20.0 — release evidence stays complete and actionable
 
 Six changes keep release decisions bound to the evidence that actually earned
