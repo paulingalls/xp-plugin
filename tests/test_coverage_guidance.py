@@ -13,7 +13,18 @@ def test_shipped_coverage_guidance_names_no_test_runner_or_selection_syntax():
         if path.is_file() and "__pycache__" not in path.parts
     }
     assert len(shipped) > 40, "scanned nothing — a green here would certify (constraint 2)"
-    forbidden = ("pytest", "py.test", "bun test", "unittest", "node id", "::")
+    forbidden = (
+        "pytest",
+        "py.test",
+        "bun test",
+        "unittest",
+        "node id",
+        "::",
+        "jest",
+        "vitest",
+        "cargo test",
+        "go test",
+    )
     named = [
         f"{path.relative_to(plugin)} names {term!r}"
         for path, text in shipped.items()
