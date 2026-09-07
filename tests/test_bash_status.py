@@ -96,7 +96,7 @@ class TestBashStatus:
         )
         run_script("bash_status.py", failure_payload("pytest -q tests/test_x.py"), repo, tmp_path)
         run_script("bash_status.py", success_payload("bun test x"), repo, tmp_path)
-        # two markers, per constraint 10: B's green cannot hide A's red
+        # two markers, one per session: B's green cannot hide A's red
         assert sorted(m["red"] for m in markers(tmp_path)) == [False, True]
 
     def test_a_pipe_keeps_the_existing_empty_output_contract(self, tmp_path):

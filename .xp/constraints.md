@@ -30,8 +30,6 @@ adding over the cap requires retiring one (the plan reviewer enforces).
 9. **Comments exist only for what neither a test nor a name can carry** — the why,
    an external constraint, a rejected design; JUDGMENT.md gives every role the
    rubric. A comment is the one artifact no test checks, so it rots silently.
-10. **Markers are always scoped** (story/plan/session) — a project-global mutable
-   marker is a design error (measured: marker bleed between parallel stories).
 11. **A falsifier must CONSTRUCT the condition it claims** — never observe ambient
    state, grep for an identifier, or assert a token's presence; and a resolution's
    replacement must COVER the claim, not merely be green, and it names a test by
@@ -52,9 +50,12 @@ adding over the cap requires retiring one (the plan reviewer enforces).
 14. **A release is the tag, the manifest and the CHANGELOG naming ONE version.**
    `plugin.json`'s version keys the consumer's plugin cache, so a tag that moves
    without it ships the previous cached copy under the new name — silently, and to
-   everyone except us (measured: v0.6.0 tagged with the manifest at 0.5.0, surfaced
-   by a field report still running "0.3.0"). Bump the manifest and write the entry
-   in the release commit, before the tag; tests/test_release.py is the wall (constraint 5).
+   everyone except us (measured: v0.6.0 tagged with the manifest at 0.5.0). Bump the
+   manifest and write the entry in the release commit, before the tag;
+   tests/test_release.py is the wall (constraint 5).
 15. **Distinct states stay distinct.** Never infer one state only from the absence
    of another. Missing is not unreadable; retired is not unfinished. Enumerate
    terminal and active states, and fault-inject every refusal boundary between them.
+16. **Nothing under `plugins/xp-plugin/` may exist for OUR benefit.** A consuming project
+   has its own constraints, cards and budgets; shipped prose naming ours sends their agents
+   hunting for a field or a cap they do not have. Ours live in CLAUDE.md.

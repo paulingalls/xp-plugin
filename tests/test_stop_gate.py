@@ -354,7 +354,7 @@ class TestCodexPayloads:
 
     def test_a_codex_session_never_inherits_another_sessions_red(self, tmp_path):
         """Why DESIGN calls the Codex Stop gate INERT rather than quiet: markers are
-        session-scoped (constraint 10) and no Codex session ever writes one, so a red
+        session-scoped, and no Codex session ever writes one, so a red
         a Claude session planted on the same story is not reachable from here.
         """
         repo, _g = repo_with_story(tmp_path)

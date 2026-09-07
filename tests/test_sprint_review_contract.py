@@ -159,7 +159,7 @@ class TestMotionIsBoundedByAMechanism:
         """The green twin, and the reason the digest is sprint-scoped: the plan is
         one shared file now, so digesting the whole of it would let any lane's flip
         refuse an unrelated release review — the project-global mutable gate
-        constraint 10 forbids. story-099 is [ready] in Sprint 3, not this one."""
+        a sprint-scoped marker forbids. story-099 is [ready] in Sprint 3, not this one."""
         repo, env, _g = make_repo(tmp_path)
         self._plan_rewriting_stub(tmp_path, "story-099 — not this sprint", "story-099 — MOVED")
         r = sprint(repo, env, "review")

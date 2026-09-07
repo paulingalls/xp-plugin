@@ -199,7 +199,7 @@ class TestFixingReviewer:
         """The green twin, and the reason the digest is scoped to the story's own
         card: the plan is shared per-clone now, so a whole-file digest would let
         lane B's spawn flip refuse lane A's review — the project-global mutable
-        gate constraint 10 forbids, blaming the reviewer for another actor's write."""
+        gate a story-scoped marker forbids, blaming the reviewer for another's write."""
         repo, env, _g = make_repo(tmp_path)
         plan = tmp_path / "data" / "plan.md"
         self.fixing_stub(
