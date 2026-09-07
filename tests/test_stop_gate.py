@@ -404,7 +404,11 @@ class TestACrashIsNotAPass:
                 "HOME": str(tmp_path),
                 "XP_DATA": str(tmp_path / "xp"),
                 "CLAUDE_PLUGIN_ROOT": str(SCRIPTS.parent),
-                "PYTHONPATH": str(SCRIPTS),
+                # every sibling, subpackages included: a hook that locates its own
+                # modules through an env var dies whole when the var is wrong
+                "PYTHONPATH": os.pathsep.join(
+                    [str(SCRIPTS), *(str(p) for p in SCRIPTS.glob("[a-z]*/") if p.is_dir())]
+                ),
             },
             cwd=tmp_path,
             capture_output=True,

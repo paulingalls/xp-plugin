@@ -11,7 +11,9 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
+sys.path.insert(0, str(Path(__file__).parent / "session_start"))
 from env import plugin_manifest_value, plugin_version, run_hook, write_env
+from sprint import select_sprint, sprint_sections
 from work import data_root, entries, plan_path, record_summary, strip_comment
 
 PLUGIN_ROOT = Path(__file__).parent.parent
@@ -259,20 +261,11 @@ def digest_output() -> str:
     return digest_refusal() or digest_with_staleness() or absent
 
 
-def sprint_sections(text: str) -> tuple[str, list[str]]:
-    at = [
-        (match[1], section.strip())
-        for section in re.split(r"(?=^### )", text, flags=re.M)
-        if (match := re.match(r"### Sprint (\d+)\b", section))
-    ]
-    # int() orders; the id keeps the PLAN'S spelling, the only one a slate matches
-    current = max((raw for raw, _section in at), key=int, default="")
-    return current, [section for raw, section in at if raw == current]
-
-
 def sprint_slice() -> str:
-    """All highest-numbered sprint sections, excluding later carried pools."""
-    return "\n\n".join(sprint_sections(read(plan_path()))[1])
+    """Provenance leads: the slice is `recover`'s LAST region and render cuts the tail,
+    so a rule named after its sections is the line a truncated recover loses."""
+    _sprint, sections, provenance = select_sprint(read(plan_path()))
+    return "\n\n".join([provenance, *sections]) if sections else ""
 
 
 CARD = re.compile(r"^#### (\S+) .* \[([^]\n]+)\]\s*$", re.M)

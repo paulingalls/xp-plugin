@@ -94,7 +94,8 @@ class TestWhatTheProfileLeadsWith:
         out = run_recovery(repo, tmp_path).stdout
         assert "[truncated" not in out, "the fixture must fit; this asserts delivery"
         shown = out.split("## sprint slice", 1)[1]
-        assert shown.startswith("\n### Sprint 9"), shown[:200]
+        body = shown.split("\n\n", 1)[1]
+        assert body.startswith("### Sprint 9"), shown[:200]
         assert "SLICE-BODY" in shown, "the current sprint's card bodies never reached the lead"
         assert "POOL-BODY" not in shown, "an old sprint's carried pool won over the current one"
         assert "CONTINUED-BODY" in shown, "a sprint written in two sections delivered one"
