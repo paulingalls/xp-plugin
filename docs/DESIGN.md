@@ -192,7 +192,7 @@ Planning constraints (stated in `config.yml`):
 
 `session.md` is a **digest, not a record**: ≤30 lines, overwritten not appended, holding only what the artifacts can't say — in-flight intent ("story-004 red tests written, green half done"), surprises, the recommended next step. Digest content requires judgment, so it is written only at **LLM-present moments**: the close scripts' last step has the lead write it at story close and sprint close. SessionEnd is *not* relied on for it — a hook is deterministic Python with no judgment, and the predecessor's own code records that SessionEnd misfires anyway (`/exit` emits none; worktree teammates each fire their own). No manual end-session skill, no rolling session_history.
 
-The gap that leaves — a session dying mid-story — is covered mechanically at the next start. Every lead SessionStart carries one deterministic `NEXT:` line from the highest-numbered sprint's card headings and story-scoped worktree/handoff state: `[planned]` → `spawn.py ready`, `[ready]` → spawn, `STOPPED` → resume, `FINISHED` → story close, and no open card → sprint close. Missing worktrees name recovery; `RUNNING`, parallel in-progress cards and malformed or missing state refuse to guess. The banner's `recover` command separately assembles current branch, dirt, cards, last close and work.md titles beside the digest and sprint slice; PROCESS runs it first. A written-at + git-HEAD stamp marks a moved digest stale. The lead is `session.md`'s sole writer; artifacts win on conflict. Staleness is handled ONLY here — the Stop nudge §7 once carried was removed for firing every turn rather than at session end.
+The gap that leaves — a session dying mid-story — is covered mechanically at the next start. Every lead SessionStart carries one deterministic `NEXT:` line from the card headings of the sprint the state root records as OPEN — falling back to the highest-numbered heading, loudly, when nothing is recorded (story-122) — and story-scoped worktree/handoff state: `[planned]` → `spawn.py ready`, `[ready]` → spawn, `STOPPED` → resume, `FINISHED` → story close, and no open card → sprint close. Missing worktrees name recovery; `RUNNING`, parallel in-progress cards and malformed or missing state refuse to guess. The banner's `recover` command separately assembles current branch, dirt, cards, last close and work.md titles beside the digest and sprint slice; PROCESS runs it first. A written-at + git-HEAD stamp marks a moved digest stale. The lead is `session.md`'s sole writer; artifacts win on conflict. Staleness is handled ONLY here — the Stop nudge §7 once carried was removed for firing every turn rather than at session end.
 
 Mid-sprint durable learnings go to work.md notes as they happen; sprint close promotes or archives them (§6).
 
@@ -305,10 +305,14 @@ the dropped work.md titles are record BODIES any agent writes through `work.py`,
 they ride inside the fence instead. A cut is not a way for repo data to reach the
 lead wearing the plugin's authority.
 
-The `recover` sprint slice is EVERY section of the highest-NUMBERED sprint, never
-the last section holding an open card: a plan keeps its unscheduled pool under an
-older sprint's heading, so the open-card rule handed this repo `### Sprint 7` while
-Sprint 9 was on trunk, and it delivered one section of a sprint written in two.
+The `recover` sprint slice is EVERY section of the sprint the state root records as
+OPEN, never the last section holding an open card: a plan keeps its unscheduled pool
+under an older sprint's heading, so the open-card rule handed this repo `### Sprint 7`
+while Sprint 9 was on trunk, and it delivered one section of a sprint written in two.
+Selecting by highest NUMBER replaced that and was itself replaced at story-122: the
+number is a proxy that diverges the moment a plan holds a drafted or held-open higher
+heading, and the workflow encourages exactly that. The recorded branch is the answer;
+max() survives only as a named, announced fallback.
 
 The separately invoked `recover` surface has its OWN cap, because it writes to a
 different channel with a different bound in a different unit: codex 0.149.0
