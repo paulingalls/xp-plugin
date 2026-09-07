@@ -4,6 +4,25 @@ Release notes started at v0.6.0; earlier entries are summarized from their
 tag and merge messages. Full detail lives in the merge history and the
 per-sprint review reports.
 
+## v0.21.4 — a declared path is never silently un-declared
+
+`declared_files()` split the `Files:` block on commas before normalising each
+entry, so a parenthetical annotation containing a comma was split across it and
+the real path it annotated never entered the declared set — replaced by two
+fragments that match nothing.
+
+It mattered because writer and reader shared the break: the card-refresh receipt
+was built from `declared_files()` and checked with the same call, so the check
+compared a broken set against itself and could never refuse over a dropped path.
+The fragments stored as null and compared equal forever, so a receipt read fuller
+than its real coverage. Field-reported (#68) with a card whose central deliverable
+was exactly the swallowed files, reported fully checked and never hashed.
+
+The mirror of #45 in the same function: that was a loud false refusal, this a
+silent false clearance. Fixed on both sides — an entry that does not resolve to a
+plausible path is now reported rather than dropped, and `templates/plan.md` states
+the contract it never stated, which is what invited the annotation.
+
 ## v0.21.3 — a failed merge says which failure, and the refusal survives it
 
 - **A merge that fails no longer crashes instead of refusing.** Both checkouts in
