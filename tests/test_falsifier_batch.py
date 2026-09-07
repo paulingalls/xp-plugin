@@ -3,12 +3,14 @@
 import inspect
 import shlex
 import subprocess
+import sys
 from unittest.mock import patch
 
 import pytest
 import work as work_module
 from sprint_helpers import (
     CONFIG,
+    WORK,
     WORK_SECTION,
     launches,
     make_repo,
@@ -33,6 +35,49 @@ def test_falsifier_result_measures_the_command_wall_clock():
     )
 
 
+def test_resolve_requires_a_noninteractive_tier_or_none_answer(tmp_path):
+    config = CONFIG.replace("tests:\n", "tests:\n  fast: true\n  story: true\n")
+    repo, env, _g = make_repo(tmp_path, config=config)
+    filed = work(repo, env, "bug", "--claim", "fixed", "--falsifier", "false", "--files", "a.py")
+    process = subprocess.Popen(
+        [
+            sys.executable,
+            str(WORK),
+            "resolve",
+            "--ref",
+            filed.stdout.strip(),
+            "--falsifier",
+            "true",
+        ],
+        cwd=repo,
+        env=env,
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    try:
+        process.wait(timeout=10)
+    except subprocess.TimeoutExpired:
+        process.kill()
+        pytest.fail("resolve prompted on an open stdin pipe")
+    _stdout, stderr = process.communicate()
+    assert process.returncode == 2 and all(tier in stderr for tier in ("fast", "story", "full"))
+    assert "--covered-by TIER" in stderr and "--covered-by none" in stderr
+    retry = work(
+        repo,
+        env,
+        "resolve",
+        "--ref",
+        filed.stdout.strip(),
+        "--falsifier",
+        "true",
+        "--covered-by",
+        "none",
+    )
+    assert retry.returncode == 0 and "Covered by: none" in (tmp_path / "data/work.md").read_text()
+
+
 class TestFalsifierBatch:
     def test_a_resolved_record_runs_the_RESOLUTION_falsifier_not_nothing(self, tmp_path):
         """A resolution that was wrong must red later and reopen the record."""
@@ -42,7 +87,17 @@ class TestFalsifierBatch:
         work(repo, env, "bug", "--claim", "broken", "--falsifier", "false", "--files", "a.py")
         ref = work(repo, env, "list").stdout.split()[0]
         assert (
-            work(repo, env, "resolve", "--ref", ref, "--falsifier", f"test -f {flag}").returncode
+            work(
+                repo,
+                env,
+                "resolve",
+                "--ref",
+                ref,
+                "--falsifier",
+                f"test -f {flag}",
+                "--covered-by",
+                "none",
+            ).returncode
             == 0
         )
         assert sprint(repo, env, "start").returncode == 0, "a green resolution should pass"
@@ -131,7 +186,15 @@ def test_archive_wins_over_resolution_before_and_after_compaction(tmp_path, orde
     original, replacement = tmp_path / "original", tmp_path / "replacement"
     ref = file_debt(repo, env, "disposed after repair", writes(original))
     steps = {
-        "resolve": ["resolve", "--ref", ref, "--falsifier", writes(replacement)],
+        "resolve": [
+            "resolve",
+            "--ref",
+            ref,
+            "--falsifier",
+            writes(replacement),
+            "--covered-by",
+            "none",
+        ],
         "archive": ["archive", "--ref", ref, "--disposition", "dropped"],
     }
     for step in order:
@@ -151,7 +214,17 @@ def test_archive_wins_over_resolution_before_and_after_compaction(tmp_path, orde
     assert (contents(original), contents(replacement)) == before
     assert control.read_text() == "xx"
     assert work(repo, env, "compact").returncode == 0
-    stale = work(repo, env, "resolve", "--ref", ref, "--falsifier", writes(replacement))
+    stale = work(
+        repo,
+        env,
+        "resolve",
+        "--ref",
+        ref,
+        "--falsifier",
+        writes(replacement),
+        "--covered-by",
+        "none",
+    )
     assert stale.returncode == 2 and "archived" in stale.stderr
     assert sprint(repo, env, "start").returncode == 0
     assert (contents(original), contents(replacement)) == before
@@ -258,7 +331,7 @@ def test_a_declaration_whose_tier_the_config_no_longer_defines_still_executes(tm
 
 def test_a_declared_tier_that_was_not_run_does_not_suppress_the_falsifier(tmp_path):
     falsifier = tmp_path / "falsifier"
-    config = CONFIG.replace("tests:\n", "tests:\n  fast: true\n")
+    config = CONFIG.replace("tests:\n", "tests:\n  fast: printf fast >/dev/null\n")
     repo, env, _g = make_repo(tmp_path, config=config)
     file_debt(repo, env, "fast selection", writes(falsifier), "fast")
     before = falsifier.read_text()
@@ -316,7 +389,20 @@ def test_a_resolution_without_a_declaration_executes_its_replacement(tmp_path):
     )
     assert result.returncode == 0, result.stderr
     ref = result.stdout.strip()
-    assert work(repo, env, "resolve", "--ref", ref, "--falsifier", writes(counter)).returncode == 0
+    assert (
+        work(
+            repo,
+            env,
+            "resolve",
+            "--ref",
+            ref,
+            "--falsifier",
+            writes(counter),
+            "--covered-by",
+            "none",
+        ).returncode
+        == 0
+    )
     before = counter.read_text()
 
     assert sprint(repo, env, "start").returncode == 0

@@ -3,7 +3,6 @@
 
 import glob
 import json
-import re
 import subprocess
 import sys
 from pathlib import Path
@@ -24,6 +23,10 @@ from falsifier_batch import (
     execute_batch,
     ledger,
     resolved_offers,
+    tier_covers,
+    triage_notes,
+    unavailable_coverage,
+    validated_coverage,
 )
 from sprint_bundle import build
 from work import (
@@ -333,7 +336,13 @@ def cmd_start(sprint_id: str) -> int:
     grouped = {}
     for eid, head, falsifier, covered in batch:
         grouped.setdefault(falsifier, []).append((eid, head, covered))
-    tier = config_block_value("tests", "full")
+    tiers = config_block_value("tests")
+    graph, coverage_error = validated_coverage(tiers)
+    if coverage_error:
+        return fail(f"refused: {coverage_error}")
+    for notice in unavailable_coverage(records, tiers):
+        print(notice)
+    tier = tiers.get("full", "")
     # EDIT-ME ONLY — an absent full tier is a tested position (test_falsifier_batch runs
     # the batch without one); EDIT-ME reached `sh -c`, returned 127, and refused as red.
     if tier == "EDIT-ME":
@@ -341,7 +350,8 @@ def cmd_start(sprint_id: str) -> int:
     deferred = {
         command: records
         for command, records in grouped.items()
-        if tier and all(covered == "full" for _eid, _head, covered in records)
+        if tier
+        and all(tier_covers(covered, "full", tiers, graph) for _eid, _head, covered in records)
     }
     standalone = {key: value for key, value in grouped.items() if key not in deferred}
     results = execute_batch(standalone)
@@ -365,13 +375,7 @@ def cmd_start(sprint_id: str) -> int:
         print(f"\n{completion.heading.rstrip()}")
         print(f"close.py sprint {sprint_id} milestone-done")
 
-    disposed = {
-        m.group(1)
-        for _eid, text in source
-        if text.startswith(("## archived ", "## resolved "))
-        and (m := re.search(r"^(?:Archives|Resolves): (\w+)$", text, re.M))
-    }
-    notes = [text for eid, text in source if text.startswith("## note ") and eid not in disposed]
+    notes = triage_notes(source)
     print("\n" + resolved_offers(records, results))
     print(f"\n{len(members)} stories, {len(notes)} notes to triage. Each note: promote to")
     print("constraints.md/system.md via the retro diff, or archive it.\n")

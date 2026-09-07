@@ -40,7 +40,15 @@ class TestResolutionsAreCarried:
         for attempt in ("SUPERSEDED-TRY", "LATEST-TRY"):
             assert (
                 work(
-                    repo, env, "resolve", "--ref", ref, "--falsifier", f"true # {attempt}"
+                    repo,
+                    env,
+                    "resolve",
+                    "--ref",
+                    ref,
+                    "--falsifier",
+                    f"true # {attempt}",
+                    "--covered-by",
+                    "none",
                 ).returncode
                 == 0
             )
@@ -67,7 +75,17 @@ class TestResolutionsAreCarried:
         repo, env, _g = make_repo(tmp_path)
         work(repo, env, "bug", "--claim", "c", "--falsifier", "false", "--files", "a.py")
         ref = work(repo, env, "list").stdout.split()[0]
-        work(repo, env, "resolve", "--ref", ref, "--falsifier", "true # THE-REPLACEMENT")
+        work(
+            repo,
+            env,
+            "resolve",
+            "--ref",
+            ref,
+            "--falsifier",
+            "true # THE-REPLACEMENT",
+            "--covered-by",
+            "none",
+        )
         work(repo, env, "note", "A-PLAIN-NOTE")
         assert sprint(repo, env, "review").returncode == 0
         raw = section(launches(tmp_path)[0]["stdin"], WORK_SECTION, "JUDGMENT")

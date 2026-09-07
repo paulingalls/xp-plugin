@@ -222,15 +222,37 @@ def falsifier_is_green(command: str) -> bool:
     return falsifier_result(command).returncode == 0
 
 
-def checked_coverage(args: argparse.Namespace) -> str | None:
+def checked_coverage(args: argparse.Namespace, required: bool = False) -> str | None:
     tier = args.covered_by
     if not tier:
+        if required:
+            tiers = config_block_value("tests")
+            states = (
+                ", ".join(
+                    f"{name} ({'available' if value and value != 'EDIT-ME' else 'unavailable'})"
+                    for name, value in tiers.items()
+                )
+                or "none configured"
+            )
+            print(
+                "refused: resolve requires an explicit coverage answer; configured tiers: "
+                f"{states}. Retry with --covered-by TIER or --covered-by none",
+                file=sys.stderr,
+            )
+            return None
         return ""
+    if tier == "none":
+        return "Covered by: none\n"
     tiers = config_block_value("tests")
-    if tier in tiers:
+    if tier in tiers and tiers[tier] and tiers[tier] != "EDIT-ME":
         return f"Covered by: {tier}\n"
-    names = ", ".join(tiers) or "none"
-    print(f"refused: --covered-by {tier!r}; configured tiers: {names}", file=sys.stderr)
+    names = ", ".join(tiers) or "none configured"
+    state = "unavailable" if tier in tiers else "absent"
+    print(
+        f"refused: --covered-by {tier!r} is {state}; configured tiers: {names}."
+        " Use --covered-by none when no tier runs this",
+        file=sys.stderr,
+    )
     return None
 
 
@@ -298,7 +320,7 @@ def resolve(root: Path, args: argparse.Namespace) -> int:
     silence a live bug forever. The replacement must be green now and the batch
     runs it, so a wrong resolution reds later and the record reopens.
     """
-    if (coverage := checked_coverage(args)) is None:
+    if (coverage := checked_coverage(args, required=True)) is None:
         return 2
     if not _single_line(args.falsifier, "falsifier"):
         return 2
@@ -340,6 +362,12 @@ def resolve(root: Path, args: argparse.Namespace) -> int:
 def archive(root: Path, args: argparse.Namespace) -> int:
     """Record a disposition; `compact` later moves its record's durable prose."""
     if (kind := _kind_of(root, args.ref)) is None:
+        return 2
+    if kind == "bug" and _archived(root, args.ref):
+        print(
+            f"refused: {args.ref} is already archived — choose an undisposed record.",
+            file=sys.stderr,
+        )
         return 2
     if kind not in ("debt", "note") and not (kind == "bug" and _resolved(root, args.ref)):
         print(

@@ -33,3 +33,6 @@ tests:
   fast: EDIT-ME      # pre-commit: seconds, not minutes
   story: EDIT-ME     # pre-push + story close: the suite you trust before a merge
   full: EDIT-ME      # sprint close: everything incl. e2e; records may declare `--covered-by full`
+
+tier_coverage:       # e.g. covered: covering
+tier_coverage_pins:  # e.g. tier: exact configured command

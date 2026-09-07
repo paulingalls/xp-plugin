@@ -30,7 +30,10 @@ def red_debt(repo, env, tmp_path, claim, stdout, stderr, files="a.py"):
 def make_legacy_stub(repo, env, tmp_path, ref, command):
     text = dict(work_module.entries(tmp_path / "data"))[ref]
     files = next(line[7:] for line in text.splitlines() if line.startswith("Files: "))
-    assert work(repo, env, "resolve", "--ref", ref, "--falsifier", command).returncode == 0
+    resolved = work(
+        repo, env, "resolve", "--ref", ref, "--falsifier", command, "--covered-by", "none"
+    )
+    assert resolved.returncode == 0
     assert work(repo, env, "compact").returncode == 0
     path = tmp_path / "data" / "work.md"
     path.write_text(path.read_text().replace(f"Files: {files}\n", "", 1))
@@ -211,7 +214,17 @@ def test_triage_offers_a_resolved_record_but_not_archived_or_open_records(tmp_pa
     resolved = work(
         repo, env, "bug", "--claim", "fixed", "--falsifier", "false", "--files", "a.py"
     ).stdout.strip()
-    fixed = work(repo, env, "resolve", "--ref", resolved, "--falsifier", f"touch {replacement}")
+    fixed = work(
+        repo,
+        env,
+        "resolve",
+        "--ref",
+        resolved,
+        "--falsifier",
+        f"touch {replacement}",
+        "--covered-by",
+        "none",
+    )
     assert fixed.returncode == 0
     archived = file_debt(repo, env, "retired", "true")
     assert work(repo, env, "archive", "--ref", archived, "--disposition", "dropped").returncode == 0
@@ -228,6 +241,8 @@ def test_triage_offers_a_resolved_record_but_not_archived_or_open_records(tmp_pa
 
     disposed = work(repo, env, "archive", "--ref", resolved, "--disposition", "superseded")
     assert disposed.returncode == 0
+    repeated = work(repo, env, "archive", "--ref", resolved, "--disposition", "again")
+    assert repeated.returncode == 2 and "already archived" in repeated.stderr
     replacement.unlink()
     second = sprint(repo, env, "start")
     assert second.returncode == 0 and resolved not in second.stdout and not replacement.exists()

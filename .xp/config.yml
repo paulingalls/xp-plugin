@@ -35,3 +35,11 @@ tests:
   story: pytest -q -n 6           # pre-push + story close; measured 2026-09-03 on 1184
   full: pytest -q -n 6            # tests: -n 6 182s, -n 12 220s. Was 12 for the core
                                   # count, which is the wrong lever: subprocess-bound
+
+tier_coverage:
+  fast: story
+  story: full
+tier_coverage_pins:
+  fast: pytest -q -n 4 -m "not slow"
+  story: pytest -q -n 6
+  full: pytest -q -n 6
