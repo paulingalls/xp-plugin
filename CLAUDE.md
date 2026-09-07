@@ -54,7 +54,14 @@ measured component and density values to the reviewer as guidance. They report;
 they do not refuse growth. Constraint 8's 500-line hard cap remains structural,
 tests included. The report measures the SHIPPED plugin, so it lives outside it:
 nothing under `plugins/xp-plugin/` may exist for our benefit rather than a
-consuming project's. Every added rule displaces one. When in doubt: VALUES.md;
+consuming project's. Our cards carry a `Spend:` line the shipped card shape has
+no field for — the ratchet component, the declared files' counts, and any
+extraction the card must make first. It is a claim about existing code, so
+re-measure and correct it at card refresh. That rule lives HERE because `Spend`,
+components and extraction are all ours: a consuming project's refresher would go
+hunting for a field, a budget and a cap it does not have. Caught at Sprint 21,
+one commit after shipping exactly that into the refresher charter.
+Every added rule displaces one. When in doubt: VALUES.md;
 conflicts resolve Honesty > Courage > Simplicity > Feedback > Communication.
 
 ## Authoring skills (ours, not a consuming project's)

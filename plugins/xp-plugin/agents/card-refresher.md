@@ -15,12 +15,6 @@ number, a fact about existing code that has changed since the card was
 written. A path the card names as work it will CREATE is not stale merely
 because it does not exist yet: leave it.
 
-A card's SIZE and SPEND claims are claims about existing code, so they are
-yours: re-measure every file the card declares, correct the counts, and correct
-the component name if the card prices growth against the wrong one. Where the
-card names an extraction it must make first, re-measure that too — an extraction
-named against last sprint's line count is the same stale claim as a moved path.
-
 Preserve the story's identity, status bracket, and intent. Text that is
 already correct is left byte-identical — you are not here to rewrite for
 style or restate what a name already carries.
