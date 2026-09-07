@@ -21,6 +21,7 @@ from review_report import (
     read_report,  # noqa: F401
     validate_clearable,  # noqa: F401
 )
+from review_scope import declared_files
 from work import data_root
 
 PLUGIN_ROOT = Path(__file__).parent.parent
@@ -230,30 +231,6 @@ def check_reviewer_motion(
     return ""
 
 
-DECORATION = re.compile(r"\s*\(new\)\s*$")
-
-
-def _bare(entry: str) -> str:
-    """A Files: entry is prose a human wrote for a human, and git prints neither the
-    markdown backticks nor the `(new)` a card puts on a file that does not exist yet.
-    Twice, because either decoration may sit inside the other (issue #45)."""
-    for _ in range(2):
-        entry = DECORATION.sub("", entry.strip().strip("`"))
-    return entry.strip()
-
-
-def declared_files(card: str) -> set[str]:
-    declared, in_files = set(), False
-    for ln in card.splitlines():
-        if ln.startswith("Files:"):
-            in_files, ln = True, ln.removeprefix("Files:")
-        elif in_files and re.match(r"[A-Za-z][A-Za-z ]*:", ln):
-            in_files = False
-        if in_files:
-            declared |= {f for f in (_bare(e) for e in ln.split(",")) if f}
-    return declared
-
-
 def reviewer_strays(start: str, end: str) -> list[str]:
     from close import git
 
@@ -277,6 +254,10 @@ def apply_patch(report: Path, card: str) -> str:
     path = patch_path(report)
     if not path.exists() or not path.stat().st_size:
         return ""
+    try:
+        declared = declared_files(card)
+    except ValueError as error:
+        return str(error)
     checked = git("apply", "--check", str(path), check=False)
     if checked.returncode:
         return f"the reviewer's patch does not apply cleanly: {checked.stderr.strip()}"
@@ -288,7 +269,7 @@ def apply_patch(report: Path, card: str) -> str:
     # .xp/config.yml OUT of .xp/ read as untouched and deleted the gate file.
     # Resetting is safe — check_reviewer_motion proved the tree clean and HEAD here.
     touched = git("diff", "--cached", "--name-only", "--no-renames", "HEAD").stdout.splitlines()
-    if bad := [p for p in touched if p.startswith(".xp/") and p not in declared_files(card)]:
+    if bad := [p for p in touched if p.startswith(".xp/") and p not in declared]:
         git("reset", "-q", "--hard", check=False)  # a refusal must not become a traceback
         return (
             f"the reviewer proposed {', '.join(bad)} — the Files line does not name it."
