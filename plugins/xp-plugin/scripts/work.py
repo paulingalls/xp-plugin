@@ -10,6 +10,7 @@ import os
 import re
 import subprocess
 import sys
+import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -198,6 +199,7 @@ class FalsifierResult:
     returncode: int
     stdout: str
     stderr: str
+    elapsed: float
 
 
 def _bounded_stream(stream: str) -> str:
@@ -208,9 +210,11 @@ def _bounded_stream(stream: str) -> str:
 
 
 def falsifier_result(command: str) -> FalsifierResult:
+    started = time.perf_counter()
     result = subprocess.run(command, shell=True, capture_output=True, text=True, errors="replace")
+    elapsed = time.perf_counter() - started
     return FalsifierResult(
-        result.returncode, _bounded_stream(result.stdout), _bounded_stream(result.stderr)
+        result.returncode, _bounded_stream(result.stdout), _bounded_stream(result.stderr), elapsed
     )
 
 
@@ -279,6 +283,14 @@ def _archived(root: Path, ref: str) -> bool:
     )
 
 
+def _resolved(root: Path, ref: str) -> bool:
+    field = f"Resolves: {ref}"
+    return any(
+        field in text.splitlines() and (text.startswith("## resolved ") or eid == ref)
+        for eid, text in entries(root)
+    )
+
+
 def resolve(root: Path, args: argparse.Namespace) -> int:
     """Resolve a record by SUBSTITUTING a falsifier, never by deleting one.
 
@@ -329,7 +341,7 @@ def archive(root: Path, args: argparse.Namespace) -> int:
     """Record a disposition; `compact` later moves its record's durable prose."""
     if (kind := _kind_of(root, args.ref)) is None:
         return 2
-    if kind not in ("debt", "note"):
+    if kind not in ("debt", "note") and not (kind == "bug" and _resolved(root, args.ref)):
         print(
             f"refused: {args.ref} is a {kind} — only a debt or a note is archivable."
             " Archiving a bug hides its red falsifier: fix it, then resolve it. A"

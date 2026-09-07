@@ -2,6 +2,8 @@
 
 import inspect
 import shlex
+import subprocess
+from unittest.mock import patch
 
 import pytest
 import work as work_module
@@ -14,6 +16,21 @@ from sprint_helpers import (
     sprint,
     work,
 )
+
+
+def test_falsifier_result_measures_the_command_wall_clock():
+    completed = subprocess.CompletedProcess("true", 0, "out", "err")
+    with (
+        patch.object(work_module.time, "perf_counter", side_effect=[10.0, 12.75]),
+        patch.object(work_module.subprocess, "run", return_value=completed),
+    ):
+        result = work_module.falsifier_result("true")
+    assert (result.returncode, result.stdout, result.stderr, result.elapsed) == (
+        0,
+        "out",
+        "err",
+        2.75,
+    )
 
 
 class TestFalsifierBatch:

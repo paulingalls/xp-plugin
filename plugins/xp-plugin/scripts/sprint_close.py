@@ -17,7 +17,14 @@ import overlap
 import stages
 from close import config_flat, default_branch, fail, git, sprint_unrecorded_notice, story_card
 from env import record_sprint_branch, refuse_direct_invocation, sprint_branch
-from falsifier_batch import batch_refusal, corpus
+from falsifier_batch import (
+    ARCHIVED,
+    batch_refusal,
+    corpus,
+    execute_batch,
+    ledger,
+    resolved_offers,
+)
 from sprint_bundle import build
 from work import (
     config_block_value,
@@ -30,6 +37,7 @@ from work import (
 
 PLUGIN_ROOT = Path(__file__).parent.parent
 sprint_stories = milestone.sprint_stories
+__all__ = ["corpus"]
 
 
 def sprint_cards(plan: str, sprint_id: str) -> str:
@@ -315,7 +323,13 @@ def cmd_start(sprint_id: str) -> int:
         return 0
 
     root = data_root()
-    batch = corpus(root)
+    source = entries(root)
+    records = ledger(root, source)
+    batch = [
+        (record.eid, record.head, record.falsifier, record.covered)
+        for record in records
+        if record.state != ARCHIVED
+    ]
     grouped = {}
     for eid, head, falsifier, covered in batch:
         grouped.setdefault(falsifier, []).append((eid, head, covered))
@@ -329,18 +343,22 @@ def cmd_start(sprint_id: str) -> int:
         for command, records in grouped.items()
         if tier and all(covered == "full" for _eid, _head, covered in records)
     }
-    if red := batch_refusal(root, {k: v for k, v in grouped.items() if k not in deferred}):
+    standalone = {key: value for key, value in grouped.items() if key not in deferred}
+    results = execute_batch(standalone)
+    if red := batch_refusal(root, standalone, results):
         return fail(red)
 
     if tier:
         print(f"running the full tier: {tier}")
         if subprocess.run(tier, shell=True).returncode == 0:
-            for records in deferred.values():
-                for eid, head, covered in records:
+            for sources in deferred.values():
+                for eid, head, covered in sources:
                     print(f"trusted {eid} ({head}) via tier {covered}")
-        elif red := batch_refusal(root, deferred):
-            return fail(red)
         else:
+            deferred_results = execute_batch(deferred)
+            results.update(deferred_results)
+            if red := batch_refusal(root, deferred, deferred_results):
+                return fail(red)
             return fail(f"refused: full tier red: {tier}")
 
     if completion := milestone.candidate(plan.read_text(), sprint_id):
@@ -349,12 +367,12 @@ def cmd_start(sprint_id: str) -> int:
 
     disposed = {
         m.group(1)
-        for _eid, text in entries(root)
-        if (m := re.search(r"^(?:Archives|Resolves): (\w+)$", text, re.M))
+        for _eid, text in source
+        if text.startswith(("## archived ", "## resolved "))
+        and (m := re.search(r"^(?:Archives|Resolves): (\w+)$", text, re.M))
     }
-    notes = [
-        text for eid, text in entries(root) if text.startswith("## note ") and eid not in disposed
-    ]
+    notes = [text for eid, text in source if text.startswith("## note ") and eid not in disposed]
+    print("\n" + resolved_offers(records, results))
     print(f"\n{len(members)} stories, {len(notes)} notes to triage. Each note: promote to")
     print("constraints.md/system.md via the retro diff, or archive it.\n")
     for text in notes:
