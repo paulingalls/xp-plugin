@@ -11,7 +11,16 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
+sys.path.insert(
+    0,
+    str(
+        Path(os.environ.get("CLAUDE_PLUGIN_ROOT", Path(__file__).parent.parent))
+        / "scripts"
+        / "session_start"
+    ),
+)
 from env import plugin_manifest_value, plugin_version, run_hook, write_env
+from sprint import sprint_sections
 from work import data_root, entries, plan_path, record_summary, strip_comment
 
 PLUGIN_ROOT = Path(__file__).parent.parent
@@ -257,17 +266,6 @@ def recovery_block() -> str:
 def digest_output() -> str:
     absent = f"session digest ABSENT: {data_root() / 'session.md'}"
     return digest_refusal() or digest_with_staleness() or absent
-
-
-def sprint_sections(text: str) -> tuple[str, list[str]]:
-    at = [
-        (match[1], section.strip())
-        for section in re.split(r"(?=^### )", text, flags=re.M)
-        if (match := re.match(r"### Sprint (\d+)\b", section))
-    ]
-    # int() orders; the id keeps the PLAN'S spelling, the only one a slate matches
-    current = max((raw for raw, _section in at), key=int, default="")
-    return current, [section for raw, section in at if raw == current]
 
 
 def sprint_slice() -> str:
