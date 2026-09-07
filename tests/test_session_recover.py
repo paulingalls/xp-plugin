@@ -346,11 +346,29 @@ class TestTheOpenSprintSelection:
 
         result = run_recovery(repo, tmp_path)
         shown = sprint_slice(result.stdout)
+        hook = run_hook_as(repo, tmp_path, role="lead")
 
         assert result.returncode == 0, result.stderr
         assert "recorded branch sprint-021 selected plan Sprint 21" in shown
         assert "highest plan heading Sprint 22 disagrees" in shown
         assert "OPEN-SENTINEL" in shown and "DRAFT-SENTINEL" not in shown
+        # the reported symptom: NEXT is the only region the SessionStart hook emits,
+        # so a slice-only fix still sends the lead into the drafted sprint
+        assert next_lines(hook.stdout) == ["NEXT: story-021 is [ready] — run `spawn.py story-021`"]
+
+    @pytest.mark.parametrize("recorded", ["sprint-021-hotfix", "021", "release/sprint-021"])
+    def test_a_record_that_is_not_a_sprint_branch_name_refuses_rather_than_guessing(
+        self, tmp_path, recorded
+    ):
+        repo, _g = xp_repo(tmp_path)
+        root = tmp_path / "xp"
+        (root / "plan.md").write_text(self.plan())
+        (root / "sprint_branch").write_text(f"{recorded}\n")
+
+        shown = sprint_slice(run_recovery(repo, tmp_path).stdout)
+
+        assert f"recorded branch {recorded} is not named sprint-N" in shown
+        assert "OPEN-SENTINEL" not in shown and "DRAFT-SENTINEL" not in shown
 
     def test_no_recorded_sprint_uses_and_names_the_highest_numbered_fallback(self, tmp_path):
         repo, _g = xp_repo(tmp_path)

@@ -11,14 +11,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
-sys.path.insert(
-    0,
-    str(
-        Path(os.environ.get("CLAUDE_PLUGIN_ROOT", Path(__file__).parent.parent))
-        / "scripts"
-        / "session_start"
-    ),
-)
+sys.path.insert(0, str(Path(__file__).parent / "session_start"))
 from env import plugin_manifest_value, plugin_version, run_hook, write_env
 from sprint import select_sprint, sprint_sections
 from work import data_root, entries, plan_path, record_summary, strip_comment
@@ -269,7 +262,8 @@ def digest_output() -> str:
 
 
 def sprint_slice() -> str:
-    """All highest-numbered sprint sections, excluding later carried pools."""
+    """Provenance leads: the slice is `recover`'s LAST region and render cuts the tail,
+    so a rule named after its sections is the line a truncated recover loses."""
     _sprint, sections, provenance = select_sprint(read(plan_path()))
     return "\n\n".join([provenance, *sections]) if sections else ""
 
