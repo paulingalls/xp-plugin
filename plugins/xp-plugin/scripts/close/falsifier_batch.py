@@ -63,20 +63,23 @@ def ledger(root: Path, source: list[tuple[str, str]] | None = None) -> list[Ledg
     return out
 
 
-def corpus(root: Path) -> list[tuple[str, str, str, str]]:
+def corpus(
+    root: Path, records: list[LedgerRecord] | None = None
+) -> list[tuple[str, str, str, str]]:
     return [
         (record.eid, record.head, record.falsifier, record.covered)
-        for record in ledger(root)
+        for record in (ledger(root) if records is None else records)
         if record.state != ARCHIVED
     ]
 
 
 def execute_batch(grouped: dict[str, list[tuple[str, str, str]]]) -> dict[str, FalsifierResult]:
     results = {}
-    for falsifier in grouped:
+    for falsifier, records in grouped.items():
         result = falsifier_result(falsifier)
         results[falsifier] = result
-        print(f"falsifier wall clock: {result.elapsed:.3f}s")
+        sources = ", ".join(eid for eid, _head, _covered in records)
+        print(f"falsifier wall clock: {result.elapsed:.3f}s {sources}")
     return results
 
 
@@ -150,7 +153,7 @@ def tier_covers(
 def unavailable_coverage(records: list[LedgerRecord], tiers: dict[str, str]) -> list[str]:
     lines = []
     for record in records:
-        if not record.covered or record.covered == "none":
+        if record.state == ARCHIVED or not record.covered or record.covered == "none":
             continue
         value = tiers.get(record.covered)
         if record.covered not in tiers:

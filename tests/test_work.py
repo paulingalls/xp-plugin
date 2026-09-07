@@ -443,7 +443,7 @@ class TestArchive:
         assert r.returncode == 2, r.stdout
         # not `"bug" in stderr`: argparse's usage line lists every subcommand, so
         # that greened while `archive` did not exist at all
-        assert "only a debt or a note" in r.stderr and "fix it, then resolve it" in r.stderr
+        assert "an already RESOLVED bug" in r.stderr and "then resolve it" in r.stderr
 
     def test_an_archived_record_cannot_be_archived_again(self, tmp_path):
         run(["note", "a discovery"], tmp_path, check=True)

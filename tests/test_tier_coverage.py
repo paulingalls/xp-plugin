@@ -145,7 +145,13 @@ def test_unconfigured_tiers_do_not_claim_or_hide_coverage(tmp_path, tests, reaso
     (tmp_path / "data/work.md").write_text(
         "## debt 2026-01-01T00:00:00Z\nClaim: historical\n"
         f"Falsifier: `{falsifier}`\nCovered by: fast\nFiles: a.py\n\n"
+        "## debt 2026-01-02T00:00:00Z\nClaim: disposed\n"
+        "Falsifier: `true`\nCovered by: fast\nFiles: a.py\n\n"
     )
+    # An archived record left the batch, so a notice about IT is unpayable advice
+    # repeated every close — the ratchet in miniature that this card exists to cut.
+    dropped = work(repo, env, "list").stdout.splitlines()[1].split()[0]
+    assert work(repo, env, "archive", "--ref", dropped, "--disposition", "d").returncode == 0
     filed = work(repo, env, "bug", "--claim", "fixed", "--falsifier", "false", "--files", "a.py")
     honest = work(
         repo,
@@ -164,6 +170,7 @@ def test_unconfigured_tiers_do_not_claim_or_hide_coverage(tmp_path, tests, reaso
     assert honest.returncode == result.returncode == 0
     assert (tmp_path / "falsifier").read_text() == "x"
     assert "coverage" in result.stdout.lower() and str(reason).lower() in result.stdout.lower()
+    assert result.stdout.count("coverage unavailable for") == 1 and dropped not in result.stdout
 
 
 def test_missing_and_explicit_none_coverage_are_distinct(tmp_path):
@@ -194,3 +201,35 @@ def test_missing_and_explicit_none_coverage_are_distinct(tmp_path):
 
     assert result.returncode == 0 and "coverage not recorded (legacy)" in result.stdout
     assert "no tier runs this" in result.stdout
+
+
+@pytest.mark.parametrize(
+    ("tests", "pins", "needle"),
+    (
+        (
+            (("fast", "true"), ("full", "true")),
+            (("fast", "true"),),
+            "tier_coverage_pins missing tier(s): full",
+        ),
+        (
+            (("fast", ""), ("full", "true")),
+            (("fast", ""), ("full", "true")),
+            "unavailable tier(s): fast",
+        ),
+    ),
+)
+def test_an_undeclarable_graph_refuses_before_any_execution(tmp_path, tests, pins, needle):
+    """An unpinned participant and an empty one are the two ways a declaration
+    cannot be checked at all. Both must refuse: a graph accepted unpinned makes
+    the pin optional, which is the whole of constraint 2's objection."""
+    falsifier = command(tmp_path / "falsifier")
+    repo, env, _g = make_repo(tmp_path, config=config(tests, (("fast", "full"),), pins))
+    (tmp_path / "data/work.md").write_text(
+        "## debt 2026-01-01T00:00:00Z\nClaim: covered\n"
+        f"Falsifier: `{falsifier}`\nCovered by: fast\nFiles: a.py\n\n"
+    )
+
+    result = sprint(repo, env, "start")
+
+    assert result.returncode == 2 and needle in result.stderr
+    assert not (tmp_path / "falsifier").exists()

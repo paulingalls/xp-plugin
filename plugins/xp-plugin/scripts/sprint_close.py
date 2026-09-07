@@ -17,7 +17,6 @@ import stages
 from close import config_flat, default_branch, fail, git, sprint_unrecorded_notice, story_card
 from env import record_sprint_branch, refuse_direct_invocation, sprint_branch
 from falsifier_batch import (
-    ARCHIVED,
     batch_refusal,
     corpus,
     execute_batch,
@@ -40,7 +39,6 @@ from work import (
 
 PLUGIN_ROOT = Path(__file__).parent.parent
 sprint_stories = milestone.sprint_stories
-__all__ = ["corpus"]
 
 
 def sprint_cards(plan: str, sprint_id: str) -> str:
@@ -328,11 +326,7 @@ def cmd_start(sprint_id: str) -> int:
     root = data_root()
     source = entries(root)
     records = ledger(root, source)
-    batch = [
-        (record.eid, record.head, record.falsifier, record.covered)
-        for record in records
-        if record.state != ARCHIVED
-    ]
+    batch = corpus(root, records)
     grouped = {}
     for eid, head, falsifier, covered in batch:
         grouped.setdefault(falsifier, []).append((eid, head, covered))
@@ -366,7 +360,6 @@ def cmd_start(sprint_id: str) -> int:
                     print(f"trusted {eid} ({head}) via tier {covered}")
         else:
             deferred_results = execute_batch(deferred)
-            results.update(deferred_results)
             if red := batch_refusal(root, deferred, deferred_results):
                 return fail(red)
             return fail(f"refused: full tier red: {tier}")

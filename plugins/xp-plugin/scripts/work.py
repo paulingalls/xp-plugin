@@ -371,9 +371,10 @@ def archive(root: Path, args: argparse.Namespace) -> int:
         return 2
     if kind not in ("debt", "note") and not (kind == "bug" and _resolved(root, args.ref)):
         print(
-            f"refused: {args.ref} is a {kind} — only a debt or a note is archivable."
-            " Archiving a bug hides its red falsifier: fix it, then resolve it. A"
-            " resolved or archived record is already disposed of; choose an open one.",
+            f"refused: {args.ref} is a {kind} — only a debt, a note or an already"
+            " RESOLVED bug is archivable. Archiving an unresolved bug hides its red"
+            " falsifier: fix it, then resolve it, then archive it. A resolved or"
+            " archived record is already disposed of; choose an open one.",
             file=sys.stderr,
         )
         return 2
@@ -406,7 +407,7 @@ def main() -> int:
     r = sub.add_parser("resolve")
     r.add_argument("--ref", required=True, help="record id from `list`")
     r.add_argument("--falsifier", required=True, help="replacement; must be GREEN now")
-    r.add_argument("--covered-by", metavar="TIER", help="a configured tier that runs it")
+    r.add_argument("--covered-by", metavar="TIER", help="REQUIRED: a configured tier, or `none`")
     args = parser.parse_args()
 
     if args.kind == "env":

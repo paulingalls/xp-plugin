@@ -9,7 +9,8 @@ from sprint_helpers import work as project_work
 
 WORK = PLUGIN / "scripts" / "work.py"
 sys.path.insert(0, str(WORK.parent))
-import sprint_close  # noqa: E402
+sys.path.insert(0, str(WORK.parent / "close"))
+import falsifier_batch  # noqa: E402
 import work  # noqa: E402
 
 
@@ -65,7 +66,7 @@ def seed(root):
 def execute_corpus(root):
     return [
         (ref, headline, command, covered, subprocess.run(command, shell=True).returncode)
-        for ref, headline, command, covered in sprint_close.corpus(root)
+        for ref, headline, command, covered in falsifier_batch.corpus(root)
     ]
 
 

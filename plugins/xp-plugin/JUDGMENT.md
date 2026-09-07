@@ -15,8 +15,8 @@
 - **bug** — claim + red falsifier + files; fix now. No red=debt/note.
 - **debt** — claim + green falsifier + files; planning schedules/archives.
 - **resolve** — substitutes a green falsifier; ids: `work.py list`.
-- **coverage** — optional TIER for bug/debt; resolve: required TIER|none. Human
-  selection; pins checked.
+- **coverage** — optional TIER for bug/debt; resolve: required TIER|none. The
+  selection claim stays UNCHECKED; only tier pins are.
 - **note** — value tradeoff or discovery; close promotes/archives; next-story
   directives go on card.
 - **Polarity** — debt: green = still OK; red = materialised; green from the flaw =
