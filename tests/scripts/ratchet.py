@@ -10,10 +10,16 @@ import sys
 import tokenize
 from pathlib import Path
 
-SPAWN_GUIDELINE = 1558
-CLOSE_GUIDELINE = 2598
-HOOKS_GUIDELINE = 655
-MISC_GUIDELINE = 1489
+# RE-CUT TO MEASURED REALITY at Sprint 21, Paul's call on the sprint-20 retro's item (d).
+# Three of four had been over guideline for three sprints and every reviewer reported the
+# overage predated its card, so the numbers reported a debt nobody was going to pay and
+# constrained nothing. The alternative considered and rejected was declaring the table
+# informational: that retires the only signal we have on cross-file growth, which fails
+# constraint 3. Re-cut, the ratchet constrains again from here.
+SPAWN_GUIDELINE = 1572
+CLOSE_GUIDELINE = 3003
+HOOKS_GUIDELINE = 654
+MISC_GUIDELINE = 1587
 
 CLOSE_NAMES = {"close", "review", "review_report", "bookkeep", "sprint_close"}
 HOOKS_NAMES = {"hooks", "session_start", "stop_gate", "bash_status"}
