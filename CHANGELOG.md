@@ -4,6 +4,28 @@ Release notes started at v0.6.0; earlier entries are summarized from their
 tag and merge messages. Full detail lives in the merge history and the
 per-sprint review reports.
 
+## v0.21.5 — every plan.md writer takes the lock
+
+`work.edit_plan()` does read-modify-write inside an exclusive flock, and
+`flip_card` says why: a sibling lane may be flipping its own card right now. But
+only two callers used it. `slate_review.py` restored a card with a bare
+read-then-write, and the card-refresher subagent edits the plan by shell, detached
+for minutes, with nothing about the lock in its charter.
+
+"Different cards cannot collide" holds only among `edit_plan` callers. An unlocked
+writer rewrites the whole file from whatever it read, so a `ready` that flipped one
+card under the lock was erased by a refresher that had read a different card
+minutes earlier — no error on either side, and the ready marker left disagreeing
+with the plan.
+
+Reported from a consuming project (#69), which also narrowed it correctly: `ready`
+and `land` interleave fine, so the lock was not widened. Only the unlocked writers
+changed.
+
+This is the code cause of a rule this project had been paying in prose — "never
+write plan.md while a refresh is running" — which constraint 5 says belongs in the
+code rather than in a lead's memory.
+
 ## v0.21.4 — a declared path is never silently un-declared
 
 `declared_files()` split the `Files:` block on commas before normalising each
