@@ -6,9 +6,10 @@ exists in both files."""
 
 import json
 import subprocess
+import sys
 
 import pytest
-from spawn_helpers import make_repo, seed_refresh_receipt, spawn
+from spawn_helpers import SPAWN, make_repo, seed_refresh_receipt, spawn
 
 
 class TestReadyCredential:
@@ -25,6 +26,9 @@ class TestCardRefreshGate:
     step mandated in prose and enforced by nothing is a step that gets skipped."""
 
     RECEIPT = ("data", "card-refreshes", "story-042.json")
+    # A Files block that ran on into the card's own prose: the terminator wants a
+    # `Label:` line and this one carries a comma, so the paragraph parses as entries.
+    PROSE = "src/thing.py\nNOTE ON THE PATHS, stated here: rationale"
 
     def receipt(self, tmp_path):
         return tmp_path.joinpath(*self.RECEIPT)
@@ -120,6 +124,70 @@ class TestCardRefreshGate:
         r = spawn(repo, env, "ready", "story-042")
         assert r.returncode == 2, r.stdout
         assert "does not cover src/thing.py" in r.stderr, r.stderr
+
+    def digest(self, repo, env):
+        """This card's digest, taken by the production function, so the receipt
+        below matches the card it is stamped onto."""
+        script = (
+            "import sys\n"
+            "sys.path.insert(0, sys.argv[1]); sys.path.insert(0, sys.argv[1] + '/spawn')\n"
+            "from close import story_card\n"
+            "from work import card_digest, plan_path\n"
+            "card, _status = story_card(plan_path().read_text(), 'story-042')\n"
+            "print(card_digest(card))\n"
+        )
+        r = subprocess.run(
+            [sys.executable, "-c", script, str(SPAWN.parent)],
+            cwd=repo,
+            env=env,
+            capture_output=True,
+            text=True,
+        )
+        assert r.returncode == 0, r.stderr
+        return r.stdout.strip()
+
+    def test_a_files_block_that_swallowed_prose_refuses_the_refresh_and_writes_no_receipt(
+        self, tmp_path
+    ):
+        """`declared_files` raises on an entry that is not a path, and the refresh
+        calls it AFTER the refresher agent has run for minutes and cleared its own
+        marker. A traceback there strands the story: no receipt, so the next `ready`
+        says no refresh has run, and the whole leg is paid again."""
+        repo, env, _g = make_repo(tmp_path, status="planned", files=self.PROSE)
+        refused = seed_refresh_receipt(repo, env, refuses=True)
+        assert refused.returncode != 0, refused.stdout
+        assert "Traceback" not in refused.stderr, refused.stderr
+        assert "NOTE ON THE PATHS" in refused.stderr, refused.stderr
+        assert "Repair the Files line" in refused.stderr, refused.stderr
+        assert not self.receipt(tmp_path).exists()
+
+    def test_a_receipt_older_than_the_parse_refuses_the_mint_instead_of_crashing(self, tmp_path):
+        """The upgrade path, and the only way to reach `check_refresh`'s own parse:
+        a receipt written when the entry still parsed carries a digest that still
+        matches, so the mint gets past every check above and into the raise."""
+        repo, env, _g = make_repo(tmp_path, status="planned", files=self.PROSE)
+        self.receipt(tmp_path).parent.mkdir(parents=True, exist_ok=True)
+        self.receipt(tmp_path).write_text(
+            json.dumps({"digest": self.digest(repo, env), "files": {"src/thing.py": None}})
+        )
+        r = spawn(repo, env, "ready", "story-042")
+        assert r.returncode == 2, r.stdout
+        assert "Traceback" not in r.stderr, r.stderr
+        assert "NOTE ON THE PATHS" in r.stderr and "Repair the Files line" in r.stderr, r.stderr
+        assert "[ready]" not in (tmp_path / "data" / "plan.md").read_text()
+
+    def test_spawn_refuses_a_card_it_cannot_parse_rather_than_tracing_back(self, tmp_path):
+        """`cmd_spawn` parses the Files line too, and `amend` — which rewrites the
+        credential from the card without reading it — is the production path that
+        walks a minted card past the mint's gate and into that call."""
+        repo, env, _g = make_repo(tmp_path)
+        plan = tmp_path / "data" / "plan.md"
+        plan.write_text(plan.read_text().replace("Files: src/thing.py", f"Files: {self.PROSE}"))
+        assert spawn(repo, env, "amend", "story-042", "--reason", "another file").returncode == 0
+        r = spawn(repo, env, "story-042", "--dry-run")
+        assert r.returncode == 2, r.stdout
+        assert "Traceback" not in r.stderr, r.stderr
+        assert "NOTE ON THE PATHS" in r.stderr and "spawn.py amend story-042" in r.stderr, r.stderr
 
     def test_the_gate_is_never_inherited_by_a_caller_that_did_not_ask_for_it(self):
         """`mint` carries no default, so every caller must decide whether card
