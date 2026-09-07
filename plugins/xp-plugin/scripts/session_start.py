@@ -20,7 +20,7 @@ sys.path.insert(
     ),
 )
 from env import plugin_manifest_value, plugin_version, run_hook, write_env
-from sprint import sprint_sections
+from sprint import select_sprint, sprint_sections
 from work import data_root, entries, plan_path, record_summary, strip_comment
 
 PLUGIN_ROOT = Path(__file__).parent.parent
@@ -270,7 +270,8 @@ def digest_output() -> str:
 
 def sprint_slice() -> str:
     """All highest-numbered sprint sections, excluding later carried pools."""
-    return "\n\n".join(sprint_sections(read(plan_path()))[1])
+    _sprint, sections, provenance = select_sprint(read(plan_path()))
+    return "\n\n".join([provenance, *sections]) if sections else ""
 
 
 CARD = re.compile(r"^#### (\S+) .* \[([^]\n]+)\]\s*$", re.M)

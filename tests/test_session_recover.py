@@ -15,6 +15,10 @@ def next_lines(output):
     return [line for line in output.splitlines() if line.startswith("NEXT:")]
 
 
+def sprint_slice(output):
+    return output.split("## sprint slice\n", 1)[1].split("--- END project content ---", 1)[0]
+
+
 class TestTheNextLoopAction:
     @pytest.mark.parametrize(
         ("status", "handoff", "expected"),
@@ -321,6 +325,94 @@ class TestTheNextLoopAction:
         assert session_start.next_action() == (
             "NEXT: recovery required — next-action state is unreadable: boom"
         )
+
+
+class TestTheOpenSprintSelection:
+    @staticmethod
+    def plan(open_id="21"):
+        return (
+            f"# plan\n### Sprint {open_id}\n"
+            "#### story-021 — open   [ready]\nOPEN-SENTINEL\n"
+            "### Sprint 22\n#### story-022 — draft   [planned]\nDRAFT-SENTINEL\n"
+        )
+
+    def test_the_recorded_sprint_wins_over_a_higher_draft_and_reports_the_disagreement(
+        self, tmp_path
+    ):
+        repo, _g = xp_repo(tmp_path)
+        root = tmp_path / "xp"
+        (root / "plan.md").write_text(self.plan())
+        (root / "sprint_branch").write_text("sprint-021\n")
+
+        result = run_recovery(repo, tmp_path)
+        shown = sprint_slice(result.stdout)
+
+        assert result.returncode == 0, result.stderr
+        assert "recorded branch sprint-021 selected plan Sprint 21" in shown
+        assert "highest plan heading Sprint 22 disagrees" in shown
+        assert "OPEN-SENTINEL" in shown and "DRAFT-SENTINEL" not in shown
+
+    def test_no_recorded_sprint_uses_and_names_the_highest_numbered_fallback(self, tmp_path):
+        repo, _g = xp_repo(tmp_path)
+        (tmp_path / "xp" / "plan.md").write_text(self.plan())
+
+        result = run_recovery(repo, tmp_path)
+        shown = sprint_slice(result.stdout)
+
+        assert result.returncode == 0, result.stderr
+        assert (
+            "no sprint branch recorded; highest-numbered fallback selected plan Sprint 22" in shown
+        )
+        assert "DRAFT-SENTINEL" in shown and "OPEN-SENTINEL" not in shown
+
+    def test_a_recorded_sprint_absent_from_the_plan_refuses_instead_of_falling_back(self, tmp_path):
+        repo, _g = xp_repo(tmp_path)
+        root = tmp_path / "xp"
+        (root / "plan.md").write_text(self.plan())
+        (root / "sprint_branch").write_text("sprint-023\n")
+
+        recovery = run_recovery(repo, tmp_path)
+        shown = sprint_slice(recovery.stdout)
+        hook = run_hook_as(repo, tmp_path, role="lead")
+
+        assert recovery.returncode == 0 and "sprint slice UNAVAILABLE" in shown
+        assert "sprint-023 has no matching heading" in shown
+        assert "Sprint 21, Sprint 22" in shown
+        assert "OPEN-SENTINEL" not in shown and "DRAFT-SENTINEL" not in shown
+        assert next_lines(hook.stdout) == [
+            "NEXT: recovery required — next-action state is unreadable: recorded branch "
+            "sprint-023 has no matching heading in the plan; available headings: "
+            "Sprint 21, Sprint 22"
+        ]
+
+    @pytest.mark.parametrize("open_id", ["021", "21"])
+    def test_the_recorded_branch_matches_both_plan_padding_directions(self, tmp_path, open_id):
+        repo, _g = xp_repo(tmp_path)
+        root = tmp_path / "xp"
+        (root / "plan.md").write_text(self.plan(open_id))
+        (root / "sprint_branch").write_text("sprint-021\n")
+
+        shown = sprint_slice(run_recovery(repo, tmp_path).stdout)
+
+        assert f"recorded branch sprint-021 selected plan Sprint {open_id}" in shown
+        assert f"### Sprint {open_id}" in shown and "OPEN-SENTINEL" in shown
+        assert "UNAVAILABLE" not in shown and "DRAFT-SENTINEL" not in shown
+
+    def test_an_empty_sprint_branch_record_costs_only_the_sprint_slice(self, tmp_path):
+        repo, _g = xp_repo(tmp_path)
+        root = tmp_path / "xp"
+        (root / "plan.md").write_text(self.plan())
+        (root / "sprint_branch").write_text("")
+
+        recovery = run_recovery(repo, tmp_path)
+        hook = run_hook_as(repo, tmp_path, role="lead")
+
+        assert recovery.returncode == 0
+        assert "sprint slice UNAVAILABLE" in recovery.stdout
+        assert "sprint_branch is empty" in recovery.stdout
+        assert "## digest" in recovery.stdout and "## recovery block" in recovery.stdout
+        assert len(next_lines(hook.stdout)) == 1 and "sprint_branch is empty" in hook.stdout
+        assert "CONSTRAINT-SENTINEL" in hook.stdout
 
 
 class TestARegionThatProducedNothing:
