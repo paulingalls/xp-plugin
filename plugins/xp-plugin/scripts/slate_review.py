@@ -334,7 +334,8 @@ def _run_refresh(story_id: str, out: Path, dry_run: bool) -> int:
     if not findings:
         return fail(f"refused: the card refresher wrote no findings at {out.resolve()}")
     review_marker(story_id, "refresh").unlink(missing_ok=True)
-    ready.write_refresh_receipt(story_id, new_card, new_card != card)
+    if problem := ready.write_refresh_receipt(story_id, new_card, new_card != card):
+        return fail(problem)
     return 0
 
 

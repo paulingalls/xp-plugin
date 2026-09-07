@@ -150,9 +150,11 @@ class TestTheFilesLineIsProseNotAPath:
         assert "(new)" in contract and "allowed" in contract
         assert "no other parentheticals" in contract
         assert "rationale" in contract and "card body" in contract
-        files_line = next(line for line in template.splitlines() if line.startswith("Files:"))
-        rendered = template.replace(files_line, "Files: src.py, generated.py (new)")
-        assert declared_files(rendered) == {"src.py", "generated.py"}
+        # The template AS SHIPPED, never a substituted line: its own example is the
+        # one card every consuming project starts from, and the placeholder it
+        # replaced (`<the files it will touch>`) does not parse.
+        assert declared_files(template) == {"path/to/file.py", "path/to/new.py"}
+        assert "the files it will touch" not in template
 
     def test_an_undeclared_path_is_still_refused_when_others_are_decorated(self, tmp_path):
         """Normalising must not turn the guard off — the inverse of the two above,

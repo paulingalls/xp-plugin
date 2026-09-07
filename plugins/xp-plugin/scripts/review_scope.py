@@ -30,7 +30,8 @@ def declared_files(card: str) -> set[str]:
                 if not re.fullmatch(r"[^\s()[\]{}]+", path := _bare(raw)):
                     raise ValueError(
                         f"the Files entry {raw!r} is not a plausible path; use bare"
-                        " comma-separated paths and move rationale into the card body"
+                        " comma-separated paths, end the block at the next `Label:` line,"
+                        " and keep rationale in the card body"
                     )
                 declared.add(path)
     return declared
