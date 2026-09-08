@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Inject the lead profile without breaking a session on failure."""
 
-import contextlib
 import json
 import os
 import re
@@ -12,7 +11,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 sys.path.insert(0, str(Path(__file__).parent / "session_start"))
-from env import plugin_manifest_value, plugin_version, run_hook, write_env
+from env import plugin_manifest_value, plugin_version, refresh_env, run_hook
 from sprint import select_sprint, sprint_sections
 from work import data_root, entries, plan_path, record_summary, strip_comment
 
@@ -463,23 +462,27 @@ def main(data: dict) -> int:
     root = Path(top)
     if not top or not (root / ".xp").is_dir():
         return 0
-    with contextlib.suppress(Exception):
-        write_env(PLUGIN_ROOT, plugin_version(PLUGIN_ROOT))
-    install = safe(lambda: install_status()[1])
-    if os.environ.get("XP_ROLE", "lead") != "lead":
-        print(teammate_marker() + (f"\n{BEGIN}\n{install}\n{END}" if install else ""))
+    role = os.environ.get("XP_ROLE", "lead")
+    refresh = refresh_env(PLUGIN_ROOT, plugin_version(PLUGIN_ROOT)) if role == "lead" else ""
+    environment = "\n".join(filter(None, (refresh, safe(lambda: install_status()[1]))))
+    if role != "lead":
+        print(teammate_marker() + (f"\n{BEGIN}\n{environment}\n{END}" if environment else ""))
         return 0
 
     rules = safe(lambda: read(root / ".xp" / "constraints.md"))
+    heading = safe(lambda: banner(root))
+    if refresh:
+        _before, scripts, invocation = heading.partition(" · scripts: ")
+        heading = heading.partition(" · ")[0] + scripts + invocation
     regions = [
-        ("banner", safe(lambda: banner(root))),
+        ("banner", heading),
         ("config notice", safe(lambda: config_age(root))),
         ("VALUES.md", safe(lambda: read(PLUGIN_ROOT / "VALUES.md"))),
         ("JUDGMENT.md", safe(lambda: read(PLUGIN_ROOT / "JUDGMENT.md"))),
         ("PROCESS.md", safe(lambda: read(PLUGIN_ROOT / "PROCESS.md"))),
         ("", BEGIN),
         ("NEXT", next_action()),
-        ("install notice", install),
+        ("environment notice", environment),
         ("constraints.md", rules),
         ("", END),
     ]

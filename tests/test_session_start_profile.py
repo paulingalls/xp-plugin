@@ -43,7 +43,7 @@ class TestTheRealProfileAgainstTheRealCap:
     caused by the retro that added constraint 15 so the lead would read it.
     """
 
-    def run_real(self, hook=HOOK):
+    def run_real(self, tmp_path, hook=HOOK, recorded_root=None):
         """XP_ROLE PINNED, and the marker asserted absent: the whole suite runs
         under a reviewer role at every sprint review, where the hook's role gate
         prints its 121-char teammate line and returns before a profile is built.
@@ -57,6 +57,26 @@ class TestTheRealProfileAgainstTheRealCap:
         transcript, where the sandbox denied the data root and this script's
         sibling falsifier died on `out.index` instead (AUDIT.md §10).
         """
+        sys.path.insert(0, str(HOOK.parent))
+        from env import data_root, plugin_version
+
+        source = data_root()
+        isolated = tmp_path / "profile-data"
+        isolated.mkdir()
+        for name in ("plan.md", "installed-claude-version", "installed-codex-version"):
+            if (path := source / name).exists():
+                shutil.copy2(path, isolated / name)
+        if (source / "markers").exists():
+            shutil.copytree(source / "markers", isolated / "markers")
+        plugin = hook.parent.parent
+        (isolated / "env.json").write_text(
+            json.dumps(
+                {
+                    "plugin_root": str(plugin if recorded_root is None else recorded_root),
+                    "plugin_version": plugin_version(plugin),
+                }
+            )
+        )
         repo = Path(__file__).parent.parent
         payload = {"hook_event_name": "SessionStart", "cwd": str(repo)}
         out = subprocess.run(
@@ -65,7 +85,7 @@ class TestTheRealProfileAgainstTheRealCap:
             capture_output=True,
             text=True,
             cwd=repo,
-            env=dict(os.environ) | {"XP_ROLE": "lead"},
+            env=dict(os.environ) | {"XP_ROLE": "lead", "XP_DATA": str(isolated)},
         ).stdout
         assert "teammate session" not in out, "the role gate ate the profile; this asserts nothing"
         assert out.strip(), "the hook printed nothing (stderr holds the traceback); nothing asserts"
@@ -94,7 +114,7 @@ class TestTheRealProfileAgainstTheRealCap:
         delivered = [heading for heading in headings if heading in out]
         assert len(delivered) == 15, f"only {len(delivered)}/15 constraints reached the lead"
 
-    def test_this_repos_profile_delivers_every_constraint_in_bytes(self):
+    def test_this_repos_profile_delivers_every_constraint_in_bytes(self, tmp_path):
         """Bug ab6a1354, on the HOOK'S OWN STDOUT — not on a sum of parts, which
         misses the joins and the trust markers by 117 chars.
 
@@ -105,7 +125,7 @@ class TestTheRealProfileAgainstTheRealCap:
 
         assert all(head + tail == CODEX_OUTPUT_BOUND for head, tail in CODEX_RETAINED_BYTES)
         assert CODEX_OUTPUT_BOUND - OUTPUT_CAP == HEADROOM
-        out = self.run_real()
+        out = self.run_real(tmp_path)
         assert len(out.encode()) <= OUTPUT_CAP, (
             f"{len(out.encode())} bytes over {OUTPUT_CAP}; NEXT is the newest region, but any"
             " of them can be the one that grew — read the profile, do not assume"
@@ -121,12 +141,18 @@ class TestTheRealProfileAgainstTheRealCap:
             "VALUES sets the stage and PROCESS is the loop; they lead the profile"
         )
 
+    def test_a_root_move_notice_preserves_every_constraint(self, tmp_path):
+        previous = HOOK.parents[4] / "story-123" / "plugins" / "xp-plugin"
+        out = self.run_real(tmp_path, recorded_root=previous)
+        assert repr(str(previous)) in out and repr(str(HOOK.parent.parent)) in out
+        self.assert_all_constraints_delivered(out)
+
     def test_lowering_the_real_hook_cap_reds_the_delivery_check(self, tmp_path):
         plugin = tmp_path / "xp-plugin"
         shutil.copytree(HOOK.parent.parent, plugin)
         hook = plugin / "scripts" / "session_start.py"
         hook.write_text(hook.read_text().replace("OUTPUT_CAP = 9_500", "OUTPUT_CAP = 7_500"))
-        out = self.run_real(hook)
+        out = self.run_real(tmp_path, hook)
         with pytest.raises(AssertionError, match=r"only \d+/15 constraints"):
             self.assert_all_constraints_delivered(out)
 
@@ -146,27 +172,27 @@ class TestTheRealProfileAgainstTheRealCap:
             f" against codex's {CODEX_EXEC_TOKEN_BOUND}-token exec budget"
         )
 
-    def test_digest_recovery_and_sprint_slice_are_not_injected(self):
-        out = self.run_real()
+    def test_digest_recovery_and_sprint_slice_are_not_injected(self, tmp_path):
+        out = self.run_real(tmp_path)
         for removed in ("branch:", "recent work.md entries:", "stories:", "Session digest"):
             assert removed not in out, f"{removed!r} still spends the SessionStart payload"
 
-    def test_a_truncated_profile_names_the_constraints_it_dropped(self):
+    def test_a_truncated_profile_names_the_constraints_it_dropped(self, tmp_path):
         """The budget is allowed not to fit. It is NOT allowed to hide which
         rules it cut: a silently-absent constraint is one the lead never knew it
         was breaking, which is why session_start orders them ahead of the digest
         in the first place."""
-        out = self.run_real()
+        out = self.run_real(tmp_path)
         if "[truncated" not in out:
             return  # everything fit; nothing to name
         marker = out[out.index("[truncated") :]
         assert "constraints.md" in marker, f"the cut does not say where to read them: {marker}"
         assert re.search(r"CONSTRAINTS [\d, ]+ ARE NOT ABOVE", marker), marker
 
-    def test_the_constraints_it_names_are_genuinely_absent(self):
+    def test_the_constraints_it_names_are_genuinely_absent(self, tmp_path):
         """And the claim must be TRUE — a marker naming the wrong numbers sends
         the lead to re-read rules it already has and to skip ones it does not."""
-        out = self.run_real()
+        out = self.run_real(tmp_path)
         if "[truncated" not in out:
             return
         body, marker = out.split("[truncated", 1)

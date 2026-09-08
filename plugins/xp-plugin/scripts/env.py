@@ -107,17 +107,19 @@ def plugin_version(root: Path) -> str:
     return plugin_manifest_value(root, "version")
 
 
-def write_env(root: Path, version: str) -> None:
+def write_env(root: Path, version: str) -> str:
     path = env_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     try:
         current = json.loads(path.read_text())
     except FileNotFoundError:
         current = {}
+    previous = current.get("plugin_root") if "plugin_root" in current else ""
+    previous = previous if isinstance(previous, str) else repr(previous)
     current["plugin_root"] = str(root)
     current["plugin_version"] = version
-    # Per-writer temp name: a lead session and a spawned teammate's SessionStart
-    # share one data root, and one temp name turns last-writer-wins into a torn file.
+    # Setup and concurrent lead sessions share one data root; one temp name turns
+    # last-writer-wins into a torn file.
     tmp = path.with_name(f"{path.name}.{os.getpid()}.tmp")
     try:
         tmp.write_text(json.dumps(current, indent=2, sort_keys=True) + "\n")
@@ -126,6 +128,17 @@ def write_env(root: Path, version: str) -> None:
         with contextlib.suppress(OSError):
             tmp.unlink()
         raise
+    return previous
+
+
+def refresh_env(root: Path, version: str) -> str:
+    try:
+        previous = write_env(root, version)
+    except Exception as exc:
+        return f"plugin root refresh FAILED for {str(env_path())!r}: {exc!r}"
+    if previous and previous != str(root):
+        return f"plugin root moved from {previous!r} to {str(root)!r}"
+    return ""
 
 
 REFRESH = (
