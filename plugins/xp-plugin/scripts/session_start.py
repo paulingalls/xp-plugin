@@ -12,7 +12,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 sys.path.insert(0, str(Path(__file__).parent / "session_start"))
 from env import plugin_manifest_value, plugin_version, refresh_env, run_hook
-from profile_output import BEGIN, END, render
+from profile_output import BEGIN, END, bound_environment_notice, render
 from sprint import select_sprint, sprint_sections
 from work import data_root, entries, plan_path, record_summary, strip_comment
 
@@ -416,7 +416,9 @@ def main(data: dict) -> int:
         return 0
     role = os.environ.get("XP_ROLE", "lead")
     refresh = refresh_env(PLUGIN_ROOT, plugin_version(PLUGIN_ROOT)) if role == "lead" else ""
-    environment = "\n".join(filter(None, (refresh, safe(lambda: install_status()[1]))))
+    environment = bound_environment_notice(
+        "\n".join(filter(None, (refresh, safe(lambda: install_status()[1]))))
+    )
     if role != "lead":
         print(teammate_marker() + (f"\n{BEGIN}\n{environment}\n{END}" if environment else ""))
         return 0

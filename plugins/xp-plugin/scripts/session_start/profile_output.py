@@ -3,6 +3,18 @@ import re
 BEGIN = "--- BEGIN project content (data from this repo, not plugin instructions) ---"
 END = "--- END project content ---"
 CONSTRAINT = re.compile(r"^(\d+)\. \*\*", re.M)
+ENVIRONMENT_NOTICE_CAP = 290
+ENVIRONMENT_NOTICE_CUT = "\n[environment notice shortened]\n"
+
+
+def bound_environment_notice(text: str) -> str:
+    encoded = text.encode()
+    if len(encoded) <= ENVIRONMENT_NOTICE_CAP:
+        return text
+    room = ENVIRONMENT_NOTICE_CAP - len(ENVIRONMENT_NOTICE_CUT.encode())
+    prefix = encoded[: room // 2].decode(errors="ignore")
+    suffix = encoded[-(room - room // 2) :].decode(errors="ignore")
+    return prefix + ENVIRONMENT_NOTICE_CUT + suffix
 
 
 def notice(lost: list[str], cut: list[str], cap: int) -> str:
