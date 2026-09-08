@@ -146,11 +146,16 @@ class TestTheRealProfileAgainstTheRealCap:
             "VALUES sets the stage and PROCESS is the loop; they lead the profile"
         )
 
-    def test_a_root_move_notice_preserves_every_constraint(self, tmp_path):
-        previous = HOOK.parents[4] / "story-123" / "plugins" / "xp-plugin"
+    @pytest.mark.parametrize("suffix", ["a" * 5_000, "界" * 2_500])
+    def test_a_root_move_notice_preserves_every_constraint(self, tmp_path, suffix):
+        previous = Path(str(HOOK.parents[4] / "story-123") + suffix) / "plugins" / "xp-plugin"
         out = self.run_real(tmp_path, recorded_root=previous)
-        assert repr(str(previous)) in out and repr(str(HOOK.parent.parent)) in out
+        from session_start import OUTPUT_CAP
+
         self.assert_all_constraints_delivered(out)
+        assert "plugin root moved from" in out
+        assert "[environment notice shortened]" in out
+        assert len(out.encode()) <= OUTPUT_CAP
 
     def test_lowering_the_real_hook_cap_reds_the_delivery_check(self, tmp_path):
         plugin = tmp_path / "xp-plugin"

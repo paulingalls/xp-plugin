@@ -1,6 +1,7 @@
 import re
 from pathlib import Path
 
+import review_scope
 from close import git
 from work import data_root, entries, work_entries_since
 
@@ -8,18 +9,25 @@ FALSIFIER = re.compile(r"^Falsifier: `(.+)`$", re.M)
 COVERED_BY = re.compile(r"^Covered by: (.+)$", re.M)
 RESOLVES = re.compile(r"^Resolves: (\w+)$", re.M)
 ARCHIVES = re.compile(r"^Archives: (\w+)$", re.M)
-FILES = re.compile(r"^Files: (.*)$", re.M)
 
 
 def _declared_files(text: str) -> list[str]:
-    match = FILES.search(text)
-    paths = [path.strip() for path in match.group(1).split(",")] if match else []
-    return [] if not paths or "unknown" in paths else [path for path in paths if path]
+    line = next(
+        (line.removeprefix("Files:") for line in text.splitlines() if line.startswith("Files:")),
+        "",
+    )
+    paths = review_scope.file_entries(line)
+    return [] if not paths or "unknown" in paths else paths
 
 
 def source_files(root: Path, refs: list[str]) -> tuple[list[str], list[str], str]:
     records = dict(entries(root))
-    found = {ref: _declared_files(records.get(ref, "")) for ref in refs}
+    found = {}
+    for ref in refs:
+        try:
+            found[ref] = _declared_files(records.get(ref, ""))
+        except ValueError as exc:
+            return [], [], f"record {ref} has an invalid Files declaration: {exc}"
     unresolved = [ref for ref in refs if not found[ref]]
     if unresolved:
         archive_path = root / "archive.md"
@@ -34,7 +42,10 @@ def source_files(root: Path, refs: list[str]) -> tuple[list[str], list[str], str
                 re.M | re.S,
             )
             if section:
-                found[ref] = _declared_files(section.group(1))
+                try:
+                    found[ref] = _declared_files(section.group(1))
+                except ValueError as exc:
+                    return [], [], f"record {ref} has an invalid Files declaration: {exc}"
     paths = list(dict.fromkeys(path for ref in refs for path in found[ref]))
     return paths, [ref for ref in refs if not found[ref]], ""
 

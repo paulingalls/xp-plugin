@@ -307,10 +307,11 @@ def cmd_land(sprint_id: str, dry_run: bool) -> int:
     red, receipt = overlap.gates(ref, [], "full", pending, prior)
     if red:
         return fail(_clearance_failure(red, bound) if bound else red)
-    state["full_tier"] = receipt
+    # The MERGED marker, not the snapshot read before the tier: a round recorded inside
+    # that window reaches the disclosure below only if this reads what the write returned.
     try:
-        write_sprint_state(marker, state)
-    except OSError as exc:
+        state = write_sprint_state(marker, {"full_tier": receipt})
+    except (OSError, ValueError) as exc:
         return fail(f"refused: could not persist the full tier receipt at {marker}: {exc}")
     action = "reused" if receipt["reused"] else "ran"
     print(

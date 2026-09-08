@@ -192,7 +192,8 @@ class InstallProbeCases:
         output = result.stdout + result.stderr
         assert result.returncode == 0
         assert "refused:" not in output
-        assert repr(str(installed)) in output and repr(str(running)) in output
+        assert "plugin root moved from" in output
+        assert "[environment notice shortened]" in output
         assert "installed 0.21.4" in output and "running 0.22.0" in output
         assert json.loads(env_path.read_text()) == {
             "plugin_root": str(running),

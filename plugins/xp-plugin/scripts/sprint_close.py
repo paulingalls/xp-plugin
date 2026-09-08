@@ -13,6 +13,7 @@ import close as story_close
 import lifecycle as lc
 import milestone
 import overlap
+import plan_writer
 import stages
 from close import config_flat, default_branch, fail, git, sprint_unrecorded_notice, story_card
 from env import record_sprint_branch, refuse_direct_invocation, sprint_branch
@@ -64,8 +65,21 @@ def read_sprint_state(sprint_id: str) -> tuple[Path, dict, str]:
     return path, state, ""
 
 
-def write_sprint_state(path: Path, state: dict) -> None:
-    path.write_text(json.dumps(state))
+def write_sprint_state(path: Path, changes, remove=()) -> dict:
+    def update(current: dict) -> None:
+        if callable(changes):
+            changes(current)
+        else:
+            rounds = current.setdefault("rounds", []) if changes.get("rounds") else []
+            for round_ in changes.get("rounds", []):
+                if round_ not in rounds:
+                    rounds.append(round_)
+            current.update({key: value for key, value in changes.items() if key != "rounds"})
+            for key in remove:
+                current.pop(key, None)
+
+    lock = data_root() / "locks" / f"sprint-{path.stem}.lock"
+    return plan_writer.locked_json_edit(path, lock, update, "sprint marker")
 
 
 def cmd_review(sprint_id: str, dry_run: bool) -> int:
@@ -145,7 +159,7 @@ def cmd_review(sprint_id: str, dry_run: bool) -> int:
     def stop(err: str) -> int:
         if resume:
             if not dry_run:  # a preview must not rewrite the round it previews
-                sprint_review_resume.keep_incomplete(marker, state, err)
+                sprint_review_resume.keep_incomplete(marker, round_n, err, write_sprint_state)
                 ran_before = ", ".join(rounds[-1]["stages"])
                 print(f"round {round_n} remains incomplete after {ran_before}")
             return fail(err)
@@ -158,7 +172,7 @@ def cmd_review(sprint_id: str, dry_run: bool) -> int:
                 if "fix" in ran
                 else {}
             )
-            review.write_round(marker, state, round_, **coverage)
+            review.write_round(marker, state, round_, edit=write_sprint_state, **coverage)
             print(f"round {round_n} recorded incomplete after {', '.join(ran)}")
         return fail(err)
 
@@ -263,9 +277,12 @@ def cmd_review(sprint_id: str, dry_run: bool) -> int:
             ran.remove("fix")
         return stop(err)
     if resume:
-        sprint_review_resume.complete(marker, state, round_, reviewed_head, shown_sha)
+        sprint_review_resume.complete(
+            marker, round_n, round_, reviewed_head, shown_sha, write_sprint_state
+        )
     else:
-        review.write_round(marker, state, round_, reviewed_head=head, shown_sha=shown_sha)
+        coverage = {"reviewed_head": head, "shown_sha": shown_sha}
+        review.write_round(marker, state, round_, edit=write_sprint_state, **coverage)
     print(
         f"round {round_n} recorded at {shown_sha[:8]}:"
         f" {len(round_['fixed'])} fixed, {len(round_['blocking'])} blocking"
@@ -311,7 +328,7 @@ def cmd_salvage(sprint_id: str) -> int:
         why += "; unreadable artifacts: " + "; ".join(unreadable)
     round_ = {key: list(items) for key, items in seen.items()}
     round_.update(incomplete=why, stages=[stage for stage, _report in recovered])
-    review.write_round(marker, state, round_)
+    review.write_round(marker, state, round_, edit=write_sprint_state)
     print(f"round {round_n} recorded incomplete after {', '.join(round_['stages'])}")
     return fail(f"refused: {why}") if unreadable else 0
 
@@ -350,7 +367,7 @@ def cmd_start(sprint_id: str) -> int:
         )
     if "full_tier" in state:
         state.pop("full_tier")
-        write_sprint_state(marker, state)
+        write_sprint_state(marker, {}, remove=("full_tier",))
 
     root = data_root()
     source = entries(root)
@@ -417,7 +434,7 @@ def cmd_start(sprint_id: str) -> int:
                     "ran_by": "start",
                     "reused": False,
                 }
-                write_sprint_state(marker, state)
+                write_sprint_state(marker, {"full_tier": state["full_tier"]})
             else:
                 motion = (
                     f"Git could not name the tree again: {written.stderr.strip()}"
