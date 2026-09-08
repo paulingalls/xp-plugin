@@ -142,8 +142,8 @@ def refresh_env(root: Path, version: str) -> str:
 
 
 REFRESH = (
-    "refresh it by starting a session on the harness whose install you want"
-    " — SessionStart rewrites both entries"
+    "refresh it by starting a LEAD session on the harness whose install you want"
+    " — a lead's SessionStart rewrites both entries and a spawned session's deliberately does not"
 )
 
 
@@ -159,7 +159,7 @@ def plugin_root() -> Path:
     Refuses rather than guessing: the codex cache is version-keyed, so a moved
     install is the EXPECTED state and a fallback would silently run another
     version's code. One case stays invisible here and is bounded by the
-    every-session refresh instead — a KEPT old cache directory whose manifest
+    every-LEAD-session refresh instead — a KEPT old cache directory whose manifest
     still matches the recorded version reads as live, because it is self-consistent.
     """
     path = env_path()
@@ -176,7 +176,7 @@ def plugin_root() -> Path:
     if not recorded.get("plugin_root"):
         _refuse_env(
             f"no plugin root recorded in {path} — setup.py seeds it at scaffold and every"
-            f" SessionStart refreshes it. Run the installed plugin's scripts/setup.py in"
+            f" LEAD SessionStart refreshes it. Run the installed plugin's scripts/setup.py in"
             f" this repo, or {REFRESH}."
         )
     raw_root = recorded["plugin_root"]

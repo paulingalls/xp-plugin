@@ -41,8 +41,9 @@ class EnvRefreshCases:
         result = run_hook(repo, tmp_path)
         assert result.returncode == 0
         self.assert_current(tmp_path)
-        assert repr(old) in result.stdout, result.stdout
-        assert repr(str(self.PLUGIN)) in result.stdout, result.stdout
+        # The WHOLE line, not the two roots separately: `repr(7)` is "7", which any
+        # profile holds by accident, so the non-str arm greened against NO notice at all.
+        assert f"plugin root moved from {str(old)!r} to {str(self.PLUGIN)!r}" in result.stdout
 
     def test_the_refresh_leaves_non_plugin_keys_alone(self, tmp_path):
         repo, _g = xp_repo(tmp_path)

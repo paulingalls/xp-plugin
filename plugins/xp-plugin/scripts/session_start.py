@@ -471,7 +471,7 @@ def main(data: dict) -> int:
 
     rules = safe(lambda: read(root / ".xp" / "constraints.md"))
     heading = safe(lambda: banner(root))
-    if refresh:
+    if refresh:  # the notice must be PAID FOR: the profile budget has no headroom to spare
         _before, scripts, invocation = heading.partition(" · scripts: ")
         heading = heading.partition(" · ")[0] + scripts + invocation
     regions = [

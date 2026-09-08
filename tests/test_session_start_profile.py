@@ -56,6 +56,11 @@ class TestTheRealProfileAgainstTheRealCap:
         early-return tests home green. Measured in the Sprint-8 Codex-lead
         transcript, where the sandbox denied the data root and this script's
         sibling falsifier died on `out.index` instead (AUDIT.md §10).
+
+        THE DATA ROOT IS A COPY, not the real one: this runs the hook as a LEAD,
+        so against the real root it MOVES the live pin — and the cap-mutation case
+        below moves it to a tmp plugin pytest then deletes. The suite was the
+        defect the story it guards exists to fix.
         """
         sys.path.insert(0, str(HOOK.parent))
         from env import data_root, plugin_version
