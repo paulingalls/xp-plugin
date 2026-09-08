@@ -402,10 +402,11 @@ def cmd_start(sprint_id: str) -> int:
             for sources in deferred.values():
                 for eid, head, covered in sources:
                     print(f"trusted {eid} ({head}) via tier {covered}")
+            written = git("write-tree", check=False)
             after = {
                 "command": config_block_value("tests", "full"),
                 "head": git("rev-parse", "HEAD").stdout.strip(),
-                "tree": git("write-tree").stdout.strip(),
+                "tree": written.stdout.strip(),
             }
             dirty = git("status", "--porcelain").stdout.strip()
             if before == after and not dirty:
@@ -418,7 +419,11 @@ def cmd_start(sprint_id: str) -> int:
                 }
                 write_sprint_state(marker, state)
             else:
-                motion = dirty or f"HEAD/tree/command moved from {before} to {after}"
+                motion = (
+                    f"Git could not name the tree again: {written.stderr.strip()}"
+                    if written.returncode
+                    else dirty or f"HEAD/tree/command moved from {before} to {after}"
+                )
                 print(f"full tier passed, but no reusable receipt was recorded: {motion}")
         else:
             deferred_results = execute_batch(deferred)

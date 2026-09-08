@@ -176,6 +176,19 @@ Verify: true
         assert "Traceback" not in result.stderr and run_count(events) == 0
         assert path.read_bytes() == before
 
+    def test_a_green_tier_that_locks_the_index_records_no_receipt(self, tmp_path):
+        """The pre-tier write-tree refuses; the post-tier one raised, so a tier that
+        left a lock behind ended a GREEN close in a stack trace at exit 1 — after the
+        deferred falsifiers had already been printed as trusted by it."""
+        repo, env, _g, _events, _tier = counted_repo(tmp_path, "touch .git/index.lock")
+
+        result = sprint(repo, env, "start")
+
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert "Traceback" not in result.stderr
+        assert "no reusable receipt" in result.stdout
+        assert "full_tier" not in state(tmp_path)
+
     def test_start_refuses_when_git_cannot_name_the_tree(self, tmp_path):
         repo, env, _g, events, _tier = counted_repo(tmp_path)
         (repo / ".git" / "index.lock").touch()

@@ -184,12 +184,11 @@ def gates(
                 None,
             )
         tree = written.stdout.strip()
-        if prior_receipt is not _NO_RECEIPT:
-            reusable, decision = _receipt_matches(prior_receipt, tier, tree)
-            if reusable:
-                print("full tier receipt reused")
-                return "", dict(prior_receipt, reused=True)
-            print(f"full tier receipt {decision}; running the shipping tree")
+        reusable, decision = _receipt_matches(prior_receipt, tier, tree)
+        if reusable:
+            print("full tier receipt reused")
+            return "", dict(prior_receipt, reused=True)
+        print(f"full tier receipt {decision}; running the shipping tree")
         if red := run_checks(verify, tier, where, tier_key):
             return red, None
         return "", {
