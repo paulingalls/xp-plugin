@@ -27,7 +27,9 @@ def record_round(tmp_path, repo, env, blockers, bindings, **extra):
         "reviewed_head": reviewed,
         "shown_sha": shown,
     } | extra
-    path.write_text(json.dumps({"rounds": [round_], "reviewed_head": reviewed, "shown_sha": shown}))
+    state = json.loads(path.read_text()) if path.exists() else {}
+    state.update(rounds=[round_], reviewed_head=reviewed, shown_sha=shown)
+    path.write_text(json.dumps(state))
     return path
 
 
@@ -51,14 +53,37 @@ class TestBoundFullClearance:
         sentinel = tmp_path / "full-ran"
         repo, env, g = make_repo(tmp_path, config=config_for(f"/usr/bin/touch {sentinel}"))
         record_round(tmp_path, repo, env, ["GATE-ME"], ["GATE-ME"])
-        marker_before = marker_path(tmp_path).read_bytes()
+        marker_before = json.loads(marker_path(tmp_path).read_text())
         release_tools(tmp_path, env, g)
         result = sprint(repo, env, "land")
         assert result.returncode == 0, result.stderr
         assert sentinel.exists()
         assert "cleared these closer-bound blockers:\n  GATE-ME" in result.stdout
-        assert marker_path(tmp_path).read_bytes() == marker_before
+        marker_after = json.loads(marker_path(tmp_path).read_text())
+        receipt = marker_after.pop("full_tier")
+        assert marker_after == marker_before
+        assert receipt["command"] == f"/usr/bin/touch {sentinel}"
+        assert receipt["ran_by"] == "land" and not receipt["reused"]
         assert not (tmp_path / "launches.jsonl").exists()
+
+    def test_a_reused_start_receipt_clears_the_bound_blocker(self, tmp_path):
+        """Tree equality remains the whole condition here: clearance already
+        refuses a moved HEAD, a pending trunk, and reviewer-changed gate files."""
+        events = tmp_path / "full-events"
+        command = f"printf x >> {events}"
+        repo, env, g = make_repo(tmp_path, config=config_for(command))
+        assert sprint(repo, env, "start").returncode == 0
+        record_round(tmp_path, repo, env, ["GATE-ME"], ["GATE-ME"])
+        release_tools(tmp_path, env, g)
+
+        result = sprint(repo, env, "land")
+
+        assert result.returncode == 0, result.stderr
+        assert events.read_text() == "x"
+        assert "cleared these closer-bound blockers:\n  GATE-ME" in result.stdout
+        assert "reused" in result.stdout and command in result.stdout
+        receipt = json.loads(marker_path(tmp_path).read_text())["full_tier"]
+        assert receipt["reused"] and receipt["ran_by"] == "start"
 
     def test_a_blocker_over_the_item_cap_clears_under_its_own_binding(self, tmp_path):
         # CONSTRUCTED at the cap: the parser matches the report's RAW strings and

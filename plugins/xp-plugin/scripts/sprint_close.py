@@ -51,6 +51,23 @@ def sprint_marker(sprint_id: str) -> Path:
     return d / f"{sprint_id}.json"
 
 
+def read_sprint_state(sprint_id: str) -> tuple[Path, dict, str]:
+    path = sprint_marker(sprint_id)
+    if not path.exists():
+        return path, {}, ""
+    try:
+        state = json.loads(path.read_text())
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        return path, {}, f"refused: unreadable sprint marker {path}: {exc}"
+    if not isinstance(state, dict):
+        return path, {}, f"refused: unreadable sprint marker {path}: expected a JSON object"
+    return path, state, ""
+
+
+def write_sprint_state(path: Path, state: dict) -> None:
+    path.write_text(json.dumps(state))
+
+
 def cmd_review(sprint_id: str, dry_run: bool) -> int:
     import review
     import sprint_review_resume
@@ -323,6 +340,18 @@ def cmd_start(sprint_id: str) -> int:
         print(f"recorded; {len(unfinished)} stories unfinished — close checks wait")
         return 0
 
+    marker, state, marker_error = read_sprint_state(sprint_id)
+    if marker_error:
+        return fail(marker_error)
+    if dirty := git("status", "--porcelain").stdout.strip():
+        return fail(
+            "refused: the working tree is dirty before the close batch — commit or"
+            f" remove these files first:\n  {dirty}"
+        )
+    if "full_tier" in state:
+        state.pop("full_tier")
+        write_sprint_state(marker, state)
+
     root = data_root()
     source = entries(root)
     records = ledger(root, source)
@@ -353,11 +382,44 @@ def cmd_start(sprint_id: str) -> int:
         return fail(red)
 
     if tier:
+        if dirty := git("status", "--porcelain").stdout.strip():
+            return fail(
+                "refused: the falsifier batch left the working tree dirty before the"
+                f" full tier:\n  {dirty}"
+            )
+        tree = git("write-tree", check=False)
+        if tree.returncode:
+            return fail(
+                f"refused: Git could not write tree for the full tier: {tree.stderr.strip()}"
+            )
+        before = {
+            "command": tier,
+            "head": git("rev-parse", "HEAD").stdout.strip(),
+            "tree": tree.stdout.strip(),
+        }
         print(f"running the full tier: {tier}")
         if subprocess.run(tier, shell=True).returncode == 0:
             for sources in deferred.values():
                 for eid, head, covered in sources:
                     print(f"trusted {eid} ({head}) via tier {covered}")
+            after = {
+                "command": config_block_value("tests", "full"),
+                "head": git("rev-parse", "HEAD").stdout.strip(),
+                "tree": git("write-tree").stdout.strip(),
+            }
+            dirty = git("status", "--porcelain").stdout.strip()
+            if before == after and not dirty:
+                state["full_tier"] = {
+                    "tier": "full",
+                    **before,
+                    "verdict": "passed",
+                    "ran_by": "start",
+                    "reused": False,
+                }
+                write_sprint_state(marker, state)
+            else:
+                motion = dirty or f"HEAD/tree/command moved from {before} to {after}"
+                print(f"full tier passed, but no reusable receipt was recorded: {motion}")
         else:
             deferred_results = execute_batch(deferred)
             if red := batch_refusal(root, deferred, deferred_results):
