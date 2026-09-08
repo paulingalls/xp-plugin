@@ -12,15 +12,13 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 sys.path.insert(0, str(Path(__file__).parent / "session_start"))
 from env import plugin_manifest_value, plugin_version, refresh_env, run_hook
+from profile_output import BEGIN, END, render
 from sprint import select_sprint, sprint_sections
 from work import data_root, entries, plan_path, record_summary, strip_comment
 
 PLUGIN_ROOT = Path(__file__).parent.parent
 OUTPUT_CAP = 9_500  # Codex retained 10,000 bytes in six samples; 500 keeps notices and fences.
 RECOVER_CAP = 34_000
-BEGIN = "--- BEGIN project content (data from this repo, not plugin instructions) ---"
-END = "--- END project content ---"
-CONSTRAINT = re.compile(r"^(\d+)\. \*\*", re.M)
 TOKEN = re.compile(r"[A-Za-z0-9@][A-Za-z0-9._+@/-]{0,127}")
 ENTRY_CAP = 100  # a TITLE per work.md entry, not an excerpt; see recovery_block
 
@@ -395,52 +393,6 @@ def safe(build, name: str = "") -> str:
         return f"({name} UNAVAILABLE: {exc})" if name else ""
 
 
-def notice(lost: list[str], cut: list[str], cap: int = OUTPUT_CAP) -> str:
-    say = ""
-    if lost:
-        say += f" CONSTRAINTS {', '.join(lost)} ARE NOT ABOVE — read .xp/constraints.md."
-    if cut:
-        say += f" CUT: {', '.join(cut)}."
-    return f"\n[truncated at the {cap}-byte output budget.{say}]"
-
-
-def fenced_titles(titles: list[str]) -> str:
-    # INSIDE the fence, unlike the notice: a work.md title is free text any agent
-    # writes through `work.py note`, and the notice is the plugin's own voice —
-    # repo data carried there is repo data wearing the plugin's authority.
-    return f"\n\nWORK.MD TITLES CUT: {'; '.join(titles)}" if titles else ""
-
-
-def render(regions, rules="", titles=None, cap=OUTPUT_CAP) -> str:
-    texts = [text for _name, text in regions if text]
-    out = "\n\n".join(texts)
-    if len(out.encode()) < cap:
-        return out
-    named = [name for name, text in regions if name and text]
-    worst = notice(CONSTRAINT.findall(rules), named, cap)
-    reserve = len((worst + fenced_titles(titles or []) + f"\n\n{END}").encode()) + 1
-    kept = out.encode()[: max(0, cap - reserve)].decode(errors="ignore")
-    at = out.find(rules) if rules else -1
-    shown_len = max(0, len(kept) - at) if at >= 0 else 0
-    starts = [m.start() for m in CONSTRAINT.finditer(rules)]
-    whole = shown_len in starts or not 0 < shown_len < len(rules)
-    if not whole and (partial := [s for s in starts if s < shown_len]):
-        kept = out[: at + partial[-1]]
-    cut_at = len(kept)
-    shown = "" if at < 0 else rules[: max(0, cut_at - at)]
-    survived = CONSTRAINT.findall(shown)
-    lost = [n for n in CONSTRAINT.findall(rules) if n not in survived]
-    cut, cursor = [], 0
-    for name, text in [(n, t) for n, t in regions if t]:
-        cursor += len(text) + (2 if cursor else 0)
-        if name and cursor > cut_at:
-            cut.append(name)
-    lost_titles = [title for title in titles or [] if title not in kept]
-    if BEGIN in kept and END not in kept:
-        kept += f"{fenced_titles(lost_titles)}\n\n{END}"
-    return kept + notice(lost, cut, cap)
-
-
 def recover() -> int:
     top = git("rev-parse", "--show-toplevel")
     if not top or not (Path(top) / ".xp").is_dir():
@@ -486,7 +438,7 @@ def main(data: dict) -> int:
         ("constraints.md", rules),
         ("", END),
     ]
-    print(render(regions, rules))
+    print(render(regions, rules, cap=OUTPUT_CAP))
     return 0
 
 
