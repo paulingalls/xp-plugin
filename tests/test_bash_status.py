@@ -5,7 +5,7 @@ import pty
 import subprocess
 import sys
 
-from test_stop_gate import (
+from stop_gate_helpers import (
     SCRIPTS,
     failure_payload,
     markers,
