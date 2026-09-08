@@ -104,3 +104,18 @@ records (131s, 47% of the batch) share one falsifier: `falsifier_fast_tier_cost.
 gate-speed guard. The fast tier is now 126s and climbing, which is precisely what it watches.
 Trading that guarantee for two minutes is the wrong trade, and it is the judgment story-118
 deliberately left to a human.
+
+**(f) The fast-tier cost falsifier runs the fast tier to prove the fast tier is fast**
+(debt cd240723, Paul's call at close). 131s of a 277s batch — 47% — immediately before
+the close runs the FULL tier over the same tests. Three executions of one suite to assert
+one is quick. The file already diagnosed itself: "per-test cost is what stays true as a
+suite grows; 'will a human still wait for this' is a product decision that wants a
+periodic review, not a tripwire that fires on success." The fixture arm is a real
+constructed ratchet (13.5× over 25 iterations) and stays. The suite-bounds arm should
+CONSUME a measurement rather than produce one — the fast tier already runs at every
+commit through lefthook and nothing records what it cost. Recording elapsed and collected
+count where the gate already runs makes the check ~0s AND better evidence, because it
+would measure the real gate a human waits on rather than a re-run under different load.
+Deletion is not the answer and was already tried: reverted at v0.9.0's review, because it
+left three live records certifying a wall-clock claim with a check that never starts a
+clock.
