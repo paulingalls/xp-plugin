@@ -14,6 +14,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 sys.path.insert(0, str(Path(__file__).parent / "spawn"))
 
 from close import fail, story_card
+from plan_writer import strip_lifecycle
 from work import (
     card_digest,
     chdir_repo_root,
@@ -381,7 +382,9 @@ def _run_refresh(story_id: str, out: Path, dry_run: bool) -> int:
             return reject_plan_edit(
                 f"refused: card refresh {story_id} applied text other than its candidate."
             )
-        outside_changed = plan_before.replace(card, current_card, 1) != plan_after
+        outside_changed = strip_lifecycle(
+            plan_before.replace(card, current_card, 1)
+        ) != strip_lifecycle(plan_after)
         if outside_changed:
             print(
                 "card refresh observation: text outside its own card changed too",

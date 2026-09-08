@@ -171,14 +171,9 @@ class TestPlanCardEditor:
             digest = "0" * 16
         before = (plan_data / "plan.md").read_text()
         result = editor(plan_data, path=path, digest=digest, status=status)
-        if fault == "extra" and result.returncode == 0:
-            old, _ = story_card(before, "story-bbb")
-            submitted, _ = story_card(path.read_text(), "story-bbb")
-            assert (plan_data / "plan.md").read_text() == before.replace(old, submitted, 1)
-        else:
-            assert result.returncode == 2
-            assert "card refresh story-bbb" in result.stderr and "--refresh" in result.stderr
-            assert (plan_data / "plan.md").read_text() == before
+        assert result.returncode == 2, result.stdout + result.stderr
+        assert "card refresh story-bbb" in result.stderr and "--refresh" in result.stderr
+        assert (plan_data / "plan.md").read_text() == before
 
     def test_two_free_edits_do_not_report_held_or_stale(self, plan_data):
         first = editor(plan_data)

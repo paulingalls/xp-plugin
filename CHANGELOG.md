@@ -26,6 +26,12 @@ This is the code cause of a rule this project had been paying in prose — "neve
 write plan.md while a refresh is running" — which constraint 5 says belongs in the
 code rather than in a lead's memory.
 
+One guard changed direction alongside it: a refresh that also moves text outside
+its own card no longer refuses. Under the candidate handoff that motion cannot be
+told apart from a sibling lane's own locked flip, and refusing it would red the
+parallel case this release exists to make safe. It is reported on the receipt and
+in the handoff line instead, and `ready` proceeds.
+
 ## v0.21.4 — a declared path is never silently un-declared
 
 `declared_files()` split the `Files:` block on commas before normalising each

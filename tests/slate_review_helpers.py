@@ -85,9 +85,6 @@ def slate_repo(tmp_path):
 def stub_slate_reviewer(tmp_path, findings="## story-042 — GREEN\n\n## Slate — GREEN\n", slate=""):
     binary = tmp_path / "bin" / "claude"
     binary.parent.mkdir(exist_ok=True)
-    python = binary.parent / "python3"
-    if not python.exists():
-        python.symlink_to(sys.executable)
     launch = tmp_path / "slate-launch.json"
     binary.write_text(
         "#!/usr/bin/env python3\n"
@@ -270,6 +267,8 @@ def stub_card_refresher(
     findings="corrected 1 claim\n",
     unparsable=False,
     direct_plan=False,
+    skip_apply=False,
+    extra_card="",
     read_event="",
     release_event="",
 ):
@@ -304,8 +303,9 @@ def stub_card_refresher(
         f" text = text.replace('demo story   [planned]', 'demo story   [{status}]', 1)\n"
         f"if {unparsable!r}:\n"
         " text = text.replace('#### story-042', '#### mangled-042', 1)\n"
+        f"text += {extra_card!r}\n"
         "open(card, 'w').write(text)\n"
-        "if text != original:\n"
+        f"if text != original and not {skip_apply!r}:\n"
         " applied = subprocess.run(shlex.split(command), capture_output=True, text=True)\n"
         " sys.stdout.write(applied.stdout); sys.stderr.write(applied.stderr)\n"
         "plan = os.path.join(os.environ['XP_DATA'], 'plan.md')\n"

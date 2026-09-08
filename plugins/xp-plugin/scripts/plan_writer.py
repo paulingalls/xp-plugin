@@ -1,4 +1,11 @@
-"""Atomic plan writes and one-card candidate application."""
+"""Atomic plan writes and one-card candidate application.
+
+The refresher edits by shell and can hold no Python lock, so it is handed this
+locked helper instead of having `ready`/`land` refuse while a refresh marker is
+live. A refusal was rejected twice over: it serialises the parallel lanes the
+process depends on, and it still leaves the refresher's own write unlocked --
+it makes the collision loud without removing it.
+"""
 
 import fcntl
 import os
@@ -8,6 +15,19 @@ from pathlib import Path
 
 class CardEditRefusal(Exception):
     pass
+
+
+def strip_lifecycle(plan: str) -> str:
+    """A concurrent lane's locked `flip_card` moves nothing but a heading's [status],
+    so comparing raw plan text reports every parallel story as outside motion and
+    buries the sibling rewrite worth reading."""
+    out = []
+    for line in plan.splitlines(keepends=True):
+        body = line.rstrip()
+        if line.startswith("#") and body.endswith("]") and "[" in body:
+            line = body[: body.rindex("[")].rstrip() + line[len(body) :]
+        out.append(line)
+    return "".join(out)
 
 
 def locked_edit(path: Path, lock: Path, mutate) -> bool:

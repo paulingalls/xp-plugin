@@ -8,6 +8,7 @@ import sys
 import time
 from pathlib import Path
 
+import pytest
 from close import story_card
 from slate_review_helpers import (
     PLUGIN,
@@ -107,6 +108,7 @@ def test_a_locked_sibling_flip_and_refresher_correction_both_survive(tmp_path):
     out, err = refresh.communicate(timeout=30)
     assert flip.wait(30) == 0, "the same-run locked control never flipped"
     assert refresh.returncode == 0, out + err
+    assert "changed too" not in out + err, "a lane's locked flip was reported as outside motion"
     final = plan.read_text()
     assert CORRECTED in story_card(final, "story-042")[0]
     assert story_card(final, "story-043")[1] == "ready"
@@ -198,3 +200,26 @@ def test_unattributable_sibling_motion_is_reported_without_blocking_the_refresh(
     assert "changed too" in result.stdout + result.stderr
     assert CORRECTED in story_card(plan.read_text(), "story-042")[0]
     assert "MEDDLED" in story_card(plan.read_text(), "story-043")[0]
+
+
+@pytest.mark.parametrize(
+    ("knob", "expected"),
+    [
+        ({"skip_apply": True}, "did not apply it"),
+        ({"extra_card": "#### story-099 — squatter   [planned]\nContext: x\n"}, "unparsable"),
+    ],
+)
+def test_a_candidate_that_never_reaches_the_plan_is_refused(tmp_path, knob, expected):
+    """The two ways the handoff breaks without either side erroring: the refresher
+    edits its card and forgets PLAN_EDIT_COMMAND, or submits text the locked helper
+    refuses. Both leave plan and receipt agreeing that no refresh ran."""
+    repo, env, _g, plan = refresh_repo(tmp_path)
+    before = plan.read_text()
+    stub_card_refresher(tmp_path, correction=CORRECTED, **knob)
+    result = card_refresh(repo, env)
+    said = result.stdout + result.stderr
+    assert result.returncode == 2, said
+    assert expected in said and "--refresh" in said, said
+    assert plan.read_text() == before
+    assert not receipt_of(env).exists()
+    assert spawn(repo, env, "ready", "story-042").returncode == 2

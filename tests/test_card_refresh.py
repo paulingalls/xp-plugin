@@ -14,6 +14,7 @@ from pathlib import Path
 
 import pytest
 from card_refresh_lock_cases import (  # noqa: F401
+    test_a_candidate_that_never_reaches_the_plan_is_refused,
     test_a_helper_refusal_names_a_refresh_retry_that_succeeds,
     test_a_locked_sibling_flip_and_refresher_correction_both_survive,
     test_a_refresher_that_writes_the_plan_instead_of_its_candidate_is_refused,
