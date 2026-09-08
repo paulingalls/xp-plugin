@@ -63,6 +63,34 @@ class EnvRepointCases:
         assert (result.returncode, result.stdout, result.stderr) == (0, "", "")
         assert path.read_bytes() == before
 
+    def test_a_missing_env_json_is_created_at_the_running_pair(self, tmp_path):
+        repo, _g = repo_with_story(tmp_path)
+        path = tmp_path / "xp" / "env.json"
+        assert not path.exists()
+
+        result = run_script("stop_gate.py", stop_payload(), repo, tmp_path)
+
+        assert (result.returncode, result.stdout, result.stderr) == (0, "", "")
+        assert json.loads(path.read_text()) == {
+            "plugin_root": str(RUNNING_ROOT),
+            "plugin_version": RUNNING_VERSION,
+        }
+
+    @pytest.mark.parametrize("body", [b"[1, 2]\n", b"not json\n"], ids=["not-object", "corrupt"])
+    def test_an_env_json_it_cannot_read_is_left_byte_identical(self, tmp_path, body):
+        """Constraint 15: missing is not unreadable. The repoint CREATES an absent
+        env.json and must not guess at one it cannot parse — a merge over either
+        loses exactly what env.py's refusal tells the lead to repair by hand.
+        """
+        repo, _g = repo_with_story(tmp_path)
+        path = tmp_path / "xp" / "env.json"
+        path.write_bytes(body)
+
+        result = run_script("stop_gate.py", stop_payload(), repo, tmp_path)
+
+        assert (result.returncode, result.stdout, result.stderr) == (0, "", "")
+        assert path.read_bytes() == body
+
     def test_a_current_pair_does_not_write(self, tmp_path):
         repo, _g = repo_with_story(tmp_path)
         path = seed_env(tmp_path, RUNNING_ROOT, RUNNING_VERSION)
