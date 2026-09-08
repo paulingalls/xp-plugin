@@ -191,8 +191,12 @@ class TestDogfoodMatchesTheScaffold(ConstraintsWallCases):
     PLUGIN_PATH_BUDGET = ConstraintsWallCases.PLUGIN_PATH_BUDGET
     DATA_ROOT_BUDGET = ConstraintsWallCases.DATA_ROOT_BUDGET
     _at_path_length = ConstraintsWallCases._at_path_length
-    test_ascii_constraints_at_the_full_cap_fit_the_byte_profile = (
-        ConstraintsWallCases.test_ascii_constraints_at_the_full_cap_fit_the_byte_profile
+    _run_ascii_profile = ConstraintsWallCases._run_ascii_profile
+    test_a_file_over_the_session_budget_still_passes_the_character_wall = (
+        ConstraintsWallCases.test_a_file_over_the_session_budget_still_passes_the_character_wall
+    )
+    test_ascii_constraints_at_the_derived_allowance_fit_the_byte_profile = (
+        ConstraintsWallCases.test_ascii_constraints_at_the_derived_allowance_fit_the_byte_profile
     )
 
     def test_the_scaffold_ships_no_key_we_invented_without_seeding(self):

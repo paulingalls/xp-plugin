@@ -1,5 +1,6 @@
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -10,6 +11,10 @@ from pathlib import Path
 # the character count came out right for a reason the wall did not own. Disabling
 # coercion and UTF-8 mode is what makes the locale test able to red.
 C_LOCALE = {"LC_ALL": "C", "LANG": "C", "PYTHONCOERCECLOCALE": "0", "PYTHONUTF8": "0"}
+BUDGET_WARNING = re.compile(
+    r"\[constraints\.md is (\d+) bytes? over its (\d+)-byte SessionStart budget; "
+    r"shorten or retire a constraint\]"
+)
 
 
 class ConstraintsWallCases:
@@ -135,7 +140,46 @@ class ConstraintsWallCases:
         )
         return base / (name + "d" * pad)
 
-    def test_ascii_constraints_at_the_full_cap_fit_the_byte_profile(self, tmp_path):
+    def _run_ascii_profile(self, tmp_path, constraints):
+        base = Path(tempfile.mkdtemp())
+        plugin_root = self._at_path_length(base, "p", self.PLUGIN_PATH_BUDGET)
+        data_root = self._at_path_length(base, "d", self.DATA_ROOT_BUDGET)
+        shutil.copytree(self.REPO / "plugins" / "xp-plugin", plugin_root)
+        data_root.mkdir(parents=True, exist_ok=True)
+        repo = tmp_path / "repo"
+        xp = repo / ".xp"
+        xp.mkdir(parents=True, exist_ok=True)
+        (xp / "config.yml").write_text((self.SHIPPED / "config.yml").read_text())
+        (xp / "constraints.md").write_text(constraints)
+        subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
+        try:
+            return subprocess.run(
+                [sys.executable, str(plugin_root / "scripts" / "session_start.py")],
+                input=json.dumps({"cwd": str(repo), "session_id": "s", "source": "startup"}),
+                env={"PATH": "/usr/bin:/bin", "HOME": str(data_root), "XP_DATA": str(data_root)},
+                cwd=repo,
+                capture_output=True,
+                text=True,
+            ).stdout
+        finally:
+            shutil.rmtree(base, ignore_errors=True)
+
+    def test_a_file_over_the_session_budget_still_passes_the_character_wall(self, tmp_path):
+        cap = self.cap_value(self.SHIPPED / "config.yml")
+        seed = "# Constraints\n\n" + "\n".join(f"{n}. **Rule {n}**" for n in range(1, 16))
+        constraints = seed + "x" * (cap - len(seed))
+        match = BUDGET_WARNING.search(self._run_ascii_profile(tmp_path, constraints))
+        assert match, "the constructed profile did not report its SessionStart byte budget"
+        overage, allowance = map(int, match.groups())
+        assert overage == len(constraints.encode()) - allowance
+        size = allowance + 1
+        assert allowance < size <= cap
+        wall = tmp_path / "wall"
+        wall.mkdir()
+        result = self.run_constraints_wall(wall, cap, size)
+        assert result.returncode == 0, result.stderr
+
+    def test_ascii_constraints_at_the_derived_allowance_fit_the_byte_profile(self, tmp_path):
         """PROCESS.md and every other document in the lead injection are walled
         HERE, which is why none of them carries a character cap of its own.
 
@@ -147,33 +191,17 @@ class ConstraintsWallCases:
         """
         from session_start import OUTPUT_CAP
 
-        # NOT tmp_path: pytest's own is ~110 chars, over the data-root budget, so
-        # the budgets could never be met and every run would silently skip.
-        base = Path(tempfile.mkdtemp())
-        plugin_root = self._at_path_length(base, "p", self.PLUGIN_PATH_BUDGET)
-        data_root = self._at_path_length(base, "d", self.DATA_ROOT_BUDGET)
-        shutil.copytree(self.REPO / "plugins" / "xp-plugin", plugin_root)
-        data_root.mkdir(parents=True, exist_ok=True)
-        repo = tmp_path / "repo"
-        xp = repo / ".xp"
-        xp.mkdir(parents=True)
-        (xp / "config.yml").write_text((self.SHIPPED / "config.yml").read_text())
         cap = self.cap_value(self.SHIPPED / "config.yml")  # never a literal: the
         seed = (self.SHIPPED / "constraints.md").read_text()  # cap is what moves
-        constraints = seed + "x" * (cap - len(seed))
-        assert len(constraints) == cap
-        (xp / "constraints.md").write_text(constraints)
-        subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
-        out = subprocess.run(
-            [sys.executable, str(plugin_root / "scripts" / "session_start.py")],
-            input=json.dumps({"cwd": str(repo), "session_id": "s", "source": "startup"}),
-            env={"PATH": "/usr/bin:/bin", "HOME": str(data_root), "XP_DATA": str(data_root)},
-            cwd=repo,
-            capture_output=True,
-            text=True,
-        ).stdout
-        try:
-            assert len(out.encode()) <= OUTPUT_CAP
-            assert constraints in out, "the full ASCII ceiling does not reach the lead"
-        finally:
-            shutil.rmtree(base, ignore_errors=True)
+        ceiling = seed + "x" * (cap - len(seed))
+        match = BUDGET_WARNING.search(self._run_ascii_profile(tmp_path, ceiling))
+        assert match
+        overage, allowance = map(int, match.groups())
+        assert overage == len(ceiling.encode()) - allowance
+        assert allowance >= 4_386
+        constraints = seed + "x" * (allowance - len(seed.encode()))
+        assert len(constraints.encode()) == allowance
+        out = self._run_ascii_profile(tmp_path, constraints)
+        assert len(out.encode()) <= OUTPUT_CAP
+        assert constraints in out, "the derived byte allowance does not reach the lead"
+        assert not BUDGET_WARNING.search(out)

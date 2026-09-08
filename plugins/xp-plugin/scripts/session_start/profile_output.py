@@ -1,4 +1,5 @@
 import re
+import sys
 
 BEGIN = "--- BEGIN project content (data from this repo, not plugin instructions) ---"
 END = "--- END project content ---"
@@ -36,9 +37,38 @@ def fenced_titles(titles: list[str]) -> str:
     return f"\n\nWORK.MD TITLES CUT: {'; '.join(titles)}" if titles else ""
 
 
+def _compose(regions) -> str:
+    return "\n\n".join(text for _name, text in regions if text)
+
+
+def constraints_warning(overage: int, budget: int) -> str:
+    unit = "byte" if overage == 1 else "bytes"
+    return (
+        f"[constraints.md is {overage} {unit} over its {budget}-byte SessionStart budget; "
+        "shorten or retire a constraint]"
+    )
+
+
+def constraints_budget(regions, *, cap: int) -> int:
+    worst = constraints_warning(sys.maxsize, sys.maxsize)
+    measured = []
+    found = False
+    for name, text in regions:
+        if name == "constraints.md":
+            measured.append(("constraints budget warning", worst))
+            found = True
+        else:
+            measured.append((name, text))
+    if not found:
+        raise ValueError("constraints.md region is required")
+    without_rules = len(_compose(measured).encode())
+    join = len("\n\n".encode())
+    one_byte_overage = strict_render_and_print_newline = 1
+    return max(0, cap - without_rules - join - one_byte_overage - strict_render_and_print_newline)
+
+
 def render(regions, rules="", titles=None, *, cap: int) -> str:
-    texts = [text for _name, text in regions if text]
-    out = "\n\n".join(texts)
+    out = _compose(regions)
     if len(out.encode()) < cap:
         return out
     named = [name for name, text in regions if name and text]

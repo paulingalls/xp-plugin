@@ -12,7 +12,14 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 sys.path.insert(0, str(Path(__file__).parent / "session_start"))
 from env import plugin_manifest_value, plugin_version, refresh_env, run_hook
-from profile_output import BEGIN, END, bound_environment_notice, render
+from profile_output import (
+    BEGIN,
+    END,
+    bound_environment_notice,
+    constraints_budget,
+    constraints_warning,
+    render,
+)
 from sprint import select_sprint, sprint_sections
 from work import data_root, entries, plan_path, record_summary, strip_comment
 
@@ -440,6 +447,12 @@ def main(data: dict) -> int:
         ("constraints.md", rules),
         ("", END),
     ]
+    budget = constraints_budget(regions, cap=OUTPUT_CAP)
+    size = len(rules.encode())
+    if size > budget:
+        at = next(i for i, region in enumerate(regions) if region[0] == "constraints.md")
+        warning = constraints_warning(size - budget, budget)
+        regions.insert(at, ("constraints budget warning", warning))
     print(render(regions, rules, cap=OUTPUT_CAP))
     return 0
 
