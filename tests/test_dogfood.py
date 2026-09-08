@@ -8,24 +8,15 @@ constraints and stories are legitimately its own.
 """
 
 import json
-import os
 import re
-import shutil
-import subprocess
-import sys
-import tempfile
 from pathlib import Path
 from unittest.mock import patch
 
 import pytest
-
-# LC_ALL=C ALONE PROVES NOTHING: PEP 538 silently coerces a C locale to C.UTF-8, so
-# the character count came out right for a reason the wall did not own. Disabling
-# coercion and UTF-8 mode is what makes the locale test able to red.
-C_LOCALE = {"LC_ALL": "C", "LANG": "C", "PYTHONCOERCECLOCALE": "0", "PYTHONUTF8": "0"}
+from constraints_wall_cases import ConstraintsWallCases
 
 
-class TestDogfoodMatchesTheScaffold:
+class TestDogfoodMatchesTheScaffold(ConstraintsWallCases):
     """The stale-marketplace-build bug is this class: we tested what we were not
     running."""
 
@@ -177,170 +168,32 @@ class TestDogfoodMatchesTheScaffold:
             if doc not in allowed
         ]
 
-    def cap_value(self, path):
-        line = next(
-            ln for ln in path.read_text().splitlines() if ln.startswith("constraints_chars_cap:")
-        )
-        return int(line.split(":", 1)[1].split("#", 1)[0])
-
-    def test_constraints_character_cap_is_the_same_in_both_configs(self):
-        ours = self.cap_value(self.OURS / "config.yml")
-        assert ours == self.cap_value(self.SHIPPED / "config.yml") == 4_500
-
-    def run_constraints_wall(
-        self, tmp_path, cap, size, character="x", tier="fast", path=None, write=True
-    ):
-        xp = tmp_path / ".xp"
-        xp.mkdir(exist_ok=True)
-        setting = "" if cap is None else f"constraints_chars_cap: {cap}\n"
-        tiers = "".join(f"  {name}: true\n" for name in ("fast", "story", "full"))
-        (xp / "config.yml").write_text(f"{setting}tests:\n{tiers}")
-        if write:
-            (xp / "constraints.md").write_text(character * size, encoding="utf-8")
-        hook_lib = self.SHIPPED / "hook-lib.sh"
-        env = dict(os.environ) | {"HOOK_LIB": str(hook_lib)} | C_LOCALE
-        if path is not None:
-            env["PATH"] = path
-        return subprocess.run(
-            ["sh", "-c", f'. "$HOOK_LIB"; run_tier {tier}'],
-            cwd=tmp_path,
-            env=env,
-            capture_output=True,
-            text=True,
-        )
-
-    def test_the_wall_refuses_when_the_MEASUREMENT_itself_fails(self, tmp_path):
-        """A gate that reports green having run nothing is worse than no gate —
-        hook-lib.sh opens with that rule and constraints_size used to break it: an
-        empty `count` makes `[ "" -gt N ]` error, which reads as under-cap. One
-        injection per guard: no python3 on PATH, and a constraints.md the reader
-        cannot open. The first matches the STANZA'S OWN SENTENCE rather than the
-        bare word `python3`, because the shell prints `python3: command not found`
-        itself — measured: with the `command -v` guard deleted the looser match
-        still saw `python3` and `nothing measured`, so it pinned nothing.
-        """
-        bin_dir = tmp_path / "bin"
-        bin_dir.mkdir()
-        for tool in ("sed", "head", "sh", "cat"):
-            found = shutil.which(tool)
-            if found:
-                (bin_dir / tool).symlink_to(found)
-        blind = self.run_constraints_wall(tmp_path, 4_500, 10, path=str(bin_dir))
-        assert blind.returncode != 0, blind.stdout
-        assert "python3 not installed" in blind.stderr, blind.stderr
-        assert "nothing measured" in blind.stderr and "then retry" in blind.stderr, blind.stderr
-
-        (tmp_path / ".xp" / "constraints.md").chmod(0o000)
-        try:
-            unreadable = self.run_constraints_wall(tmp_path, 4_500, 10, write=False)
-        finally:
-            (tmp_path / ".xp" / "constraints.md").chmod(0o644)
-        assert unreadable.returncode != 0, unreadable.stdout
-        assert "could not measure" in unreadable.stderr, unreadable.stderr
-        assert "then retry" in unreadable.stderr, unreadable.stderr
-
-    def test_scaffolded_wall_refuses_constraints_over_the_character_cap(self, tmp_path):
-        red = self.run_constraints_wall(tmp_path, 4_500, 4_501)
-        assert red.returncode != 0
-        for claim in ("constraints.md", "4501", "4500", "retire", "shorten"):
-            assert claim in red.stderr, red.stderr
-
-        green = self.run_constraints_wall(tmp_path, 4_502, 4_501)
-        assert green.returncode == 0, green.stderr
-
-    def test_constraints_wall_distinguishes_missing_and_invalid_caps(self, tmp_path):
-        missing = self.run_constraints_wall(tmp_path, None, 1)
-        assert missing.returncode != 0 and "missing" in missing.stderr
-        default = self.cap_value(self.SHIPPED / "config.yml")
-        assert f"add `constraints_chars_cap: {default}`" in missing.stderr.lower()
-        assert ".xp/config.yml" in missing.stderr
-        added = self.run_constraints_wall(tmp_path, default, 1)
-        assert added.returncode == 0, added.stderr
-        invalid = self.run_constraints_wall(tmp_path, "many", 1)
-        assert invalid.returncode != 0 and "invalid" in invalid.stderr
-
-    def test_constraints_wall_counts_unicode_characters_independent_of_locale(self, tmp_path):
-        red = self.run_constraints_wall(tmp_path, 4_500, 4_501, "\N{GRINNING FACE}")
-        assert red.returncode != 0 and "4501 characters" in red.stderr, red.stderr
-        under = self.run_constraints_wall(tmp_path, 4_500, 4_499, "\N{GRINNING FACE}")
-        assert under.returncode == 0, under.stderr  # 17,996 BYTES, and still under cap
-
-    def test_every_tier_re_checks_the_character_cap(self, tmp_path):
-        """pre-commit is not the only gate that runs it: a scaffolded pre-push runs
-        `run_tier story`, and `git merge` fires no pre-commit at all. Wired to fast
-        alone, story and full both exited 0 over a cap they were meant to hold."""
-        for tier in ("fast", "story", "full"):
-            red = self.run_constraints_wall(tmp_path, 4_500, 4_501, tier=tier)
-            assert red.returncode != 0, f"run_tier {tier} passed an over-cap constraints.md"
-            assert "4500" in red.stderr, red.stderr
-
-    # The plugin path rides in the banner (twice, so it costs 2 bytes a char) and
-    # the data root in the NEXT line, so BOTH lengths are subtracted from the
-    # constraints' room. Budgeted, not inherited, and past every path measured:
-    # an installed adopter sits near 70/45 and our own spawn worktrees near
-    # 102/40, so 110/70 holds 46 bytes over the worst real case. NO MARGIN
-    # FIGURE LIVES HERE — it moves on every shipped-prose edit, and the last one
-    # rotted from 32 bytes to 2 inside this story. The assertion measures it.
-    PLUGIN_PATH_BUDGET = 110
-    DATA_ROOT_BUDGET = 70
-
-    def _at_path_length(self, base, name, target):
-        """A directory whose ABSOLUTE path is exactly `target` chars.
-
-        CONSTRUCTED, never inherited: read off wherever the checkout happens to
-        live, this test passed at a 59-char path and failed at 102 — reporting the
-        machine, not the guarantee (constraint 11). It does NOT skip when the base
-        is too long: a skip is a measurement of nothing that reads as a pass.
-        """
-        pad = target - len(str(base / name))
-        assert pad >= 0, (
-            f"cannot measure: {base}/{name} is already {-pad} chars over the"
-            f" {target}-char budget, so nothing was tested. Run from a shorter TMPDIR"
-        )
-        return base / (name + "d" * pad)
-
-    def test_ascii_constraints_at_the_full_cap_fit_the_byte_profile(self, tmp_path):
-        """PROCESS.md and every other document in the lead injection are walled
-        HERE, which is why none of them carries a character cap of its own.
-
-        THE INSTALL NOTICE IS SILENT IN THIS PROFILE — no harness variable is set,
-        so install_status reports "ambiguous" and renders nothing — while a real
-        stale install renders AHEAD of the constraints. The true bound is
-        therefore LOWER than this one, so the margin this leaves is not room to
-        spend: re-measure against the case at hand, never cite this test's.
-        """
-        from session_start import OUTPUT_CAP
-
-        # NOT tmp_path: pytest's own is ~110 chars, over the data-root budget, so
-        # the budgets could never be met and every run would silently skip.
-        base = Path(tempfile.mkdtemp())
-        plugin_root = self._at_path_length(base, "p", self.PLUGIN_PATH_BUDGET)
-        data_root = self._at_path_length(base, "d", self.DATA_ROOT_BUDGET)
-        shutil.copytree(self.REPO / "plugins" / "xp-plugin", plugin_root)
-        data_root.mkdir(parents=True, exist_ok=True)
-        repo = tmp_path / "repo"
-        xp = repo / ".xp"
-        xp.mkdir(parents=True)
-        (xp / "config.yml").write_text((self.SHIPPED / "config.yml").read_text())
-        cap = self.cap_value(self.SHIPPED / "config.yml")  # never a literal: the
-        seed = (self.SHIPPED / "constraints.md").read_text()  # cap is what moves
-        constraints = seed + "x" * (cap - len(seed))
-        assert len(constraints) == cap
-        (xp / "constraints.md").write_text(constraints)
-        subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
-        out = subprocess.run(
-            [sys.executable, str(plugin_root / "scripts" / "session_start.py")],
-            input=json.dumps({"cwd": str(repo), "session_id": "s", "source": "startup"}),
-            env={"PATH": "/usr/bin:/bin", "HOME": str(data_root), "XP_DATA": str(data_root)},
-            cwd=repo,
-            capture_output=True,
-            text=True,
-        ).stdout
-        try:
-            assert len(out.encode()) <= OUTPUT_CAP
-            assert constraints in out, "the full ASCII ceiling does not reach the lead"
-        finally:
-            shutil.rmtree(base, ignore_errors=True)
+    cap_value = ConstraintsWallCases.cap_value
+    test_constraints_character_cap_is_the_same_in_both_configs = (
+        ConstraintsWallCases.test_constraints_character_cap_is_the_same_in_both_configs
+    )
+    run_constraints_wall = ConstraintsWallCases.run_constraints_wall
+    test_the_wall_refuses_when_the_MEASUREMENT_itself_fails = (
+        ConstraintsWallCases.test_the_wall_refuses_when_the_MEASUREMENT_itself_fails
+    )
+    test_scaffolded_wall_refuses_constraints_over_the_character_cap = (
+        ConstraintsWallCases.test_scaffolded_wall_refuses_constraints_over_the_character_cap
+    )
+    test_constraints_wall_distinguishes_missing_and_invalid_caps = (
+        ConstraintsWallCases.test_constraints_wall_distinguishes_missing_and_invalid_caps
+    )
+    test_constraints_wall_counts_unicode_characters_independent_of_locale = (
+        ConstraintsWallCases.test_constraints_wall_counts_unicode_characters_independent_of_locale
+    )
+    test_every_tier_re_checks_the_character_cap = (
+        ConstraintsWallCases.test_every_tier_re_checks_the_character_cap
+    )
+    PLUGIN_PATH_BUDGET = ConstraintsWallCases.PLUGIN_PATH_BUDGET
+    DATA_ROOT_BUDGET = ConstraintsWallCases.DATA_ROOT_BUDGET
+    _at_path_length = ConstraintsWallCases._at_path_length
+    test_ascii_constraints_at_the_full_cap_fit_the_byte_profile = (
+        ConstraintsWallCases.test_ascii_constraints_at_the_full_cap_fit_the_byte_profile
+    )
 
     def test_the_scaffold_ships_no_key_we_invented_without_seeding(self):
         """The reverse drift: a key we rely on that a scaffolded repo never gets."""
