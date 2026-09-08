@@ -4,6 +4,7 @@ import json
 import shutil
 import subprocess
 import sys
+from pathlib import Path
 
 import pytest
 from session_start_helpers import HOOK, run_hook, run_hook_as, xp_repo
@@ -29,11 +30,20 @@ class EnvRefreshCases:
         assert found["plugin_root"] == str(self.PLUGIN), found
         assert found["plugin_version"] == manifest["version"], found
 
-    def test_the_hook_refreshes_a_stale_pointer(self, tmp_path):
+    @pytest.mark.parametrize("recorded_root", ["/gone/0.0.1", 7])
+    def test_a_lead_session_reports_both_roots_before_refreshing(self, tmp_path, recorded_root):
         repo, _g = xp_repo(tmp_path)
-        self.seed(tmp_path)
-        assert run_hook(repo, tmp_path).returncode == 0
+        old = tmp_path / "recorded-plugin" if isinstance(recorded_root, str) else recorded_root
+        if isinstance(old, Path):
+            old.mkdir()
+            old = str(old)
+        self.seed(tmp_path, plugin_root=old)
+        result = run_hook(repo, tmp_path)
+        assert result.returncode == 0
         self.assert_current(tmp_path)
+        # The WHOLE line, not the two roots separately: `repr(7)` is "7", which any
+        # profile holds by accident, so the non-str arm greened against NO notice at all.
+        assert f"plugin root moved from {str(old)!r} to {str(self.PLUGIN)!r}" in result.stdout
 
     def test_the_refresh_leaves_non_plugin_keys_alone(self, tmp_path):
         repo, _g = xp_repo(tmp_path)
@@ -42,19 +52,46 @@ class EnvRefreshCases:
         assert self.recorded(tmp_path)["scratch"] == "keep me"
         self.assert_current(tmp_path)
 
-    def test_a_teammate_session_refreshes_it_too(self, tmp_path):
+    def test_a_teammate_session_with_a_different_root_leaves_env_byte_identical(self, tmp_path):
         repo, _g = xp_repo(tmp_path)
-        self.seed(tmp_path)
+        path = self.seed(tmp_path)
+        path.write_bytes(
+            b'{ "plugin_root": "/gone/0.0.1", "plugin_version": "0.0.1", "scratch": 7 }\n\n'
+        )
+        before = path.read_bytes()
         r = run_hook_as(repo, tmp_path, role="teammate")
         assert "teammate session" in r.stdout, r.stdout
-        self.assert_current(tmp_path)
+        assert path.read_bytes() == before
 
-    def test_a_hook_that_cannot_write_keeps_injecting(self, tmp_path):
+    def test_a_failed_lead_refresh_is_reported_and_the_profile_survives(self, tmp_path):
         repo, _g = xp_repo(tmp_path)
-        (tmp_path / "xp" / "env.json").mkdir(parents=True)
+        path = tmp_path / "xp" / "env.json"
+        path.mkdir(parents=True)
         r = run_hook(repo, tmp_path)
         assert r.returncode == 0
         assert "CONSTRAINT-SENTINEL" in r.stdout, r.stdout or r.stderr
+        assert "plugin root refresh FAILED" in r.stdout, r.stdout
+        assert str(path) in r.stdout, r.stdout
+        assert "plugin root moved" not in r.stdout
+        assert "Traceback" not in r.stdout + r.stderr
+
+    def test_a_failed_replace_is_not_reported_as_a_move_that_did_not_land(
+        self, tmp_path, monkeypatch
+    ):
+        from env import refresh_env
+
+        path = self.seed(tmp_path)
+        before = path.read_bytes()
+        monkeypatch.setenv("XP_DATA", str(tmp_path / "xp"))
+
+        def fail_replace(_self, _target):
+            raise OSError("fault-injected replace failure")
+
+        monkeypatch.setattr(Path, "replace", fail_replace)
+        notice = refresh_env(self.PLUGIN, "9.9.9")
+        assert "plugin root refresh FAILED" in notice
+        assert "plugin root moved" not in notice
+        assert path.read_bytes() == before
 
     def test_an_invalid_env_is_not_replaced_and_the_hook_keeps_injecting(self, tmp_path):
         repo, _g = xp_repo(tmp_path)
@@ -142,6 +179,25 @@ class InstallProbeCases:
         baseline = self.run(repo, tmp_path, running, "claude").stdout
         self.cli(tmp_path, "codex", [self.entry("codex", installed)])
         assert self.run(repo, tmp_path, running, "claude").stdout == baseline
+
+    def test_release_prep_stale_install_reports_without_refusing(self, tmp_path):
+        repo, _g = xp_repo(tmp_path)
+        running, installed = self.copies(
+            tmp_path, running="0.22.0", installed="0.21.4", name="xp-plugin"
+        )
+        self.cli(tmp_path, "codex", [self.entry("codex", installed)])
+        env_path = tmp_path / "xp" / "env.json"
+        env_path.write_text(json.dumps({"plugin_root": str(installed), "plugin_version": "0.21.4"}))
+        result = self.run(repo, tmp_path, running, "claude")
+        output = result.stdout + result.stderr
+        assert result.returncode == 0
+        assert "refused:" not in output
+        assert repr(str(installed)) in output and repr(str(running)) in output
+        assert "installed 0.21.4" in output and "running 0.22.0" in output
+        assert json.loads(env_path.read_text()) == {
+            "plugin_root": str(running),
+            "plugin_version": "0.22.0",
+        }
 
     def test_absent_cli_and_absent_plugin_are_distinct_and_silent(self, tmp_path, monkeypatch):
         from session_start import install_status

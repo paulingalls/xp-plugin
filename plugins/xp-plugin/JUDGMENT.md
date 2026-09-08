@@ -9,6 +9,9 @@
 - **Review** — Generalization, uncovered behavior or resolved conflict is a
   deviation, owed a round when silent or corrupting (false green, corrupted
   record, unreviewed merge); loud does not.
+- **New information** — step back before the next step: restate what the work is
+  FOR, then choose. Continuing from what survives a finding is how work drifts off
+  the goal that filed it.
 
 ## Records (`work.py` only)
 
