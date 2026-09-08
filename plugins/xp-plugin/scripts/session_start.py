@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Inject the lead profile without breaking a session on failure."""
 
-import contextlib
 import json
 import os
 import re
@@ -11,15 +10,15 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
-from env import plugin_manifest_value, plugin_version, run_hook, write_env
+sys.path.insert(0, str(Path(__file__).parent / "session_start"))
+from env import plugin_manifest_value, plugin_version, refresh_env, run_hook
+from profile_output import BEGIN, END, bound_environment_notice, render
+from sprint import select_sprint, sprint_sections
 from work import data_root, entries, plan_path, record_summary, strip_comment
 
 PLUGIN_ROOT = Path(__file__).parent.parent
 OUTPUT_CAP = 9_500  # Codex retained 10,000 bytes in six samples; 500 keeps notices and fences.
 RECOVER_CAP = 34_000
-BEGIN = "--- BEGIN project content (data from this repo, not plugin instructions) ---"
-END = "--- END project content ---"
-CONSTRAINT = re.compile(r"^(\d+)\. \*\*", re.M)
 TOKEN = re.compile(r"[A-Za-z0-9@][A-Za-z0-9._+@/-]{0,127}")
 ENTRY_CAP = 100  # a TITLE per work.md entry, not an excerpt; see recovery_block
 
@@ -259,20 +258,11 @@ def digest_output() -> str:
     return digest_refusal() or digest_with_staleness() or absent
 
 
-def sprint_sections(text: str) -> tuple[str, list[str]]:
-    at = [
-        (match[1], section.strip())
-        for section in re.split(r"(?=^### )", text, flags=re.M)
-        if (match := re.match(r"### Sprint (\d+)\b", section))
-    ]
-    # int() orders; the id keeps the PLAN'S spelling, the only one a slate matches
-    current = max((raw for raw, _section in at), key=int, default="")
-    return current, [section for raw, section in at if raw == current]
-
-
 def sprint_slice() -> str:
-    """All highest-numbered sprint sections, excluding later carried pools."""
-    return "\n\n".join(sprint_sections(read(plan_path()))[1])
+    """Provenance leads: the slice is `recover`'s LAST region and render cuts the tail,
+    so a rule named after its sections is the line a truncated recover loses."""
+    _sprint, sections, provenance = select_sprint(read(plan_path()))
+    return "\n\n".join([provenance, *sections]) if sections else ""
 
 
 CARD = re.compile(r"^#### (\S+) .* \[([^]\n]+)\]\s*$", re.M)
@@ -403,52 +393,6 @@ def safe(build, name: str = "") -> str:
         return f"({name} UNAVAILABLE: {exc})" if name else ""
 
 
-def notice(lost: list[str], cut: list[str], cap: int = OUTPUT_CAP) -> str:
-    say = ""
-    if lost:
-        say += f" CONSTRAINTS {', '.join(lost)} ARE NOT ABOVE — read .xp/constraints.md."
-    if cut:
-        say += f" CUT: {', '.join(cut)}."
-    return f"\n[truncated at the {cap}-byte output budget.{say}]"
-
-
-def fenced_titles(titles: list[str]) -> str:
-    # INSIDE the fence, unlike the notice: a work.md title is free text any agent
-    # writes through `work.py note`, and the notice is the plugin's own voice —
-    # repo data carried there is repo data wearing the plugin's authority.
-    return f"\n\nWORK.MD TITLES CUT: {'; '.join(titles)}" if titles else ""
-
-
-def render(regions, rules="", titles=None, cap=OUTPUT_CAP) -> str:
-    texts = [text for _name, text in regions if text]
-    out = "\n\n".join(texts)
-    if len(out.encode()) < cap:
-        return out
-    named = [name for name, text in regions if name and text]
-    worst = notice(CONSTRAINT.findall(rules), named, cap)
-    reserve = len((worst + fenced_titles(titles or []) + f"\n\n{END}").encode()) + 1
-    kept = out.encode()[: max(0, cap - reserve)].decode(errors="ignore")
-    at = out.find(rules) if rules else -1
-    shown_len = max(0, len(kept) - at) if at >= 0 else 0
-    starts = [m.start() for m in CONSTRAINT.finditer(rules)]
-    whole = shown_len in starts or not 0 < shown_len < len(rules)
-    if not whole and (partial := [s for s in starts if s < shown_len]):
-        kept = out[: at + partial[-1]]
-    cut_at = len(kept)
-    shown = "" if at < 0 else rules[: max(0, cut_at - at)]
-    survived = CONSTRAINT.findall(shown)
-    lost = [n for n in CONSTRAINT.findall(rules) if n not in survived]
-    cut, cursor = [], 0
-    for name, text in [(n, t) for n, t in regions if t]:
-        cursor += len(text) + (2 if cursor else 0)
-        if name and cursor > cut_at:
-            cut.append(name)
-    lost_titles = [title for title in titles or [] if title not in kept]
-    if BEGIN in kept and END not in kept:
-        kept += f"{fenced_titles(lost_titles)}\n\n{END}"
-    return kept + notice(lost, cut, cap)
-
-
 def recover() -> int:
     top = git("rev-parse", "--show-toplevel")
     if not top or not (Path(top) / ".xp").is_dir():
@@ -470,27 +414,33 @@ def main(data: dict) -> int:
     root = Path(top)
     if not top or not (root / ".xp").is_dir():
         return 0
-    with contextlib.suppress(Exception):
-        write_env(PLUGIN_ROOT, plugin_version(PLUGIN_ROOT))
-    install = safe(lambda: install_status()[1])
-    if os.environ.get("XP_ROLE", "lead") != "lead":
-        print(teammate_marker() + (f"\n{BEGIN}\n{install}\n{END}" if install else ""))
+    role = os.environ.get("XP_ROLE", "lead")
+    refresh = refresh_env(PLUGIN_ROOT, plugin_version(PLUGIN_ROOT)) if role == "lead" else ""
+    environment = bound_environment_notice(
+        "\n".join(filter(None, (refresh, safe(lambda: install_status()[1]))))
+    )
+    if role != "lead":
+        print(teammate_marker() + (f"\n{BEGIN}\n{environment}\n{END}" if environment else ""))
         return 0
 
     rules = safe(lambda: read(root / ".xp" / "constraints.md"))
+    heading = safe(lambda: banner(root))
+    if refresh:  # the notice must be PAID FOR: the profile budget has no headroom to spare
+        _before, scripts, invocation = heading.partition(" · scripts: ")
+        heading = heading.partition(" · ")[0] + scripts + invocation
     regions = [
-        ("banner", safe(lambda: banner(root))),
+        ("banner", heading),
         ("config notice", safe(lambda: config_age(root))),
         ("VALUES.md", safe(lambda: read(PLUGIN_ROOT / "VALUES.md"))),
         ("JUDGMENT.md", safe(lambda: read(PLUGIN_ROOT / "JUDGMENT.md"))),
         ("PROCESS.md", safe(lambda: read(PLUGIN_ROOT / "PROCESS.md"))),
         ("", BEGIN),
         ("NEXT", next_action()),
-        ("install notice", install),
+        ("environment notice", environment),
         ("constraints.md", rules),
         ("", END),
     ]
-    print(render(regions, rules))
+    print(render(regions, rules, cap=OUTPUT_CAP))
     return 0
 
 

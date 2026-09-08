@@ -40,7 +40,15 @@ class TestResolutionsAreCarried:
         for attempt in ("SUPERSEDED-TRY", "LATEST-TRY"):
             assert (
                 work(
-                    repo, env, "resolve", "--ref", ref, "--falsifier", f"true # {attempt}"
+                    repo,
+                    env,
+                    "resolve",
+                    "--ref",
+                    ref,
+                    "--falsifier",
+                    f"true # {attempt}",
+                    "--covered-by",
+                    "none",
                 ).returncode
                 == 0
             )
@@ -67,7 +75,17 @@ class TestResolutionsAreCarried:
         repo, env, _g = make_repo(tmp_path)
         work(repo, env, "bug", "--claim", "c", "--falsifier", "false", "--files", "a.py")
         ref = work(repo, env, "list").stdout.split()[0]
-        work(repo, env, "resolve", "--ref", ref, "--falsifier", "true # THE-REPLACEMENT")
+        work(
+            repo,
+            env,
+            "resolve",
+            "--ref",
+            ref,
+            "--falsifier",
+            "true # THE-REPLACEMENT",
+            "--covered-by",
+            "none",
+        )
         work(repo, env, "note", "A-PLAIN-NOTE")
         assert sprint(repo, env, "review").returncode == 0
         raw = section(launches(tmp_path)[0]["stdin"], WORK_SECTION, "JUDGMENT")
@@ -159,7 +177,7 @@ class TestMotionIsBoundedByAMechanism:
         """The green twin, and the reason the digest is sprint-scoped: the plan is
         one shared file now, so digesting the whole of it would let any lane's flip
         refuse an unrelated release review — the project-global mutable gate
-        constraint 10 forbids. story-099 is [ready] in Sprint 3, not this one."""
+        a sprint-scoped marker forbids. story-099 is [ready] in Sprint 3, not this one."""
         repo, env, _g = make_repo(tmp_path)
         self._plan_rewriting_stub(tmp_path, "story-099 — not this sprint", "story-099 — MOVED")
         r = sprint(repo, env, "review")

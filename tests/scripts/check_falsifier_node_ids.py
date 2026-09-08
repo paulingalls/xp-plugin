@@ -10,9 +10,10 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "plugins/xp-plugin/scripts"))
+sys.path.insert(0, str(ROOT / "plugins/xp-plugin/scripts/close"))
 
 from env import data_root  # noqa: E402
-from sprint_close import corpus  # noqa: E402
+from falsifier_batch import corpus  # noqa: E402
 
 
 def _pytest_words(command: str) -> list[str]:

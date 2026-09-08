@@ -167,3 +167,31 @@ def test_a_resumed_round_is_not_warned_that_its_own_reports_are_doomed(tmp_path)
     assert resumed.returncode == 0, resumed.stderr
     assert "DELETES" not in resumed.stderr and "salvage" not in resumed.stderr, resumed.stderr
     assert fix_report.is_file(), "the resumed round read this report; it was never doomed"
+
+
+def test_a_round_recorded_during_the_closer_survives_the_resume(tmp_path):
+    """The closer's stub writes the marker, which is what a concurrent `salvage` does
+    and what the motion gate then refuses on. The resume must mark ITS OWN round
+    incomplete: rewriting `rounds[-1]` under the lock lands on the round that arrived
+    beside it, and land reads that one for blocking findings."""
+    repo, env, _g = make_repo(tmp_path)
+    _stop_at_closer(tmp_path)
+    assert sprint(repo, env, "review").returncode == 2
+    marker = marker_path(tmp_path)
+    landed = {"fixed": [], "blocking": [], "noted": ["salvaged"], "incomplete": "host killed"}
+    claude = tmp_path / "bin/claude"
+    claude.write_text(
+        claude.read_text() + "if key == 'close':\n"
+        f"    state = json.loads(open({str(marker)!r}).read())\n"
+        f"    state['rounds'].append({json.dumps(landed)})\n"
+        f"    open({str(marker)!r}, 'w').write(json.dumps(state))\n"
+    )
+    claude.chmod(0o755)
+
+    resumed = sprint(repo, env, "review")
+
+    assert resumed.returncode == 2 and "close marker changed" in resumed.stderr
+    rounds = json.loads(marker.read_text())["rounds"]
+    assert len(rounds) == 2
+    assert rounds[1] == landed, "the resume rewrote the round that landed beside it"
+    assert "close marker changed" in rounds[0]["incomplete"], rounds[0]

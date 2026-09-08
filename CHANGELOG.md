@@ -4,6 +4,32 @@ Release notes started at v0.6.0; earlier entries are summarized from their
 tag and merge messages. Full detail lives in the merge history and the
 per-sprint review reports.
 
+## v0.22.0 — the close spends what it must and keeps what it knows
+
+The sprint close paid twice for what it already measured, and threw away what it
+already knew. Six cards, all of it observable in this release's own close.
+
+The falsifier batch stopped re-running records the ledger already calls disposed,
+and a record tagged with a cheaper tier now defers when a tier that covers it is
+about to run — declared by the project, pinned to the tier commands it was declared
+against, so a tier edited later refuses loudly instead of silently un-covering every
+record tagged with it. Before this, only the literal `full` bought the deferral, so
+the honest tag was the expensive one and almost nobody used the field.
+
+The full tier runs once per close when the tree has not moved, keyed on the staged
+merge's tree rather than a commit SHA — on the pending arm the tree being measured
+has no SHA at all. The release PR now carries the sprint's record: each story with
+its merge SHA, the round's counts, the tier that ran and the tree it covered, and
+whether that tier ran in this leg or reused a receipt.
+
+`recover` describes the sprint the state root records as OPEN rather than the
+highest-numbered heading, falling back loudly. A spawned session no longer repoints
+the lead's pinned plugin root, and a lead's refresh is reported rather than silent.
+
+Also fixed: a work.md record's `Files:` line is parsed by the same rule as a card's;
+the sprint marker survives a concurrent write landing during a long tier; and a
+plugin-root move notice is bounded so it cannot evict a constraint from the profile.
+
 ## v0.21.5 — every plan.md writer takes the lock
 
 `work.edit_plan()` does read-modify-write inside an exclusive flock, and

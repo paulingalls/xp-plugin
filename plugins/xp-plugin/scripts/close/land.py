@@ -129,7 +129,8 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
             end="",
         )
         return 0
-    if red := overlap.gates(ref, verify, tier_key, pending):
+    red, _receipt = overlap.gates(ref, verify, tier_key, pending)
+    if red:
         return close.fail(red)
     if not free and (red := lc.run(close.config_flat(lc.KEY), "story-close", story_id)):
         return close.fail(red)

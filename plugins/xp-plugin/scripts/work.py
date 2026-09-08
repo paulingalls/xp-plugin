@@ -10,11 +10,20 @@ import os
 import re
 import subprocess
 import sys
+import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
+# card_title/card_lines are RE-EXPORTED, not used here: 17 modules and tests read them
+# from work, and the extraction that moved them must not become their rename.
+from card_text import (  # noqa: F401
+    card_digest,
+    card_lines,
+    card_title,
+    flip_status,
+)
 from env import data_root, plugin_root
 from plan_writer import CardEditRefusal, apply_card, locked_edit
 
@@ -89,38 +98,6 @@ def config_block_value(
     return values if key is None else values.get(key, missing)
 
 
-def card_title(card: str) -> str:
-    """The story title from a card header, or "" when it carries no em-dash."""
-    header = card.splitlines()[0]
-    return header.split("— ", 1)[1].split(" [")[0].strip() if "— " in header else ""
-
-
-def card_lines(card: str) -> list[str]:
-    """The card lines that its credential hashes and drift refusal diffs."""
-    lines = [ln.rstrip() for ln in card.splitlines()]
-    head = lines[0]
-    if head.endswith("]"):
-        lines[0] = head[: head.rindex("[")].rstrip()
-    while lines and not lines[-1]:
-        lines.pop()
-    return lines
-
-
-def card_digest(card: str) -> str:
-    return hashlib.sha256("\n".join(card_lines(card)).encode()).hexdigest()[:16]
-
-
-def flip_status(text: str, heading: str, frm: str, to: str) -> str:
-    exact = heading.startswith("## ")  # a milestone heading is whole; a card's is a prefix
-    out = []
-    for ln in text.splitlines(keepends=True):
-        head, sep, tail = ln.rstrip().rpartition(f"[{frm}]")
-        if sep and not tail and (head == heading if exact else ln.startswith(heading)):
-            ln = f"{head}[{to}]" + ln[len(ln.rstrip()) :]
-        out.append(ln)
-    return "".join(out)
-
-
 def flip_card(story_id: str, frm: str, to: str) -> bool:
     """Flip one card's status in the clone's plan, under the lock; True when it
     moved. Locked because a sibling lane may be flipping its own card right now."""
@@ -190,6 +167,7 @@ class FalsifierResult:
     returncode: int
     stdout: str
     stderr: str
+    elapsed: float
 
 
 def _bounded_stream(stream: str) -> str:
@@ -200,9 +178,11 @@ def _bounded_stream(stream: str) -> str:
 
 
 def falsifier_result(command: str) -> FalsifierResult:
+    started = time.perf_counter()
     result = subprocess.run(command, shell=True, capture_output=True, text=True, errors="replace")
+    elapsed = time.perf_counter() - started
     return FalsifierResult(
-        result.returncode, _bounded_stream(result.stdout), _bounded_stream(result.stderr)
+        result.returncode, _bounded_stream(result.stdout), _bounded_stream(result.stderr), elapsed
     )
 
 
@@ -210,15 +190,37 @@ def falsifier_is_green(command: str) -> bool:
     return falsifier_result(command).returncode == 0
 
 
-def checked_coverage(args: argparse.Namespace) -> str | None:
+def checked_coverage(args: argparse.Namespace, required: bool = False) -> str | None:
     tier = args.covered_by
     if not tier:
+        if required:
+            tiers = config_block_value("tests")
+            states = (
+                ", ".join(
+                    f"{name} ({'available' if value and value != 'EDIT-ME' else 'unavailable'})"
+                    for name, value in tiers.items()
+                )
+                or "none configured"
+            )
+            print(
+                "refused: resolve requires an explicit coverage answer; configured tiers: "
+                f"{states}. Retry with --covered-by TIER or --covered-by none",
+                file=sys.stderr,
+            )
+            return None
         return ""
+    if tier == "none":
+        return "Covered by: none\n"
     tiers = config_block_value("tests")
-    if tier in tiers:
+    if tier in tiers and tiers[tier] and tiers[tier] != "EDIT-ME":
         return f"Covered by: {tier}\n"
-    names = ", ".join(tiers) or "none"
-    print(f"refused: --covered-by {tier!r}; configured tiers: {names}", file=sys.stderr)
+    names = ", ".join(tiers) or "none configured"
+    state = "unavailable" if tier in tiers else "absent"
+    print(
+        f"refused: --covered-by {tier!r} is {state}; configured tiers: {names}."
+        " Use --covered-by none when no tier runs this",
+        file=sys.stderr,
+    )
     return None
 
 
@@ -233,9 +235,9 @@ def entry(kind: str, args: argparse.Namespace, coverage: str) -> str:
 
 
 def _single_line(value: str, field: str) -> bool:
-    if len(value.splitlines()) > 1 or "`" in value:
+    if not value.strip() or len(value.splitlines()) > 1 or "`" in value:
         print(
-            f"refused: --{field} must be one line and must not contain a backtick —"
+            f"refused: --{field} must be a non-empty line and must not contain a backtick —"
             " the record format holds it inside backticks on a single line, so"
             " anything else forges the record that follows it.",
             file=sys.stderr,
@@ -271,6 +273,14 @@ def _archived(root: Path, ref: str) -> bool:
     )
 
 
+def _resolved(root: Path, ref: str) -> bool:
+    field = f"Resolves: {ref}"
+    return any(
+        field in text.splitlines() and (text.startswith("## resolved ") or eid == ref)
+        for eid, text in entries(root)
+    )
+
+
 def resolve(root: Path, args: argparse.Namespace) -> int:
     """Resolve a record by SUBSTITUTING a falsifier, never by deleting one.
 
@@ -278,7 +288,7 @@ def resolve(root: Path, args: argparse.Namespace) -> int:
     silence a live bug forever. The replacement must be green now and the batch
     runs it, so a wrong resolution reds later and the record reopens.
     """
-    if (coverage := checked_coverage(args)) is None:
+    if (coverage := checked_coverage(args, required=True)) is None:
         return 2
     if not _single_line(args.falsifier, "falsifier"):
         return 2
@@ -321,11 +331,18 @@ def archive(root: Path, args: argparse.Namespace) -> int:
     """Record a disposition; `compact` later moves its record's durable prose."""
     if (kind := _kind_of(root, args.ref)) is None:
         return 2
-    if kind not in ("debt", "note"):
+    if kind == "bug" and _archived(root, args.ref):
         print(
-            f"refused: {args.ref} is a {kind} — only a debt or a note is archivable."
-            " Archiving a bug hides its red falsifier: fix it, then resolve it. A"
-            " resolved or archived record is already disposed of; choose an open one.",
+            f"refused: {args.ref} is already archived — choose an undisposed record.",
+            file=sys.stderr,
+        )
+        return 2
+    if kind not in ("debt", "note") and not (kind == "bug" and _resolved(root, args.ref)):
+        print(
+            f"refused: {args.ref} is a {kind} — only a debt, a note or an already"
+            " RESOLVED bug is archivable. Archiving an unresolved bug hides its red"
+            " falsifier: fix it, then resolve it, then archive it. A resolved or"
+            " archived record is already disposed of; choose an open one.",
             file=sys.stderr,
         )
         return 2
@@ -385,7 +402,7 @@ def main() -> int:
     r = sub.add_parser("resolve")
     r.add_argument("--ref", required=True, help="record id from `list`")
     r.add_argument("--falsifier", required=True, help="replacement; must be GREEN now")
-    r.add_argument("--covered-by", metavar="TIER", help="a configured tier that runs it")
+    r.add_argument("--covered-by", metavar="TIER", help="REQUIRED: a configured tier, or `none`")
     e = sub.add_parser("edit-card", help="apply one card-refresh candidate under the plan lock")
     e.add_argument("story_id")
     e.add_argument("--digest", required=True)

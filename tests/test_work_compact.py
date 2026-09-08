@@ -9,7 +9,8 @@ from sprint_helpers import work as project_work
 
 WORK = PLUGIN / "scripts" / "work.py"
 sys.path.insert(0, str(WORK.parent))
-import sprint_close  # noqa: E402
+sys.path.insert(0, str(WORK.parent / "close"))
+import falsifier_batch  # noqa: E402
 import work  # noqa: E402
 
 
@@ -45,18 +46,27 @@ def seed(root):
         story="story-042",
     )
     debt = last_id(root)
-    run(root, "resolve", "--ref", debt, "--falsifier", "printf resolved >/dev/null")
+    run(
+        root,
+        "resolve",
+        "--ref",
+        debt,
+        "--falsifier",
+        "printf resolved >/dev/null",
+        "--covered-by",
+        "none",
+    )
     run(root, "archive", "--ref", debt, "--disposition", "accepted risk", story="story-042")
     run(root, "bug", "--claim", "resolved bug claim", "--falsifier", "false", "--files", "b.py")
     bug = last_id(root)
-    run(root, "resolve", "--ref", bug, "--falsifier", "true")
+    run(root, "resolve", "--ref", bug, "--falsifier", "true", "--covered-by", "none")
     return active, (note, debt, bug)
 
 
 def execute_corpus(root):
     return [
         (ref, headline, command, covered, subprocess.run(command, shell=True).returncode)
-        for ref, headline, command, covered in sprint_close.corpus(root)
+        for ref, headline, command, covered in falsifier_batch.corpus(root)
     ]
 
 
@@ -154,9 +164,10 @@ def test_compacted_archived_note_stays_out_of_sprint_triage(tmp_path):
     assert project_work("compact").returncode == 0
     result = sprint(repo, env, "start")
     assert result.returncode == 0 and "ARCHIVE-ME-SENTINEL" not in result.stdout
+    assert "0 notes to triage" in result.stdout
 
 
-@pytest.mark.parametrize("replacement_tier", ("", "full"))
+@pytest.mark.parametrize("replacement_tier", ("none", "full"))
 def test_compaction_keeps_coverage_with_the_replacement_falsifier(tmp_path, replacement_tier):
     repo, env, _git = make_repo(tmp_path)
     filed = project_work(
@@ -174,14 +185,13 @@ def test_compaction_keeps_coverage_with_the_replacement_falsifier(tmp_path, repl
     )
     counter = tmp_path / "replacement"
     args = ["resolve", "--ref", filed.stdout.strip(), "--falsifier", f"printf x >> {counter}"]
-    if replacement_tier:
-        args += ["--covered-by", replacement_tier]
+    args += ["--covered-by", replacement_tier]
     assert project_work(repo, env, *args).returncode == 0
     assert project_work(repo, env, "compact").returncode == 0
     compacted = (tmp_path / "data" / "work.md").read_text()
-    assert ("Covered by: full" in compacted) == bool(replacement_tier)
+    assert f"Covered by: {replacement_tier}" in compacted
 
     before = counter.read_text()
     assert sprint(repo, env, "start").returncode == 0
-    expected = before if replacement_tier else before + "x"
+    expected = before if replacement_tier == "full" else before + "x"
     assert counter.read_text() == expected

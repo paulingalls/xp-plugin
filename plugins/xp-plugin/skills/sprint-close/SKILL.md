@@ -14,6 +14,8 @@ description: >-
    the polarity contract).
 2. **Note triage, then the retro — YOURS, and they come FIRST.**
    Promote each note through the retro diff, or `work.py archive` it; then
+   decide which offered resolved records to archive, knowing that disposal
+   forfeits their replacement falsifier's recurring guarantee. Then
    `work.py compact` once. A learning that changes nothing executable is not
    recorded; every promotion displaces something. Write
    the retro and REPLACE the digest: the pipeline emits facts; the

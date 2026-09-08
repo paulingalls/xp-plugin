@@ -3,8 +3,6 @@
 
 import glob
 import json
-import re
-import shlex
 import subprocess
 import sys
 from pathlib import Path
@@ -15,105 +13,33 @@ import close as story_close
 import lifecycle as lc
 import milestone
 import overlap
+import plan_writer
 import stages
 from close import config_flat, default_branch, fail, git, sprint_unrecorded_notice, story_card
 from env import record_sprint_branch, refuse_direct_invocation, sprint_branch
-from sprint_bundle import ARCHIVES, COVERED_BY, FALSIFIER, RESOLVES, build, source_files
+from falsifier_batch import (
+    batch_refusal,
+    corpus,
+    execute_batch,
+    ledger,
+    resolved_offers,
+    tier_covers,
+    triage_notes,
+    unavailable_coverage,
+    validated_coverage,
+)
+from sprint_bundle import build
 from work import (
-    append,
     config_block_value,
     data_root,
     entries,
-    falsifier_result,
     missing_plan_refusal,
-    neutralize,
     plan_path,
     record_summary,
-    stamp,
 )
 
 PLUGIN_ROOT = Path(__file__).parent.parent
 sprint_stories = milestone.sprint_stories
-
-
-def corpus(root: Path) -> list[tuple[str, str, str, str]]:
-    records, resolutions, archived = {}, {}, set()
-    for eid, text in entries(root):
-        head = text.splitlines()[0]
-        if (archive := ARCHIVES.search(text)) and (
-            head.startswith("## archived ")
-            or (head.startswith(("## bug ", "## debt ")) and archive.group(1) == eid)
-        ):
-            archived.add(archive.group(1))
-        if head.startswith("## resolved "):
-            ref, m = RESOLVES.search(text), FALSIFIER.search(text)
-            if ref and m:
-                covered = COVERED_BY.search(text)
-                resolutions[ref.group(1)] = (m.group(1), covered.group(1) if covered else "")
-        elif head.startswith(("## bug ", "## debt ")) and (m := FALSIFIER.search(text)):
-            claim = next((ln for ln in text.splitlines() if ln.startswith("Claim: ")), "")
-            covered = COVERED_BY.search(text)
-            records[eid] = (
-                f"{head[3:]} — {claim[7:97]}",
-                m.group(1),
-                covered.group(1) if covered else "",
-            )
-    return [
-        (eid, head, *resolutions.get(eid, (f, covered)))
-        for eid, (head, f, covered) in records.items()
-        if eid not in archived
-    ]
-
-
-def batch_refusal(root: Path, grouped: dict[str, list[tuple[str, str, str]]]) -> str:
-    red = []
-    for falsifier, records in grouped.items():
-        result = falsifier_result(falsifier)
-        if result.returncode:
-            red.append((falsifier, records, result))
-    if not red:
-        return ""
-    lines = ["batch falsifier RED:"]
-    refs = []
-    for falsifier, records, result in red:
-        lines.append(f"command: {falsifier}")
-        for eid, head, _covered in records:
-            refs.append(eid)
-            lines.append(f"source {eid} ({head})")
-        lines.extend(
-            (f"stdout:\n{result.stdout or '(empty)'}", f"stderr:\n{result.stderr or '(empty)'}")
-        )
-    evidence = "\n".join(lines)
-    known = any(head.startswith("bug ") for _f, records, _r in red for _e, head, _c in records)
-    if known:
-        decision = "No bug filed because an open source bug already filed this batch."
-    else:
-        files, missing, archive_error = source_files(root, refs)
-        if archive_error:
-            decision = f"No bug filed because {archive_error}."
-        elif missing:
-            malformed = "; ".join(f"{ref} has no usable Files declaration" for ref in missing)
-            decision = f"No bug filed because {malformed}."
-        else:
-            commands = [falsifier for falsifier, _records, _result in red]
-            combined = (
-                commands[0]
-                if len(commands) == 1
-                else "status=0; "
-                + "; ".join(
-                    f"/bin/sh -c {shlex.quote(command)} || status=1" for command in commands
-                )
-                + '; exit "$status"'
-            )
-            append(
-                root,
-                f"## bug {stamp()}\nClaim: batch falsifier RED for source records "
-                f"{', '.join(refs)}; debt/archive red means the latent problem materialised.\n"
-                f"{neutralize(evidence)}\nFalsifier: `{combined}`\n"
-                f"Files: {', '.join(files)}\n\n",
-            )
-            decision = "Filed as one bug."
-    return f"refused: {evidence}\n{decision} Fix it, then run start again"
 
 
 def sprint_cards(plan: str, sprint_id: str) -> str:
@@ -124,6 +50,36 @@ def sprint_marker(sprint_id: str) -> Path:
     d = data_root() / "markers" / "sprint"
     d.mkdir(parents=True, exist_ok=True)
     return d / f"{sprint_id}.json"
+
+
+def read_sprint_state(sprint_id: str) -> tuple[Path, dict, str]:
+    path = sprint_marker(sprint_id)
+    if not path.exists():
+        return path, {}, ""
+    try:
+        state = json.loads(path.read_text())
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        return path, {}, f"refused: unreadable sprint marker {path}: {exc}"
+    if not isinstance(state, dict):
+        return path, {}, f"refused: unreadable sprint marker {path}: expected a JSON object"
+    return path, state, ""
+
+
+def write_sprint_state(path: Path, changes, remove=()) -> dict:
+    def update(current: dict) -> None:
+        if callable(changes):
+            changes(current)
+        else:
+            rounds = current.setdefault("rounds", []) if changes.get("rounds") else []
+            for round_ in changes.get("rounds", []):
+                if round_ not in rounds:
+                    rounds.append(round_)
+            current.update({key: value for key, value in changes.items() if key != "rounds"})
+            for key in remove:
+                current.pop(key, None)
+
+    lock = data_root() / "locks" / f"sprint-{path.stem}.lock"
+    return plan_writer.locked_json_edit(path, lock, update, "sprint marker")
 
 
 def cmd_review(sprint_id: str, dry_run: bool) -> int:
@@ -203,7 +159,7 @@ def cmd_review(sprint_id: str, dry_run: bool) -> int:
     def stop(err: str) -> int:
         if resume:
             if not dry_run:  # a preview must not rewrite the round it previews
-                sprint_review_resume.keep_incomplete(marker, state, err)
+                sprint_review_resume.keep_incomplete(marker, round_n, err, write_sprint_state)
                 ran_before = ", ".join(rounds[-1]["stages"])
                 print(f"round {round_n} remains incomplete after {ran_before}")
             return fail(err)
@@ -216,7 +172,7 @@ def cmd_review(sprint_id: str, dry_run: bool) -> int:
                 if "fix" in ran
                 else {}
             )
-            review.write_round(marker, state, round_, **coverage)
+            review.write_round(marker, state, round_, edit=write_sprint_state, **coverage)
             print(f"round {round_n} recorded incomplete after {', '.join(ran)}")
         return fail(err)
 
@@ -321,9 +277,12 @@ def cmd_review(sprint_id: str, dry_run: bool) -> int:
             ran.remove("fix")
         return stop(err)
     if resume:
-        sprint_review_resume.complete(marker, state, round_, reviewed_head, shown_sha)
+        sprint_review_resume.complete(
+            marker, round_n, round_, reviewed_head, shown_sha, write_sprint_state
+        )
     else:
-        review.write_round(marker, state, round_, reviewed_head=head, shown_sha=shown_sha)
+        coverage = {"reviewed_head": head, "shown_sha": shown_sha}
+        review.write_round(marker, state, round_, edit=write_sprint_state, **coverage)
     print(
         f"round {round_n} recorded at {shown_sha[:8]}:"
         f" {len(round_['fixed'])} fixed, {len(round_['blocking'])} blocking"
@@ -369,7 +328,7 @@ def cmd_salvage(sprint_id: str) -> int:
         why += "; unreadable artifacts: " + "; ".join(unreadable)
     round_ = {key: list(items) for key, items in seen.items()}
     round_.update(incomplete=why, stages=[stage for stage, _report in recovered])
-    review.write_round(marker, state, round_)
+    review.write_round(marker, state, round_, edit=write_sprint_state)
     print(f"round {round_n} recorded incomplete after {', '.join(round_['stages'])}")
     return fail(f"refused: {why}") if unreadable else 0
 
@@ -398,12 +357,32 @@ def cmd_start(sprint_id: str) -> int:
         print(f"recorded; {len(unfinished)} stories unfinished — close checks wait")
         return 0
 
+    marker, state, marker_error = read_sprint_state(sprint_id)
+    if marker_error:
+        return fail(marker_error)
+    if dirty := git("status", "--porcelain").stdout.strip():
+        return fail(
+            "refused: the working tree is dirty before the close batch — commit or"
+            f" remove these files first:\n  {dirty}"
+        )
+    if "full_tier" in state:
+        state.pop("full_tier")
+        write_sprint_state(marker, {}, remove=("full_tier",))
+
     root = data_root()
-    batch = corpus(root)
+    source = entries(root)
+    records = ledger(root, source)
+    batch = corpus(root, records)
     grouped = {}
     for eid, head, falsifier, covered in batch:
         grouped.setdefault(falsifier, []).append((eid, head, covered))
-    tier = config_block_value("tests", "full")
+    tiers = config_block_value("tests")
+    graph, coverage_error = validated_coverage(tiers)
+    if coverage_error:
+        return fail(f"refused: {coverage_error}")
+    for notice in unavailable_coverage(records, tiers):
+        print(notice)
+    tier = tiers.get("full", "")
     # EDIT-ME ONLY — an absent full tier is a tested position (test_falsifier_batch runs
     # the batch without one); EDIT-ME reached `sh -c`, returned 127, and refused as red.
     if tier == "EDIT-ME":
@@ -411,34 +390,70 @@ def cmd_start(sprint_id: str) -> int:
     deferred = {
         command: records
         for command, records in grouped.items()
-        if tier and all(covered == "full" for _eid, _head, covered in records)
+        if tier
+        and all(tier_covers(covered, "full", tiers, graph) for _eid, _head, covered in records)
     }
-    if red := batch_refusal(root, {k: v for k, v in grouped.items() if k not in deferred}):
+    standalone = {key: value for key, value in grouped.items() if key not in deferred}
+    results = execute_batch(standalone)
+    if red := batch_refusal(root, standalone, results):
         return fail(red)
 
     if tier:
+        if dirty := git("status", "--porcelain").stdout.strip():
+            return fail(
+                "refused: the falsifier batch left the working tree dirty before the"
+                f" full tier:\n  {dirty}"
+            )
+        tree = git("write-tree", check=False)
+        if tree.returncode:
+            return fail(
+                f"refused: Git could not write tree for the full tier: {tree.stderr.strip()}"
+            )
+        before = {
+            "command": tier,
+            "head": git("rev-parse", "HEAD").stdout.strip(),
+            "tree": tree.stdout.strip(),
+        }
         print(f"running the full tier: {tier}")
         if subprocess.run(tier, shell=True).returncode == 0:
-            for records in deferred.values():
-                for eid, head, covered in records:
+            for sources in deferred.values():
+                for eid, head, covered in sources:
                     print(f"trusted {eid} ({head}) via tier {covered}")
-        elif red := batch_refusal(root, deferred):
-            return fail(red)
+            written = git("write-tree", check=False)
+            after = {
+                "command": config_block_value("tests", "full"),
+                "head": git("rev-parse", "HEAD").stdout.strip(),
+                "tree": written.stdout.strip(),
+            }
+            dirty = git("status", "--porcelain").stdout.strip()
+            if before == after and not dirty:
+                state["full_tier"] = {
+                    "tier": "full",
+                    **before,
+                    "verdict": "passed",
+                    "ran_by": "start",
+                    "reused": False,
+                }
+                write_sprint_state(marker, {"full_tier": state["full_tier"]})
+            else:
+                motion = (
+                    f"Git could not name the tree again: {written.stderr.strip()}"
+                    if written.returncode
+                    else dirty or f"HEAD/tree/command moved from {before} to {after}"
+                )
+                print(f"full tier passed, but no reusable receipt was recorded: {motion}")
         else:
+            deferred_results = execute_batch(deferred)
+            if red := batch_refusal(root, deferred, deferred_results):
+                return fail(red)
             return fail(f"refused: full tier red: {tier}")
 
     if completion := milestone.candidate(plan.read_text(), sprint_id):
         print(f"\n{completion.heading.rstrip()}")
         print(f"close.py sprint {sprint_id} milestone-done")
 
-    disposed = {
-        m.group(1)
-        for _eid, text in entries(root)
-        if (m := re.search(r"^(?:Archives|Resolves): (\w+)$", text, re.M))
-    }
-    notes = [
-        text for eid, text in entries(root) if text.startswith("## note ") and eid not in disposed
-    ]
+    notes = triage_notes(source)
+    print("\n" + resolved_offers(records, results))
     print(f"\n{len(members)} stories, {len(notes)} notes to triage. Each note: promote to")
     print("constraints.md/system.md via the retro diff, or archive it.\n")
     for text in notes:

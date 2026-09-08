@@ -108,7 +108,9 @@ def record_reviews(tmp_path, repo, env, blocking=(), shown=None):
     path = marker_path(tmp_path)
     path.parent.mkdir(parents=True, exist_ok=True)
     round_ = {"fixed": [], "blocking": list(blocking), "noted": []}
-    path.write_text(json.dumps({"rounds": [round_], "shown_sha": shown or head(repo, env)}))
+    state = json.loads(path.read_text()) if path.exists() else {}
+    state.update(rounds=[round_], shown_sha=shown or head(repo, env))
+    path.write_text(json.dumps(state))
 
 
 def stage_key(bundle):
