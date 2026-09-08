@@ -380,6 +380,6 @@ class TestModeSwitch:
 
         landed = sprint(repo, env, "land", "--dry-run")
         assert landed.returncode == 0, landed.stderr
-        assert "--body Sprint 2" in landed.stdout
+        assert "--body-file <release-pr-body>" in landed.stdout
         assert "Review round" not in landed.stdout
         assert all(item not in landed.stdout for item in items)

@@ -1,8 +1,12 @@
 """Sprint land coverage and release handoff."""
 
+import json
 import subprocess
+import tempfile
 
 import overlap
+from env import data_root
+from milestone import sprint_stories
 from release import cmd_post_merge as release_post_merge
 from release import next_version, refuse_unbumpable
 from review import CLEARABLE_BY_FULL, covered_ranges, reviewer_strays, validate_clearable
@@ -14,7 +18,135 @@ from sprint_close import (
     read_sprint_state,
     write_sprint_state,
 )
-from work import config_block_value
+from work import config_block_value, plan_path
+
+# GitHub's own ceiling on a pull request body; gh rejects a longer --body-file.
+PR_BODY_LIMIT = 65_536
+
+
+def _release_body(sprint_id: str, state: dict, marker) -> tuple[str, str]:
+    rerun = f"run `close.py sprint {sprint_id} review`"
+    again = f"then run `close.py sprint {sprint_id} land` again"
+    plan = plan_path()
+    try:
+        headings = sprint_stories(plan.read_text(), sprint_id)
+    except FileNotFoundError:
+        return "", f"refused: missing sprint plan {plan} — restore it, {again}"
+    except (OSError, UnicodeError) as exc:
+        return "", f"refused: unreadable sprint plan {plan}: {exc} — repair it, {again}"
+    if not headings:
+        return "", (
+            f"refused: no `### Sprint {sprint_id}` section in {plan} — a sprint whose"
+            f" heading no longer exists is not a sprint that closed no story, and the"
+            f" release PR would name neither. Restore the heading and its cards, {again}"
+        )
+    targets = {heading.split()[1]: heading for heading in headings}
+    close_log = data_root() / "closes.jsonl"
+    try:
+        lines = close_log.read_text().splitlines()
+    except FileNotFoundError:
+        return "", (
+            f"refused: no close log at {close_log} — no story has closed through"
+            f" `close.py story <id> close` here, so the PR could name no merge SHA."
+            f" Restore it, or create it empty if that is genuinely this sprint, {again}"
+        )
+    except (OSError, UnicodeError) as exc:
+        return "", f"refused: unreadable close log {close_log}: {exc} — repair it, {again}"
+    closes = {}
+    for line_n, line in enumerate(lines, 1):
+        if not line.strip():
+            continue
+        try:
+            record = json.loads(line)
+        except json.JSONDecodeError as exc:
+            return "", (
+                f"refused: unreadable close log {close_log} line {line_n}: {exc}"
+                f" — repair that line, {again}"
+            )
+        if not isinstance(record, dict):
+            return "", (
+                f"refused: unreadable close log {close_log} line {line_n}: not an object"
+                f" — repair that line, {again}"
+            )
+        story = record.get("story")
+        if story in targets:
+            if not all(isinstance(record.get(key), str) for key in ("story", "title", "merge_sha")):
+                return "", (
+                    f"refused: unreadable close log {close_log} line {line_n}: story record"
+                    f" — repair that line, {again}"
+                )
+            closes[story] = record
+
+    rounds = state.get("rounds")
+    if not isinstance(rounds, list) or not rounds:
+        return "", f"refused: missing review rounds in sprint marker {marker} — {rerun}"
+    rendered_rounds = []
+    for number, round_ in enumerate(rounds, 1):
+        if not isinstance(round_, dict) or not all(
+            isinstance(round_.get(key), list) for key in ("fixed", "blocking", "noted")
+        ):
+            return "", (
+                f"refused: unreadable review round {number} in sprint marker {marker} — {rerun}"
+            )
+        rendered_rounds.append(
+            f"- Round {number}: {len(round_['fixed'])} fixed · "
+            f"{len(round_['blocking'])} blocking · {len(round_['noted'])} noted"
+        )
+    latest = rounds[-1]
+    reviewed = latest.get("reviewed_head", state.get("reviewed_head"))
+    shown = latest.get("shown_sha", state.get("shown_sha"))
+    if not isinstance(reviewed, str) or not reviewed:
+        return "", f"refused: missing reviewed_head in sprint marker {marker} — {rerun}"
+    if not isinstance(shown, str) or not shown:
+        return "", f"refused: missing shown_sha in sprint marker {marker} — {rerun}"
+    clearable = latest.get(CLEARABLE_BY_FULL, [])
+    if not isinstance(clearable, list) or not all(isinstance(item, str) for item in clearable):
+        return "", (f"refused: unreadable {CLEARABLE_BY_FULL} in sprint marker {marker} — {rerun}")
+    receipt = state.get("full_tier")
+    fields = ("tier", "command", "tree", "head", "verdict", "ran_by")
+    if (
+        not isinstance(receipt, dict)
+        or not all(isinstance(receipt.get(key), str) and receipt[key] for key in fields)
+        or not isinstance(receipt.get("reused"), bool)
+    ):
+        return "", (
+            f"refused: unreadable full_tier receipt in sprint marker {marker} — delete"
+            f" the key, {again} to measure the shipping tree afresh"
+        )
+
+    stories = []
+    for story, heading in targets.items():
+        if record := closes.get(story):
+            stories.append(f"- {story} — {record['title']} — {record['merge_sha']}")
+        else:
+            stories.append(f"- {heading.removeprefix('#### ')} — no close record")
+    obligations = ""
+    if clearable:
+        obligations = "\n- clearable_by_full:\n" + "".join(f"  - {item}\n" for item in clearable)
+        obligations = obligations.rstrip()
+    run = (
+        f"reused from {receipt['ran_by']} at {receipt['head']}"
+        if receipt["reused"]
+        else f"ran by {receipt['ran_by']} at {receipt['head']}"
+    )
+    body = (
+        f"# Sprint {sprint_id} release\n\n## Stories\n"
+        + "\n".join(stories)
+        + "\n\n## Sprint review\n"
+        + "\n".join(rendered_rounds)
+        + f"\n- Latest round reviewed head: {reviewed}"
+        + f"\n- Latest round shown tree: {shown}{obligations}"
+        + "\n\n## Full tier\n"
+        + f"- Tier: {receipt['tier']}\n- Verdict: {receipt['verdict']}\n"
+        + f"- Command: {receipt['command']}\n- Measured tree: {receipt['tree']}\n- Run: {run}\n"
+    )
+    if len(body) > PR_BODY_LIMIT:
+        return "", (
+            f"refused: release PR body is {len(body)} characters; limit is {PR_BODY_LIMIT}"
+            f" — findings prose is counted, never quoted, so shorten the"
+            f" {CLEARABLE_BY_FULL} entries recorded in {marker}, {again}"
+        )
+    return body, ""
 
 
 def _is_retro_prose(path: str) -> bool:
@@ -134,10 +266,6 @@ def cmd_land(sprint_id: str, dry_run: bool) -> int:
     branch = git("rev-parse", "--abbrev-ref", "HEAD").stdout.strip()
     if not (version := next_version()):
         return refuse_unbumpable()
-    cmds = [
-        ["git", "push", "-u", "origin", branch],
-        ["gh", "pr", "create", "--title", f"release {version}", "--body", f"Sprint {sprint_id}"],
-    ]
     ref = overlap.merge_source(default_branch(), "pr")
     pending = overlap.unmerged(ref)
     marker, state, marker_error = read_sprint_state(sprint_id)
@@ -151,7 +279,19 @@ def cmd_land(sprint_id: str, dry_run: bool) -> int:
         print(f"would run: {full}, unless a passed receipt matches the shipping tree and command")
         if bound:
             print("if green, " + _clearance_notice("clears", bound))
-        for c in cmds:
+        preview = [
+            ["git", "push", "-u", "origin", branch],
+            [
+                "gh",
+                "pr",
+                "create",
+                "--title",
+                f"release {version}",
+                "--body-file",
+                "<release-pr-body>",
+            ],
+        ]
+        for c in preview:
             print(" ".join(c))
         print(f"(then: close.py sprint {sprint_id} post-merge — tag {version}, retire the key)")
         if pending:
@@ -191,10 +331,28 @@ def cmd_land(sprint_id: str, dry_run: bool) -> int:
         return fail(
             "refused: pr mode needs the gh CLI on PATH — install it, or open the PR by hand"
         )
-    for c in cmds:
-        r = subprocess.run(c, capture_output=True, text=True)
-        if r.returncode != 0:
-            return fail(f"{c[0]} failed: {r.stderr.strip()}")
+    body, body_error = _release_body(sprint_id, state, marker)
+    if body_error:
+        return fail(body_error)
+    with tempfile.NamedTemporaryFile("w", encoding="utf-8") as body_file:
+        body_file.write(body)
+        body_file.flush()
+        cmds = [
+            ["git", "push", "-u", "origin", branch],
+            [
+                "gh",
+                "pr",
+                "create",
+                "--title",
+                f"release {version}",
+                "--body-file",
+                body_file.name,
+            ],
+        ]
+        for c in cmds:
+            r = subprocess.run(c, capture_output=True, text=True)
+            if r.returncode != 0:
+                return fail(f"{c[0]} failed: {r.stderr.strip()}")
     print(f"release PR open. After it MERGES: close.py sprint {sprint_id} post-merge")
     return 0
 
