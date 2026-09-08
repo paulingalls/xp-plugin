@@ -43,6 +43,7 @@ def release_tools(tmp_path, env, g):
     origin = tmp_path / "origin.git"
     subprocess.run(["git", "init", "-q", "--bare", str(origin)], check=True, env=env)
     g("remote", "add", "origin", str(origin))
+    (tmp_path / "data" / "closes.jsonl").write_text("")
     gh = tmp_path / "bin" / "gh"
     gh.write_text("#!/bin/sh\nexit 0\n")
     gh.chmod(0o755)
