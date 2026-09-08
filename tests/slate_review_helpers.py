@@ -266,18 +266,22 @@ def stub_card_refresher(
     status="",
     findings="corrected 1 claim\n",
     unparsable=False,
+    direct_plan=False,
+    skip_apply=False,
+    extra_card="",
+    read_event="",
+    release_event="",
 ):
-    """A fake `claude` standing in for the refresher, with one knob per motion the
-    runner must refuse: `correction` edits its OWN card (the sanctioned edit),
-    `sibling` a second card in the same plan, `repo_file` a path in the repo,
-    `status` the card's own lifecycle bracket, and `unparsable` its heading — the
-    one refusal that cannot restore, because it can no longer LOCATE the card."""
+    """A fake refresher with knobs for sanctioned candidate edits and violations."""
     binary = tmp_path / "bin" / "claude"
     binary.parent.mkdir(exist_ok=True)
+    python = binary.parent / "python3"
+    if not python.exists():
+        python.symlink_to(sys.executable)
     launch = tmp_path / "refresh-launch.json"
     binary.write_text(
         "#!/usr/bin/env python3\n"
-        "import json, os, re, sys\n"
+        "import json, os, re, shlex, subprocess, sys, time\n"
         "if sys.argv[1:] == ['plugin', 'list', '--json']:\n"
         ' print(\'[{"id":"xp-plugin@xp-plugin","version":"fixture",'
         '"scope":"user"}]\'); sys.exit()\n'
@@ -285,18 +289,32 @@ def stub_card_refresher(
         "env = {k: v for k, v in os.environ.items() if k.startswith('XP_')}\n"
         "record = {'argv': sys.argv[1:], 'env': env, 'prompt': prompt}\n"
         f"json.dump(record, open({str(launch)!r}, 'w'))\n"
-        "plan = re.search(r'^PLAN_PATH: (.+)$', prompt, re.M).group(1)\n"
-        "text = open(plan).read()\n"
+        "card = re.search(r'^CARD_PATH: (.+)$', prompt, re.M).group(1)\n"
+        "command = re.search(r'^PLAN_EDIT_COMMAND: (.+)$', prompt, re.M).group(1)\n"
+        "text = open(card).read()\n"
+        f"read_event, release_event = {read_event!r}, {release_event!r}\n"
+        "open(read_event, 'w').write('read') if read_event else None\n"
+        "while release_event and not os.path.exists(release_event): time.sleep(0.01)\n"
+        "original = text\n"
         f"correction = {correction!r}\n"
-        "if correction:\n"
+        f"if correction and not {direct_plan!r}:\n"
         " text = text.replace('Context: demo.', correction, 1)\n"
-        f"if {sibling!r}:\n"
-        " text = text.replace('Context: untouched', 'Context: MEDDLED', 1)\n"
         f"if {status!r}:\n"
         f" text = text.replace('demo story   [planned]', 'demo story   [{status}]', 1)\n"
         f"if {unparsable!r}:\n"
         " text = text.replace('#### story-042', '#### mangled-042', 1)\n"
-        "open(plan, 'w').write(text)\n"
+        f"text += {extra_card!r}\n"
+        "open(card, 'w').write(text)\n"
+        f"if text != original and not {skip_apply!r}:\n"
+        " applied = subprocess.run(shlex.split(command), capture_output=True, text=True)\n"
+        " sys.stdout.write(applied.stdout); sys.stderr.write(applied.stderr)\n"
+        "plan = os.path.join(os.environ['XP_DATA'], 'plan.md')\n"
+        f"if {sibling!r}:\n"
+        " current = open(plan).read()\n"
+        " open(plan, 'w').write(current.replace('Context: untouched', 'Context: MEDDLED', 1))\n"
+        f"if {direct_plan!r}:\n"
+        " current = open(plan).read()\n"
+        " open(plan, 'w').write(current.replace('Context: demo.', correction, 1))\n"
         f"stray = {repo_file!r}\n"
         "open(stray, 'w').write('the refresher wrote here\\n') if stray else None\n"
         "path = re.search(r'^FINDINGS_PATH: (.+)$', prompt, re.M)\n"

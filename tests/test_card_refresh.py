@@ -13,6 +13,14 @@ import sys
 from pathlib import Path
 
 import pytest
+from card_refresh_lock_cases import (  # noqa: F401
+    test_a_candidate_that_never_reaches_the_plan_is_refused,
+    test_a_helper_refusal_names_a_refresh_retry_that_succeeds,
+    test_a_locked_sibling_flip_and_refresher_correction_both_survive,
+    test_a_refresher_that_writes_the_plan_instead_of_its_candidate_is_refused,
+    test_card_restore_waits_for_the_plan_lock_and_preserves_the_holder_write,
+    test_unattributable_sibling_motion_is_reported_without_blocking_the_refresh,
+)
 from close import story_card
 from slate_review_helpers import (
     PLUGIN,
@@ -55,7 +63,18 @@ def test_card_refresh_rewrites_the_card_and_ready_digests_the_rewrite(tmp_path):
 
     prompt = json.loads(launch.read_text())["prompt"]
     assert "You are not a review" in prompt
-    assert f"PLAN_PATH: {plan.resolve()}" in prompt
+    card_path = next(
+        Path(line.removeprefix("CARD_PATH: "))
+        for line in prompt.splitlines()
+        if line.startswith("CARD_PATH: ")
+    )
+    command = next(
+        line.removeprefix("PLAN_EDIT_COMMAND: ")
+        for line in prompt.splitlines()
+        if line.startswith("PLAN_EDIT_COMMAND: ")
+    )
+    assert card_path.is_absolute() and shlex.split(command)[-1] == str(card_path)
+    assert f"PLAN_PATH: {plan.resolve()}" not in prompt
     assert "story-042 — demo story" in prompt and "story-043" not in prompt
     assert "# XP Values" in prompt and "# Judgment" in prompt
     assert "CONSTRAINT-SENTINEL" in prompt and "Worktree bootstrap" in prompt
@@ -180,13 +199,7 @@ def test_a_refresh_whose_receipt_never_landed_refuses_instead_of_claiming_succes
     assert direct().returncode == 2
 
 
-@pytest.mark.parametrize(
-    ("knob", "expected"),
-    [
-        ({"sibling": True}, "outside its own card"),
-        ({"status": "ready"}, "never its lifecycle state"),
-    ],
-)
+@pytest.mark.parametrize(("knob", "expected"), [({"status": "ready"}, "lifecycle")])
 def test_a_refresher_that_moves_anything_but_its_own_card_is_refused(tmp_path, knob, expected):
     """AC6. The plan lives OUTSIDE the repo, so tree_state sees neither motion —
     story-091's guard for the slate reviewer does not reach a single card."""
@@ -299,17 +312,15 @@ class TestRefreshRestoreIsCardScoped:
 
 
 def test_a_refresher_that_leaves_the_card_unparsable_names_the_repair(tmp_path):
-    """The one rejection that CANNOT restore — with the heading gone there is no card
-    block to put back, and the plan is outside the repo where no git diff shows it.
-    This repo's own rule is that every refusal names its next action, and this arm
-    named none: the lead was told the card was unparsable and nothing else."""
+    """An unparsable isolated candidate cannot damage the plan and names a retry."""
     repo, env, _g, plan = refresh_repo(tmp_path)
+    before = plan.read_text()
     stub_card_refresher(tmp_path, correction=CORRECTED, unparsable=True)
     result = card_refresh(repo, env)
     assert result.returncode == 2, result.stdout
     said = result.stdout + result.stderr
     assert "unparsable" in said
-    assert str(plan.resolve()) in said, f"the refusal names no plan to repair:\n{said}"
-    assert "no git diff" in said, "it does not say the edit is invisible to git"
+    assert "--refresh" in said, f"the refusal names no refresh retry:\n{said}"
+    assert plan.read_text() == before
     assert not receipt_of(env).exists(), "a refused refresh must not mint a receipt"
     assert spawn(repo, env, "ready", "story-042").returncode == 2
