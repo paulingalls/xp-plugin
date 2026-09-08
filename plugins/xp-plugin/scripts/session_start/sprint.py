@@ -46,7 +46,7 @@ def select_sprint(text: str) -> tuple[str, list[str], str]:
     provenance = f"sprint selection: recorded branch {recorded} selected plan Sprint {selected}"
     if int(highest) != number:
         provenance += f"; highest plan heading Sprint {highest} disagrees"
-    return selected, [section for raw, section in at if raw == selected], provenance
+    return selected, [section for raw, section in at if int(raw) == number], provenance
 
 
 def sprint_sections(text: str) -> tuple[str, list[str]]:

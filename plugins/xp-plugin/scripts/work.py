@@ -235,9 +235,9 @@ def entry(kind: str, args: argparse.Namespace, coverage: str) -> str:
 
 
 def _single_line(value: str, field: str) -> bool:
-    if len(value.splitlines()) > 1 or "`" in value:
+    if not value.strip() or len(value.splitlines()) > 1 or "`" in value:
         print(
-            f"refused: --{field} must be one line and must not contain a backtick —"
+            f"refused: --{field} must be a non-empty line and must not contain a backtick —"
             " the record format holds it inside backticks on a single line, so"
             " anything else forges the record that follows it.",
             file=sys.stderr,

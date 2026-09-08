@@ -304,7 +304,9 @@ class TestFullTier:
         release.touch()
         stdout, stderr = process.communicate(timeout=120)
 
-        assert process.returncode == 2 and "gh CLI" in stderr, stdout + stderr
+        assert process.returncode == 2 and "last review round is incomplete" in stderr, (
+            stdout + stderr
+        )
         marker = json.loads(marker_path(tmp_path).read_text())
         assert marker["rounds"][-1]["noted"] == ["concurrent land round"]
         assert marker["full_tier"]["ran_by"] == "land"

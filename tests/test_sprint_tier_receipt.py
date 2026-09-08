@@ -2,9 +2,22 @@
 
 import json
 import subprocess
+import sys
 
 import pytest
-from sprint_helpers import CONFIG, head, make_repo, marker_path, record_reviews, sprint, work
+from sprint_helpers import (
+    CONFIG,
+    PLUGIN,
+    head,
+    make_repo,
+    marker_path,
+    record_reviews,
+    sprint,
+    work,
+)
+
+sys.path.insert(0, str(PLUGIN / "scripts" / "close"))
+import overlap
 
 
 def config_for(command):
@@ -29,6 +42,20 @@ def counted_repo(tmp_path, command=""):
 
 def run_count(events):
     return len(events.read_text()) if events.exists() else 0
+
+
+def test_a_nonpassing_receipt_never_matches_the_shipping_tree():
+    receipt = {
+        "tier": "full",
+        "command": "true",
+        "tree": "same-tree",
+        "head": "head",
+        "verdict": "failed",
+        "ran_by": "start",
+        "reused": False,
+    }
+
+    assert overlap._receipt_matches(receipt, "true", "same-tree") == (False, "unreadable")
 
 
 def add_origin(tmp_path, repo, env, g):

@@ -1,5 +1,6 @@
 import importlib.util
 from pathlib import Path
+from unittest.mock import patch
 
 SRC = (
     Path(__file__).parent.parent
@@ -17,8 +18,11 @@ SPEC.loader.exec_module(SPRINT_BUNDLE)
 def test_record_files_use_the_shared_parser():
     record = "Files: a.py, infra/compose.yml (compose, not the chart), `b.py`\n"
 
-    paths = SPRINT_BUNDLE._declared_files(record)
+    shared = SPRINT_BUNDLE.review_scope.file_entries
+    with patch.object(SPRINT_BUNDLE.review_scope, "file_entries", wraps=shared) as routed:
+        paths = SPRINT_BUNDLE._declared_files(record)
 
+    routed.assert_called_once_with(" a.py, infra/compose.yml (compose, not the chart), `b.py`")
     assert paths == ["a.py", "infra/compose.yml", "b.py"]
     assert not any(set(path) & set("`()[]{}") for path in paths)
 

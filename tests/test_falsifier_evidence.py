@@ -186,7 +186,7 @@ def test_combined_bug_stays_red_when_only_its_last_source_is_green(tmp_path):
 
 
 def test_a_green_batch_keeps_command_streams_silent_and_writes_nothing(tmp_path):
-    repo, env, _g = make_repo(tmp_path)
+    repo, env, _g = make_repo(tmp_path, config="release: sprint\ntests:\n")
     counters = [tmp_path / "green-one", tmp_path / "green-two"]
     refs = [
         file_debt(
@@ -197,10 +197,10 @@ def test_a_green_batch_keeps_command_streams_silent_and_writes_nothing(tmp_path)
         )
         for n, counter in enumerate(counters)
     ]
-    path = tmp_path / "data" / "work.md"
-    before = path.read_bytes()
+    root = tmp_path / "data"
+    before = snapshot(root)
     result = sprint(repo, env, "start")
-    assert result.returncode == 0 and path.read_bytes() == before
+    assert result.returncode == 0 and snapshot(root) == before
     # NAMED, not merely counted: an unattributed duration cannot answer the one
     # question the batch's cost is measured to answer — which record is expensive.
     timed = [line for line in result.stdout.splitlines() if line.startswith("falsifier wall clock")]

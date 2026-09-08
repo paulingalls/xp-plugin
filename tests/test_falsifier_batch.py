@@ -78,6 +78,28 @@ def test_resolve_requires_a_noninteractive_tier_or_none_answer(tmp_path):
     assert retry.returncode == 0 and "Covered by: none" in (tmp_path / "data/work.md").read_text()
 
 
+def test_resolve_rejects_an_empty_falsifier_without_writing_a_resolution(tmp_path):
+    repo, env, _g = make_repo(tmp_path)
+    filed = work(repo, env, "bug", "--claim", "fixed", "--falsifier", "false", "--files", "a.py")
+    ledger = tmp_path / "data" / "work.md"
+    before = ledger.read_bytes()
+
+    result = work(
+        repo,
+        env,
+        "resolve",
+        "--ref",
+        filed.stdout.strip(),
+        "--falsifier",
+        "",
+        "--covered-by",
+        "none",
+    )
+
+    assert result.returncode == 2 and "falsifier" in result.stderr
+    assert ledger.read_bytes() == before
+
+
 class TestFalsifierBatch:
     def test_a_resolved_record_runs_the_RESOLUTION_falsifier_not_nothing(self, tmp_path):
         """A resolution that was wrong must red later and reopen the record."""

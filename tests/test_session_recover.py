@@ -416,6 +416,20 @@ class TestTheOpenSprintSelection:
         assert f"### Sprint {open_id}" in shown and "OPEN-SENTINEL" in shown
         assert "UNAVAILABLE" not in shown and "DRAFT-SENTINEL" not in shown
 
+    def test_all_numerically_matching_sections_survive_mixed_padding(self, tmp_path):
+        repo, _g = xp_repo(tmp_path)
+        root = tmp_path / "xp"
+        (root / "plan.md").write_text(
+            "# plan\n### Sprint 21\nFIRST-SECTION\n"
+            "### Sprint 021\nSECOND-SECTION\n### Sprint 22\nDRAFT-SECTION\n"
+        )
+        (root / "sprint_branch").write_text("sprint-021\n")
+
+        shown = sprint_slice(run_recovery(repo, tmp_path).stdout)
+
+        assert "FIRST-SECTION" in shown and "SECOND-SECTION" in shown
+        assert "DRAFT-SECTION" not in shown
+
     def test_an_empty_sprint_branch_record_costs_only_the_sprint_slice(self, tmp_path):
         repo, _g = xp_repo(tmp_path)
         root = tmp_path / "xp"

@@ -182,10 +182,11 @@ def _covered_gate_files(state: dict, head: str) -> list[str]:
     return list(hits)
 
 
-def _coverage_refusal(sprint_id: str, head: str) -> str:
-    _marker, state, marker_error = read_sprint_state(sprint_id)
-    if marker_error:
-        return marker_error
+def _coverage_refusal(sprint_id: str, head: str, state: dict | None = None) -> str:
+    if state is None:
+        _marker, state, marker_error = read_sprint_state(sprint_id)
+        if marker_error:
+            return marker_error
     rerun = f"run `close.py sprint {sprint_id} review`"
     if not (rounds := state.get("rounds") or []):
         return f"refused: no recorded review for sprint {sprint_id} — {rerun}"
@@ -313,6 +314,10 @@ def cmd_land(sprint_id: str, dry_run: bool) -> int:
         state = write_sprint_state(marker, {"full_tier": receipt})
     except (OSError, ValueError) as exc:
         return fail(f"refused: could not persist the full tier receipt at {marker}: {exc}")
+    head = git("rev-parse", "HEAD").stdout.strip()
+    if refusal := _coverage_refusal(sprint_id, head, state):
+        return fail(refusal)
+    bound = state["rounds"][-1].get(CLEARABLE_BY_FULL) or []
     action = "reused" if receipt["reused"] else "ran"
     print(
         f"full tier receipt {marker}: {action} {receipt['command']} on tree"
@@ -320,7 +325,6 @@ def cmd_land(sprint_id: str, dry_run: bool) -> int:
     )
     if bound:
         print(_clearance_notice("cleared", bound))
-    head = git("rev-parse", "HEAD").stdout.strip()
     review.disclose(
         state,
         head,
