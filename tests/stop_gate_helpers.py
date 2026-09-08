@@ -27,11 +27,13 @@ def repo_with_story(tmp_path, verify="pytest -q tests/test_x.py"):
     return repo, g
 
 
-def run_script(name, payload, repo, tmp_path):
+def run_script(name, payload, repo, tmp_path, *, extra_env=None, scripts=SCRIPTS):
+    env = {"PATH": "/usr/bin:/bin", "HOME": str(tmp_path), "XP_DATA": str(tmp_path / "xp")}
+    env.update(extra_env or {})
     return subprocess.run(
-        [sys.executable, str(SCRIPTS / name)],
+        [sys.executable, str(scripts / name)],
         input=json.dumps(payload),
-        env={"PATH": "/usr/bin:/bin", "HOME": str(tmp_path), "XP_DATA": str(tmp_path / "xp")},
+        env=env,
         cwd=repo,
         capture_output=True,
         text=True,

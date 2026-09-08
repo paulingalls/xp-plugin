@@ -142,8 +142,9 @@ def refresh_env(root: Path, version: str) -> str:
 
 
 REFRESH = (
-    "refresh it by starting a LEAD session on the harness whose install you want"
-    " — a lead's SessionStart rewrites both entries and a spawned session's deliberately does not"
+    "refresh it by starting a LEAD session, whose SessionStart rewrites both entries, or by"
+    " running `/reload-plugins` in an existing LEAD session and completing its next turn — a"
+    " spawned session deliberately does neither"
 )
 
 

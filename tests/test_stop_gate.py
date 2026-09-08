@@ -13,6 +13,7 @@ import shutil
 import subprocess
 import sys
 
+from stop_gate_env_cases import EnvRepointCases
 from stop_gate_helpers import (
     HOOKS_JSON,
     SCRIPTS,
@@ -22,6 +23,10 @@ from stop_gate_helpers import (
     run_script,
     success_payload,
 )
+
+
+class TestEnvRepoint(EnvRepointCases):
+    pass
 
 
 class TestStopGate:
