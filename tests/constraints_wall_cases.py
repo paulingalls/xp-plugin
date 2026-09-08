@@ -196,10 +196,14 @@ class ConstraintsWallCases:
         overage, allowance = map(int, match.groups())
         assert overage == len(ceiling.encode()) - allowance
         # A FLOOR, not a fact: every byte of shipped prose comes out of the adopter's
-        # allowance, and 4,386 is what a file at the 4,500-CHARACTER wall can still be
-        # told about. Under it, the two numbers a project sees drift further apart than
-        # this story left them, so the shipped prose is what to cut — not this number.
-        assert allowance >= 4_386, (
+        # allowance, and 4,467 is what a file at the 4,500-CHARACTER wall can still be
+        # told about AT THIS HARNESS'S 110-character plugin path. Under it, the two
+        # numbers a project sees drift further apart than this story left them, so the
+        # shipped prose is what to cut — not this number. Raised from 4,386 by deleting
+        # VALUES.md's Simplicity example (81 bytes, Paul's call at this close): the cap
+        # and the allowance now agree at a SHORT plugin path and are 33 bytes apart at
+        # this one, so the gap is closed for some adopters and narrowed for the rest.
+        assert allowance >= 4_467, (
             f"shipped prose has taken the adopter's constraints budget down to {allowance}"
             " bytes; shorten VALUES/JUDGMENT/PROCESS or the banner, do not lower this floor"
         )
