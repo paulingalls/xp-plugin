@@ -37,8 +37,7 @@ def release_tools(tmp_path, env, g):
     gh.write_text(
         "#!/usr/bin/env python3\n"
         "import json, sys\n"
-        "args = sys.argv[1:]\n"
-        "assert '--body' not in args\n"
+        "args = sys.argv[1:]\nassert '--body' not in args\n"
         "path = args[args.index('--body-file') + 1]\n"
         "data = {'argv': args, 'body': open(path).read()}\n"
         f"open({str(record)!r}, 'w').write(json.dumps(data))\n"
@@ -61,9 +60,8 @@ def record_release(tmp_path, state):
 
 def release_state(repo, env, **round_changes):
     covered = head(repo, env)
-    round_ = {"fixed": [], "blocking": [], "noted": [], **round_changes}
-    round_.setdefault("reviewed_head", covered)
-    round_.setdefault("shown_sha", covered)
+    coverage = {"reviewed_head": covered, "shown_sha": covered}
+    round_ = {"fixed": [], "blocking": [], "noted": [], **coverage, **round_changes}
     receipt = {"tier": "full", "command": "true", "tree": "recorded-tree", "head": "recorded-head"}
     receipt.update(verdict="passed", ran_by="land", reused=False)
     return dict(rounds=[round_], reviewed_head=covered, shown_sha=covered, full_tier=receipt)
@@ -325,6 +323,8 @@ class TestReleasePrBody:
         write_closes(tmp_path, [{"story": "story-099", "title": "OTHER", "merge_sha": None}])
         body, error = _release_body("2", state, marker_path(tmp_path))
         assert not error and body.count("no close record") == 2 and "OTHER" not in body
+        (tmp_path / "data" / "plan.md").write_text(PLAN.replace("### Sprint 2", "### Sprint 8"))
+        assert "no `### Sprint 2` section" in _release_body("2", state, marker_path(tmp_path))[1]
 
 
 class TestLandRunsTheTierItReleasesOn:

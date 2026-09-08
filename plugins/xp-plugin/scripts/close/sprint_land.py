@@ -20,25 +20,37 @@ from sprint_close import (
 )
 from work import config_block_value, plan_path
 
+# GitHub's own ceiling on a pull request body; gh rejects a longer --body-file.
 PR_BODY_LIMIT = 65_536
 
 
 def _release_body(sprint_id: str, state: dict, marker) -> tuple[str, str]:
+    rerun = f"run `close.py sprint {sprint_id} review`"
+    again = f"then run `close.py sprint {sprint_id} land` again"
     plan = plan_path()
     try:
         headings = sprint_stories(plan.read_text(), sprint_id)
     except FileNotFoundError:
-        return "", f"refused: missing sprint plan {plan}"
+        return "", f"refused: missing sprint plan {plan} — restore it, {again}"
     except (OSError, UnicodeError) as exc:
-        return "", f"refused: unreadable sprint plan {plan}: {exc}"
+        return "", f"refused: unreadable sprint plan {plan}: {exc} — repair it, {again}"
+    if not headings:
+        return "", (
+            f"refused: no `### Sprint {sprint_id}` section in {plan} — a sprint whose"
+            f" heading no longer exists is not a sprint that closed no story, and the"
+            f" release PR would name neither. Restore the heading and its cards, {again}"
+        )
     targets = [heading.split()[1] for heading in headings]
     close_log = data_root() / "closes.jsonl"
     try:
         lines = close_log.read_text().splitlines()
     except FileNotFoundError:
-        return "", f"refused: missing close log {close_log}"
+        return "", (
+            f"refused: missing close log {close_log} — story closes append there;"
+            f" restore it, {again}"
+        )
     except (OSError, UnicodeError) as exc:
-        return "", f"refused: unreadable close log {close_log}: {exc}"
+        return "", f"refused: unreadable close log {close_log}: {exc} — repair it, {again}"
     closes = {}
     for line_n, line in enumerate(lines, 1):
         if not line.strip():
@@ -46,24 +58,35 @@ def _release_body(sprint_id: str, state: dict, marker) -> tuple[str, str]:
         try:
             record = json.loads(line)
         except json.JSONDecodeError as exc:
-            return "", f"refused: unreadable close log {close_log} line {line_n}: {exc}"
+            return "", (
+                f"refused: unreadable close log {close_log} line {line_n}: {exc}"
+                f" — repair that line, {again}"
+            )
         if not isinstance(record, dict):
-            return "", f"refused: unreadable close log {close_log} line {line_n}: not an object"
+            return "", (
+                f"refused: unreadable close log {close_log} line {line_n}: not an object"
+                f" — repair that line, {again}"
+            )
         story = record.get("story")
         if story in targets:
             if not all(isinstance(record.get(key), str) for key in ("story", "title", "merge_sha")):
-                return "", f"refused: unreadable close log {close_log} line {line_n}: story record"
+                return "", (
+                    f"refused: unreadable close log {close_log} line {line_n}: story record"
+                    f" — repair that line, {again}"
+                )
             closes[story] = record
 
     rounds = state.get("rounds")
     if not isinstance(rounds, list) or not rounds:
-        return "", f"refused: missing review rounds in sprint marker {marker}"
+        return "", f"refused: missing review rounds in sprint marker {marker} — {rerun}"
     rendered_rounds = []
     for number, round_ in enumerate(rounds, 1):
         if not isinstance(round_, dict) or not all(
             isinstance(round_.get(key), list) for key in ("fixed", "blocking", "noted")
         ):
-            return "", f"refused: unreadable review round {number} in sprint marker {marker}"
+            return "", (
+                f"refused: unreadable review round {number} in sprint marker {marker} — {rerun}"
+            )
         rendered_rounds.append(
             f"- Round {number}: {len(round_['fixed'])} fixed · "
             f"{len(round_['blocking'])} blocking · {len(round_['noted'])} noted"
@@ -72,12 +95,12 @@ def _release_body(sprint_id: str, state: dict, marker) -> tuple[str, str]:
     reviewed = latest.get("reviewed_head", state.get("reviewed_head"))
     shown = latest.get("shown_sha", state.get("shown_sha"))
     if not isinstance(reviewed, str) or not reviewed:
-        return "", f"refused: missing reviewed_head in sprint marker {marker}"
+        return "", f"refused: missing reviewed_head in sprint marker {marker} — {rerun}"
     if not isinstance(shown, str) or not shown:
-        return "", f"refused: missing shown_sha in sprint marker {marker}"
+        return "", f"refused: missing shown_sha in sprint marker {marker} — {rerun}"
     clearable = latest.get(CLEARABLE_BY_FULL, [])
     if not isinstance(clearable, list) or not all(isinstance(item, str) for item in clearable):
-        return "", f"refused: unreadable {CLEARABLE_BY_FULL} in sprint marker {marker}"
+        return "", (f"refused: unreadable {CLEARABLE_BY_FULL} in sprint marker {marker} — {rerun}")
     receipt = state.get("full_tier")
     fields = ("tier", "command", "tree", "head", "verdict", "ran_by")
     if (
@@ -85,7 +108,10 @@ def _release_body(sprint_id: str, state: dict, marker) -> tuple[str, str]:
         or not all(isinstance(receipt.get(key), str) and receipt[key] for key in fields)
         or not isinstance(receipt.get("reused"), bool)
     ):
-        return "", f"refused: unreadable full_tier receipt in sprint marker {marker}"
+        return "", (
+            f"refused: unreadable full_tier receipt in sprint marker {marker} — delete"
+            f" the key, {again} to measure the shipping tree afresh"
+        )
 
     stories = []
     for heading, story in zip(headings, targets, strict=True):
@@ -107,13 +133,17 @@ def _release_body(sprint_id: str, state: dict, marker) -> tuple[str, str]:
         + "\n".join(stories)
         + "\n\n## Sprint review\n"
         + "\n".join(rendered_rounds)
-        + f"\n- Reviewed head: {reviewed}\n- Shown tree: {shown}{obligations}"
+        + f"\n- Latest round reviewed head: {reviewed}"
+        + f"\n- Latest round shown tree: {shown}{obligations}"
         + "\n\n## Full tier\n"
         + f"- Tier: {receipt['tier']}\n- Verdict: {receipt['verdict']}\n"
         + f"- Command: {receipt['command']}\n- Measured tree: {receipt['tree']}\n- Run: {run}\n"
     )
     if len(body) > PR_BODY_LIMIT:
-        return "", f"refused: release PR body is {len(body)} characters; limit is {PR_BODY_LIMIT}"
+        return "", (
+            f"refused: release PR body is {len(body)} characters; limit is {PR_BODY_LIMIT}"
+            f" — shorten the round entries recorded in {marker}, {again}"
+        )
     return body, ""
 
 
