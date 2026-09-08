@@ -203,8 +203,11 @@ class TestLandRunsTheTierItReleasesOn:
         changes". A red tier is the discriminator — under the bug it refuses."""
         repo, env, _g = make_repo(tmp_path, config=CONFIG.replace("full: true", "full: false"))
         record_reviews(tmp_path, repo, env)
+        before = marker_path(tmp_path).read_bytes()
         r = sprint(repo, env, "land", "--dry-run")
         assert r.returncode == 0, r.stdout + r.stderr
+        assert "unless a passed receipt matches the shipping tree and command" in r.stdout
+        assert marker_path(tmp_path).read_bytes() == before
 
     def test_dry_run_says_when_the_full_tier_cannot_run(self, tmp_path):
         config = CONFIG.replace("  full: true\n", "  full: EDIT-ME\n")

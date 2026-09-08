@@ -12,6 +12,9 @@ from close import git, origin_trunk_sha
 # applied; system.md's worktree lifecycle lines are shell-executed by spawn/close.
 # Editing any of them after a review changes the gate, not the tree.
 GATE_FILES = (".xp/config.yml", ".xp/constraints.md", ".xp/system.md")
+_NO_RECEIPT = object()
+MISSING_RECEIPT = object()
+_RECEIPT_KEYS = {"tier", "command", "tree", "head", "verdict", "ran_by", "reused"}
 
 
 def land_refusal(state: dict, key: str, base: str) -> str:
@@ -119,7 +122,37 @@ def run_checks(
     return ""
 
 
-def gates(ref: str, verify: list[list[str]], tier_key: str, pending: bool) -> str:
+def _receipt_matches(receipt: object, tier: str, tree: str) -> tuple[bool, str]:
+    if receipt is MISSING_RECEIPT:
+        return False, "missing"
+    valid = (
+        isinstance(receipt, dict)
+        and set(receipt) == _RECEIPT_KEYS
+        and receipt.get("tier") == "full"
+        and all(
+            isinstance(receipt.get(key), str) and receipt[key]
+            for key in ("command", "tree", "head")
+        )
+        and receipt.get("verdict") == "passed"
+        and receipt.get("ran_by") in ("start", "land")
+        and isinstance(receipt.get("reused"), bool)
+    )
+    if not valid:
+        return False, "unreadable"
+    if receipt["tree"] != tree:
+        return False, "tree changed"
+    if receipt["command"] != tier:
+        return False, "command changed"
+    return True, "reused"
+
+
+def gates(
+    ref: str,
+    verify: list[list[str]],
+    tier_key: str,
+    pending: bool,
+    prior_receipt: object = _NO_RECEIPT,
+) -> tuple[str, dict | None]:
     """Verify and the tier, run on the tree that will EXIST. Merging INTO the story
     branch rather than in the tree holding trunk: same merged content either way,
     and this arm needs no second worktree and strands no foreign tree mid-merge.
@@ -128,16 +161,45 @@ def gates(ref: str, verify: list[list[str]], tier_key: str, pending: bool) -> st
     arriving on trunk otherwise gates the tree it replaced."""
     from work import config_block_value
 
-    if not pending:
-        return run_checks(verify, config_block_value("tests", tier_key), tier_key=tier_key)
-    staged = git("merge", "--no-commit", "--no-ff", ref, check=False)
+    staged = None
+    if pending:
+        staged = git("merge", "--no-commit", "--no-ff", ref, check=False)
     try:
-        if staged.returncode != 0:
+        if staged is not None and staged.returncode != 0:
             return (
                 f"refused: merging {ref} here conflicts. Resolve it on this branch,"
-                " review the post-resolution diff, then land"
+                " review the post-resolution diff, then land",
+                None,
             )
-        where = f" on the tree merged with {ref}"
-        return run_checks(verify, config_block_value("tests", tier_key), where, tier_key)
+        where = f" on the tree merged with {ref}" if pending else ""
+        tier = config_block_value("tests", tier_key)
+        if refusal := tier_refusal(tier, tier_key):
+            return refusal, None
+        if prior_receipt is _NO_RECEIPT:
+            return run_checks(verify, tier, where, tier_key), None
+        written = git("write-tree", check=False)
+        if written.returncode:
+            return (
+                f"refused: Git could not write tree for the full tier: {written.stderr.strip()}",
+                None,
+            )
+        tree = written.stdout.strip()
+        reusable, decision = _receipt_matches(prior_receipt, tier, tree)
+        if reusable:
+            print("full tier receipt reused")
+            return "", dict(prior_receipt, reused=True)
+        print(f"full tier receipt {decision}; running the shipping tree")
+        if red := run_checks(verify, tier, where, tier_key):
+            return red, None
+        return "", {
+            "tier": "full",
+            "command": tier,
+            "tree": tree,
+            "head": git("rev-parse", "HEAD").stdout.strip(),
+            "verdict": "passed",
+            "ran_by": "land",
+            "reused": False,
+        }
     finally:
-        git("merge", "--abort", check=False)
+        if staged is not None:
+            git("merge", "--abort", check=False)

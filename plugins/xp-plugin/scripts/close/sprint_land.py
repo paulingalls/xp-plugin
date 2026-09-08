@@ -1,13 +1,19 @@
 """Sprint land coverage and release handoff."""
 
-import json
 import subprocess
 
 import overlap
 from release import cmd_post_merge as release_post_merge
 from release import next_version, refuse_unbumpable
 from review import CLEARABLE_BY_FULL, covered_ranges, reviewer_strays, validate_clearable
-from sprint_close import _shown_diff, default_branch, fail, git, sprint_marker
+from sprint_close import (
+    _shown_diff,
+    default_branch,
+    fail,
+    git,
+    read_sprint_state,
+    write_sprint_state,
+)
 from work import config_block_value
 
 
@@ -45,8 +51,9 @@ def _covered_gate_files(state: dict, head: str) -> list[str]:
 
 
 def _coverage_refusal(sprint_id: str, head: str) -> str:
-    marker = sprint_marker(sprint_id)
-    state = json.loads(marker.read_text()) if marker.exists() else {}
+    _marker, state, marker_error = read_sprint_state(sprint_id)
+    if marker_error:
+        return marker_error
     rerun = f"run `close.py sprint {sprint_id} review`"
     if not (rounds := state.get("rounds") or []):
         return f"refused: no recorded review for sprint {sprint_id} — {rerun}"
@@ -133,13 +140,15 @@ def cmd_land(sprint_id: str, dry_run: bool) -> int:
     ]
     ref = overlap.merge_source(default_branch(), "pr")
     pending = overlap.unmerged(ref)
-    state = json.loads(sprint_marker(sprint_id).read_text())
+    marker, state, marker_error = read_sprint_state(sprint_id)
+    if marker_error:
+        return fail(marker_error)
     bound = state["rounds"][-1].get(CLEARABLE_BY_FULL) or []
     if dry_run:
         full = config_block_value("tests", "full")
         if refusal := overlap.tier_refusal(full, "full"):
             return fail(_clearance_failure(refusal, bound) if bound else refusal)
-        print(f"would run: {full}")
+        print(f"would run: {full}, unless a passed receipt matches the shipping tree and command")
         if bound:
             print("if green, " + _clearance_notice("clears", bound))
         for c in cmds:
@@ -154,9 +163,20 @@ def cmd_land(sprint_id: str, dry_run: bool) -> int:
             "refused: the working tree is dirty — the tier must judge the tree"
             " that ships, and these files are not in it:\n  " + dirty
         )
-    # Triage can stale start's tier, so land measures the shipping merge again.
-    if red := overlap.gates(ref, "", "full", pending):
+    prior = state.get("full_tier", overlap.MISSING_RECEIPT)
+    red, receipt = overlap.gates(ref, [], "full", pending, prior)
+    if red:
         return fail(_clearance_failure(red, bound) if bound else red)
+    state["full_tier"] = receipt
+    try:
+        write_sprint_state(marker, state)
+    except OSError as exc:
+        return fail(f"refused: could not persist the full tier receipt at {marker}: {exc}")
+    action = "reused" if receipt["reused"] else "ran"
+    print(
+        f"full tier receipt {marker}: {action} {receipt['command']} on tree"
+        f" {receipt['tree']}, passed at HEAD {receipt['head']}"
+    )
     if bound:
         print(_clearance_notice("cleared", bound))
     head = git("rev-parse", "HEAD").stdout.strip()

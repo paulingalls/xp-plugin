@@ -194,6 +194,8 @@ class TestFullTier:
         r = sprint(repo, env, "start")
         assert r.returncode == 2, "a red full tier did not stop the close"
         assert "full tier" in r.stderr
+        path = marker_path(tmp_path)
+        assert not path.exists() or "full_tier" not in json.loads(path.read_text())
 
     def test_a_red_batch_refuses_before_the_full_tier_runs(self, tmp_path):
         """afbd01a3: the batch ran the full tier (256 tests, ~25s) before refusing
