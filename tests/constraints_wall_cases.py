@@ -150,16 +150,34 @@ class ConstraintsWallCases:
         (xp / "constraints.md").write_text(constraints)
         subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
         try:
-            return subprocess.run(
+            result = subprocess.run(
                 [sys.executable, str(plugin_root / "scripts" / "session_start.py")],
                 input=json.dumps({"cwd": str(repo), "session_id": "s", "source": "startup"}),
-                env={"PATH": "/usr/bin:/bin", "HOME": str(data_root), "XP_DATA": str(data_root)},
+                env={
+                    "PATH": "/usr/bin:/bin",
+                    "HOME": str(data_root),
+                    "XP_DATA": str(data_root),
+                    # PINNED, not inherited from the hook's `get("XP_ROLE", "lead")`
+                    # default: bug 10ecc92e records that default as constraint 15's
+                    # absence-is-not-a-state, so the day it is corrected the role gate
+                    # returns its teammate line here and all three callers below red
+                    # blaming the byte budget for a profile that was never built.
+                    "XP_ROLE": "lead",
+                },
                 cwd=repo,
                 capture_output=True,
                 text=True,
-            ).stdout
+            )
         finally:
             shutil.rmtree(base, ignore_errors=True)
+        assert result.returncode == 0, result.stderr
+        assert not result.stderr, result.stderr
+        # run_hook is ADVISORY: a hook that raises exits 0 with the traceback on
+        # stderr and NOTHING on stdout, which every byte-budget assertion below
+        # reads as "no warning" rather than as a crash (constraint 2).
+        assert result.stdout, "the hook printed nothing; stderr holds the traceback"
+        assert "teammate session" not in result.stdout, "the role gate ate the profile"
+        return result.stdout
 
     def test_a_file_over_the_session_budget_still_passes_the_character_wall(self, tmp_path):
         cap = self.cap_value(self.SHIPPED / "config.yml")
