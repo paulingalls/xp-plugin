@@ -110,8 +110,13 @@ class TestTheRealProfileAgainstTheRealCap:
         if output_cap is not None:
             hook = root / "scripts" / "session_start.py"
             text = hook.read_text()
-            assert text.count("OUTPUT_CAP = 9_500") == 1
-            hook.write_text(text.replace("OUTPUT_CAP = 9_500", f"OUTPUT_CAP = {output_cap:_}"))
+            # The SPELLING of the cap is not the guarantee (constraint 11): pinned
+            # to `9_500` this harness reds on a retune of the very number it exists
+            # to inject. Matched, and required to be unique so a second literal
+            # cannot leave half the file rewritten.
+            text, swapped = re.subn(r"OUTPUT_CAP = \S+", f"OUTPUT_CAP = {output_cap:_}", text)
+            assert swapped == 1, "session_start.py no longer assigns OUTPUT_CAP exactly once"
+            hook.write_text(text)
         return root
 
     def constraints_at_bytes(self, size, character="x"):
@@ -232,10 +237,22 @@ class TestTheRealProfileAgainstTheRealCap:
         assert out.count("[truncated at") == 1
         assert out.index("[constraints.md is") < out.index("[truncated at")
         body, marker = out.split("[truncated at", 1)
-        claim = marker.split("ARE NOT ABOVE", 1)[0].split("CONSTRAINTS", 1)[-1]
+        # THE PRESENCE OF THE CLAIM IS ASSERTED FIRST, and it is what the round-3
+        # reviewer found missing: `split` returns the WHOLE marker when its
+        # separator is absent, so the number scan below fell through to the
+        # notice's own "9500" and greened. Measured: with `notice(lost, ...)`
+        # mutated to `notice([], ...)` — the entire dropped-constraint disclosure
+        # deleted — this test and the other 38 stayed green.
+        assert "ARE NOT ABOVE" in marker, f"the cut named no dropped constraints: {marker}"
+        claim = marker.split(" ARE NOT ABOVE", 1)[0].rsplit("CONSTRAINTS ", 1)[-1]
         lost = re.findall(r"\b(\d+)\b", claim)
-        assert lost
+        assert lost, marker
         assert all(not re.search(rf"^{number}\. \*\*", body, re.M) for number in lost)
+        # AND IT IS COMPLETE: naming a true subset is how a lead reads a rule it
+        # never got as one it merely skimmed. Every heading absent from the body
+        # must appear in the claim.
+        absent = [n for n in re.findall(r"^(\d+)\. \*\*", rules, re.M) if n not in body]
+        assert absent and sorted(absent) == sorted(lost), f"cut {absent}, named {lost}"
 
     def test_this_repos_constraints_survive_a_long_checkout_path(self, tmp_path):
         """AC6's property for the file we actually ship under, CONSTRUCTED rather than
@@ -243,12 +260,13 @@ class TestTheRealProfileAgainstTheRealCap:
         78-character path the suite happens to sit in, which is how a worktree-length
         path went unnoticed until one blocked the commit wall (764bd9e).
 
-        THE BUDGET WARNING IS NOT FREE: it is emitted into the budget it reports on, so
-        it buys its ~100 bytes out of delivery margin. Measured at this HEAD against
-        .xp/constraints.md: whole to a ~132-character plugin path, 13/15 by 150; the
-        same file held past ~180 before the warning existed. That is the price of the
-        story and it is paid once — but it means the card's ~175 no longer holds, so
-        re-measure here rather than citing it.
+        THE BUDGET WARNING IS NOT FREE: it is emitted into the budget it reports on,
+        so it buys its 102 bytes out of delivery margin. Re-measured at THIS HEAD
+        against .xp/constraints.md: the warning starts at a 147-character plugin
+        path and all 15 rules still land through 162; 163 is the first that cuts
+        one. THIS NUMBER ROTS ON EVERY SHIPPED-PROSE EDIT and already has — it read
+        "~132, 13/15 by 150" one commit before 591c2b9 returned 81 bytes to the
+        budget. Re-measure it here; never cite it, and never cite the card's ~175.
         """
         base = Path(tempfile.mkdtemp())
         try:
