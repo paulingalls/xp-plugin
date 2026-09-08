@@ -67,6 +67,10 @@ def release_state(repo, env, **round_changes):
     return dict(rounds=[round_], reviewed_head=covered, shown_sha=covered, full_tier=receipt)
 
 
+def release_round(repo, env, **changes):
+    return release_state(repo, env, **changes)["rounds"][0]
+
+
 class TestLandAndPostMerge:
     def test_an_incomplete_round_refuses_before_its_blocking_findings(self, tmp_path):
         repo, env, _g = make_repo(tmp_path)
@@ -208,28 +212,17 @@ class TestReleasePrBody:
         state = json.loads(marker.read_text())
         state["full_tier"]["head"] = "recorded-start-head"
         covered = head(repo, env)
+        bound = ["RUN-FULL-BEFORE-RELEASE"]
+        second = dict(blocking=bound, clearable_by_full=bound, fixed=["second fix", "third fix"])
         rounds = [
-            release_state(repo, env, fixed=["first fix"], noted=["first note", "second note"])[
-                "rounds"
-            ][0],
-            release_state(
-                repo,
-                env,
-                fixed=["second fix", "third fix"],
-                blocking=["RUN-FULL-BEFORE-RELEASE"],
-                clearable_by_full=["RUN-FULL-BEFORE-RELEASE"],
-            )["rounds"][0],
+            release_round(repo, env, fixed=["first fix"], noted=["first note", "second note"]),
+            release_round(repo, env, **second),
         ]
         state.update(rounds=rounds, reviewed_head=covered, shown_sha=covered)
         marker.write_text(json.dumps(state))
-        write_closes(
-            tmp_path,
-            [
-                {"story": "story-043", "title": "also done", "merge_sha": "4" * 40},
-                {"story": "story-042", "title": "done thing", "merge_sha": "2" * 40},
-                {"story": "story-099", "title": "not this sprint", "merge_sha": "9" * 40},
-            ],
-        )
+        closed = [("story-043", "also done", "4"), ("story-042", "done thing", "2")]
+        closed += [("story-099", "not this sprint", "9")]
+        write_closes(tmp_path, [dict(story=s, title=t, merge_sha=d * 40) for s, t, d in closed])
         gh_record = release_tools(tmp_path, env, g)
 
         result = sprint(repo, env, "land")
@@ -295,6 +288,7 @@ class TestReleasePrBody:
         gh_record = release_tools(tmp_path, env, g)
         result = sprint(repo, env, "land")
         assert result.returncode == 2 and "65536" in result.stderr
+        assert "clearable_by_full" in result.stderr, "it names prose the body never quotes"
         assert "missing" not in result.stderr and "unreadable" not in result.stderr
         assert (
             not gh_record.exists()
@@ -309,7 +303,7 @@ class TestReleasePrBody:
         record_release(tmp_path, state)
         close_log = tmp_path / "data" / "closes.jsonl"
         close_log.unlink()
-        assert "missing close log" in _release_body("2", state, marker_path(tmp_path))[1]
+        assert "no close log" in _release_body("2", state, marker_path(tmp_path))[1]
         close_log.write_text("{broken\n")
         assert "unreadable close log" in _release_body("2", state, marker_path(tmp_path))[1]
         record_release(tmp_path, state)
@@ -323,6 +317,8 @@ class TestReleasePrBody:
         write_closes(tmp_path, [{"story": "story-099", "title": "OTHER", "merge_sha": None}])
         body, error = _release_body("2", state, marker_path(tmp_path))
         assert not error and body.count("no close record") == 2 and "OTHER" not in body
+        write_closes(tmp_path, [{"story": "story-042", "title": "T", "merge_sha": None}])
+        assert "line 1: story record" in _release_body("2", state, marker_path(tmp_path))[1]
         (tmp_path / "data" / "plan.md").write_text(PLAN.replace("### Sprint 2", "### Sprint 8"))
         assert "no `### Sprint 2` section" in _release_body("2", state, marker_path(tmp_path))[1]
 

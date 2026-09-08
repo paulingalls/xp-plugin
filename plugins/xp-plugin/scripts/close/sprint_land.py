@@ -40,14 +40,15 @@ def _release_body(sprint_id: str, state: dict, marker) -> tuple[str, str]:
             f" heading no longer exists is not a sprint that closed no story, and the"
             f" release PR would name neither. Restore the heading and its cards, {again}"
         )
-    targets = [heading.split()[1] for heading in headings]
+    targets = {heading.split()[1]: heading for heading in headings}
     close_log = data_root() / "closes.jsonl"
     try:
         lines = close_log.read_text().splitlines()
     except FileNotFoundError:
         return "", (
-            f"refused: missing close log {close_log} — story closes append there;"
-            f" restore it, {again}"
+            f"refused: no close log at {close_log} — no story has closed through"
+            f" `close.py story <id> close` here, so the PR could name no merge SHA."
+            f" Restore it, or create it empty if that is genuinely this sprint, {again}"
         )
     except (OSError, UnicodeError) as exc:
         return "", f"refused: unreadable close log {close_log}: {exc} — repair it, {again}"
@@ -114,7 +115,7 @@ def _release_body(sprint_id: str, state: dict, marker) -> tuple[str, str]:
         )
 
     stories = []
-    for heading, story in zip(headings, targets, strict=True):
+    for story, heading in targets.items():
         if record := closes.get(story):
             stories.append(f"- {story} — {record['title']} — {record['merge_sha']}")
         else:
@@ -142,7 +143,8 @@ def _release_body(sprint_id: str, state: dict, marker) -> tuple[str, str]:
     if len(body) > PR_BODY_LIMIT:
         return "", (
             f"refused: release PR body is {len(body)} characters; limit is {PR_BODY_LIMIT}"
-            f" — shorten the round entries recorded in {marker}, {again}"
+            f" — findings prose is counted, never quoted, so shorten the"
+            f" {CLEARABLE_BY_FULL} entries recorded in {marker}, {again}"
         )
     return body, ""
 
@@ -329,10 +331,7 @@ def cmd_land(sprint_id: str, dry_run: bool) -> int:
         return fail(
             "refused: pr mode needs the gh CLI on PATH — install it, or open the PR by hand"
         )
-    marker, persisted, marker_error = read_sprint_state(sprint_id)
-    if marker_error:
-        return fail(marker_error)
-    body, body_error = _release_body(sprint_id, persisted, marker)
+    body, body_error = _release_body(sprint_id, state, marker)
     if body_error:
         return fail(body_error)
     with tempfile.NamedTemporaryFile("w", encoding="utf-8") as body_file:
