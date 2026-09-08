@@ -8,12 +8,10 @@ the race will happen — R2-5 rejected a bare barrier because a barrier inside
 the mutate deadlocks a correct implementation.
 """
 
-import fcntl
 import json
 import shutil
 import subprocess
 import sys
-import time
 from pathlib import Path
 
 import pytest
@@ -21,109 +19,12 @@ import pytest
 SCRIPTS = Path(__file__).parent.parent / "plugins" / "xp-plugin" / "scripts"
 sys.path.insert(0, str(SCRIPTS))
 from env import write_env  # noqa: E402
-
-PLAN = """# Plan
-
-#### story-aaa — first   [ready]
-Files: a.py
-#### story-bbb — second   [ready]
-Files: b.py
-"""
-
-# Writers run as REAL subprocesses: a same-process fake would share the
-# interpreter's own file handles and never exercise the flock.
-CORRECT_WRITER = """
-import sys, time
-sys.path.insert(0, {scripts!r})
-from work import edit_plan
-story, nap = sys.argv[1], float(sys.argv[2])
-def mutate(text):
-    time.sleep(nap)
-    return text.replace("#### " + story + " — ", "#### " + story + " DONE — ")
-edit_plan(mutate)
-"""
-
-# The defect this story's design rejects: the read happens BEFORE the lock, so
-# the loser writes a plan that never saw the winner's edit. The rendezvous sits
-# AT that read -- the one place a barrier cannot deadlock (R2-5/F3).
-READ_OUTSIDE_LOCK_WRITER = """
-import fcntl, sys, time
-sys.path.insert(0, {scripts!r})
-from work import plan_path, data_root
-story, rendezvous = sys.argv[1], sys.argv[2]
-path = plan_path()
-text = path.read_text()
-import pathlib
-pathlib.Path(rendezvous + "." + story).write_text("read")
-while len(list(pathlib.Path(rendezvous).parent.glob("rv.*"))) < 2:
-    time.sleep(0.01)
-lock = data_root() / "locks" / "plan.lock"
-lock.parent.mkdir(parents=True, exist_ok=True)
-with open(lock, "w") as f:
-    fcntl.flock(f, fcntl.LOCK_EX)
-    path.write_text(text.replace("#### " + story + " — ", "#### " + story + " DONE — "))
-"""
-
-
-def writer(src, data, *args):
-    return subprocess.Popen(
-        [sys.executable, "-c", src.format(scripts=str(SCRIPTS)), *[str(a) for a in args]],
-        env={"XP_DATA": str(data), "PATH": "/usr/bin:/bin"},
-    )
-
-
-def lock_is_held(data):
-    lock = Path(data) / "locks" / "plan.lock"
-    if not lock.exists():
-        return False
-    with open(lock, "r") as f:
-        try:
-            fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except BlockingIOError:
-            return True  # someone else holds it -- R3-4: a held flock is invisible otherwise
-        fcntl.flock(f, fcntl.LOCK_UN)
-        return False
-
-
-def await_held(data, timeout=10):
-    deadline = time.monotonic() + timeout
-    while time.monotonic() < deadline:
-        if lock_is_held(data):
-            return True
-        time.sleep(0.01)
-    return False
-
-
-@pytest.fixture
-def data(tmp_path):
-    (tmp_path / "plan.md").write_text(PLAN)
-    return tmp_path
-
-
-@pytest.mark.slow
-class TestConcurrentWriters:
-    def test_both_flips_survive_when_writers_overlap(self, data):
-        """AC6. Writer A holds the lock for 2s -- comfortably over interpreter
-        startup, so B is forced to arrive while A is inside its mutate."""
-        a = writer(CORRECT_WRITER, data, "story-aaa", 2)
-        assert await_held(data), "writer A never took the lock"
-        b = writer(CORRECT_WRITER, data, "story-bbb", 0)
-        assert a.wait(30) == 0 and b.wait(30) == 0
-        final = (data / "plan.md").read_text()
-        assert "story-aaa DONE" in final
-        assert "story-bbb DONE" in final
-
-    def test_a_read_outside_the_lock_loses_a_flip(self, data):
-        """The same overlap against the rejected design MUST red. Without this
-        the arm above greens on any implementation that happens to serialize."""
-        rv = data / "rv"
-        a = writer(READ_OUTSIDE_LOCK_WRITER, data, "story-aaa", rv)
-        b = writer(READ_OUTSIDE_LOCK_WRITER, data, "story-bbb", rv)
-        assert a.wait(30) == 0 and b.wait(30) == 0
-        final = (data / "plan.md").read_text()
-        assert ("story-aaa DONE" in final) != ("story-bbb DONE" in final), (
-            "both flips survived a read outside the lock -- the arm above proves nothing"
-        )
+from work_plan_lock_cases import (  # noqa: E402, F401
+    TestConcurrentWriters,
+    TestPlanCardEditor,
+    TestPlanLockRecovery,
+    plan_data,
+)
 
 
 # AC1/AC2 run with XP_DATA UNSET so data_root() really hashes the git-common-dir;

@@ -16,6 +16,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 from env import data_root, plugin_root
+from plan_writer import CardEditRefusal, apply_card, locked_edit
 
 NOTE_CAP = 4000  # chars; measured: p90 of 392 records is 1,799, so this binds rarely
 FALSIFIER_STREAM_CAP = 4000
@@ -58,18 +59,9 @@ def edit_plan(mutate) -> bool:
     """Read-modify-write inside a sibling lock; True when changed.
 
     Temp+rename preserves the previous unversioned plan after interruption. The
-    sibling lock survives that inode swap. The lead's editor does not take it.
+    sibling lock survives that inode swap.
     """
-    path = plan_path()
-    lock = data_root() / "locks" / "plan.lock"
-    lock.parent.mkdir(parents=True, exist_ok=True)
-    with open(lock, "w") as handle:
-        fcntl.flock(handle, fcntl.LOCK_EX)
-        text = path.read_text() if path.exists() else ""
-        tmp = path.with_name(path.name + ".tmp")
-        tmp.write_text(edited := mutate(text))
-        tmp.replace(path)
-    return edited != text
+    return locked_edit(plan_path(), data_root() / "locks" / "plan.lock", mutate)
 
 
 def strip_comment(line: str) -> str:
@@ -346,6 +338,33 @@ def archive(root: Path, args: argparse.Namespace) -> int:
     return 0
 
 
+def edit_card_command(args: argparse.Namespace) -> int:
+    from close import story_card
+
+    try:
+        changed = apply_card(
+            args.story_id,
+            args.digest,
+            args.status,
+            args.candidate,
+            story_card,
+            card_digest,
+            edit_plan,
+        )
+    except CardEditRefusal as error:
+        sys.path.insert(0, str(Path(__file__).parent / "spawn"))
+        from ready import refresh_instruction
+
+        print(
+            f"refused: card refresh {args.story_id} cannot apply: {error}. "
+            f"{refresh_instruction(args.story_id)}",
+            file=sys.stderr,
+        )
+        return 2
+    print(f"{args.story_id} card {'updated' if changed else 'unchanged'}")
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest="kind", required=True)
@@ -367,8 +386,15 @@ def main() -> int:
     r.add_argument("--ref", required=True, help="record id from `list`")
     r.add_argument("--falsifier", required=True, help="replacement; must be GREEN now")
     r.add_argument("--covered-by", metavar="TIER", help="a configured tier that runs it")
+    e = sub.add_parser("edit-card", help="apply one card-refresh candidate under the plan lock")
+    e.add_argument("story_id")
+    e.add_argument("--digest", required=True)
+    e.add_argument("--status", required=True)
+    e.add_argument("candidate", type=Path)
     args = parser.parse_args()
 
+    if args.kind == "edit-card":
+        return edit_card_command(args)
     if args.kind == "env":
         print(plugin_root())
         return 0
