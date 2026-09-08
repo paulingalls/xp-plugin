@@ -2,8 +2,8 @@
 and the status flip that rewrites one bracket.
 
 Pure text, no I/O and no plan path: extracted from work.py when the
-sprint-021 back-merge of v0.21.4 and v0.21.5 pushed that file to 518 against
-constraint 8's 500-line hard cap. Neither side was over alone.
+sprint-021 back-merge of v0.21.4 and v0.21.5 pushed that file past this
+project's hard line cap. Neither side was over alone.
 """
 
 import hashlib
