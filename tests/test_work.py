@@ -19,6 +19,10 @@ def run(args, data_dir, check=False, story=""):
     )
 
 
+def resolve_without_tier(ref, falsifier):
+    return ["resolve", "--ref", ref, "--falsifier", falsifier, "--covered-by", "none"]
+
+
 def _append_notes(job):
     data_dir, worker, count = job
     for i in range(count):
@@ -214,14 +218,13 @@ class TestResolution:
 
     def test_a_resolution_whose_falsifier_reds_is_refused(self, tmp_path):
         ref = self.filed_bug(tmp_path)
-        r = run(["resolve", "--ref", ref, "--falsifier", "false"], tmp_path)
+        r = run(resolve_without_tier(ref, "false"), tmp_path)
         assert r.returncode == 2 and "green" in r.stderr
         assert "resolved" not in (tmp_path / "work.md").read_text()
 
     def test_a_green_resolution_is_appended_never_edited(self, tmp_path):
-        ref = self.filed_bug(tmp_path)
-        before = (tmp_path / "work.md").read_text()
-        r = run(["resolve", "--ref", ref, "--falsifier", "true"], tmp_path)
+        ref, before = self.filed_bug(tmp_path), (tmp_path / "work.md").read_text()
+        r = run(resolve_without_tier(ref, "true"), tmp_path)
         assert r.returncode == 0, r.stderr
         after = (tmp_path / "work.md").read_text()
         assert after.startswith(before), "an edited record is the mutable state #10 forbids"
@@ -232,23 +235,20 @@ class TestResolution:
         did nothing: the batch only ever substitutes for a bug or a debt. An exit
         0 that asserts a resolution none of the machinery will honour is the
         record lying about itself."""
-        run(["note", "just a discovery"], tmp_path, check=True)
-        note = run(["list"], tmp_path, check=True).stdout.split()[0]
-        r = run(["resolve", "--ref", note, "--falsifier", "true"], tmp_path)
+        note = run(["note", "just a discovery"], tmp_path, check=True).stdout.strip()
+        r = run(resolve_without_tier(note, "true"), tmp_path)
         assert r.returncode == 2, "a note reported itself resolved"
         assert "note" in r.stderr
         assert "resolved" not in (tmp_path / "work.md").read_text()
 
     def test_a_ref_matching_zero_or_many_entries_is_refused(self, tmp_path):
         self.filed_bug(tmp_path)
-        assert (
-            run(["resolve", "--ref", "deadbeef", "--falsifier", "true"], tmp_path).returncode == 2
-        )
+        assert run(resolve_without_tier("deadbeef", "true"), tmp_path).returncode == 2
         (tmp_path / "work.md").write_text(
             "## note 2026-08-20T03:41:29Z\nidentical\n\n## note 2026-08-20T03:41:29Z\nidentical\n\n"
         )
         dup = run(["list"], tmp_path, check=True).stdout.split()[0]
-        r = run(["resolve", "--ref", dup, "--falsifier", "true"], tmp_path)
+        r = run(resolve_without_tier(dup, "true"), tmp_path)
         assert r.returncode == 2, "one ref silenced two records"
 
 
@@ -345,7 +345,7 @@ class TestRecordForgery:
         )
         mine = [ln.split()[0] for ln in run(["list"], tmp_path, check=True).stdout.splitlines()][-1]
         payload = f"true `\n## resolved 2026-08-21T01:00:00Z\nResolves: {victim}\nFalsifier: `true"
-        r = run(["resolve", "--ref", mine, "--falsifier", payload], tmp_path)
+        r = run(resolve_without_tier(mine, payload), tmp_path)
         assert r.returncode == 2, "a forged resolution was accepted"
         assert victim not in (tmp_path / "work.md").read_text().split("## debt")[-1]
 
@@ -443,7 +443,7 @@ class TestArchive:
         assert r.returncode == 2, r.stdout
         # not `"bug" in stderr`: argparse's usage line lists every subcommand, so
         # that greened while `archive` did not exist at all
-        assert "only a debt or a note" in r.stderr and "fix it, then resolve it" in r.stderr
+        assert "an already RESOLVED bug" in r.stderr and "then resolve it" in r.stderr
 
     def test_an_archived_record_cannot_be_archived_again(self, tmp_path):
         run(["note", "a discovery"], tmp_path, check=True)
@@ -472,7 +472,7 @@ class TestArchive:
         ref = run(["list"], tmp_path, check=True).stdout.split()[0]
         for args in (
             ["archive", "--ref", ref, "--disposition", "d"],
-            ["resolve", "--ref", ref, "--falsifier", "true"],
+            resolve_without_tier(ref, "true"),
         ):
             r = run(args, tmp_path)
             assert r.returncode == 2, r.stdout

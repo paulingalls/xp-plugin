@@ -4,8 +4,11 @@ import shlex
 import sys
 from pathlib import Path
 
+import sprint_close
 import work as work_module
 from sprint_helpers import make_repo, snapshot, sprint, work
+
+batch_module = sys.modules[sprint_close.resolved_offers.__module__]
 
 
 def file_debt(repo, env, claim, command, files="a.py"):
@@ -27,7 +30,10 @@ def red_debt(repo, env, tmp_path, claim, stdout, stderr, files="a.py"):
 def make_legacy_stub(repo, env, tmp_path, ref, command):
     text = dict(work_module.entries(tmp_path / "data"))[ref]
     files = next(line[7:] for line in text.splitlines() if line.startswith("Files: "))
-    assert work(repo, env, "resolve", "--ref", ref, "--falsifier", command).returncode == 0
+    resolved = work(
+        repo, env, "resolve", "--ref", ref, "--falsifier", command, "--covered-by", "none"
+    )
+    assert resolved.returncode == 0
     assert work(repo, env, "compact").returncode == 0
     path = tmp_path / "data" / "work.md"
     path.write_text(path.read_text().replace(f"Files: {files}\n", "", 1))
@@ -66,6 +72,8 @@ def test_three_commands_report_two_reds_once_in_one_bug(tmp_path):
     assert "Files: src/z-first.py, src/shared.py, src/a-third.py\n" in bug
     assert "Files: unknown" not in result.stderr + bug
     assert "Fix it, then run start again" in result.stderr
+    assert result.stdout.count("falsifier wall clock:") == 3
+    assert "falsifier wall clock:" not in bug
 
 
 def test_missing_source_files_reports_every_red_and_files_nothing(tmp_path):
@@ -180,22 +188,116 @@ def test_combined_bug_stays_red_when_only_its_last_source_is_green(tmp_path):
 def test_a_green_batch_keeps_command_streams_silent_and_writes_nothing(tmp_path):
     repo, env, _g = make_repo(tmp_path)
     counters = [tmp_path / "green-one", tmp_path / "green-two"]
-    for n, counter in enumerate(counters):
+    refs = [
         file_debt(
             repo,
             env,
             f"green {n}",
             f"printf GREEN{n}_OUT; printf GREEN{n}_ERR >&2; printf x >> {counter}",
         )
-    before = snapshot(tmp_path / "data")
+        for n, counter in enumerate(counters)
+    ]
+    path = tmp_path / "data" / "work.md"
+    before = path.read_bytes()
     result = sprint(repo, env, "start")
-    assert result.returncode == 0 and snapshot(tmp_path / "data") == before
+    assert result.returncode == 0 and path.read_bytes() == before
+    # NAMED, not merely counted: an unattributed duration cannot answer the one
+    # question the batch's cost is measured to answer — which record is expensive.
+    timed = [line for line in result.stdout.splitlines() if line.startswith("falsifier wall clock")]
+    assert len(timed) == 2 and sorted(line.split()[-1] for line in timed) == sorted(refs)
     assert [path.read_text() for path in counters] == ["xx", "xx"]
     assert all(
         f"GREEN{n}_{stream}" not in result.stdout + result.stderr
         for n in range(2)
         for stream in ("OUT", "ERR")
     )
+
+
+def test_triage_offers_a_resolved_record_but_not_archived_or_open_records(tmp_path):
+    repo, env, _g = make_repo(tmp_path)
+    replacement = tmp_path / "replacement"
+    resolved = work(
+        repo, env, "bug", "--claim", "fixed", "--falsifier", "false", "--files", "a.py"
+    ).stdout.strip()
+    fixed = work(
+        repo,
+        env,
+        "resolve",
+        "--ref",
+        resolved,
+        "--falsifier",
+        f"touch {replacement}",
+        "--covered-by",
+        "none",
+    )
+    assert fixed.returncode == 0
+    archived = file_debt(repo, env, "retired", "true")
+    assert work(repo, env, "archive", "--ref", archived, "--disposition", "dropped").returncode == 0
+    opened = file_debt(repo, env, "still open", "true")
+    work(repo, env, "note", "remember this")
+
+    first = sprint(repo, env, "start")
+    offers = first.stdout.split("resolved records to consider archiving", 1)[1].split(
+        "notes to triage", 1
+    )[0]
+    assert first.returncode == 0 and resolved in offers
+    assert archived not in offers and opened not in offers
+    assert "remember this" in first.stdout and replacement.exists()
+
+    disposed = work(repo, env, "archive", "--ref", resolved, "--disposition", "superseded")
+    assert disposed.returncode == 0
+    repeated = work(repo, env, "archive", "--ref", resolved, "--disposition", "again")
+    assert repeated.returncode == 2 and "already archived" in repeated.stderr
+    replacement.unlink()
+    second = sprint(repo, env, "start")
+    assert second.returncode == 0 and resolved not in second.stdout and not replacement.exists()
+
+
+def test_a_compacted_resolution_is_still_offered_for_archive(tmp_path):
+    """The stub compaction leaves is the shape the offer meets in production —
+    70 of this repo's 71 resolved records on 2026-09-07 — and it reaches RESOLVED
+    down a different branch from a live `## resolved` block: `Resolves:` on the
+    record's OWN heading. Delete that branch and this file otherwise stays green."""
+    repo, env, _g = make_repo(tmp_path)
+    ref = work(
+        repo, env, "bug", "--claim", "fixed", "--falsifier", "false", "--files", "a.py"
+    ).stdout.strip()
+    resolved = work(
+        repo, env, "resolve", "--ref", ref, "--falsifier", "true", "--covered-by", "none"
+    )
+    assert resolved.returncode == 0 and work(repo, env, "compact").returncode == 0
+    ledger = (tmp_path / "data" / "work.md").read_text()
+    assert "## resolved " not in ledger and f"Resolves: {ref}" in ledger
+
+    result = sprint(repo, env, "start")
+
+    assert result.returncode == 0, result.stderr
+    offers = result.stdout.split("resolved records to consider archiving", 1)[1]
+    assert "1 resolved records" in result.stdout and ref in offers.split("notes to triage", 1)[0]
+
+
+def test_resolved_offers_are_cost_sorted_and_bounded():
+    # Cost order and id order DISAGREE by construction. A fixture where the two
+    # coincide asserts the bound and nothing else: it greens against a plain
+    # sort by id, which is the mutation constraint 2 calls certifying.
+    commands = ["deferred-1", "third", "second", "shared", "shared", "deferred-2", "deferred-3"]
+    records = [
+        batch_module.LedgerRecord(str(n), f"debt {n}", command, "full", "RESOLVED")
+        for n, command in enumerate(commands)
+    ]
+    result = work_module.FalsifierResult
+    measured = {
+        "shared": result(0, "", "", 3.0),
+        "second": result(0, "", "", 2.0),
+        "third": result(0, "", "", 1.0),
+    }
+    text = batch_module.resolved_offers(records, measured)
+    lines = [line for line in text.splitlines() if "forfeits" in line]
+    assert len(lines) == 5 and "7 resolved records" in text
+    assert [line.split()[0] for line in lines] == ["3", "4", "2", "1", "0"]
+    assert "total distinct measured cost: 6.000s" in text
+    assert "deferred; standalone duration not measured" in text
+    assert all("forfeits its replacement falsifier's recurring guarantee" in line for line in lines)
 
 
 def test_long_streams_keep_labeled_tails_and_exact_cut_counts(tmp_path):
