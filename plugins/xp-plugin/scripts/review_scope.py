@@ -16,6 +16,22 @@ def _bare(entry: str) -> str:
     return entry.strip()
 
 
+def file_entries(text: str) -> list[str]:
+    declared = []
+    for raw in TOP_LEVEL_COMMA.split(text):
+        if not (raw := raw.strip()):
+            continue
+        if not re.fullmatch(r"[^\s()[\]{}]+", path := _bare(raw)):
+            raise ValueError(
+                f"the Files entry {raw!r} is not a plausible path; use bare"
+                " comma-separated paths, end the block at the next `Label:` line,"
+                " and keep rationale in the card body"
+            )
+        if path not in declared:
+            declared.append(path)
+    return declared
+
+
 def declared_files(card: str) -> set[str]:
     declared, in_files = set(), False
     for line in card.splitlines():
@@ -24,14 +40,5 @@ def declared_files(card: str) -> set[str]:
         elif in_files and re.match(r"[A-Za-z][A-Za-z ]*:", line):
             in_files = False
         if in_files:
-            for raw in TOP_LEVEL_COMMA.split(line):
-                if not (raw := raw.strip()):
-                    continue
-                if not re.fullmatch(r"[^\s()[\]{}]+", path := _bare(raw)):
-                    raise ValueError(
-                        f"the Files entry {raw!r} is not a plausible path; use bare"
-                        " comma-separated paths, end the block at the next `Label:` line,"
-                        " and keep rationale in the card body"
-                    )
-                declared.add(path)
+            declared.update(file_entries(line))
     return declared
