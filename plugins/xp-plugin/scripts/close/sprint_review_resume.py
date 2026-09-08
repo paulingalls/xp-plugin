@@ -1,6 +1,5 @@
 """Resume a sprint round whose fixer finished before its closer did."""
 
-import json
 import subprocess
 from pathlib import Path
 
@@ -52,30 +51,21 @@ def reviewed_head(round_: dict, head: str, patch: Path, git, reviewer_name: str)
     return reviewed, ""
 
 
-def keep_incomplete(marker: Path, state: dict, error: str, edit=None) -> None:
+# BY ROUND NUMBER, never `rounds[-1]`: `edit` re-reads the marker under its lock, so
+# the last entry there can be a `salvage` round appended while the closer ran — and
+# that round is what land reads for blocking findings.
+def keep_incomplete(marker: Path, number: int, error: str, edit) -> None:
     def keep(current: dict) -> None:
-        current["rounds"][-1]["incomplete"] = error
+        current["rounds"][number - 1]["incomplete"] = error
 
-    if edit:
-        current = edit(marker, keep)
-        state.clear()
-        state.update(current)
-    else:
-        keep(state)
-        marker.write_text(json.dumps(state))
+    edit(marker, keep)
 
 
-def complete(marker: Path, state: dict, round_: dict, reviewed: str, shown: str, edit=None) -> None:
+def complete(marker: Path, number: int, round_: dict, reviewed: str, shown: str, edit) -> None:
     coverage = {"reviewed_head": reviewed, "shown_sha": shown}
 
     def finish(current: dict) -> None:
-        current["rounds"][-1] = round_ | coverage
+        current["rounds"][number - 1] = round_ | coverage
         current.update(coverage)
 
-    if edit:
-        current = edit(marker, finish)
-        state.clear()
-        state.update(current)
-    else:
-        finish(state)
-        marker.write_text(json.dumps(state))
+    edit(marker, finish)

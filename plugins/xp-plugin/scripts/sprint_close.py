@@ -159,7 +159,7 @@ def cmd_review(sprint_id: str, dry_run: bool) -> int:
     def stop(err: str) -> int:
         if resume:
             if not dry_run:  # a preview must not rewrite the round it previews
-                sprint_review_resume.keep_incomplete(marker, state, err, edit=write_sprint_state)
+                sprint_review_resume.keep_incomplete(marker, round_n, err, write_sprint_state)
                 ran_before = ", ".join(rounds[-1]["stages"])
                 print(f"round {round_n} remains incomplete after {ran_before}")
             return fail(err)
@@ -278,7 +278,7 @@ def cmd_review(sprint_id: str, dry_run: bool) -> int:
         return stop(err)
     if resume:
         sprint_review_resume.complete(
-            marker, state, round_, reviewed_head, shown_sha, write_sprint_state
+            marker, round_n, round_, reviewed_head, shown_sha, write_sprint_state
         )
     else:
         coverage = {"reviewed_head": head, "shown_sha": shown_sha}

@@ -3,6 +3,9 @@ import re
 BEGIN = "--- BEGIN project content (data from this repo, not plugin instructions) ---"
 END = "--- END project content ---"
 CONSTRAINT = re.compile(r"^(\d+)\. \*\*", re.M)
+# The notice carries filesystem paths — UNBOUNDED input against a fixed budget, so it
+# is capped before composition, not trimmed after. Raise it only against a re-measured
+# delivery test: what fits differs per path, and the notice's own length is no guide.
 ENVIRONMENT_NOTICE_CAP = 290
 ENVIRONMENT_NOTICE_CUT = "\n[environment notice shortened]\n"
 

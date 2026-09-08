@@ -31,7 +31,7 @@ def strip_lifecycle(plan: str) -> str:
     return "".join(out)
 
 
-def locked_edit(path: Path, lock: Path, mutate) -> bool:
+def locked_edit(path: Path, lock: Path, mutate, noun: str = "plan") -> bool:
     lock.parent.mkdir(parents=True, exist_ok=True)
     with open(lock, "a+") as handle:
         waited = False
@@ -40,14 +40,14 @@ def locked_edit(path: Path, lock: Path, mutate) -> bool:
         except BlockingIOError:
             handle.seek(0)
             owner = handle.read().strip() or "unknown"
-            print(f"plan lock held by pid {owner}; waiting", file=sys.stderr, flush=True)
+            print(f"{noun} lock held by pid {owner}; waiting", file=sys.stderr, flush=True)
             waited = True
             fcntl.flock(handle, fcntl.LOCK_EX)
         handle.seek(0)
         residue = handle.read().strip()
         if residue and not waited:
             print(
-                f"plan lock owner pid {residue} was stale; recovered",
+                f"{noun} lock owner pid {residue} was stale; recovered",
                 file=sys.stderr,
                 flush=True,
             )
@@ -82,7 +82,7 @@ def locked_json_edit(path: Path, lock: Path, mutate, noun: str) -> dict:
         edited.update(current)
         return json.dumps(current)
 
-    locked_edit(path, lock, apply)
+    locked_edit(path, lock, apply, noun)
     return edited
 
 

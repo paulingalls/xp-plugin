@@ -46,7 +46,7 @@ def test_an_implausible_record_entry_returns_an_actionable_refusal(tmp_path):
     assert "bare comma-separated paths" in error
 
 
-def test_an_archive_section_ends_before_its_resolution(tmp_path):
+def test_an_archived_record_reads_its_own_files_line_not_its_resolutions(tmp_path):
     root = tmp_path / "data"
     root.mkdir()
     (root / "archive.md").write_text(
@@ -55,7 +55,8 @@ def test_an_archive_section_ends_before_its_resolution(tmp_path):
         "Claim: archived source\n"
         "Files: plugins/xp-plugin/scripts/close.py\n\n"
         "## resolved 2026-09-02T00:00:00Z\n"
-        "Resolves: abc01234\n\n"
+        "Resolves: abc01234\n"
+        "Files: unknown\n\n"
     )
 
     paths, missing, error = SPRINT_BUNDLE.source_files(root, ["abc01234"])
