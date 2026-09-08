@@ -1,20 +1,17 @@
 import json
 import os
-import re
 import shutil
 import subprocess
 import sys
 import tempfile
 from pathlib import Path
 
+from session_start_helpers import BUDGET_WARNING
+
 # LC_ALL=C ALONE PROVES NOTHING: PEP 538 silently coerces a C locale to C.UTF-8, so
 # the character count came out right for a reason the wall did not own. Disabling
 # coercion and UTF-8 mode is what makes the locale test able to red.
 C_LOCALE = {"LC_ALL": "C", "LANG": "C", "PYTHONCOERCECLOCALE": "0", "PYTHONUTF8": "0"}
-BUDGET_WARNING = re.compile(
-    r"\[constraints\.md is (\d+) bytes? over its (\d+)-byte SessionStart budget; "
-    r"shorten or retire a constraint\]"
-)
 
 
 class ConstraintsWallCases:
@@ -195,10 +192,17 @@ class ConstraintsWallCases:
         seed = (self.SHIPPED / "constraints.md").read_text()  # cap is what moves
         ceiling = seed + "x" * (cap - len(seed))
         match = BUDGET_WARNING.search(self._run_ascii_profile(tmp_path, ceiling))
-        assert match
+        assert match, "a constraints.md at the shipped character cap reported no byte budget"
         overage, allowance = map(int, match.groups())
         assert overage == len(ceiling.encode()) - allowance
-        assert allowance >= 4_386
+        # A FLOOR, not a fact: every byte of shipped prose comes out of the adopter's
+        # allowance, and 4,386 is what a file at the 4,500-CHARACTER wall can still be
+        # told about. Under it, the two numbers a project sees drift further apart than
+        # this story left them, so the shipped prose is what to cut — not this number.
+        assert allowance >= 4_386, (
+            f"shipped prose has taken the adopter's constraints budget down to {allowance}"
+            " bytes; shorten VALUES/JUDGMENT/PROCESS or the banner, do not lower this floor"
+        )
         constraints = seed + "x" * (allowance - len(seed.encode()))
         assert len(constraints.encode()) == allowance
         out = self._run_ascii_profile(tmp_path, constraints)

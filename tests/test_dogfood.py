@@ -168,37 +168,6 @@ class TestDogfoodMatchesTheScaffold(ConstraintsWallCases):
             if doc not in allowed
         ]
 
-    cap_value = ConstraintsWallCases.cap_value
-    test_constraints_character_cap_is_the_same_in_both_configs = (
-        ConstraintsWallCases.test_constraints_character_cap_is_the_same_in_both_configs
-    )
-    run_constraints_wall = ConstraintsWallCases.run_constraints_wall
-    test_the_wall_refuses_when_the_MEASUREMENT_itself_fails = (
-        ConstraintsWallCases.test_the_wall_refuses_when_the_MEASUREMENT_itself_fails
-    )
-    test_scaffolded_wall_refuses_constraints_over_the_character_cap = (
-        ConstraintsWallCases.test_scaffolded_wall_refuses_constraints_over_the_character_cap
-    )
-    test_constraints_wall_distinguishes_missing_and_invalid_caps = (
-        ConstraintsWallCases.test_constraints_wall_distinguishes_missing_and_invalid_caps
-    )
-    test_constraints_wall_counts_unicode_characters_independent_of_locale = (
-        ConstraintsWallCases.test_constraints_wall_counts_unicode_characters_independent_of_locale
-    )
-    test_every_tier_re_checks_the_character_cap = (
-        ConstraintsWallCases.test_every_tier_re_checks_the_character_cap
-    )
-    PLUGIN_PATH_BUDGET = ConstraintsWallCases.PLUGIN_PATH_BUDGET
-    DATA_ROOT_BUDGET = ConstraintsWallCases.DATA_ROOT_BUDGET
-    _at_path_length = ConstraintsWallCases._at_path_length
-    _run_ascii_profile = ConstraintsWallCases._run_ascii_profile
-    test_a_file_over_the_session_budget_still_passes_the_character_wall = (
-        ConstraintsWallCases.test_a_file_over_the_session_budget_still_passes_the_character_wall
-    )
-    test_ascii_constraints_at_the_derived_allowance_fit_the_byte_profile = (
-        ConstraintsWallCases.test_ascii_constraints_at_the_derived_allowance_fit_the_byte_profile
-    )
-
     def test_the_scaffold_ships_no_key_we_invented_without_seeding(self):
         """The reverse drift: a key we rely on that a scaffolded repo never gets."""
         shipped = self.SHIPPED / "config.yml"

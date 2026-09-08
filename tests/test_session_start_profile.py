@@ -14,18 +14,15 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 import pytest
-from session_start_helpers import HOOK
+from session_start_helpers import BUDGET_WARNING, HOOK
 
 CODEX_RETAINED_BYTES = [(4_916, 5_084)] * 6
 CODEX_OUTPUT_BOUND = 10_000
 HEADROOM = 500
-BUDGET_WARNING = re.compile(
-    r"\[constraints\.md is (\d+) bytes? over its (\d+)-byte SessionStart budget; "
-    r"shorten or retire a constraint\]"
-)
 
 # The `recover` surface writes to the TOOL channel, whose bound is a different
 # number in a different unit: codex 0.149.0's help text for `exec` reads
@@ -239,6 +236,29 @@ class TestTheRealProfileAgainstTheRealCap:
         lost = re.findall(r"\b(\d+)\b", claim)
         assert lost
         assert all(not re.search(rf"^{number}\. \*\*", body, re.M) for number in lost)
+
+    def test_this_repos_constraints_survive_a_long_checkout_path(self, tmp_path):
+        """AC6's property for the file we actually ship under, CONSTRUCTED rather than
+        read off this checkout (constraint 11) — the sibling above certifies only the
+        78-character path the suite happens to sit in, which is how a worktree-length
+        path went unnoticed until one blocked the commit wall (764bd9e).
+
+        THE BUDGET WARNING IS NOT FREE: it is emitted into the budget it reports on, so
+        it buys its ~100 bytes out of delivery margin. Measured at this HEAD against
+        .xp/constraints.md: whole to a ~132-character plugin path, 13/15 by 150; the
+        same file held past ~180 before the warning existed. That is the price of the
+        story and it is paid once — but it means the card's ~175 no longer holds, so
+        re-measure here rather than citing it.
+        """
+        base = Path(tempfile.mkdtemp())
+        try:
+            plugin = self.path_at_length(base, "p", 110)
+            shutil.copytree(HOOK.parent.parent, plugin)
+            out = self.run_real(tmp_path, plugin / "scripts" / "session_start.py")
+        finally:
+            shutil.rmtree(base, ignore_errors=True)
+        assert "[truncated at" not in out, "a 110-character plugin path already cuts the profile"
+        self.assert_all_constraints_delivered(out)
 
     def test_our_own_digest_is_within_the_bound_the_hook_enforces(self):
         """The dogfood arm of bug 597c32db. Ours was 380 lines and 26,797 chars

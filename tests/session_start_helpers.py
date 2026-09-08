@@ -3,6 +3,7 @@ test_session_start.py hit constraint 8's 500-line cap."""
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -10,6 +11,12 @@ from pathlib import Path
 
 HOOK = Path(__file__).parent.parent / "plugins" / "xp-plugin" / "scripts" / "session_start.py"
 HOOKS_JSON = Path(__file__).parent.parent / "plugins" / "xp-plugin" / "hooks" / "hooks.json"
+# One home for profile_output.constraints_warning's wording: two suites read it back,
+# and a copy in each is a rephrase away from one of them matching nothing and greening.
+BUDGET_WARNING = re.compile(
+    r"\[constraints\.md is (\d+) bytes? over its (\d+)-byte SessionStart budget; "
+    r"shorten or retire a constraint\]"
+)
 
 
 def run_hook(cwd, data_dir, session_id="sess-abc123"):
