@@ -4,6 +4,15 @@ Release notes started at v0.6.0; earlier entries are summarized from their
 tag and merge messages. Full detail lives in the merge history and the
 per-sprint review reports.
 
+## v0.22.1 — the running plugin owns its pin
+
+After an upgraded plugin is reloaded in an existing lead session, its next Stop
+hook now repoints `env.json` to the root and version of the copy actually
+running. Spawned roles cannot move the lead's pin, an already-current pair is
+left byte-untouched, and a failed repoint cannot disable the existing red-Verify
+gate. The recovery refusal now names both truthful routes: a new lead
+SessionStart or `/reload-plugins` followed by the next turn.
+
 ## v0.22.0 — the close spends what it must and keeps what it knows
 
 The sprint close paid twice for what it already measured, and threw away what it
