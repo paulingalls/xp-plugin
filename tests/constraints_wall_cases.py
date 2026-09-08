@@ -209,3 +209,34 @@ class ConstraintsWallCases:
         assert len(out.encode()) <= OUTPUT_CAP
         assert constraints in out, "the derived byte allowance does not reach the lead"
         assert not BUDGET_WARNING.search(out)
+
+    def test_the_warning_does_not_cost_the_constraints_it_reports_on(self, tmp_path):
+        """constraints_budget subtracts a WORST-CASE warning, so the first file
+        that triggers the warning must still deliver every rule. Pinned as that
+        PROPERTY and not as the arithmetic (constraint 11): the round-1 reviewer
+        measured that `one_byte_overage`, `strict_render_and_print_newline` and
+        the `join` term can EACH be deleted with the whole profile suite still
+        green, because ~33 bytes of accidental slack in the worst-case string
+        holds the boundary instead. The reserve was load-bearing and unpinned at
+        the same time, which is constraint 2's shape.
+
+        Measured while writing this: at the allowance the profile is whole and
+        silent; one byte over it warns and stays whole; at the shipped 4,500
+        CHARACTER cap it warns and loses a rule — that last one is render's
+        truncation cliff, filed separately, and is deliberately not asserted here.
+        """
+        from session_start import OUTPUT_CAP
+
+        cap = self.cap_value(self.SHIPPED / "config.yml")  # never a literal
+        seed = (self.SHIPPED / "constraints.md").read_text()
+        ceiling = seed + "x" * (cap - len(seed))
+        probe = BUDGET_WARNING.search(self._run_ascii_profile(tmp_path, ceiling))
+        assert probe, "the probe profile reported no byte budget to derive the allowance from"
+        allowance = int(probe.groups()[1])
+        over = seed + "x" * (allowance - len(seed.encode()) + 1)
+        assert len(over.encode()) == allowance + 1, "the fixture is not one byte over"
+        out = self._run_ascii_profile(tmp_path, over)
+        assert BUDGET_WARNING.search(out), "one byte over the allowance did not warn"
+        assert over in out, "the warning displaced the very constraints it reports on"
+        assert "truncated at the" not in out, "the warning pushed the profile over the cap"
+        assert len(out.encode()) <= OUTPUT_CAP
