@@ -169,8 +169,8 @@ def cmd_land(sprint_id: str, dry_run: bool) -> int:
         return fail(_clearance_failure(red, bound) if bound else red)
     state["full_tier"] = receipt
     try:
-        write_sprint_state(marker, state)
-    except OSError as exc:
+        write_sprint_state(marker, {"full_tier": receipt})
+    except (OSError, ValueError) as exc:
         return fail(f"refused: could not persist the full tier receipt at {marker}: {exc}")
     action = "reused" if receipt["reused"] else "ran"
     print(

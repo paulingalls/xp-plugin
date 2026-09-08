@@ -8,6 +8,7 @@ it makes the collision loud without removing it.
 """
 
 import fcntl
+import json
 import os
 import sys
 from pathlib import Path
@@ -65,6 +66,24 @@ def locked_edit(path: Path, lock: Path, mutate) -> bool:
             handle.truncate()
             handle.flush()
     return edited != text
+
+
+def locked_json_edit(path: Path, lock: Path, mutate, noun: str) -> dict:
+    edited = {}
+
+    def apply(text: str) -> str:
+        try:
+            current = json.loads(text) if text else {}
+        except (UnicodeError, json.JSONDecodeError) as exc:
+            raise ValueError(f"unreadable {noun} {path}: {exc}") from exc
+        if not isinstance(current, dict):
+            raise ValueError(f"unreadable {noun} {path}: expected a JSON object")
+        mutate(current)
+        edited.update(current)
+        return json.dumps(current)
+
+    locked_edit(path, lock, apply)
+    return edited
 
 
 def apply_card(

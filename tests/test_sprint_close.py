@@ -30,6 +30,47 @@ from sprint_helpers import (  # noqa: F401
 )
 
 
+def blocking_tier(tmp_path):
+    started, release = tmp_path / "tier-started", tmp_path / "tier-release"
+    script = tmp_path / "blocking_tier.py"
+    script.write_text(
+        "import pathlib, sys, time\n"
+        "started, release = map(pathlib.Path, sys.argv[1:])\n"
+        "started.touch()\n"
+        "deadline = time.monotonic() + 120\n"
+        "while not release.exists() and time.monotonic() < deadline: time.sleep(0.02)\n"
+        "raise SystemExit(0 if release.exists() else 1)\n"
+    )
+    command = shlex.join([sys.executable, str(script), str(started), str(release)])
+    return CONFIG.replace("full: true", f"full: {command}"), started, release
+
+
+def start_sprint_process(repo, env, command):
+    return subprocess.Popen(
+        [sys.executable, str(CLOSE), "sprint", SPRINT_ID, command],
+        cwd=repo,
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+
+
+def wait_for(path, process):
+    deadline = time.monotonic() + 120
+    while not path.exists() and process.poll() is None and time.monotonic() < deadline:
+        time.sleep(0.02)
+    assert path.exists(), process.communicate(timeout=5)
+
+
+def salvage_round(tmp_path, repo, env, number, note):
+    report = tmp_path / "data" / "reports" / "sprint" / f"{SPRINT_ID}.find-x.round-{number}.json"
+    report.parent.mkdir(parents=True, exist_ok=True)
+    report.write_text(json.dumps({"fixed": [], "blocking": [], "noted": [note]}))
+    result = sprint(repo, env, "salvage")
+    assert result.returncode == 0, result.stderr
+
+
 class TestMembership:
     def test_lifecycle_runs_only_for_the_opening_and_before_the_branch_record(self, tmp_path):
         repo, env, g = make_repo(tmp_path)
@@ -236,6 +277,80 @@ class TestFullTier:
             tmp_path, config="full: true\n" + CONFIG.replace("full: true", "full: false")
         )
         assert sprint(repo, env, "start").returncode == 2, "a stray key shadowed the real tier"
+
+    def test_a_round_written_during_start_tier_survives(self, tmp_path):
+        config, started, release = blocking_tier(tmp_path)
+        repo, env, _g = make_repo(tmp_path, config=config)
+        process = start_sprint_process(repo, env, "start")
+        wait_for(started, process)
+
+        salvage_round(tmp_path, repo, env, 1, "concurrent start round")
+        release.touch()
+        stdout, stderr = process.communicate(timeout=120)
+
+        assert process.returncode == 0, stdout + stderr
+        marker = json.loads(marker_path(tmp_path).read_text())
+        assert marker["rounds"][-1]["noted"] == ["concurrent start round"]
+        assert marker["full_tier"]["ran_by"] == "start"
+
+    def test_a_round_written_during_land_tier_survives(self, tmp_path):
+        config, started, release = blocking_tier(tmp_path)
+        repo, env, _g = make_repo(tmp_path, config=config)
+        record_reviews(tmp_path, repo, env)
+        process = start_sprint_process(repo, env, "land")
+        wait_for(started, process)
+
+        salvage_round(tmp_path, repo, env, 2, "concurrent land round")
+        release.touch()
+        stdout, stderr = process.communicate(timeout=120)
+
+        assert process.returncode == 2 and "gh CLI" in stderr, stdout + stderr
+        marker = json.loads(marker_path(tmp_path).read_text())
+        assert marker["rounds"][-1]["noted"] == ["concurrent land round"]
+        assert marker["full_tier"]["ran_by"] == "land"
+
+    def test_sprint_marker_updates_serialize_on_the_shared_lock(self, tmp_path):
+        data = tmp_path / "data"
+        marker = data / "markers" / "sprint" / "2.json"
+        marker.parent.mkdir(parents=True)
+        marker.write_text("{}")
+        started, release = tmp_path / "writer-started", tmp_path / "writer-release"
+        scripts = str(PLUGIN / "scripts")
+        first_code = """
+import pathlib, sys, time
+sys.path.insert(0, sys.argv[1])
+import sprint_close
+path, started, release = map(pathlib.Path, sys.argv[2:])
+def pause(state):
+    started.touch()
+    deadline = time.monotonic() + 120
+    while not release.exists() and time.monotonic() < deadline: time.sleep(0.02)
+    state['first'] = 1
+sprint_close.write_sprint_state(path, pause)
+"""
+        second_code = """
+import pathlib, sys
+sys.path.insert(0, sys.argv[1])
+import sprint_close
+sprint_close.write_sprint_state(pathlib.Path(sys.argv[2]), {'second': 2})
+"""
+        env = os.environ | {"XP_DATA": str(data)}
+        first = subprocess.Popen(
+            [sys.executable, "-c", first_code, scripts, str(marker), str(started), str(release)],
+            env=env,
+        )
+        wait_for(started, first)
+        second = subprocess.Popen(
+            [sys.executable, "-c", second_code, scripts, str(marker)],
+            env=env,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        contention = second.stderr.readline()
+        release.touch()
+        assert first.wait(timeout=120) == second.wait(timeout=120) == 0
+        assert "waiting" in contention
+        assert json.loads(marker.read_text()) == {"first": 1, "second": 2}
 
 
 class TestKilledReviewRecovery:

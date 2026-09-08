@@ -52,13 +52,30 @@ def reviewed_head(round_: dict, head: str, patch: Path, git, reviewer_name: str)
     return reviewed, ""
 
 
-def keep_incomplete(marker: Path, state: dict, error: str) -> None:
-    state["rounds"][-1]["incomplete"] = error
-    marker.write_text(json.dumps(state))
+def keep_incomplete(marker: Path, state: dict, error: str, edit=None) -> None:
+    def keep(current: dict) -> None:
+        current["rounds"][-1]["incomplete"] = error
+
+    if edit:
+        current = edit(marker, keep)
+        state.clear()
+        state.update(current)
+    else:
+        keep(state)
+        marker.write_text(json.dumps(state))
 
 
-def complete(marker: Path, state: dict, round_: dict, reviewed: str, shown: str) -> None:
+def complete(marker: Path, state: dict, round_: dict, reviewed: str, shown: str, edit=None) -> None:
     coverage = {"reviewed_head": reviewed, "shown_sha": shown}
-    state["rounds"][-1] = round_ | coverage
-    state.update(coverage)
-    marker.write_text(json.dumps(state))
+
+    def finish(current: dict) -> None:
+        current["rounds"][-1] = round_ | coverage
+        current.update(coverage)
+
+    if edit:
+        current = edit(marker, finish)
+        state.clear()
+        state.update(current)
+    else:
+        finish(state)
+        marker.write_text(json.dumps(state))

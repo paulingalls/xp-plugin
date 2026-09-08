@@ -142,14 +142,22 @@ def marker_digest(path: Path) -> str:
     return sha256(path.read_bytes()).hexdigest() if path.exists() else ""
 
 
-def write_round(marker: Path, state: dict, round_: dict, **coverage: str) -> None:
-    rounds = state.setdefault("rounds", [])
-    if old := next((r for r in reversed(rounds) if not r.keys() & ACCOUNTED), None):
-        prior = {key: state[key] for key in coverage if key in state}
-        old.update(prior)
-    rounds.append(round_ | coverage)
-    state.update(coverage)
-    marker.write_text(json.dumps(state))
+def write_round(marker: Path, state: dict, round_: dict, edit=None, **coverage: str) -> None:
+    def append(current: dict) -> None:
+        rounds = current.setdefault("rounds", [])
+        if old := next((r for r in reversed(rounds) if not r.keys() & ACCOUNTED), None):
+            prior = {key: current[key] for key in coverage if key in current}
+            old.update(prior)
+        rounds.append(round_ | coverage)
+        current.update(coverage)
+
+    if edit:
+        current = edit(marker, append)
+        state.clear()
+        state.update(current)
+    else:
+        append(state)
+        marker.write_text(json.dumps(state))
 
 
 def abort_text(reviewed_head: str, why: str, recorded: str = NO_ROUND, salvage=False) -> str:
