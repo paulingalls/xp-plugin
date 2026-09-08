@@ -18,6 +18,7 @@ from close import config_flat, config_has, fail, git, integration_target, leg, s
 from handback import tree_state, unclean_teammate_result
 from handoff import draft_path, handoff_state, inheritance, mark_handoff, mark_stage, report_handoff
 from harness import HARNESS_INSTALL, agent_argv, missing_harness, resolve_codex_sandbox
+from review_scope import declared_files
 from role_config import card_role, config_role
 from teammate_tee import run_stream, run_teammate
 from work import (
@@ -271,9 +272,11 @@ def cmd_spawn(story_id: str, override: str, dry_run: bool, resuming: bool = Fals
         return fail(f"refused: {story_id} is [{status}], spawn requires [ready]. {hint}")
     if not resuming and (drift := ready().drift(story_id, card)):
         return fail(drift)
-    from review import declared_files
-
-    multifile = len(declared_files(card)) > 1
+    try:
+        multifile = len(declared_files(card)) > 1
+    except ValueError as error:
+        repair = ready().AMEND.format(story_id)
+        return fail(f"refused: {error}. Repair the Files line in {plan_path()}. {repair}")
     harness, model, effort = resolve_role("executor", card, override)
     sandbox, problem = resolve_codex_sandbox(harness, config_flat("codex_sandbox"))
     if problem:

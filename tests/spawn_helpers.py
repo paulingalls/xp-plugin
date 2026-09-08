@@ -172,7 +172,7 @@ def stub_claude(
     return rec
 
 
-def seed_refresh_receipt(repo, env, story_id="story-042"):
+def seed_refresh_receipt(repo, env, story_id="story-042", refuses=False):
     """Route a fixture's `ready` mint through a REAL card-refresh receipt, via
     the one production writer (`ready.write_refresh_receipt`) — never a
     hand-built JSON shape, so a raw acceptance test still exercises the actual
@@ -187,7 +187,7 @@ def seed_refresh_receipt(repo, env, story_id="story-042"):
         "from work import plan_path\n"
         "import ready\n"
         "card, _status = story_card(plan_path().read_text(), sys.argv[2])\n"
-        "ready.write_refresh_receipt(sys.argv[2], card, False)\n"
+        "sys.exit(ready.write_refresh_receipt(sys.argv[2], card, False) or 0)\n"
     )
     r = subprocess.run(
         [sys.executable, "-c", script, str(SPAWN.parent), story_id],
@@ -196,6 +196,8 @@ def seed_refresh_receipt(repo, env, story_id="story-042"):
         capture_output=True,
         text=True,
     )
+    if refuses:  # the writer REFUSES a card it cannot parse; it no longer raises
+        return r
     assert r.returncode == 0, r.stderr
 
 

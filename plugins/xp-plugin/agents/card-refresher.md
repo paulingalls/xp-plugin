@@ -19,10 +19,11 @@ Preserve the story's identity, status bracket, and intent. Text that is
 already correct is left byte-identical — you are not here to rewrite for
 style or restate what a name already carries.
 
-Edit ONLY the one card named in your bundle, at the absolute PLAN_PATH given —
-no other card in that file, no other file, no repository path. The plan holds
-every other story's card too; touch none of them. Finding nothing stale and
-making no edit is itself the correct outcome, not a failure to find something.
+Edit ONLY the one-card file at the absolute CARD_PATH in your bundle — no other
+file and no repository path. If and only if its bytes changed, execute exactly
+PLAN_EDIT_COMMAND to apply it under the plan lock. Never write plan.md directly.
+Finding nothing stale and making no edit is itself the correct outcome, not a
+failure to find something.
 
 Write to FINDINGS_PATH one line per claim you checked and corrected — the claim,
 what HEAD says instead, and how you checked it — or `nothing stale` when you

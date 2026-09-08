@@ -16,7 +16,16 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
+# card_title/card_lines are RE-EXPORTED, not used here: 17 modules and tests read them
+# from work, and the extraction that moved them must not become their rename.
+from card_text import (  # noqa: F401
+    card_digest,
+    card_lines,
+    card_title,
+    flip_status,
+)
 from env import data_root, plugin_root
+from plan_writer import CardEditRefusal, apply_card, locked_edit
 
 NOTE_CAP = 4000  # chars; measured: p90 of 392 records is 1,799, so this binds rarely
 FALSIFIER_STREAM_CAP = 4000
@@ -59,18 +68,9 @@ def edit_plan(mutate) -> bool:
     """Read-modify-write inside a sibling lock; True when changed.
 
     Temp+rename preserves the previous unversioned plan after interruption. The
-    sibling lock survives that inode swap. The lead's editor does not take it.
+    sibling lock survives that inode swap.
     """
-    path = plan_path()
-    lock = data_root() / "locks" / "plan.lock"
-    lock.parent.mkdir(parents=True, exist_ok=True)
-    with open(lock, "w") as handle:
-        fcntl.flock(handle, fcntl.LOCK_EX)
-        text = path.read_text() if path.exists() else ""
-        tmp = path.with_name(path.name + ".tmp")
-        tmp.write_text(edited := mutate(text))
-        tmp.replace(path)
-    return edited != text
+    return locked_edit(plan_path(), data_root() / "locks" / "plan.lock", mutate)
 
 
 def strip_comment(line: str) -> str:
@@ -96,38 +96,6 @@ def config_block_value(
             name, value = line.strip().split(":", 1)
             values[name] = value.strip()
     return values if key is None else values.get(key, missing)
-
-
-def card_title(card: str) -> str:
-    """The story title from a card header, or "" when it carries no em-dash."""
-    header = card.splitlines()[0]
-    return header.split("— ", 1)[1].split(" [")[0].strip() if "— " in header else ""
-
-
-def card_lines(card: str) -> list[str]:
-    """The card lines that its credential hashes and drift refusal diffs."""
-    lines = [ln.rstrip() for ln in card.splitlines()]
-    head = lines[0]
-    if head.endswith("]"):
-        lines[0] = head[: head.rindex("[")].rstrip()
-    while lines and not lines[-1]:
-        lines.pop()
-    return lines
-
-
-def card_digest(card: str) -> str:
-    return hashlib.sha256("\n".join(card_lines(card)).encode()).hexdigest()[:16]
-
-
-def flip_status(text: str, heading: str, frm: str, to: str) -> str:
-    exact = heading.startswith("## ")  # a milestone heading is whole; a card's is a prefix
-    out = []
-    for ln in text.splitlines(keepends=True):
-        head, sep, tail = ln.rstrip().rpartition(f"[{frm}]")
-        if sep and not tail and (head == heading if exact else ln.startswith(heading)):
-            ln = f"{head}[{to}]" + ln[len(ln.rstrip()) :]
-        out.append(ln)
-    return "".join(out)
 
 
 def flip_card(story_id: str, frm: str, to: str) -> bool:
@@ -387,6 +355,33 @@ def archive(root: Path, args: argparse.Namespace) -> int:
     return 0
 
 
+def edit_card_command(args: argparse.Namespace) -> int:
+    from close import story_card
+
+    try:
+        changed = apply_card(
+            args.story_id,
+            args.digest,
+            args.status,
+            args.candidate,
+            story_card,
+            card_digest,
+            edit_plan,
+        )
+    except CardEditRefusal as error:
+        sys.path.insert(0, str(Path(__file__).parent / "spawn"))
+        from ready import refresh_instruction
+
+        print(
+            f"refused: card refresh {args.story_id} cannot apply: {error}. "
+            f"{refresh_instruction(args.story_id)}",
+            file=sys.stderr,
+        )
+        return 2
+    print(f"{args.story_id} card {'updated' if changed else 'unchanged'}")
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest="kind", required=True)
@@ -408,8 +403,15 @@ def main() -> int:
     r.add_argument("--ref", required=True, help="record id from `list`")
     r.add_argument("--falsifier", required=True, help="replacement; must be GREEN now")
     r.add_argument("--covered-by", metavar="TIER", help="REQUIRED: a configured tier, or `none`")
+    e = sub.add_parser("edit-card", help="apply one card-refresh candidate under the plan lock")
+    e.add_argument("story_id")
+    e.add_argument("--digest", required=True)
+    e.add_argument("--status", required=True)
+    e.add_argument("candidate", type=Path)
     args = parser.parse_args()
 
+    if args.kind == "edit-card":
+        return edit_card_command(args)
     if args.kind == "env":
         print(plugin_root())
         return 0

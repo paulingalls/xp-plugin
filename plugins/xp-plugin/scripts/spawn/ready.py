@@ -8,6 +8,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from close import fail, git, leg, story_card, verify_commands
 from handoff import marker_path as handoff_marker_path
+from review_scope import declared_files
 from work import (
     card_digest,
     card_lines,
@@ -20,6 +21,7 @@ from work import (
 )
 
 AMEND = "Run `spawn.py amend {} --reason '<why this declaration changed>'`."
+UNPARSABLE = "refused: {}. Repair the Files line in {}, then refresh {}."
 REMINT = "Put the heading back to [planned] and run `spawn.py ready {}`."
 DOC = "The plan-review credential: minted from [planned], amended only with a recorded reason."
 
@@ -120,12 +122,15 @@ def path_state(path: str) -> str | None:
     return sha or None
 
 
-def write_refresh_receipt(story_id: str, card: str, changed: bool) -> None:
-    import review  # function-local: slate_review -> spawn -> ready would cycle
-
+def write_refresh_receipt(story_id: str, card: str, changed: bool) -> str:
+    """Record what the refresh covered, or return a refusal naming the bad entry."""
+    try:
+        declared = sorted(declared_files(card))
+    except ValueError as error:
+        return UNPARSABLE.format(error, plan_path(), story_id)
     path = refresh_receipt_path(story_id)
     path.parent.mkdir(parents=True, exist_ok=True)
-    files = {p: path_state(p) for p in sorted(review.declared_files(card))}
+    files = {p: path_state(p) for p in declared}
     receipt = {
         "head": git("rev-parse", "HEAD", check=False).stdout.strip(),
         "digest": card_digest(card),
@@ -133,12 +138,11 @@ def write_refresh_receipt(story_id: str, card: str, changed: bool) -> None:
         "files": files,
     }
     path.write_text(json.dumps(receipt, ensure_ascii=False))
+    return ""
 
 
 def check_refresh(story_id: str, card: str) -> str:
     """Return a refusal unless the receipt matches this card and its paths."""
-    import review
-
     try:
         path = refresh_receipt_path(story_id)
     except ValueError as error:
@@ -156,7 +160,11 @@ def check_refresh(story_id: str, card: str) -> str:
             f"refused: {story_id}'s card refresh receipt does not match the current card"
             f" — it ran against different text. {refresh_instruction(story_id)}"
         )
-    for declared in review.declared_files(card):
+    try:
+        paths = declared_files(card)
+    except ValueError as error:
+        return UNPARSABLE.format(error, plan_path(), story_id)
+    for declared in paths:
         if declared not in receipt["files"]:
             return (
                 f"refused: {story_id}'s card refresh receipt does not cover {declared}"

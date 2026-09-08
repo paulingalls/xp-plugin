@@ -14,7 +14,16 @@ sys.path.insert(0, str(Path(__file__).parent))
 sys.path.insert(0, str(Path(__file__).parent / "spawn"))
 
 from close import fail, story_card
-from work import chdir_repo_root, data_root, missing_plan_refusal, plan_path
+from plan_writer import strip_lifecycle
+from work import (
+    card_digest,
+    chdir_repo_root,
+    data_root,
+    edit_plan,
+    flip_status,
+    missing_plan_refusal,
+    plan_path,
+)
 
 PLUGIN_ROOT = Path(__file__).parent.parent
 POLL_SECONDS = 3
@@ -258,13 +267,16 @@ def cmd_review(sprint_id: str, dry_run: bool) -> int:
     return run_detached(sprint_id, "slate", out, [str(Path(__file__).resolve()), sprint_id])
 
 
-def build_refresh_bundle(charter: str, plan_file: Path, card: str, out: Path) -> str:
+def build_refresh_bundle(
+    charter: str, card_file: Path, edit_command: str, card: str, out: Path
+) -> str:
     from spawn import _read, _read_shipped
 
     sections = [
         ("Your charter", charter),
         ("Your findings file", f"FINDINGS_PATH: {out.resolve()}"),
-        ("The plan file", f"PLAN_PATH: {plan_file}"),
+        ("Your card file", f"CARD_PATH: {card_file}"),
+        ("The locked plan edit", f"PLAN_EDIT_COMMAND: {edit_command}"),
         ("Story card", card),
         ("VALUES", _read_shipped(PLUGIN_ROOT / "VALUES.md")),
         ("JUDGMENT", _read_shipped(PLUGIN_ROOT / "JUDGMENT.md")),
@@ -290,52 +302,118 @@ def _run_refresh(story_id: str, out: Path, dry_run: bool) -> int:
     charter = review.charter("card-refresher")
     plan_before = plan_path().read_text()
     before = tree_state(Path.cwd())
-    bundle = build_refresh_bundle(charter, plan_path().resolve(), card, out)
-    _result, error = review.run(bundle, Path.cwd(), dry_run, name="card-refresher")
-    if dry_run:
-        return fail("refused: " + error) if error else 0
-    if tree_state(Path.cwd()) != before:
-        return fail(
-            "refused: the card refresher changed the repository — restore it and refresh again"
-        )
-    plan_after = plan_path().read_text()
+    candidate = out.with_name(f"{out.name}.{os.getpid()}.card")
+    candidate.parent.mkdir(parents=True, exist_ok=True)
+    candidate.write_text(card)
+    command = shlex.join(
+        [
+            "python3",
+            str(Path(__file__).with_name("work.py").resolve()),
+            "edit-card",
+            story_id,
+            "--digest",
+            card_digest(card),
+            "--status",
+            status,
+            str(candidate.resolve()),
+        ]
+    )
+    bundle = build_refresh_bundle(charter, candidate.resolve(), command, card, out)
     try:
-        new_card, new_status = story_card(plan_after, story_id)
-    except KeyError as e:
-        return fail(
-            f"refused: the card refresher left {story_id} unparsable ({e.args[0]}). Its edit"
-            f" stands and no git diff shows it: repair the card in {plan_path()}, then refresh"
-        )
+        _result, error = review.run(bundle, Path.cwd(), dry_run, name="card-refresher")
+        if dry_run:
+            return fail("refused: " + error) if error else 0
+        if tree_state(Path.cwd()) != before:
+            return fail(
+                "refused: the card refresher changed the repository — restore it and refresh again"
+            )
+        plan_after = plan_path().read_text()
+        try:
+            current_card, current_status = story_card(plan_after, story_id)
+        except KeyError as e:
+            return fail(
+                f"refused: the card refresher left {story_id} unparsable ({e.args[0]}). Its edit"
+                f" stands and no git diff shows it: repair the card in {plan_path()}, then refresh"
+            )
+        try:
+            candidate_text = candidate.read_text()
+            new_card, new_status = story_card(candidate_text, story_id)
+            if new_card.rstrip() != candidate_text.rstrip():
+                raise KeyError("candidate contains text outside its one story card")
+        except (OSError, KeyError) as e:
+            return fail(
+                f"refused: card refresh {story_id} left its candidate unparsable ({e.args[0]}). "
+                f"{ready.refresh_instruction(story_id)}"
+            )
 
-    def reject_plan_edit(why: str) -> int:
-        # THIS CARD, never plan_before: plan.md is project-global and the refresher ran
-        # detached for minutes, so restoring the snapshot silently reverts another lane's
-        # write (bug 5a1abadb). Unattributable motion is LEFT and named.
-        plan_path().write_text(plan_path().read_text().replace(new_card, card, 1))
-        rest = "" if plan_path().read_text() == plan_before else " Text outside it changed too"
-        return fail(why + f" Restored the card outside the repo; no git diff shows it.{rest}")
+        def reject_plan_edit(why: str) -> int:
+            def restore(text: str) -> str:
+                try:
+                    found, found_status = story_card(text, story_id)
+                except KeyError:
+                    return text
+                restored = flip_status(card, f"#### {story_id} ", status, found_status)
+                return text.replace(found, restored, 1)
 
-    if new_status != status:
-        return reject_plan_edit(
-            f"refused: the card refresher changed {story_id}'s status from [{status}] to"
-            f" [{new_status}] — it may correct the card only, never its lifecycle state."
-        )
-    if plan_before.replace(card, new_card, 1) != plan_after:
-        return reject_plan_edit(
-            "refused: the card refresher moved something outside its own card — it may"
-            f" replace only {story_id}'s block in the plan."
-        )
-    if error:
-        return fail(error)
-    try:
-        findings = out.read_text().strip()
-    except OSError:
-        findings = ""
-    if not findings:
-        return fail(f"refused: the card refresher wrote no findings at {out.resolve()}")
-    review_marker(story_id, "refresh").unlink(missing_ok=True)
-    ready.write_refresh_receipt(story_id, new_card, new_card != card)
-    return 0
+            edit_plan(restore)
+            rest = "" if plan_path().read_text() == plan_before else " Text outside it changed too"
+            return fail(
+                why
+                + f" Restored the card outside the repo; no git diff shows it.{rest} "
+                + ready.refresh_instruction(story_id)
+            )
+
+        if new_status != status:
+            return reject_plan_edit(
+                f"refused: card refresh {story_id} changed lifecycle [{status}] to [{new_status}]."
+            )
+        candidate_changed = new_card != card
+        target_changed = current_card != card
+        if not candidate_changed and target_changed:
+            return reject_plan_edit(
+                f"refused: card refresh {story_id} wrote plan.md directly instead of its candidate."
+            )
+        if candidate_changed and current_card == card:
+            return fail(
+                f"refused: card refresh {story_id} changed its candidate but did not apply it. "
+                f"{ready.refresh_instruction(story_id)}"
+            )
+        if candidate_changed and current_card != new_card:
+            return reject_plan_edit(
+                f"refused: card refresh {story_id} applied text other than its candidate."
+            )
+        outside_changed = strip_lifecycle(
+            plan_before.replace(card, current_card, 1)
+        ) != strip_lifecycle(plan_after)
+        if outside_changed:
+            print(
+                "card refresh observation: text outside its own card changed too",
+                file=sys.stderr,
+            )
+        if current_status != status:
+            return reject_plan_edit(
+                f"refused: card refresh {story_id} changed lifecycle [{status}] to"
+                f" [{current_status}]."
+            )
+        if error:
+            return fail(error)
+        try:
+            findings = out.read_text().strip()
+        except OSError:
+            findings = ""
+        if not findings:
+            return fail(f"refused: the card refresher wrote no findings at {out.resolve()}")
+        review_marker(story_id, "refresh").unlink(missing_ok=True)
+        if problem := ready.write_refresh_receipt(story_id, current_card, candidate_changed):
+            return fail(problem)
+        if outside_changed:
+            receipt = ready.refresh_receipt_path(story_id)
+            payload = json.loads(receipt.read_text())
+            payload["observation"] = "Text outside the refreshed card changed too."
+            receipt.write_text(json.dumps(payload, ensure_ascii=False))
+        return 0
+    finally:
+        candidate.unlink(missing_ok=True)
 
 
 def _refresh_handoff(story_id: str, out: Path) -> int:
@@ -343,16 +421,18 @@ def _refresh_handoff(story_id: str, out: Path) -> int:
 
     receipt = ready.refresh_receipt_path(story_id)
     try:
-        changed = json.loads(receipt.read_text())["changed"]
+        payload = json.loads(receipt.read_text())
+        changed = payload["changed"]
     except (OSError, ValueError, KeyError, TypeError):
         return fail(
             f"refused: the card refresh recorded no receipt at {receipt} — refresh {story_id} again"
         )
     state = "the card CHANGED" if changed else "the card was already correct"
     corrections = f"; what it read: {out.resolve()}" if out.is_file() else ""
+    observation = f" {payload.get('observation', '')}" if payload.get("observation") else ""
     print(
         f"{story_id} card refresh ran — {state}. Receipt {receipt}{corrections}."
-        f" Read it and the card, then `spawn.py ready {story_id}`"
+        f"{observation} Read it and the card, then `spawn.py ready {story_id}`"
     )
     return 0
 
