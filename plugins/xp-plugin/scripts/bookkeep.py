@@ -213,8 +213,8 @@ def worktree_command(system_md: str, action: str) -> tuple[str, str]:
         if label != wanted:
             return "", (
                 f"cannot read the Worktree {action} label in .xp/system.md: {ln.strip()!r}"
-                f" — use `Worktree {action}`, optionally prefixed with '- ' or '* '"
-                " and optionally bolded"
+                f" — put `Worktree {action}:` and its value on ONE line,"
+                " optionally prefixed with '- ' or '* ' and optionally bolded"
             )
         value = ln.partition(":")[2].strip().rstrip(".")
         if m := re.fullmatch(r"`([^`]+)`", value):

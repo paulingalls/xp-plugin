@@ -195,6 +195,17 @@ class TestBootstrap:
         command, problem = worktree_command(f"{label}: `echo ok`", "bootstrap")
         assert not command and "cannot read the Worktree bootstrap label" in problem
 
+    def test_a_section_heading_above_a_readable_line_is_a_duplicate(self):
+        """Widening the collector to catch valueless labels made this shape refuse
+        where it used to run `npm ci`. Pinned as the decision it is: the heading
+        IS a second label, and "never pick one" (bug 90fcd7d4) governs both."""
+        from bookkeep import worktree_command
+
+        system = "## Worktree bootstrap\n\n**Worktree bootstrap**: `npm ci`"
+        command, problem = worktree_command(system, "bootstrap")
+        assert not command and "appears more than once" in problem
+        assert "## Worktree bootstrap" in problem
+
     def test_a_mixed_shape_duplicate_still_refuses(self):
         from bookkeep import worktree_command
 
