@@ -112,13 +112,8 @@ class ConstraintsWallCases:
             assert red.returncode != 0, f"run_tier {tier} passed an over-cap constraints.md"
             assert "4500" in red.stderr, red.stderr
 
-    # The plugin path rides in the banner (twice, so it costs 2 bytes a char) and
-    # the data root in the NEXT line, so BOTH lengths are subtracted from the
-    # constraints' room. Budgeted, not inherited, and past every path measured:
-    # an installed adopter sits near 70/45 and our own spawn worktrees near
-    # 102/40, so 110/70 holds 46 bytes over the worst real case. NO MARGIN
-    # FIGURE LIVES HERE — it moves on every shipped-prose edit, and the last one
-    # rotted from 32 bytes to 2 inside this story. The assertion measures it.
+    # Constructed, not inherited: installed paths measured near 70/45 and our
+    # spawn worktrees near 102/40. Exact headroom moves with shipped prose.
     PLUGIN_PATH_BUDGET = 110
     DATA_ROOT_BUDGET = 70
 
@@ -137,9 +132,9 @@ class ConstraintsWallCases:
         )
         return base / (name + "d" * pad)
 
-    def _run_ascii_profile(self, tmp_path, constraints):
+    def _run_ascii_profile(self, tmp_path, constraints, plugin_path_budget=None):
         base = Path(tempfile.mkdtemp())
-        plugin_root = self._at_path_length(base, "p", self.PLUGIN_PATH_BUDGET)
+        plugin_root = self._at_path_length(base, "p", plugin_path_budget or self.PLUGIN_PATH_BUDGET)
         data_root = self._at_path_length(base, "d", self.DATA_ROOT_BUDGET)
         shutil.copytree(self.REPO / "plugins" / "xp-plugin", plugin_root)
         data_root.mkdir(parents=True, exist_ok=True)
@@ -182,8 +177,15 @@ class ConstraintsWallCases:
     def test_a_file_over_the_session_budget_still_passes_the_character_wall(self, tmp_path):
         cap = self.cap_value(self.SHIPPED / "config.yml")
         seed = "# Constraints\n\n" + "\n".join(f"{n}. **Rule {n}**" for n in range(1, 16))
-        constraints = seed + "x" * (cap - len(seed))
-        match = BUDGET_WARNING.search(self._run_ascii_profile(tmp_path, constraints))
+        constraints = seed + "x" * (6_000 - len(seed))
+        # The two walls can only be shown independent where the byte allowance is
+        # BELOW the character cap, and at the budgeted path it no longer is: story-131
+        # bought back the banner's duplicate root. A longer path buys the gap instead.
+        match = BUDGET_WARNING.search(
+            self._run_ascii_profile(
+                tmp_path, constraints, plugin_path_budget=self.PLUGIN_PATH_BUDGET + 100
+            )
+        )
         assert match, "the constructed profile did not report its SessionStart byte budget"
         overage, allowance = map(int, match.groups())
         assert overage == len(constraints.encode()) - allowance
@@ -194,7 +196,7 @@ class ConstraintsWallCases:
         result = self.run_constraints_wall(wall, cap, size)
         assert result.returncode == 0, result.stderr
 
-    def test_ascii_constraints_at_the_derived_allowance_fit_the_byte_profile(self, tmp_path):
+    def test_ascii_constraints_at_the_full_cap_fit_the_byte_profile(self, tmp_path):
         """PROCESS.md and every other document in the lead injection are walled
         HERE, which is why none of them carries a character cap of its own.
 
@@ -208,29 +210,27 @@ class ConstraintsWallCases:
 
         cap = self.cap_value(self.SHIPPED / "config.yml")  # never a literal: the
         seed = (self.SHIPPED / "constraints.md").read_text()  # cap is what moves
-        ceiling = seed + "x" * (cap - len(seed))
-        match = BUDGET_WARNING.search(self._run_ascii_profile(tmp_path, ceiling))
-        assert match, "a constraints.md at the shipped character cap reported no byte budget"
+        oversized = seed + "x" * (6_000 - len(seed))
+        match = BUDGET_WARNING.search(self._run_ascii_profile(tmp_path, oversized))
+        assert match, "the oversized probe reported no constraints byte budget"
         overage, allowance = map(int, match.groups())
-        assert overage == len(ceiling.encode()) - allowance
+        assert overage == len(oversized.encode()) - allowance
         # A FLOOR, not a fact: every byte of shipped prose comes out of the adopter's
-        # allowance, and 4,467 is what a file at the 4,500-CHARACTER wall can still be
+        # allowance, and 4,576 is what a file at the 4,500-CHARACTER wall can still be
         # told about AT THIS HARNESS'S 110-character plugin path. Under it, the two
         # numbers a project sees drift further apart than this story left them, so the
-        # shipped prose is what to cut — not this number. Raised from 4,386 by deleting
-        # VALUES.md's Simplicity example (81 bytes, Paul's call at this close): the cap
-        # and the allowance now agree at a SHORT plugin path and are 33 bytes apart at
-        # this one, so the gap is closed for some adopters and narrowed for the rest.
-        assert allowance >= 4_467, (
+        # shipped prose is what to cut — not this number.
+        assert allowance >= 4_576, (
             f"shipped prose has taken the adopter's constraints budget down to {allowance}"
             " bytes; shorten VALUES/JUDGMENT/PROCESS or the banner, do not lower this floor"
         )
-        constraints = seed + "x" * (allowance - len(seed.encode()))
-        assert len(constraints.encode()) == allowance
-        out = self._run_ascii_profile(tmp_path, constraints)
+        ceiling = seed + "x" * (cap - len(seed))
+        assert len(ceiling) == cap
+        out = self._run_ascii_profile(tmp_path, ceiling)
         assert len(out.encode()) <= OUTPUT_CAP
-        assert constraints in out, "the derived byte allowance does not reach the lead"
+        assert ceiling in out, "the shipped character ceiling does not reach the lead whole"
         assert not BUDGET_WARNING.search(out)
+        assert "[truncated at" not in out
 
     def test_the_warning_does_not_cost_the_constraints_it_reports_on(self, tmp_path):
         """constraints_budget subtracts a WORST-CASE warning, so the first file
@@ -242,17 +242,14 @@ class ConstraintsWallCases:
         holds the boundary instead. The reserve was load-bearing and unpinned at
         the same time, which is constraint 2's shape.
 
-        Measured while writing this: at the allowance the profile is whole and
-        silent; one byte over it warns and stays whole; at the shipped 4,500
-        CHARACTER cap it warns and loses a rule — that last one is render's
-        truncation cliff, filed separately, and is deliberately not asserted here.
+        At the allowance the profile is whole and silent; one byte over it warns
+        and stays whole. The sibling full-cap case pins the adopter-facing ceiling.
         """
         from session_start import OUTPUT_CAP
 
-        cap = self.cap_value(self.SHIPPED / "config.yml")  # never a literal
         seed = (self.SHIPPED / "constraints.md").read_text()
-        ceiling = seed + "x" * (cap - len(seed))
-        probe = BUDGET_WARNING.search(self._run_ascii_profile(tmp_path, ceiling))
+        oversized = seed + "x" * (6_000 - len(seed))
+        probe = BUDGET_WARNING.search(self._run_ascii_profile(tmp_path, oversized))
         assert probe, "the probe profile reported no byte budget to derive the allowance from"
         allowance = int(probe.groups()[1])
         over = seed + "x" * (allowance - len(seed.encode()) + 1)
