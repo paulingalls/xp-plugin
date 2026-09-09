@@ -422,16 +422,19 @@ def main(data: dict) -> int:
         return 0
     role = os.environ.get("XP_ROLE", "lead")
     refresh = refresh_env(PLUGIN_ROOT, plugin_version(PLUGIN_ROOT)) if role == "lead" else ""
-    raw_environment = "\n".join(filter(None, (refresh, safe(lambda: install_status()[1]))))
-    environment = bound_environment_notice(raw_environment)
+    environment = bound_environment_notice(
+        "\n".join(filter(None, (refresh, safe(lambda: install_status()[1]))))
+    )
     if role != "lead":
         print(teammate_marker() + (f"\n{BEGIN}\n{environment}\n{END}" if environment else ""))
         return 0
 
     rules = safe(lambda: read(root / ".xp" / "constraints.md"))
     heading = safe(lambda: banner(root))
-    if refresh:
-        delimiter = " · recover: " if environment != raw_environment else " · scripts: "
+    if refresh:  # the notice must be PAID FOR, and only the copy it republishes is spare:
+        # a refresh FAILURE names env.json, not the root, and a shortened move notice
+        # can lose the root it was cutting to. Ask the rendered notice, not its shape.
+        delimiter = " · scripts: " if str(PLUGIN_ROOT) in environment else " · recover: "
         _before, field, invocation = heading.partition(delimiter)
         heading = heading.partition(" · ")[0] + field + invocation
     regions = [

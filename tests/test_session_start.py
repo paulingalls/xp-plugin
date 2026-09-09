@@ -130,6 +130,19 @@ class TestInjection:
             assert name in line
             assert (scripts / name).is_file()
 
+    def test_a_failed_env_refresh_keeps_the_root_the_banner_trim_would_take(self, tmp_path):
+        """The trim spends one path copy against the notice that replaces it. A
+        refresh FAILURE names env.json and NOT the root, so with only one copy left
+        there is nothing to spend and the lead loses the path entirely."""
+        repo, _g = xp_repo(tmp_path)
+        (tmp_path / "xp" / "env.json").mkdir(parents=True)  # write_env raises on a directory
+        output = run_hook(repo, tmp_path).stdout
+        notice = next(line for line in output.splitlines() if "refresh FAILED" in line)
+        assert str(HOOK.parent.parent) not in notice, "the notice republished the root after all"
+        assert banner_line(output).count(str(HOOK.parent.parent)) == 1
+        ran = run_banner_script(output, repo, tmp_path, "session_start.py recover")
+        assert ran.returncode == 0 and "branch: main" in ran.stdout, ran.stderr
+
     def test_banner_invocation_follows_a_moved_plugin_root(self, tmp_path):
         repo, _g = xp_repo(tmp_path)
         banners = []
@@ -150,8 +163,10 @@ class TestInjection:
                     "XP_DATA": str(tmp_path / "xp"),
                 },
             )
-            if name == "moved install":
-                assert "[environment notice shortened]" in result.stdout
+            # Which FIELD survives the trim depends on whether the notice republished
+            # the root; that it is published SOMEWHERE does not, and reading the
+            # ambient path length to guess the branch reports the machine (constraint 11).
+            assert str(plugin) in result.stdout, "the moved root is published nowhere"
             invoked = run_banner_script(result.stdout, repo, tmp_path, "banner_probe.py")
             assert invoked.returncode == 0 and invoked.stdout.strip() == str(probe)
             banners.append(result.stdout.splitlines()[0])

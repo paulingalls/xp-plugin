@@ -178,6 +178,9 @@ class ConstraintsWallCases:
         cap = self.cap_value(self.SHIPPED / "config.yml")
         seed = "# Constraints\n\n" + "\n".join(f"{n}. **Rule {n}**" for n in range(1, 16))
         constraints = seed + "x" * (6_000 - len(seed))
+        # The two walls can only be shown independent where the byte allowance is
+        # BELOW the character cap, and at the budgeted path it no longer is: story-131
+        # bought back the banner's duplicate root. A longer path buys the gap instead.
         match = BUDGET_WARNING.search(
             self._run_ascii_profile(
                 tmp_path, constraints, plugin_path_budget=self.PLUGIN_PATH_BUDGET + 100
@@ -197,8 +200,11 @@ class ConstraintsWallCases:
         """PROCESS.md and every other document in the lead injection are walled
         HERE, which is why none of them carries a character cap of its own.
 
-        The fixture omits an install notice so it isolates the standard banner;
-        the constructed move-notice case pins its path coefficient separately.
+        THE INSTALL NOTICE IS SILENT IN THIS PROFILE — no harness variable is set,
+        so install_status reports "ambiguous" and renders nothing — while a real
+        stale install renders AHEAD of the constraints. The true bound is
+        therefore LOWER than this one, so the margin this leaves is not room to
+        spend: re-measure against the case at hand, never cite this test's.
         """
         from session_start import OUTPUT_CAP
 
