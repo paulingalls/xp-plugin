@@ -179,6 +179,20 @@ def test_milestone_done_dry_run_matches_the_real_candidate_refusal(tmp_path):
     assert path.read_bytes() == before
 
 
+def test_milestone_done_dry_run_reports_a_red_done_when_as_the_real_leg_does(tmp_path):
+    repo, env, _g = make_repo(tmp_path, plan=active_plan("false"))
+    path = tmp_path / "data" / "plan.md"
+    before = path.read_bytes()
+
+    preview = sprint(repo, env, "milestone-done", "--dry-run")
+    real = sprint(repo, env, "milestone-done")
+
+    assert preview.returncode == real.returncode == 2
+    assert preview.stderr == real.stderr
+    assert "milestone ready:" not in preview.stdout
+    assert path.read_bytes() == before
+
+
 def test_milestone_done_refuses_invalid_or_red_done_when(tmp_path):
     declared_values = [
         None,

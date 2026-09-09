@@ -76,7 +76,8 @@ def cmd_done(sprint_id, dry_run=False):
         if red := overlap.run_one("Done when:", command):
             return fail(red)
     if dry_run:
-        print(f"milestone ready: {found.heading.strip()} (dry-run; status unchanged)")
+        head = found.heading.strip()
+        print(f"milestone ready: {head} (dry-run; `Done when:` RAN, status unchanged)")
         return 0
     if red := move(sprint_id, done=True):
         return fail(red)
