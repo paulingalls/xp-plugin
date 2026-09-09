@@ -149,6 +149,125 @@ and [gitleaks](https://github.com/gitleaks/gitleaks) for the enforcement wall
    version bump. `close.py free <slug>` does the same honesty at patch scale
    for out-of-sprint fixes.
 
+## Configure: `.xp/config.yml`
+
+Read at run time — an edit takes effect on the next command. Nothing caches.
+
+**Test tiers.** The wall's definition of green. Commands run under `sh -c`; the
+git hooks re-read them each run, so retuning a tier never means editing a hook.
+A tier left `EDIT-ME` or empty refuses when it would run — a gate that reports
+green having run nothing is worse than no gate.
+
+```yaml
+tests:
+  fast: pytest -q -m "not slow"   # pre-commit — seconds, not minutes
+  story: pytest -q                # pre-push and story close
+  full: pytest -q --runslow       # sprint close, e2e included
+```
+
+Optional, and only together: a record filed `--covered-by fast` is satisfied
+when a covering tier runs, so sprint close doesn't re-run it. The pins are the
+guard — retune a tier without updating its pin and the falsifier batch refuses
+and names the drift.
+
+```yaml
+tier_coverage:        # covered: covering (transitive, so chains work)
+  fast: story
+  story: full
+tier_coverage_pins:   # each named tier's command, exactly as it reads today
+  fast: pytest -q -m "not slow"
+  story: pytest -q
+  full: pytest -q --runslow
+```
+
+**Roles.** `harness/model[/effort]`; harness is `claude` or `codex`. A card's
+`Executor:` or `Reviewer:` line overrides config for that story.
+
+| Role | Runs |
+|---|---|
+| `lead` | you, in your own session — declared for the record |
+| `planner` → `executor` | the implementation plan for a multi-file story |
+| `plan-reviewer` | adversarial read of that plan, before code |
+| `executor` | the teammate that writes the story |
+| `reviewer` | story close, over the cumulative diff |
+| `slate-reviewer` → `reviewer` | the whole slate, at sprint open |
+| `card-refresher` → `reviewer` | one card's stale claims, against HEAD |
+| `finder` `verifier` `fixer` `closer` → `reviewer` | the four sprint-close review stages |
+
+`→` is the fallback when the key is absent, so an older config keeps working. A
+role with no key and no fallback refuses and prints the line to paste.
+
+**Everything else.**
+
+| Key | Values | Absent | What it does |
+|---|---|---|---|
+| `release` | `sprint`, or anything else | stories land on trunk | `sprint`: stories merge into the sprint branch this clone recorded at `close.py sprint <id> start`, and sprint close PRs it to trunk. Otherwise stories land on trunk directly. |
+| `trunk` | branch name | git's default | Where releases land and tag. A configured branch that doesn't exist refuses — it never falls back. |
+| `version_files` | manifest paths, comma-separated, or `none` | refuses at release | The tag must match `version` in every named manifest. `none` waives the wall and says so on the release line. |
+| `sprint_cap` | integer | refuses at slate review | Story slots a sprint may spend. |
+| `debt_budget` | fraction | refuses at slate review | Max share of those slots that may be scheduled debt. |
+| `constraints_chars_cap` | integer | refuses at commit | Character ceiling on `.xp/constraints.md`, enforced by the commit hook. |
+| `profile_target` | integer | `806` | Story-card token allowance. Over it, spawn names the largest contributor — a warning, not a refusal. |
+| `codex_sandbox` | `danger-full-access`, `workspace-write` | `danger-full-access` | Posture for every Codex role; each launch prints the one it took. `read-only` is refused — every role must write its deliverable. |
+| `teardown_timeout` | seconds | `60` | Caps the worktree teardown command from `.xp/system.md`. |
+| `review.verify_batches` | integer | `2` | Sprint-close verifier *agents* per round — candidates are batched across them, never one agent each. |
+| `lifecycle_command` | argv prefix | no events fire | Your command at process events; see below. |
+
+## Lifecycle events
+
+`lifecycle_command` is an argv prefix — **no shell**, so `cd` and shell
+metacharacters are refused rather than passed to one. Fixed arguments are fine.
+The plugin appends the event and its id:
+
+```yaml
+lifecycle_command: ./scripts/xp-lifecycle "fixed value"
+```
+
+| Event | Fires at | Second arg | Non-zero exit |
+|---|---|---|---|
+| `sprint-open` | `close.py sprint <id> start`, on the open that records the branch | sprint id | refuses the open |
+| `story-close` | `close.py story <id> land`, after the gates, before refs move | story id | refuses the land |
+| `sprint-close` | `close.py sprint <id> post-merge`, on trunk, before the tag | sprint id | refuses before tagging |
+
+Free closes fire nothing, and a `--dry-run` of any leg fires nothing.
+
+Separately, the plugin ships four **harness** hooks in one `hooks.json` for both
+Claude and Codex: `SessionStart` injects values, process, constraints and the
+recovery block; `PostToolUse` and `PostToolUseFailure` on Bash record whether a
+story's `Verify` went green; `Stop` blocks once on a red `Verify` still in play.
+All four are advisory lane-keeping. The wall is git.
+
+## Where state lives
+
+`.xp/` is small and hand-edited — three files, all yours:
+
+| File | What |
+|---|---|
+| `config.yml` | the settings above |
+| `constraints.md` | the rules reviewers cite; capped by `constraints_chars_cap` |
+| `system.md` | product, stack, surfaces, layout, conventions, and the worktree bootstrap/teardown commands |
+
+Everything the plugin *writes* lives outside the repo, in a data root keyed to
+the clone (`~/.xp/data/<id>/`, or `$XP_DATA`) — so three clones of one repo run
+three independent sprints, and none of it lands in your history:
+
+| Path | What |
+|---|---|
+| `plan.md` | the roadmap: milestones, sprints, story cards |
+| `work.md`, `archive.md` | the bug/debt/note ledger, and what's been retired from it |
+| `session.md` | the short digest that carries the lead across sessions |
+| `env.json`, `sprint_branch` | which plugin install manages this repo, and this clone's open sprint |
+| `logs/`, `reports/`, `plans/` | teammate and reviewer transcripts, review reports, execution plans |
+| `markers/`, `locks/`, `worktrees/`, `closes.jsonl` | close state, cross-lane locks, story checkouts, close telemetry |
+
+## The commands
+
+Skills you invoke: `/xp-setup`, `/create-sprint`, `/story-close`,
+`/sprint-close`, `/free-close`. Under them the lead runs `spawn.py`,
+`close.py`, `work.py` and `slate_review.py`; a teammate runs `plan_review.py`
+on its own plan. Every one answers `--help` without doing anything, and every
+refusal names the next action.
+
 ## What you get
 
 - **The values, operational** — Communication, Simplicity, Feedback, Courage,
@@ -190,7 +309,7 @@ structural file cap still binds shipped code and tests.
 |---|---|
 | `plugins/xp-plugin/` | The shipped plugin: manifest, VALUES/PROCESS, agents, skills, scripts, hooks |
 | `docs/DESIGN.md` | Architecture, the measured dual-harness table, completed build record |
-| `.xp/` | This repo's own instance of the state the plugin manages |
+| `.xp/` | This repo's own config, constraints and system notes |
 | `tests/` | The suite — production code, same 500-line file cap as the plugin |
 
 ## Inspired by xp-agents
