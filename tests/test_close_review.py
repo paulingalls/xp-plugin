@@ -5,8 +5,10 @@ import json
 import shutil
 import subprocess
 import sys
+from pathlib import Path
 
 import pytest
+import review
 from close_helpers import (
     CLOSE,
     FIX_PATCH,
@@ -18,6 +20,9 @@ from close_helpers import (
     stub_reviewer,
 )
 from test_close_salvage import FIXED, salvage
+
+sys.path.insert(0, str(PLUGIN / "scripts" / "close"))
+import overlap
 
 
 class TestSprintCloseFindings:
@@ -379,3 +384,44 @@ class TestUnrecordedArtifactPreservation:
         sentinel.write_text("green")
         landed = close(repo, env, "land")
         assert landed.returncode == 2 and "review completed" in landed.stderr
+
+
+class TestRoundOrdering:
+    """Salvage records an older attempt OUT OF ORDER, so list position stopped
+    answering "what is the current verdict". A salvaged round saw none of the
+    rounds already recorded and none of them saw it.
+    """
+
+    def _blocking(self, rounds):
+        return overlap.unresolved_blocking({"rounds": rounds})
+
+    def test_an_ordinary_next_round_clears_the_one_before_it(self):
+        assert self._blocking([{"blocking": ["FIXED"]}, {"blocking": []}]) == []
+
+    def test_a_salvaged_blocking_round_is_not_cleared_by_a_round_recorded_earlier(self):
+        # the clean round is LAST in the list and never saw this finding
+        rounds = [{"blocking": ["OLDER"], "salvaged": True}, {"blocking": []}]
+        assert rounds[-1]["blocking"] == [], "precondition: list order says clean"
+        assert self._blocking(rounds) == ["OLDER"]
+
+    def test_a_salvaged_clean_round_does_not_clear_a_live_blocking_one(self):
+        rounds = [{"blocking": [], "salvaged": True}, {"blocking": ["LIVE"]}]
+        assert self._blocking(rounds) == ["LIVE"]
+
+    def test_a_marker_written_before_rounds_were_flagged_reads_by_list_order(self):
+        assert self._blocking([{"blocking": []}, {"blocking": ["LAST"]}]) == ["LAST"]
+
+    def test_write_round_flags_only_the_inserted_round(self):
+        state = {}
+        review.write_round(Path("/dev/null"), state, {"blocking": []})
+        review.write_round(Path("/dev/null"), state, {"blocking": []}, position=0)
+        assert [r.get("salvaged") for r in state["rounds"]] == [True, None]
+
+    def test_a_round_names_the_diff_file_it_was_written_as(self):
+        # an insertion desynchronizes list index from the round-numbered file on
+        # disk, so the index names another round's evidence or none at all
+        state = {}
+        review.write_round(Path("/dev/null"), state, {"blocking": []}, round_file=1)
+        review.write_round(Path("/dev/null"), state, {"blocking": []}, position=0, round_file=2)
+        assert [r["round_file"] for r in state["rounds"]] == [2, 1]
+        assert review.round_number(Path("story-042.round-7.json")) == 7

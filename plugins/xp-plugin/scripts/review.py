@@ -147,13 +147,17 @@ def write_round(
 ) -> None:
     def append(current: dict) -> None:
         rounds = current.setdefault("rounds", [])
+        stamped = round_ | coverage
         if position is not None and position < len(rounds):
-            rounds.insert(position, round_ | coverage)
+            # A SALVAGED round is an older attempt recorded out of order. It never
+            # saw the rounds already here, and they never saw it, so neither can
+            # clear the other's findings — the flag is what lets land say so.
+            rounds.insert(position, stamped | {"salvaged": True})
             return
         if old := next((r for r in reversed(rounds) if not r.keys() & ACCOUNTED), None):
             prior = {key: current[key] for key in coverage if key in current}
             old.update(prior)
-        rounds.append(round_ | coverage)
+        rounds.append(stamped)
         current.update(coverage)
 
     if edit:
@@ -352,14 +356,26 @@ def covered_ranges(state: dict, head: str) -> list[tuple[str, str]]:
 
 def disclose(state: dict, head: str, diff_for=None) -> None:
     """Show every reviewed range plus work committed after the last one."""
-    for round_n, (reviewed, round_shown) in enumerate(covered_ranges(state, head), 1):
+    rounds = state.get("rounds") or []
+    for index, (reviewed, round_shown) in enumerate(covered_ranges(state, head)):
         if work := reviewer_range(reviewed, round_shown):
             print(f"the reviewer changed this tree — you are merging its work:\n{work}", end="")
             if diff_for:
-                print(f"full diff: {diff_for(round_n)}")
+                # the file was named for the round it was WRITTEN as; an insertion
+                # moves the list index away from it, and the index would name
+                # another round's diff or none at all.
+                at = rounds[index] if index < len(rounds) else {}
+                print(f"full diff: {diff_for(at.get('round_file', index + 1))}")
     if late := reviewer_range(state.get("shown_sha", head), head):
         print("you committed after the review you were shown — merging unreviewed:")
         print(late, end="")
+
+
+def round_number(report: Path) -> int:
+    """The round a report FILE is named for. rotate_story names the diff beside it,
+    so this is what pairs a recorded round with its evidence on disk."""
+    tail = report.stem.rpartition(".round-")[2]
+    return int(tail) if tail.isdigit() else 0
 
 
 def diff_path(report: Path) -> Path:

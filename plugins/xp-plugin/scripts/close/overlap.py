@@ -17,6 +17,23 @@ MISSING_RECEIPT = object()
 _RECEIPT_KEYS = {"tier", "command", "tree", "head", "verdict", "ran_by", "reused"}
 
 
+def unresolved_blocking(state: dict) -> list:
+    """Blocking findings nothing has cleared.
+
+    List position stopped answering this when salvage began inserting an older
+    attempt at its chronological place. A salvaged round is an attempt recorded
+    OUT OF ORDER: it never saw the rounds already recorded, and they never saw
+    it. So it clears nothing, and nothing already recorded clears it. What does
+    clear a finding is the ordinary next round, appended after it by a reviewer
+    that was given it — which is the last round nobody salvaged.
+    """
+    rounds = state.get("rounds") or []
+    live = [r for r in rounds if not r.get("salvaged")]
+    if live and (blocking := live[-1].get("blocking")):
+        return list(blocking)
+    return [f for r in rounds if r.get("salvaged") for f in r.get("blocking") or []]
+
+
 def land_refusal(state: dict, key: str, base: str) -> str:
     """Whether the recorded round describes the tree in front of us — the whole
     question every land leg asks, in ONE implementation. `key` is the leg's own
@@ -35,7 +52,7 @@ def land_refusal(state: dict, key: str, base: str) -> str:
             " the reviewer's commits are not in what would merge, so the recorded"
             f" round describes no tree. {rerun}"
         )
-    if blocking := state["rounds"][-1]["blocking"]:
+    if blocking := unresolved_blocking(state):
         return (
             "refused: the last review round left blocking findings:\n  "
             + "\n  ".join(blocking)

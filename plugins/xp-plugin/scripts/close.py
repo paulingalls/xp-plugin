@@ -304,6 +304,7 @@ def _record_round(
         state,
         report,
         position=position,
+        round_file=review.round_number(path),
         reviewed_head=head,
         shown_sha=shown_sha,
         review_base=at["base"],
