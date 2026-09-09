@@ -256,3 +256,33 @@ def test_sprint_lifecycle_runs_after_validation_and_before_the_retryable_tag(tmp
     ]
     assert git("tag", "--list", "v1.2.0").stdout.strip() == "v1.2.0"
     assert not state.exists()
+
+
+def test_an_explicit_waiver_releases_and_says_nothing_was_walled(tmp_path, monkeypatch, capsys):
+    """UNSET and DELIBERATELY UNWALLED are different states (constraint 15). Making
+    the key mandatory closed #74's silent pass but left a project whose version does
+    not live in a JSON manifest unable to tag AT ALL, with no way to say so."""
+    import sys as _sys
+
+    _sys.path.insert(0, str(REPO / "plugins" / "xp-plugin" / "scripts" / "close"))
+    import release
+
+    git = _release_repo(tmp_path, monkeypatch, "version_files: none\n")
+    before = git("tag", "--list").stdout
+
+    assert release.cmd_post_merge("fixture", retire_sprint=False) == 0
+
+    assert git("tag", "--list").stdout != before, "the waiver must still cut the tag"
+    assert "NO manifest was checked" in capsys.readouterr().out
+
+
+def test_the_waiver_is_the_only_spelling_that_skips_the_wall(tmp_path, monkeypatch):
+    """A near-miss must not silently waive: only the exact value opts out."""
+    import sys as _sys
+
+    _sys.path.insert(0, str(REPO / "plugins" / "xp-plugin" / "scripts" / "close"))
+    import release
+
+    assert release.version_refusal("v1.0.0", ["none"]) == ""
+    for spelling in (["None"], ["none.json"], ["", "none", ""], ["none", "a.json"]):
+        assert release.version_refusal("v1.0.0", spelling), f"{spelling} waived the wall"

@@ -29,10 +29,32 @@ def version_files() -> list[str]:
     return [part.strip() for part in config_flat("version_files").split(",") if part.strip()]
 
 
+WAIVED = (
+    "NO manifest was checked — `version_files: none` waives the wall, and the tag"
+    " can name a version no file in this tree declares"
+)
+
+
+def walled_text(names: list[str], version: str) -> str:
+    """One sentence, two callers: the preview must say exactly what the real leg
+    will, or the preview is not a preview. It names the VERSION because that is
+    what the manifests were checked against."""
+    if names == ["none"]:
+        return WAIVED
+    return f"manifests matching {version}: {', '.join(names)}"
+
+
 def version_refusal(version: str, names: list[str] | None = None) -> str:
     names = version_files() if names is None else names
+    if names == ["none"]:
+        return ""  # walled by hand, on purpose: see WAIVED
     if not names:
-        return "refused: version_files is unset or empty — set it in .xp/config.yml to release"
+        return (
+            "refused: version_files is unset or empty — a release tag keys the"
+            " consumer's plugin cache, so a tag no file declares ships the previous"
+            " copy under the new name. Name your manifests in .xp/config.yml, or"
+            " `version_files: none` to release without that wall."
+        )
     target = tuple(map(int, version.removeprefix("v").split(".")))
     for name in names:
         path = Path(name)
@@ -94,7 +116,7 @@ def cmd_post_merge(
     if refusal := version_refusal(version, checked):
         return fail(refusal)
     if dry_run:
-        print(f"dry run: would tag {version}; manifests matching: {', '.join(checked)}")
+        print(f"dry run: would tag {version}; {walled_text(checked, version)}")
         return 0
     if retire_sprint and (red := lc.run(config_flat(lc.KEY), "sprint-close", release_id)):
         return fail(red)
@@ -103,7 +125,7 @@ def cmd_post_merge(
     if retire_sprint:
         clear_sprint_branch()
     suffix = "; sprint branch cleared" if retire_sprint else ""
-    walled = f"manifests matching {version}: {', '.join(checked)}"
+    walled = walled_text(checked, version)
     print(f"tagged {version} at {git('rev-parse', 'HEAD').stdout.strip()[:8]}{suffix}; {walled}")
     next_step = "push the tag and open the next sprint"
     print(next_step if retire_sprint else "push the tag")
