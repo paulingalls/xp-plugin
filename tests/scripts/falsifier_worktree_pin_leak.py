@@ -1,12 +1,16 @@
-"""Falsifier: a hook run from a WORKTREE copy with XP_ROLE unset repins the lead
-to a directory that story close deletes.
+"""Falsifier: the per-turn pin writer records a plugin root that story close deletes.
 
-stop_gate.py:23 is `os.environ.get("XP_ROLE", "lead")`, so an ABSENT role is read
-as lead — constraint 15's "never infer one state only from the absence of another".
-SessionStart has made that same default since story-126 and it was cheap there: it
-runs once per session. v0.22.1 gave the default a PER-TURN WRITER. Reds while an
-unset role lets a non-durable plugin root become the recorded pin; greens when an
-absent role is treated as unknown rather than as lead.
+The HARM, not the role. `stop_gate.repoint_env` rewrites env.json every turn, and a
+plugin copy inside the data root's `worktrees/` outlives the pin by minutes — close
+removes the worktree and env.py then refuses every script with "records plugin_root
+<path>, and it is gone". Reds while a worktree-resident root can become the pin;
+greens when a non-durable root is refused.
+
+NOT coupled to XP_ROLE. Nothing ever sets XP_ROLE=lead — absence is how the lead is
+identified in stop_gate.py, close.py and session_start.py alike — so a fix that read
+absence as unknown would stop the lead repointing at all, which is the only writer
+after a mid-session plugin reload (that fires no SessionStart). Durability is the
+property; the role is not.
 """
 
 import json
@@ -21,10 +25,11 @@ REPO = Path(__file__).parents[2]
 DURABLE = REPO / "plugins" / "xp-plugin"
 
 with tempfile.TemporaryDirectory() as tmp:
-    data, throwaway = Path(tmp) / "data", Path(tmp) / "throwaway"
-    data.mkdir()
-    # a plugin copy standing in for a worktree's: real, and about to be deleted
-    shutil.copytree(DURABLE, throwaway / "plugins" / "xp-plugin")
+    data = Path(tmp) / "data"
+    # a plugin copy where a spawned story's worktree carries one: real, and about
+    # to be deleted by `close.py story <id> land`
+    doomed = data / "worktrees" / "story-000"
+    shutil.copytree(DURABLE, doomed / "plugins" / "xp-plugin")
     repo = Path(tmp) / "repo"
     (repo / ".xp").mkdir(parents=True)
     subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
@@ -33,7 +38,7 @@ with tempfile.TemporaryDirectory() as tmp:
     )
     env = {k: v for k, v in os.environ.items() if k != "XP_ROLE"}
     env |= {"XP_DATA": str(data), "HOME": tmp}
-    hook = throwaway / "plugins" / "xp-plugin" / "scripts" / "stop_gate.py"
+    hook = doomed / "plugins" / "xp-plugin" / "scripts" / "stop_gate.py"
     run = subprocess.run(
         [sys.executable, str(hook)],
         input=json.dumps({"session_id": "falsifier"}),
@@ -48,7 +53,7 @@ with tempfile.TemporaryDirectory() as tmp:
 if not reached:  # a hook that never ran greens on an unrelated refusal
     print(f"falsifier never reached repoint_env: {run.stderr.strip()!r}", file=sys.stderr)
     sys.exit(1)
-if str(throwaway) not in recorded:
+if str(doomed) not in recorded:
     sys.exit(0)
-print(f"an unset XP_ROLE repinned the lead to a throwaway root: {recorded}", file=sys.stderr)
+print(f"the pin was moved to a root close deletes: {recorded}", file=sys.stderr)
 sys.exit(1)

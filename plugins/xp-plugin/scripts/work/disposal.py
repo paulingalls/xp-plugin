@@ -1,9 +1,4 @@
-"""Record DISPOSAL: which open record may be retired, and by which route.
-
-Split from work.py at sprint 22, when adding the filed-in-error arm took that
-file to 514 of constraint 8's 500-line hard cap and the ratchet refused the
-commit. Its own refusal says extract, not scroll.
-"""
+"""Record DISPOSAL: which open record may be retired, and by which route."""
 
 import argparse
 import sys
@@ -100,13 +95,13 @@ def archive(root: Path, args: argparse.Namespace) -> int:
             file=sys.stderr,
         )
         return 2
-    # FILED IN ERROR is a third state, not a shade of `open` (constraint 15). A bug
-    # whose subject lives in an unlanded story cannot be fixed from here and cannot be
-    # resolved — `resolve` runs the replacement in the LEAD's checkout, where the
-    # covering test does not exist yet — so before this arm such a record had no exit
-    # and blocked every card in the sprint (measured, sprint 22). The reason is
-    # REQUIRED and must outlive the word: this must stay expensive to reach by
-    # accident, or it becomes the cheap way to bury a genuinely red falsifier.
+    # FILED IN ERROR is a third state, not a shade of `open`. A bug whose subject
+    # lives in an unlanded story cannot be fixed from here and cannot be resolved —
+    # `resolve` runs the replacement in the LEAD's checkout, where the covering test
+    # does not exist yet — so without this arm such a record has no exit and blocks
+    # every card in the sprint. The reason is REQUIRED and must outlive the word:
+    # this must stay expensive to reach by accident, or it becomes the cheap way to
+    # bury a genuinely red falsifier.
     misfiled = args.disposition.strip().lower().startswith("misfiled")
     if kind == "bug" and misfiled and not _resolved(root, args.ref):
         if len(args.disposition.split(":", 1)[-1].split()) < 4:
