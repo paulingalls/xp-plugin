@@ -4,6 +4,7 @@ import json
 import os
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 import bookkeep
@@ -55,6 +56,13 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
                 " THAT round is not recorded — any earlier one still is, and does not"
                 " cover this tree; fix it, then run review again"
             )
+    if queued := story_sidecars(story_id):
+        print(
+            f"warning: {len(queued)} unrecorded review round(s) are set aside at"
+            f" {', '.join(str(p) for p in queued)} — `close.py {close.leg(story_id)[0]}"
+            " salvage` records them; landing leaves them unread",
+            file=sys.stderr,
+        )
     if not marker.exists():
         return close.fail(f"refused: no close in progress for {story_id} — run review first")
     state = json.loads(marker.read_text())

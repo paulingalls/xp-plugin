@@ -20,6 +20,7 @@ from sprint_helpers import (
     staged_stub,
 )
 from test_close_salvage import FIXED
+from test_sprint_review_resume import _stop_at_closer
 
 CLEAN = {"fixed": [], "blocking": [], "noted": []}
 DELTA = "The delta since the last recorded round"
@@ -321,3 +322,20 @@ class TestUnrecordedArtifactPreservation:
         assert str(queued) in refused.stderr
         assert malformed.read_bytes() == malformed_bytes
         assert queued.read_bytes() == prior
+
+    def test_a_resumed_closer_that_writes_nothing_cannot_inherit_a_dead_ones_report(self, tmp_path):
+        """A resume re-runs only the closer and skips the round-wide rotation, so the
+        stale slot is the one file a leg can read back as its own output."""
+        repo, env, _g = make_repo(tmp_path)
+        _stop_at_closer(tmp_path)
+        assert sprint(repo, env, "review").returncode == 2
+        stale = tmp_path / "data" / "reports" / "sprint" / f"{SPRINT_ID}.close.round-1.json"
+        stale.write_text(json.dumps({"fixed": [], "blocking": ["GHOST"], "noted": []}))
+
+        _stop_at_closer(tmp_path)
+        resumed = sprint(repo, env, "review")
+
+        assert resumed.returncode == 2 and "wrote no report" in resumed.stderr
+        assert "GHOST" not in marker_path(tmp_path).read_text()
+        queued = stale.with_name(f"{SPRINT_ID}.close.round-2.json")
+        assert json.loads(queued.read_text())["blocking"] == ["GHOST"]

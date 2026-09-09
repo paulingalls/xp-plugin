@@ -1,5 +1,6 @@
 """Preserve unrecorded review artifacts across review retries."""
 
+import glob
 import json
 import re
 from pathlib import Path
@@ -46,14 +47,6 @@ def rotate_story(report: Path, patch: Path, launch: Path) -> list[tuple[Path, Pa
         _rotate(destination, moves)
         launch.rename(destination)
         moves.append((launch, destination))
-        try:
-            state = json.loads(destination.read_text())
-        except (OSError, ValueError, AttributeError):
-            return moves
-        if isinstance(state, dict):
-            state.setdefault("original_head", state.get("head", ""))
-            state.setdefault("original_digest", state.get("digest", ""))
-            destination.write_text(json.dumps(state))
     return moves
 
 
@@ -66,7 +59,7 @@ def notice(moves: list[tuple[Path, Path]], salvage: str) -> str:
 
 def story_sidecars(story_id: str) -> list[Path]:
     root = data_root() / "markers"
-    return sorted(root.glob(f"{story_id}.round-*.launch"))
+    return sorted(root.glob(f"{glob.escape(story_id)}.round-*.launch"))
 
 
 def advance_story_checkpoints(
@@ -108,18 +101,20 @@ def restore_story_queue(story_id: str, current_round: int) -> list[tuple[Path, P
     current.append(data_root() / "markers" / f"{story_id}.round-{current_round}.launch")
     if any(path.exists() for path in current):
         return []
-    queued = list(reports.glob(f"{story_id}.round-*.*")) + story_sidecars(story_id)
+    queued = list(reports.glob(f"{glob.escape(story_id)}.round-*.*")) + story_sidecars(story_id)
     return _restore(queued, current_round)
 
 
 def sprint_paths(sprint_id: str, round_n: int) -> list[Path]:
     root = data_root() / "reports" / "sprint"
-    return sorted(root.glob(f"{sprint_id}.*.round-{round_n}.*"))
+    return sorted(root.glob(f"{glob.escape(sprint_id)}.*.round-{round_n}.*"))
 
 
 def restore_sprint_queue(sprint_id: str, current_round: int) -> list[tuple[Path, Path]]:
     root = data_root() / "reports" / "sprint"
-    if list(root.glob(f"{sprint_id}.*.round-{current_round}.json")):
+    # ANY suffix, not just .json: a lone patch left at this round is what a shift
+    # down would collide with, and _restore answers a collision by refusing.
+    if sprint_paths(sprint_id, current_round):
         return []
-    queued = list(root.glob(f"{sprint_id}.*.round-*.*"))
+    queued = list(root.glob(f"{glob.escape(sprint_id)}.*.round-*.*"))
     return _restore(queued, current_round)

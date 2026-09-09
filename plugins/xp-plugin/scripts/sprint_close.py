@@ -123,9 +123,10 @@ def cmd_review(sprint_id: str, dry_run: bool) -> int:
     if diff_base and (missing := _shown_diff(sprint_id, diff_base, head)[1]):
         return fail(missing)
 
+    salvage_cmd = f"close.py sprint {sprint_id} salvage"
     if not (dry_run or resume):
         moves = rotate_artifacts(sprint_paths(sprint_id, round_n))
-        if left := artifact_notice(moves, f"close.py sprint {sprint_id} salvage"):
+        if left := artifact_notice(moves, salvage_cmd):
             print("warning: " + left, file=sys.stderr)
 
     ran, reports = [], []
@@ -152,6 +153,10 @@ def cmd_review(sprint_id: str, dry_run: bool) -> int:
 
     def leg(stage: str, key: str, extra: list, charter: str = "") -> tuple[dict, str]:
         path = review.sprint_report_path(sprint_id, key, round_n)
+        # A resume skips the rotation above and re-runs only the closer, so its own
+        # slot may still hold the DEAD closer's report — read back as this leg's.
+        if not dry_run and (aside := rotate_artifacts([path, review.patch_path(path)])):
+            print("warning: " + artifact_notice(aside, salvage_cmd), file=sys.stderr)
         if stage == "fixer":
             extra = [("Your patch", f"PATCH_PATH: {review.patch_path(path)}"), *extra]
         bundle = build(
@@ -275,7 +280,10 @@ def cmd_salvage(sprint_id: str) -> int:
         try:
             restore_sprint_queue(sprint_id, round_n)
         except FileExistsError as exc:
-            return fail(f"refused: cannot restore queued sprint artifacts over {exc}")
+            return fail(
+                f"refused: cannot restore queued sprint artifacts over {exc} — move that"
+                " file out of the way, then run salvage again"
+            )
         paths = sorted(root.glob(f"{glob.escape(sprint_id)}.*.round-{round_n}.json"))
     recovered, unreadable, prefix, suffix = [], [], f"{sprint_id}.", f".round-{round_n}.json"
     for path in paths:
