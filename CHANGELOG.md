@@ -4,6 +4,20 @@ Release notes started at v0.6.0; earlier entries are summarized from their
 tag and merge messages. Full detail lives in the merge history and the
 per-sprint review reports.
 
+## v0.23.1 — absence is not a pass
+
+Release post-merge now refuses before tagging when `version_files` is unset or
+empty, and names the `.xp/config.yml` key to configure. A configured matching
+manifest still cuts the tag unchanged.
+
+The seven close actions that parsed and then dropped `--dry-run` now preserve
+their branch, review artifacts, plan, sprint record, release tag, and teardown
+state during previews.
+
+Land no longer charges another review merely because trunk moved. It permits a
+trustworthy forward base change when trunk and the story touched disjoint files,
+while shared paths and divergent recorded bases still refuse.
+
 ## v0.23.0 — nothing breaks a consuming project in silence
 
 Milestone 12. Five defects that a consuming project would have hit without being
