@@ -32,7 +32,7 @@ def version_files() -> list[str]:
 def version_refusal(version: str, names: list[str] | None = None) -> str:
     names = version_files() if names is None else names
     if not names:
-        return "refused: version_files is empty — set it in .xp/config.yml before releasing"
+        return "refused: version_files is unset or empty — set it in .xp/config.yml to release"
     target = tuple(map(int, version.removeprefix("v").split(".")))
     for name in names:
         path = Path(name)
@@ -94,6 +94,7 @@ def cmd_post_merge(
     if refusal := version_refusal(version, checked):
         return fail(refusal)
     if dry_run:
+        print(f"dry run: would tag {version}; manifests matching: {', '.join(checked)}")
         return 0
     if retire_sprint and (red := lc.run(config_flat(lc.KEY), "sprint-close", release_id)):
         return fail(red)

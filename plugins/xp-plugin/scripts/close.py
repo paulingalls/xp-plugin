@@ -371,6 +371,7 @@ def cmd_salvage(story_id: str, dry_run: bool = False) -> int:
     launch = canonical if canonical.exists() else story_sidecar(path)
     if not launch.exists():
         if dry_run:
+            print(f"dry run: no launch marker for {story_id} — nothing was restored or recorded")
             return 0
         try:
             restore_story_queue(story_id, round_n)
@@ -406,6 +407,7 @@ def cmd_salvage(story_id: str, dry_run: bool = False) -> int:
     # the reviewer was shown, and a card edited between the kill and the salvage would
     # otherwise widen what a dead reviewer is recorded as having been allowed to touch.
     if dry_run:
+        print(f"dry run: would record round {round_n} for {story_id} from {launch}")
         return 0
     return _record_round(story_id, at["card"], path, marker, state, at, launch, salvage=True)
 

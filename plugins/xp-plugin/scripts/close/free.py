@@ -64,6 +64,7 @@ def cmd_start(slug: str, dry_run: bool = False) -> int:
     if git("rev-parse", "--verify", "-q", f"refs/heads/{new}", check=False).returncode == 0:
         return fail(f"refused: branch {new} already exists")
     if dry_run:
+        print(f"dry run: would cut {new} off {trunk}; nothing was created")
         return 0
     if (made := git("branch", new, trunk, check=False)).returncode:
         return fail(f"git branch failed: {made.stderr.strip()}")

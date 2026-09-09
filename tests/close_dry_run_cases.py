@@ -132,6 +132,40 @@ class DroppedDryRunCases:
         assert g("tag", "--list").stdout == tags
         assert record.read_bytes() == branch
 
+    def test_sprint_salvage_dry_run_does_not_shift_a_queued_round_down(self, tmp_path):
+        """The OTHER salvage guard, which the round-1 cases never reach: with
+        nothing at this round a real salvage RENAMES the round above it down, and
+        no artifact of the recorded round exists afterwards to notice it by."""
+        repo, env, _g = sprint_repo(tmp_path)
+        data = Path(env["XP_DATA"])
+        queued = data / "reports" / "sprint" / f"{SPRINT_ID}.find-state.round-2.json"
+        queued.parent.mkdir(parents=True, exist_ok=True)
+        queued.write_text(json.dumps(FIXED))
+        before = snapshot(data)
+
+        preview = sprint(repo, env, "salvage", "--dry-run")
+
+        assert preview.returncode == 0, preview.stderr
+        assert snapshot(data) == before
+
+    def test_story_salvage_dry_run_does_not_shift_a_queued_round_down(self, tmp_path):
+        repo, env, _g = make_repo(tmp_path)
+        data = Path(env["XP_DATA"])
+        for relative, body in (
+            ("reports/story-042.round-2.json", json.dumps(FIXED)),
+            ("reports/story-042.round-2.patch", FREE_PATCH),
+            ("markers/story-042.round-2.launch", json.dumps({"head": "0" * 40})),
+        ):
+            path = data / relative
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(body)
+        before = snapshot(data)
+
+        preview = close(repo, env, "salvage", "--dry-run")
+
+        assert preview.returncode == 0, preview.stderr
+        assert snapshot(data) == before
+
     def test_story_salvage_dry_run_preserves_the_unrecorded_round(self, tmp_path):
         repo, env, g = make_repo(tmp_path)
         dying_reviewer(tmp_path)

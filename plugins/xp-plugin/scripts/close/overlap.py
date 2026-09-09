@@ -57,6 +57,9 @@ def land_refusal(state: dict, key: str, base: str) -> str:
                 f"refused: the recorded round did not cover this tree — it was based on"
                 f" {str(recorded)[:8]}, today's merge base is {base[:8]}. {rerun}"
             )
+        # Forward-only, and files not SHAs: trunk motion that touched nothing the
+        # story wrote cannot change the diff the reviewer judged, while refusing on
+        # the SHAs alone charged a round for every parallel story that merged first.
         if hit := sorted(_files(f"{recorded}..{base}") & _files(f"{base}..HEAD")):
             listed = "\n  ".join(hit)
             return (
