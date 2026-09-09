@@ -29,9 +29,12 @@ def version_files() -> list[str]:
     return [part.strip() for part in config_flat("version_files").split(",") if part.strip()]
 
 
-def version_refusal(version: str) -> str:
+def version_refusal(version: str, names: list[str] | None = None) -> str:
+    names = version_files() if names is None else names
+    if not names:
+        return "refused: version_files is empty — set it in .xp/config.yml before releasing"
     target = tuple(map(int, version.removeprefix("v").split(".")))
-    for name in version_files():
+    for name in names:
         path = Path(name)
         # ABSENT and UNREADABLE are different problems with different fixes, and
         # OSError sat beside the parse errors: a manifest nobody has created yet
@@ -83,7 +86,8 @@ def cmd_post_merge(
     config = Path(".xp/config.yml")
     if not config.exists():
         return fail("refused: no .xp/config.yml here — is this an xp-managed repo?")
-    if refusal := version_refusal(version):
+    checked = version_files()
+    if refusal := version_refusal(version, checked):
         return fail(refusal)
     if retire_sprint and (red := lc.run(config_flat(lc.KEY), "sprint-close", release_id)):
         return fail(red)
@@ -92,11 +96,7 @@ def cmd_post_merge(
     if retire_sprint:
         clear_sprint_branch()
     suffix = "; sprint branch cleared" if retire_sprint else ""
-    walled = (
-        f"manifests matching {version}: {', '.join(checked)}"
-        if (checked := version_files())
-        else "NO manifest was checked — set version_files: in .xp/config.yml to wall it"
-    )
+    walled = f"manifests matching {version}: {', '.join(checked)}"
     print(f"tagged {version} at {git('rev-parse', 'HEAD').stdout.strip()[:8]}{suffix}; {walled}")
     next_step = "push the tag and open the next sprint"
     print(next_step if retire_sprint else "push the tag")

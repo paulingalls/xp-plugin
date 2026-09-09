@@ -137,8 +137,7 @@ class TestFreePostMerge:
         assert free(repo, env, "fix-typo", "review").returncode == 0
         if manifest:
             (repo / "plugin.json").write_text(json.dumps({"version": manifest}))
-            extra += "version_files: plugin.json\n"
-        if extra:
+        if manifest or extra:
             config = repo / ".xp" / "config.yml"
             config.write_text(config.read_text() + extra)
             g("add", "-A")
@@ -157,9 +156,7 @@ class TestFreePostMerge:
         assert result.returncode == 0, result.stderr
         assert g("rev-list", "-n1", "v0.2.1").stdout.strip() == merged
         assert "[done]" in (Path(env["XP_DATA"]) / "plan.md").read_text()
-        # this project configured no version_files, and a tag cut with NOTHING
-        # walling the manifest must not read like one that passed a check
-        assert "NO manifest was checked" in result.stdout, result.stdout
+        assert "manifests matching v0.2.1: plugin.json" in result.stdout, result.stdout
 
     def test_post_merge_before_the_pr_merges_refuses_and_cuts_no_tag(self, tmp_path):
         """The ordering half of AC 4, which nothing else on this leg drives:
