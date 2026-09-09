@@ -231,6 +231,16 @@ class TestDogfoodMatchesTheScaffold(ConstraintsWallCases):
         )
         assert bootstrap_command(f"{label}: `echo ok`")[0] == "echo ok", label
 
+    def test_our_complete_bootstrap_line_is_a_readable_no_op(self):
+        from bookkeep import worktree_command
+
+        line = next(
+            ln
+            for ln in (self.OURS / "system.md").read_text().splitlines()
+            if "Worktree bootstrap" in ln
+        )
+        assert worktree_command(line, "bootstrap") == ("", "")
+
     def test_an_unedited_bootstrap_placeholder_refuses_rather_than_skipping(self):
         """Same discipline as tests.fast: EDIT-ME reddening the wall — a scaffold
         ships a placeholder, and a placeholder that silently means "no bootstrap"

@@ -122,6 +122,24 @@ def test_a_teardown_that_raises_still_removes_the_worktree(tmp_path, monkeypatch
     assert "worktree removed; inspect external state manually" in failed[0]
 
 
+def test_a_heading_teardown_reports_its_line_and_removal_continues(tmp_path, monkeypatch):
+    from bookkeep import remove_story_worktree
+
+    repo, _env, g = make_repo(tmp_path)
+    tree = tmp_path / "wt"
+    sentinel = tmp_path / "heading-next-line-ran"
+    g("worktree", "add", "-q", str(tree), "main")
+    (tree / ".xp" / "system.md").write_text(f"### Worktree teardown\n`touch {sentinel}`\n")
+    monkeypatch.chdir(repo)
+
+    failed = remove_story_worktree(str(tree))
+
+    assert not sentinel.exists()
+    assert not tree.exists()
+    assert "cannot read the Worktree teardown label" in failed[0]
+    assert "### Worktree teardown" in failed[0]
+
+
 def test_the_handback_guard_survives_a_teammate_written_non_utf8_system(tmp_path):
     """spawn's THIRD reader of this file. It parses the teardown line only to
     enrich the handback refusal, so a decode error there costs the whole guard:

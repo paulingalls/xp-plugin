@@ -191,8 +191,8 @@ def worktree_command(system_md: str, action: str) -> tuple[str, str]:
     wanted = f"Worktree {action}"
     hits = []
     for ln in system_md.splitlines():
-        label, sep, _ = ln.partition(":")
-        if sep and label.strip().strip("*-# ").casefold() == wanted.casefold():
+        label = ln.partition(":")[0]
+        if label.strip().strip("*-# ").casefold() == wanted.casefold():
             hits.append(ln)
     if len(hits) > 1:
         # NEVER pick one: the template ships bootstrap as an unreadable
