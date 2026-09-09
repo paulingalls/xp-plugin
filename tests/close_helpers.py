@@ -64,11 +64,12 @@ XP_PATCH = """diff --git a/.xp/system.md b/.xp/system.md
 CONFIG_PATCH = """diff --git a/.xp/config.yml b/.xp/config.yml
 --- a/.xp/config.yml
 +++ b/.xp/config.yml
-@@ -3,3 +3,4 @@
+@@ -3,4 +3,5 @@
  tests:
    story: true
    full: true
 +  fast: true
+ version_files: plugin.json
 """
 CONSTRAINTS_PATCH = """diff --git a/.xp/constraints.md b/.xp/constraints.md
 --- a/.xp/constraints.md
