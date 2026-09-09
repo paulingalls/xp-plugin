@@ -380,11 +380,10 @@ def banner(root: Path) -> str:
     hooks = "lefthook" if (root / "lefthook.yml").exists() else ""
     hooks = hooks or (".githooks" if (root / ".githooks").is_dir() else "none detected")
     constraints_lines = len(read(root / ".xp" / "constraints.md").splitlines())
-    scripts = shlex.quote(str(PLUGIN_ROOT / "scripts") + "/")
     recover = shlex.quote(str(Path(__file__)))
     return (
         f"xp-plugin {version} · git hooks: {hooks} · constraints.md: {constraints_lines}"
-        f" lines · recover: python3 {recover} recover · scripts: python3 {scripts}"
+        f" lines · recover: python3 {recover} recover · scripts: spawn.py, close.py"
     )
 
 
@@ -423,18 +422,18 @@ def main(data: dict) -> int:
         return 0
     role = os.environ.get("XP_ROLE", "lead")
     refresh = refresh_env(PLUGIN_ROOT, plugin_version(PLUGIN_ROOT)) if role == "lead" else ""
-    environment = bound_environment_notice(
-        "\n".join(filter(None, (refresh, safe(lambda: install_status()[1]))))
-    )
+    raw_environment = "\n".join(filter(None, (refresh, safe(lambda: install_status()[1]))))
+    environment = bound_environment_notice(raw_environment)
     if role != "lead":
         print(teammate_marker() + (f"\n{BEGIN}\n{environment}\n{END}" if environment else ""))
         return 0
 
     rules = safe(lambda: read(root / ".xp" / "constraints.md"))
     heading = safe(lambda: banner(root))
-    if refresh:  # the notice must be PAID FOR: the profile budget has no headroom to spare
-        _before, scripts, invocation = heading.partition(" · scripts: ")
-        heading = heading.partition(" · ")[0] + scripts + invocation
+    if refresh:
+        delimiter = " · recover: " if environment != raw_environment else " · scripts: "
+        _before, field, invocation = heading.partition(delimiter)
+        heading = heading.partition(" · ")[0] + field + invocation
     regions = [
         ("banner", heading),
         ("config notice", safe(lambda: config_age(root))),

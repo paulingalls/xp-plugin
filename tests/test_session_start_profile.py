@@ -129,7 +129,7 @@ class TestTheRealProfileAgainstTheRealCap:
         assert len(re.findall(r"^\d+\. \*\*", rules, re.M)) == 15
         return rules
 
-    def run_constructed(self, tmp_path, name, plugin, rules):
+    def run_constructed(self, tmp_path, name, plugin, rules, recorded_root=None):
         repo = tmp_path / f"{name}-repo"
         data = tmp_path / f"{name}-data"
         (repo / ".xp").mkdir(parents=True)
@@ -138,7 +138,12 @@ class TestTheRealProfileAgainstTheRealCap:
         (repo / ".xp" / "constraints.md").write_text(rules)
         manifest = json.loads((plugin / ".claude-plugin" / "plugin.json").read_text())
         (data / "env.json").write_text(
-            json.dumps({"plugin_root": str(plugin), "plugin_version": manifest["version"]})
+            json.dumps(
+                {
+                    "plugin_root": str(plugin if recorded_root is None else recorded_root),
+                    "plugin_version": manifest["version"],
+                }
+            )
         )
         subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
         result = subprocess.run(
@@ -207,21 +212,30 @@ class TestTheRealProfileAgainstTheRealCap:
         assert "[truncated at" not in out
         assert len(out.encode()) <= OUTPUT_CAP
 
-    def test_a_longer_plugin_path_reduces_the_measured_allowance(self, tmp_path):
+    @pytest.mark.parametrize(
+        "recorded_root", [None, Path("/previous")], ids=["no-notice", "move-notice"]
+    )
+    def test_a_longer_plugin_path_reduces_the_measured_allowance(self, tmp_path, recorded_root):
         delta = 17
         short_target = max(len(str(tmp_path / name)) for name in ("short", "other")) + 20
         short = self.copied_plugin(tmp_path, "short", short_target)
         longer = self.copied_plugin(tmp_path, "other", short_target + delta)
         oversized = self.constraints_at_bytes(6_000)
-        short_budget = self.budget_report(
-            self.run_constructed(tmp_path, "short", short, oversized)
-        )[1]
-        long_budget = self.budget_report(
-            self.run_constructed(tmp_path, "other", longer, oversized)
-        )[1]
-        assert short_budget - long_budget == 2 * delta
+        short_out = self.run_constructed(
+            tmp_path, "short", short, oversized, recorded_root=recorded_root
+        )
+        long_out = self.run_constructed(
+            tmp_path, "other", longer, oversized, recorded_root=recorded_root
+        )
+        short_budget = self.budget_report(short_out)[1]
+        long_budget = self.budget_report(long_out)[1]
+        assert short_budget - long_budget == delta
+        if recorded_root is not None:
+            for out in (short_out, long_out):
+                assert "plugin root moved from" in out
+                assert "[environment notice shortened]" not in out
         rules = self.constraints_at_bytes(long_budget + 1)
-        out = self.run_constructed(tmp_path, "again", longer, rules)
+        out = self.run_constructed(tmp_path, "again", longer, rules, recorded_root=recorded_root)
         assert self.budget_report(out) == (1, long_budget)
         assert rules in out and "[truncated at" not in out
 
@@ -251,7 +265,11 @@ class TestTheRealProfileAgainstTheRealCap:
         # AND IT IS COMPLETE: naming a true subset is how a lead reads a rule it
         # never got as one it merely skimmed. Every heading absent from the body
         # must appear in the claim.
-        absent = [n for n in re.findall(r"^(\d+)\. \*\*", rules, re.M) if n not in body]
+        absent = [
+            n
+            for n in re.findall(r"^(\d+)\. \*\*", rules, re.M)
+            if not re.search(rf"^{n}\. \*\*", body, re.M)
+        ]
         assert absent and sorted(absent) == sorted(lost), f"cut {absent}, named {lost}"
 
     def test_this_repos_constraints_survive_a_long_checkout_path(self, tmp_path):
