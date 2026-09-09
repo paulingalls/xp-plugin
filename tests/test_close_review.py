@@ -1,196 +1,23 @@
 """The review leg against sprint integration and trunk motion.
 Split from test_close.py at sprint-004 open."""
 
+import json
 import shutil
 import subprocess
 import sys
 
 import pytest
 from close_helpers import (
-    CLEAN,
     CLOSE,
-    CONFIG,
+    FIX_PATCH,
     PLUGIN,
     close,
-    close_bare,
     launches,
     make_repo,
     marker_file,
     stub_reviewer,
 )
-
-
-class TestSprintIntegration:
-    def sprint_repo(self, tmp_path, branch="sprint-001"):
-        repo, env, g = make_repo(tmp_path)
-        (repo / ".xp" / "config.yml").write_text("release: sprint\n" + CONFIG)
-        (tmp_path / "data" / "sprint_branch").write_text(branch + "\n")
-        g("checkout", "-q", "main")
-        g("add", "-A")
-        g("commit", "-qm", "sprint config")
-        # real mid-sprint shape: sprint-001 has DIVERGED from main before the story
-        g("checkout", "-qb", branch)
-        (repo / "sprint-work.txt").write_text("earlier story landed here\n")
-        g("add", "-A")
-        g("commit", "-qm", "earlier sprint story")
-        # story branches off the sprint branch, not main
-        g("branch", "-D", "story-042-branch")
-        g("checkout", "-qb", "story-042-branch")
-        (repo / "src" / "thing.py").write_text("A = 2\n")
-        g("add", "-A")
-        g("commit", "-qm", "story work")
-        return repo, env, g
-
-    def test_two_clone_roots_merge_only_into_their_recorded_sprint_branch(self, tmp_path):
-        for name, branch in (("one", "sprint-one"), ("two", "sprint-two")):
-            root = tmp_path / name
-            root.mkdir()
-            repo, env, g = self.sprint_repo(root, branch)
-            assert "earlier story landed here" not in close(repo, env, "review").stdout
-            landed = close(repo, env, "land")
-            assert landed.returncode == 0, landed.stderr
-            assert "Review round 1" in g("log", branch, "-1", "--format=%B").stdout
-            assert "Review round" not in g("log", "main", "--format=%B").stdout
-
-    def test_sprint_release_without_branch_key_falls_back_to_default(self, tmp_path):
-        repo, env, g = make_repo(tmp_path)
-        (repo / ".xp" / "config.yml").write_text("release: sprint\n" + CONFIG)
-        g("add", "-A")
-        g("commit", "-qm", "sprint release, no branch yet")
-        close(repo, env, "review")
-        r = close(repo, env, "land")
-        assert r.returncode == 0, r.stderr
-        assert "Review round 1" in g("log", "main", "-1", "--format=%B").stdout
-
-    def test_story_release_ignores_sprint_branch_key(self, tmp_path):
-        repo, env, g = make_repo(tmp_path)
-        (repo / ".xp" / "config.yml").write_text(
-            "release: story\nsprint_branch: sprint-001\n" + CONFIG
-        )
-        g("branch", "sprint-001", "main")
-        g("add", "-A")
-        g("commit", "-qm", "story release")
-        close(repo, env, "review")
-        r = close(repo, env, "land")
-        assert r.returncode == 0, r.stderr
-        assert "Review round 1" in g("log", "main", "-1", "--format=%B").stdout
-
-    def test_guards_watch_sprint_branch_not_main(self, tmp_path):
-        repo, env, g = self.sprint_repo(tmp_path)
-        close(repo, env, "review")
-        g("checkout", "-q", "sprint-001")
-        (repo / "src" / "thing.py").write_text("A = 9\n")
-        g("add", "-A")
-        g("commit", "-qm", "another story landed on the sprint branch")
-        g("checkout", "-q", "story-042-branch")
-        r = close(repo, env, "land")
-        assert r.returncode == 2 and "sprint-001" in r.stderr and "conflicts" in r.stderr
-
-    def test_main_motion_does_not_block_sprint_close(self, tmp_path):
-        repo, env, g = self.sprint_repo(tmp_path)
-        close(repo, env, "review")
-        g("checkout", "-q", "main")
-        (repo / "main-file.txt").write_text("x\n")
-        g("add", "-A")
-        g("commit", "-qm", "main moved — sprint close's concern, not ours")
-        g("checkout", "-q", "story-042-branch")
-        r = close(repo, env, "land")
-        assert r.returncode == 0, r.stderr
-
-    def test_the_documented_invocation_works_on_a_sprint_branch(self, tmp_path):
-        """Broad review B2: `merge-mode` appears in NO shipped prose, and the
-        documented `close.py story <id> land` defaulted to pr — which cmd_land
-        refuses whenever the integration target is not the default branch. So the
-        invocation the skill tells a consuming project to run was the one that
-        refuses. The mode is derived now."""
-        repo, env, g = self.sprint_repo(tmp_path)
-        stub_reviewer(tmp_path, report=CLEAN)
-        assert close_bare(repo, env, "review").returncode == 0
-        r = close_bare(repo, env, "land")
-        assert r.returncode == 0, r.stderr
-        assert "Review round 1" in g("log", "sprint-001", "-1", "--format=%B").stdout
-
-    def test_pr_mode_with_sprint_target_refused(self, tmp_path):
-        repo, env, _g = self.sprint_repo(tmp_path)
-        close(repo, env, "review")
-        r = subprocess.run(
-            [
-                sys.executable,
-                str(CLOSE),
-                "story",
-                "story-042",
-                "land",
-                "--merge-mode",
-                "pr",
-            ],
-            cwd=repo,
-            env=env,
-            capture_output=True,
-            text=True,
-        )
-        assert r.returncode == 2 and "local" in r.stderr
-
-    def test_start_from_default_branch_still_refused(self, tmp_path):
-        repo, env, g = self.sprint_repo(tmp_path)
-        g("checkout", "-q", "main")
-        r = close(repo, env, "review")
-        assert r.returncode == 2
-
-    def test_stale_tracked_sprint_branch_refuses_with_removal(self, tmp_path):
-        repo, env, g = make_repo(tmp_path)
-        (repo / ".xp" / "config.yml").write_text("release: sprint\nsprint_branch:\n" + CONFIG)
-        g("add", "-A")
-        g("commit", "-qm", "config names a branch that does not exist")
-        r = close(repo, env, "review")
-        assert r.returncode == 2 and "remove" in r.stderr and "sprint_branch" in r.stderr
-
-    def test_recorded_sprint_branch_missing_refused(self, tmp_path):
-        repo, env, _g = self.sprint_repo(tmp_path)
-        (tmp_path / "data" / "sprint_branch").write_text("sprint-missing\n")
-        r = close(repo, env, "review")
-        assert r.returncode == 2 and "sprint-missing" in r.stderr
-
-    def test_tag_named_like_sprint_branch_cannot_freeze_the_guard(self, tmp_path):
-        repo, env, g = self.sprint_repo(tmp_path)
-        g("tag", "sprint-001", "main")  # refs/tags wins plain rev-parse; guard must not care
-        close(repo, env, "review")
-        g("checkout", "-q", "sprint-001")
-        (repo / "src" / "thing.py").write_text("A = 9\n")
-        g("add", "-A")
-        g("commit", "-qm", "another story landed on the sprint branch")
-        g("checkout", "-q", "story-042-branch")
-        r = close(repo, env, "land")
-        assert r.returncode == 2 and "refs/heads/sprint-001" in r.stderr and "conflicts" in r.stderr
-
-    def test_pr_refusal_precedes_moved_check(self, tmp_path):
-        repo, env, g = self.sprint_repo(tmp_path)
-        origin = tmp_path / "origin.git"
-        subprocess.run(["git", "init", "-q", "--bare", str(origin)], env=env, check=True)
-        g("remote", "add", "origin", str(origin))
-        g("push", "-q", "origin", "sprint-001")
-        close(repo, env, "review")
-        g("checkout", "-q", "sprint-001")
-        (repo / "src" / "thing.py").write_text("A = 9\n")  # overlapping: the costly check
-        g("add", "-A")
-        g("commit", "-qm", "moved")
-        g("push", "-q", "origin", "sprint-001")  # origin's sprint branch moves too
-        g("checkout", "-q", "story-042-branch")
-        r = subprocess.run(
-            [
-                sys.executable,
-                str(CLOSE),
-                "story",
-                "story-042",
-                "land",
-                "--merge-mode",
-                "pr",
-            ],
-            cwd=repo,
-            env=env,
-            capture_output=True,
-            text=True,
-        )
-        assert r.returncode == 2 and "local" in r.stderr and "src/thing.py" not in r.stderr
+from test_close_salvage import FIXED, salvage
 
 
 class TestSprintCloseFindings:
@@ -357,3 +184,149 @@ class TestTrunkMotionGuards:
         r = close(repo, env, "land")
         assert r.returncode == 0, r.stderr
         assert "someone else landed a story here" in (repo / "src" / "thing.py").read_text()
+
+
+class TestUnrecordedArtifactPreservation:
+    @pytest.mark.slow
+    def test_repeated_story_relaunches_leave_each_prior_round_salvageable(self, tmp_path):
+        repo, env, _g = make_repo(tmp_path)
+        reports = tmp_path / "data" / "reports"
+        saved = []
+        for finding in ("newer", "older"):
+            stub_reviewer(
+                tmp_path,
+                report={"fixed": [finding], "blocking": [], "noted": []},
+                exit_code=1,
+            )
+            assert close(repo, env, "review").returncode == 2
+            saved.append((reports / "story-042.round-1.json").read_bytes())
+
+        stub_reviewer(tmp_path, patch=FIX_PATCH)
+        assert close(repo, env, "review").returncode == 0
+        assert (reports / "story-042.round-2.json").read_bytes() == saved[1]
+        assert (reports / "story-042.round-3.json").read_bytes() == saved[0]
+        for round_n in (2, 3):
+            assert (tmp_path / "data" / "markers" / f"story-042.round-{round_n}.launch").exists()
+
+        assert salvage(repo, env).returncode == 0
+        assert salvage(repo, env).returncode == 0
+        rounds = json.loads(marker_file(tmp_path).read_text())["rounds"]
+        assert [round_["fixed"] for round_ in rounds] == [[], ["older"], ["newer"]]
+
+    def test_an_unusable_story_report_is_set_aside_without_blocking_review(self, tmp_path):
+        repo, env, _g = make_repo(tmp_path)
+        report = tmp_path / "data" / "reports" / "story-042.round-1.json"
+        report.parent.mkdir(parents=True, exist_ok=True)
+        report.write_bytes(b"not json\x00")
+        report.with_suffix(".patch").write_bytes(b"not a patch\x00")
+
+        result = close(repo, env, "review")
+
+        shifted = report.with_name("story-042.round-2.json")
+        assert result.returncode == 0, result.stderr
+        assert shifted.read_bytes() == b"not json\x00"
+        assert shifted.with_suffix(".patch").read_bytes() == b"not a patch\x00"
+        assert str(report) in result.stderr and str(shifted) in result.stderr
+
+    def test_a_missing_report_does_not_queue_an_orphan_launch(self, tmp_path):
+        repo, env, _g = make_repo(tmp_path)
+        stub_reviewer(tmp_path, report=None, patch="opaque", exit_code=1)
+        assert close(repo, env, "review").returncode == 2
+
+        stub_reviewer(tmp_path)
+        assert close(repo, env, "review").returncode == 0
+
+        reports = tmp_path / "data" / "reports"
+        assert (reports / "story-042.round-2.patch").read_bytes() == b"opaque"
+        assert not (tmp_path / "data" / "markers" / "story-042.round-2.launch").exists()
+
+    @pytest.mark.slow
+    def test_a_bundle_refusal_preserves_the_unrecorded_story_artifacts(self, tmp_path):
+        repo, env, _g = make_repo(tmp_path)
+        saved = []
+        for finding in ("first", "second"):
+            stub_reviewer(
+                tmp_path,
+                report={"fixed": [finding], "blocking": [], "noted": []},
+                exit_code=1,
+            )
+            assert close(repo, env, "review").returncode == 2
+            saved.append((tmp_path / "data" / "reports" / "story-042.round-1.json").read_bytes())
+
+        plugin = tmp_path / "plugin-copy"
+        shutil.copytree(PLUGIN, plugin)
+        (plugin / "JUDGMENT.md").unlink()
+        refused = close(repo, env, "review", close=plugin / "scripts" / "close.py")
+        assert refused.returncode == 2 and "MISSING" in refused.stderr
+        reports = tmp_path / "data" / "reports"
+        assert (reports / "story-042.round-2.json").read_bytes() == saved[1]
+        assert (reports / "story-042.round-3.json").read_bytes() == saved[0]
+
+        assert salvage(repo, env).returncode == 0
+        assert (reports / "story-042.round-2.json").exists()
+        assert salvage(repo, env).returncode == 0
+        rounds = json.loads(marker_file(tmp_path).read_text())["rounds"]
+        assert [round_["fixed"] for round_ in rounds] == [["second"], ["first"]]
+
+    def test_a_queued_story_checkpoint_is_not_advanced_across_unrelated_motion(self, tmp_path):
+        repo, env, g = make_repo(tmp_path)
+        stub_reviewer(tmp_path, report=FIXED, exit_code=1)
+        assert close(repo, env, "review").returncode == 2
+        (repo / "src" / "other.py").write_text("lead = True\n")
+        g("add", "-A")
+        g("commit", "-qm", "lead motion")
+        stub_reviewer(tmp_path)
+        assert close(repo, env, "review").returncode == 0
+
+        refused = salvage(repo, env)
+
+        assert refused.returncode == 2
+        assert "close marker changed" in refused.stderr or "HEAD is no longer" in refused.stderr
+        assert (tmp_path / "data" / "reports" / "story-042.round-2.json").exists()
+
+    def test_queued_salvage_refuses_marker_motion_after_replacement(self, tmp_path):
+        repo, env, _g = make_repo(tmp_path)
+        stub_reviewer(tmp_path, report=FIXED, exit_code=1)
+        assert close(repo, env, "review").returncode == 2
+        stub_reviewer(tmp_path)
+        assert close(repo, env, "review").returncode == 0
+        marker = marker_file(tmp_path)
+        state = json.loads(marker.read_text())
+        marker.write_text(json.dumps(state | {"tampered": True}))
+
+        refused = salvage(repo, env)
+
+        assert refused.returncode == 2 and "close marker changed" in refused.stderr
+        assert (tmp_path / "data" / "markers" / "story-042.round-2.launch").exists()
+
+    def test_marker_motion_still_refuses_an_ordinary_killed_review(self, tmp_path):
+        repo, env, _g = make_repo(tmp_path)
+        stub_reviewer(tmp_path, report=FIXED, exit_code=1)
+        assert close(repo, env, "review").returncode == 2
+        marker_file(tmp_path).write_text(json.dumps({"rounds": []}))
+
+        refused = salvage(repo, env)
+
+        assert refused.returncode == 2 and "close marker changed" in refused.stderr
+        assert json.loads(marker_file(tmp_path).read_text())["rounds"] == []
+
+    def test_a_verify_red_queued_salvage_rewrites_only_its_sidecar(self, tmp_path):
+        sentinel = tmp_path / "verify-green"
+        sentinel.write_text("green")
+        repo, env, _g = make_repo(tmp_path, verify=f"test -e {sentinel}")
+        stub_reviewer(tmp_path, report=FIXED, patch=FIX_PATCH, exit_code=1)
+        assert close(repo, env, "review").returncode == 2
+        stub_reviewer(tmp_path)
+        assert close(repo, env, "review").returncode == 0
+        sentinel.unlink()
+
+        refused = salvage(repo, env)
+
+        sidecar = tmp_path / "data" / "markers" / "story-042.round-2.launch"
+        canonical = tmp_path / "data" / "markers" / "story-042.review-launch"
+        assert refused.returncode == 2 and "Verify red" in refused.stderr
+        assert "verify_red" in json.loads(sidecar.read_text())
+        assert not canonical.exists()
+        sentinel.write_text("green")
+        landed = close(repo, env, "land")
+        assert landed.returncode == 2 and "review completed" in landed.stderr

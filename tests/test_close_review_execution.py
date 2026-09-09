@@ -2,6 +2,7 @@
 and config pick, and what a red Verify leaves for land to read."""
 
 import json
+import shutil
 from itertools import pairwise
 
 import pytest
@@ -9,6 +10,7 @@ from close_helpers import (
     CARD,
     CLAUDE_SH,
     CLEAN,
+    PLUGIN,
     close,
     launches,
     make_repo,
@@ -60,6 +62,21 @@ class TestCompletedVerifyState:
 
         assert close(repo, env, "review").returncode == 0
         assert close(repo, env, "land").returncode == 0
+
+    def test_a_relaunch_that_refuses_before_launch_does_not_clear_the_verify_red_gate(
+        self, tmp_path
+    ):
+        repo, env, _g = make_repo(tmp_path, verify="false")
+        assert close(repo, env, "review").returncode == 2
+        plugin = tmp_path / "plugin-copy"
+        shutil.copytree(PLUGIN, plugin)
+        (plugin / "JUDGMENT.md").unlink()
+        refused = close(repo, env, "review", close=plugin / "scripts" / "close.py")
+        assert refused.returncode == 2 and "MISSING" in refused.stderr
+
+        landed = close(repo, env, "land")
+
+        assert landed.returncode == 2 and "review completed" in landed.stderr
 
     def test_story_report_schema_and_blocking_surface_ignore_clearance_key(self, tmp_path):
         repo, env, _g = make_repo(tmp_path)

@@ -13,9 +13,8 @@ import close as story_close
 import lifecycle as lc
 import milestone
 import overlap
-import plan_writer
 import stages
-from close import config_flat, default_branch, fail, git, sprint_unrecorded_notice, story_card
+from close import config_flat, default_branch, fail, git, story_card
 from env import record_sprint_branch, refuse_direct_invocation, sprint_branch
 from falsifier_batch import (
     batch_refusal,
@@ -28,7 +27,18 @@ from falsifier_batch import (
     unavailable_coverage,
     validated_coverage,
 )
+from review_artifacts import (
+    notice as artifact_notice,
+)
+from review_artifacts import (
+    restore_sprint_queue,
+    sprint_paths,
+)
+from review_artifacts import (
+    rotate as rotate_artifacts,
+)
 from sprint_bundle import build
+from sprint_state import read_sprint_state, sprint_marker, write_sprint_state
 from work import (
     config_block_value,
     data_root,
@@ -44,42 +54,6 @@ sprint_stories = milestone.sprint_stories
 
 def sprint_cards(plan: str, sprint_id: str) -> str:
     return "\n".join(story_card(plan, ln.split()[1])[0] for ln in sprint_stories(plan, sprint_id))
-
-
-def sprint_marker(sprint_id: str) -> Path:
-    d = data_root() / "markers" / "sprint"
-    d.mkdir(parents=True, exist_ok=True)
-    return d / f"{sprint_id}.json"
-
-
-def read_sprint_state(sprint_id: str) -> tuple[Path, dict, str]:
-    path = sprint_marker(sprint_id)
-    if not path.exists():
-        return path, {}, ""
-    try:
-        state = json.loads(path.read_text())
-    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
-        return path, {}, f"refused: unreadable sprint marker {path}: {exc}"
-    if not isinstance(state, dict):
-        return path, {}, f"refused: unreadable sprint marker {path}: expected a JSON object"
-    return path, state, ""
-
-
-def write_sprint_state(path: Path, changes, remove=()) -> dict:
-    def update(current: dict) -> None:
-        if callable(changes):
-            changes(current)
-        else:
-            rounds = current.setdefault("rounds", []) if changes.get("rounds") else []
-            for round_ in changes.get("rounds", []):
-                if round_ not in rounds:
-                    rounds.append(round_)
-            current.update({key: value for key, value in changes.items() if key != "rounds"})
-            for key in remove:
-                current.pop(key, None)
-
-    lock = data_root() / "locks" / f"sprint-{path.stem}.lock"
-    return plan_writer.locked_json_edit(path, lock, update, "sprint marker")
 
 
 def cmd_review(sprint_id: str, dry_run: bool) -> int:
@@ -149,10 +123,11 @@ def cmd_review(sprint_id: str, dry_run: bool) -> int:
     if diff_base and (missing := _shown_diff(sprint_id, diff_base, head)[1]):
         return fail(missing)
 
-    # The notice's precondition is a review that recorded no round. A resumed round IS
-    # recorded, and these reports are this run's INPUT, not what it is about to unlink.
-    if not (dry_run or resume) and (left := sprint_unrecorded_notice(sprint_id, round_n)):
-        print("warning: " + left, file=sys.stderr)  # every leg below unlinks its own
+    salvage_cmd = f"close.py sprint {sprint_id} salvage"
+    if not (dry_run or resume):
+        moves = rotate_artifacts(sprint_paths(sprint_id, round_n))
+        if left := artifact_notice(moves, salvage_cmd):
+            print("warning: " + left, file=sys.stderr)
 
     ran, reports = [], []
 
@@ -178,9 +153,10 @@ def cmd_review(sprint_id: str, dry_run: bool) -> int:
 
     def leg(stage: str, key: str, extra: list, charter: str = "") -> tuple[dict, str]:
         path = review.sprint_report_path(sprint_id, key, round_n)
-        if not dry_run:  # a preview must not delete the findings of a refused round
-            path.unlink(missing_ok=True)
-            review.patch_path(path).unlink(missing_ok=True)
+        # A resume skips the rotation above and re-runs only the closer, so its own
+        # slot may still hold the DEAD closer's report — read back as this leg's.
+        if not dry_run and (aside := rotate_artifacts([path, review.patch_path(path)])):
+            print("warning: " + artifact_notice(aside, salvage_cmd), file=sys.stderr)
         if stage == "fixer":
             extra = [("Your patch", f"PATCH_PATH: {review.patch_path(path)}"), *extra]
         bundle = build(
@@ -300,6 +276,15 @@ def cmd_salvage(sprint_id: str) -> int:
     root = data_root() / "reports" / "sprint"
     shown = f"{sprint_id}.*.round-{round_n}.json"
     paths = sorted(root.glob(f"{glob.escape(sprint_id)}.*.round-{round_n}.json"))
+    if not paths:
+        try:
+            restore_sprint_queue(sprint_id, round_n)
+        except FileExistsError as exc:
+            return fail(
+                f"refused: cannot restore queued sprint artifacts over {exc} — move that"
+                " file out of the way, then run salvage again"
+            )
+        paths = sorted(root.glob(f"{glob.escape(sprint_id)}.*.round-{round_n}.json"))
     recovered, unreadable, prefix, suffix = [], [], f"{sprint_id}.", f".round-{round_n}.json"
     for path in paths:
         report, err = review.read_report(path)
@@ -309,9 +294,11 @@ def cmd_salvage(sprint_id: str) -> int:
             recovered.append((path.name[len(prefix) : -len(suffix)], report))
     if not recovered:
         if unreadable:  # distinct states stay distinct: missing is not unreadable
+            queued = ", ".join(str(path) for path in sprint_paths(sprint_id, round_n + 1))
             return fail(
                 f"refused: every sprint report at {root / shown} is UNREADABLE, not"
                 f" absent: {'; '.join(unreadable)}. Repair or delete them, then review"
+                + (f"; queued artifacts remain at {queued}" if queued else "")
             )
         return fail(
             f"refused: no unrecorded sprint reports for round {round_n}; looked for"
