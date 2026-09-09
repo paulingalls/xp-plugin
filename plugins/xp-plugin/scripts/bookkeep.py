@@ -191,8 +191,8 @@ def worktree_command(system_md: str, action: str) -> tuple[str, str]:
     wanted = f"Worktree {action}"
     hits = []
     for ln in system_md.splitlines():
-        label, sep, _ = ln.partition(":")
-        if sep and label.strip().strip("*-# ").casefold() == wanted.casefold():
+        label = ln.partition(":")[0]
+        if label.strip().strip("*-# ").casefold() == wanted.casefold():
             hits.append(ln)
     if len(hits) > 1:
         # NEVER pick one: the template ships bootstrap as an unreadable
@@ -213,8 +213,8 @@ def worktree_command(system_md: str, action: str) -> tuple[str, str]:
         if label != wanted:
             return "", (
                 f"cannot read the Worktree {action} label in .xp/system.md: {ln.strip()!r}"
-                f" — use `Worktree {action}`, optionally prefixed with '- ' or '* '"
-                " and optionally bolded"
+                f" — put `Worktree {action}:` and its value on ONE line,"
+                " optionally prefixed with '- ' or '* ' and optionally bolded"
             )
         value = ln.partition(":")[2].strip().rstrip(".")
         if m := re.fullmatch(r"`([^`]+)`", value):
