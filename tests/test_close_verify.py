@@ -8,11 +8,11 @@ import json
 import pathlib
 
 import pytest
-import review
 from close import story_card
 from close_free_card_cases import add_free_card, checkout_free, spawn_free
 from close_helpers import (
     CLEAN,
+    FIX_PATCH,
     NEW_FILE_PATCH,
     close,
     free,
@@ -285,34 +285,32 @@ class TestTheRoundNeedsItsHandoffDiff:
     them, and a next review that refuses on the HEAD this one moved.
     """
 
-    def test_a_diff_that_cannot_be_written_refuses_and_rolls_the_fix_back(
-        self, tmp_path, monkeypatch
-    ):
-        """Driven at the seam, because the end-to-end construction no longer exists:
-        story-124's rotation moves an obstruction at the diff path ASIDE before the
-        write, so pre-placing a directory there is defeated by the pipeline rather
-        than felt by it. The guarantee is unchanged — a handoff that cannot be
-        written records no round and undoes the fix — so it is pinned where it can
-        still red."""
+    def test_a_round_is_not_recorded_without_its_handoff_diff(self, tmp_path):
+        """The obstruction is made by the REVIEWER, the way test_sprint_review.py
+        makes it: story-124's rotation sweeps the whole `.round-N.*` slot at launch,
+        so a directory pre-placed at the diff path is carried off before the write
+        and the guard certifies. Created after the bundle is read, it is still there
+        when write_reviewer_diff runs — which keeps the CLI-level red, and with it
+        the two halves a seam call cannot reach: no round recorded, and land refuses.
+        """
         repo, env, g = make_repo(tmp_path)
-        reviewed = g("rev-parse", "HEAD").stdout.strip()
-        (repo / "reviewer-fix.txt").write_text("the script-applied fix\n")
-        g("add", "-A")
-        g("commit", "-qm", "reviewer patch")
-        assert g("rev-parse", "HEAD").stdout.strip() != reviewed, "precondition: the tree moved"
+        before = g("rev-parse", "HEAD").stdout.strip()
+        stub_reviewer(tmp_path, patch=FIX_PATCH)
+        claude = tmp_path / "bin" / "claude"
+        diff = pathlib.Path(env["XP_DATA"]) / "reports" / "story-042.round-1.diff"
+        obstruct = f"os.makedirs({str(diff)!r}, exist_ok=True)\n"
+        claude.write_text(
+            claude.read_text().replace("sys.stdout.write(", obstruct + "sys.stdout.write(", 1)
+        )
 
-        reports = pathlib.Path(env["XP_DATA"]) / "reports"
-        reports.mkdir(parents=True, exist_ok=True)
-        report = reports / "story-042.round-1.json"
-        report.write_text("{}")
-        (reports / "story-042.round-1.diff").mkdir()
-
-        monkeypatch.chdir(repo)
-        refusal = review.write_reviewer_diff(report, reviewed, "story story-042")
-        assert "could not write reviewer handoff" in refusal, refusal
-        assert "refused: refused:" not in refusal, "the refusal was wrapped twice"
-        assert "close.py story story-042 review" in refusal, refusal
-        assert g("rev-parse", "HEAD").stdout.strip() == reviewed, "the fix was not undone"
+        r = close(repo, env, "review")
+        assert r.returncode == 2, r.stdout
+        assert "could not write reviewer handoff" in r.stderr, r.stderr
+        assert "refused: refused:" not in r.stderr, "the refusal was wrapped twice"
+        assert "close.py story story-042 review" in r.stderr, r.stderr
+        assert g("rev-parse", "HEAD").stdout.strip() == before, "the applied fix was not undone"
+        assert not marker_file(tmp_path).exists(), "a round was recorded without its handoff"
+        assert close(repo, env, "land").returncode != 0
 
 
 class TestTheReviewersOwnFixIsUnderTheGateItPasses:

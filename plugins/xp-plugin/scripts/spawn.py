@@ -427,7 +427,9 @@ def cmd_spawn(story_id: str, override: str, dry_run: bool, resuming: bool = Fals
     if rc:
         return stop(f"the diff review leg refused (rc {rc}) — its refusal is above", rc)
     mark_stage(data_root(), story_id, "reviewer", "ran")
-    if state["rounds"][-1]["blocking"]:
+    from overlap import unresolved_blocking  # land's own reading, never a second one
+
+    if unresolved_blocking(state):
         why = "diff review recorded blocking findings; resume with a fresh executor to fix them"
         return stop(why, 0)
     free_slug = leg(story_id)[1]

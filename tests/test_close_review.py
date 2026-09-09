@@ -400,13 +400,32 @@ class TestRoundOrdering:
 
     def test_a_salvaged_blocking_round_is_not_cleared_by_a_round_recorded_earlier(self):
         # the clean round is LAST in the list and never saw this finding
-        rounds = [{"blocking": ["OLDER"], "salvaged": True}, {"blocking": []}]
+        rounds = [{"blocking": ["OLDER"], "salvaged": True, "round_file": 2}, {"blocking": []}]
         assert rounds[-1]["blocking"] == [], "precondition: list order says clean"
         assert self._blocking(rounds) == ["OLDER"]
 
     def test_a_salvaged_clean_round_does_not_clear_a_live_blocking_one(self):
         rounds = [{"blocking": [], "salvaged": True}, {"blocking": ["LIVE"]}]
         assert self._blocking(rounds) == ["LIVE"]
+
+    def test_a_round_launched_after_the_salvage_clears_what_it_was_handed(self):
+        """The other half of the same rule, and the one that decides whether a
+        story can EVER land again: the bundle of a round launched after the
+        salvage carries its findings, so that reviewer is the one who can clear
+        them. Without this, no number of clean rounds releases the land gate."""
+        salvaged = {"blocking": ["OLDER"], "salvaged": True, "round_file": 2}
+        rounds = [salvaged, {"blocking": [], "round_file": 1}]
+        assert self._blocking(rounds) == ["OLDER"], "precondition: it blocks first"
+        rounds.append({"blocking": [], "round_file": 3})
+        assert self._blocking(rounds) == []
+        rounds[-1] = {"blocking": ["STILL"], "round_file": 3}
+        assert self._blocking(rounds) == ["STILL"], "and it still reports what that round found"
+
+    def test_a_salvage_that_cannot_be_placed_is_never_silently_cleared(self):
+        # no round_file: pre-flag marker, or a report path bearing no round number
+        unplaceable = {"blocking": ["UNPLACEABLE"], "salvaged": True}
+        rounds = [unplaceable, {"blocking": [], "round_file": 9}]
+        assert self._blocking(rounds) == ["UNPLACEABLE"]
 
     def test_a_marker_written_before_rounds_were_flagged_reads_by_list_order(self):
         assert self._blocking([{"blocking": []}, {"blocking": ["LAST"]}]) == ["LAST"]

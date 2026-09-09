@@ -184,8 +184,8 @@ def _close_detail(record: dict) -> str:
 def _fit(parts: list) -> str:
     """Joined and bounded — dropping the OLDEST parts, never the newest.
 
-    A head-truncating cap loses the last round, which is the one that gated the
-    merge: the only round land ever reads for blocking findings.
+    A head-truncating cap loses the last round, and the round that gated the merge
+    is at the end unless salvage recorded one out of order (overlap.py owns which).
     """
     kept, dropped = list(parts), 0
     while len(" · ".join(kept)) > CLOSE_CAP and len(kept) > 1:
