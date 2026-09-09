@@ -144,8 +144,16 @@ def cmd_post_merge(slug: str, dry_run: bool = False) -> int:
     state = json.loads(matches[0].read_text())
     branch = str(state.get("branch", ""))
     result = release.cmd_post_merge(key, branch, "patch", False, dry_run)
-    if result or dry_run:
+    if result:
         return result
+    if dry_run:
+        # The tag is the reversible half; everything below it deletes. A preview
+        # naming only the tag hides what the lead is actually asking about.
+        print(
+            f"dry run: would then flip {key} to [done], remove {spawn.worktree_path(key)}"
+            f" and delete {branch} and this close's markers"
+        )
+        return 0
     tree, spawned_branch, failed = bookkeep.story_worktree(spawn.worktree_path(key))
     if not flip_card(key, "in-progress", "done"):
         failed.append(f"flip {key} to [done] in {plan_path()}")

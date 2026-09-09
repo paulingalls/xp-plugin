@@ -20,6 +20,14 @@ def branch_refs(g):
     return g("branch", "--format=%(refname:short)").stdout.splitlines()
 
 
+def previewed(result):
+    """Exit 0 AND a line that SAYS it previewed. Silence and exit 0 is byte-identical
+    to the dropped flag every case below guards, so the artifact assertions alone
+    cannot tell the fix from the bug."""
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.startswith("dry run:"), result.stdout
+
+
 class DroppedDryRunCases:
     def test_free_start_dry_run_does_not_create_the_branch(self, tmp_path):
         repo, env, g = free_repo(tmp_path)
@@ -27,7 +35,7 @@ class DroppedDryRunCases:
 
         preview = free(repo, env, "fix-typo", "start", "--dry-run")
 
-        assert preview.returncode == 0, preview.stderr
+        previewed(preview)
         assert branch_refs(g) == before
         started = free(repo, env, "fix-typo", "start")
         assert started.returncode == 0, started.stderr
@@ -51,7 +59,7 @@ class DroppedDryRunCases:
 
         preview = free(tree, env, "fix-typo", "salvage", "--dry-run")
 
-        assert preview.returncode == 0, preview.stderr
+        previewed(preview)
         assert snapshot(data) == before
         assert g("-C", str(tree), "rev-parse", "HEAD").stdout.strip() == head
 
@@ -73,7 +81,7 @@ class DroppedDryRunCases:
 
         preview = free(repo, env, "fix-typo", "post-merge", "--dry-run")
 
-        assert preview.returncode == 0, preview.stderr
+        previewed(preview)
         assert g("tag", "--list").stdout == tags
         assert snapshot(data) == before
         assert tree.exists() and marker_file(tmp_path, key).exists()
@@ -91,13 +99,27 @@ class DroppedDryRunCases:
 
         preview = sprint(repo, env, "start", "--dry-run")
 
-        assert preview.returncode == 0, preview.stderr
+        previewed(preview)
         assert plan.read_bytes() == before
         assert not record.exists()
         opened = sprint(repo, env, "start")
         assert opened.returncode == 0, opened.stderr
         assert "[in-progress]" in plan.read_text()
         assert record.read_text().strip() == "sprint-002"
+
+    def test_sprint_start_dry_run_over_an_open_sprint_previews_the_close_batch(self, tmp_path):
+        """The OTHER leg `sprint start` spells: with a branch already recorded it
+        re-runs the CLOSE checks and opens nothing, so a preview saying `opens`
+        names an action this invocation would not take."""
+        repo, env, _g = sprint_repo(tmp_path)
+        data = Path(env["XP_DATA"])
+        before = snapshot(data)
+
+        preview = sprint(repo, env, "start", "--dry-run")
+
+        previewed(preview)
+        assert "close checks" in preview.stdout and "opens" not in preview.stdout
+        assert snapshot(data) == before
 
     def test_sprint_salvage_dry_run_preserves_reports_and_marker(self, tmp_path):
         repo, env, _g = sprint_repo(tmp_path)
@@ -112,7 +134,7 @@ class DroppedDryRunCases:
 
         preview = sprint(repo, env, "salvage", "--dry-run")
 
-        assert preview.returncode == 0, preview.stderr
+        previewed(preview)
         assert report.read_bytes() == body
         assert not marker.exists()
 
@@ -128,7 +150,7 @@ class DroppedDryRunCases:
 
         preview = sprint(repo, env, "post-merge", "--dry-run")
 
-        assert preview.returncode == 0, preview.stderr
+        previewed(preview)
         assert g("tag", "--list").stdout == tags
         assert record.read_bytes() == branch
 
@@ -145,7 +167,7 @@ class DroppedDryRunCases:
 
         preview = sprint(repo, env, "salvage", "--dry-run")
 
-        assert preview.returncode == 0, preview.stderr
+        previewed(preview)
         assert snapshot(data) == before
 
     def test_story_salvage_dry_run_does_not_shift_a_queued_round_down(self, tmp_path):
@@ -163,7 +185,7 @@ class DroppedDryRunCases:
 
         preview = close(repo, env, "salvage", "--dry-run")
 
-        assert preview.returncode == 0, preview.stderr
+        previewed(preview)
         assert snapshot(data) == before
 
     def test_story_salvage_dry_run_preserves_the_unrecorded_round(self, tmp_path):
@@ -179,7 +201,7 @@ class DroppedDryRunCases:
 
         preview = close(repo, env, "salvage", "--dry-run")
 
-        assert preview.returncode == 0, preview.stderr
+        previewed(preview)
         assert snapshot(data) == before
         assert g("rev-parse", "HEAD").stdout.strip() == head
         assert not marker_file(tmp_path).exists()

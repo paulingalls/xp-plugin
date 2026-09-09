@@ -339,7 +339,8 @@ def cmd_start(sprint_id: str, dry_run: bool = False) -> int:
     if branch != (expected := f"sprint-{sprint_id.lstrip('0').zfill(3)}"):
         return fail(f"refused: open sprint {sprint_id} from {expected}, not {branch}")
     if dry_run:
-        print(f"dry run: {branch} opens sprint {sprint_id}; nothing recorded, no close checks ran")
+        does = "re-runs the close checks for" if sprint_branch() else "opens"
+        print(f"dry run: {branch} {does} sprint {sprint_id}; nothing ran, nothing recorded")
         return 0
     if not sprint_branch() and (red := lc.run(config_flat(lc.KEY), "sprint-open", sprint_id)):
         return fail(red)

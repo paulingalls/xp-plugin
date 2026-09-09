@@ -116,7 +116,15 @@ def cmd_post_merge(
     if refusal := version_refusal(version, checked):
         return fail(refusal)
     if dry_run:
-        print(f"dry run: would tag {version}; {walled_text(checked, version)}")
+        # The sprint-close lifecycle runs BELOW this return and can still refuse,
+        # so a preview that promised only "would tag" overstated what it checked.
+        after = (
+            "; then run the sprint-close lifecycle, which has NOT run here and can"
+            " still refuse, and clear the sprint branch"
+            if retire_sprint
+            else ""
+        )
+        print(f"dry run: would tag {version}{after}; {walled_text(checked, version)}")
         return 0
     if retire_sprint and (red := lc.run(config_flat(lc.KEY), "sprint-close", release_id)):
         return fail(red)

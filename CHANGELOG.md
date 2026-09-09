@@ -8,7 +8,9 @@ per-sprint review reports.
 
 Release post-merge now refuses before tagging when `version_files` is unset or
 empty, and names the `.xp/config.yml` key to configure. A configured matching
-manifest still cuts the tag unchanged.
+manifest still cuts the tag unchanged. A project whose version does not live in
+a JSON manifest sets `version_files: none` to release without that wall; the
+tag line then says no manifest was checked.
 
 The seven close actions that parsed and then dropped `--dry-run` now preserve
 their branch, review artifacts, plan, sprint record, release tag, and teardown
