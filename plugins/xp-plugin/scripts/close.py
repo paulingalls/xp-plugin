@@ -451,7 +451,7 @@ def main() -> int:
         if a.action == "land":
             return sprint_close.cmd_land(a.sprint_id, a.dry_run)
         if a.action == "milestone-done":
-            return sprint_close.milestone.cmd_done(a.sprint_id)
+            return sprint_close.milestone.cmd_done(a.sprint_id, a.dry_run)
         return sprint_close.cmd_post_merge(a.sprint_id)
     if a.action == "review":
         return cmd_review(a.story_id, a.dry_run)

@@ -150,7 +150,50 @@ def test_milestone_done_runs_declared_argv_then_flips_only_its_heading(tmp_path)
     assert "## Milestone 2 repeats Milestone 20   extended   [in-progress]" in changed
 
 
-def test_milestone_done_refuses_invalid_or_red_done_when(tmp_path):
+def test_milestone_done_dry_run_runs_the_condition_without_changing_plan(tmp_path):
+    command, sentinel = condition(tmp_path)
+    repo, env, _g = make_repo(tmp_path, plan=active_plan(command))
+    path = tmp_path / "data" / "plan.md"
+    before = path.read_bytes()
+
+    result = sprint(repo, env, "milestone-done", "--dry-run")
+
+    assert result.returncode == 0, result.stderr
+    assert sentinel.read_text() == "green"
+    assert "milestone ready:" in result.stdout
+    assert "status unchanged" in result.stdout
+    assert path.read_bytes() == before
+
+
+def test_milestone_done_dry_run_matches_the_real_candidate_refusal(tmp_path):
+    repo, env, _g = make_repo(tmp_path, plan=active_plan())
+    path = tmp_path / "data" / "plan.md"
+    reopen(path)
+    before = path.read_bytes()
+
+    preview = sprint(repo, env, "milestone-done", "--dry-run")
+    real = sprint(repo, env, "milestone-done")
+
+    assert preview.returncode == real.returncode == 2
+    assert preview.stderr == real.stderr
+    assert path.read_bytes() == before
+
+
+def test_milestone_done_dry_run_reports_a_red_done_when_as_the_real_leg_does(tmp_path):
+    repo, env, _g = make_repo(tmp_path, plan=active_plan("false"))
+    path = tmp_path / "data" / "plan.md"
+    before = path.read_bytes()
+
+    preview = sprint(repo, env, "milestone-done", "--dry-run")
+    real = sprint(repo, env, "milestone-done")
+
+    assert preview.returncode == real.returncode == 2
+    assert preview.stderr == real.stderr
+    assert "milestone ready:" not in preview.stdout
+    assert path.read_bytes() == before
+
+
+def test_milestone_done_refuses_invalid_or_red_done_when_with_or_without_dry_run(tmp_path):
     declared_values = [
         None,
         "",
@@ -174,9 +217,11 @@ def test_milestone_done_refuses_invalid_or_red_done_when(tmp_path):
             plan = plan.replace("Done when: \n", "Done when:\nThis prose is not a command.\n")
         path.write_text(plan)
         result = sprint(repo, env, "milestone-done")
+        preview = sprint(repo, env, "milestone-done", "--dry-run")
 
         assert result.returncode == 2
         assert "Done when:" in result.stderr
+        assert (preview.returncode, preview.stderr) == (result.returncode, result.stderr)
         assert "## Milestone 2 repeats Milestone 20   [in-progress]" in path.read_text()
         assert not (repo / "SHELL-PAYLOAD").exists()
 
