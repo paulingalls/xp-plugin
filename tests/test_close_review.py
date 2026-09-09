@@ -1,6 +1,7 @@
 """The review leg against sprint integration and trunk motion.
 Split from test_close.py at sprint-004 open."""
 
+import json
 import shutil
 import subprocess
 import sys
@@ -8,12 +9,15 @@ import sys
 import pytest
 from close_helpers import (
     CLOSE,
+    FIX_PATCH,
     PLUGIN,
     close,
     launches,
     make_repo,
     marker_file,
+    stub_reviewer,
 )
+from test_close_salvage import FIXED, salvage
 
 
 class TestSprintCloseFindings:
@@ -180,3 +184,149 @@ class TestTrunkMotionGuards:
         r = close(repo, env, "land")
         assert r.returncode == 0, r.stderr
         assert "someone else landed a story here" in (repo / "src" / "thing.py").read_text()
+
+
+class TestUnrecordedArtifactPreservation:
+    @pytest.mark.slow
+    def test_repeated_story_relaunches_leave_each_prior_round_salvageable(self, tmp_path):
+        repo, env, _g = make_repo(tmp_path)
+        reports = tmp_path / "data" / "reports"
+        saved = []
+        for finding in ("newer", "older"):
+            stub_reviewer(
+                tmp_path,
+                report={"fixed": [finding], "blocking": [], "noted": []},
+                exit_code=1,
+            )
+            assert close(repo, env, "review").returncode == 2
+            saved.append((reports / "story-042.round-1.json").read_bytes())
+
+        stub_reviewer(tmp_path, patch=FIX_PATCH)
+        assert close(repo, env, "review").returncode == 0
+        assert (reports / "story-042.round-2.json").read_bytes() == saved[1]
+        assert (reports / "story-042.round-3.json").read_bytes() == saved[0]
+        for round_n in (2, 3):
+            assert (tmp_path / "data" / "markers" / f"story-042.round-{round_n}.launch").exists()
+
+        assert salvage(repo, env).returncode == 0
+        assert salvage(repo, env).returncode == 0
+        rounds = json.loads(marker_file(tmp_path).read_text())["rounds"]
+        assert [round_["fixed"] for round_ in rounds] == [[], ["older"], ["newer"]]
+
+    def test_an_unusable_story_report_is_set_aside_without_blocking_review(self, tmp_path):
+        repo, env, _g = make_repo(tmp_path)
+        report = tmp_path / "data" / "reports" / "story-042.round-1.json"
+        report.parent.mkdir(parents=True, exist_ok=True)
+        report.write_bytes(b"not json\x00")
+        report.with_suffix(".patch").write_bytes(b"not a patch\x00")
+
+        result = close(repo, env, "review")
+
+        shifted = report.with_name("story-042.round-2.json")
+        assert result.returncode == 0, result.stderr
+        assert shifted.read_bytes() == b"not json\x00"
+        assert shifted.with_suffix(".patch").read_bytes() == b"not a patch\x00"
+        assert str(report) in result.stderr and str(shifted) in result.stderr
+
+    def test_a_missing_report_does_not_queue_an_orphan_launch(self, tmp_path):
+        repo, env, _g = make_repo(tmp_path)
+        stub_reviewer(tmp_path, report=None, patch="opaque", exit_code=1)
+        assert close(repo, env, "review").returncode == 2
+
+        stub_reviewer(tmp_path)
+        assert close(repo, env, "review").returncode == 0
+
+        reports = tmp_path / "data" / "reports"
+        assert (reports / "story-042.round-2.patch").read_bytes() == b"opaque"
+        assert not (tmp_path / "data" / "markers" / "story-042.round-2.launch").exists()
+
+    @pytest.mark.slow
+    def test_a_bundle_refusal_preserves_the_unrecorded_story_artifacts(self, tmp_path):
+        repo, env, _g = make_repo(tmp_path)
+        saved = []
+        for finding in ("first", "second"):
+            stub_reviewer(
+                tmp_path,
+                report={"fixed": [finding], "blocking": [], "noted": []},
+                exit_code=1,
+            )
+            assert close(repo, env, "review").returncode == 2
+            saved.append((tmp_path / "data" / "reports" / "story-042.round-1.json").read_bytes())
+
+        plugin = tmp_path / "plugin-copy"
+        shutil.copytree(PLUGIN, plugin)
+        (plugin / "JUDGMENT.md").unlink()
+        refused = close(repo, env, "review", close=plugin / "scripts" / "close.py")
+        assert refused.returncode == 2 and "MISSING" in refused.stderr
+        reports = tmp_path / "data" / "reports"
+        assert (reports / "story-042.round-2.json").read_bytes() == saved[1]
+        assert (reports / "story-042.round-3.json").read_bytes() == saved[0]
+
+        assert salvage(repo, env).returncode == 0
+        assert (reports / "story-042.round-2.json").exists()
+        assert salvage(repo, env).returncode == 0
+        rounds = json.loads(marker_file(tmp_path).read_text())["rounds"]
+        assert [round_["fixed"] for round_ in rounds] == [["second"], ["first"]]
+
+    def test_a_queued_story_checkpoint_is_not_advanced_across_unrelated_motion(self, tmp_path):
+        repo, env, g = make_repo(tmp_path)
+        stub_reviewer(tmp_path, report=FIXED, exit_code=1)
+        assert close(repo, env, "review").returncode == 2
+        (repo / "src" / "other.py").write_text("lead = True\n")
+        g("add", "-A")
+        g("commit", "-qm", "lead motion")
+        stub_reviewer(tmp_path)
+        assert close(repo, env, "review").returncode == 0
+
+        refused = salvage(repo, env)
+
+        assert refused.returncode == 2
+        assert "close marker changed" in refused.stderr or "HEAD is no longer" in refused.stderr
+        assert (tmp_path / "data" / "reports" / "story-042.round-2.json").exists()
+
+    def test_queued_salvage_refuses_marker_motion_after_replacement(self, tmp_path):
+        repo, env, _g = make_repo(tmp_path)
+        stub_reviewer(tmp_path, report=FIXED, exit_code=1)
+        assert close(repo, env, "review").returncode == 2
+        stub_reviewer(tmp_path)
+        assert close(repo, env, "review").returncode == 0
+        marker = marker_file(tmp_path)
+        state = json.loads(marker.read_text())
+        marker.write_text(json.dumps(state | {"tampered": True}))
+
+        refused = salvage(repo, env)
+
+        assert refused.returncode == 2 and "close marker changed" in refused.stderr
+        assert (tmp_path / "data" / "markers" / "story-042.round-2.launch").exists()
+
+    def test_marker_motion_still_refuses_an_ordinary_killed_review(self, tmp_path):
+        repo, env, _g = make_repo(tmp_path)
+        stub_reviewer(tmp_path, report=FIXED, exit_code=1)
+        assert close(repo, env, "review").returncode == 2
+        marker_file(tmp_path).write_text(json.dumps({"rounds": []}))
+
+        refused = salvage(repo, env)
+
+        assert refused.returncode == 2 and "close marker changed" in refused.stderr
+        assert json.loads(marker_file(tmp_path).read_text())["rounds"] == []
+
+    def test_a_verify_red_queued_salvage_rewrites_only_its_sidecar(self, tmp_path):
+        sentinel = tmp_path / "verify-green"
+        sentinel.write_text("green")
+        repo, env, _g = make_repo(tmp_path, verify=f"test -e {sentinel}")
+        stub_reviewer(tmp_path, report=FIXED, patch=FIX_PATCH, exit_code=1)
+        assert close(repo, env, "review").returncode == 2
+        stub_reviewer(tmp_path)
+        assert close(repo, env, "review").returncode == 0
+        sentinel.unlink()
+
+        refused = salvage(repo, env)
+
+        sidecar = tmp_path / "data" / "markers" / "story-042.round-2.launch"
+        canonical = tmp_path / "data" / "markers" / "story-042.review-launch"
+        assert refused.returncode == 2 and "Verify red" in refused.stderr
+        assert "verify_red" in json.loads(sidecar.read_text())
+        assert not canonical.exists()
+        sentinel.write_text("green")
+        landed = close(repo, env, "land")
+        assert landed.returncode == 2 and "review completed" in landed.stderr

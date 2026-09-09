@@ -14,13 +14,15 @@ import ready
 import review
 import work
 from release import next_version, refuse_unbumpable
+from review_artifacts import story_sidecars
 
 
 def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
     if close.git("status", "--porcelain").stdout.strip():
         return close.fail("refused: working tree is dirty — Verify must judge the tree that merges")
-    launch = review.launch_marker(story_id)
-    if launch.exists():
+    marker = close.marker_path(story_id)
+    launch_paths = [review.launch_marker(story_id), *story_sidecars(story_id)]
+    for launch in (path for path in launch_paths if path.exists()):
         # Distinct states stay distinct: salvage refuses when this file is
         # unreadable, and land reading the same file may not answer it with
         # "no unrecorded review".
@@ -34,13 +36,25 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
                 " Verify redded from a review that never ran. Delete it and review again"
             )
         if verify_red:
+            covered = False
+            if launch != launch_paths[0] and marker.exists():
+                state = json.loads(marker.read_text())
+                verify_head = unrecorded.get("verify_head", unrecorded.get("head", ""))
+                shown_sha = state.get("shown_sha", "")
+                covered = (
+                    bool(verify_head and shown_sha)
+                    and not close.git(
+                        "merge-base", "--is-ancestor", verify_head, shown_sha, check=False
+                    ).returncode
+                )
+            if covered:
+                continue
             verified = str(unrecorded.get("verify_head", unrecorded.get("head", "")))[:8]
             return close.fail(
                 f"refused: the review completed on tree {verified}, but {verify_red}."
                 " THAT round is not recorded — any earlier one still is, and does not"
                 " cover this tree; fix it, then run review again"
             )
-    marker = close.marker_path(story_id)
     if not marker.exists():
         return close.fail(f"refused: no close in progress for {story_id} — run review first")
     state = json.loads(marker.read_text())

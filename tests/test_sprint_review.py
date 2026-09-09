@@ -5,19 +5,21 @@ import json
 import subprocess
 import sys
 
-from close_helpers import launches
+from close_helpers import launches, stub_reviewer
 from spawn_helpers import stub_codex
 from sprint_helpers import (
     CLOSE,
     CONFIG,
     PLAN,
     PLUGIN,
+    SPRINT_ID,
     head,
     make_repo,
     marker_path,
     sprint,
     staged_stub,
 )
+from test_close_salvage import FIXED
 
 CLEAN = {"fixed": [], "blocking": [], "noted": []}
 DELTA = "The delta since the last recorded round"
@@ -63,7 +65,13 @@ class TestReviewLeg:
             fix={"fixed": ["FIXED"], "blocking": [], "noted": []},
         )
         diff = tmp_path / "data" / "reports" / "sprint" / "2.fix.round-1.diff"
-        diff.mkdir(parents=True)
+        claude = tmp_path / "bin" / "claude"
+        key_line = "key = os.path.basename(m.group(1).strip()).split('.')[1]\n"
+        claude.write_text(
+            claude.read_text().replace(
+                key_line, key_line + f"os.makedirs({str(diff)!r}, exist_ok=True)\n"
+            )
+        )
         result = sprint(repo, env, "review")
         assert result.returncode == 2 and "could not write reviewer handoff" in result.stderr
         assert head(repo, env) == before
@@ -233,3 +241,83 @@ class TestReviewLeg:
         assert "no round" not in r.stderr.lower(), "the refusal denies the round beside it"
         round_ = json.loads(marker_path(tmp_path).read_text())["rounds"][-1]
         assert "close" not in round_["stages"] and round_["stages"], round_["stages"]
+
+
+class TestUnrecordedArtifactPreservation:
+    def test_a_completed_sprint_relaunch_leaves_prior_reports_salvageable(self, tmp_path):
+        repo, env, _g = make_repo(tmp_path)
+        reports = tmp_path / "data" / "reports" / "sprint"
+        reports.mkdir(parents=True, exist_ok=True)
+        report = reports / f"{SPRINT_ID}.find-security.round-1.json"
+        body = json.dumps({"fixed": ["prior finding"], "blocking": [], "noted": []}).encode()
+        report.write_bytes(body)
+        report.with_suffix(".patch").write_bytes(b"prior patch")
+        staged_stub(tmp_path)
+
+        reviewed = sprint(repo, env, "review")
+
+        shifted = reports / f"{SPRINT_ID}.find-security.round-2.json"
+        assert reviewed.returncode == 0, reviewed.stderr
+        assert shifted.read_bytes() == body
+        assert shifted.with_suffix(".patch").read_bytes() == b"prior patch"
+        assert sprint(repo, env, "salvage").returncode == 0
+        round_ = json.loads(marker_path(tmp_path).read_text())["rounds"][1]
+        assert round_["fixed"] == ["prior finding"]
+        assert round_["stages"] == ["find-security"]
+
+    def test_an_unusable_sprint_report_is_set_aside_without_blocking_review(self, tmp_path):
+        repo, env, _g = make_repo(tmp_path)
+        reports = tmp_path / "data" / "reports" / "sprint"
+        reports.mkdir(parents=True, exist_ok=True)
+        report = reports / f"{SPRINT_ID}.find-security.round-1.json"
+        report.write_bytes(b"not json\x00")
+        report.with_suffix(".patch").write_bytes(b"not a patch\x00")
+        staged_stub(tmp_path)
+
+        result = sprint(repo, env, "review")
+
+        shifted = reports / f"{SPRINT_ID}.find-security.round-2.json"
+        assert result.returncode == 0, result.stderr
+        assert shifted.read_bytes() == b"not json\x00"
+        assert shifted.with_suffix(".patch").read_bytes() == b"not a patch\x00"
+        assert str(report) in result.stderr and str(shifted) in result.stderr
+
+    def test_a_sprint_relaunch_that_records_no_round_leaves_prior_reports_salvageable(
+        self, tmp_path
+    ):
+        repo, env, _g = make_repo(tmp_path)
+        reports = tmp_path / "data" / "reports" / "sprint"
+        reports.mkdir(parents=True, exist_ok=True)
+        report = reports / f"{SPRINT_ID}.find-security.round-1.json"
+        body = json.dumps(FIXED).encode()
+        report.write_bytes(body)
+        report.with_suffix(".patch").write_bytes(b"prior patch")
+        stub_reviewer(tmp_path, report=None, exit_code=1)
+
+        refused = sprint(repo, env, "review")
+
+        assert refused.returncode == 2
+        assert (reports / f"{SPRINT_ID}.find-security.round-2.json").read_bytes() == body
+        assert sprint(repo, env, "salvage").returncode == 0
+        round_ = json.loads(marker_path(tmp_path).read_text())["rounds"][0]
+        assert round_["fixed"] == FIXED["fixed"]
+
+    def test_an_unreadable_new_report_does_not_clobber_the_queued_sprint_set(self, tmp_path):
+        repo, env, _g = make_repo(tmp_path)
+        reports = tmp_path / "data" / "reports" / "sprint"
+        reports.mkdir(parents=True, exist_ok=True)
+        report = reports / f"{SPRINT_ID}.find-security.round-1.json"
+        prior = json.dumps(FIXED).encode()
+        report.write_bytes(prior)
+        stub_reviewer(tmp_path, report="{broken", exit_code=1)
+        assert sprint(repo, env, "review").returncode == 2
+        malformed = next(reports.glob(f"{SPRINT_ID}.*.round-1.json"))
+        malformed_bytes = malformed.read_bytes()
+
+        refused = sprint(repo, env, "salvage")
+
+        queued = reports / f"{SPRINT_ID}.find-security.round-2.json"
+        assert refused.returncode == 2 and "UNREADABLE" in refused.stderr
+        assert str(queued) in refused.stderr
+        assert malformed.read_bytes() == malformed_bytes
+        assert queued.read_bytes() == prior

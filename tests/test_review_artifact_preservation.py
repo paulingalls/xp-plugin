@@ -9,37 +9,27 @@ from sprint_helpers import make_repo as sprint_repo
 from test_close_salvage import FIXED, KILLED, dying_reviewer, report_of
 
 
-class TestTheRouteThatDestroysWhatSalvageRescues:
-    """The seam a story-scoped reader cannot see: salvage rescues a killed review's
-    artifacts, and the resumed session's own next action routes straight past it.
-    session_start's NEXT line reads [in-progress] + a FINISHED worktree and says
-    run `/story-close`, whose step 2 is `close.py story <id> review` — and that
-    unlinks the report and the patch before it spawns, with a clean tree being
-    exactly what a reviewer killed after restoring it leaves. Issue #44's own
-    suggested recovery, 'run review again', destroys the artifact it would have
-    pointed at (bug 0b33b752), and nothing said so on the way past.
-    """
-
+class TestUnrecordedArtifactPreservation:
     @pytest.mark.slow
-    def test_a_relaunched_review_says_what_it_is_about_to_delete(self, tmp_path):
+    def test_a_relaunched_story_review_sets_prior_artifacts_aside(self, tmp_path):
         repo, env, _ = make_repo(tmp_path)
         dying_reviewer(tmp_path)
         assert close(repo, env | KILLED, "review").returncode == 2
         report = report_of(tmp_path)
         patch = report.with_suffix(".patch")
-        assert report.exists() and patch.exists(), "the fixture wrote no artifacts to lose"
+        before = report.read_bytes(), patch.read_bytes()
 
         stub_reviewer(tmp_path)
         again = close(repo, env, "review")
+        shifted = report.with_name(report.name.replace("round-1", "round-2"))
+        shifted_patch = shifted.with_suffix(".patch")
+        assert again.returncode == 0, again.stderr
+        assert (shifted.read_bytes(), shifted_patch.read_bytes()) == before
         assert "salvage" in again.stderr, again.stderr
-        assert str(report) in again.stderr and str(patch) in again.stderr, again.stderr
+        assert str(report) in again.stderr and str(shifted) in again.stderr, again.stderr
 
     @pytest.mark.slow
-    def test_a_first_review_warns_about_nothing(self, tmp_path):
-        """The pair, so the warning cannot become wallpaper printed every round:
-        no launched review means no artifacts, and a line that fires either way
-        is one a lead learns to skip past.
-        """
+    def test_a_first_review_sets_nothing_aside(self, tmp_path):
         repo, env, _ = make_repo(tmp_path)
         stub_reviewer(tmp_path)
         first = close(repo, env, "review")
@@ -47,18 +37,15 @@ class TestTheRouteThatDestroysWhatSalvageRescues:
         assert "salvage" not in first.stderr, first.stderr
 
     @pytest.mark.slow
-    def test_the_sprint_noun_says_it_too(self, tmp_path):
-        """The other implementation of the same rule, and the one issue #44 actually
-        hit: sprint cmd_review's leg() unlinks `<id>.<stage>.round-N.json` before it
-        spawns, so a finder's completed report is thrown away by the command a lead
-        runs to recover it. Fixing only the story noun would leave the field case
-        exactly as it was reported.
-        """
+    def test_a_relaunched_sprint_review_sets_prior_artifacts_aside(self, tmp_path):
         repo, env, _g = sprint_repo(tmp_path)
         reports = tmp_path / "data" / "reports" / "sprint"
         reports.mkdir(parents=True, exist_ok=True)
-        left = reports / f"{SPRINT_ID}.find-a.round-1.json"
+        left = reports / f"{SPRINT_ID}.find-security.round-1.json"
         left.write_text(json.dumps(FIXED))
+        patch = left.with_suffix(".patch")
+        patch.write_bytes(b"opaque patch bytes")
+        before = left.read_bytes(), patch.read_bytes()
         stub = tmp_path / "bin" / "claude"
         stub.write_text(
             "#!/bin/sh\n"
@@ -71,14 +58,15 @@ class TestTheRouteThatDestroysWhatSalvageRescues:
 
         killed = sprint(repo, env | KILLED, "review")
 
+        shifted = left.with_name(left.name.replace("round-1", "round-2"))
+        shifted_patch = shifted.with_suffix(".patch")
+        assert (shifted.read_bytes(), shifted_patch.read_bytes()) == before
         assert str(left) in killed.stderr, killed.stderr
+        assert str(shifted) in killed.stderr, killed.stderr
         assert f"close.py sprint {SPRINT_ID} salvage" in killed.stderr, killed.stderr
-        assert "DELETES" in killed.stderr, killed.stderr
 
     @pytest.mark.slow
-    def test_the_sprint_noun_warns_about_nothing_on_a_first_round(self, tmp_path):
-        """The pair on this noun too — a line printed every round is one a lead
-        stops reading, and the kill hint below it is the one that must survive."""
+    def test_a_first_sprint_review_sets_nothing_aside(self, tmp_path):
         repo, env, _g = sprint_repo(tmp_path)
         stub = tmp_path / "bin" / "claude"
         stub.write_text(
@@ -92,5 +80,5 @@ class TestTheRouteThatDestroysWhatSalvageRescues:
 
         killed = sprint(repo, env | KILLED, "review")
 
-        assert "DELETES" not in killed.stderr, killed.stderr
+        assert "set aside" not in killed.stderr, killed.stderr
         assert f"close.py sprint {SPRINT_ID} salvage" in killed.stderr, killed.stderr

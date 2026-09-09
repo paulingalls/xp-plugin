@@ -2,7 +2,6 @@
 """Story review records judgment; story land runs gates and moves refs without spawning."""
 
 import argparse
-import glob
 import json
 import os
 import re
@@ -15,6 +14,15 @@ sys.path.insert(0, str(Path(__file__).parent / "close"))
 from bookkeep import render_prior_rounds
 from env import sprint_branch
 from lifecycle import declared_commands as verify_commands
+from review_artifacts import (
+    advance_story_checkpoints,
+    restore_story_queue,
+    rotate_story,
+    story_sidecar,
+)
+from review_artifacts import (
+    notice as artifact_notice,
+)
 from work import (
     chdir_repo_root,
     data_root,
@@ -25,30 +33,6 @@ from work import (
 )
 
 FREE_ID = re.compile(r"free-(\d{4}-\d\d-\d\d-(.+))")
-
-
-def unrecorded_notice(paths: list[Path], salvage: str) -> str:
-    """What a relaunched review is about to unlink, for every noun. A round's
-    artifacts exist at the CURRENT round only when a review ran and recorded none —
-    salvage's own precondition — so issue #44's suggested recovery, review again,
-    deletes exactly what salvage would have recorded. A notice and not a refusal: a
-    reviewer that died before writing a usable report leaves the same artifacts and
-    salvage cannot record those either, so refusing would deadlock the pair.
-    """
-    if not (left := [str(p) for p in paths if p.exists()]):
-        return ""
-    return (
-        f"an unrecorded review left {', '.join(left)}, which this run DELETES —"
-        f" `{salvage}` records it instead"
-    )
-
-
-def sprint_unrecorded_notice(sprint_id: str, round_n: int) -> str:
-    """The sprint noun's stage keys are not known until the legs run, so it looks by
-    round rather than by name — the same round salvage globs for."""
-    stale = f"{glob.escape(sprint_id)}.*.round-{round_n}.*"
-    doomed = (data_root() / "reports" / "sprint").glob(stale)
-    return unrecorded_notice(sorted(doomed), f"close.py sprint {sprint_id} salvage")
 
 
 def fail(msg: str) -> "int":
@@ -270,7 +254,14 @@ def verify_on_reviewed_tree(story_id: str, card: str) -> str:
 
 
 def _record_round(
-    story_id: str, card: str, path: Path, marker: Path, state: dict, at: dict, salvage=False
+    story_id: str,
+    card: str,
+    path: Path,
+    marker: Path,
+    state: dict,
+    at: dict,
+    launch: Path,
+    salvage=False,
 ) -> int:
     """Share review and salvage guards; `at` is the tree the launch marker names."""
     import review
@@ -293,23 +284,25 @@ def _record_round(
     verify_err = verify_on_reviewed_tree(story_id, card)
     if verify_err and not report["blocking"]:
         at.update(verify_red=verify_err, verify_head=git("rev-parse", "HEAD").stdout.strip())
-        review.launch_marker(story_id).write_text(json.dumps(at))
+        launch.write_text(json.dumps(at))
         return fail(review.stamp(path, review.abort_text(head, verify_err, salvage=salvage)))
     kept = "The round IS recorded, and it names this tree — a reset here orphans it."
     refusal = review.abort_text(head, verify_err, kept, salvage=salvage) if verify_err else ""
     review.stamp(path, refusal)
     if err := review.write_reviewer_diff(path, head, at.get("noun", leg(story_id)[0])):
         return fail(review.stamp(path, err))  # already a whole refusal, prefix and all
+    shown_sha = git("rev-parse", "HEAD").stdout.strip()
     review.write_round(
         marker,
         state,
         report,
         reviewed_head=head,
-        shown_sha=git("rev-parse", "HEAD").stdout.strip(),
+        shown_sha=shown_sha,
         review_base=at["base"],
         branch=git("rev-parse", "--abbrev-ref", "HEAD").stdout.strip(),
     )
-    review.launch_marker(story_id).unlink(missing_ok=True)
+    advance_story_checkpoints(story_id, head, at["digest"], shown_sha, review.marker_digest(marker))
+    launch.unlink(missing_ok=True)
     return fail(refusal) if refusal else 0
 
 
@@ -322,12 +315,11 @@ def cmd_review(story_id: str, dry_run: bool = False) -> int:
     marker = marker_path(story_id)
     state = json.loads(marker.read_text()) if marker.exists() else {}
     path = review.report_path(story_id, len(state.get("rounds", [])) + 1)
-    if not dry_run:  # a preview must not delete the findings of a refused round
-        doomed = [path, review.patch_path(path)]
-        if left := unrecorded_notice(doomed, f"close.py {leg(story_id)[0]} salvage"):
+    launch = review.launch_marker(story_id)
+    if not dry_run:
+        moves = rotate_story(path, review.patch_path(path), launch)
+        if left := artifact_notice(moves, f"close.py {leg(story_id)[0]} salvage"):
             print("warning: " + left, file=sys.stderr)
-        for doomed_path in doomed:
-            doomed_path.unlink(missing_ok=True)
     head = git("rev-parse", "HEAD").stdout.strip()
     base = git("merge-base", f"refs/heads/{trunk}", "HEAD").stdout.strip()
     at = {"head": head, "digest": review.marker_digest(marker), "base": base, "card": card}
@@ -339,14 +331,14 @@ def cmd_review(story_id: str, dry_run: bool = False) -> int:
         print("warning: " + notice, file=sys.stderr)
     bundle = build_bundle(card, base, path, prior, notice)
     if not dry_run:
-        review.launch_marker(story_id).write_text(json.dumps(at))
+        launch.write_text(json.dumps(at))
     result, err = review.run(bundle, Path.cwd(), dry_run, card=card, noun=at["noun"])
     if dry_run:
         return fail("refused: " + err) if err else 0
     if err:  # crash, timeout, absent binary — it may still have committed first
         return fail(review.stamp(path, review.abort_text(head, err)))
     print(result)
-    return _record_round(story_id, card, path, marker, state, at)
+    return _record_round(story_id, card, path, marker, state, at, launch)
 
 
 def cmd_salvage(story_id: str) -> int:
@@ -358,15 +350,23 @@ def cmd_salvage(story_id: str) -> int:
         return fail(err)
     marker = marker_path(story_id)
     state = json.loads(marker.read_text()) if marker.exists() else {}
-    path = review.report_path(story_id, len(state.get("rounds", [])) + 1)
-    launch = review.launch_marker(story_id)
+    round_n = len(state.get("rounds", [])) + 1
+    path = review.report_path(story_id, round_n)
+    canonical = review.launch_marker(story_id)
+    launch = canonical if canonical.exists() else story_sidecar(path)
+    if not launch.exists():
+        try:
+            restore_story_queue(story_id, round_n)
+        except FileExistsError as exc:
+            return fail(f"refused: cannot restore queued review artifacts over {exc}")
+        launch = canonical if canonical.exists() else story_sidecar(path)
     if not launch.exists():
         # Two states, so this must LOOK rather than list what it would have read:
         # `not readable — delete it` sends the lead here with the round's own
         # artifacts still on disk, and "nothing was left behind" is a lie there.
         left = ", ".join(str(p) for p in (path, review.patch_path(path)) if p.exists())
         return fail(
-            f"refused: no unrecorded review for {story_id} — {launch} names the tree a"
+            f"refused: no unrecorded review for {story_id} — {canonical} names the tree a"
             " killed reviewer was launched against, and salvage records no round it"
             " cannot bind to one. "
             + (
@@ -388,7 +388,7 @@ def cmd_salvage(story_id: str) -> int:
     # at["card"] and never the fresh card _preflight returns: the marker's copy is what
     # the reviewer was shown, and a card edited between the kill and the salvage would
     # otherwise widen what a dead reviewer is recorded as having been allowed to touch.
-    return _record_round(story_id, at["card"], path, marker, state, at, salvage=True)
+    return _record_round(story_id, at["card"], path, marker, state, at, launch, salvage=True)
 
 
 def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:

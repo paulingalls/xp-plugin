@@ -14,7 +14,7 @@ import lifecycle as lc
 import milestone
 import overlap
 import stages
-from close import config_flat, default_branch, fail, git, sprint_unrecorded_notice, story_card
+from close import config_flat, default_branch, fail, git, story_card
 from env import record_sprint_branch, refuse_direct_invocation, sprint_branch
 from falsifier_batch import (
     batch_refusal,
@@ -26,6 +26,16 @@ from falsifier_batch import (
     triage_notes,
     unavailable_coverage,
     validated_coverage,
+)
+from review_artifacts import (
+    notice as artifact_notice,
+)
+from review_artifacts import (
+    restore_sprint_queue,
+    sprint_paths,
+)
+from review_artifacts import (
+    rotate as rotate_artifacts,
 )
 from sprint_bundle import build
 from sprint_state import read_sprint_state, sprint_marker, write_sprint_state
@@ -113,10 +123,10 @@ def cmd_review(sprint_id: str, dry_run: bool) -> int:
     if diff_base and (missing := _shown_diff(sprint_id, diff_base, head)[1]):
         return fail(missing)
 
-    # The notice's precondition is a review that recorded no round. A resumed round IS
-    # recorded, and these reports are this run's INPUT, not what it is about to unlink.
-    if not (dry_run or resume) and (left := sprint_unrecorded_notice(sprint_id, round_n)):
-        print("warning: " + left, file=sys.stderr)  # every leg below unlinks its own
+    if not (dry_run or resume):
+        moves = rotate_artifacts(sprint_paths(sprint_id, round_n))
+        if left := artifact_notice(moves, f"close.py sprint {sprint_id} salvage"):
+            print("warning: " + left, file=sys.stderr)
 
     ran, reports = [], []
 
@@ -142,9 +152,6 @@ def cmd_review(sprint_id: str, dry_run: bool) -> int:
 
     def leg(stage: str, key: str, extra: list, charter: str = "") -> tuple[dict, str]:
         path = review.sprint_report_path(sprint_id, key, round_n)
-        if not dry_run:  # a preview must not delete the findings of a refused round
-            path.unlink(missing_ok=True)
-            review.patch_path(path).unlink(missing_ok=True)
         if stage == "fixer":
             extra = [("Your patch", f"PATCH_PATH: {review.patch_path(path)}"), *extra]
         bundle = build(
@@ -264,6 +271,12 @@ def cmd_salvage(sprint_id: str) -> int:
     root = data_root() / "reports" / "sprint"
     shown = f"{sprint_id}.*.round-{round_n}.json"
     paths = sorted(root.glob(f"{glob.escape(sprint_id)}.*.round-{round_n}.json"))
+    if not paths:
+        try:
+            restore_sprint_queue(sprint_id, round_n)
+        except FileExistsError as exc:
+            return fail(f"refused: cannot restore queued sprint artifacts over {exc}")
+        paths = sorted(root.glob(f"{glob.escape(sprint_id)}.*.round-{round_n}.json"))
     recovered, unreadable, prefix, suffix = [], [], f"{sprint_id}.", f".round-{round_n}.json"
     for path in paths:
         report, err = review.read_report(path)
@@ -273,9 +286,11 @@ def cmd_salvage(sprint_id: str) -> int:
             recovered.append((path.name[len(prefix) : -len(suffix)], report))
     if not recovered:
         if unreadable:  # distinct states stay distinct: missing is not unreadable
+            queued = ", ".join(str(path) for path in sprint_paths(sprint_id, round_n + 1))
             return fail(
                 f"refused: every sprint report at {root / shown} is UNREADABLE, not"
                 f" absent: {'; '.join(unreadable)}. Repair or delete them, then review"
+                + (f"; queued artifacts remain at {queued}" if queued else "")
             )
         return fail(
             f"refused: no unrecorded sprint reports for round {round_n}; looked for"

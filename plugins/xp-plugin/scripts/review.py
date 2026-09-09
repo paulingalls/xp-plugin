@@ -282,8 +282,8 @@ def apply_patch(report: Path, card: str) -> str:
         return (
             f"the reviewer proposed {', '.join(bad)} — the Files line does not name it."
             f" The reset undoes the patch in the tree, NOT the patch itself: it survives"
-            f" at {path}, and a relaunched review deletes that file. Copy it if you want"
-            " it, then name the path on the card and review again"
+            f" at {path}; a relaunched review sets it aside for salvage. Name the path"
+            " on the card and review again"
         )
     env = os.environ | {
         "GIT_AUTHOR_NAME": REVIEWER_NAME,
