@@ -362,5 +362,5 @@ def cmd_land(sprint_id: str, dry_run: bool) -> int:
     return 0
 
 
-def cmd_post_merge(sprint_id: str) -> int:
-    return release_post_merge(sprint_id)
+def cmd_post_merge(sprint_id: str, dry_run: bool = False) -> int:
+    return release_post_merge(sprint_id, dry_run=dry_run)

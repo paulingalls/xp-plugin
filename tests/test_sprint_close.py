@@ -9,6 +9,7 @@ import subprocess
 import sys
 import time
 
+from close_dry_run_cases import DroppedDryRunCases
 from close_helpers import launches, stub_reviewer  # noqa: F401
 from sprint_helpers import (  # noqa: F401
     CLOSE,
@@ -73,6 +74,10 @@ def salvage_round(tmp_path, repo, env, number, note):
 
 
 class TestMembership(SprintMembershipCases):
+    pass
+
+
+class TestDroppedDryRuns(DroppedDryRunCases):
     pass
 
 

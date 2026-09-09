@@ -266,7 +266,7 @@ def cmd_review(sprint_id: str, dry_run: bool) -> int:
     return 0
 
 
-def cmd_salvage(sprint_id: str) -> int:
+def cmd_salvage(sprint_id: str, dry_run: bool = False) -> int:
     """Record reports left by a host-killed sprint review as incomplete."""
     import review
 
@@ -277,6 +277,8 @@ def cmd_salvage(sprint_id: str) -> int:
     shown = f"{sprint_id}.*.round-{round_n}.json"
     paths = sorted(root.glob(f"{glob.escape(sprint_id)}.*.round-{round_n}.json"))
     if not paths:
+        if dry_run:
+            return 0
         try:
             restore_sprint_queue(sprint_id, round_n)
         except FileExistsError as exc:
@@ -315,12 +317,14 @@ def cmd_salvage(sprint_id: str) -> int:
         why += "; unreadable artifacts: " + "; ".join(unreadable)
     round_ = {key: list(items) for key, items in seen.items()}
     round_.update(incomplete=why, stages=[stage for stage, _report in recovered])
+    if dry_run:
+        return 0
     review.write_round(marker, state, round_, edit=write_sprint_state)
     print(f"round {round_n} recorded incomplete after {', '.join(round_['stages'])}")
     return fail(f"refused: {why}") if unreadable else 0
 
 
-def cmd_start(sprint_id: str) -> int:
+def cmd_start(sprint_id: str, dry_run: bool = False) -> int:
     plan = plan_path()
     if not plan.exists():
         return fail(f"refused: {missing_plan_refusal()}")
@@ -332,6 +336,8 @@ def cmd_start(sprint_id: str) -> int:
         return fail("refused: open the sprint from its freshly cut branch, not trunk")
     if branch != (expected := f"sprint-{sprint_id.lstrip('0').zfill(3)}"):
         return fail(f"refused: open sprint {sprint_id} from {expected}, not {branch}")
+    if dry_run:
+        return 0
     if not sprint_branch() and (red := lc.run(config_flat(lc.KEY), "sprint-open", sprint_id)):
         return fail(red)
     opening = record_sprint_branch(branch)
@@ -473,10 +479,10 @@ def cmd_land(sprint_id: str, dry_run: bool) -> int:
     return sprint_land.cmd_land(sprint_id, dry_run)
 
 
-def cmd_post_merge(sprint_id: str) -> int:
+def cmd_post_merge(sprint_id: str, dry_run: bool = False) -> int:
     import sprint_land
 
-    return sprint_land.cmd_post_merge(sprint_id)
+    return sprint_land.cmd_post_merge(sprint_id, dry_run)
 
 
 if __name__ == "__main__":

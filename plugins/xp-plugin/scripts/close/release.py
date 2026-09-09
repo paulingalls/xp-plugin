@@ -60,7 +60,11 @@ def version_refusal(version: str, names: list[str] | None = None) -> str:
 
 
 def cmd_post_merge(
-    release_id: str, merged_branch: str = "", part: str = "minor", retire_sprint: bool = True
+    release_id: str,
+    merged_branch: str = "",
+    part: str = "minor",
+    retire_sprint: bool = True,
+    dry_run: bool = False,
 ) -> int:
     if (head := git("rev-parse", "--abbrev-ref", "HEAD").stdout.strip()) != (
         trunk := default_branch()
@@ -89,6 +93,8 @@ def cmd_post_merge(
     checked = version_files()
     if refusal := version_refusal(version, checked):
         return fail(refusal)
+    if dry_run:
+        return 0
     if retire_sprint and (red := lc.run(config_flat(lc.KEY), "sprint-close", release_id)):
         return fail(red)
     if git("tag", version, check=False).returncode:

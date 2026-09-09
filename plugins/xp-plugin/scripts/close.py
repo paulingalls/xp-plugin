@@ -356,7 +356,7 @@ def cmd_review(story_id: str, dry_run: bool = False) -> int:
     return _record_round(story_id, card, path, marker, state, at, launch)
 
 
-def cmd_salvage(story_id: str) -> int:
+def cmd_salvage(story_id: str, dry_run: bool = False) -> int:
     """Record a killed reviewer's patch and report, never reviewer commits."""
     import review
 
@@ -370,6 +370,8 @@ def cmd_salvage(story_id: str) -> int:
     canonical = review.launch_marker(story_id)
     launch = canonical if canonical.exists() else story_sidecar(path)
     if not launch.exists():
+        if dry_run:
+            return 0
         try:
             restore_story_queue(story_id, round_n)
         except FileExistsError as exc:
@@ -403,6 +405,8 @@ def cmd_salvage(story_id: str) -> int:
     # at["card"] and never the fresh card _preflight returns: the marker's copy is what
     # the reviewer was shown, and a card edited between the kill and the salvage would
     # otherwise widen what a dead reviewer is recorded as having been allowed to touch.
+    if dry_run:
+        return 0
     return _record_round(story_id, at["card"], path, marker, state, at, launch, salvage=True)
 
 
@@ -446,32 +450,32 @@ def main() -> int:
         import free
 
         if a.action == "start":
-            return free.cmd_start(a.slug)
+            return free.cmd_start(a.slug, a.dry_run)
         if a.action == "review":
             return free.cmd_review(a.slug, a.dry_run)
         if a.action == "salvage":
-            return free.cmd_salvage(a.slug)
+            return free.cmd_salvage(a.slug, a.dry_run)
         if a.action == "land":
             return free.cmd_land(a.slug, a.dry_run)
-        return free.cmd_post_merge(a.slug)
+        return free.cmd_post_merge(a.slug, a.dry_run)
     if a.kind == "sprint":
         import sprint_close
 
         if a.action == "start":
-            return sprint_close.cmd_start(a.sprint_id)
+            return sprint_close.cmd_start(a.sprint_id, a.dry_run)
         if a.action == "review":
             return sprint_close.cmd_review(a.sprint_id, a.dry_run)
         if a.action == "salvage":
-            return sprint_close.cmd_salvage(a.sprint_id)
+            return sprint_close.cmd_salvage(a.sprint_id, a.dry_run)
         if a.action == "land":
             return sprint_close.cmd_land(a.sprint_id, a.dry_run)
         if a.action == "milestone-done":
             return sprint_close.milestone.cmd_done(a.sprint_id, a.dry_run)
-        return sprint_close.cmd_post_merge(a.sprint_id)
+        return sprint_close.cmd_post_merge(a.sprint_id, a.dry_run)
     if a.action == "review":
         return cmd_review(a.story_id, a.dry_run)
     if a.action == "salvage":
-        return cmd_salvage(a.story_id)
+        return cmd_salvage(a.story_id, a.dry_run)
     mode = a.merge_mode or ("local" if integration_target() != default_branch() else "pr")
     return cmd_land(a.story_id, mode, a.dry_run)
 
