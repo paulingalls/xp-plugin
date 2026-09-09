@@ -58,7 +58,7 @@ def move(sprint_id, done=False):
     return ""
 
 
-def cmd_done(sprint_id):
+def cmd_done(sprint_id, dry_run=False):
     if not (path := plan_path()).exists():
         return fail(f"refused: {missing_plan_refusal()}")
     if not (found := candidate(path.read_text(), sprint_id)):
@@ -75,6 +75,9 @@ def cmd_done(sprint_id):
     for command in commands:
         if red := overlap.run_one("Done when:", command):
             return fail(red)
+    if dry_run:
+        print(f"milestone ready: {found.heading.strip()} (dry-run; status unchanged)")
+        return 0
     if red := move(sprint_id, done=True):
         return fail(red)
     print(f"milestone done: {found.heading.strip()}")
