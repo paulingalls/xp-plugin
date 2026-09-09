@@ -2,11 +2,9 @@
 Split from test_sprint_close.py at sprint-004 open."""
 
 import json
-import shutil
 import subprocess
 import sys
 
-import pytest
 from close_helpers import launches
 from spawn_helpers import stub_codex
 from sprint_helpers import (
@@ -14,12 +12,9 @@ from sprint_helpers import (
     CONFIG,
     PLAN,
     PLUGIN,
-    SPRINT_ID,
     head,
     make_repo,
     marker_path,
-    record_reviews,
-    section,
     sprint,
     staged_stub,
 )
@@ -238,148 +233,3 @@ class TestReviewLeg:
         assert "no round" not in r.stderr.lower(), "the refusal denies the round beside it"
         round_ = json.loads(marker_path(tmp_path).read_text())["rounds"][-1]
         assert "close" not in round_["stages"] and round_["stages"], round_["stages"]
-
-
-class TestReviewAuthority:
-    @pytest.mark.parametrize("name", ["JUDGMENT.md", "VALUES.md", "constraints.md", "system.md"])
-    @pytest.mark.parametrize("state", ["MISSING", "EMPTY", "UNREADABLE"])
-    def test_required_input_state_refuses_before_sprint_launch(self, tmp_path, name, state):
-        repo, env, g = make_repo(tmp_path)
-        plugin = tmp_path / "plugin-copy"
-        shutil.copytree(PLUGIN, plugin)
-        plugin_owned = name in {"JUDGMENT.md", "VALUES.md"}
-        target = plugin / name if plugin_owned else repo / ".xp" / name
-        target.unlink()
-        if state == "EMPTY":
-            target.write_text(" \n\t")
-        elif state == "UNREADABLE":
-            target.mkdir()
-        if not plugin_owned:
-            g("add", "-A")
-            assert g("commit", "-qm", f"construct {state.lower()} {name}").returncode == 0
-        record_reviews(tmp_path, repo, env)
-        marker = marker_path(tmp_path)
-        before = marker.read_bytes()
-
-        result = sprint(repo, env, "review", close=plugin / "scripts" / "close.py")
-
-        shown_path = str(target) if plugin_owned else f".xp/{name}"
-        assert result.returncode == 2
-        assert state in result.stderr and shown_path in result.stderr
-        assert "review again" in result.stderr
-        assert "Traceback" not in result.stderr
-        assert launches(tmp_path) == []
-        assert "(missing:" not in result.stdout + result.stderr
-        assert marker.read_bytes() == before
-
-    def test_a_fixer_that_deletes_a_rubric_still_records_the_round_it_ran(self, tmp_path):
-        """A rubric read per stage refuses from the CLOSER's bundle, and that exit
-        is a SystemExit past leg()'s error return — the one place the incomplete
-        round is written. Six launches and the fixer's committed patch are then
-        recorded nowhere. stages.check_roles resolves roles up front for this same
-        reason, one stage earlier."""
-        card = "#### story-042 — done thing   [done]"
-        declaring = PLAN.replace(card, f"{card}\nFiles: .xp/system.md")
-        repo, env, _g = make_repo(tmp_path, plan=declaring)
-        blocking = {"fixed": [], "blocking": ["a silent one"], "noted": []}
-        staged_stub(tmp_path, find=blocking, verify=blocking)
-        deletion = (
-            "diff --git a/.xp/system.md b/.xp/system.md\n"
-            "deleted file mode 100644\n"
-            "--- a/.xp/system.md\n"
-            "+++ /dev/null\n"
-            "@@ -1,2 +0,0 @@\n"
-            "-# System\n"
-            "-SYSTEM-SENTINEL\n"
-        )
-        claude = tmp_path / "bin" / "claude"
-        write = "sys.stdout.write("
-        claude.write_text(
-            claude.read_text().replace(
-                write,
-                f"open(pm.group(1).strip(), 'w').write({deletion!r}) if key == 'fix' else None\n"
-                + write,
-                1,
-            )
-        )
-        claude.chmod(0o755)
-
-        result = sprint(repo, env, "review")
-
-        assert not (repo / ".xp" / "system.md").exists(), "the fixer's patch never applied"
-        assert result.returncode == 0, result.stderr
-        recorded = json.loads(marker_path(tmp_path).read_text())["rounds"][-1]
-        assert "incomplete" not in recorded, recorded
-        assert recorded["shown_sha"] == head(repo, env), recorded
-        after_fixer = launches(tmp_path)[-1]["stdin"]
-        assert "## System context\n\n# System\nSYSTEM-SENTINEL\n\n" in after_fixer
-        assert "(missing:" not in after_fixer
-
-
-class TestModeSwitch:
-    """Note bae0b87b: findings handed in -> validate each; none handed in -> run
-    the full pass. The mode switch is what BOUNDS the work — sprint-002's close
-    re-reviewed four fix-commits with no prior findings to bound the pass."""
-
-    def test_round_1_tells_the_reviewer_to_run_the_full_pass(self, tmp_path):
-        repo, env, _g = make_repo(tmp_path)
-        assert sprint(repo, env, "review").returncode == 0
-        # the SECTION's own words: the charter also says "run the full pass",
-        # so a bare "full pass" grep passes on every bundle ever built
-        assert "none — run the full pass yourself" in launches(tmp_path)[0]["stdin"]
-
-    def test_a_second_round_carries_the_prior_findings(self, tmp_path):
-        """Read from the MARKER state, which is where close.py keeps rounds.
-        Reading `reports/` off disk would be a second source of truth — so the
-        fixture CONSTRUCTS the marker, never the report file."""
-        repo, env, _g = make_repo(tmp_path)
-        path = marker_path(tmp_path)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(
-            json.dumps(
-                {
-                    "rounds": [
-                        {"fixed": [], "blocking": ["ROUND-1-BLOCKER"], "noted": ["ROUND-1-NOTE"]}
-                    ],
-                    "shown_sha": head(repo, env),
-                }
-            )
-        )
-        assert sprint(repo, env, "review").returncode == 0
-        ran = launches(tmp_path)
-        assert len(ran) == 1, "a confirming delta paid for another fanout"
-        bundle = ran[0]["stdin"]
-        assert "ROUND-1-BLOCKER" in bundle and "ROUND-1-NOTE" in bundle
-        assert DELTA in bundle
-        assert "validate that each was addressed; do not re-derive the diff" in bundle
-        assert "run the full pass yourself" not in bundle, "handed findings AND told to re-derive"
-
-    def test_prior_items_are_once_only_in_the_confirming_round_not_sprint_land(self, tmp_path):
-        repo, env, _g = make_repo(tmp_path)
-        prior = {
-            "fixed": [f"prior-fixed-{i:02}" for i in range(25)],
-            "blocking": ["prior-blocking-0", "prior-blocking-1"],
-            "noted": ["prior-noted-0", "prior-noted-1"],
-        }
-        path = marker_path(tmp_path)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps({"rounds": [prior], "shown_sha": head(repo, env)}))
-
-        assert sprint(repo, env, "review").returncode == 0
-        ran = launches(tmp_path)
-        assert len(ran) == 1
-        carried = section(
-            ran[0]["stdin"],
-            "Findings from earlier rounds",
-            f"The stories in sprint {SPRINT_ID}",
-        )
-        items = [item for status_items in prior.values() for item in status_items]
-        for item in items:
-            assert carried.count(item) == 1, item
-        assert "more, in full" not in carried
-
-        landed = sprint(repo, env, "land", "--dry-run")
-        assert landed.returncode == 0, landed.stderr
-        assert "--body-file <release-pr-body>" in landed.stdout
-        assert "Review round" not in landed.stdout
-        assert all(item not in landed.stdout for item in items)

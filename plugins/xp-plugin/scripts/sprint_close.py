@@ -13,7 +13,6 @@ import close as story_close
 import lifecycle as lc
 import milestone
 import overlap
-import plan_writer
 import stages
 from close import config_flat, default_branch, fail, git, sprint_unrecorded_notice, story_card
 from env import record_sprint_branch, refuse_direct_invocation, sprint_branch
@@ -29,6 +28,7 @@ from falsifier_batch import (
     validated_coverage,
 )
 from sprint_bundle import build
+from sprint_state import read_sprint_state, sprint_marker, write_sprint_state
 from work import (
     config_block_value,
     data_root,
@@ -44,42 +44,6 @@ sprint_stories = milestone.sprint_stories
 
 def sprint_cards(plan: str, sprint_id: str) -> str:
     return "\n".join(story_card(plan, ln.split()[1])[0] for ln in sprint_stories(plan, sprint_id))
-
-
-def sprint_marker(sprint_id: str) -> Path:
-    d = data_root() / "markers" / "sprint"
-    d.mkdir(parents=True, exist_ok=True)
-    return d / f"{sprint_id}.json"
-
-
-def read_sprint_state(sprint_id: str) -> tuple[Path, dict, str]:
-    path = sprint_marker(sprint_id)
-    if not path.exists():
-        return path, {}, ""
-    try:
-        state = json.loads(path.read_text())
-    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
-        return path, {}, f"refused: unreadable sprint marker {path}: {exc}"
-    if not isinstance(state, dict):
-        return path, {}, f"refused: unreadable sprint marker {path}: expected a JSON object"
-    return path, state, ""
-
-
-def write_sprint_state(path: Path, changes, remove=()) -> dict:
-    def update(current: dict) -> None:
-        if callable(changes):
-            changes(current)
-        else:
-            rounds = current.setdefault("rounds", []) if changes.get("rounds") else []
-            for round_ in changes.get("rounds", []):
-                if round_ not in rounds:
-                    rounds.append(round_)
-            current.update({key: value for key, value in changes.items() if key != "rounds"})
-            for key in remove:
-                current.pop(key, None)
-
-    lock = data_root() / "locks" / f"sprint-{path.stem}.lock"
-    return plan_writer.locked_json_edit(path, lock, update, "sprint marker")
 
 
 def cmd_review(sprint_id: str, dry_run: bool) -> int:
