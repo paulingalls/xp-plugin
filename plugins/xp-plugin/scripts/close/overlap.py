@@ -47,12 +47,22 @@ def land_refusal(state: dict, key: str, base: str) -> str:
     question every land leg asks, in ONE implementation. `key` is the leg's own
     spelling of its review command, which is all that legitimately differs."""
     rerun = f"Run `close.py {key} review`"
-    if state.get("review_base") != base:
-        return (
-            f"refused: the recorded round did not cover this tree — it was based on"
-            f" {str(state.get('review_base'))[:8]}, today's merge base is {base[:8]}."
-            f" {rerun}"
-        )
+    recorded = state.get("review_base")
+    if recorded != base:
+        if (
+            not isinstance(recorded, str)
+            or git("merge-base", "--is-ancestor", recorded, base, check=False).returncode
+        ):
+            return (
+                f"refused: the recorded round did not cover this tree — it was based on"
+                f" {str(recorded)[:8]}, today's merge base is {base[:8]}. {rerun}"
+            )
+        if hit := sorted(_files(f"{recorded}..{base}") & _files(f"{base}..HEAD")):
+            listed = "\n  ".join(hit)
+            return (
+                "refused: trunk moved after the recorded round and changed files the"
+                f" story also changed:\n  {listed}\n{rerun}"
+            )
     shown = state.get("shown_sha", git("rev-parse", "HEAD").stdout.strip())
     if git("merge-base", "--is-ancestor", shown, "HEAD", check=False).returncode:
         return (
