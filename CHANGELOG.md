@@ -4,6 +4,35 @@ Release notes started at v0.6.0; earlier entries are summarized from their
 tag and merge messages. Full detail lives in the merge history and the
 per-sprint review reports.
 
+## v0.23.0 — nothing breaks a consuming project in silence
+
+Milestone 12. Five defects that a consuming project would have hit without being
+told, and one that would have cost it a rule.
+
+The SessionStart banner names the plugin's absolute path once instead of twice,
+which halves the profile's cost per path character and raises the derived
+constraints allowance to 4,576 bytes — a project whose `.xp/constraints.md` sits
+at the shipped 4,500-character cap now has it delivered whole, where before it
+lost a rule at a long checkout path.
+
+`close.py sprint <id> milestone-done --dry-run` no longer performs the close it
+previews. The flag was parsed and dropped, so a preview closed the milestone and
+the real run that followed refused as already-done.
+
+A relaunched review no longer destroys the artifacts `salvage` exists to record.
+Unrecorded reports and patches are rotated aside rather than unlinked, on both
+the story and sprint paths, and a round recorded out of order can neither clear
+a live blocking finding nor be cleared by one that never saw it.
+
+A `Worktree bootstrap` declaration written as a markdown heading is now refused
+loudly, naming the offending line and the one-line shape that works. It used to
+be skipped in silence, byte-identical to having no bootstrap at all, which left
+a spawned executor in a worktree with no dependencies installed and nothing said.
+
+`SessionStart` now warns before truncation when a project's constraints exceed
+the derived budget, naming the overage and the remedy. The git-hook wall is
+unchanged: a project between the two limits still commits.
+
 ## v0.22.1 — the running plugin owns its pin
 
 After an upgraded plugin is reloaded in an existing lead session, its next Stop

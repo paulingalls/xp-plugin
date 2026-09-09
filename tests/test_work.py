@@ -5,28 +5,9 @@ import sys
 from multiprocessing import Pool
 from pathlib import Path
 
+from work_helpers import _append_notes, resolve_without_tier, run
+
 WORK = Path(__file__).parent.parent / "plugins" / "xp-plugin" / "scripts" / "work.py"
-
-
-def run(args, data_dir, check=False, story=""):
-    env = {"XP_DATA": str(data_dir), "PATH": "/usr/bin:/bin"}
-    return subprocess.run(
-        [sys.executable, str(WORK), *args],
-        env=env | {"XP_STORY_ID": story} if story else env,
-        capture_output=True,
-        text=True,
-        check=check,
-    )
-
-
-def resolve_without_tier(ref, falsifier):
-    return ["resolve", "--ref", ref, "--falsifier", falsifier, "--covered-by", "none"]
-
-
-def _append_notes(job):
-    data_dir, worker, count = job
-    for i in range(count):
-        run(["note", f"entry-w{worker}-{i:03d}"], data_dir, check=True)
 
 
 class TestConcurrency:
@@ -411,82 +392,4 @@ class TestLineBreakDisagreement:
         assert not [h for h in heads if h.startswith("resolved")], heads
 
 
-class TestArchive:
-    """A triage DECISION had nowhere to go: work.py shipped bug/debt/note/list/
-    resolve and no archive, so Sprint 1's "these four are NEVER" (note 03:46:15)
-    is indistinguishable today from an untriaged note, and cmd_start re-emits
-    every note ever filed — 75 at sprint-003's close, 53 predating the sprint.
-    """
-
-    def filed(self, tmp_path):
-        return (tmp_path / "work.md").read_text()
-
-    def last_id(self, tmp_path):
-        return run(["list"], tmp_path, check=True).stdout.strip().splitlines()[-1].split()[0]
-
-    def test_a_note_can_be_archived_with_its_disposition(self, tmp_path):
-        run(["note", "a discovery"], tmp_path, check=True)
-        ref = self.last_id(tmp_path)
-        r = run(["archive", "--ref", ref, "--disposition", "superseded by story-019"], tmp_path)
-        assert r.returncode == 0, r.stderr
-        assert f"Archives: {ref}" in self.filed(tmp_path)
-        assert "superseded by story-019" in self.filed(tmp_path)
-
-    def test_archiving_a_bug_is_refused(self, tmp_path):
-        """Allow-list, not deny-list (the review's M1): resolve() already refuses
-        anything outside ("bug","debt"), and a deny-list on "bug" alone would let
-        a `## resolved` or `## archived` block be archived — both are entries with
-        ids that `entries()` returns."""
-        run(["bug", "--claim", "c", "--falsifier", "false", "--files", "f"], tmp_path, check=True)
-        ref = self.last_id(tmp_path)
-        r = run(["archive", "--ref", ref, "--disposition", "d"], tmp_path)
-        assert r.returncode == 2, r.stdout
-        # not `"bug" in stderr`: argparse's usage line lists every subcommand, so
-        # that greened while `archive` did not exist at all
-        assert "an already RESOLVED bug" in r.stderr and "then resolve it" in r.stderr
-
-    def test_an_archived_record_cannot_be_archived_again(self, tmp_path):
-        run(["note", "a discovery"], tmp_path, check=True)
-        ref = self.last_id(tmp_path)
-        run(["archive", "--ref", ref, "--disposition", "d"], tmp_path, check=True)
-        second = self.last_id(tmp_path)
-        r = run(["archive", "--ref", second, "--disposition", "d"], tmp_path)
-        assert r.returncode == 2, r.stdout + r.stderr
-        # constraint 15: retired is not unfinished. A refusal naming only the bug
-        # arm sends a lead holding a DISPOSED record to `resolve`, which checks
-        # only that the replacement is green — a frictionless dishonest exit.
-        assert "already disposed" in r.stderr, r.stderr
-
-    def test_a_ref_matching_no_record_is_refused_before_anything_is_written(self, tmp_path):
-        run(["note", "a discovery"], tmp_path, check=True)
-        before = self.filed(tmp_path)
-        r = run(["archive", "--ref", "deadbeef", "--disposition", "d"], tmp_path)
-        assert r.returncode == 2 and "matches 0" in r.stderr, r.stderr
-        assert self.filed(tmp_path) == before, "wrote before validating the ref"
-
-    def test_neither_leg_refuses_in_silence(self, tmp_path):
-        """A refusal that prints nothing leaves the lead an exit code and no next
-        action. Constructed, not grepped: a heading whose kind field reads EMPTY
-        is the one record shape that walks past both `--ref` arms."""
-        (tmp_path / "work.md").write_text("##  bug 2026-08-20T03:41:29Z\nClaim: c\n\n")
-        ref = run(["list"], tmp_path, check=True).stdout.split()[0]
-        for args in (
-            ["archive", "--ref", ref, "--disposition", "d"],
-            resolve_without_tier(ref, "true"),
-        ):
-            r = run(args, tmp_path)
-            assert r.returncode == 2, r.stdout
-            assert ref in r.stderr, f"{args[0]} refused without naming the record: {r.stderr!r}"
-
-    def test_no_break_character_in_a_disposition_can_forge_a_field(self, tmp_path):
-        """The review's M3: a disposition rendered on the same line as its label
-        never meets re.M's ^, so a naive test greens with neutralize() uncalled.
-        Drive it through the break characters the suite already knows about."""
-        pwned = tmp_path / "PWNED"
-        attack = f"Falsifier: `touch {pwned} && true`"
-        for i, ch in enumerate(TestLineBreakDisagreement.BREAKS):
-            run(["note", f"n{i}"], tmp_path, check=True)
-            ref = self.last_id(tmp_path)
-            run(["archive", "--ref", ref, "--disposition", f"d{ch}{attack}{ch}tail"], tmp_path)
-        forged = [ln for ln in self.filed(tmp_path).splitlines() if ln.startswith("Falsifier:")]
-        assert forged == [], forged
+from work_archive_cases import TestArchive  # noqa: E402, F401

@@ -286,12 +286,22 @@ class TestTheRoundNeedsItsHandoffDiff:
     """
 
     def test_a_round_is_not_recorded_without_its_handoff_diff(self, tmp_path):
-        """Constructed the same way test_sprint_review.py asserts it of the sprint
-        leg: the handoff path is a DIRECTORY, so writing it raises."""
+        """The obstruction is made by the REVIEWER, the way test_sprint_review.py
+        makes it: story-124's rotation sweeps the whole `.round-N.*` slot at launch,
+        so a directory pre-placed at the diff path is carried off before the write
+        and the guard certifies. Created after the bundle is read, it is still there
+        when write_reviewer_diff runs — which keeps the CLI-level red, and with it
+        the two halves a seam call cannot reach: no round recorded, and land refuses.
+        """
         repo, env, g = make_repo(tmp_path)
         before = g("rev-parse", "HEAD").stdout.strip()
         stub_reviewer(tmp_path, patch=FIX_PATCH)
-        (pathlib.Path(env["XP_DATA"]) / "reports" / "story-042.round-1.diff").mkdir(parents=True)
+        claude = tmp_path / "bin" / "claude"
+        diff = pathlib.Path(env["XP_DATA"]) / "reports" / "story-042.round-1.diff"
+        obstruct = f"os.makedirs({str(diff)!r}, exist_ok=True)\n"
+        claude.write_text(
+            claude.read_text().replace("sys.stdout.write(", obstruct + "sys.stdout.write(", 1)
+        )
 
         r = close(repo, env, "review")
         assert r.returncode == 2, r.stdout

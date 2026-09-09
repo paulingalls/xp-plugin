@@ -193,7 +193,10 @@ class InstallProbeCases:
         assert result.returncode == 0
         assert "refused:" not in output
         assert "plugin root moved from" in output
-        assert "[environment notice shortened]" in output
+        # NOT "[environment notice shortened]": whether the notice is cut depends on
+        # tmp_path's ambient length, so that assertion reports the machine. What the
+        # move must always publish is the root it moved TO (story-131's property).
+        assert str(running) in output
         assert "installed 0.21.4" in output and "running 0.22.0" in output
         assert json.loads(env_path.read_text()) == {
             "plugin_root": str(running),

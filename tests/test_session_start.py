@@ -1,8 +1,10 @@
 """story-003: SessionStart hook. Verify: pytest -q tests/test_session_start.py"""
 
+import ast
 import json
 import os
 import pty
+import shlex
 import shutil
 import subprocess
 import sys
@@ -13,13 +15,28 @@ from session_start_helpers import HOOK, HOOKS_JSON, run_hook, run_hook_as, run_r
 from session_start_install_cases import EnvRefreshCases, InstallProbeCases
 
 
+def banner_line(output):
+    return next(line for line in output.splitlines() if " · recover: " in line)
+
+
+def banner_recovery_executable(output):
+    command = banner_line(output).partition(" · recover: ")[2].partition(" · scripts: ")[0]
+    return Path(shlex.split(command)[1])
+
+
+def banner_scripts_directory(output):
+    first = output.splitlines()[0]
+    if " · recover: " in first:
+        return banner_recovery_executable(output).parent
+    notice = next(line for line in output.splitlines() if "plugin root moved from" in line)
+    return Path(ast.literal_eval(notice.rpartition(" to ")[2])) / "scripts"
+
+
 def run_banner_script(output, cwd, data_dir, script="work.py env"):
-    prefix = next(
-        line.partition(" · scripts: ")[2] for line in output.splitlines() if " · scripts: " in line
-    )
+    requested = shlex.split(script)
+    executable = banner_scripts_directory(output) / requested[0]
     return subprocess.run(
-        prefix + script,
-        shell=True,
+        [sys.executable, str(executable), *requested[1:]],
         cwd=cwd,
         capture_output=True,
         text=True,
@@ -98,6 +115,34 @@ class TestInjection:
         invoked = run_banner_script(r.stdout, repo, tmp_path)
         assert invoked.returncode == 0 and invoked.stdout.strip() == str(HOOK.parent.parent)
 
+    def test_banner_names_the_plugin_root_exactly_once(self, tmp_path):
+        repo, _g = xp_repo(tmp_path)
+        line = banner_line(run_hook(repo, tmp_path).stdout)
+        assert line.count(str(HOOK.parent.parent)) == 1
+
+    def test_banner_locates_spawn_and_close(self, tmp_path):
+        repo, _g = xp_repo(tmp_path)
+        output = run_hook(repo, tmp_path).stdout
+        line = banner_line(output)
+        scripts = banner_recovery_executable(output).parent
+        assert scripts == HOOK.parent
+        for name in ("spawn.py", "close.py"):
+            assert name in line
+            assert (scripts / name).is_file()
+
+    def test_a_failed_env_refresh_keeps_the_root_the_banner_trim_would_take(self, tmp_path):
+        """The trim spends one path copy against the notice that replaces it. A
+        refresh FAILURE names env.json and NOT the root, so with only one copy left
+        there is nothing to spend and the lead loses the path entirely."""
+        repo, _g = xp_repo(tmp_path)
+        (tmp_path / "xp" / "env.json").mkdir(parents=True)  # write_env raises on a directory
+        output = run_hook(repo, tmp_path).stdout
+        notice = next(line for line in output.splitlines() if "refresh FAILED" in line)
+        assert str(HOOK.parent.parent) not in notice, "the notice republished the root after all"
+        assert banner_line(output).count(str(HOOK.parent.parent)) == 1
+        ran = run_banner_script(output, repo, tmp_path, "session_start.py recover")
+        assert ran.returncode == 0 and "branch: main" in ran.stdout, ran.stderr
+
     def test_banner_invocation_follows_a_moved_plugin_root(self, tmp_path):
         repo, _g = xp_repo(tmp_path)
         banners = []
@@ -118,6 +163,10 @@ class TestInjection:
                     "XP_DATA": str(tmp_path / "xp"),
                 },
             )
+            # Which FIELD survives the trim depends on whether the notice republished
+            # the root; that it is published SOMEWHERE does not, and reading the
+            # ambient path length to guess the branch reports the machine (constraint 11).
+            assert str(plugin) in result.stdout, "the moved root is published nowhere"
             invoked = run_banner_script(result.stdout, repo, tmp_path, "banner_probe.py")
             assert invoked.returncode == 0 and invoked.stdout.strip() == str(probe)
             banners.append(result.stdout.splitlines()[0])

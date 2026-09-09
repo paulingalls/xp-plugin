@@ -17,6 +17,31 @@ MISSING_RECEIPT = object()
 _RECEIPT_KEYS = {"tier", "command", "tree", "head", "verdict", "ran_by", "reused"}
 
 
+def unresolved_blocking(state: dict) -> list:
+    """Blocking findings nothing has cleared.
+
+    List position stopped answering this when salvage began inserting an older
+    attempt at its chronological place. A salvaged round is an attempt recorded
+    OUT OF ORDER: it never saw the rounds already recorded, and they never saw
+    it. So it clears nothing, and nothing already recorded clears it. What does
+    clear it is a round LAUNCHED after it was queued, whose bundle carried its
+    findings — and `round_file` is that order: every launch takes the next free
+    round number, and rotation pushes an unrecorded attempt above it. A salvage
+    carrying no round_file cannot be placed, so it stays unresolved; refusing is
+    loud and a lead can review again, landing over a finding is neither.
+    """
+    rounds = state.get("rounds") or []
+    live = [r for r in rounds if not r.get("salvaged")]
+    current = live[-1] if live else {}
+    latest = current.get("round_file") or 0
+    return list(current.get("blocking") or []) + [
+        f
+        for r in rounds
+        if r.get("salvaged") and (r.get("round_file") or latest + 1) > latest
+        for f in r.get("blocking") or []
+    ]
+
+
 def land_refusal(state: dict, key: str, base: str) -> str:
     """Whether the recorded round describes the tree in front of us — the whole
     question every land leg asks, in ONE implementation. `key` is the leg's own
@@ -35,7 +60,7 @@ def land_refusal(state: dict, key: str, base: str) -> str:
             " the reviewer's commits are not in what would merge, so the recorded"
             f" round describes no tree. {rerun}"
         )
-    if blocking := state["rounds"][-1]["blocking"]:
+    if blocking := unresolved_blocking(state):
         return (
             "refused: the last review round left blocking findings:\n  "
             + "\n  ".join(blocking)

@@ -12,7 +12,14 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 sys.path.insert(0, str(Path(__file__).parent / "session_start"))
 from env import plugin_manifest_value, plugin_version, refresh_env, run_hook
-from profile_output import BEGIN, END, bound_environment_notice, render
+from profile_output import (
+    BEGIN,
+    END,
+    bound_environment_notice,
+    constraints_budget,
+    constraints_warning,
+    render,
+)
 from sprint import select_sprint, sprint_sections
 from work import data_root, entries, plan_path, record_summary, strip_comment
 
@@ -177,8 +184,8 @@ def _close_detail(record: dict) -> str:
 def _fit(parts: list) -> str:
     """Joined and bounded — dropping the OLDEST parts, never the newest.
 
-    A head-truncating cap loses the last round, which is the one that gated the
-    merge: the only round land ever reads for blocking findings.
+    A head-truncating cap loses the last round, and the round that gated the merge
+    is at the end unless salvage recorded one out of order (overlap.py owns which).
     """
     kept, dropped = list(parts), 0
     while len(" · ".join(kept)) > CLOSE_CAP and len(kept) > 1:
@@ -373,11 +380,10 @@ def banner(root: Path) -> str:
     hooks = "lefthook" if (root / "lefthook.yml").exists() else ""
     hooks = hooks or (".githooks" if (root / ".githooks").is_dir() else "none detected")
     constraints_lines = len(read(root / ".xp" / "constraints.md").splitlines())
-    scripts = shlex.quote(str(PLUGIN_ROOT / "scripts") + "/")
     recover = shlex.quote(str(Path(__file__)))
     return (
         f"xp-plugin {version} · git hooks: {hooks} · constraints.md: {constraints_lines}"
-        f" lines · recover: python3 {recover} recover · scripts: python3 {scripts}"
+        f" lines · recover: python3 {recover} recover · scripts: spawn.py, close.py"
     )
 
 
@@ -425,9 +431,12 @@ def main(data: dict) -> int:
 
     rules = safe(lambda: read(root / ".xp" / "constraints.md"))
     heading = safe(lambda: banner(root))
-    if refresh:  # the notice must be PAID FOR: the profile budget has no headroom to spare
-        _before, scripts, invocation = heading.partition(" · scripts: ")
-        heading = heading.partition(" · ")[0] + scripts + invocation
+    if refresh:  # the notice must be PAID FOR, and only the copy it republishes is spare:
+        # a refresh FAILURE names env.json, not the root, and a shortened move notice
+        # can lose the root it was cutting to. Ask the rendered notice, not its shape.
+        delimiter = " · scripts: " if str(PLUGIN_ROOT) in environment else " · recover: "
+        _before, field, invocation = heading.partition(delimiter)
+        heading = heading.partition(" · ")[0] + field + invocation
     regions = [
         ("banner", heading),
         ("config notice", safe(lambda: config_age(root))),
@@ -440,6 +449,12 @@ def main(data: dict) -> int:
         ("constraints.md", rules),
         ("", END),
     ]
+    budget = constraints_budget(regions, cap=OUTPUT_CAP)
+    size = len(rules.encode())
+    if size > budget:
+        at = next(i for i, region in enumerate(regions) if region[0] == "constraints.md")
+        warning = constraints_warning(size - budget, budget)
+        regions.insert(at, ("constraints budget warning", warning))
     print(render(regions, rules, cap=OUTPUT_CAP))
     return 0
 

@@ -149,6 +149,30 @@ class TestBootstrap:
         tree = tmp_path / "data" / "worktrees" / "story-042"
         assert not (tree / "not-a-bootstrap").exists()
 
+    def test_a_heading_bootstrap_refuses_naming_the_declaration(self, tmp_path):
+        repo, env, _g = make_repo(tmp_path)
+        rec = stub_claude(tmp_path)
+        sentinel = tmp_path / "heading-next-line-ran"
+        set_system_md(repo, f"### Worktree bootstrap\n`touch {sentinel}`")
+
+        result = spawn(repo, env, "story-042")
+
+        assert not sentinel.exists()
+        assert result.returncode == 2
+        assert "### Worktree bootstrap" in result.stderr
+        assert not rec.exists()
+        assert not (tmp_path / "data" / "worktrees" / "story-042").exists()
+
+    def test_a_prose_bootstrap_mention_stays_absent(self, tmp_path):
+        repo, env, _g = make_repo(tmp_path)
+        rec = stub_claude(tmp_path)
+        set_system_md(repo, "Worktree bootstrap is handled by the devcontainer")
+
+        result = spawn(repo, env, "story-042")
+
+        assert result.returncode == 0
+        assert rec.exists()
+
     @pytest.mark.parametrize("action", ["bootstrap", "teardown"])
     @pytest.mark.parametrize("prefix", ["", "- ", "* "])
     @pytest.mark.parametrize("bold", [False, True])
@@ -170,6 +194,17 @@ class TestBootstrap:
 
         command, problem = worktree_command(f"{label}: `echo ok`", "bootstrap")
         assert not command and "cannot read the Worktree bootstrap label" in problem
+
+    def test_a_section_heading_above_a_readable_line_is_a_duplicate(self):
+        """Widening the collector to catch valueless labels made this shape refuse
+        where it used to run `npm ci`. Pinned as the decision it is: the heading
+        IS a second label, and "never pick one" (bug 90fcd7d4) governs both."""
+        from bookkeep import worktree_command
+
+        system = "## Worktree bootstrap\n\n**Worktree bootstrap**: `npm ci`"
+        command, problem = worktree_command(system, "bootstrap")
+        assert not command and "appears more than once" in problem
+        assert "## Worktree bootstrap" in problem
 
     def test_a_mixed_shape_duplicate_still_refuses(self):
         from bookkeep import worktree_command

@@ -409,3 +409,29 @@ class TestLandNamesEachRoundsOwnDiff:
         assert "round-2.diff" in r.stdout and "round-1.diff" not in r.stdout, (
             "round 2 was disclosed under the killed round's diff name:\n" + r.stdout
         )
+
+    def test_a_salvaged_round_is_disclosed_under_the_diff_it_was_written_as(self, tmp_path):
+        """The third route to the same defect, and the one list index cannot answer.
+        Salvage INSERTS an older attempt at its chronological place, so from there on
+        every later round sits one index past the file rotate_story named it for —
+        `round_file` is the pairing, and nothing drove it through land until here."""
+        repo, env, g = make_repo(tmp_path)
+        stub_reviewer(tmp_path)
+        assert close(repo, env, "review").returncode == 0
+        state = json.loads(marker_file(tmp_path).read_text())
+        start = g("rev-parse", "HEAD").stdout.strip()
+        (repo / "salvaged.py").write_text("SALVAGED = True\n")
+        g("add", "-A")
+        g("commit", "-qm", "REVIEWER-SALVAGED")
+        shown = g("rev-parse", "HEAD").stdout.strip()
+        # the salvaged attempt was queued first but rotation pushed its files to
+        # round-2, while the round recorded in the meantime kept round-1
+        salvaged = {**CLEAN, "reviewed_head": start, "shown_sha": shown}
+        salvaged |= {"salvaged": True, "round_file": 2}
+        live = {**CLEAN, "reviewed_head": shown, "shown_sha": shown, "round_file": 1}
+        marker_file(tmp_path).write_text(json.dumps({**state, "rounds": [salvaged, live], **live}))
+        r = close(repo, env, "land")
+        assert "REVIEWER-SALVAGED" in r.stdout, (r.returncode, r.stdout[-1500:], r.stderr[-1500:])
+        assert "round-2.diff" in r.stdout and "round-1.diff" not in r.stdout, (
+            "the salvaged round was disclosed under the list index, not its own diff:\n" + r.stdout
+        )

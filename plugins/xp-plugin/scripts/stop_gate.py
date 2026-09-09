@@ -23,6 +23,13 @@ def repoint_env() -> bool:
     if os.environ.get("XP_ROLE", "lead") != "lead":
         return False
     try:
+        # NEVER pin a root that close deletes. The role cannot decide this: nothing
+        # ever sets XP_ROLE=lead, so absence is how the lead is identified here and
+        # in close.py and session_start.py, and reading absence as unknown would stop
+        # the lead repointing at all — which is the only writer after a mid-session
+        # plugin reload, since that fires no SessionStart. Durability decides it.
+        if PLUGIN_ROOT.is_relative_to(data_root() / "worktrees"):
+            return False
         running_version = plugin_version(PLUGIN_ROOT)
         if running_version == "unknown":
             return False

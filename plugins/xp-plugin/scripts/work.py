@@ -246,115 +246,6 @@ def _single_line(value: str, field: str) -> bool:
     return True
 
 
-def _record(root: Path, ref: str) -> str | None:
-    matches = [text for eid, text in entries(root) if eid == ref]
-    if len(matches) != 1:
-        print(
-            f"refused: --ref {ref!r} matches {len(matches)} records — a ref that"
-            " names none is a typo, one that names several silences the others.",
-            file=sys.stderr,
-        )
-        return None
-    return matches[0]
-
-
-def _kind_of(root: Path, ref: str) -> str | None:
-    """The referenced record's kind, or None having printed why not — None, so a
-    heading whose kind reads EMPTY still reaches the refusal below that names it."""
-    text = _record(root, ref)
-    return text.split(" ", 2)[1] if text is not None else None
-
-
-def _archived(root: Path, ref: str) -> bool:
-    field = f"Archives: {ref}"
-    return any(
-        field in text.splitlines() and (text.startswith("## archived ") or eid == ref)
-        for eid, text in entries(root)
-    )
-
-
-def _resolved(root: Path, ref: str) -> bool:
-    field = f"Resolves: {ref}"
-    return any(
-        field in text.splitlines() and (text.startswith("## resolved ") or eid == ref)
-        for eid, text in entries(root)
-    )
-
-
-def resolve(root: Path, args: argparse.Namespace) -> int:
-    """Resolve a record by SUBSTITUTING a falsifier, never by deleting one.
-
-    Marking a record done is an unchecked assertion, and one command would
-    silence a live bug forever. The replacement must be green now and the batch
-    runs it, so a wrong resolution reds later and the record reopens.
-    """
-    if (coverage := checked_coverage(args, required=True)) is None:
-        return 2
-    if not _single_line(args.falsifier, "falsifier"):
-        return 2
-    if (kind := _kind_of(root, args.ref)) is None:
-        return 2
-    if kind not in ("bug", "debt"):
-        print(
-            f"refused: {args.ref} is a {kind} — only a bug or a debt carries the"
-            " falsifier a resolution substitutes for, so resolving anything else"
-            " asserts a change no batch will ever honour.",
-            file=sys.stderr,
-        )
-        return 2
-    if _archived(root, args.ref):
-        print(
-            f"refused: {args.ref} is archived — it has left the falsifier batch;"
-            " choose an open bug or debt to resolve.",
-            file=sys.stderr,
-        )
-        return 2
-    if not falsifier_is_green(args.falsifier):
-        print(
-            f"refused: the replacement falsifier reds ({args.falsifier!r}) — a"
-            " resolution asserts the claim no longer holds, so its falsifier must be"
-            " green NOW. If it reds, the record is not resolved.",
-            file=sys.stderr,
-        )
-        return 2
-    print(
-        append(
-            root,
-            f"## resolved {stamp()}\nResolves: {args.ref}\nFalsifier: `{args.falsifier}`\n"
-            f"{coverage}\n",
-        )
-    )
-    return 0
-
-
-def archive(root: Path, args: argparse.Namespace) -> int:
-    """Record a disposition; `compact` later moves its record's durable prose."""
-    if (kind := _kind_of(root, args.ref)) is None:
-        return 2
-    if kind == "bug" and _archived(root, args.ref):
-        print(
-            f"refused: {args.ref} is already archived — choose an undisposed record.",
-            file=sys.stderr,
-        )
-        return 2
-    if kind not in ("debt", "note") and not (kind == "bug" and _resolved(root, args.ref)):
-        print(
-            f"refused: {args.ref} is a {kind} — only a debt, a note or an already"
-            " RESOLVED bug is archivable. Archiving an unresolved bug hides its red"
-            " falsifier: fix it, then resolve it, then archive it. A resolved or"
-            " archived record is already disposed of; choose an open one.",
-            file=sys.stderr,
-        )
-        return 2
-    print(
-        append(
-            root,
-            f"## archived {stamp()}\nArchives: {args.ref}\n{neutralize(args.disposition)}\n\n",
-        )
-    )
-    return 0
-
-
 def edit_card_command(args: argparse.Namespace) -> int:
     from close import story_card
 
@@ -380,6 +271,27 @@ def edit_card_command(args: argparse.Namespace) -> int:
         return 2
     print(f"{args.story_id} card {'updated' if changed else 'unchanged'}")
     return 0
+
+
+def _record(root: Path, ref: str) -> str | None:
+    matches = [text for eid, text in entries(root) if eid == ref]
+    if len(matches) != 1:
+        print(
+            f"refused: --ref {ref!r} matches {len(matches)} records — a ref that"
+            " names none is a typo, one that names several silences the others.",
+            file=sys.stderr,
+        )
+        return None
+    return matches[0]
+
+
+def _disposal():
+    """Imported LATE, not at module load: disposal imports work for its shared
+    helpers, so a top-level import here is a cycle."""
+    sys.path.insert(0, str(Path(__file__).parent / "work"))
+    import disposal
+
+    return disposal
 
 
 def main() -> int:
@@ -431,9 +343,9 @@ def main() -> int:
         print(text, end="" if text.endswith("\n") else "\n")
         return 0
     if args.kind == "archive":
-        return archive(root, args)
+        return _disposal().archive(root, args)
     if args.kind == "resolve":
-        return resolve(root, args)
+        return _disposal().resolve(root, args)
     if args.kind == "note":
         text = args.text
         if len(text) > NOTE_CAP:
