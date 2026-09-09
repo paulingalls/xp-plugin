@@ -14,6 +14,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 REPO = Path(__file__).parent.parent
 MANIFEST = REPO / "plugins" / "xp-plugin" / ".claude-plugin" / "plugin.json"
 sys.path.insert(0, str(REPO / "plugins" / "xp-plugin" / "scripts"))
@@ -116,22 +118,70 @@ def test_a_present_but_malformed_manifest_still_says_unreadable(tmp_path, monkey
     assert "missing" not in bad, bad
 
 
-def test_a_release_that_checked_NO_manifest_says_so(tmp_path, monkeypatch):
-    """version_files ships COMMENTED, so a consuming project's post-merge printed
-    `tagged vX.Y.Z at <sha>` whether the manifest matched or whether nothing had
-    ever looked — the same line for a wall that held and a wall that is absent.
-    Constraint 14's whole failure mode is a release step nothing enforces."""
+def _release_repo(tmp_path, monkeypatch, config, manifest=None):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    git = lambda *a: subprocess.run(  # noqa: E731
+        ["git", *a], cwd=repo, check=True, capture_output=True, text=True
+    )
+    git("init", "-q", "-b", "main")
+    git("config", "user.email", "t@t")
+    git("config", "user.name", "t")
+    (repo / ".xp").mkdir()
+    (repo / ".xp" / "config.yml").write_text(config)
+    if manifest is not None:
+        (repo / "manifest.json").write_text(json.dumps({"version": manifest}))
+    git("add", "-A")
+    git("commit", "-qm", "release tree")
+    git("tag", "v0.1.0")
+    monkeypatch.chdir(repo)
+    return git
+
+
+@pytest.mark.parametrize(
+    "config",
+    [
+        pytest.param(
+            (REPO / "plugins" / "xp-plugin" / "templates" / "config.yml").read_text(),
+            id="shipped-commented-line",
+        ),
+        pytest.param("version_files:\n", id="empty-key"),
+    ],
+)
+def test_post_merge_refuses_unset_or_empty_version_files_before_tagging(
+    tmp_path, monkeypatch, capsys, config
+):
     import sys as _sys
 
     _sys.path.insert(0, str(REPO / "plugins" / "xp-plugin" / "scripts" / "close"))
     import release
 
-    xp = tmp_path / ".xp"
-    xp.mkdir()
-    (xp / "config.yml").write_text("release: sprint\n")
-    monkeypatch.chdir(tmp_path)
-    assert release.version_files() == []
-    assert release.version_refusal("v1.2.3") == "", "no key configured is not a refusal"
+    git = _release_repo(tmp_path, monkeypatch, config)
+    before = git("tag", "--list").stdout
+
+    assert release.cmd_post_merge("fixture", retire_sprint=False) == 2
+
+    assert git("tag", "--list").stdout == before
+    error = capsys.readouterr().err
+    assert "version_files" in error and ".xp/config.yml" in error
+
+
+def test_post_merge_tags_when_every_configured_manifest_matches(tmp_path, monkeypatch):
+    import sys as _sys
+
+    _sys.path.insert(0, str(REPO / "plugins" / "xp-plugin" / "scripts" / "close"))
+    import release
+
+    git = _release_repo(tmp_path, monkeypatch, "version_files: manifest.json\n", manifest="0.2.0")
+    before = set(git("tag", "--list").stdout.splitlines())
+
+    assert release.cmd_post_merge("fixture", retire_sprint=False) == 0
+
+    after = set(git("tag", "--list").stdout.splitlines())
+    assert after - before == {"v0.2.0"}
+    assert (
+        git("rev-list", "-n1", "v0.2.0").stdout.strip() == git("rev-parse", "HEAD").stdout.strip()
+    )
 
 
 def test_a_release_that_DID_check_names_the_manifest_it_checked(tmp_path, monkeypatch):
@@ -206,3 +256,33 @@ def test_sprint_lifecycle_runs_after_validation_and_before_the_retryable_tag(tmp
     ]
     assert git("tag", "--list", "v1.2.0").stdout.strip() == "v1.2.0"
     assert not state.exists()
+
+
+def test_an_explicit_waiver_releases_and_says_nothing_was_walled(tmp_path, monkeypatch, capsys):
+    """UNSET and DELIBERATELY UNWALLED are different states (constraint 15). Making
+    the key mandatory closed #74's silent pass but left a project whose version does
+    not live in a JSON manifest unable to tag AT ALL, with no way to say so."""
+    import sys as _sys
+
+    _sys.path.insert(0, str(REPO / "plugins" / "xp-plugin" / "scripts" / "close"))
+    import release
+
+    git = _release_repo(tmp_path, monkeypatch, "version_files: none\n")
+    before = git("tag", "--list").stdout
+
+    assert release.cmd_post_merge("fixture", retire_sprint=False) == 0
+
+    assert git("tag", "--list").stdout != before, "the waiver must still cut the tag"
+    assert "NO manifest was checked" in capsys.readouterr().out
+
+
+def test_the_waiver_is_the_only_spelling_that_skips_the_wall(tmp_path, monkeypatch):
+    """A near-miss must not silently waive: only the exact value opts out."""
+    import sys as _sys
+
+    _sys.path.insert(0, str(REPO / "plugins" / "xp-plugin" / "scripts" / "close"))
+    import release
+
+    assert release.version_refusal("v1.0.0", ["none"]) == ""
+    for spelling in (["None"], ["none.json"], ["", "none", ""], ["none", "a.json"]):
+        assert release.version_refusal("v1.0.0", spelling), f"{spelling} waived the wall"

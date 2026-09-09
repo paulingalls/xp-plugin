@@ -64,11 +64,12 @@ XP_PATCH = """diff --git a/.xp/system.md b/.xp/system.md
 CONFIG_PATCH = """diff --git a/.xp/config.yml b/.xp/config.yml
 --- a/.xp/config.yml
 +++ b/.xp/config.yml
-@@ -3,3 +3,4 @@
+@@ -3,4 +3,5 @@
  tests:
    story: true
    full: true
 +  fast: true
+ version_files: plugin.json
 """
 CONSTRAINTS_PATCH = """diff --git a/.xp/constraints.md b/.xp/constraints.md
 --- a/.xp/constraints.md
@@ -325,7 +326,8 @@ def free_repo(tmp_path):
     subprocess.run(["git", "init", "-q", "--bare", str(origin)], check=True, env=env)
     g("remote", "add", "origin", str(origin))
     g("checkout", "-q", "main")
-    (repo / ".xp" / "config.yml").write_text(CONFIG + "  full: true\n")
+    (repo / ".xp" / "config.yml").write_text(CONFIG + "  full: true\nversion_files: plugin.json\n")
+    (repo / "plugin.json").write_text('{"version": "0.2.1"}\n')
     g("add", "-A")
     g("commit", "-qm", "release setup")
     g("tag", "v0.2.0")

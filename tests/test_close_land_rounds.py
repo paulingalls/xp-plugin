@@ -153,15 +153,69 @@ class TestStructuredGate:
         assert close(repo, env, "review").returncode == 0
         assert marker(tmp_path)["shown_sha"] == g("rev-parse", "HEAD").stdout.strip()
 
-    def test_land_refuses_when_the_recorded_base_is_not_todays_merge_base(self, tmp_path):
-        repo, env, _g = make_repo(tmp_path)
+    def forward_base_motion(self, tmp_path, shared=False):
+        repo, env, g = make_repo(tmp_path)
+        g("checkout", "-q", "main")
+        path = repo / "base-motion.py"
+        path.write_text("TRUNK = 0\nSTORY = 0\n")
+        g("add", "-A")
+        g("commit", "-qm", "common base-motion file")
+        recorded = g("rev-parse", "HEAD").stdout.strip()
+        g("checkout", "-q", "story-042-branch")
+        g("rebase", "main")
+        g("checkout", "-q", "main")
+        path.write_text(path.read_text().replace("TRUNK = 0", "TRUNK = 1"))
+        g("commit", "-qam", "trunk moves")
+        current = g("rev-parse", "HEAD").stdout.strip()
+        g("checkout", "-q", "story-042-branch")
+        g("rebase", "main")
+        if shared:
+            path.write_text(path.read_text().replace("STORY = 0", "STORY = 1"))
+            g("commit", "-qam", "story touches trunk path")
+        g("branch", "-f", "main", recorded)
         stub_reviewer(tmp_path, report=CLEAN)
-        close(repo, env, "review")
+        assert close(repo, env, "review").returncode == 0
+        assert marker(tmp_path)["review_base"] == recorded
+        g("branch", "-f", "main", current)
+        assert g("merge-base", "main", "HEAD").stdout.strip() == current
+        return repo, env, g, path.relative_to(repo).as_posix(), current
+
+    def test_land_accepts_forward_base_motion_when_trunk_and_story_files_are_disjoint(
+        self, tmp_path
+    ):
+        repo, env, _g, _path, _base = self.forward_base_motion(tmp_path)
+
+        landed = close(repo, env, "land")
+
+        assert landed.returncode == 0, landed.stderr
+        assert len(launches(tmp_path)) == 1
+
+    def test_land_refuses_forward_base_motion_when_trunk_and_story_changed_one_file(self, tmp_path):
+        repo, env, g, path, base = self.forward_base_motion(tmp_path, shared=True)
+
+        refused = close(repo, env, "land")
+
+        assert refused.returncode == 2 and path in refused.stderr
+        assert g("rev-parse", "main").stdout.strip() == base
+        assert len(launches(tmp_path)) == 1
+
+    def test_land_refuses_a_recorded_base_that_is_not_an_ancestor_of_todays_base(self, tmp_path):
+        repo, env, g = make_repo(tmp_path)
+        stub_reviewer(tmp_path, report=CLEAN)
+        assert close(repo, env, "review").returncode == 0
+        g("checkout", "-qb", "unrelated", "main")
+        (repo / "unrelated.py").write_text("SIDE = 1\n")
+        g("add", "-A")
+        g("commit", "-qm", "unrelated base")
+        unrelated = g("rev-parse", "HEAD").stdout.strip()
+        g("checkout", "-q", "story-042-branch")
         state = json.loads(marker_file(tmp_path).read_text())
-        state["review_base"] = "0" * 40  # construct the condition; never observe it
+        state["review_base"] = unrelated
         marker_file(tmp_path).write_text(json.dumps(state))
-        r = close(repo, env, "land")
-        assert r.returncode == 2 and "did not cover" in r.stderr
+
+        refused = close(repo, env, "land")
+
+        assert refused.returncode == 2 and "did not cover" in refused.stderr
 
     def test_a_prose_only_reviewer_is_refused_and_its_output_is_printed_first(self, tmp_path):
         repo, env, _g = make_repo(tmp_path)

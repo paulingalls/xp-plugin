@@ -42,7 +42,7 @@ def current_free(slug: str) -> tuple[str, str, str]:
     return f"free-{m.group(1)}", branch, ""
 
 
-def cmd_start(slug: str) -> int:
+def cmd_start(slug: str, dry_run: bool = False) -> int:
     normalized = re.sub(r"[^a-z0-9]+", "-", slug.lower()).strip("-")
     if slugify(slug) != normalized:
         return fail(
@@ -63,6 +63,9 @@ def cmd_start(slug: str) -> int:
     new = branch_for(slug)
     if git("rev-parse", "--verify", "-q", f"refs/heads/{new}", check=False).returncode == 0:
         return fail(f"refused: branch {new} already exists")
+    if dry_run:
+        print(f"dry run: would cut {new} off {trunk}; nothing was created")
+        return 0
     if (made := git("branch", new, trunk, check=False)).returncode:
         return fail(f"git branch failed: {made.stderr.strip()}")
     key = new.split("/", 1)[1]
@@ -106,11 +109,11 @@ def cmd_review(slug: str, dry_run: bool) -> int:
     return close.cmd_review(key, dry_run)
 
 
-def cmd_salvage(slug: str) -> int:
+def cmd_salvage(slug: str, dry_run: bool = False) -> int:
     import close
 
     key, _branch, err = current_free(slug)
-    return fail(err) if err else close.cmd_salvage(key)
+    return fail(err) if err else close.cmd_salvage(key, dry_run)
 
 
 def cmd_land(slug: str, dry_run: bool) -> int:
@@ -120,7 +123,7 @@ def cmd_land(slug: str, dry_run: bool) -> int:
     return fail(err) if err else close.cmd_land(key, "pr", dry_run)
 
 
-def cmd_post_merge(slug: str) -> int:
+def cmd_post_merge(slug: str, dry_run: bool = False) -> int:
     import release
 
     pattern = f"free-????-??-??-{slugify(slug)}.close.json"
@@ -140,9 +143,17 @@ def cmd_post_merge(slug: str) -> int:
         return fail(refusal)
     state = json.loads(matches[0].read_text())
     branch = str(state.get("branch", ""))
-    result = release.cmd_post_merge(key, branch, "patch", False)
+    result = release.cmd_post_merge(key, branch, "patch", False, dry_run)
     if result:
         return result
+    if dry_run:
+        # The tag is the reversible half; everything below it deletes. A preview
+        # naming only the tag hides what the lead is actually asking about.
+        print(
+            f"dry run: would then flip {key} to [done], remove {spawn.worktree_path(key)}"
+            f" and delete {branch} and this close's markers"
+        )
+        return 0
     tree, spawned_branch, failed = bookkeep.story_worktree(spawn.worktree_path(key))
     if not flip_card(key, "in-progress", "done"):
         failed.append(f"flip {key} to [done] in {plan_path()}")

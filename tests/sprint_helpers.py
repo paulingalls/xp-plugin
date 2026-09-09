@@ -36,7 +36,10 @@ Verify: true
 Verify: true
 """
 
-CONFIG = "release: sprint\nroles:\n  reviewer: claude/opus\ntests:\n  full: true\n"
+CONFIG = (
+    "release: sprint\nversion_files: manifest.json\n"
+    "roles:\n  reviewer: claude/opus\ntests:\n  full: true\n"
+)
 
 WORK_SECTION = "work.md entries filed during the sprint"
 
@@ -68,6 +71,7 @@ def make_repo(tmp_path, plan=PLAN, config=CONFIG):
     (repo / ".xp" / "config.yml").write_text(config)
     (repo / ".xp" / "constraints.md").write_text("# Constraints\n1. CONSTRAINT-SENTINEL\n")
     (repo / ".xp" / "system.md").write_text("# System\nSYSTEM-SENTINEL\n")
+    (repo / "manifest.json").write_text('{"version": "0.3.0"}\n')
     (repo / "src.py").write_text("A = 1\n")
     g("add", "-A")
     g("commit", "-qm", "base")

@@ -29,9 +29,34 @@ def version_files() -> list[str]:
     return [part.strip() for part in config_flat("version_files").split(",") if part.strip()]
 
 
-def version_refusal(version: str) -> str:
+WAIVED = (
+    "NO manifest was checked — `version_files: none` waives the wall, and the tag"
+    " can name a version no file in this tree declares"
+)
+
+
+def walled_text(names: list[str], version: str) -> str:
+    """One sentence, two callers: the preview must say exactly what the real leg
+    will, or the preview is not a preview. It names the VERSION because that is
+    what the manifests were checked against."""
+    if names == ["none"]:
+        return WAIVED
+    return f"manifests matching {version}: {', '.join(names)}"
+
+
+def version_refusal(version: str, names: list[str] | None = None) -> str:
+    names = version_files() if names is None else names
+    if names == ["none"]:
+        return ""  # walled by hand, on purpose: see WAIVED
+    if not names:
+        return (
+            "refused: version_files is unset or empty — a release tag keys the"
+            " consumer's plugin cache, so a tag no file declares ships the previous"
+            " copy under the new name. Name your manifests in .xp/config.yml, or"
+            " `version_files: none` to release without that wall."
+        )
     target = tuple(map(int, version.removeprefix("v").split(".")))
-    for name in version_files():
+    for name in names:
         path = Path(name)
         # ABSENT and UNREADABLE are different problems with different fixes, and
         # OSError sat beside the parse errors: a manifest nobody has created yet
@@ -57,7 +82,11 @@ def version_refusal(version: str) -> str:
 
 
 def cmd_post_merge(
-    release_id: str, merged_branch: str = "", part: str = "minor", retire_sprint: bool = True
+    release_id: str,
+    merged_branch: str = "",
+    part: str = "minor",
+    retire_sprint: bool = True,
+    dry_run: bool = False,
 ) -> int:
     if (head := git("rev-parse", "--abbrev-ref", "HEAD").stdout.strip()) != (
         trunk := default_branch()
@@ -83,8 +112,20 @@ def cmd_post_merge(
     config = Path(".xp/config.yml")
     if not config.exists():
         return fail("refused: no .xp/config.yml here — is this an xp-managed repo?")
-    if refusal := version_refusal(version):
+    checked = version_files()
+    if refusal := version_refusal(version, checked):
         return fail(refusal)
+    if dry_run:
+        # The sprint-close lifecycle runs BELOW this return and can still refuse,
+        # so a preview that promised only "would tag" overstated what it checked.
+        after = (
+            "; then run the sprint-close lifecycle, which has NOT run here and can"
+            " still refuse, and clear the sprint branch"
+            if retire_sprint
+            else ""
+        )
+        print(f"dry run: would tag {version}{after}; {walled_text(checked, version)}")
+        return 0
     if retire_sprint and (red := lc.run(config_flat(lc.KEY), "sprint-close", release_id)):
         return fail(red)
     if git("tag", version, check=False).returncode:
@@ -92,11 +133,7 @@ def cmd_post_merge(
     if retire_sprint:
         clear_sprint_branch()
     suffix = "; sprint branch cleared" if retire_sprint else ""
-    walled = (
-        f"manifests matching {version}: {', '.join(checked)}"
-        if (checked := version_files())
-        else "NO manifest was checked — set version_files: in .xp/config.yml to wall it"
-    )
+    walled = walled_text(checked, version)
     print(f"tagged {version} at {git('rev-parse', 'HEAD').stdout.strip()[:8]}{suffix}; {walled}")
     next_step = "push the tag and open the next sprint"
     print(next_step if retire_sprint else "push the tag")

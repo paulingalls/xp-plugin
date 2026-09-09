@@ -253,6 +253,7 @@ def build_sprint_repo_with_git(root):
     (repo / ".xp" / "config.yml").write_text(CONFIG)
     (repo / ".xp" / "constraints.md").write_text("# Constraints\n1. CONSTRAINT-SENTINEL\n")
     (repo / ".xp" / "system.md").write_text("# System\nSYSTEM-SENTINEL\n")
+    (repo / "manifest.json").write_text('{"version": "0.3.0"}\n')
     (repo / "src.py").write_text("A = 1\n")
     git("add", "-A")
     git("commit", "-qm", "base")
