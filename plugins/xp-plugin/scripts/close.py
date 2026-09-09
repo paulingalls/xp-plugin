@@ -270,8 +270,9 @@ def _record_round(
     report, err = review.read_report(path) if salvage else ({}, "")
     if err:
         return fail(review.stamp(path, review.abort_text(head, err, salvage=salvage)))
+    checkpoint_digest = at.get("checkpoint_digest", at["digest"])
     motion = review.check_reviewer_motion(
-        head, marker, at["digest"], card, story_id, at.get("moved", ""), salvage=salvage
+        head, marker, checkpoint_digest, card, story_id, at.get("moved", ""), salvage=salvage
     )
     if motion:
         return fail(review.stamp(path, motion))
@@ -292,16 +293,23 @@ def _record_round(
     if err := review.write_reviewer_diff(path, head, at.get("noun", leg(story_id)[0])):
         return fail(review.stamp(path, err))  # already a whole refusal, prefix and all
     shown_sha = git("rev-parse", "HEAD").stdout.strip()
+    position = at.get("round_index") if salvage else None
+    if position is not None and (
+        not isinstance(position, int) or not 0 <= position <= len(state.get("rounds", []))
+    ):
+        why = "the queued review has an invalid round position"
+        return fail(review.stamp(path, review.abort_text(head, why, salvage=True)))
     review.write_round(
         marker,
         state,
         report,
+        position=position,
         reviewed_head=head,
         shown_sha=shown_sha,
         review_base=at["base"],
         branch=git("rev-parse", "--abbrev-ref", "HEAD").stdout.strip(),
     )
-    advance_story_checkpoints(story_id, head, at["digest"], shown_sha, review.marker_digest(marker))
+    advance_story_checkpoints(story_id, head, checkpoint_digest, review.marker_digest(marker))
     launch.unlink(missing_ok=True)
     return fail(refusal) if refusal else 0
 
@@ -322,7 +330,13 @@ def cmd_review(story_id: str, dry_run: bool = False) -> int:
             print("warning: " + left, file=sys.stderr)
     head = git("rev-parse", "HEAD").stdout.strip()
     base = git("merge-base", f"refs/heads/{trunk}", "HEAD").stdout.strip()
-    at = {"head": head, "digest": review.marker_digest(marker), "base": base, "card": card}
+    at = {
+        "head": head,
+        "digest": review.marker_digest(marker),
+        "base": base,
+        "card": card,
+        "round_index": len(state.get("rounds", [])),
+    }
     at["noun"] = leg(story_id)[0]
     prior = render_prior_rounds(state.get("rounds", []))
     notices = [review.plan_review_notice(story_id)]

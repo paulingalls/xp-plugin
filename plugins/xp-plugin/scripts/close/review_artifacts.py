@@ -39,12 +39,39 @@ def story_sidecar(report: Path) -> Path:
     return data_root() / "markers" / report.with_suffix(".launch").name
 
 
+def _story_slot(report: Path) -> list[Path]:
+    prefix = report.name.rsplit(".", 1)[0]
+    artifacts = sorted(report.parent.glob(f"{glob.escape(prefix)}.*"))
+    sidecar = story_sidecar(report)
+    return artifacts + ([sidecar] if sidecar.exists() else [])
+
+
 def rotate_story(report: Path, patch: Path, launch: Path) -> list[tuple[Path, Path]]:
     had_report = report.exists()
-    moves = rotate([report, patch])
+    current = _story_slot(report)
+    if not any(path.exists() for path in (report, patch, report.with_suffix(".diff"))):
+        return []
+    story_id = report.name.split(".round-", 1)[0]
+    queued = list(report.parent.glob(f"{glob.escape(story_id)}.round-*.*"))
+    queued += story_sidecars(story_id)
+    rounds = sorted(
+        {int(match.group(1)) for path in queued if (match := ROUND.search(path.name))},
+        reverse=True,
+    )
+    moves: list[tuple[Path, Path]] = []
+    current_round = int(ROUND.search(report.name).group(1))
+    for round_n in (round_n for round_n in rounds if round_n > current_round):
+        queued_report = shifted(report, round_n - current_round)
+        for source in _story_slot(queued_report):
+            destination = shifted(source, 1)
+            source.rename(destination)
+            moves.append((source, destination))
+    for source in current:
+        destination = shifted(source, 1)
+        source.rename(destination)
+        moves.append((source, destination))
     if had_report and launch.exists():
         destination = story_sidecar(shifted(report, 1))
-        _rotate(destination, moves)
         launch.rename(destination)
         moves.append((launch, destination))
     return moves
@@ -63,7 +90,7 @@ def story_sidecars(story_id: str) -> list[Path]:
 
 
 def advance_story_checkpoints(
-    story_id: str, before_head: str, before_digest: str, after_head: str, after_digest: str
+    story_id: str, before_head: str, before_digest: str, after_digest: str
 ) -> None:
     for path in story_sidecars(story_id):
         try:
@@ -72,8 +99,9 @@ def advance_story_checkpoints(
             continue
         if not isinstance(state, dict):
             continue
-        if state.get("head") == before_head and state.get("digest") == before_digest:
-            state.update(head=after_head, digest=after_digest)
+        checkpoint = state.get("checkpoint_digest", state.get("digest"))
+        if state.get("head") == before_head and checkpoint == before_digest:
+            state["checkpoint_digest"] = after_digest
             path.write_text(json.dumps(state))
 
 

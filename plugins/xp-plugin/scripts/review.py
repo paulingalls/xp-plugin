@@ -142,9 +142,14 @@ def marker_digest(path: Path) -> str:
     return sha256(path.read_bytes()).hexdigest() if path.exists() else ""
 
 
-def write_round(marker: Path, state: dict, round_: dict, edit=None, **coverage: str) -> None:
+def write_round(
+    marker: Path, state: dict, round_: dict, edit=None, position=None, **coverage: str
+) -> None:
     def append(current: dict) -> None:
         rounds = current.setdefault("rounds", [])
+        if position is not None and position < len(rounds):
+            rounds.insert(position, round_ | coverage)
+            return
         if old := next((r for r in reversed(rounds) if not r.keys() & ACCOUNTED), None):
             prior = {key: current[key] for key in coverage if key in current}
             old.update(prior)

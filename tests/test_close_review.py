@@ -201,7 +201,7 @@ class TestUnrecordedArtifactPreservation:
             assert close(repo, env, "review").returncode == 2
             saved.append((reports / "story-042.round-1.json").read_bytes())
 
-        stub_reviewer(tmp_path, patch=FIX_PATCH)
+        stub_reviewer(tmp_path)
         assert close(repo, env, "review").returncode == 0
         assert (reports / "story-042.round-2.json").read_bytes() == saved[1]
         assert (reports / "story-042.round-3.json").read_bytes() == saved[0]
@@ -211,7 +211,56 @@ class TestUnrecordedArtifactPreservation:
         assert salvage(repo, env).returncode == 0
         assert salvage(repo, env).returncode == 0
         rounds = json.loads(marker_file(tmp_path).read_text())["rounds"]
-        assert [round_["fixed"] for round_ in rounds] == [[], ["older"], ["newer"]]
+        assert [round_["fixed"] for round_ in rounds] == [["newer"], ["older"], []]
+
+    def test_salvaging_an_older_round_cannot_clear_a_later_blocking_round(self, tmp_path):
+        repo, env, _g = make_repo(tmp_path)
+        stub_reviewer(tmp_path, report=FIXED, exit_code=1)
+        assert close(repo, env, "review").returncode == 2
+        blocker = {"fixed": [], "blocking": ["LIVE-BLOCKER"], "noted": []}
+        stub_reviewer(tmp_path, report=blocker)
+        assert close(repo, env, "review").returncode == 0
+
+        rescued = salvage(repo, env)
+
+        assert rescued.returncode == 0, rescued.stderr
+        rounds = json.loads(marker_file(tmp_path).read_text())["rounds"]
+        assert [round_["blocking"] for round_ in rounds] == [[], ["LIVE-BLOCKER"]]
+        landed = close(repo, env, "land")
+        assert landed.returncode == 2 and "LIVE-BLOCKER" in landed.stderr
+
+    def test_a_later_review_patch_does_not_rewrite_an_older_launch_tree(self, tmp_path):
+        repo, env, g = make_repo(tmp_path)
+        launched = g("rev-parse", "HEAD").stdout.strip()
+        stub_reviewer(tmp_path, report=FIXED, exit_code=1)
+        assert close(repo, env, "review").returncode == 2
+        stub_reviewer(tmp_path, patch=FIX_PATCH)
+        assert close(repo, env, "review").returncode == 0
+
+        sidecar = tmp_path / "data" / "markers" / "story-042.round-2.launch"
+        assert json.loads(sidecar.read_text())["head"] == launched
+        refused = salvage(repo, env)
+        assert refused.returncode == 2 and "HEAD is no longer" in refused.stderr
+
+    def test_story_queue_never_pairs_a_report_with_another_attempts_patch(self, tmp_path):
+        repo, env, _g = make_repo(tmp_path)
+        stub_reviewer(tmp_path, report=None, patch=FIX_PATCH, exit_code=1)
+        assert close(repo, env, "review").returncode == 2
+        second = {"fixed": ["second attempt"], "blocking": [], "noted": []}
+        stub_reviewer(tmp_path, report=second, patch=None, exit_code=1)
+        assert close(repo, env, "review").returncode == 2
+        stub_reviewer(tmp_path)
+        assert close(repo, env, "review").returncode == 0
+
+        rescued = salvage(repo, env)
+
+        assert rescued.returncode == 0, rescued.stderr
+        assert "x = 1" not in (repo / "src" / "thing.py").read_text()
+        rounds = json.loads(marker_file(tmp_path).read_text())["rounds"]
+        assert [round_["fixed"] for round_ in rounds] == [["second attempt"], []]
+        orphan = salvage(repo, env)
+        assert orphan.returncode == 2 and "belongs to no tree" in orphan.stderr
+        assert "story-042.round-3.patch" in orphan.stderr
 
     def test_an_unusable_story_report_is_set_aside_without_blocking_review(self, tmp_path):
         repo, env, _g = make_repo(tmp_path)
@@ -266,7 +315,7 @@ class TestUnrecordedArtifactPreservation:
         assert (reports / "story-042.round-2.json").exists()
         assert salvage(repo, env).returncode == 0
         rounds = json.loads(marker_file(tmp_path).read_text())["rounds"]
-        assert [round_["fixed"] for round_ in rounds] == [["second"], ["first"]]
+        assert [round_["fixed"] for round_ in rounds] == [["first"], ["second"]]
 
     def test_a_queued_story_checkpoint_is_not_advanced_across_unrelated_motion(self, tmp_path):
         repo, env, g = make_repo(tmp_path)

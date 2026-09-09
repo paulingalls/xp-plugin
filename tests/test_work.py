@@ -390,3 +390,6 @@ class TestLineBreakDisagreement:
             if b.strip()
         ]
         assert not [h for h in heads if h.startswith("resolved")], heads
+
+
+from work_archive_cases import TestArchive  # noqa: E402, F401
