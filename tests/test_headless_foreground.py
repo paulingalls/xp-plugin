@@ -292,6 +292,35 @@ def test_dirty_review_refusal_saves_one_applicable_combined_patch(tmp_path, monk
     assert (repo / "b.txt").read_text() == ("b1\n" if mixed else "b0\n")
 
 
+@pytest.mark.parametrize("before, after", [(b"a\r\nb\r\n", b"a\r\nB\r\n"), (b"\xe9\n", b"\xe9!\n")])
+def test_saved_patch_applies_crlf_and_non_utf8_lines(tmp_path, monkeypatch, before, after):
+    import review
+
+    repo, _head = git_repo(tmp_path, monkeypatch)
+    (repo / "a.txt").write_bytes(before)
+    subprocess.run(["git", "commit", "-qam", "bytes"], cwd=repo, check=True)
+    head = subprocess.run(
+        ["git", "rev-parse", "HEAD"], cwd=repo, check=True, capture_output=True, text=True
+    ).stdout.strip()
+    (repo / "a.txt").write_bytes(after)
+    subprocess.run(["git", "add", "a.txt"], cwd=repo, check=True)
+    review.abort_text(head, "dirty")
+    (patch,) = (tmp_path / "data" / "reports").glob("review-refusal-*.patch")
+    subprocess.run(["git", "reset", "--hard", head], cwd=repo, check=True, capture_output=True)
+    subprocess.run(["git", "apply", str(patch)], cwd=repo, check=True)
+    assert (repo / "a.txt").read_bytes() == after
+
+
+def test_untracked_only_refusal_names_no_patch(tmp_path, monkeypatch):
+    import review
+
+    repo, head = git_repo(tmp_path, monkeypatch)
+    (repo / "new.txt").write_text("untracked\n")
+    text = review.abort_text(head, "dirty")
+    assert "git apply" not in text and f"git reset --hard {head[:8]}" in text
+    assert not (tmp_path / "data" / "reports").exists()
+
+
 def test_each_dirty_refusal_allocates_a_new_patch(tmp_path, monkeypatch):
     import review
 
@@ -331,7 +360,6 @@ def test_unwritable_reports_path_keeps_the_index_and_omits_reset(tmp_path, monke
 def test_failed_patch_creation_removes_partial_artifact_and_omits_reset(
     tmp_path, monkeypatch, failure
 ):
-    import close
     import review
     import review_refusal
 
@@ -339,21 +367,22 @@ def test_failed_patch_creation_removes_partial_artifact_and_omits_reset(
     (repo / "a.txt").write_text("only copy\n")
     subprocess.run(["git", "add", "a.txt"], cwd=repo, check=True)
     if failure == "git":
-        real_git = close.git
+        real_run = subprocess.run
 
-        def failing_git(*args, **kwargs):
-            if args[0] == "diff-index":
-                raise subprocess.CalledProcessError(1, args)
-            return real_git(*args, **kwargs)
+        def failing_run(argv, *args, **kwargs):
+            if argv[:2] == ["git", "diff-index"]:
+                raise subprocess.CalledProcessError(1, argv)
+            return real_run(argv, *args, **kwargs)
 
-        monkeypatch.setattr(close, "git", failing_git)
+        monkeypatch.setattr(review_refusal.subprocess, "run", failing_run)
     else:
         real_file = review_refusal.tempfile.NamedTemporaryFile
 
         class FailingFile:
             def __enter__(self):
+                (tmp_path / "data" / "reports").mkdir(parents=True, exist_ok=True)
                 self.file = real_file(
-                    "w", dir=tmp_path / "data" / "reports", suffix=".patch", delete=False
+                    "wb", dir=tmp_path / "data" / "reports", suffix=".patch", delete=False
                 )
                 self.name = self.file.name
                 return self

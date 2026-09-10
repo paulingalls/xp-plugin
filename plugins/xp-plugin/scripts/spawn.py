@@ -20,7 +20,7 @@ from handoff import draft_path, handoff_state, inheritance, mark_handoff, mark_s
 from harness import HARNESS_INSTALL, agent_argv, missing_harness, resolve_codex_sandbox
 from review_scope import declared_files
 from role_config import card_role, config_role
-from teammate_tee import run_stream, run_teammate
+from teammate_tee import AGENT_TIMEOUT_DEFAULT, run_stream, run_teammate
 from work import (
     card_title,
     chdir_repo_root,
@@ -201,7 +201,7 @@ def run_agent(
     # bound there kills a whole story and abandons its worktree (rejected design).
     timeout = None
     if role.endswith("reviewer"):
-        timeout = float(os.environ.get("XP_AGENT_TIMEOUT", 3600))
+        timeout = float(os.environ.get("XP_AGENT_TIMEOUT", AGENT_TIMEOUT_DEFAULT))
         # The read-only bound is the ABSENT credential plus close.py's HEAD check,
         # never the permission mode — bypass stays (harness.PERMISSION_ARGV).
         env = {k: v for k, v in env.items() if not k.startswith(("GIT_AUTHOR_", "GIT_COMMITTER_"))}

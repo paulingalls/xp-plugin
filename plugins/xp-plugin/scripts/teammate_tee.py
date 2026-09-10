@@ -22,6 +22,7 @@ LogWrite = Callable[[str], None]
 OutWrite = Callable[[str], None]
 EventObserver = Callable[[dict], None]
 TASK_DESCRIPTION_CAP = 200
+AGENT_TIMEOUT_DEFAULT = 3600
 
 
 def spawn_header(log_id: str, iso_ts: str) -> str:
@@ -242,7 +243,7 @@ def _transcript_path(harness: str, cwd: Path, session: str) -> str:
 def _child_environment(harness: str, env: dict, timeout: float | None) -> dict:
     if harness != "claude":
         return env
-    bound_ms = int((timeout if timeout is not None else 3600) * 1000)
+    bound_ms = int((timeout if timeout is not None else AGENT_TIMEOUT_DEFAULT) * 1000)
     child_env = env.copy()
     child_env.setdefault("CLAUDE_CODE_DISABLE_BACKGROUND_TASKS", "1")
     child_env.setdefault("BASH_DEFAULT_TIMEOUT_MS", str(bound_ms))
