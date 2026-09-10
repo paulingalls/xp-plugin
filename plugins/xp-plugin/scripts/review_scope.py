@@ -2,7 +2,7 @@
 
 import re
 
-DECORATION = re.compile(r"\s*\([^()]*\)\s*$")
+DECORATION = re.compile(r"(?:(?<!/)\(new\)|\s+\([^()]*\))\s*$")
 TOP_LEVEL_COMMA = re.compile(r",(?![^()]*\))")
 
 
@@ -21,7 +21,7 @@ def file_entries(text: str) -> list[str]:
     for raw in TOP_LEVEL_COMMA.split(text):
         if not (raw := raw.strip()):
             continue
-        if not re.fullmatch(r"[^\s()[\]{}]+", path := _bare(raw)):
+        if not re.fullmatch(r"[^\s]+", path := _bare(raw)):
             raise ValueError(
                 f"the Files entry {raw!r} is not a plausible path; use bare"
                 " comma-separated paths, end the block at the next `Label:` line,"

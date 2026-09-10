@@ -7,7 +7,9 @@ Verify: pytest -q tests/test_review_scope.py
 
 import json
 
+import pytest
 from review import declared_files
+from review_scope import file_entries
 from sprint_helpers import (
     PLAN,
     PLUGIN,
@@ -82,6 +84,55 @@ class TestTheFilesLineIsProseNotAPath:
         )
         return sprint(repo, env, "review")
 
+    @pytest.mark.parametrize(
+        ("entry", "expected"),
+        [
+            ("x.py", ["x.py"]),
+            ("`x.py`", ["x.py"]),
+            ("x.py (new)", ["x.py"]),
+            ("x.py(new)", ["x.py"]),
+            ("`x.py` (new)", ["x.py"]),
+            ("`x.py (new)`", ["x.py"]),
+            ("infra/compose.yml (compose, not the chart)", ["infra/compose.yml"]),
+            (
+                "apps/mobile/src/app/(app)/sponsor/index.tsx",
+                ["apps/mobile/src/app/(app)/sponsor/index.tsx"],
+            ),
+            (
+                "src/app/(marketing)/page.tsx, src/app/[slug]/page.tsx",
+                ["src/app/(marketing)/page.tsx", "src/app/[slug]/page.tsx"],
+            ),
+            ("app/[...all]/page.tsx", ["app/[...all]/page.tsx"]),
+            ("pages/[id].tsx (new)", ["pages/[id].tsx"]),
+            ("src/app/{slug}/page.tsx", ["src/app/{slug}/page.tsx"]),
+            ("app/(auth)", ["app/(auth)"]),
+            ("app/(new)", ["app/(new)"]),
+            ("`app/(auth)` (new)", ["app/(auth)"]),
+            ("`app/[...all]/page.tsx`", ["app/[...all]/page.tsx"]),
+            (
+                "`apps/mobile/src/app/(app)/sponsor/index.tsx` (new)",
+                ["apps/mobile/src/app/(app)/sponsor/index.tsx"],
+            ),
+            (
+                "`src/app/(marketing)/page.tsx` (new), `src/app/[slug]/page.tsx` (new)",
+                ["src/app/(marketing)/page.tsx", "src/app/[slug]/page.tsx"],
+            ),
+            ("`app/[...all]/page.tsx` (new)", ["app/[...all]/page.tsx"]),
+            ("`pages/[id].tsx (new)`", ["pages/[id].tsx"]),
+        ],
+    )
+    def test_every_accepted_spelling_declares_exactly_its_path(self, entry, expected):
+        assert file_entries(entry) == expected
+
+    def test_whitespace_outside_a_trailing_annotation_is_refused(self):
+        entry = "src/a file.py"
+        with pytest.raises(ValueError) as refusal:
+            file_entries(entry)
+        message = str(refusal.value)
+        assert entry in message
+        assert "bare comma-separated paths" in message
+        assert "card body" in message
+
     def test_a_BACKTICKED_declaration_names_the_path_it_spells(self, tmp_path):
         r = self.accepts(tmp_path, "`src.py`, `.xp/system.md`")
         assert r.returncode == 0, r.stderr
@@ -146,10 +197,12 @@ class TestTheFilesLineIsProseNotAPath:
     def test_the_shipped_template_states_and_walks_the_Files_contract(self):
         template = (PLUGIN / "templates" / "plan.md").read_text()
         contract = template.lower()
-        assert "comma-separated bare paths" in contract
-        assert "(new)" in contract and "allowed" in contract
-        assert "no other parentheticals" in contract
+        assert "comma-separated paths" in contract
+        assert "whitespace" in contract and "trailing parenthetical annotations" in contract
+        assert "(new)" in contract
         assert "rationale" in contract and "card body" in contract
+        comment = template.split("<!--", 1)[1].split("-->", 1)[0]
+        assert len(comment.split()) <= 27
         # The template AS SHIPPED, never a substituted line: its own example is the
         # one card every consuming project starts from, and the placeholder it
         # replaced (`<the files it will touch>`) does not parse.
