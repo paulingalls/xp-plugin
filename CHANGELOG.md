@@ -4,6 +4,23 @@ Release notes started at v0.6.0; earlier entries are summarized from their
 tag and merge messages. Full detail lives in the merge history and the
 per-sprint review reports.
 
+## v0.23.5 — a headless role finishes its work inside its turn
+
+Issue #80. A headless run ends with its turn and kills any background task, and
+Claude Code moves a foreground Bash command into the background once it outlives
+its timeout, so a reviewer could exit with a staged, unverified patch and no
+round. Every headless Claude role now launches with
+`CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1` and its Bash timeouts at the role's
+bound, so long commands run to completion in the foreground. Values already set
+in the launching environment are kept; Codex launches are unchanged. The bound
+now defaults to four hours for executors and reviewers alike, and
+`XP_AGENT_TIMEOUT` still overrides it.
+
+A background task still killed at exit is named in the run's error output. A
+review refusal over a dirty tree saves the staged and unstaged work as a patch
+under the data root's `reports/` before offering `git reset --hard`, and offers
+no destructive recovery when it cannot save one.
+
 ## v0.23.4 — versioning can be turned off
 
 Issue #77. `versioning: off` in `.xp/config.yml` turns off the plugin's

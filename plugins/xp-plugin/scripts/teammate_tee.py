@@ -20,6 +20,9 @@ from env import refuse_direct_invocation
 
 LogWrite = Callable[[str], None]
 OutWrite = Callable[[str], None]
+EventObserver = Callable[[dict], None]
+TASK_DESCRIPTION_CAP = 200
+AGENT_TIMEOUT_DEFAULT = 4 * 60 * 60
 
 
 def spawn_header(log_id: str, iso_ts: str) -> str:
@@ -89,6 +92,7 @@ def tee_stream(
     log_write: LogWrite,
     out_write: OutWrite,
     parse: Callable[[str], tuple[str | None, dict | None]] = parse_stream_json,
+    observe: EventObserver | None = None,
 ) -> dict | None:
     """Drain `lines` fully no matter what `log_write` does — ceasing to drain
     deadlocks a healthy child writing to a full pipe.
@@ -102,12 +106,54 @@ def tee_stream(
         stripped = line.strip()
         if not stripped:
             continue
+        if observe and (parsed := event(stripped)) is not None:
+            observe(parsed)
         echo, evt = parse(stripped)
         if echo is not None:
             out_write(echo)
         if evt is not None:
             result = evt
     return result
+
+
+class _ClaudeTasks:
+    def __init__(self) -> None:
+        self.tasks: dict[str, dict] = {}
+        self.result_seen = False
+
+    def __call__(self, evt: dict) -> None:
+        if evt.get("type") == "result":
+            self.result_seen = True
+            return
+        if evt.get("type") != "system":
+            return
+        task_id = evt.get("task_id")
+        if evt.get("subtype") == "task_started" and task_id:
+            self.tasks[str(task_id)] = {
+                "description": str(evt.get("description") or "unnamed task"),
+                "backgrounded": evt.get("is_backgrounded") is True,
+                "killed_at_exit": False,
+            }
+            return
+        if evt.get("subtype") != "task_updated" or str(task_id) not in self.tasks:
+            return
+        patch = evt.get("patch") if isinstance(evt.get("patch"), dict) else {}
+        task = self.tasks[str(task_id)]
+        if patch.get("is_backgrounded") is True:
+            task["backgrounded"] = True
+        if "status" in patch:
+            task["killed_at_exit"] = (
+                self.result_seen and task["backgrounded"] and patch["status"] == "killed"
+            )
+
+    def diagnostic(self) -> str:
+        task = next((task for task in self.tasks.values() if task["killed_at_exit"]), None)
+        if task is None:
+            return ""
+        description = task["description"]
+        if len(description) > TASK_DESCRIPTION_CAP:
+            description = description[: TASK_DESCRIPTION_CAP - 1] + "…"
+        return f"background task killed when the headless run exited: {description}"
 
 
 SANDBOX_NOTE = {
@@ -194,6 +240,17 @@ def _transcript_path(harness: str, cwd: Path, session: str) -> str:
     return str(found) if found else f"(not written yet) {root}/*/*/*/{pattern}"
 
 
+def _child_environment(harness: str, env: dict, timeout: float | None) -> dict:
+    if harness != "claude":
+        return env
+    bound_ms = int((timeout if timeout is not None else AGENT_TIMEOUT_DEFAULT) * 1000)
+    child_env = env.copy()
+    child_env.setdefault("CLAUDE_CODE_DISABLE_BACKGROUND_TASKS", "1")
+    child_env.setdefault("BASH_DEFAULT_TIMEOUT_MS", str(bound_ms))
+    child_env.setdefault("BASH_MAX_TIMEOUT_MS", str(bound_ms))
+    return child_env
+
+
 def run_stream(
     argv: list[str],
     cwd: Path,
@@ -216,6 +273,7 @@ def run_stream(
     producing output before it has finished reading stdin.
     """
     parse = STREAMS[harness]
+    tasks = _ClaudeTasks() if harness == "claude" else None
     if widen_git and argv[:2] == ["codex", "exec"]:
         # HERE, not at one caller: while the widening lived in run_agent alone the
         # teammate leg launched without it, and the codex teammate that could not
@@ -229,6 +287,7 @@ def run_stream(
     # legs report it too.
     if posture := sandbox_line(argv):
         print(posture, file=sys.stderr)
+    child_env = _child_environment(harness, env, timeout)
     proc = subprocess.Popen(
         argv,
         cwd=cwd,
@@ -236,7 +295,7 @@ def run_stream(
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,
-        env=env,
+        env=child_env,
         start_new_session=True,  # so kill_group has a group that is not ours
     )
     feeder = threading.Thread(target=_feed_stdin, args=(proc, prompt))
@@ -302,7 +361,7 @@ def run_stream(
         except OSError as exc:
             print(f"warning: log write failed ({exc}); continuing without it", file=sys.stderr)
         assert proc.stdout is not None
-        result = tee_stream(ticking(proc.stdout), log_write, print, parse)
+        result = tee_stream(ticking(proc.stdout), log_write, print, parse, tasks)
     except BaseException:
         # Ctrl-C no longer reaches the child, because it has its own session now.
         # Only here: a run that DRAINED is already exiting, and killing on the way
@@ -320,14 +379,22 @@ def run_stream(
     if timed_out.is_set():
         raise subprocess.TimeoutExpired(argv, timeout, stderr=str(path))
     rc = proc.returncode
+    diagnostic = tasks.diagnostic() if tasks else ""
+    if diagnostic:
+        print(diagnostic, file=sys.stderr)
     if result is None:
         print(f"{log_id}: stream never carried a terminal result; see {path}", file=sys.stderr)
         rc = rc or 1
+    error = ""
+    if diagnostic:
+        error = f"{diagnostic}\nsee live log: {path}"
+    elif rc != 0:
+        error = f"see live log: {path}"
     return subprocess.CompletedProcess(
         argv,
         rc,
         _result_text(harness, result) if result else "",
-        "" if rc == 0 else f"see live log: {path}",
+        error,
     )
 
 
