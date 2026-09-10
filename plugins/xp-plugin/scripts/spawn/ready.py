@@ -118,7 +118,8 @@ def path_state(path: str) -> str | None:
     exists = git("cat-file", "-e", f"HEAD:{path}", check=False).returncode == 0
     if not exists:
         return None
-    sha = git("log", "-1", "--format=%H", "HEAD", "--", path, check=False).stdout.strip()
+    pathspec = f":(literal){path}"
+    sha = git("log", "-1", "--format=%H", "HEAD", "--", pathspec, check=False).stdout.strip()
     return sha or None
 
 

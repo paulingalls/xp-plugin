@@ -8,7 +8,10 @@ per-sprint review reports.
 
 Issue #81. Files declarations now preserve path segments containing parentheses,
 square brackets, or braces while continuing to refuse whitespace outside a
-trailing annotation. A parenthesized segment is no longer silently truncated.
+trailing annotation, and refuse unbalanced brackets such as `test_{a,b}.py`
+shorthand. A parenthesized segment is no longer silently truncated, and `x.py(note)`
+without a space now declares that literal path. The refresh receipt tracks a
+bracketed path literally rather than as a git glob.
 
 When a card refresh refuses a Files declaration, its terminal now names the bad
 entry and repair instead of reporting a missing receipt and asking the lead to

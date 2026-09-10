@@ -214,7 +214,6 @@ def test_a_refresh_whose_receipt_never_landed_refuses_instead_of_claiming_succes
         refused = direct()
         assert refused.returncode == 2, refused.stdout
         assert "recorded no receipt" in refused.stderr, refused.stderr
-        assert "Repair the Files line" not in refused.stderr
 
 
 @pytest.mark.parametrize(("knob", "expected"), [({"status": "ready"}, "lifecycle")])

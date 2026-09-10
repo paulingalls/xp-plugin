@@ -133,6 +133,11 @@ class TestTheFilesLineIsProseNotAPath:
         assert "bare comma-separated paths" in message
         assert "card body" in message
 
+    @pytest.mark.parametrize("entry", ["tests/test_{foo,bar}.py", "src/[a,b].py", "x.py)"])
+    def test_an_unbalanced_bracket_is_refused_not_split_into_paths(self, entry):
+        with pytest.raises(ValueError):
+            file_entries(entry)
+
     def test_a_BACKTICKED_declaration_names_the_path_it_spells(self, tmp_path):
         r = self.accepts(tmp_path, "`src.py`, `.xp/system.md`")
         assert r.returncode == 0, r.stderr
@@ -197,9 +202,9 @@ class TestTheFilesLineIsProseNotAPath:
     def test_the_shipped_template_states_and_walks_the_Files_contract(self):
         template = (PLUGIN / "templates" / "plan.md").read_text()
         contract = template.lower()
-        assert "comma-separated paths" in contract
-        assert "whitespace" in contract and "trailing parenthetical annotations" in contract
-        assert "(new)" in contract
+        assert "comma-separated bare paths" in contract
+        assert "(new)" in contract and "allowed" in contract
+        assert "no other annotations" in contract and "parenthetical" not in contract
         assert "rationale" in contract and "card body" in contract
         comment = template.split("<!--", 1)[1].split("-->", 1)[0]
         assert len(comment.split()) <= 27
