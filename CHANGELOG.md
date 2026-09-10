@@ -4,6 +4,17 @@ Release notes started at v0.6.0; earlier entries are summarized from their
 tag and merge messages. Full detail lives in the merge history and the
 per-sprint review reports.
 
+## v0.23.2 — a resume refusal names a route that can succeed
+
+Issue #78. When `spawn.py resume` refused a taken-over tree, its recovery said
+only "commit, then resume". A lead who committed a complete story by hand
+was then refused with "the teammate made no commits of its own" and given the
+same advice, so following it looped forever at the cost of a full teammate run
+per lap. Both resumed refusals now name both routes: if the committed work
+completes the card, run `close.py story <id> review` (or `close.py free <slug>
+review`) from that worktree; if work remains, resume. The no-commits guard is
+unchanged.
+
 ## v0.23.1 — absence is not a pass
 
 Release post-merge now refuses before tagging when `version_files` is unset or
