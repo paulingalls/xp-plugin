@@ -38,8 +38,7 @@ def close_from_named_tree(text, env):
 def test_each_resumed_refusal_executes_its_complete_route_and_the_first_drives_the_next_lap(
     tmp_path,
 ):
-    repo, env, g, tree, _marker = stopped_story(tmp_path)
-    assert g("checkout", "-q", "main").returncode == 0
+    repo, env, _g, tree, _marker = stopped_story(tmp_path)
     (tree / "work.py").write_text("inherited work\n")
     stub_claude(tmp_path, commit=False)
 
@@ -74,4 +73,4 @@ def test_a_free_recovery_takes_its_close_noun_from_leg(monkeypatch):
 
     _text, argv = command(rendered, "close.py")
     assert calls == [story_id]
-    assert argv == ["close.py", *leg(story_id)[0].split(), "review"]
+    assert argv == ["close.py", "free", "fix-typo", "review"]
