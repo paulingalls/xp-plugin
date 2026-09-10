@@ -9,6 +9,7 @@ sprint_cap: 6        # max stories per sprint
 debt_budget: 0.2     # max share of sprint stories that are scheduled debt
 constraints_chars_cap: 4500  # hard character ceiling; retire or shorten a rule
 profile_target: 806  # story-card token allowance; also the default when absent
+# versioning: off     # disables XP versions and tags; version_files is then ignored
 # version_files: path/to/manifest.json  # REQUIRED before your first release:
 #                      # comma-separated JSON manifests whose version the tag must match.
 #                      # `none` releases WITHOUT that wall — say it deliberately, because

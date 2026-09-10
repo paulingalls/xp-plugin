@@ -7,8 +7,8 @@ import tempfile
 import overlap
 from env import data_root
 from milestone import sprint_stories
+from release import VERSIONING_OFF_TEXT, next_version, refuse_unbumpable, versioning_mode
 from release import cmd_post_merge as release_post_merge
-from release import next_version, refuse_unbumpable
 from review import CLEARABLE_BY_FULL, covered_ranges, reviewer_strays, validate_clearable
 from sprint_close import (
     _shown_diff,
@@ -265,8 +265,13 @@ def cmd_land(sprint_id: str, dry_run: bool) -> int:
     if refusal := _coverage_refusal(sprint_id, git("rev-parse", "HEAD").stdout.strip()):
         return fail(refusal)
     branch = git("rev-parse", "--abbrev-ref", "HEAD").stdout.strip()
-    if not (version := next_version()):
+    versioned, refusal = versioning_mode()
+    if refusal:
+        return fail(refusal)
+    version = next_version() if versioned else ""
+    if versioned and not version:
         return refuse_unbumpable()
+    title = f"release {version}" if versioned else f"release {branch}"
     ref = overlap.merge_source(default_branch(), "pr")
     pending = overlap.unmerged(ref)
     marker, state, marker_error = read_sprint_state(sprint_id)
@@ -287,14 +292,17 @@ def cmd_land(sprint_id: str, dry_run: bool) -> int:
                 "pr",
                 "create",
                 "--title",
-                f"release {version}",
+                title,
                 "--body-file",
                 "<release-pr-body>",
             ],
         ]
         for c in preview:
             print(" ".join(c))
-        print(f"(then: close.py sprint {sprint_id} post-merge — tag {version}, retire the key)")
+        handoff = f"tag {version}, retire the key" if versioned else "retire the key"
+        print(f"(then: close.py sprint {sprint_id} post-merge — {handoff})")
+        if not versioned:
+            print(VERSIONING_OFF_TEXT)
         if pending:
             print(f"...on a trial merge with {ref} — staged, then aborted either way")
         return 0
@@ -349,7 +357,7 @@ def cmd_land(sprint_id: str, dry_run: bool) -> int:
                 "pr",
                 "create",
                 "--title",
-                f"release {version}",
+                title,
                 "--body-file",
                 body_file.name,
             ],
@@ -359,6 +367,8 @@ def cmd_land(sprint_id: str, dry_run: bool) -> int:
             if r.returncode != 0:
                 return fail(f"{c[0]} failed: {r.stderr.strip()}")
     print(f"release PR open. After it MERGES: close.py sprint {sprint_id} post-merge")
+    if not versioned:
+        print(VERSIONING_OFF_TEXT)
     return 0
 
 

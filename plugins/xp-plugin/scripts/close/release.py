@@ -1,11 +1,11 @@
-"""Cut a release tag only after its branch and manifest agree on the merged tree."""
+"""Finish a release only after its branch agrees with the merged tree."""
 
 import json
 import re
 from pathlib import Path
 
 import lifecycle as lc
-from close import config_flat, default_branch, fail, git
+from close import config_flat, config_has, default_branch, fail, git
 from env import clear_sprint_branch, sprint_branch
 
 
@@ -22,6 +22,22 @@ def next_version(part: str = "minor", ref: str = "HEAD") -> str:
 def refuse_unbumpable(ref: str = "HEAD") -> int:
     latest = git("describe", "--tags", "--abbrev=0", ref, check=False).stdout.strip()
     return fail(f"refused: latest tag {latest!r} is not vMAJOR.MINOR — cannot bump it")
+
+
+VERSIONING_OFF_TEXT = "`versioning: off`: no tag is cut; `version_files` is ignored"
+
+
+def versioning_mode() -> tuple[bool, str]:
+    if not config_has("versioning"):
+        return True, ""
+    value = config_flat("versioning")
+    if value == "off":
+        return False, ""
+    shown = value or "<empty>"
+    return False, (
+        f"refused: versioning is {shown!r}; `off` is the only valid value — remove"
+        " the key to enable versioning"
+    )
 
 
 def version_files() -> list[str]:
@@ -88,10 +104,14 @@ def cmd_post_merge(
     retire_sprint: bool = True,
     dry_run: bool = False,
 ) -> int:
+    versioned, refusal = versioning_mode()
+    if refusal:
+        return fail(refusal)
     if (head := git("rev-parse", "--abbrev-ref", "HEAD").stdout.strip()) != (
         trunk := default_branch()
     ):
-        return fail(f"refused: on {head}, not {trunk} — the release tag names the MERGED sha")
+        reason = "the release tag names" if versioned else "the release must finish on"
+        return fail(f"refused: on {head}, not {trunk} — {reason} the MERGED sha")
     release_branch = merged_branch or sprint_branch()
     if retire_sprint and not release_branch:
         return fail("refused: no sprint branch recorded — open the sprint before releasing it")
@@ -101,10 +121,28 @@ def cmd_post_merge(
         release_branch
         and git("merge-base", "--is-ancestor", release_branch, "HEAD", check=False).returncode
     ):
+        action = "tagging here would" if versioned else "shipping here would"
         return fail(
-            f"refused: {release_branch} is not merged into {trunk} — tagging here would"
+            f"refused: {release_branch} is not merged into {trunk} — {action}"
             f" name a commit containing none of {release_id}. Merge the release PR first"
         )
+    if not versioned:
+        if dry_run:
+            if retire_sprint:
+                print(
+                    "dry run: would run the sprint-close lifecycle, which has NOT run here"
+                    " and can still refuse, then clear the sprint branch"
+                )
+            print(VERSIONING_OFF_TEXT)
+            return 0
+        if retire_sprint and (red := lc.run(config_flat(lc.KEY), "sprint-close", release_id)):
+            return fail(red)
+        if retire_sprint:
+            clear_sprint_branch()
+        print(VERSIONING_OFF_TEXT)
+        if retire_sprint:
+            print("open the next sprint")
+        return 0
     if not (version := next_version(part)):
         return refuse_unbumpable()
     if git("rev-parse", "--verify", "-q", f"refs/tags/{version}", check=False).returncode == 0:

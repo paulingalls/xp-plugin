@@ -43,6 +43,8 @@ def current_free(slug: str) -> tuple[str, str, str]:
 
 
 def cmd_start(slug: str, dry_run: bool = False) -> int:
+    from release import VERSIONING_OFF_TEXT, versioning_mode
+
     normalized = re.sub(r"[^a-z0-9]+", "-", slug.lower()).strip("-")
     if slugify(slug) != normalized:
         return fail(
@@ -51,20 +53,28 @@ def cmd_start(slug: str, dry_run: bool = False) -> int:
         )
     if git("status", "--porcelain").stdout.strip():
         return fail("refused: working tree is dirty — commit or stash first")
+    versioned, refusal = versioning_mode()
+    if refusal:
+        return fail(refusal)
     trunk = default_branch()
     if (branch := git("rev-parse", "--abbrev-ref", "HEAD").stdout.strip()) != trunk:
+        reason = (
+            "because it produces a patch tag" if versioned else "as the boundary for shipping now"
+        )
+        ending = "To ship now as a patch" if versioned else "To ship now"
         return fail(
-            f"refused: free start cuts off {trunk} because it produces a patch tag; from"
-            f" {branch} it would include unreleased work. If this branch integrates into"
-            " a sprint review, commit there with `[sprint-direct]` so that review absorbs"
-            f" it. To ship now as a patch, `git checkout {trunk}`, then retry"
-            f" `close.py free {slug} start`"
+            f"refused: free start cuts off {trunk} {reason}; from {branch} it would include"
+            " unreleased work. If this branch integrates into a sprint review, commit there"
+            " with `[sprint-direct]` so that review absorbs it."
+            f" {ending}, `git checkout {trunk}`, then retry `close.py free {slug} start`"
         )
     new = branch_for(slug)
     if git("rev-parse", "--verify", "-q", f"refs/heads/{new}", check=False).returncode == 0:
         return fail(f"refused: branch {new} already exists")
     if dry_run:
         print(f"dry run: would cut {new} off {trunk}; nothing was created")
+        if not versioned:
+            print(VERSIONING_OFF_TEXT)
         return 0
     if (made := git("branch", new, trunk, check=False)).returncode:
         return fail(f"git branch failed: {made.stderr.strip()}")
@@ -76,6 +86,8 @@ def cmd_start(slug: str, dry_run: bool = False) -> int:
         f" worktree exists; otherwise in the main repo after `git checkout {new}`. Then run"
         f" `close.py {leg(key)[0]} review` there"
     )
+    if not versioned:
+        print(VERSIONING_OFF_TEXT)
     return 0
 
 
@@ -147,8 +159,6 @@ def cmd_post_merge(slug: str, dry_run: bool = False) -> int:
     if result:
         return result
     if dry_run:
-        # The tag is the reversible half; everything below it deletes. A preview
-        # naming only the tag hides what the lead is actually asking about.
         print(
             f"dry run: would then flip {key} to [done], remove {spawn.worktree_path(key)}"
             f" and delete {branch} and this close's markers"
