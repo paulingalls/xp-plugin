@@ -14,7 +14,7 @@ Background long legs. No timeout.
 
 1. **Slate review** — `/create-sprint` authors and opens with a fresh reader over
    `sprint_cap`. Mid-sprint: record, never schedule; `[sprint-direct]` keeps work on
-   the sprint branch in sprint review; free cuts a patch tag to ship now.
+   the sprint branch in sprint review; free work can ship now.
    `spawn.py ready <story-id>` follows the corrected slate and refuses until
    `slate_review.py --refresh` has run; the lead owns that non-review. Multi-file spawn stages a planner, then **execution plan
    review** (`plan_review.py`); the planner writes the plan. Human-only questions stop.
@@ -24,6 +24,6 @@ Background long legs. No timeout.
 3. **Story close** — `/story-close`. One full review always.
 4. **Sprint close** — `/sprint-close`. With the human, schedule debt under budget or
    drop it. Nothing carries.
-5. **Free** — `close.py free <slug> start`, then `/free-close`; slotless, cuts a patch tag.
+5. **Free** — `close.py free <slug> start`, then `/free-close`; slotless, ships now.
 
 At story/sprint close replace, never append, the ≤30-line session digest.

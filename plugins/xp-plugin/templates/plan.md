@@ -1,6 +1,6 @@
 # Roadmap
 
-<!-- A card's Files line takes comma-separated bare paths, `(new)` allowed, no other parentheticals.
+<!-- A card's Files line takes comma-separated bare paths, `(new)` allowed, no other annotations.
      A path is declared scope; a rationale for one belongs in the card body. -->
 
 ## Milestone 1 — <name>   [planned]

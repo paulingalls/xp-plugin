@@ -14,7 +14,7 @@ import overlap
 import ready
 import review
 import work
-from release import next_version, refuse_unbumpable
+from release import VERSIONING_OFF_TEXT, next_version, refuse_unbumpable, versioning_mode
 from review_artifacts import story_sidecars
 
 
@@ -115,11 +115,18 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
     tier = work.config_block_value("tests", tier_key)
     branch = close.git("rev-parse", "--abbrev-ref", "HEAD").stdout.strip()
     verdict = bookkeep.render_merge_body(rounds, story_id)
-    version = next_version("patch", ref) if free else ""
-    if free and not version:
-        return refuse_unbumpable(ref)
+    versioned = True
+    version = ""
+    if free:
+        versioned, refusal = versioning_mode()
+        if refusal:
+            return close.fail(refusal)
+        if versioned:
+            version = next_version("patch", ref)
+            if not version:
+                return refuse_unbumpable(ref)
     message = f"Merge {branch} ({story_id})\n\n{verdict}\n"
-    title = f"{noun} — {version}" if free else story_id
+    title = (f"{noun} — {version}" if version else noun) if free else story_id
     pr_cmds = [["git", "push", "-u", "origin", branch]]
     pr_cmds.append(
         ["gh", "pr", "create"]
@@ -145,6 +152,8 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
             for command in pr_cmds:
                 print(" ".join(command))
             print(f"(then `close.py {noun} post-merge`)")
+            if not versioned:
+                print(VERSIONING_OFF_TEXT)
             return 0
         print(
             bookkeep.render_land_preview(raw, tier, merge_mode, branch, trunk, pr_steps, pending),
@@ -168,9 +177,10 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
             if result.returncode:
                 return close.fail(f"{command[0]} failed: {result.stderr.strip()}")
         print(bookkeep.render_noted(rounds), end="")
-        print(
-            f"PR open against {trunk} for {version}. After it merges: `close.py {noun} post-merge`"
-        )
+        target = f" for {version}" if version else ""
+        print(f"PR open against {trunk}{target}. After it merges: `close.py {noun} post-merge`")
+        if not versioned:
+            print(VERSIONING_OFF_TEXT)
         return 0
 
     story_tree = str(Path.cwd())

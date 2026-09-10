@@ -69,6 +69,18 @@ class TestCardRefreshGate:
         again = spawn(repo, env, "ready", "story-042")
         assert again.returncode == 0, again.stderr
 
+    def test_a_bracketed_path_is_tracked_literally_not_as_a_git_glob(self, tmp_path):
+        repo, env, _g = make_repo(tmp_path, status="planned", files="app/[slug]/page.tsx")
+        self.commit(repo, env, "app/[slug]/page.tsx", "# 1\n")
+        seed_refresh_receipt(repo, env)
+        self.commit(repo, env, "app/s/page.tsx", "a sibling the glob [slug] matches\n")
+        assert spawn(repo, env, "ready", "story-042").returncode == 0
+
+        self.replan(tmp_path)
+        self.commit(repo, env, "app/[slug]/page.tsx", "# 2\n")
+        r = spawn(repo, env, "ready", "story-042")
+        assert r.returncode == 2 and "app/[slug]/page.tsx changed since" in r.stderr, r.stderr
+
     def test_a_path_the_card_will_create_is_recorded_absent_not_stale(self, tmp_path):
         """AC4, both readings refused: `null` is not "infinitely stale" — the mint
         goes through — and not "silently exempt" either, because HEAD acquiring
