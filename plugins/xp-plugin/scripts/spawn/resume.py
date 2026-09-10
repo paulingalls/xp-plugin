@@ -5,6 +5,7 @@ import fcntl
 import subprocess
 from pathlib import Path
 
+from close import leg
 from handoff import RESULTS, STAGES, handoff_state, marker_path
 
 
@@ -20,9 +21,12 @@ def parse(argv: list[str]):
 
 
 def handback_recovery(tree: Path, story_id: str) -> str:
+    noun = leg(story_id)[0]
     return (
-        f" Recover by reviewing and committing the remaining work in {tree},"
-        f" then run `spawn.py resume {story_id}`; do not remove the inherited tree."
+        f" Recover by reviewing and committing any remaining work in {tree}. If the"
+        f" committed work completes the card, run `close.py {noun} review` from {tree};"
+        f" if work remains, run `spawn.py resume {story_id}`. Do not remove the inherited"
+        " tree."
     )
 
 
