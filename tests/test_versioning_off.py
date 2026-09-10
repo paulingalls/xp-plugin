@@ -215,6 +215,19 @@ def test_sprint_post_merge_off_keeps_branch_record_when_lifecycle_refuses(tmp_pa
     assert [json.loads(line) for line in record.read_text().splitlines()] == [["sprint-close", "2"]]
 
 
+def test_sprint_post_merge_off_on_trunk_without_the_merge_refuses(tmp_path):
+    command, record = lifecycle_recorder(tmp_path)
+    config = CONFIG + f"versioning: off\nlifecycle_command: {command}\n"
+    repo, env, g = make_repo(tmp_path, config=config)
+    g("checkout", "-q", "main")
+
+    result = sprint(repo, env, "post-merge")
+
+    assert result.returncode == 2 and not record.exists()
+    assert (tmp_path / "data" / "sprint_branch").read_text().strip() == "sprint-002"
+    assert "merged" in result.stderr and not re.search(r"\btag", result.stderr)
+
+
 @pytest.mark.slow
 def test_free_post_merge_off_retires_card_worktree_branches_and_markers_without_a_tag(tmp_path):
     helper = _FreeTeardown()
