@@ -176,6 +176,22 @@ def test_a_refresher_that_writes_no_findings_cannot_mint_a_receipt(tmp_path):
     assert spawn(repo, env, "ready", "story-042").returncode == 2
 
 
+def test_a_files_refusal_reaches_the_lead_without_a_false_retry(tmp_path):
+    repo, env, _g, plan = refresh_repo(tmp_path)
+    rejected = "src/a file.py"
+    plan.write_text(plan.read_text().replace("Files: src/thing.py", f"Files: {rejected}"))
+    stub_card_refresher(tmp_path)
+
+    result = card_refresh(repo, env)
+
+    said = result.stdout + result.stderr
+    assert result.returncode == 2, said
+    assert rejected in said and "Repair the Files line" in said
+    assert "Traceback" not in said
+    assert "recorded no receipt" not in said and "refresh again" not in said
+    assert not receipt_of(env).exists()
+
+
 def test_a_refresh_whose_receipt_never_landed_refuses_instead_of_claiming_success(tmp_path):
     """The one state the detached child can leave that LOOKS like success: the
     incomplete marker cleared and no receipt written. Without the refusal the
@@ -192,11 +208,12 @@ def test_a_refresh_whose_receipt_never_landed_refuses_instead_of_claiming_succes
     )
     assert direct().returncode == 0, "the fixture no longer reaches the success arm"
     receipt_of(env).unlink()
-    refused = direct()
-    assert refused.returncode == 2, refused.stdout
-    assert "recorded no receipt" in refused.stderr, refused.stderr
-    receipt_of(env).write_text("{}")  # present but carrying no verdict
-    assert direct().returncode == 2
+    for payload in (None, "{}"):
+        if payload is not None:
+            receipt_of(env).write_text(payload)
+        refused = direct()
+        assert refused.returncode == 2, refused.stdout
+        assert "recorded no receipt" in refused.stderr, refused.stderr
 
 
 @pytest.mark.parametrize(("knob", "expected"), [({"status": "ready"}, "lifecycle")])

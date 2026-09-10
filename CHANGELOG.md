@@ -4,6 +4,19 @@ Release notes started at v0.6.0; earlier entries are summarized from their
 tag and merge messages. Full detail lives in the merge history and the
 per-sprint review reports.
 
+## v0.23.3 — bracketed paths are paths
+
+Issue #81. Files declarations now preserve path segments containing parentheses,
+square brackets, or braces while continuing to refuse whitespace outside a
+trailing annotation, and refuse unbalanced brackets such as `test_{a,b}.py`
+shorthand. A parenthesized segment is no longer silently truncated, and `x.py(note)`
+without a space now declares that literal path. The refresh receipt tracks a
+bracketed path literally rather than as a git glob.
+
+When a card refresh refuses a Files declaration, its terminal now names the bad
+entry and repair instead of reporting a missing receipt and asking the lead to
+repeat the same failing refresh.
+
 ## v0.23.2 — a resume refusal names a route that can succeed
 
 Issue #78. When `spawn.py resume` refused a taken-over tree, its recovery said
