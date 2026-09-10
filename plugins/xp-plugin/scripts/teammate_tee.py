@@ -22,7 +22,7 @@ LogWrite = Callable[[str], None]
 OutWrite = Callable[[str], None]
 EventObserver = Callable[[dict], None]
 TASK_DESCRIPTION_CAP = 200
-AGENT_TIMEOUT_DEFAULT = 3600
+AGENT_TIMEOUT_DEFAULT = 4 * 60 * 60
 
 
 def spawn_header(log_id: str, iso_ts: str) -> str:

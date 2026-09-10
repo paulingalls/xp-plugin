@@ -52,7 +52,7 @@ def test_claude_executor_child_gets_default_foreground_environment(tmp_path, mon
         data_root=tmp_path / "data",
         harness="claude",
     )
-    assert [env[key] for key in BACKGROUND_ENV] == ["1", "3600000", "3600000"]
+    assert [env[key] for key in BACKGROUND_ENV] == ["1", "14400000", "14400000"]
 
 
 def test_claude_reviewer_child_gets_its_agent_bound(tmp_path, monkeypatch):
