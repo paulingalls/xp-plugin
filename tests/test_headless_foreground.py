@@ -31,7 +31,7 @@ def claude_result(value="done"):
     return {"type": "result", "is_error": False, "result": value}
 
 
-def launch_and_read_env(tmp_path, runner, monkeypatch, **kwargs):
+def launch_and_read_env(tmp_path, runner, **kwargs):
     recorded = tmp_path / "child-env.json"
     argv = event_script(tmp_path, [claude_result()], record=recorded)
     runner(argv=argv, cwd=tmp_path, prompt="", **kwargs)
@@ -47,7 +47,6 @@ def test_claude_executor_child_gets_default_foreground_environment(tmp_path, mon
     env = launch_and_read_env(
         tmp_path,
         run_teammate,
-        monkeypatch,
         story_id="free-test",
         data_root=tmp_path / "data",
         harness="claude",
@@ -55,22 +54,25 @@ def test_claude_executor_child_gets_default_foreground_environment(tmp_path, mon
     assert [env[key] for key in BACKGROUND_ENV] == ["1", "14400000", "14400000"]
 
 
-def test_claude_reviewer_child_gets_its_agent_bound(tmp_path, monkeypatch):
+@pytest.mark.parametrize("agent_timeout, bound", [("1.25", "1250"), (None, "14400000")])
+def test_claude_reviewer_child_gets_its_agent_bound(tmp_path, monkeypatch, agent_timeout, bound):
     from spawn import run_agent
 
     for key in BACKGROUND_ENV:
         monkeypatch.delenv(key, raising=False)
     monkeypatch.setenv("XP_DATA", str(tmp_path / "data"))
-    monkeypatch.setenv("XP_AGENT_TIMEOUT", "1.25")
+    if agent_timeout is None:
+        monkeypatch.delenv("XP_AGENT_TIMEOUT", raising=False)
+    else:
+        monkeypatch.setenv("XP_AGENT_TIMEOUT", agent_timeout)
     env = launch_and_read_env(
         tmp_path,
         run_agent,
-        monkeypatch,
         role="reviewer",
         harness="claude",
         log_id="review",
     )
-    assert [env[key] for key in BACKGROUND_ENV] == ["1", "1250", "1250"]
+    assert [env[key] for key in BACKGROUND_ENV] == ["1", bound, bound]
 
 
 @pytest.mark.parametrize("kept", BACKGROUND_ENV)
@@ -81,7 +83,6 @@ def test_claude_child_keeps_each_explicit_background_value(tmp_path, monkeypatch
     received = launch_and_read_env(
         tmp_path,
         run_stream,
-        monkeypatch,
         log_id="claude",
         data_root=tmp_path / "data",
         harness="claude",
