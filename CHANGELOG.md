@@ -4,6 +4,18 @@ Release notes started at v0.6.0; earlier entries are summarized from their
 tag and merge messages. Full detail lives in the merge history and the
 per-sprint review reports.
 
+## v0.23.4 — versioning can be turned off
+
+Issue #77. `versioning: off` in `.xp/config.yml` turns off the plugin's
+versioning for a project whose releases and versions belong to another process.
+Sprint land and free land compute no version, so a repository whose tags follow
+another scheme is no longer refused, and their PR titles name the sprint branch
+or the free slug. Sprint post-merge cuts no tag, still runs the sprint-close
+lifecycle and clears the recorded sprint branch; free post-merge cuts no tag and
+still finishes the card. `version_files` is ignored in this mode, and any other
+value of `versioning` refuses. Unset keeps today's behaviour. PROCESS.md and the
+close skills no longer describe tagging, which the scripts report.
+
 ## v0.23.3 — bracketed paths are paths
 
 Issue #81. Files declarations now preserve path segments containing parentheses,
