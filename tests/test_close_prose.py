@@ -1,6 +1,7 @@
 """Shipped prose matches the mechanism. Split from test_close.py at sprint-004 open."""
 
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -59,11 +60,11 @@ class TestShippedProseMatchesTheMechanism:
         assert "[sprint-direct]" in sprint and "sprint branch" in sprint
         assert "sprint review" in sprint
         assert "free" in patch and "ship now" in patch
-        assert all(word not in patch for word in ("tag", "version", "trunk", "branch"))
+        assert not re.search(r"\btag|version|trunk|branch", patch)
 
         free_step = process.split("5. **Free**", 1)[1].split("At story/sprint", 1)[0]
         assert "free" in free_step.lower() and "ship" in free_step.lower()
-        assert "tag" not in free_step.lower() and "version" not in free_step.lower()
+        assert not re.search(r"\btag|version", free_step.lower())
 
     def test_close_skills_do_not_restate_tag_mechanics(self):
         cases = (
@@ -72,7 +73,7 @@ class TestShippedProseMatchesTheMechanism:
         )
         for path, step in cases:
             body = prose(path).split(step, 1)[1]
-            assert "tag" not in body.lower() and "version" not in body.lower()
+            assert not re.search(r"\btag|version", body.lower())
 
     def test_review_and_salvage_give_distinct_dirty_tree_advice(self, tmp_path):
         repo, env, g = make_repo(tmp_path)

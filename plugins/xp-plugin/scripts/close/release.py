@@ -141,7 +141,7 @@ def cmd_post_merge(
             clear_sprint_branch()
         print(VERSIONING_OFF_TEXT)
         if retire_sprint:
-            print("open the next sprint")
+            print("sprint branch cleared; open the next sprint")
         return 0
     if not (version := next_version(part)):
         return refuse_unbumpable()

@@ -126,7 +126,7 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
             if not version:
                 return refuse_unbumpable(ref)
     message = f"Merge {branch} ({story_id})\n\n{verdict}\n"
-    title = f"{noun} — {version}" if free and versioned else noun if free else story_id
+    title = (f"{noun} — {version}" if version else noun) if free else story_id
     pr_cmds = [["git", "push", "-u", "origin", branch]]
     pr_cmds.append(
         ["gh", "pr", "create"]
@@ -177,8 +177,8 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
             if result.returncode:
                 return close.fail(f"{command[0]} failed: {result.stderr.strip()}")
         print(bookkeep.render_noted(rounds), end="")
-        release = f" for {version}" if versioned else ""
-        print(f"PR open against {trunk}{release}. After it merges: `close.py {noun} post-merge`")
+        target = f" for {version}" if version else ""
+        print(f"PR open against {trunk}{target}. After it merges: `close.py {noun} post-merge`")
         if not versioned:
             print(VERSIONING_OFF_TEXT)
         return 0

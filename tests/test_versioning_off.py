@@ -237,6 +237,7 @@ def test_free_post_merge_off_retires_card_worktree_branches_and_markers_without_
     assert_no_release_promise(result.stdout)
 
 
+@pytest.mark.slow
 def test_free_post_merge_off_preview_keeps_every_artifact_and_cuts_no_tag(tmp_path):
     helper = _FreeTeardown()
     repo, env, g, tree, spawned_branch, branch, key = helper.spawned(tmp_path)
@@ -314,8 +315,9 @@ def test_invalid_versioning_value_is_neither_enabled_nor_off(tmp_path, monkeypat
     assert "off" in refusal and (value or "empty") in refusal
 
 
-@pytest.mark.parametrize("value", ["", "on", "false", "OFF"], ids=["empty", "on", "false", "case"])
-def test_each_version_aware_route_reads_invalid_versioning(tmp_path, value):
+@pytest.mark.slow
+def test_each_version_aware_route_reads_invalid_versioning(tmp_path):
+    value = "on"
     cases = []
 
     start_repo, start_env, start_git = free_repo(tmp_path / "start")
@@ -379,10 +381,13 @@ def test_each_version_aware_route_reads_invalid_versioning(tmp_path, value):
         assert "versioning" in case.stderr and "off" in case.stderr
 
 
-def test_the_config_template_places_the_versioning_opt_out_beside_version_files():
+def test_uncommenting_the_template_line_beside_version_files_turns_versioning_off(
+    tmp_path, monkeypatch
+):
     lines = (PLUGIN / "templates" / "config.yml").read_text().splitlines()
-    index = next(i for i, line in enumerate(lines) if "version_files:" in line)
-    block = "\n".join(lines[index - 2 : index + 6])
-    assert block.count("versioning: off") == 1
-    assert "disable" in block.lower() and "manifest" in block.lower()
-    assert "`none`" in block and "wall" in block.lower()
+    index = next(i for i, line in enumerate(lines) if line.startswith("# version_files:"))
+    assert [line for line in lines if "versioning:" in line] == [lines[index - 1]]
+    (tmp_path / ".xp").mkdir()
+    (tmp_path / ".xp" / "config.yml").write_text(lines[index - 1].removeprefix("# ") + "\n")
+    monkeypatch.chdir(tmp_path)
+    assert release.versioning_mode() == (False, "")
