@@ -10,11 +10,12 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 from env import refuse_direct_invocation
+from review_refusal import abort_text
 from review_report import (
     CLEARABLE_BY_FULL,  # noqa: F401
     ITEM_CAP,  # noqa: F401
     LIST_CAP,  # noqa: F401
-    NO_ROUND,
+    NO_ROUND,  # noqa: F401
     REPORT_KEYS,  # noqa: F401
     cap_display,  # noqa: F401
     cap_items,  # noqa: F401
@@ -167,26 +168,6 @@ def write_round(
     else:
         append(state)
         marker.write_text(json.dumps(state))
-
-
-def abort_text(reviewed_head: str, why: str, recorded: str = NO_ROUND, salvage=False) -> str:
-    """EVERY abort in the review leg, not only the motion checks: a refused run can still have
-    left commits behind. The undo is offered only when something actually MOVED: on an untouched
-    tree it teaches the lead to skip it on the run where it is real, and under `salvage` a merely
-    dirty tree may be the dead reviewer's uninspected work: the reset is dropped, or put behind it.
-    `recorded` is what became of the round: a leg that records one before refusing must not offer
-    the undo under a sentence saying it did not — and the reset may be what orphans the sha.
-    """
-    from close import git
-
-    moved = git("rev-parse", "HEAD").stdout.strip() != reviewed_head
-    if not moved and (salvage or not git("status", "--porcelain").stdout.strip()):
-        return f"refused: {why}" if recorded == NO_ROUND else f"refused: {why}\n\n{recorded}"
-    stat = git("diff", "--stat", f"{reviewed_head}..HEAD").stdout
-    undo = f" yours to keep or undo: git reset --hard {reviewed_head[:8]}"
-    if salvage and git("status", "--porcelain").stdout.strip():
-        undo = f" but reset --hard {reviewed_head[:8]} only after reading the uncommitted lines"
-    return f"refused: {why}\n\n{stat}\n{recorded} The reviewer's work is in your tree —{undo}"
 
 
 def check_reviewer_motion(
