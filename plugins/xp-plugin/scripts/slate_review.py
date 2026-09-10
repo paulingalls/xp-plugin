@@ -145,11 +145,13 @@ def _wait(
     pid: int,
     child: subprocess.Popen | None = None,
 ) -> int:
-    state = _marker_state(identifier, kind)
     while not _dead(pid, child):
         time.sleep(POLL_SECONDS)
     marker = review_marker(identifier, kind)
+    state = _marker_state(identifier, kind)
     if marker.exists():
+        if refusal := state.get("refusal"):
+            return fail(refusal)
         try:
             tail = Path(state.get("log", "")).read_text(errors="replace")[-LOG_TAIL:].strip()
         except OSError:
@@ -403,9 +405,11 @@ def _run_refresh(story_id: str, out: Path, dry_run: bool) -> int:
             findings = ""
         if not findings:
             return fail(f"refused: the card refresher wrote no findings at {out.resolve()}")
-        review_marker(story_id, "refresh").unlink(missing_ok=True)
         if problem := ready.write_refresh_receipt(story_id, current_card, candidate_changed):
+            marker = review_marker(story_id, "refresh")
+            marker.write_text(json.dumps(_marker_state(story_id, "refresh") | {"refusal": problem}))
             return fail(problem)
+        review_marker(story_id, "refresh").unlink(missing_ok=True)
         if outside_changed:
             receipt = ready.refresh_receipt_path(story_id)
             payload = json.loads(receipt.read_text())
