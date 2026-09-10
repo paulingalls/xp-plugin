@@ -31,5 +31,5 @@ description: >-
    Read the reviewer's diff; land accepts it.
 4. **`close.py sprint <id> land`** opens the release PR. Not releasable? Don't run
    it — the branch carries.
-5. **`close.py sprint <id> post-merge`**, AFTER the PR merges — it tags. Your
+5. **`close.py sprint <id> post-merge`**, AFTER the PR merges. Your
    release artifacts are yours; cut them at step 2 before review.

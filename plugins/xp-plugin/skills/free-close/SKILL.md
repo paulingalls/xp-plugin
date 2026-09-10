@@ -14,4 +14,4 @@ The scripts own the mechanics. You own the judgment.
    stay inside the round that found them. Your fixes move HEAD past what the review
    covered and cost one confirming round. Apply the finding bar in JUDGMENT.md.
 3. **Land**: `close.py free <slug> land` opens the release PR.
-4. **After merge**: `close.py free <slug> post-merge` tags.
+4. **After merge**: `close.py free <slug> post-merge`.
