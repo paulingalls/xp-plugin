@@ -237,6 +237,35 @@ recovery block; `PostToolUse` and `PostToolUseFailure` on Bash record whether a
 story's `Verify` went green; `Stop` blocks once on a red `Verify` still in play.
 All four are advisory lane-keeping. The wall is git.
 
+## Worktree setup and teardown
+
+Every story runs in its own worktree, and the two commands that make one
+usable and clean it up live in `.xp/system.md`, not `config.yml` — one
+colon-delimited line each (optionally bolded or `- `-prefixed), whose value is
+ONE backticked command or starts with `none`:
+
+```markdown
+**Worktree bootstrap**: `uv sync`
+**Worktree teardown**: none needed
+```
+
+Only a value that is *entirely* one backticked command runs, so prose on these
+lines can never execute by accident — and an unreadable value or a repeated
+label refuses and quotes the line rather than guessing. Absent and unreadable
+stay different things. Unlike `lifecycle_command`, both run under a shell.
+
+| | Bootstrap | Teardown |
+|---|---|---|
+| Runs at | `spawn.py <story-id>`, after `git worktree add`, before the teammate launches | story land and free close, just before `git worktree remove` |
+| Reads | `.xp/system.md` in your checkout | `.xp/system.md` **inside that worktree** — the story's own copy |
+| Working dir | the new worktree | the worktree being removed |
+| On failure | refuses the spawn, leaves the tree at the printed path | reports it; removal continues, because the merge already landed |
+| Timeout | none | `teardown_timeout` (default `60`), then SIGKILL to the process group |
+
+`spawn.py resume` re-runs neither: the tree already exists. `--dry-run` fires
+neither. When a teammate hands back a dirty tree, spawn *prints* the teardown
+as part of the discard recovery instead of running it.
+
 ## Where state lives
 
 `.xp/` is small and hand-edited — three files, all yours:
