@@ -1,5 +1,4 @@
 import re
-import shlex
 import subprocess
 
 FULL_SHA = r"[0-9a-f]{40}"
@@ -14,12 +13,9 @@ def named_section(bundle, title):
 
 def named_diff_argv(bundle, title):
     body = named_section(bundle, title)
-    commands = re.findall(rf"^git diff ({FULL_SHA})\.\.({FULL_SHA})$", body, re.M)
-    assert len(commands) == 1, f"expected one pinned diff command in {title!r}:\n{body}"
-    base, head = commands[0]
-    argv = shlex.split(f"git diff {base}..{head}")
-    assert argv == ["git", "diff", f"{base}..{head}"]
-    return argv
+    ranges = re.findall(rf"^git diff ({FULL_SHA}\.\.{FULL_SHA})$", body, re.M)
+    assert len(ranges) == 1, f"expected one pinned diff command in {title!r}:\n{body}"
+    return ["git", "diff", ranges[0]]
 
 
 def read_named_diff(bundle, title, repo, env):
