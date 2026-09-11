@@ -4,6 +4,17 @@ Release notes started at v0.6.0; earlier entries are summarized from their
 tag and merge messages. Full detail lives in the merge history and the
 per-sprint review reports.
 
+## v0.23.6 — a released sprint is not a sprint waiting to close
+
+SessionStart told a lead to run `/sprint-close` on a sprint it had already
+released, at every session until a new sprint existed, because nothing recorded
+that the sprint shipped. Sprint post-merge now writes a release record under the
+data root naming the sprint, its merged sha and its tag, or no tag under
+`versioning: off`; a dry run or a refused post-merge writes none. NEXT reads it:
+a released sprint with nothing open says to run `/create-sprint`, a released
+sprint with an open card names the card to schedule into a new sprint, and an
+unreadable record asks for recovery. A sprint with no record behaves as before.
+
 ## v0.23.5 — a headless role finishes its work inside its turn
 
 Issue #80. A headless run ends with its turn and kills any background task, and
