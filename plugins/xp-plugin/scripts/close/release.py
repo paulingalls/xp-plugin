@@ -2,11 +2,34 @@
 
 import json
 import re
+import tempfile
 from pathlib import Path
 
 import lifecycle as lc
 from close import config_flat, config_has, default_branch, fail, git
-from env import clear_sprint_branch, sprint_branch
+from env import clear_sprint_branch, data_root, sprint_branch
+
+
+def release_record_path(release_id: str) -> Path:
+    return data_root() / "releases" / f"sprint-{int(release_id)}.json"
+
+
+def write_release_record(release_id: str, tag: str | None) -> Path:
+    path = release_record_path(release_id)
+    record = {"sprint": int(release_id), "merged_sha": git("rev-parse", "HEAD").stdout.strip()}
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = None
+    try:
+        with tempfile.NamedTemporaryFile("w", dir=path.parent, delete=False) as stream:
+            temporary = Path(stream.name)
+            json.dump(record | {"tag": tag}, stream)
+            stream.write("\n")
+        temporary.replace(path)
+    except OSError:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
+        raise
+    return path
 
 
 def next_version(part: str = "minor", ref: str = "HEAD") -> str:
@@ -138,6 +161,11 @@ def cmd_post_merge(
         if retire_sprint and (red := lc.run(config_flat(lc.KEY), "sprint-close", release_id)):
             return fail(red)
         if retire_sprint:
+            try:
+                write_release_record(release_id, None)
+            except OSError as exc:
+                path = release_record_path(release_id)
+                return fail(f"refused: could not write release record {path}: {exc}")
             clear_sprint_branch()
         print(VERSIONING_OFF_TEXT)
         if retire_sprint:
@@ -169,6 +197,19 @@ def cmd_post_merge(
     if git("tag", version, check=False).returncode:
         return fail(f"refused: could not create tag {version}")
     if retire_sprint:
+        try:
+            write_release_record(release_id, version)
+        except OSError as exc:
+            removed = git("tag", "-d", version, check=False)
+            stranded = (
+                f"; tag {version} was created but could not be removed — remove it before retrying"
+                if removed.returncode
+                else ""
+            )
+            return fail(
+                f"refused: could not write release record {release_record_path(release_id)}:"
+                f" {exc}{stranded}"
+            )
         clear_sprint_branch()
     suffix = "; sprint branch cleared" if retire_sprint else ""
     walled = walled_text(checked, version)
