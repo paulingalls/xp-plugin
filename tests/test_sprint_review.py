@@ -6,6 +6,7 @@ import subprocess
 import sys
 
 from close_helpers import launches, stub_reviewer
+from diff_reference_helpers import read_named_diff
 from spawn_helpers import stub_codex
 from sprint_helpers import (
     CLOSE,
@@ -113,7 +114,10 @@ class TestReviewLeg:
         repo, env, _g = make_repo(tmp_path)
         r = sprint(repo, env, "review")
         assert r.returncode == 0, r.stderr
-        assert "SPRINT-ONLY-SENTINEL" in launches(tmp_path)[0]["stdin"]
+        bundle = launches(tmp_path)[0]["stdin"]
+        assert "SPRINT-ONLY-SENTINEL" in read_named_diff(
+            bundle, "Cumulative sprint diff", repo, env
+        )
 
     def test_the_bundle_carries_the_cards_constraints_and_system(self, tmp_path):
         repo, env, _g = make_repo(tmp_path)

@@ -3,6 +3,7 @@ from pathlib import Path
 
 import review_scope
 from close import git
+from diff_range import render as render_diff_range
 from work import data_root, entries, work_entries_since
 
 FALSIFIER = re.compile(r"^Falsifier: `(.+)`$", re.M)
@@ -87,7 +88,7 @@ def build(sprint_id, cards, base, report, charter, extra, authority, diff_base="
         ("Your report", f"REPORT_PATH: {report}"),
         *extra,
         (f"The stories in sprint {sprint_id}", cards),
-        (title, git("diff", f"{diff_base or base}..HEAD").stdout),
+        (title, render_diff_range(diff_base or base, "HEAD")),
         ("Resolutions filed during the sprint", resolutions),
         ("work.md entries filed during the sprint", work_md),
         *authority,

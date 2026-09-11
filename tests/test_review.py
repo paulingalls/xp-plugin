@@ -12,6 +12,7 @@ import shutil
 from pathlib import Path
 
 from close_helpers import LEAD_CREDS, launches
+from diff_reference_helpers import read_named_diff
 from review_install_cases import HarnessInstallCases
 from sprint_helpers import (
     CONFIG,
@@ -122,7 +123,9 @@ class TestTheFindersAreBlind:
         repo, env, _g = make_repo(tmp_path)
         assert sprint(repo, env, "review").returncode == 0
         for bundle in bundles(tmp_path, "find"):
-            assert "SPRINT-ONLY-SENTINEL" in bundle
+            assert "SPRINT-ONLY-SENTINEL" in read_named_diff(
+                bundle, "Cumulative sprint diff", repo, env
+            )
 
     def test_an_unreadable_angle_refuses_before_anything_is_launched(self, tmp_path):
         """The fault injection AC 1 asks for: a mis-rendered angle path yields a
@@ -447,7 +450,8 @@ class TestTheClosingPass:
             patches=[("fix", "src.py", "THE_FIXERS_LINE = 1")],
         )
         assert sprint(repo, env, "review").returncode == 0
-        assert "THE_FIXERS_LINE" in bundles(tmp_path, "close")[0]
+        bundle = bundles(tmp_path, "close")[0]
+        assert "THE_FIXERS_LINE" in read_named_diff(bundle, "Cumulative sprint diff", repo, env)
 
     def test_the_closing_pass_runs_even_when_nothing_was_fixed(self, tmp_path):
         repo, env, _g = make_repo(tmp_path)

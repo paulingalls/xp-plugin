@@ -22,6 +22,7 @@ from close_helpers import (
     marker_file,
     stub_reviewer,
 )
+from diff_reference_helpers import read_named_diff
 
 
 def overflowing_findings():
@@ -128,7 +129,8 @@ class TestStructuredGate:
         # `-A = 1` is the trunk-side line only a merge-base..HEAD diff carries; a
         # delta (reviewed..HEAD) would show `-A = 2`. The inverse of the assertion
         # the deleted delta path used to earn.
-        assert "-A = 1" in launches(tmp_path)[1]["stdin"]
+        bundle = launches(tmp_path)[1]["stdin"]
+        assert "-A = 1" in read_named_diff(bundle, "Cumulative diff", repo, env)
 
     def test_review_no_longer_refuses_while_trunk_is_ahead_of_the_merge_base(self, tmp_path):
         """story-018 AC 3: this refusal serialised every file-disjoint story on the
@@ -144,8 +146,9 @@ class TestStructuredGate:
         r = close(repo, env, "review")
         assert r.returncode == 0, r.stderr
         bundle = launches(tmp_path)[0]["stdin"]
-        assert "A = 2" in bundle, "the story's own diff went missing"
-        assert "TRUNK_ONLY_SENTINEL" not in bundle, "the bundle is no longer fork-point based"
+        diff = read_named_diff(bundle, "Cumulative diff", repo, env)
+        assert "A = 2" in diff, "the story's own diff went missing"
+        assert "TRUNK_ONLY_SENTINEL" not in diff, "the bundle is no longer fork-point based"
 
     def test_shown_sha_is_head_at_the_end_of_a_clean_round(self, tmp_path):
         repo, env, g = make_repo(tmp_path)

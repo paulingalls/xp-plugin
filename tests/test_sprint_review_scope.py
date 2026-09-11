@@ -2,6 +2,7 @@ import json
 import shutil
 
 from close_helpers import LEAD_CREDS, launches
+from diff_reference_helpers import read_named_diff
 from sprint_helpers import (
     CONFIG,
     PLAN,
@@ -11,7 +12,6 @@ from sprint_helpers import (
     make_repo,
     marker_path,
     record_reviews,
-    section,
     sprint,
     stage_key,
     staged_stub,
@@ -179,7 +179,7 @@ class TestConfirmingRound:
         assert [stage_key(r["stdin"]) for r in second] == ["fix"]
         assert model(second[0]) == "opus" and second[0]["env"]["XP_ROLE"] == "reviewer"
         bundle = second[0]["stdin"]
-        delta = section(bundle, DELTA, "Resolutions filed during the sprint")
+        delta = read_named_diff(bundle, DELTA, repo, env)
         assert "+ROUND_2" in delta and "+B = 'SPRINT-ONLY-SENTINEL'" not in delta
         assert "every story was reviewed at its own close" in bundle.lower()
         assert "a seam between stories" in bundle
