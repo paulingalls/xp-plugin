@@ -20,7 +20,7 @@ from profile_output import (
     constraints_warning,
     render,
 )
-from sprint import select_sprint, sprint_sections
+from sprint import release_state, select_sprint, sprint_sections
 from work import data_root, entries, plan_path, record_summary, strip_comment
 
 PLUGIN_ROOT = Path(__file__).parent.parent
@@ -323,18 +323,26 @@ def _next_action() -> str:
     if unknown := [(story, status) for story, status in cards if status not in known]:
         story, status = unknown[0]
         return f"NEXT: recovery required — {story} has unknown status [{status}]"
-    if (data_root() / "markers" / f"{int(sprint)}.slate-review-incomplete").exists():
-        return f"NEXT: Sprint {sprint} slate review incomplete — run `slate_review.py {sprint}`"
+    released, release_path = release_state(sprint)
+    if released == "unreadable":
+        return f"NEXT: recovery required — release record {release_path} is unreadable"
     active = [card for card in cards if card[1] == "in-progress"]
-    if len(active) > 1:
-        return f"NEXT: recovery required — multiple [in-progress] cards in Sprint {sprint}"
     selected = active or [card for card in cards if card[1] == "ready"]
     selected = selected or [card for card in cards if card[1] == "planned"]
+    if released == "released" and selected:
+        story, _status = selected[0]
+        return f"NEXT: Sprint {sprint} was released — schedule {story} into a new sprint"
+    if (data_root() / "markers" / f"{int(sprint)}.slate-review-incomplete").exists():
+        return f"NEXT: Sprint {sprint} slate review incomplete — run `slate_review.py {sprint}`"
+    if len(active) > 1:
+        return f"NEXT: recovery required — multiple [in-progress] cards in Sprint {sprint}"
     if not selected:
         # Only a surviving TREE counts; close keeps markers for later inheritance.
         for story, _status in cards:
             if (tree := _worktree_state(data_root(), story))[0]:
                 return f"NEXT: recovery required — {story} remains after close: {tree[1]}"
+        if released == "released":
+            return f"NEXT: Sprint {sprint} was released — run `/create-sprint`"
         return f"NEXT: no open card in Sprint {sprint} — run `/sprint-close`"
     story, status = selected[0]
     exists, tree_state = _worktree_state(data_root(), story)

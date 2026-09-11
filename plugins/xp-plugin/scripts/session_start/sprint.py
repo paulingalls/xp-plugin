@@ -1,12 +1,36 @@
 import contextlib
 import io
+import json
 import re
+from pathlib import Path
 
-from env import sprint_branch
+from env import data_root, sprint_branch
 
 
 class SprintSelectionError(RuntimeError):
     pass
+
+
+def release_state(sprint: str) -> tuple[str, Path]:
+    path = data_root() / "releases" / f"sprint-{int(sprint)}.json"
+    try:
+        record = json.loads(path.read_text())
+    except FileNotFoundError:
+        return "missing", path
+    except (OSError, UnicodeError, ValueError):
+        return "unreadable", path
+    valid = (
+        isinstance(record, dict)
+        and type(record.get("sprint")) is int
+        and record["sprint"] == int(sprint)
+        and isinstance(record.get("merged_sha"), str)
+        and bool(record["merged_sha"])
+        and (
+            record.get("tag") is None
+            or (isinstance(record.get("tag"), str) and bool(record["tag"]))
+        )
+    )
+    return ("released" if valid else "unreadable"), path
 
 
 def _recorded_branch() -> str:
