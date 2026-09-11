@@ -1,6 +1,7 @@
 """The story reviewer launch contract, extracted for constraint 8."""
 
 from close_helpers import LEAD_CREDS, close, launches, make_repo, marker, stub_reviewer
+from diff_reference_helpers import read_named_diff
 
 
 class TestReviewLeg:
@@ -24,7 +25,8 @@ class TestReviewLeg:
         prompt = launch["stdin"]
         assert "fault-inject" in prompt.lower()
         assert "demo story" in prompt
-        assert "-A = 1" in prompt and "+A = 2" in prompt
+        diff = read_named_diff(prompt, "Cumulative diff", repo, env)
+        assert "-A = 1" in diff and "+A = 2" in diff
         assert "CONSTRAINT-SENTINEL" in prompt and "SYSTEM-SENTINEL" in prompt
         assert "PATCH_PATH:" in prompt and "tree exactly as you found it" in prompt
 

@@ -25,6 +25,7 @@ from close_helpers import (  # noqa: F401
     prose,
     stub_reviewer,
 )
+from diff_reference_helpers import read_named_diff
 
 
 class TestStart:
@@ -74,7 +75,8 @@ class TestStart:
         g("merge", "-q", "--no-edit", "sprint-001")
         assert close(repo, env, "review").returncode == 0
         bundle = launches(tmp_path)[0]["stdin"]
-        assert "EARLIER_STORY_SENTINEL" not in bundle, (
+        diff = read_named_diff(bundle, "Cumulative diff", repo, env)
+        assert "EARLIER_STORY_SENTINEL" not in diff, (
             "the bundle diffed against the default branch, so an already-integrated"
             " story rode into this story's review"
         )
@@ -95,11 +97,11 @@ class TestStart:
             "Communication",  # VALUES now come from the plugin root, not the repo
             "CONSTRAINT-SENTINEL",
             "SYSTEM-SENTINEL",
-            "A = 2",
             "demo story",
             "filed-during-story",
         ):
             assert sentinel in bundle, f"bundle missing {sentinel}"
+        assert "A = 2" in read_named_diff(bundle, "Cumulative diff", repo, env)
 
 
 class TestReviewed:

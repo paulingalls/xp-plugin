@@ -12,6 +12,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 sys.path.insert(0, str(Path(__file__).parent / "close"))
 from bookkeep import render_prior_rounds
+from diff_range import render as render_diff_range
 from env import sprint_branch
 from lifecycle import declared_commands as verify_commands
 from review_artifacts import (
@@ -207,7 +208,7 @@ def build_bundle(card: str, base: str, report: Path, prior: str = "", notice: st
         ("Story card", card),
         *([("Before you start", notice)] if notice else []),
         ("Earlier rounds of THIS review", prior or "none — you are round 1"),
-        ("Cumulative diff", git("diff", f"{base}..HEAD").stdout),
+        ("Cumulative diff", render_diff_range(base, "HEAD")),
         ("work.md entries filed during the story", work_entries_since(base_epoch) or "none"),
         *review_authority_sections(),
     ]
