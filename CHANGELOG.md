@@ -4,6 +4,17 @@ Release notes started at v0.6.0; earlier entries are summarized from their
 tag and merge messages. Full detail lives in the merge history and the
 per-sprint review reports.
 
+## v0.23.7 — a reviewer is handed the diff's address, not its body
+
+Every review prompt pasted the whole diff in: once for a story or free review, and
+once per stage of a sprint review — three finders, up to two verifiers, the fixer
+and the closer — so a sprint-sized diff could fill most of a smaller model's
+context window before the reviewer read a file. A review prompt now names the
+range instead: full base and head SHAs, the `git diff` command that reads it and
+its per-path form, the commit list, and per-file change counts. An empty range
+says so. The reviewer reads as much of the diff as its job needs; section titles
+are unchanged.
+
 ## v0.23.6 — a released sprint is not a sprint waiting to close
 
 SessionStart told a lead to run `/sprint-close` on a sprint it had already
