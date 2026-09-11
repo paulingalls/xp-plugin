@@ -1,11 +1,13 @@
 """A shipped sprint is durable terminal state, not an inferred absence."""
 
 import json
+import shutil
 import subprocess
 import sys
 from pathlib import Path
 
 import pytest
+from session_start import OUTPUT_CAP
 from session_start_helpers import HOOK, run_hook_as, xp_repo
 from sprint_helpers import CONFIG, make_repo, sprint
 
@@ -255,23 +257,31 @@ class TestReleaseRecord:
         assert retried.returncode == 0, retried.stderr + retried.stdout
         assert release_path(tmp_path).exists()
 
+    @pytest.mark.parametrize("blocker", ["parent-file", "target-directory"])
     @pytest.mark.parametrize("versioning_off", [False, True], ids=["versioned", "off"])
-    def test_a_release_record_write_refusal_is_retryable(self, tmp_path, versioning_off):
+    def test_a_release_record_write_refusal_is_retryable(self, tmp_path, versioning_off, blocker):
         repo, env, g = released_repo(tmp_path, versioning_off=versioning_off)
         before = g("tag", "--list").stdout
         releases = tmp_path / "data" / "releases"
-        releases.write_text("not a directory")
+        if blocker == "parent-file":
+            releases.write_text("not a directory")
+        else:
+            (release_path(tmp_path) / "occupied").mkdir(parents=True)
 
         refused = sprint(repo, env, "post-merge")
 
         assert refused.returncode == 2 and str(release_path(tmp_path)) in refused.stderr
         assert g("tag", "--list").stdout == before
         assert (tmp_path / "data" / "sprint_branch").read_text().strip() == "sprint-002"
-        assert not release_path(tmp_path).exists()
-        releases.unlink()
+        assert not release_path(tmp_path).is_file()
+        if blocker == "parent-file":
+            releases.unlink()
+        else:
+            assert [path.name for path in releases.iterdir()] == ["sprint-2.json"]
+            shutil.rmtree(release_path(tmp_path))
         retried = sprint(repo, env, "post-merge")
         assert retried.returncode == 0, retried.stderr + retried.stdout
-        assert release_path(tmp_path).exists()
+        assert release_path(tmp_path).is_file()
 
     def test_a_tag_command_refusal_never_records_a_release(self, tmp_path):
         repo, env, g = released_repo(tmp_path)
@@ -448,7 +458,7 @@ class TestReleasedNextAction:
         headings = [line for line in rules.splitlines() if line[:1].isdigit()]
         assert headings and all(line in output for line in headings)
         assert "--- END project content ---" in output
-        assert len(output.encode()) <= 9_500
+        assert len(output.encode()) <= OUTPUT_CAP
 
     def test_an_unreadable_record_path_preserves_the_real_lead_profile(self, tmp_path):
         repo, _g = xp_repo(tmp_path)
@@ -468,4 +478,4 @@ class TestReleasedNextAction:
         headings = [line for line in rules.splitlines() if line[:1].isdigit()]
         assert headings and all(line in output for line in headings)
         assert "--- END project content ---" in output
-        assert len(output.encode()) <= 9_500
+        assert len(output.encode()) <= OUTPUT_CAP

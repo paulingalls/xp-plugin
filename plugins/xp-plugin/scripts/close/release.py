@@ -16,19 +16,13 @@ def release_record_path(release_id: str) -> Path:
 
 def write_release_record(release_id: str, tag: str | None) -> Path:
     path = release_record_path(release_id)
+    record = {"sprint": int(release_id), "merged_sha": git("rev-parse", "HEAD").stdout.strip()}
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = None
     try:
         with tempfile.NamedTemporaryFile("w", dir=path.parent, delete=False) as stream:
             temporary = Path(stream.name)
-            json.dump(
-                {
-                    "sprint": int(release_id),
-                    "merged_sha": git("rev-parse", "HEAD").stdout.strip(),
-                    "tag": tag,
-                },
-                stream,
-            )
+            json.dump(record | {"tag": tag}, stream)
             stream.write("\n")
         temporary.replace(path)
     except OSError:
