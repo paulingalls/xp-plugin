@@ -17,7 +17,7 @@
 
 - **bug** — claim + red falsifier + files; fix now. No red=debt/note.
 - **debt** — claim + green falsifier + files; planning schedules/archives.
-- **resolve** — substitutes a green falsifier; lead closes on landed tree; ID=`list`.
+- **resolve** — substitutes a green falsifier; lead only, at close, on landed tree.
 - **coverage** — optional TIER for bug/debt; resolve: required TIER|none. The
   selection claim stays UNCHECKED; only tier pins are.
 - **note** — value tradeoff or discovery; close promotes/archives; next-story
