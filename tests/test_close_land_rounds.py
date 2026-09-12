@@ -39,8 +39,8 @@ class TestStructuredGate:
     """story-012a: the report replaces the VERDICT line, and land never spawns."""
 
     def sprint_overlap_repo(self, tmp_path, gate=False):
-        files = "src/thing.py, shared.py" if not gate else "src/thing.py"
-        repo, env, g = make_repo(tmp_path, files=files)
+        shared = ".xp/system.md" if gate else "shared.py"
+        repo, env, g = make_repo(tmp_path, files=f"src/thing.py, {shared}")
         g("checkout", "-q", "main")
         config = "release: sprint\nroles:\n  reviewer: claude/opus\ntests:\n"
         tier = (
@@ -48,7 +48,7 @@ class TestStructuredGate:
         )
         config += f"  story: {tier}\n"
         (repo / ".xp" / "config.yml").write_text(config)
-        target = repo / (".xp/system.md" if gate else "shared.py")
+        target = repo / shared
         target.write_text("TOP = 1\nKEEP_1 = 1\nKEEP_2 = 1\nKEEP_3 = 1\nBOTTOM = 1\n")
         g("add", "-A")
         g("commit", "-qm", "common sprint base")
