@@ -97,7 +97,9 @@ class TestLandBookkeeping:
         close(repo, env, "land")
         plan = tmp_path / "data" / "plan.md"
         plan.write_text(
-            plan.read_text() + "#### story-043 — second   [in-progress]\nVerify: true\n"
+            plan.read_text()
+            + "#### story-043 — second   [in-progress]\n"
+            + "Files: src/thing.py\nVerify: true\n"
         )
         mint_ready(repo, env, "story-043")
         g("checkout", "-qb", "story-043-branch")

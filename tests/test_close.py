@@ -185,7 +185,9 @@ class TestReviewed:
         assert "[done]" not in (tmp_path / "data" / "plan.md").read_text()
 
     def test_story_tier_runs_after_verify(self, tmp_path):
-        repo, env, g = make_repo(tmp_path)  # card Verify is green (true)
+        repo, env, g = make_repo(
+            tmp_path, files="src/thing.py, .xp/config.yml"
+        )  # card Verify is green (true)
         (repo / ".xp" / "config.yml").write_text(CONFIG.replace("story: true", "story: false"))
         g("add", "-A")
         g("commit", "-qm", "red story tier")
@@ -408,7 +410,7 @@ class TestOverlapNotMotion:
         """f7dfec27's other half: with land no longer refusing on motion, the trial
         merge is what makes a conflict abort reachable at all. A file/directory
         collision is the shape overlap cannot pair up — the names differ."""
-        repo, env, g = make_repo(tmp_path)
+        repo, env, g = make_repo(tmp_path, files="src/thing.py, probe")
         (repo / "probe").write_text("the story adds a FILE\n")
         g("add", "-A")
         g("commit", "-qm", "the story adds a file named probe")

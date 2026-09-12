@@ -39,7 +39,8 @@ class TestStructuredGate:
     """story-012a: the report replaces the VERDICT line, and land never spawns."""
 
     def sprint_overlap_repo(self, tmp_path, gate=False):
-        repo, env, g = make_repo(tmp_path)
+        files = "src/thing.py, shared.py" if not gate else "src/thing.py"
+        repo, env, g = make_repo(tmp_path, files=files)
         g("checkout", "-q", "main")
         config = "release: sprint\nroles:\n  reviewer: claude/opus\ntests:\n"
         tier = (
@@ -424,7 +425,7 @@ class TestLandNamesEachRoundsOwnDiff:
         """CONSTRUCTS two recorded rounds with real commits and reads what land
         printed. A static path satisfies any assertion that only counts rounds, so
         this pairs each round's commit subject with the diff filename beside it."""
-        repo, env, g = make_repo(tmp_path)
+        repo, env, g = make_repo(tmp_path, files="src/thing.py, round-1.py, round-2.py")
         stub_reviewer(tmp_path)
         assert close(repo, env, "review").returncode == 0
         state = json.loads(marker_file(tmp_path).read_text())
@@ -449,7 +450,7 @@ class TestLandNamesEachRoundsOwnDiff:
         killed mid-review records no coverage (`sprint_close.stop`, `cmd_salvage`), and
         dropping it renumbers round 2 as round 1 — so land names round-1.diff over
         round 2's commits, a file holding a different diff or none at all."""
-        repo, env, g = make_repo(tmp_path)
+        repo, env, g = make_repo(tmp_path, files="src/thing.py, round-2.py")
         stub_reviewer(tmp_path)
         assert close(repo, env, "review").returncode == 0
         state = json.loads(marker_file(tmp_path).read_text())
@@ -472,7 +473,7 @@ class TestLandNamesEachRoundsOwnDiff:
         Salvage INSERTS an older attempt at its chronological place, so from there on
         every later round sits one index past the file rotate_story named it for —
         `round_file` is the pairing, and nothing drove it through land until here."""
-        repo, env, g = make_repo(tmp_path)
+        repo, env, g = make_repo(tmp_path, files="src/thing.py, salvaged.py")
         stub_reviewer(tmp_path)
         assert close(repo, env, "review").returncode == 0
         state = json.loads(marker_file(tmp_path).read_text())

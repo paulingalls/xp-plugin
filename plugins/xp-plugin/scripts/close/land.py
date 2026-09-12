@@ -14,8 +14,15 @@ import overlap
 import ready
 import review
 import work
-from release import VERSIONING_OFF_TEXT, next_version, refuse_unbumpable, versioning_mode
+from release import (
+    VERSIONING_OFF_TEXT,
+    next_version,
+    refuse_unbumpable,
+    version_files,
+    versioning_mode,
+)
 from review_artifacts import story_sidecars
+from review_scope import declared_files
 
 
 def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
@@ -125,6 +132,24 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
             version = next_version("patch", ref)
             if not version:
                 return refuse_unbumpable(ref)
+    changed = set(
+        close.git(
+            "-c", "core.quotepath=off", "diff", "--no-renames", "--name-only", f"{base}..HEAD"
+        ).stdout.splitlines()
+    )
+    try:
+        declared = declared_files(card)
+    except ValueError as e:
+        return close.fail(str(e))
+    exempt = set(version_files()) if free and versioned else set()
+    exempt.discard("none")
+    if undeclared := sorted(changed - declared - exempt):
+        action = ready.AMEND.format(story_id).replace("Run ", "run ", 1)
+        paths = "\n".join(f"  {path}" for path in undeclared)
+        return close.fail(
+            f"refused: {story_id} changes paths its Files declaration does not name:\n"
+            f"{paths}\nAdd them to Files, then {action}"
+        )
     message = f"Merge {branch} ({story_id})\n\n{verdict}\n"
     title = (f"{noun} — {version}" if version else noun) if free else story_id
     pr_cmds = [["git", "push", "-u", "origin", branch]]

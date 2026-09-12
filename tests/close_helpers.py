@@ -198,6 +198,7 @@ def make_repo(
     bootstrap=None,
     teardown_timeout=None,
     system=True,
+    files="src/thing.py",
 ):
     repo = tmp_path / "repo"
     templates = Path(os.environ["XP_TEST_REPO_TEMPLATES"])
@@ -228,7 +229,8 @@ def make_repo(
     # [planned] first, then MINTED: a typed bracket walks past the one gate binding
     # the card's Verify commands to the reviewed text.
     landing = status == "in-progress"
-    plan.write_text(CARD.format(status="planned" if landing else status, verify=verify))
+    card = CARD.format(status="planned" if landing else status, verify=verify)
+    plan.write_text(card.replace("Files: src/thing.py", f"Files: {files}"))
     if full:
         mint_ready(repo, env)
         return repo, env, g

@@ -64,7 +64,7 @@ def test_runner_uses_exact_quoted_argv_and_never_a_shell(tmp_path):
 
 def test_story_close_runs_after_gates_and_before_merge(tmp_path):
     command, log = recorder(tmp_path)
-    repo, env, g = make_repo(tmp_path)
+    repo, env, g = make_repo(tmp_path, files="src/thing.py, .xp/config.yml")
     configure(repo, g, command)
     before = g("rev-parse", "main").stdout.strip()
     assert story(repo, env, "review").returncode == 0
@@ -76,7 +76,7 @@ def test_story_close_runs_after_gates_and_before_merge(tmp_path):
 
 def test_red_story_tier_never_calls_project_code(tmp_path):
     command, log = recorder(tmp_path)
-    repo, env, g = make_repo(tmp_path)
+    repo, env, g = make_repo(tmp_path, files="src/thing.py, .xp/config.yml")
     configure(repo, g, command, tier="false")
     assert story(repo, env, "review").returncode == 0
     result = story(repo, env, "land")
@@ -86,7 +86,7 @@ def test_red_story_tier_never_calls_project_code(tmp_path):
 
 def test_retry_after_later_local_failure_repeats_the_same_argv(tmp_path):
     command, log = recorder(tmp_path)
-    repo, env, g = make_repo(tmp_path)
+    repo, env, g = make_repo(tmp_path, files="src/thing.py, .xp/config.yml")
     configure(repo, g, command)
     assert story(repo, env, "review").returncode == 0
     argv = [sys.executable, str(CLOSE), "story", "story-042", "land", "--merge-mode", "pr"]
@@ -106,10 +106,12 @@ def test_free_land_does_not_emit_a_story_event(tmp_path):
     assert free(repo, env, "fix-typo", "start").returncode == 0
     _branch, key = checkout_free(g)
     add_free_card(env, key)
-    (repo / "free.py").write_text("FREE = 1\n")
-    g("add", "-A")
-    g("commit", "-qm", "free change")
+    plan = tmp_path / "data" / "plan.md"
+    plan.write_text(plan.read_text().replace("Files: src/free.py", "Files: free.py"))
     tree = spawn_free(repo, env, g, tmp_path, key)
+    (tree / "free.py").write_text("FREE = 1\n")
+    subprocess.run(["git", "add", "-A"], cwd=tree, env=env, check=True)
+    subprocess.run(["git", "commit", "-qm", "free change"], cwd=tree, env=env, check=True)
     assert free(tree, env, "fix-typo", "review").returncode == 0
     result = free(tree, env, "fix-typo", "land")
     assert result.returncode == 0, result.stderr + result.stdout
@@ -119,7 +121,7 @@ def test_free_land_does_not_emit_a_story_event(tmp_path):
 def test_a_red_story_close_command_refuses_before_the_merge(tmp_path):
     """The AC's middle transition: a red command must leave main where it was."""
     command, log = recorder(tmp_path)
-    repo, env, g = make_repo(tmp_path)
+    repo, env, g = make_repo(tmp_path, files="src/thing.py, .xp/config.yml")
     configure(repo, g, command)
     log.with_suffix(".exit").write_text("1")
     before = g("rev-parse", "main").stdout.strip()

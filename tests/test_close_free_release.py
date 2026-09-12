@@ -18,6 +18,7 @@ from close_helpers import (
     CLOSE,
     NEW_FILE_PATCH,
     PLUGIN,
+    SPAWN,
     free,
     free_repo,
     gh_calls,
@@ -146,8 +147,9 @@ class TestFreeLand:
         repo, env, g = free_repo(tmp_path)
         free(repo, env, "fix-typo", "start")
         branch, key = checkout_free(g)
-        commit_on_free(repo, g)
         add_free_card(env, key)
+        plan = tmp_path / "data" / "plan.md"
+        plan.write_text(plan.read_text().replace("Files: src/free.py", "Files: src/fixed.py"))
         tree = spawn_free(repo, env, g, tmp_path, key)
         assert g("worktree", "remove", "--force", str(tree)).returncode == 0
         assert g("checkout", "-q", branch).returncode == 0
@@ -162,6 +164,19 @@ class TestFreeLand:
     def test_land_reports_a_lead_commit_the_round_never_covered(self, tmp_path):
         repo, env, g = reviewed(tmp_path)
         commit_on_free(repo, g, "C = 1\n", "src/late.py", "after the review")
+        _branch, key = free_identity(g)
+        plan = tmp_path / "data" / "plan.md"
+        plan.write_text(
+            plan.read_text().replace("Files: src/free.py", "Files: src/free.py, src/late.py")
+        )
+        amended = subprocess.run(
+            [sys.executable, str(SPAWN), "amend", key, "--reason", "declare lead's late commit"],
+            cwd=repo,
+            env=env,
+            capture_output=True,
+            text=True,
+        )
+        assert amended.returncode == 0, amended.stderr
         r = free(repo, env, "fix-typo", "land")
         assert r.returncode == 0, r.stderr
         assert "unreviewed" in r.stdout, r.stdout

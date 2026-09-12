@@ -34,7 +34,9 @@ def land_preview(tmp: Path, undeclared: bool) -> subprocess.CompletedProcess:
         '#!/bin/sh\necho \'[{"id":"xp-plugin@xp-plugin","version":"v","scope":"user"}]\'\n'
     )
     (bin_dir / "claude").chmod(0o755)
-    env = os.environ | {
+    env = os.environ.copy()
+    env.pop("XP_ROLE", None)
+    env |= {
         "XP_DATA": str(data),
         "HOME": str(root),
         "PATH": f"{bin_dir}:/usr/bin:/bin",
