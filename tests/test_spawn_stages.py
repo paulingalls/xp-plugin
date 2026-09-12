@@ -1,12 +1,18 @@
 import json
 import subprocess
+import sys
 
-from spawn_helpers import make_repo, seed_refresh_receipt, spawn
+from spawn_helpers import SPAWN, make_repo, seed_refresh_receipt, spawn
 
 CLEAN = {"fixed": [], "blocking": [], "noted": []}
 
 
-def stub_stages(tmp_path, blocking_plan=False, blocking_diff=False, unreadable_plan=False):
+def stub_stages(
+    tmp_path,
+    blocking_plan=False,
+    blocking_diff=False,
+    unreadable_plan=False,
+):
     binary = tmp_path / "bin" / "claude"
     binary.parent.mkdir(exist_ok=True)
     events = tmp_path / "events.jsonl"
@@ -59,6 +65,42 @@ def prompt_for(path, role):
 
 def model_of(event):
     return event["argv"][event["argv"].index("--model") + 1]
+
+
+def spawn_amending_after_plan_review(repo, env):
+    scripts = SPAWN.parent
+    program = f"""
+import os, subprocess, sys
+from pathlib import Path
+sys.path[:0] = [{str(scripts)!r}, {str(scripts / "spawn")!r}]
+import plan_review
+run_foreground = plan_review.run_foreground
+def amend_after_review(*args):
+    result = run_foreground(*args)
+    if result[0] == 0:
+        plan = Path(os.environ["XP_DATA"]) / "plan.md"
+        plan.write_text(plan.read_text().replace("Then Z", "Then MID-REVIEW-AMENDMENT"))
+        command = [
+            {sys.executable!r}, {str(SPAWN)!r}, "amend", "story-042",
+            "--reason", "changed after review",
+        ]
+        amended = subprocess.run(
+            command, capture_output=True,
+        )
+        assert amended.returncode == 0, amended.stdout + amended.stderr
+    return result
+plan_review.run_foreground = amend_after_review
+import spawn
+sys.argv = ["spawn.py", "story-042"]
+raise SystemExit(spawn.main())
+"""
+    return subprocess.run(
+        [sys.executable, "-c", program],
+        cwd=repo,
+        env=dict(env, XP_SPAWN_TEST="1"),
+        capture_output=True,
+        text=True,
+    )
 
 
 class TestSpawnStages:
@@ -293,3 +335,79 @@ class TestSpawnStages:
         assert event_roles(events).count("planner") == 1
         assert event_roles(events).count("plan-reviewer") == 2
         assert draft.read_bytes() == first_draft
+
+    def test_amendments_replan_the_current_card_once_before_the_executor(self, tmp_path):
+        repo, env, _g = make_repo(tmp_path, files="src/thing.py, src/other.py")
+        events = stub_stages(tmp_path, blocking_diff=True)
+        assert spawn(repo, env, "story-042").returncode != 0
+
+        handoff = tmp_path / "data/plans/story-042.handoff.json"
+        legacy = json.loads(handoff.read_text())
+        legacy.pop("plan_reviewed_card")
+        handoff.write_text(json.dumps(legacy))
+        seen = len(event_roles(events))
+        assert spawn(repo, env, "resume", "story-042").returncode != 0
+        assert event_roles(events)[seen:] == ["teammate", "reviewer"]
+
+        plan = tmp_path / "data/plan.md"
+        plan.write_text(plan.read_text().replace("Then Z", "Then FIRST-AMENDMENT"))
+        assert spawn(repo, env, "amend", "story-042", "--reason", "first change").returncode == 0
+        plan.write_text(plan.read_text().replace("FIRST-AMENDMENT", "FINAL-AMENDMENT"))
+        assert spawn(repo, env, "amend", "story-042", "--reason", "second change").returncode == 0
+
+        seen = len(event_roles(events))
+        assert spawn(repo, env, "resume", "story-042").returncode != 0
+        resumed = [json.loads(line) for line in events.read_text().splitlines()[seen:]]
+        assert [event["role"] for event in resumed] == [
+            "planner",
+            "plan-reviewer",
+            "teammate",
+            "reviewer",
+        ]
+        assert "Then FINAL-AMENDMENT" in resumed[1]["prompt"]
+
+        seen += len(resumed)
+        assert spawn(repo, env, "resume", "story-042").returncode != 0
+        assert event_roles(events)[seen:] == ["teammate", "reviewer"]
+        assert event_roles(events).count("planner") == 2
+        assert event_roles(events).count("plan-reviewer") == 2
+
+        plan.write_text(plan.read_text().replace("FINAL-AMENDMENT", "LATER-AMENDMENT"))
+        assert spawn(repo, env, "amend", "story-042", "--reason", "later change").returncode == 0
+        seen = len(event_roles(events))
+        assert spawn(repo, env, "resume", "story-042").returncode != 0
+        assert event_roles(events)[seen:] == ["planner", "plan-reviewer", "teammate", "reviewer"]
+
+    def test_an_amendment_during_the_plan_review_replans_on_the_next_resume(self, tmp_path):
+        repo, env, _g = make_repo(tmp_path, files="src/thing.py, src/other.py")
+        events = stub_stages(tmp_path, blocking_diff=True)
+        assert spawn_amending_after_plan_review(repo, env).returncode != 0
+        seen = len(event_roles(events))
+        assert spawn(repo, env, "resume", "story-042").returncode != 0
+        assert event_roles(events)[seen:][:2] == ["planner", "plan-reviewer"]
+
+    def test_an_amended_single_file_resume_keeps_both_plan_stages_skipped(self, tmp_path):
+        repo, env, _g = make_repo(tmp_path)
+        events = stub_stages(tmp_path, blocking_diff=True)
+        assert spawn(repo, env, "story-042").returncode != 0
+        plan = tmp_path / "data/plan.md"
+        plan.write_text(plan.read_text().replace("Then Z", "Then AMENDED"))
+        amended = spawn(repo, env, "amend", "story-042", "--reason", "single-file change")
+        assert amended.returncode == 0
+        seen = len(event_roles(events))
+        assert spawn(repo, env, "resume", "story-042").returncode != 0
+        assert event_roles(events)[seen:] == ["teammate", "reviewer"]
+        state = json.loads((tmp_path / "data/plans/story-042.handoff.json").read_text())
+        assert state["stages"]["planner"] == "skipped"
+        assert state["stages"]["plan-reviewer"] == "skipped"
+
+    def test_an_amendment_before_the_first_spawn_plans_once(self, tmp_path):
+        repo, env, _g = make_repo(tmp_path, files="src/thing.py, src/other.py")
+        plan = tmp_path / "data/plan.md"
+        plan.write_text(plan.read_text().replace("Then Z", "Then AMENDED"))
+        amended = spawn(repo, env, "amend", "story-042", "--reason", "pre-spawn change")
+        assert amended.returncode == 0
+        events = stub_stages(tmp_path)
+        assert spawn(repo, env, "story-042").returncode == 0
+        assert event_roles(events).count("planner") == 1
+        assert event_roles(events).count("plan-reviewer") == 1

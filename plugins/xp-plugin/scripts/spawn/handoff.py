@@ -100,6 +100,13 @@ def mark_stage(root: Path, story_id: str, stage: str, result: str) -> None:
     _write(root, story_id, state)
 
 
+def mark_plan_reviewed(root: Path, story_id: str, card_digest: str) -> None:
+    state = handoff_state(root, story_id) or {}
+    state.setdefault("stages", {})["plan-reviewer"] = "ran"
+    state["plan_reviewed_card"] = card_digest
+    _write(root, story_id, state)
+
+
 def _findings(root: Path, story_id: str) -> list[tuple[int, Path, bool]]:
     plans = root / "plans"
     prefix = f"{story_id}.round-"

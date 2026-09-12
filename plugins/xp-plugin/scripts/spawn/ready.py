@@ -55,6 +55,24 @@ def credential(marker: Path) -> dict | None:
         return None
 
 
+def current_digest(story_id: str) -> str | None:
+    current = credential(ready_marker_path(story_id))
+    return current.get("digest") if current else None
+
+
+def plan_needs_replan(story_id: str, handoff: dict) -> bool:
+    result = handoff.get("stages", {}).get("plan-reviewer")
+    if result == "blocked":
+        return True
+    if result != "ran":
+        return False
+    reviewed = handoff.get("plan_reviewed_card")
+    if reviewed is None:
+        current = credential(ready_marker_path(story_id))
+        return bool(current and current.get("amendments"))
+    return reviewed != current_digest(story_id)
+
+
 def card_diff(reviewed: str, card: str) -> str:
     return "\n".join(
         difflib.unified_diff(
