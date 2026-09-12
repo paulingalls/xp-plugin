@@ -24,6 +24,7 @@ from review_artifacts import (
 from review_artifacts import (
     notice as artifact_notice,
 )
+from review_depth import render as render_review_depth
 from work import (
     chdir_repo_root,
     data_root,
@@ -202,10 +203,12 @@ def build_bundle(card: str, base: str, report: Path, prior: str = "", notice: st
     import review  # function-local: spawn -> close -> review would close a cycle
 
     base_epoch = int(git("show", "-s", "--format=%ct", base).stdout.strip())
+    depth = render_review_depth(card)
     sections = [
         ("Your charter", review.charter()),
         ("Your report", f"REPORT_PATH: {report}\nPATCH_PATH: {review.patch_path(report)}"),
         ("Story card", card),
+        *([("Close-review depth", depth)] if depth else []),
         *([("Before you start", notice)] if notice else []),
         ("Earlier rounds of THIS review", prior or "none — you are round 1"),
         ("Cumulative diff", render_diff_range(base, "HEAD")),
