@@ -12,6 +12,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 sys.path.insert(0, str(Path(__file__).parent / "spawn"))
 # close must import back FUNCTION-LOCALLY: a module-level edge cycles
 # (close -> spawn -> close) and fails before fail/git exist (story-008).
+import handoff as handoff_io
 import story_stages as stages
 from bookkeep import bootstrap_command
 from close import config_flat, config_has, fail, git, integration_target, leg, story_card
@@ -388,8 +389,9 @@ def cmd_spawn(story_id: str, override: str, dry_run: bool, resuming: bool = Fals
         return result
 
     mark_handoff(data_root(), story_id)
-    prior_stages = (handoff_state(data_root(), story_id) or {}).get("stages", {})
-    replan = prior_stages.get("plan-reviewer") == "blocked"
+    prior_handoff = handoff_state(data_root(), story_id) or {}
+    prior_stages = prior_handoff.get("stages", {})
+    replan = ready().plan_needs_replan(story_id, prior_handoff)
     if multifile and (replan or prior_stages.get("planner") != "ran"):
         rc, why = stages.run_planner(story_id, card, tree, handoff)
         # 0, because stop's code is the HARNESS rc: a stage that refused or blocked
@@ -402,6 +404,7 @@ def cmd_spawn(story_id: str, override: str, dry_run: bool, resuming: bool = Fals
     if multifile and (replan or prior_stages.get("plan-reviewer") != "ran"):
         import plan_review
 
+        reviewed_card = ready().current_digest(story_id)
         with contextlib.chdir(tree):
             rc, outcome = plan_review.run_foreground(story_id, draft_path(data_root(), story_id))
         if rc:
@@ -410,7 +413,7 @@ def cmd_spawn(story_id: str, override: str, dry_run: bool, resuming: bool = Fals
             # `stages`: a rejected plan and a verdict nothing could read read alike there.
             why = f"execution plan review {outcome}; read its disposition before resuming"
             return stop(why, 0)
-        mark_stage(data_root(), story_id, "plan-reviewer", "ran")
+        handoff_io.mark_plan_reviewed(data_root(), story_id, reviewed_card)
     elif not multifile:
         mark_stage(data_root(), story_id, "plan-reviewer", "skipped")
     # The prompt is the one built above, NEVER rebuilt here: mark_handoff has since

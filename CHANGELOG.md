@@ -4,6 +4,20 @@ Release notes started at v0.6.0; earlier entries are summarized from their
 tag and merge messages. Full detail lives in the merge history and the
 per-sprint review reports.
 
+## v0.23.8 — an amended card is re-planned before an executor runs on it
+
+Bug f80395a2. `spawn.py amend` rewrote only the card credential, and resume
+re-ran the planner and the execution plan review only when that review had
+BLOCKED, so a card amended after a plan review that ran resumed straight to an
+executor holding a plan reviewed against the old card. The executor stopped on
+the contradiction, and amend-then-resume could not finish without the lead
+steering the plan by hand. The handoff now records the card digest its plan
+review approved; a resume whose current card differs re-runs the planner and the
+plan review first. An unamended resume, a blocked review, a single-file story and
+an amend before the first spawn behave as before. Walked with sonnet and codex
+planners; a haiku planner may treat the old reviewed draft as work to do, which
+the existing "the planner changed the repository" stop still catches.
+
 ## v0.23.7 — a reviewer is handed the diff's address, not its body
 
 Every review prompt pasted the whole diff in: once for a story or free review, and
