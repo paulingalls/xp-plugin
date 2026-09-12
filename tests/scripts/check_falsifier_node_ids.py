@@ -107,8 +107,10 @@ def main() -> int:
         for eid, nid in stale:
             print(f"refused: {eid} names {nid}, which pytest no longer collects", file=sys.stderr)
         print(
-            "a moved or renamed test leaves the id green-by-absence: pytest exits 5 on"
-            " no match. Re-point the record with `work.py resolve`.",
+            "a moved or renamed test leaves the id selecting nothing, so its falsifier"
+            " fails for the wrong reason. The lead re-points the record with `work.py"
+            " resolve` at close, on the landed tree; a branch missing a node that landed"
+            " on trunk merges trunk instead.",
             file=sys.stderr,
         )
         return 1
