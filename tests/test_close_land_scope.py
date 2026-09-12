@@ -90,8 +90,9 @@ class TestDeclaredLandScope:
         assert gh_calls(tmp_path) == []
         assert preview.returncode == real.returncode == 2
         assert preview.stderr == real.stderr
-        assert "helper.py" in real.stderr
-        assert "Add them to Files, then run `spawn.py amend story-042 --reason" in real.stderr
+        assert "helper.py" in real.stderr and "trunk.py" not in real.stderr
+        assert "Add them to Files" in real.stderr
+        assert "spawn.py amend story-042 --reason" in real.stderr
         assert g("rev-parse", "main").stdout.strip() == before
 
     def test_every_added_modified_and_deleted_undeclared_path_is_named(self, tmp_path):
@@ -177,14 +178,27 @@ class TestDeclaredLandScope:
         g("branch", "-D", "story-042-branch")
         g("checkout", "-qb", "story-042-branch")
         commit(g, repo, "src/thing.py", "A = 2\n", "story work")
+        g("checkout", "-q", "sprint-001")
+        commit(g, repo, "later.py", "later\n", "land a sibling after story-042 branched")
+        g("checkout", "-q", "story-042-branch")
         assert close(repo, env, "review").returncode == 0
 
         landed = close(repo, env, "land")
 
         assert landed.returncode == 0, landed.stderr
-        assert "sibling.py" not in landed.stderr
+        assert "sibling.py" not in landed.stderr and "later.py" not in landed.stderr
         assert g("show", "sprint-001:sibling.py").stdout == "sibling\n"
         assert g("show", "sprint-001:src/thing.py").stdout == "A = 2\n"
+
+    def test_a_carded_story_never_borrows_the_free_release_exemption(self, tmp_path):
+        repo, env, g = make_repo(tmp_path, files="src/thing.py, .xp/config.yml")
+        (repo / ".xp" / "config.yml").write_text(CONFIG + "version_files: plugin.json\n")
+        commit(g, repo, "plugin.json", '{"version": "0.2.1"}\n', "bump a manifest in a story")
+        assert close(repo, env, "review").returncode == 0
+
+        refused = close(repo, env, "land", "--dry-run")
+
+        assert refused.returncode == 2 and "  plugin.json\n" in refused.stderr
 
     def test_an_unparseable_files_entry_is_never_an_empty_declaration(self, tmp_path):
         repo, env, _g = make_repo(tmp_path)

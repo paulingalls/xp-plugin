@@ -144,11 +144,10 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
     exempt = set(version_files()) if free and versioned else set()
     exempt.discard("none")
     if undeclared := sorted(changed - declared - exempt):
-        action = ready.AMEND.format(story_id).replace("Run ", "run ", 1)
         paths = "\n".join(f"  {path}" for path in undeclared)
         return close.fail(
             f"refused: {story_id} changes paths its Files declaration does not name:\n"
-            f"{paths}\nAdd them to Files, then {action}"
+            f"{paths}\nAdd them to Files. {ready.AMEND.format(story_id)}"
         )
     message = f"Merge {branch} ({story_id})\n\n{verdict}\n"
     title = (f"{noun} — {version}" if version else noun) if free else story_id
