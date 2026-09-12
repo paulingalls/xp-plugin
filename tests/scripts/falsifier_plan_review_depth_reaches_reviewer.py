@@ -29,7 +29,11 @@ def prompt_outside_charter(tmp: Path, drafted: str) -> tuple[int, str]:
         f"# story-042 execution plan\n\nClose review: {drafted}\n\nReason: assigned by the plan"
         " reviewer.\n"
     )
-    env = os.environ | {"XP_DATA": str(data), "PATH": f"{tmp / 'bin'}:/usr/bin:/bin"}
+    env = os.environ | {
+        "XP_DATA": str(data),
+        "XP_ROLE": "lead",
+        "PATH": f"{tmp / 'bin'}:/usr/bin:/bin",
+    }
     shown = subprocess.run(
         [sys.executable, str(CLOSE), "story", "story-042", "review", "--dry-run"],
         cwd=tmp / "repo",
