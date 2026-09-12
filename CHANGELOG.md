@@ -4,6 +4,18 @@ Release notes started at v0.6.0; earlier entries are summarized from their
 tag and merge messages. Full detail lives in the merge history and the
 per-sprint review reports.
 
+## v0.23.10 — the depth a plan review assigns is the depth the story is reviewed at
+
+GitHub #87. The plan reviewer owns a story's close-review depth and writes
+`Close review:` into the execution plan. The story reviewer weights its checks by that
+depth, but its prompt carried only the plan.md card, so a raise to `deep` was recorded
+and the review ran at the card's depth. The review prompt now carries a
+`Close-review depth` section with the effective depth and who assigned it. That is the
+deeper of the card and the reviewed plan, since a plan review can raise the depth but
+never lower it. A plan draft that exists but cannot be read reviews `deep` and says so.
+A story with no plan review uses the card's depth. The card is not rewritten, so its
+minted digest, resume and land are unchanged.
+
 ## v0.23.9 — a sprint named 2b-11 opens, releases and reads back as released
 
 GitHub #88. `close.py sprint` and `slate_review.py` took a sprint id as a string, but session start and the release record read it through `int()`. A
