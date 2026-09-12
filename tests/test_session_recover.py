@@ -367,7 +367,10 @@ class TestTheOpenSprintSelection:
 
         shown = sprint_slice(run_recovery(repo, tmp_path).stdout)
 
-        assert f"recorded branch {recorded} is not named sprint-N" in shown
+        if recorded.startswith("sprint-"):
+            assert f"recorded branch {recorded} has no matching heading" in shown
+        else:
+            assert f"recorded branch {recorded} is not named sprint-N" in shown
         assert "OPEN-SENTINEL" not in shown and "DRAFT-SENTINEL" not in shown
 
     def test_no_recorded_sprint_uses_and_names_the_highest_numbered_fallback(self, tmp_path):

@@ -57,6 +57,14 @@ def data_root() -> Path:
     return Path.home() / ".xp" / "data" / project_id
 
 
+def sprint_branch_name(identifier: str) -> str:
+    return f"sprint-{identifier.lstrip('0').zfill(3)}"
+
+
+def sprint_id_value(identifier: str):
+    return int(identifier) if identifier.isdigit() else identifier
+
+
 def env_path() -> Path:
     return data_root() / "env.json"
 

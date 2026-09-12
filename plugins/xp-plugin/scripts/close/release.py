@@ -7,16 +7,32 @@ from pathlib import Path
 
 import lifecycle as lc
 from close import config_flat, config_has, default_branch, fail, git
-from env import clear_sprint_branch, data_root, sprint_branch
+from env import (
+    clear_sprint_branch,
+    data_root,
+    sprint_branch,
+    sprint_branch_name,
+    sprint_id_value,
+)
+
+
+def safe_release_id(release_id: str) -> str:
+    if not release_id or Path(release_id).name != release_id or release_id in {".", ".."}:
+        raise ValueError(f"sprint id {release_id!r} is not one safe path segment")
+    return release_id
 
 
 def release_record_path(release_id: str) -> Path:
-    return data_root() / "releases" / f"sprint-{int(release_id)}.json"
+    value = sprint_id_value(safe_release_id(release_id))
+    return data_root() / "releases" / f"sprint-{value}.json"
 
 
 def write_release_record(release_id: str, tag: str | None) -> Path:
     path = release_record_path(release_id)
-    record = {"sprint": int(release_id), "merged_sha": git("rev-parse", "HEAD").stdout.strip()}
+    record = {
+        "sprint": sprint_id_value(release_id),
+        "merged_sha": git("rev-parse", "HEAD").stdout.strip(),
+    }
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = None
     try:
@@ -127,6 +143,10 @@ def cmd_post_merge(
     retire_sprint: bool = True,
     dry_run: bool = False,
 ) -> int:
+    try:
+        safe_release_id(release_id)
+    except ValueError as exc:
+        return fail(f"refused: {exc}")
     versioned, refusal = versioning_mode()
     if refusal:
         return fail(refusal)
@@ -138,7 +158,7 @@ def cmd_post_merge(
     release_branch = merged_branch or sprint_branch()
     if retire_sprint and not release_branch:
         return fail("refused: no sprint branch recorded — open the sprint before releasing it")
-    if retire_sprint and release_branch != f"sprint-{release_id.lstrip('0').zfill(3)}":
+    if retire_sprint and release_branch != sprint_branch_name(release_id):
         return fail(f"refused: sprint {release_id} does not own recorded branch {release_branch}")
     if (
         release_branch
@@ -163,7 +183,7 @@ def cmd_post_merge(
         if retire_sprint:
             try:
                 write_release_record(release_id, None)
-            except OSError as exc:
+            except Exception as exc:
                 path = release_record_path(release_id)
                 return fail(f"refused: could not write release record {path}: {exc}")
             clear_sprint_branch()
@@ -199,7 +219,7 @@ def cmd_post_merge(
     if retire_sprint:
         try:
             write_release_record(release_id, version)
-        except OSError as exc:
+        except Exception as exc:
             removed = git("tag", "-d", version, check=False)
             stranded = (
                 f"; tag {version} was created but could not be removed — remove it before retrying"

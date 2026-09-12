@@ -15,7 +15,7 @@ import milestone
 import overlap
 import stages
 from close import config_flat, default_branch, fail, git, story_card
-from env import record_sprint_branch, refuse_direct_invocation, sprint_branch
+from env import record_sprint_branch, refuse_direct_invocation, sprint_branch, sprint_branch_name
 from falsifier_batch import (
     batch_refusal,
     corpus,
@@ -336,7 +336,7 @@ def cmd_start(sprint_id: str, dry_run: bool = False) -> int:
     branch = git("branch", "--show-current").stdout.strip()
     if not branch or branch == default_branch():
         return fail("refused: open the sprint from its freshly cut branch, not trunk")
-    if branch != (expected := f"sprint-{sprint_id.lstrip('0').zfill(3)}"):
+    if branch != (expected := sprint_branch_name(sprint_id)):
         return fail(f"refused: open sprint {sprint_id} from {expected}, not {branch}")
     if dry_run:
         does = "re-runs the close checks for" if sprint_branch() else "opens"

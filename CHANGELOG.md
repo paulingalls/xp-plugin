@@ -4,6 +4,20 @@ Release notes started at v0.6.0; earlier entries are summarized from their
 tag and merge messages. Full detail lives in the merge history and the
 per-sprint review reports.
 
+## v0.23.9 — a sprint named 2b-11 opens, releases and reads back as released
+
+GitHub #88. `close.py sprint` and `slate_review.py` took a sprint id as a string, but session start and the release record read it through `int()`. A
+project naming its sprints like `2b-11` got `NEXT: recovery required — recorded branch
+sprint-2b-11 is not named sprint-N` at every SessionStart. Its post-merge created the
+tag, crashed writing the release record, and then refused to re-run because the tag
+already existed. Session start now selects the heading whose id derives the recorded
+branch, using the same rule close.py opens it by. With no branch recorded, a plan with
+any non-numeric heading falls back to its last sprint heading, and the provenance line
+says which rule chose. A release record is keyed by the id, so records for numeric
+sprints are unchanged. Post-merge refuses an id that is not one safe path segment before
+tagging, and removes the tag when the record write fails for any reason, so a failed
+post-merge stays re-runnable.
+
 ## v0.23.8 — an amended card is re-planned before an executor runs on it
 
 Bug f80395a2. `spawn.py amend` rewrote only the card credential, and resume

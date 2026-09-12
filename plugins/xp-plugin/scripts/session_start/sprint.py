@@ -4,7 +4,7 @@ import json
 import re
 from pathlib import Path
 
-from env import data_root, sprint_branch
+from env import data_root, sprint_branch, sprint_branch_name, sprint_id_value
 
 
 class SprintSelectionError(RuntimeError):
@@ -12,7 +12,8 @@ class SprintSelectionError(RuntimeError):
 
 
 def release_state(sprint: str) -> tuple[str, Path]:
-    path = data_root() / "releases" / f"sprint-{int(sprint)}.json"
+    expected = sprint_id_value(sprint)
+    path = data_root() / "releases" / f"sprint-{expected}.json"
     try:
         record = json.loads(path.read_text())
     except FileNotFoundError:
@@ -21,8 +22,8 @@ def release_state(sprint: str) -> tuple[str, Path]:
         return "unreadable", path
     valid = (
         isinstance(record, dict)
-        and type(record.get("sprint")) is int
-        and record["sprint"] == int(sprint)
+        and type(record.get("sprint")) is type(expected)
+        and record["sprint"] == expected
         and isinstance(record.get("merged_sha"), str)
         and bool(record["merged_sha"])
         and (
@@ -31,6 +32,10 @@ def release_state(sprint: str) -> tuple[str, Path]:
         )
     )
     return ("released" if valid else "unreadable"), path
+
+
+def slate_review_marker(sprint: str) -> Path:
+    return data_root() / "markers" / f"{sprint_id_value(sprint)}.slate-review-incomplete"
 
 
 def _recorded_branch() -> str:
@@ -47,20 +52,24 @@ def select_sprint(text: str) -> tuple[str, list[str], str]:
     at = [
         (match[1], section.strip())
         for section in re.split(r"(?=^### )", text, flags=re.M)
-        if (match := re.match(r"### Sprint (\d+)\b", section))
+        if (match := re.match(r"### Sprint (\S*\w)", section))
     ]
-    highest = max((raw for raw, _section in at), key=int, default="")
     recorded = _recorded_branch()
     if not recorded:
-        provenance = (
-            f"sprint selection: no sprint branch recorded; highest-numbered fallback selected "
-            f"plan Sprint {highest}"
-        )
-        return highest, [section for raw, section in at if raw == highest], provenance
-    if not (match := re.fullmatch(r"sprint-(\d+)", recorded)):
+        if all(raw.isdigit() for raw, _section in at):
+            selected = max((raw for raw, _section in at), key=int, default="")
+            choice = f"highest-numbered fallback selected plan Sprint {selected}"
+        else:
+            selected = at[-1][0]
+            choice = (
+                f"last-heading fallback selected plan Sprint {selected} because a non-numeric "
+                "Sprint id is present"
+            )
+        provenance = f"sprint selection: no sprint branch recorded; {choice}"
+        return selected, [section for raw, section in at if raw == selected], provenance
+    if not recorded.startswith("sprint-"):
         raise SprintSelectionError(f"recorded branch {recorded} is not named sprint-N")
-    number = int(match[1])
-    selected = next((raw for raw, _section in at if int(raw) == number), "")
+    selected = next((raw for raw, _section in at if sprint_branch_name(raw) == recorded), "")
     if not selected:
         available = ", ".join(f"Sprint {raw}" for raw, _section in at) or "none"
         raise SprintSelectionError(
@@ -68,9 +77,12 @@ def select_sprint(text: str) -> tuple[str, list[str], str]:
             f"available headings: {available}"
         )
     provenance = f"sprint selection: recorded branch {recorded} selected plan Sprint {selected}"
-    if int(highest) != number:
+    numeric = [raw for raw, _section in at if raw.isdigit()]
+    highest = max(numeric, key=int, default="")
+    if highest and sprint_branch_name(highest) != recorded:
         provenance += f"; highest plan heading Sprint {highest} disagrees"
-    return selected, [section for raw, section in at if int(raw) == number], provenance
+    sections = [section for raw, section in at if sprint_branch_name(raw) == recorded]
+    return selected, sections, provenance
 
 
 def sprint_sections(text: str) -> tuple[str, list[str]]:
