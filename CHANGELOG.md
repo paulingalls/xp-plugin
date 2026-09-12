@@ -4,6 +4,16 @@ Release notes started at v0.6.0; earlier entries are summarized from their
 tag and merge messages. Full detail lives in the merge history and the
 per-sprint review reports.
 
+## v0.23.11 — a record is resolved by the lead at close, on the landed tree
+
+GitHub #89. The only resolve guidance any role received was JUDGMENT.md's "resolve —
+substitutes a green falsifier", and every executor is handed JUDGMENT.md. So executors
+resolved debts on their own judgment, before land, sometimes on falsifiers their card or
+plan review had ruled out. Parallel lanes then went red on each other's node ids through
+the shared ledger. The bullet now reads "lead only, at close, on landed tree". Prose
+only: `work.py resolve` does not refuse by role, and land does not check which
+falsifier a resolve used.
+
 ## v0.23.10 — the depth a plan review assigns is the depth the story is reviewed at
 
 GitHub #87. The plan reviewer owns a story's close-review depth and writes
