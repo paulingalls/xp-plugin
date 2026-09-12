@@ -62,11 +62,9 @@ def review_findings_path(identifier: str, kind: str) -> Path:
 
 
 def review_marker(identifier: str, kind: str) -> Path:
-    r"""One spelling for the writer and the reader. A sprint id is typed by the lead
-    and read back by session_start from `### Sprint (\d+)` through int(), so `07`
-    and `7` MUST name one marker — two spellings make an incomplete slate review
-    indistinguishable from a completed one, and absence of the marker is the
-    success signal. A story id is not numeric and survives verbatim."""
+    """One writer/reader spelling: numeric IDs normalize; other IDs survive
+    verbatim. Two spellings make incomplete review look completed because a
+    missing marker is the success signal."""
     identifier = safe_story_id(identifier)
     suffix = "plan-review-incomplete"
     if kind != "plan":

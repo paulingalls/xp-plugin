@@ -38,6 +38,7 @@ def main() -> int:
         repo.mkdir()
         who = {"GIT_AUTHOR_NAME": "l", "GIT_AUTHOR_EMAIL": "l@x"}
         env = os.environ | who | {"GIT_COMMITTER_NAME": "l", "GIT_COMMITTER_EMAIL": "l@x"}
+        env.pop("XP_ROLE", None)
         g = lambda *a: subprocess.run(["git", *a], cwd=repo, env=env, capture_output=True)  # noqa: E731
         g("init", "-q", "-b", "main")
         (repo / ".xp").mkdir()
