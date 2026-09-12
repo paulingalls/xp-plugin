@@ -376,6 +376,22 @@ class TestSpawnStages:
         assert spawn(repo, env, "resume", "story-042").returncode != 0
         assert event_roles(events)[seen:][:2] == ["planner", "plan-reviewer"]
 
+    def test_an_unreadable_review_of_a_replan_reuses_that_draft_on_resume(self, tmp_path):
+        repo, env, _g = make_repo(tmp_path, files="src/thing.py, src/other.py")
+        events = stub_stages(tmp_path, blocking_diff=True)
+        assert spawn(repo, env, "story-042").returncode != 0
+        plan = tmp_path / "data/plan.md"
+        plan.write_text(plan.read_text().replace("Then Z", "Then AMENDED"))
+        assert spawn(repo, env, "amend", "story-042", "--reason", "an AC changed").returncode == 0
+        stub_stages(tmp_path, unreadable_plan=True)
+        seen = len(event_roles(events))
+        assert spawn(repo, env, "resume", "story-042").returncode != 0
+        assert event_roles(events)[seen:] == ["planner", "plan-reviewer"]
+        stub_stages(tmp_path, blocking_diff=True)
+        seen = len(event_roles(events))
+        assert spawn(repo, env, "resume", "story-042").returncode != 0
+        assert event_roles(events)[seen:] == ["plan-reviewer", "teammate", "reviewer"]
+
     def test_an_amended_single_file_resume_keeps_both_plan_stages_skipped(self, tmp_path):
         repo, env, _g = make_repo(tmp_path)
         events = stub_stages(tmp_path, blocking_diff=True)
