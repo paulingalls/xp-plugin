@@ -183,7 +183,9 @@ class TestLandFailureModes:
     def test_land_discloses_the_amendment_route_reason_and_card_diff(self, tmp_path):
         repo, env, _g = make_repo(tmp_path)
         plan = tmp_path / "data" / "plan.md"
-        plan.write_text(plan.read_text().replace("Files: src/thing.py", "Files: src/other.py"))
+        plan.write_text(
+            plan.read_text().replace("Files: src/thing.py", "Files: src/thing.py, src/other.py")
+        )
         assert close(repo, env, "review").returncode == 0
         refused = close(repo, env, "land", "--dry-run")
         assert refused.returncode == 2 and "spawn.py amend story-042" in refused.stderr
@@ -208,7 +210,11 @@ class TestLandFailureModes:
         audit = "implementation moved to its actual file"
         assert all(
             part in landed.stdout
-            for part in (audit, "-Files: src/thing.py", "+Files: src/other.py")
+            for part in (
+                audit,
+                "-Files: src/thing.py",
+                "+Files: src/thing.py, src/other.py",
+            )
         )
         assert landed.stdout.index(audit) < landed.stdout.index("would run:")
 
@@ -334,7 +340,7 @@ class TestLandFailureModes:
 
     @pytest.mark.parametrize("tier", [None, "EDIT-ME"], ids=["missing", "unedited"])
     def test_story_land_refuses_a_tier_that_cannot_run(self, tmp_path, tier):
-        repo, env, g = make_repo(tmp_path)
+        repo, env, g = make_repo(tmp_path, files="src/thing.py, .xp/config.yml")
         config = repo / ".xp" / "config.yml"
         kept = [ln for ln in config.read_text().splitlines(True) if "story:" not in ln]
         if tier is not None:  # under `tests:`, not at EOF — see test_setup's twin

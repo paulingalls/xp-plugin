@@ -48,7 +48,7 @@ class TestSprintIntegration:
             assert "Review round" not in g("log", "main", "--format=%B").stdout
 
     def test_sprint_release_without_branch_key_falls_back_to_default(self, tmp_path):
-        repo, env, g = make_repo(tmp_path)
+        repo, env, g = make_repo(tmp_path, files="src/thing.py, .xp/config.yml")
         (repo / ".xp" / "config.yml").write_text("release: sprint\n" + CONFIG)
         g("add", "-A")
         g("commit", "-qm", "sprint release, no branch yet")
@@ -58,7 +58,7 @@ class TestSprintIntegration:
         assert "Review round 1" in g("log", "main", "-1", "--format=%B").stdout
 
     def test_story_release_ignores_sprint_branch_key(self, tmp_path):
-        repo, env, g = make_repo(tmp_path)
+        repo, env, g = make_repo(tmp_path, files="src/thing.py, .xp/config.yml")
         (repo / ".xp" / "config.yml").write_text(
             "release: story\nsprint_branch: sprint-001\n" + CONFIG
         )

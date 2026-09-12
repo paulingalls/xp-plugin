@@ -32,7 +32,7 @@ class TestStoryReviewFindings:
     def test_a_comment_on_the_tests_header_cannot_silence_the_story_tier(self, tmp_path):
         """G2: the twin of the roles: bug, and this copy fails OPEN — a red tier
         is skipped and the story closes green."""
-        repo, env, g = make_repo(tmp_path)
+        repo, env, g = make_repo(tmp_path, files="src/thing.py, .xp/config.yml")
         (repo / ".xp" / "config.yml").write_text(
             "roles:\n  reviewer: claude/opus\ntests:   # fast / story / full\n  story: false\n"
         )

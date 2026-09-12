@@ -4,6 +4,20 @@ Release notes started at v0.6.0; earlier entries are summarized from their
 tag and merge messages. Full detail lives in the merge history and the
 per-sprint review reports.
 
+## v0.23.12 — a story lands only the files its card declares
+
+GitHub #86. Nothing at story close compared the paths a story changed with its card's
+`Files:` line, so an executor's undeclared files merged, and the Verify gates those
+files trip never ran. Story and free land now refuse BEFORE any merge, push or PR when
+the story's changes, from its merge-base to HEAD, add, modify or delete a path its
+Files line does not name. The refusal lists every such path and the amend command, and
+`--dry-run` prints the same refusal. The base is the one land already uses: trunk for
+free work, the integration branch for a carded story. So trunk motion and sibling
+stories merged into a sprint branch are never counted as this story's. The one
+exemption is a free release's `version_files` manifests, since post-merge checks those
+against the version. A changelog and every other release artifact must be declared.
+Files entries are exact paths, with no directory or glob form.
+
 ## v0.23.11 — a record is resolved by the lead at close, on the landed tree
 
 GitHub #89. The only resolve guidance any role received was JUDGMENT.md's "resolve —
