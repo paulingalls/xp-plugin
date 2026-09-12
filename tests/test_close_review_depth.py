@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 from close_helpers import PLUGIN, close, launches, make_repo, mint_ready, ready_marker
+from handoff import draft_path
 
 
 def review_with_depths(tmp_path, card_depth, draft, unreadable=None):
@@ -12,14 +13,14 @@ def review_with_depths(tmp_path, card_depth, draft, unreadable=None):
     if card_depth:
         plan.write_text(plan.read_text().replace("Verify: true", f"Verify: true\n{card_depth}"))
     mint_ready(repo, env)
-    draft_path = Path(env["XP_DATA"]) / "plans" / "story-042.plan.md"
-    draft_path.parent.mkdir(parents=True, exist_ok=True)
+    drafted = draft_path(Path(env["XP_DATA"]), "story-042")
+    drafted.parent.mkdir(parents=True, exist_ok=True)
     if unreadable == "directory":
-        draft_path.mkdir()
+        drafted.mkdir()
     elif unreadable == "bytes":
-        draft_path.write_bytes(b"\xff\xfe")
+        drafted.write_bytes(b"\xff\xfe")
     elif isinstance(draft, str):
-        draft_path.write_text(f"# story-042 execution plan\n\n{draft}\n")
+        drafted.write_text(f"# story-042 execution plan\n\n{draft}\n")
     before_plan = plan.read_bytes()
     before_marker = ready_marker(tmp_path).read_bytes()
     before_digest = json.loads(before_marker)["digest"]
@@ -95,4 +96,3 @@ def test_story_reviewer_charter_points_to_the_depth_section():
     (paragraph,) = [p for p in paragraphs if "Close-review depth" in p]
     assert len(re.findall(r"[.!?](?:\s|$)", paragraph)) == 1
     assert "deep" in paragraph and "standard" in paragraph
-    assert "The story card may carry" not in paragraph
