@@ -52,7 +52,7 @@ def select_sprint(text: str) -> tuple[str, list[str], str]:
     at = [
         (match[1], section.strip())
         for section in re.split(r"(?=^### )", text, flags=re.M)
-        if (match := re.match(r"### Sprint (\d+\b|\S+)", section))
+        if (match := re.match(r"### Sprint (\S*\w)", section))
     ]
     recorded = _recorded_branch()
     if not recorded:

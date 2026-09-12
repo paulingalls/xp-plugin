@@ -128,6 +128,29 @@ def test_a_recorded_branch_with_no_derived_heading_never_falls_back(tmp_path):
     ]
 
 
+@pytest.mark.parametrize("sprint_id", ["2-11", "3.1"])
+def test_a_digit_led_id_opens_and_reads_back_as_released(tmp_path, sprint_id):
+    repo, _g = xp_repo(tmp_path)
+    data = tmp_path / "xp"
+    plan = LETTERED_PLAN.replace("2b-11", sprint_id)
+    (data / "plan.md").write_text(plan.format(status="ready"))
+    (data / "sprint_branch").write_text(f"sprint-{sprint_id}\n")
+
+    opened = next_lines(run_hook_as(repo, tmp_path, role="lead").stdout)
+
+    assert opened == ["NEXT: story-201 is [ready] — run `spawn.py story-201`"]
+    (data / "sprint_branch").unlink()
+    (data / "plan.md").write_text(plan.format(status="done"))
+    (data / "releases").mkdir()
+    (data / "releases" / f"sprint-{sprint_id}.json").write_text(
+        json.dumps({"sprint": sprint_id, "merged_sha": "a" * 40, "tag": "v0.3.0"})
+    )
+
+    released = next_lines(run_hook_as(repo, tmp_path, role="lead").stdout)
+
+    assert released == [f"NEXT: Sprint {sprint_id} was released — run `/create-sprint`"]
+
+
 @pytest.mark.parametrize(
     ("headings", "selected"),
     [
@@ -289,9 +312,7 @@ def test_unsafe_sprint_ids_refuse_before_tagging_or_writing(tmp_path, monkeypatc
     (tmp_path / ".xp" / "config.yml").write_text("version_files: manifest.json\n")
     monkeypatch.setattr(release, "git", fake_git)
     monkeypatch.setattr(release, "default_branch", lambda: "main")
-    monkeypatch.setattr(
-        release, "sprint_branch", lambda: f"sprint-{sprint_id.lstrip('0').zfill(3)}"
-    )
+    monkeypatch.setattr(release, "sprint_branch", lambda: release.sprint_branch_name(sprint_id))
     monkeypatch.setattr(release, "next_version", lambda _part: "v0.3.0")
     monkeypatch.setattr(release, "version_refusal", lambda _version, _names: "")
     monkeypatch.setattr(release.lc, "run", lambda *_args: 0)

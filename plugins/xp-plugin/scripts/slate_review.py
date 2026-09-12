@@ -14,6 +14,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 sys.path.insert(0, str(Path(__file__).parent / "spawn"))
 
 from close import fail, story_card
+from env import sprint_id_value
 from plan_writer import strip_lifecycle
 from work import (
     card_digest,
@@ -62,15 +63,13 @@ def review_findings_path(identifier: str, kind: str) -> Path:
 
 
 def review_marker(identifier: str, kind: str) -> Path:
-    """One writer/reader spelling: numeric IDs normalize; other IDs survive
-    verbatim. Two spellings make incomplete review look completed because a
-    missing marker is the success signal."""
+    """sprint_id_value is session_start's spelling too: two spellings make an
+    incomplete review look completed, because a missing marker is the success signal."""
     identifier = safe_story_id(identifier)
     suffix = "plan-review-incomplete"
     if kind != "plan":
         suffix = f"{'card-refresh' if kind == 'refresh' else 'slate-review'}-incomplete"
-    name = str(int(identifier)) if identifier.isdigit() else identifier
-    return data_root() / "markers" / f"{name}.{suffix}"
+    return data_root() / "markers" / f"{sprint_id_value(identifier)}.{suffix}"
 
 
 def _marker_state(identifier: str, kind: str) -> dict:
