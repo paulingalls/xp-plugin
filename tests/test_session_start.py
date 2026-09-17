@@ -247,8 +247,10 @@ class TestConstraintsSurviveTheBudget:
     def test_an_oversized_digest_cannot_evict_the_constraints_either(self, tmp_path):
         """The rules outrank the narrative. A digest is recreatable from git and
         work.md; a silently-absent constraint is a rule the lead never knew it
-        was breaking. This is what pins the section ORDER — the entry cap alone
-        leaves the digest free to push the rules off the end."""
+        was breaking. What keeps them so is that the digest is not a profile
+        region at all — only `recover` prints it, and its line bound is a
+        WARNING, so a digest big enough to evict every rule is an expected
+        state. This reds when the digest is added to the profile."""
         repo = self.repo_with_long_work_entries(tmp_path, entries=1, body=50)
         sha = subprocess.run(
             ["git", "rev-parse", "--short", "HEAD"],
@@ -261,7 +263,7 @@ class TestConstraintsSurviveTheBudget:
             f"# Session digest — written 2026-08-20T00:00:00Z at {sha}\n" + "narrative. " * 900
         )
         out = run_hook(repo, tmp_path).stdout
-        assert "LAST-CONSTRAINT-SENTINEL" in out, "an unbounded digest evicted the rules"
+        assert "LAST-CONSTRAINT-SENTINEL" in out, "the digest reached the profile and evicted them"
 
 
 class TestCodexSessionStart:
