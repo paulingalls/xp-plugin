@@ -1,54 +1,23 @@
 """story-003: SessionStart hook. Verify: pytest -q tests/test_session_start.py"""
 
-import ast
 import json
 import os
 import pty
-import shlex
-import shutil
 import subprocess
 import sys
 from pathlib import Path
 
+from session_start_banner_cases import BannerCases
 from session_start_close_cases import LastCloseCases
 from session_start_helpers import HOOK, HOOKS_JSON, run_hook, run_hook_as, run_recovery, xp_repo
 from session_start_install_cases import EnvRefreshCases, InstallProbeCases
 
 
-def banner_line(output):
-    return next(line for line in output.splitlines() if " · recover: " in line)
-
-
-def banner_recovery_executable(output):
-    command = banner_line(output).partition(" · recover: ")[2].partition(" · scripts: ")[0]
-    return Path(shlex.split(command)[1])
-
-
-def banner_scripts_directory(output):
-    first = output.splitlines()[0]
-    if " · recover: " in first:
-        return banner_recovery_executable(output).parent
-    notice = next(line for line in output.splitlines() if "plugin root moved from" in line)
-    return Path(ast.literal_eval(notice.rpartition(" to ")[2])) / "scripts"
-
-
-def run_banner_script(output, cwd, data_dir, script="work.py env"):
-    requested = shlex.split(script)
-    executable = banner_scripts_directory(output) / requested[0]
-    return subprocess.run(
-        [sys.executable, str(executable), *requested[1:]],
-        cwd=cwd,
-        capture_output=True,
-        text=True,
-        env={
-            "PATH": f"{Path(sys.executable).resolve().parent}:/usr/bin:/bin",
-            "HOME": str(data_dir),
-            "XP_DATA": str(data_dir / "xp"),
-        },
-    )
-
-
 class TestLastClose(LastCloseCases):
+    pass
+
+
+class TestBanner(BannerCases):
     pass
 
 
@@ -104,73 +73,6 @@ class TestInjection:
         # story-042 is the FIXTURE PLAN's only card, and this fixture has no numbered
         # sprint, so no NEXT line can name it: the plan body still stays behind `recover`.
         assert all(item not in r.stdout for item in ("story-042", "branch: main", "is a hook"))
-
-    def test_banner_names_version_and_gates(self, tmp_path):
-        repo, _g = xp_repo(tmp_path)
-        r = run_hook(repo, tmp_path)
-        manifest = HOOK.parent.parent / ".claude-plugin" / "plugin.json"
-        version = json.loads(manifest.read_text())["version"]
-        assert "xp-plugin" in r.stdout and version in r.stdout
-        assert "git hooks: none detected" in r.stdout  # fixture has no lefthook/.githooks
-        invoked = run_banner_script(r.stdout, repo, tmp_path)
-        assert invoked.returncode == 0 and invoked.stdout.strip() == str(HOOK.parent.parent)
-
-    def test_banner_names_the_plugin_root_exactly_once(self, tmp_path):
-        repo, _g = xp_repo(tmp_path)
-        line = banner_line(run_hook(repo, tmp_path).stdout)
-        assert line.count(str(HOOK.parent.parent)) == 1
-
-    def test_banner_locates_spawn_and_close(self, tmp_path):
-        repo, _g = xp_repo(tmp_path)
-        output = run_hook(repo, tmp_path).stdout
-        line = banner_line(output)
-        scripts = banner_recovery_executable(output).parent
-        assert scripts == HOOK.parent
-        for name in ("spawn.py", "close.py"):
-            assert name in line
-            assert (scripts / name).is_file()
-
-    def test_a_failed_env_refresh_keeps_the_root_the_banner_trim_would_take(self, tmp_path):
-        """The trim spends one path copy against the notice that replaces it. A
-        refresh FAILURE names env.json and NOT the root, so with only one copy left
-        there is nothing to spend and the lead loses the path entirely."""
-        repo, _g = xp_repo(tmp_path)
-        (tmp_path / "xp" / "env.json").mkdir(parents=True)  # write_env raises on a directory
-        output = run_hook(repo, tmp_path).stdout
-        notice = next(line for line in output.splitlines() if "refresh FAILED" in line)
-        assert str(HOOK.parent.parent) not in notice, "the notice republished the root after all"
-        assert banner_line(output).count(str(HOOK.parent.parent)) == 1
-        ran = run_banner_script(output, repo, tmp_path, "session_start.py recover")
-        assert ran.returncode == 0 and "branch: main" in ran.stdout, ran.stderr
-
-    def test_banner_invocation_follows_a_moved_plugin_root(self, tmp_path):
-        repo, _g = xp_repo(tmp_path)
-        banners = []
-        for name in ("first install", "moved install"):
-            plugin = tmp_path / name
-            shutil.copytree(HOOK.parent.parent, plugin)
-            probe = plugin / "scripts" / "banner_probe.py"
-            probe.write_text("print(__file__)\n")
-            result = subprocess.run(
-                [sys.executable, str(plugin / "scripts" / "session_start.py")],
-                input=json.dumps({"session_id": name}),
-                cwd=repo,
-                capture_output=True,
-                text=True,
-                env={
-                    "PATH": "/usr/bin:/bin",
-                    "HOME": str(tmp_path),
-                    "XP_DATA": str(tmp_path / "xp"),
-                },
-            )
-            # Which FIELD survives the trim depends on whether the notice republished
-            # the root; that it is published SOMEWHERE does not, and reading the
-            # ambient path length to guess the branch reports the machine (constraint 11).
-            assert str(plugin) in result.stdout, "the moved root is published nowhere"
-            invoked = run_banner_script(result.stdout, repo, tmp_path, "banner_probe.py")
-            assert invoked.returncode == 0 and invoked.stdout.strip() == str(probe)
-            banners.append(result.stdout.splitlines()[0])
-        assert banners[0] != banners[1]
 
     def test_session_start_creates_no_liveness_store(self, tmp_path):
         repo, _g = xp_repo(tmp_path)
@@ -269,6 +171,7 @@ class TestRoleProfile:
         # VALUES + the card + constraints, so re-injecting them is duplicate tokens
         assert "BEGIN project content" not in r.stdout
         assert "XP Values" not in r.stdout
+        assert str(tmp_path / "xp") not in r.stdout
 
     def test_unset_role_is_the_lead(self, tmp_path):
         repo, _g = xp_repo(tmp_path)
@@ -402,26 +305,6 @@ class TestCodexSessionStart:
         r = self.codex_run(repo, tmp_path, {"session_id": "bare-id"})
         assert "CONSTRAINT-SENTINEL" in r.stdout, r.stderr  # else the absence proves nothing
         assert not (tmp_path / "xp" / "markers").exists()
-
-    def test_codex_payload_refreshes_the_plugin_pointer(self, tmp_path):
-        repo, _g = xp_repo(tmp_path)
-        path = tmp_path / "xp" / "env.json"
-        path.write_text(json.dumps({"plugin_root": "/gone", "plugin_version": "0.0.1"}))
-
-        result = self.codex_run(
-            repo,
-            tmp_path,
-            {"session_id": "codex", "hook_event_name": "SessionStart", "source": "startup"},
-        )
-
-        recorded = json.loads(path.read_text())
-        manifest = json.loads((HOOK.parent.parent / ".claude-plugin" / "plugin.json").read_text())
-        assert recorded == {
-            "plugin_root": str(HOOK.parent.parent),
-            "plugin_version": manifest["version"],
-        }
-        invoked = run_banner_script(result.stdout, repo, tmp_path)
-        assert invoked.returncode == 0 and invoked.stdout.strip() == str(HOOK.parent.parent)
 
 
 class TestOneHooksFileServesBothHarnesses:

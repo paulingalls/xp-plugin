@@ -119,36 +119,8 @@ def install_status(source="", name="", running="") -> tuple[str, str]:
 DIGEST_CAP = 30  # lines; the story-close SKILL's copy is pinned to this by a test
 
 
-def digest_refusal() -> str:
-    """The bound, measured — the whole of it. Three prose statements said the size and
-    none said the lifecycle, so ours was appended until it evicted constraints (bug
-    597c32db). Names the path, the count and the bound: a refusal that says only
-    "too long" leaves the lead guessing which file.
-
-    It LEADS the digest's own region, which `recover` prints first: a refusal
-    that rides behind the thing it refuses is one the cut can take.
-    """
-    path = data_root() / "session.md"
-    try:
-        count = len(read(path).splitlines())
-    except OSError as exc:  # UNREADABLE is not ABSENT
-        return f"session digest UNREADABLE: {path} — {exc}"
-    if count <= DIGEST_CAP:
-        return ""
-    return (
-        f"session digest NOT INJECTED: {path} is {count} lines against the"
-        f" {DIGEST_CAP}-line bound. It is REPLACED at each close, never appended —"
-        " read it at that path and rewrite it there"
-    )
-
-
-def digest_with_staleness() -> str:
+def digest_with_staleness(text: str) -> str:
     """session.md, STALE-prefixed by commit distance; stampless never reads fresh."""
-    if digest_refusal():
-        return ""
-    text = read(data_root() / "session.md")
-    if not text:
-        return ""
     stamp = ""
     first = text.splitlines()[0]
     if " at " in first:
@@ -261,8 +233,24 @@ def recovery_block() -> str:
 
 
 def digest_output() -> str:
-    absent = f"session digest ABSENT: {data_root() / 'session.md'}"
-    return digest_refusal() or digest_with_staleness() or absent
+    path = data_root() / "session.md"
+    absent = f"session digest ABSENT: {path}"
+    try:
+        text = path.read_text(errors="replace")
+    except FileNotFoundError:
+        return absent
+    except OSError as exc:
+        return f"session digest UNREADABLE: {path} — {exc}"
+    if not text:
+        return absent
+    count = len(text.splitlines())
+    warning = ""
+    if count > DIGEST_CAP:
+        warning = (
+            f"session digest WARNING: {path} is {count} lines against the"
+            f" {DIGEST_CAP}-line bound; full digest follows"
+        )
+    return "\n".join(filter(None, (warning, digest_with_staleness(text))))
 
 
 def sprint_slice() -> str:
@@ -392,6 +380,7 @@ def banner(root: Path) -> str:
     return (
         f"xp-plugin {version} · git hooks: {hooks} · constraints.md: {constraints_lines}"
         f" lines · recover: python3 {recover} recover · scripts: spawn.py, close.py"
+        f" · data: {data_root()}"
     )
 
 

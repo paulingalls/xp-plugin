@@ -2,8 +2,7 @@
 
 ## Start here
 
-`/xp-setup` once. Run the exact `recover:` command from SessionStart; read
-uninjected digest, recovery block and sprint slice. Artifacts win.
+`/xp-setup`; run the exact `recover:` command. Artifacts win.
 
 ## The loop
 
