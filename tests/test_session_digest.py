@@ -91,7 +91,7 @@ class TestTheDigestLayer:
 
     def test_a_digest_at_the_bound_is_injected_untouched(self, tmp_path):
         """Constraint 2: without this arm the check above passes just as well
-        against a mechanism that refuses every digest there is."""
+        against a mechanism that warns for every digest there is."""
         repo, g = xp_repo(tmp_path)
         head = g("rev-parse", "--short", "HEAD").stdout.strip()
         data = tmp_path / "xp"

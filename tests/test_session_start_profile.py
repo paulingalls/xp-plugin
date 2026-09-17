@@ -18,6 +18,7 @@ import tempfile
 from pathlib import Path
 
 import pytest
+from constraints_wall_cases import ConstraintsWallCases
 from session_start_helpers import BUDGET_WARNING, HOOK
 
 CODEX_RETAINED_BYTES = [(4_916, 5_084)] * 6
@@ -62,40 +63,57 @@ class TestTheRealProfileAgainstTheRealCap:
         so against the real root it MOVES the live pin — and the cap-mutation case
         below moves it to a tmp plugin pytest then deletes. The suite was the
         defect the story it guards exists to fix.
+
+        Its 70-character path stays below the measured ~101-character cliff.
+        That cliff appears only with a moved install whose shortened notice makes
+        the banner retain both plugin and data paths; past it, render still names
+        every constraint it drops. Re-measure it here; never cite it.
         """
         sys.path.insert(0, str(HOOK.parent))
         from env import data_root, plugin_version
 
         source = data_root()
-        isolated = tmp_path / "profile-data"
-        isolated.mkdir()
-        for name in ("plan.md", "installed-claude-version", "installed-codex-version"):
-            if (path := source / name).exists():
-                shutil.copy2(path, isolated / name)
-        if (source / "markers").exists():
-            shutil.copytree(source / "markers", isolated / "markers")
-        plugin = hook.parent.parent
-        (isolated / "env.json").write_text(
-            json.dumps(
-                {
-                    "plugin_root": str(plugin if recorded_root is None else recorded_root),
-                    "plugin_version": plugin_version(plugin),
-                }
+        base = Path(tempfile.mkdtemp(prefix="xp-profile-", dir="/tmp"))
+        expected = self.path_at_length(base, "d", ConstraintsWallCases.DATA_ROOT_BUDGET)
+        try:
+            isolated = expected
+            isolated.mkdir()
+            for name in ("plan.md", "installed-claude-version", "installed-codex-version"):
+                if (path := source / name).exists():
+                    shutil.copy2(path, isolated / name)
+            if (source / "markers").exists():
+                shutil.copytree(source / "markers", isolated / "markers")
+            plugin = hook.parent.parent
+            (isolated / "env.json").write_text(
+                json.dumps(
+                    {
+                        "plugin_root": str(plugin if recorded_root is None else recorded_root),
+                        "plugin_version": plugin_version(plugin),
+                    }
+                )
             )
-        )
-        repo = Path(__file__).parent.parent
-        payload = {"hook_event_name": "SessionStart", "cwd": str(repo)}
-        out = subprocess.run(
-            [sys.executable, str(hook)],
-            input=json.dumps(payload),
-            capture_output=True,
-            text=True,
-            cwd=repo,
-            env=dict(os.environ) | {"XP_ROLE": "lead", "XP_DATA": str(isolated)},
-        ).stdout
-        assert "teammate session" not in out, "the role gate ate the profile; this asserts nothing"
-        assert out.strip(), "the hook printed nothing (stderr holds the traceback); nothing asserts"
-        return out
+            repo = Path(__file__).parent.parent
+            payload = {"hook_event_name": "SessionStart", "cwd": str(repo)}
+            out = subprocess.run(
+                [sys.executable, str(hook)],
+                input=json.dumps(payload),
+                capture_output=True,
+                text=True,
+                cwd=repo,
+                env=dict(os.environ) | {"XP_ROLE": "lead", "XP_DATA": str(isolated)},
+            ).stdout
+            assert "teammate session" not in out, (
+                "the role gate ate the profile; this asserts nothing"
+            )
+            assert out.strip(), (
+                "the hook printed nothing (stderr holds the traceback); nothing asserts"
+            )
+            rendered = out.splitlines()[0].partition(" · data: ")[2]
+            assert rendered == str(expected)
+            assert len(rendered) == ConstraintsWallCases.DATA_ROOT_BUDGET == 70
+            return out
+        finally:
+            shutil.rmtree(base, ignore_errors=True)
 
     def path_at_length(self, base, name, target):
         pad = target - len(str(base / name))
@@ -280,8 +298,8 @@ class TestTheRealProfileAgainstTheRealCap:
 
         THE BUDGET WARNING IS NOT FREE: it is emitted into the budget it reports on,
         so it buys its 102 bytes out of delivery margin. Re-measured at THIS HEAD
-        against .xp/constraints.md: the warning starts at a 147-character plugin
-        path and all 15 rules still land through 162; 163 is the first that cuts
+        against .xp/constraints.md: the warning starts at a 343-character plugin
+        path and all 15 rules still land through 375; 376 is the first that cuts
         one. THIS NUMBER ROTS ON EVERY SHIPPED-PROSE EDIT and already has — it read
         "~132, 13/15 by 150" one commit before 591c2b9 returned 81 bytes to the
         budget. Re-measure it here; never cite it, and never cite the card's ~175.
@@ -303,7 +321,7 @@ class TestTheRealProfileAgainstTheRealCap:
         whole reason to exist.
 
         Absent reads as zero: a fresh clone legitimately has no digest yet, and
-        that is a different state from one too big to inject (constraint 15).
+        that is a different state from one that warns at load (constraint 15).
         """
         sys.path.insert(0, str(Path(__file__).parent.parent / "plugins/xp-plugin/scripts"))
         from session_start import DIGEST_CAP, data_root
