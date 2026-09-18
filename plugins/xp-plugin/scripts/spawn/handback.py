@@ -29,7 +29,12 @@ def tree_state(tree: Path) -> tuple[str, str]:
 
 
 def unclean_teammate_result(
-    tree: Path, handed_over: tuple[str, str], story_id: str, resumed: bool = False
+    tree: Path,
+    handed_over: tuple[str, str],
+    story_id: str,
+    resumed: bool = False,
+    outcome: str = "terminal-stop",
+    executor_log: Path | None = None,
 ) -> str:
     """ "" when the teammate left a clean, committed story behind; otherwise the
     refusal, naming both recoveries.
@@ -73,5 +78,15 @@ def unclean_teammate_result(
             tree, dirty, recovery
         )
     if head == flip_head:
-        return f"refused: the teammate made no commits of its own in {tree}.{recovery}"
+        if outcome == "harness-death":
+            return (
+                f"refused: the teammate made no commits of its own because its harness died"
+                f" before a terminal response. Inspect the executor log at {executor_log}, then"
+                f" use the takeover recovery below.{recovery}"
+            )
+        return (
+            f"refused: the teammate made no commits of its own after a terminal response. Read"
+            f" its preserved final response in {executor_log}, then choose whether the card or"
+            f" plan needs amendment before taking the recovery below.{recovery}"
+        )
     return ""

@@ -26,6 +26,7 @@ from close_helpers import (  # noqa: F401
     stub_reviewer,
 )
 from diff_reference_helpers import read_named_diff
+from test_close_salvage import TestSalvageRefusalActions  # noqa: F401
 
 
 class TestStart:

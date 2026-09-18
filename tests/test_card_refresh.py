@@ -168,12 +168,59 @@ def test_a_refresher_that_writes_no_findings_cannot_mint_a_receipt(tmp_path):
     stub_card_refresher(tmp_path, findings="")
     result = card_refresh(repo, env)
     assert result.returncode == 2
-    assert "ended without a verdict" in result.stderr
+    state = json.loads(
+        (Path(env["XP_DATA"]) / "markers/story-042.card-refresh-incomplete").read_text()
+    )
+    assert state["refusal"] in result.stderr and state["next"]
     assert plan.read_text() == before
     assert not receipt_of(env).exists()
     marker = Path(env["XP_DATA"]) / "markers/story-042.card-refresh-incomplete"
     assert marker.exists()
     assert spawn(repo, env, "ready", "story-042").returncode == 2
+
+
+def test_each_refresh_refusal_persists_its_distinct_walkable_recovery(tmp_path):
+    cases = [
+        ("repository-motion", {"repo_file": "stray.py"}),
+        ("target-unparsable", {"plan_unparsable": True}),
+        ("candidate-unparsable", {"unparsable": True}),
+        ("candidate-lifecycle", {"status": "ready"}),
+        ("direct-plan-write", {"correction": CORRECTED, "direct_plan": True}),
+        ("candidate-not-applied", {"correction": CORRECTED, "skip_apply": True}),
+        ("different-text-applied", {"correction": CORRECTED, "applied_other": True}),
+        ("target-lifecycle", {"plan_status": "ready"}),
+        ("review-stream-error", {"exit_code": 7}),
+        ("no-findings", {"findings": ""}),
+    ]
+    causes = []
+    for case_id, knobs in cases:
+        root = tmp_path / case_id
+        root.mkdir()
+        repo, env, _g, plan = refresh_repo(root)
+        before = plan.read_text()
+        if knobs.get("repo_file"):
+            knobs = knobs | {"repo_file": str(repo / knobs["repo_file"])}
+        stub_card_refresher(root, **knobs)
+        refused = card_refresh(repo, env)
+        marker = Path(env["XP_DATA"]) / "markers/story-042.card-refresh-incomplete"
+        assert refused.returncode == 2 and marker.exists() and not receipt_of(env).exists()
+        state = json.loads(marker.read_text())
+        cause = state["refusal"]
+        assert cause in refused.stderr and state["next"]
+        causes.append(cause)
+
+        plan.write_text(before)
+        stray = repo / "stray.py"
+        if stray.exists():
+            stray.unlink()
+        stub_card_refresher(root, correction=CORRECTED)
+        action = state["next"].removeprefix("run ").rsplit(" again", 1)[0]
+        recovered = subprocess.run(
+            shlex.split(action), cwd=repo, env=env, capture_output=True, text=True, timeout=30
+        )
+        assert recovered.returncode == 0, case_id + ": " + recovered.stderr
+        assert receipt_of(env).exists() and not marker.exists()
+    assert len(set(causes)) == len(cases)
 
 
 def test_a_files_refusal_reaches_the_lead_without_a_false_retry(tmp_path):

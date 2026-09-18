@@ -1,4 +1,6 @@
 import json
+import re
+import shlex
 import subprocess
 import sys
 
@@ -7,7 +9,13 @@ from spawn_helpers import SPAWN, make_repo, seed_refresh_receipt, spawn
 CLEAN = {"fixed": [], "blocking": [], "noted": []}
 
 
-def stub_stages(tmp_path, blocking_plan=False, blocking_diff=False, unreadable_plan=False):
+def stub_stages(
+    tmp_path,
+    blocking_plan=False,
+    blocking_diff=False,
+    unreadable_plan=False,
+    review_failure=False,
+):
     binary = tmp_path / "bin" / "claude"
     binary.parent.mkdir(exist_ok=True)
     events = tmp_path / "events.jsonl"
@@ -18,6 +26,10 @@ def stub_stages(tmp_path, blocking_plan=False, blocking_diff=False, unreadable_p
     else:
         findings = json.dumps({"status": "clean", "reasons": []})
     report = {"fixed": [], "blocking": ["cannot land"], "noted": []} if blocking_diff else CLEAN
+    repair = tmp_path / "review-repaired"
+    repair_action = shlex.join(
+        [sys.executable, "-c", f"from pathlib import Path; Path({str(repair)!r}).touch()"]
+    )
     binary.write_text(
         "#!/usr/bin/env python3\n"
         "import json, os, re, subprocess, sys\n"
@@ -40,6 +52,10 @@ def stub_stages(tmp_path, blocking_plan=False, blocking_diff=False, unreadable_p
         " subprocess.run(['git', 'add', '-A'], check=True)\n"
         " subprocess.run(['git', 'commit', '-qm', 'executor work'], check=True)\n"
         "elif role == 'reviewer':\n"
+        f" if {review_failure!r} and not os.path.exists({str(repair)!r}):\n"
+        f"  action = {repair_action!r}\n"
+        "  print(f'refused: generated reviewer cause; run `{action}`', file=sys.stderr)\n"
+        "  sys.exit(2)\n"
         " p = re.search(r'^REPORT_PATH: (.+)$', prompt, re.M); assert p\n"
         f" report = {report!r}\n"
         " open(p.group(1).strip(), 'w').write(json.dumps(report))\n"
@@ -94,6 +110,27 @@ raise SystemExit(spawn.main())
 
 
 class TestSpawnStages:
+    def test_a_diff_review_refusal_is_durable_after_stdout_is_lost(self, tmp_path):
+        repo, env, _g = make_repo(tmp_path)
+        stub_stages(tmp_path, review_failure=True)
+        stopped = spawn(repo, env, "story-042")
+        marker = tmp_path / "data/plans/story-042.handoff.json"
+        state = json.loads(marker.read_text())
+        assert stopped.returncode != 0 and state["state"] == "STOPPED"
+        assert state["stages"].get("reviewer") != "ran"
+        why = state["why"]
+        assert "generated reviewer cause" in why
+        commands = re.findall(r"`([^`]+)`", why)
+        assert len(commands) == 1
+        repaired = subprocess.run(
+            shlex.split(commands[0]), cwd=repo, env=env, capture_output=True, text=True
+        )
+        assert repaired.returncode == 0
+        resumed = spawn(repo, env, "resume", "story-042")
+        assert resumed.returncode == 0, resumed.stderr
+        finished = json.loads(marker.read_text())
+        assert finished["state"] == "FINISHED" and finished["stages"]["reviewer"] == "ran"
+
     def test_each_story_launch_uses_its_own_configured_model(self, tmp_path):
         repo, env, g = make_repo(tmp_path, files="src/thing.py, src/other.py")
         config = repo / ".xp/config.yml"

@@ -59,7 +59,10 @@ class TestReleaseRecord:
             plan.read_text() + "#### story-099 — found after release   [planned]\nVerify: true\n"
         )
         opened = next_lines(run_release_recovery(repo, root).stdout)
-        assert opened == ["NEXT: Sprint 2 was released — schedule story-099 into a new sprint"]
+        assert opened == [
+            "NEXT: Sprint 2 was released — run `/create-sprint` and carry story-099"
+            " unchanged into the new sprint"
+        ]
         assert "spawn.py" not in opened[0]
 
     def test_versioned_post_merge_records_the_merged_head_and_tag(self, tmp_path):

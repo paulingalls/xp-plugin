@@ -178,6 +178,7 @@ def check_reviewer_motion(
     story_id: str = "",
     moved: str = "",
     salvage=False,
+    preserve_motion=False,
 ) -> str:
     """The complete refusal text, or "" if the reviewer behaved.
 
@@ -225,6 +226,8 @@ def check_reviewer_motion(
             " history, so commits it was handed are not in what would merge"
         )
     if git("rev-parse", "HEAD").stdout.strip() != reviewed_head:
+        if preserve_motion:
+            return f"refused: {moved}"
         return refuse(moved or "the read-only reviewer changed HEAD; no reviewer leg may commit")
     return ""
 

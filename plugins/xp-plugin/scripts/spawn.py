@@ -12,6 +12,8 @@ sys.path.insert(0, str(Path(__file__).parent))
 sys.path.insert(0, str(Path(__file__).parent / "spawn"))
 # close must import back FUNCTION-LOCALLY: a module-level edge cycles
 # (close -> spawn -> close) and fails before fail/git exist (story-008).
+import profile
+
 import handoff as handoff_io
 import story_stages as stages
 from bookkeep import bootstrap_command
@@ -36,65 +38,22 @@ from work import (
 )
 
 PLUGIN_ROOT = Path(__file__).parent.parent
-
-DEFAULT_PROFILE_TARGET = 806
+DEFAULT_PROFILE_TARGET = profile.DEFAULT_PROFILE_TARGET
 
 
 def component_metadata_chars() -> int:
-    """Frontmatter of every skill and agent — always-on in any session that
-    loads the plugin, so it taxes every spawn forever. Bodies are excluded:
-    progressive disclosure loads a SKILL.md body only when invoked."""
-    total = 0
-    for path in sorted(PLUGIN_ROOT.glob("skills/*/SKILL.md")) + sorted(
-        PLUGIN_ROOT.glob("agents/*.md")
-    ):
-        parts = path.read_text().split("---", 2)
-        if len(parts) > 2:
-            total += len(parts[1])
-    return total
+    return profile.component_metadata_chars(PLUGIN_ROOT)
 
 
 def profile_report(card: str, prompt: str, handoff: str) -> tuple[str, str]:
-    """Return the lead's profile breakdown and actionable overage warning."""
-    project = {
-        "the story card": len(card),
-        "constraints.md": len(_read(Path(".xp/constraints.md"))),
-        "CLAUDE.md": len(_read(Path("CLAUDE.md"))),
-    }
-    if handoff:
-        project["predecessor handoff"] = len(handoff)
-    total_chars = len(prompt) + project["CLAUDE.md"] + component_metadata_chars()
-    total = total_chars // 4
-    plugin = total_chars - sum(project.values())
-    shares = " · ".join(f"{k} {v // 4}" for k, v in project.items())
-    line = f"profile: total {total} tokens · plugin share {plugin // 4}/{total} · {shares}"
-    target = profile_target()
-    card_tokens = len(card) // 4
-    if card_tokens <= target:
-        return line, ""
-    contributors = {"the plugin": plugin, **project}
-    largest = max(contributors, key=contributors.get)
-    return line, (
-        f"note: story card is {card_tokens} tokens, over the {target} story-card token"
-        f" allowance (profile_target). Largest contributor is {largest}"
-        f" ({contributors[largest] // 4} tokens). Reconsider that contributor or the"
-        " configured allowance."
-    )
+    return profile.profile_report(card, prompt, handoff, PLUGIN_ROOT, _read, profile_target())
 
 
 def profile_target() -> int:
-    if not config_has("profile_target"):
-        return DEFAULT_PROFILE_TARGET
-    raw = config_flat("profile_target")
-    if raw.isdecimal():
-        return int(raw)
-    received = "empty" if not raw else repr(raw)
-    raise SystemExit(
-        fail(
-            f"refused: profile_target in .xp/config.yml is {received}; expected a"
-            " non-negative integer number of story-card tokens"
-        )
-    )
+    try:
+        return profile.profile_target(config_has, config_flat)
+    except ValueError as error:
+        raise SystemExit(fail(f"refused: {error}")) from error
 
 
 def template_role_line(role: str) -> str:
@@ -342,7 +301,10 @@ def cmd_spawn(story_id: str, override: str, dry_run: bool, resuming: bool = Fals
             flip_to_in_progress(story_id)
     else:
         if tree.exists():
-            return fail(f"refused: {tree} already exists — {story_id} is already spawned")
+            return fail(
+                f"refused: {tree} already exists — run `spawn.py resume {story_id}` to"
+                " inspect its handoff and take that tree over"
+            )
         exists = git("rev-parse", "--verify", "-q", f"refs/heads/{branch}", check=False)
         free_ref = bool(leg(story_id)[1]) and exists.returncode == 0
         if free_ref and git("branch", "--show-current").stdout.strip() == branch:
@@ -421,14 +383,17 @@ def cmd_spawn(story_id: str, override: str, dry_run: bool, resuming: bool = Fals
     # inherits its own state and drop the predecessor's commits. The stages changed
     # nothing it reads — the executor reaches the reviewed plan by PLAN_PATH.
     rc = run_teammate(argv, tree, prompt, story_id, data_root(), harness)
-    err = unclean_teammate_result(tree, handed_over, story_id, resuming)
+    outcome = "terminal-stop" if rc == 0 else "harness-death"
+    executor_log = data_root() / "logs" / f"{story_id}-executor.log"
+    err = unclean_teammate_result(tree, handed_over, story_id, resuming, outcome, executor_log)
     if err or rc:
         why = err or f"the teammate left a clean commit in {tree} before its harness failed"
         return stop(why, rc)
     mark_stage(data_root(), story_id, "executor", "ran")
-    rc, state = stages.review_story(tree, story_id)
+    rc, state, refusal = stages.review_story(tree, story_id)
     if rc:
-        return stop(f"the diff review leg refused (rc {rc}) — its refusal is above", rc)
+        cause = refusal or "the diff review produced no readable refusal; inspect its log"
+        return stop(f"the diff review leg refused (rc {rc}): {cause}", rc)
     mark_stage(data_root(), story_id, "reviewer", "ran")
     from overlap import unresolved_blocking  # land's own reading, never a second one
 

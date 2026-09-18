@@ -206,8 +206,8 @@ class TestSalvage:
         refused = salvage(repo, env)
         assert refused.returncode == 2, refused.stdout
         assert launched[:8] in refused.stderr, refused.stderr
-        assert "no reviewer leg may do" in refused.stderr, refused.stderr
-        assert "or you did since the kill" in refused.stderr, refused.stderr
+        assert "outside close.py" in refused.stderr, refused.stderr
+        assert "review again" in refused.stderr, refused.stderr
         assert not marker_file(tmp_path).exists(), "a forbidden commit reached a round"
 
     @pytest.mark.slow
@@ -222,10 +222,10 @@ class TestSalvage:
         refused = salvage(repo, env)
         assert refused.returncode == 2 and "Verify red" in refused.stderr, refused.stderr
         assert not marker_file(tmp_path).exists()
-        # The patch is already COMMITTED when Verify reds, and no round survives to name
-        # it, so this refusal is the only disclosure the lead gets that HEAD moved.
+        # The patch is already COMMITTED when Verify reds, and no round survives to name it.
         assert g("rev-parse", "HEAD").stdout.strip() != head, "no reviewer commit to disclose"
-        assert head[:8] in refused.stderr and "reset --hard" in refused.stderr, refused.stderr
+        assert "close.py applied" in refused.stderr, refused.stderr
+        assert "reset" not in refused.stderr, refused.stderr
 
     def test_nothing_to_salvage_and_something_unreadable_are_different(self, tmp_path):
         """Constraint 15. One says run the review, the other says the file on
@@ -387,3 +387,41 @@ class TestSalvage:
         rescued = salvage(repo, env)
         assert rescued.returncode == 0, rescued.stderr
         assert "close.py story story-042 land" in rescued.stdout, rescued.stdout
+
+
+class TestSalvageRefusalActions:
+    @pytest.mark.slow
+    def test_close_authored_and_external_motion_offer_distinct_working_recoveries(self, tmp_path):
+        close_case = tmp_path / "close"
+        lead_case = tmp_path / "lead"
+
+        close_repo, close_env, close_git = make_repo(close_case)
+        dying_reviewer(close_case)
+        assert close(close_repo, close_env | KILLED, "review").returncode == 2
+        launch = close_case / "data" / "markers" / "story-042.review-launch"
+        payload = json.loads(launch.read_text())
+        payload["round_index"] = "invalid-after-apply"
+        launch.write_text(json.dumps(payload))
+        first = salvage(close_repo, close_env)
+        assert first.returncode == 2 and "invalid round position" in first.stderr
+        applied = close_git("rev-parse", "HEAD").stdout.strip()
+        assert applied != payload["head"] and not marker_file(close_case).exists()
+        close_authored = salvage(close_repo, close_env)
+        assert close_authored.returncode == 2 and not marker_file(close_case).exists()
+
+        lead_repo, lead_env, lead_git = make_repo(lead_case)
+        dying_reviewer(lead_case)
+        assert close(lead_repo, lead_env | KILLED, "review").returncode == 2
+        (lead_repo / "lead.txt").write_text("lead motion\n")
+        lead_git("add", "lead.txt")
+        lead_git("commit", "-qm", "lead motion")
+        external = salvage(lead_repo, lead_env)
+        assert external.returncode == 2 and not marker_file(lead_case).exists()
+
+        assert close_authored.stderr != external.stderr
+        assert "close.py" in close_authored.stderr and "keep" in close_authored.stderr.lower()
+        assert "reset" not in close_authored.stderr.lower()
+        stub_reviewer(close_case)
+        recovered = close(close_repo, close_env, "review")
+        assert recovered.returncode == 0, recovered.stderr
+        assert close_git("merge-base", "--is-ancestor", applied, "HEAD").returncode == 0

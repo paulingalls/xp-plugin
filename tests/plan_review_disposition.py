@@ -1,4 +1,7 @@
 import json
+import re
+import shlex
+import subprocess
 
 import pytest
 from plan_review import evaluate_disposition
@@ -92,6 +95,26 @@ class TestPlanEditsInPlace:
         report = json.dumps({"status": "edited", "reasons": ["a missing reason"]})
         problem = disposition_result(report, b"before", b"changed plan with unrelated prose\n")
         assert "every plan edit" in problem
+
+    def test_a_plan_read_failure_names_the_plan_and_a_retry_that_recovers(self, tmp_path):
+        repo, env, draft = self.repo(tmp_path)
+        stub_planner(tmp_path, findings=self.EDITED, motion="unreadable")
+        result = plan_review(repo, env, "story-042", str(draft))
+        marker = tmp_path / "data" / "markers" / "story-042.plan-review-incomplete"
+        assert result.returncode == 2 and marker.exists()
+        assert str(draft.resolve()) in result.stderr
+        assert "every plan edit" not in result.stderr
+        commands = re.findall(r"`([^`]+)`", result.stderr)
+        assert len(commands) == 1
+
+        draft.rmdir()
+        draft.write_text("# draft plan\nstep 1\n")
+        stub_planner(tmp_path, findings=self.EDITED, motion="edit")
+        recovered = subprocess.run(
+            shlex.split(commands[0]), cwd=repo, env=env, capture_output=True, text=True
+        )
+        assert recovered.returncode == 0, recovered.stderr
+        assert not marker.exists()
 
     def test_a_reason_with_different_words_refuses(self):
         reason = "the guard compares meaningful content words"

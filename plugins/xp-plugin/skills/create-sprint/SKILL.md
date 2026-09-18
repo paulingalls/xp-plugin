@@ -10,6 +10,8 @@ plan path `/xp-setup` prints.
 
 Before writing:
 
+Carry every open card named by session recovery unchanged into the new sprint before slate review.
+
 - Budget story slots against `sprint_cap`; `debt_budget` bounds the share spent
   on scheduled debt.
 - Put prerequisites first in merge order. Find file collisions between cards;

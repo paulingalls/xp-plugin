@@ -1,5 +1,7 @@
 from pathlib import Path
 
+REVIEW_REFUSAL_TAIL = 2000
+
 
 def run_planner(story_id: str, card: str, tree: Path, handoff: str) -> tuple[int, str]:
     import review
@@ -24,21 +26,45 @@ def run_planner(story_id: str, card: str, tree: Path, handoff: str) -> tuple[int
     return 0, ""
 
 
-def review_story(tree: Path, story_id: str) -> tuple[int, dict]:
+def review_story(tree: Path, story_id: str) -> tuple[int, dict, str]:
     import contextlib
+    import io
     import json
+    import sys
 
     from close import cmd_review, git, marker_path
+    from work import data_root
 
+    stderr = sys.stderr
+
+    class Tee(io.StringIO):
+        def write(self, text):
+            stderr.write(text)
+            return super().write(text)
+
+    refusal = Tee()
     with contextlib.chdir(tree):
         # By SHA: refs/stash is one stack per clone, so a pop takes whoever pushed last.
         dirty = bool(git("status", "--porcelain").stdout.strip())
         if dirty and git("stash", "push", "-qu", "-m", story_id, check=False).returncode:
-            return 2, {}
+            return 2, {}, "the diff review could not preserve the dirty tree"
         entry = git("rev-parse", "-q", "--verify", "stash@{0}", check=False).stdout.strip()
         try:
-            rc = cmd_review(story_id)
+            with contextlib.redirect_stderr(refusal):
+                rc = cmd_review(story_id)
             state = json.loads(marker_path(story_id).read_text()) if not rc else {}
         finally:
             restored = git("stash", "apply", "-q", entry, check=False) if dirty else None
-    return (2, {}) if restored and restored.returncode else (rc, state)
+    if restored and restored.returncode:
+        return 2, {}, "the diff review could not restore the dirty tree"
+    captured = refusal.getvalue()
+    if rc:
+        log_id = (
+            f"{story_id}-reviewer"
+            if story_id.startswith("story-") and story_id.removeprefix("story-").isdigit()
+            else "story-reviewer-review"
+        )
+        log = data_root() / "logs" / f"{log_id}.log"
+        if log.is_file():
+            captured += "\n" + log.read_text(errors="replace")
+    return rc, state, captured[-REVIEW_REFUSAL_TAIL:].strip()

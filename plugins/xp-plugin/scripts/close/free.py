@@ -111,6 +111,12 @@ def cmd_review(slug: str, dry_run: bool) -> int:
     except KeyError as e:  # the heading above is hand-written; a typo'd one is a refusal
         return fail(f"refused: {e.args[0]}")
     if not dry_run and not ready.spawned(key):
+        tree = spawn.worktree_path(key)
+        if tree.is_dir():
+            return fail(
+                f"refused: {key} has an existing worktree at {tree} but no handoff — run"
+                f" `spawn.py resume {key}` to inspect and take it over, then review there"
+            )
         before_spawn = f"run `spawn.py ready {key}`, then " if status == "planned" else ""
         if status == "in-progress":
             before_spawn = "put its heading back to [ready], then "

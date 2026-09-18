@@ -22,7 +22,6 @@ from slate_review_helpers import (
     PLUGIN,
     PROCESS,
     REVIEW,
-    SLATE_REVIEW,
     assert_bundle_schema,
     assert_charter_contract,
     assert_design_contract,
@@ -203,7 +202,7 @@ def test_incomplete_slate_review_marker_names_state_and_next_action(tmp_path):
 
 
 def test_both_runners_share_one_detach_poll_marker_lifecycle():
-    slate_source = SLATE_REVIEW.read_text()
+    slate_source = (PLUGIN / "scripts" / "review_runner.py").read_text()
     plan_source = PLAN_REVIEW.read_text()
     review_source = REVIEW.read_text()
     assert_one_lifecycle(slate_source, plan_source, review_source)

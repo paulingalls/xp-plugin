@@ -27,7 +27,10 @@ class ReleasedNextActionCases:
 
         lines = next_lines(run_recovery(repo, tmp_path).stdout)
 
-        assert lines == ["NEXT: Sprint 1 was released — schedule story-042 into a new sprint"]
+        assert lines == [
+            "NEXT: Sprint 1 was released — run `/create-sprint` and carry story-042"
+            " unchanged into the new sprint"
+        ]
         assert "spawn.py" not in lines[0] and "/story-close" not in lines[0]
 
     @pytest.mark.parametrize("status", ["done", "retired"])
@@ -137,7 +140,8 @@ class ReleasedNextActionCases:
         profile = run_hook_as(repo, tmp_path, role="lead").stdout
 
         assert next_lines(recovery) == [
-            "NEXT: Sprint 1 was released — schedule story-042 into a new sprint"
+            "NEXT: Sprint 1 was released — run `/create-sprint` and carry story-042"
+            " unchanged into the new sprint"
         ]
         assert next_lines(profile) == []
         headings = [line for line in rules.splitlines() if line[:1].isdigit()]

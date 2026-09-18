@@ -2,7 +2,10 @@
 
 import argparse
 import fcntl
+import json
+import shlex
 import subprocess
+import sys
 from pathlib import Path
 
 from close import leg
@@ -68,10 +71,22 @@ def validate(root: Path, story_id: str, tree: Path, branch: str) -> str:
     if not tree.is_dir():
         return f"refused: {kind} worktree {tree} is missing — recover it before resuming"
     if kind in ("RUNNING", "NEVER SPAWNED"):
+        payload = json.dumps({"state": "STOPPED"})
+        code = (
+            f"from pathlib import Path; p=Path({str(marker)!r});"
+            f" p.parent.mkdir(parents=True, exist_ok=True); p.write_text({payload!r})"
+        )
+        repair = shlex.join(
+            [
+                sys.executable,
+                "-c",
+                code,
+            ]
+        )
         return (
             f"refused: {story_id} left {tree} with no handback and nothing holds its launch"
-            f' lock — an INTERRUPTED spawn, not a RUNNING teammate. Write "STOPPED" into'
-            f" {marker} to take that tree over, or remove the worktree and re-spawn"
+            f" lock — an INTERRUPTED spawn, not a RUNNING teammate. Run `{repair}` to"
+            " record an explicit stopped handoff, then resume; or remove the worktree and re-spawn"
         )
     actual = subprocess.run(
         ["git", "branch", "--show-current"], cwd=tree, capture_output=True, text=True

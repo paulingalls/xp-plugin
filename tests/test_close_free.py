@@ -142,7 +142,7 @@ class TestFreeStart:
         plan.write_text(plan.read_text().replace("[in-progress]", "[ready]"))
         launch = (tmp_path / "launch.json").read_bytes()
         again = spawn(repo, env, key)
-        assert again.returncode == 2 and "already spawned" in again.stderr
+        assert again.returncode == 2 and f"spawn.py resume {key}" in again.stderr
         assert (tmp_path / "launch.json").read_bytes() == launch
 
     @pytest.mark.parametrize("location", ["worktree", "main-repo"])

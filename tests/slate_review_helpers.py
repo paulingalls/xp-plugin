@@ -271,6 +271,10 @@ def stub_card_refresher(
     extra_card="",
     read_event="",
     release_event="",
+    plan_unparsable=False,
+    applied_other=False,
+    plan_status="",
+    exit_code=0,
 ):
     """A fake refresher with knobs for sanctioned candidate edits and violations."""
     binary = tmp_path / "bin" / "claude"
@@ -315,11 +319,22 @@ def stub_card_refresher(
         f"if {direct_plan!r}:\n"
         " current = open(plan).read()\n"
         " open(plan, 'w').write(current.replace('Context: demo.', correction, 1))\n"
+        f"if {plan_unparsable!r}:\n"
+        " current = open(plan).read()\n"
+        " open(plan, 'w').write(current.replace('#### story-042', '#### broken-042', 1))\n"
+        f"if {applied_other!r}:\n"
+        " current = open(plan).read()\n"
+        " open(plan, 'w').write(current.replace(correction, 'Context: OTHER APPLIED TEXT', 1))\n"
+        f"if {plan_status!r}:\n"
+        " current = open(plan).read()\n"
+        " open(plan, 'w').write(current.replace('demo story   [planned]',"
+        f" 'demo story   [{plan_status}]', 1))\n"
         f"stray = {repo_file!r}\n"
         "open(stray, 'w').write('the refresher wrote here\\n') if stray else None\n"
         "path = re.search(r'^FINDINGS_PATH: (.+)$', prompt, re.M)\n"
         f"open(path.group(1), 'w').write({findings!r}) if path and {findings!r} else None\n"
         "print(json.dumps({'type': 'result', 'result': 'refresh complete'}))\n"
+        f"sys.exit({exit_code})\n"
     )
     binary.chmod(0o755)
     return launch
