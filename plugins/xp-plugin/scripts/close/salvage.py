@@ -47,12 +47,21 @@ def cmd_salvage(story_id: str, dry_run: bool = False) -> int:
             f"refused: {launch} is not readable ({error}) — delete it and review again"
         )
     current = close.git("rev-parse", "HEAD").stdout.strip()
-    if at.get("applied_head") == current:
+    applied = at.get("applied_head", "")
+    # ANCESTOR, not equality: a lead who commits on top of our patch commit still leaves
+    # it in the chain, and "restore the reviewed sha" would destroy work close.py authored.
+    authored = (
+        bool(applied)
+        and not close.git("merge-base", "--is-ancestor", applied, current, check=False).returncode
+    )
+    if authored:
         at["close_authored_motion"] = True
+        moved_on = f"is carried by HEAD {current[:8]}, which you moved"
+        carries = "is HEAD" if applied == current else moved_on
         at["moved"] = (
-            f"HEAD {current[:8]} is the patch commit close.py applied before the round"
-            " refused. Keep and inspect it, repair the reported failure, then review again"
-            " from the current tree"
+            f"{applied[:8]} is the patch commit close.py applied before the round refused, and"
+            f" it {carries}. Keep and inspect it, repair the reported failure, then review"
+            " again from the current tree"
         )
     else:
         at["moved"] = (

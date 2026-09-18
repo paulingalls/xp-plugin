@@ -418,6 +418,15 @@ class TestSalvageRefusalActions:
         external = salvage(lead_repo, lead_env)
         assert external.returncode == 2 and not marker_file(lead_case).exists()
 
+        (close_repo / "on-top.txt").write_text("lead work on top of our commit\n")
+        close_git("add", "on-top.txt")
+        close_git("commit", "-qm", "lead commits on top of the patch commit")
+        on_top = salvage(close_repo, close_env)
+        assert on_top.returncode == 2 and not marker_file(close_case).exists()
+        assert "close.py applied" in on_top.stderr and "restoring" not in on_top.stderr
+        assert "git reset" not in on_top.stderr, on_top.stderr
+        assert "which you moved" in on_top.stderr, on_top.stderr
+
         assert close_authored.stderr != external.stderr
         assert "close.py" in close_authored.stderr and "keep" in close_authored.stderr.lower()
         assert "reset" not in close_authored.stderr.lower()

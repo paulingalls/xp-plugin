@@ -57,7 +57,9 @@ def review_story(tree: Path, story_id: str) -> tuple[int, dict, str]:
             restored = git("stash", "apply", "-q", entry, check=False) if dirty else None
     if restored and restored.returncode:
         return 2, {}, "the diff review could not restore the dirty tree"
-    captured = refusal.getvalue()
+    # Each half is capped ON ITS OWN and close.py's refusal goes LAST: one budget over
+    # the pair spends it all on a megabyte reviewer log and drops the refusal entirely.
+    captured = refusal.getvalue().strip()[-REVIEW_REFUSAL_TAIL:]
     if rc:
         log_id = (
             f"{story_id}-reviewer"
@@ -66,5 +68,6 @@ def review_story(tree: Path, story_id: str) -> tuple[int, dict, str]:
         )
         log = data_root() / "logs" / f"{log_id}.log"
         if log.is_file():
-            captured += "\n" + log.read_text(errors="replace")
-    return rc, state, captured[-REVIEW_REFUSAL_TAIL:].strip()
+            tail = log.read_text(errors="replace").strip()[-REVIEW_REFUSAL_TAIL:]
+            captured = f"{tail}\n{captured}".strip() if tail else captured
+    return rc, state, captured

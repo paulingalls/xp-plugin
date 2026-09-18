@@ -296,12 +296,18 @@ def _record_round(
         at["applied_head"] = applied_head
         launch.write_text(json.dumps(at))
 
-    def abort_after_apply(why: str) -> str:
+    def abort_after_apply(why: str, recorded: str = "") -> str:
+        """abort_text's undo destroys whatever moved the tree; here that is OUR commit."""
         if applied_head == head:
-            return review.abort_text(head, why, salvage=salvage)
+            return (
+                review.abort_text(head, why, recorded, salvage=salvage)
+                if recorded
+                else review.abort_text(head, why, salvage=salvage)
+            )
+        note = f" {recorded}" if recorded else ""
         return (
-            f"refused: {why}. HEAD {applied_head[:8]} is the patch commit close.py applied;"
-            " keep and inspect it, repair the failure, then review again from this tree"
+            f"refused: {why}. {applied_head[:8]} is the patch commit close.py applied;"
+            f" keep and inspect it, repair the failure, then review again from this tree.{note}"
         )
 
     verify_err = verify_on_reviewed_tree(story_id, card)
@@ -310,10 +316,10 @@ def _record_round(
         launch.write_text(json.dumps(at))
         return fail(review.stamp(path, abort_after_apply(verify_err)))
     kept = "The round IS recorded, and it names this tree — a reset here orphans it."
-    refusal = review.abort_text(head, verify_err, kept, salvage=salvage) if verify_err else ""
+    refusal = abort_after_apply(verify_err, kept) if verify_err else ""
     review.stamp(path, refusal)
     if err := review.write_reviewer_diff(path, head, at.get("noun", leg(story_id)[0])):
-        return fail(review.stamp(path, abort_after_apply(err.removeprefix("refused: "))))
+        return fail(review.stamp(path, err))  # already a whole refusal, prefix and all
     shown_sha = git("rev-parse", "HEAD").stdout.strip()
     position = at.get("round_index") if salvage else None
     if position is not None and (

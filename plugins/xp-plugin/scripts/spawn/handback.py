@@ -34,7 +34,7 @@ def unclean_teammate_result(
     story_id: str,
     resumed: bool = False,
     outcome: str = "terminal-stop",
-    executor_log: Path | None = None,
+    executor_log: Path | str = "the teammate's log under XP_DATA/logs",
 ) -> str:
     """ "" when the teammate left a clean, committed story behind; otherwise the
     refusal, naming both recoveries.

@@ -227,7 +227,7 @@ class TestProfile:
         assert "shorten" in note
         assert all(word not in note for word in ("retire", "waste", "yours to"))
 
-    def test_warning_names_the_largest_project_owned_contributor(self, tmp_path):
+    def test_warning_names_no_contributor_the_author_may_not_be_able_to_change(self, tmp_path):
         repo, env, _g = make_repo(tmp_path)
         stub_claude(tmp_path)
         quiet = spawn(repo, env, "story-042", "--dry-run")

@@ -54,6 +54,7 @@ def stub_stages(
         "elif role == 'reviewer':\n"
         f" if {review_failure!r} and not os.path.exists({str(repair)!r}):\n"
         f"  action = {repair_action!r}\n"
+        "  print('reviewer log noise ' * 200, file=sys.stderr)\n"
         "  print(f'refused: generated reviewer cause; run `{action}`', file=sys.stderr)\n"
         "  sys.exit(2)\n"
         " p = re.search(r'^REPORT_PATH: (.+)$', prompt, re.M); assert p\n"
@@ -120,6 +121,9 @@ class TestSpawnStages:
         assert state["stages"].get("reviewer") != "ran"
         why = state["why"]
         assert "generated reviewer cause" in why
+        # Both halves, over a reviewer log that alone overruns the tail budget: one
+        # budget for the pair spends it on log noise and drops close.py's own refusal.
+        assert str(tmp_path / "data/logs/story-042-reviewer.log") in why, why
         commands = re.findall(r"`([^`]+)`", why)
         assert len(commands) == 1
         repaired = subprocess.run(

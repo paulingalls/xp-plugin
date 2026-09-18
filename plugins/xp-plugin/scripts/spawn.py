@@ -12,8 +12,9 @@ sys.path.insert(0, str(Path(__file__).parent))
 sys.path.insert(0, str(Path(__file__).parent / "spawn"))
 # close must import back FUNCTION-LOCALLY: a module-level edge cycles
 # (close -> spawn -> close) and fails before fail/git exist (story-008).
-import profile
-
+# `card_profile`, never `profile`: this file puts scripts/spawn on sys.path, and a
+# module named for a stdlib one shadows it process-wide (cProfile imports `profile`).
+import card_profile as profile
 import handoff as handoff_io
 import story_stages as stages
 from bookkeep import bootstrap_command
