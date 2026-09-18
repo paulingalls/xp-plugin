@@ -4,6 +4,34 @@ Release notes started at v0.6.0; earlier entries are summarized from their
 tag and merge messages. Full detail lives in the merge history and the
 per-sprint review reports.
 
+## v0.23.17 — a refusal names an action that can succeed
+
+Eight shipped refusals sent the operator somewhere that could not work, or collapsed
+states JUDGMENT keeps distinct. Each now names a next action that succeeds, and each
+is pinned by a test that constructs its condition:
+
+- A plan read failure after review is reported as a read failure naming the path and
+  the rerun, not as the reviewer's content error.
+- `spawn.py`'s already-spawned refusal and `close.py free`'s advice both name
+  `spawn.py resume`, ending a two-leg loop.
+- The salvage and review aborts distinguish a commit close.py authored from one the
+  lead made, by ancestry rather than by head equality, and never offer a destructive
+  reset for close.py's own work — including where the rollback that would have
+  undone it has itself just failed.
+- A refused diff-review leg records the refusal text in `handoff.json`, not a pointer
+  to stdout the lead may no longer have; the reviewer log and the refusal are capped
+  separately so a megabyte log cannot evict the cause.
+- The slate-review and card-refresh lifecycle refusals name their own state instead of
+  collapsing into "ended without a verdict".
+- A deliberate human-only stop is distinguished from a dead teammate.
+- SessionStart's released-sprint line names the command that carries a card forward,
+  and `/create-sprint` says how.
+- The card-budget report names a contributor the author can change.
+
+No refusal changed what it decides. `spawn/profile.py` is renamed `card_profile.py`:
+`spawn.py` puts its directory on `sys.path[0]`, where it shadowed the stdlib `profile`
+that `cProfile` imports.
+
 ## v0.23.16 — the push secret scan cannot be skipped
 
 The scaffolded lefthook pre-push secrets arm moves from a `commands:` entry to an
