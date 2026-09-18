@@ -45,7 +45,7 @@ class TestTheRealProfileAgainstTheRealCap:
     caused by the retro that added constraint 15 so the lead would read it.
     """
 
-    def run_real(self, tmp_path, hook=HOOK, recorded_root=None):
+    def run_real(self, hook=HOOK, recorded_root=None):
         """XP_ROLE PINNED, and the marker asserted absent: the whole suite runs
         under a reviewer role at every sprint review, where the hook's role gate
         prints its 121-char teammate line and returns before a profile is built.
@@ -64,10 +64,14 @@ class TestTheRealProfileAgainstTheRealCap:
         below moves it to a tmp plugin pytest then deletes. The suite was the
         defect the story it guards exists to fix.
 
-        Its 70-character path stays below the measured ~101-character cliff.
-        That cliff appears only with a moved install whose shortened notice makes
-        the banner retain both plugin and data paths; past it, render still names
-        every constraint it drops. Re-measure it here; never cite it.
+        Its 70-character path is not what bounds this. Re-measured at THIS HEAD
+        against .xp/constraints.md: the move-notice arm lands 15/15 at every data
+        root from 70 through 200. What cuts is the PLUGIN root — past ~130
+        characters the shortened notice stops republishing it and the banner keeps
+        BOTH paths; 134 is the last that delivers all 15 and 135 the first to drop
+        two, where before this field 210 still delivered all 15. The cut stays
+        LOUD: render names every rule it took. THESE NUMBERS ROT ON EVERY
+        SHIPPED-PROSE EDIT — re-measure them here; never cite them.
         """
         sys.path.insert(0, str(HOOK.parent))
         from env import data_root, plugin_version
@@ -290,7 +294,7 @@ class TestTheRealProfileAgainstTheRealCap:
         ]
         assert absent and sorted(absent) == sorted(lost), f"cut {absent}, named {lost}"
 
-    def test_this_repos_constraints_survive_a_long_checkout_path(self, tmp_path):
+    def test_this_repos_constraints_survive_a_long_checkout_path(self):
         """AC6's property for the file we actually ship under, CONSTRUCTED rather than
         read off this checkout (constraint 11) — the sibling above certifies only the
         78-character path the suite happens to sit in, which is how a worktree-length
@@ -308,7 +312,7 @@ class TestTheRealProfileAgainstTheRealCap:
         try:
             plugin = self.path_at_length(base, "p", 110)
             shutil.copytree(HOOK.parent.parent, plugin)
-            out = self.run_real(tmp_path, plugin / "scripts" / "session_start.py")
+            out = self.run_real(plugin / "scripts" / "session_start.py")
         finally:
             shutil.rmtree(base, ignore_errors=True)
         assert "[truncated at" not in out, "a 110-character plugin path already cuts the profile"
@@ -337,7 +341,7 @@ class TestTheRealProfileAgainstTheRealCap:
         delivered = [heading for heading in headings if heading in out]
         assert len(delivered) == 15, f"only {len(delivered)}/15 constraints reached the lead"
 
-    def test_this_repos_profile_delivers_every_constraint_in_bytes(self, tmp_path):
+    def test_this_repos_profile_delivers_every_constraint_in_bytes(self):
         """Bug ab6a1354, on the HOOK'S OWN STDOUT — not on a sum of parts, which
         misses the joins and the trust markers by 117 chars.
 
@@ -348,7 +352,7 @@ class TestTheRealProfileAgainstTheRealCap:
 
         assert all(head + tail == CODEX_OUTPUT_BOUND for head, tail in CODEX_RETAINED_BYTES)
         assert CODEX_OUTPUT_BOUND - OUTPUT_CAP == HEADROOM
-        out = self.run_real(tmp_path)
+        out = self.run_real()
         assert len(out.encode()) <= OUTPUT_CAP, (
             f"{len(out.encode())} bytes over {OUTPUT_CAP}; NEXT is the newest region, but any"
             " of them can be the one that grew — read the profile, do not assume"
@@ -365,9 +369,9 @@ class TestTheRealProfileAgainstTheRealCap:
         )
 
     @pytest.mark.parametrize("suffix", ["a" * 5_000, "界" * 2_500])
-    def test_a_root_move_notice_preserves_every_constraint(self, tmp_path, suffix):
+    def test_a_root_move_notice_preserves_every_constraint(self, suffix):
         previous = Path(str(HOOK.parents[4] / "story-123") + suffix) / "plugins" / "xp-plugin"
-        out = self.run_real(tmp_path, recorded_root=previous)
+        out = self.run_real(recorded_root=previous)
         from session_start import OUTPUT_CAP
 
         self.assert_all_constraints_delivered(out)
@@ -380,7 +384,7 @@ class TestTheRealProfileAgainstTheRealCap:
         shutil.copytree(HOOK.parent.parent, plugin)
         hook = plugin / "scripts" / "session_start.py"
         hook.write_text(hook.read_text().replace("OUTPUT_CAP = 9_500", "OUTPUT_CAP = 7_500"))
-        out = self.run_real(tmp_path, hook)
+        out = self.run_real(hook)
         with pytest.raises(AssertionError, match=r"only \d+/15 constraints"):
             self.assert_all_constraints_delivered(out)
 
@@ -400,27 +404,27 @@ class TestTheRealProfileAgainstTheRealCap:
             f" against codex's {CODEX_EXEC_TOKEN_BOUND}-token exec budget"
         )
 
-    def test_digest_recovery_and_sprint_slice_are_not_injected(self, tmp_path):
-        out = self.run_real(tmp_path)
+    def test_digest_recovery_and_sprint_slice_are_not_injected(self):
+        out = self.run_real()
         for removed in ("branch:", "recent work.md entries:", "stories:", "Session digest"):
             assert removed not in out, f"{removed!r} still spends the SessionStart payload"
 
-    def test_a_truncated_profile_names_the_constraints_it_dropped(self, tmp_path):
+    def test_a_truncated_profile_names_the_constraints_it_dropped(self):
         """The budget is allowed not to fit. It is NOT allowed to hide which
         rules it cut: a silently-absent constraint is one the lead never knew it
         was breaking, which is why session_start orders them ahead of the digest
         in the first place."""
-        out = self.run_real(tmp_path)
+        out = self.run_real()
         if "[truncated" not in out:
             return  # everything fit; nothing to name
         marker = out[out.index("[truncated") :]
         assert "constraints.md" in marker, f"the cut does not say where to read them: {marker}"
         assert re.search(r"CONSTRAINTS [\d, ]+ ARE NOT ABOVE", marker), marker
 
-    def test_the_constraints_it_names_are_genuinely_absent(self, tmp_path):
+    def test_the_constraints_it_names_are_genuinely_absent(self):
         """And the claim must be TRUE — a marker naming the wrong numbers sends
         the lead to re-read rules it already has and to skip ones it does not."""
-        out = self.run_real(tmp_path)
+        out = self.run_real()
         if "[truncated" not in out:
             return
         body, marker = out.split("[truncated", 1)
