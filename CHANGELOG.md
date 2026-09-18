@@ -19,8 +19,9 @@ the tier it guards.
 The `.githooks` variant never had this hole and is unchanged — it calls
 `secrets_scan_push "$1"` directly. `setup.py` writes the new script for fresh
 lefthook scaffolds, and refuses an already-scaffolded repo with migration steps
-that name the template, its destination and `source_dir` — fired only for a config
-still routing the scan through `commands:`, read rather than assumed. A `script:`
+that name the template, its destination and `source_dir` — fired for any lefthook
+config not already carrying the migrated `script:` job, read rather than assumed,
+because unsure must not read as safe. A `script:`
 job with no script file fails closed: the push refuses.
 
 ## v0.23.15 — Files maps the work; the diff is what shipped

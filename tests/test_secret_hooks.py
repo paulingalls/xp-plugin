@@ -148,6 +148,7 @@ def scaffold(repo, env, variant):
         assert (repo / "lefthook.yml").exists()
         assert os.access(repo / hooks / "pre-merge-commit", os.X_OK)
         assert 'run "pre-push" "$@"' in (repo / hooks / "pre-push").read_text()
+        assert os.access(repo / ".githooks" / "pre-push" / "secrets", os.X_OK)
 
 
 def wall_repo(tmp_path, real_tools, variant, install=True):

@@ -140,9 +140,12 @@ def test_setup_names_the_existing_lefthook_security_migration(tmp_path, real_too
     output = (result.stdout + result.stderr).lower()
     assert result.returncode == 2
     assert (config.read_bytes(), hook_lib.read_bytes()) == before
-    assert "lefthook.yml lets an outgoing secret reach the remote" in output
+    assert "lefthook.yml carries no migrated `script: secrets` job" in output
     for term in ("pre-push", "scripts", "stdin", "lefthook install"):
         assert term in output
+    # a second source_dir makes lefthook refuse to parse the WHOLE config, so a migration
+    # that names only `.githooks` breaks every hook of a repo that already declares one
+    assert "already" in output and "leave the key alone" in output
     # the destination, the template it comes from and source_dir are the three things
     # the walk cannot recover from lefthook.yml alone: without any one of them the
     # migrated push refuses with `script does not exist` and names no way out
@@ -306,3 +309,21 @@ def test_push_scanner_names_the_state_where_no_ref_lines_arrive(tmp_path):
     result = run(tmp_path, "sh", "-c", '. "$HOOK_LIB"; secrets_scan_push', env=env, input="")
     assert result.returncode == 0, "an empty ref stream cannot be made to red by any scanner"
     assert "no ref updates" in result.stderr
+
+
+def test_lefthook_refuses_the_push_when_the_secrets_script_is_missing(tmp_path, real_tools):
+    """The wall now spans a config AND a separate script file, which the old `commands:`
+    entry could not lose. A clean push is the control: it lands with the script present,
+    so the refusal below is the missing script failing closed, not the content."""
+    repo, env = wall_repo(tmp_path, real_tools, "lefthook")
+    publish_base(repo, env, tmp_path)
+    commit(repo, env, "clean.txt", "clean\n", "clean")
+    landed = git(repo, "push", "-q", "origin", "main", env=env)
+    assert landed.returncode == 0, landed.stderr
+    base = remote_sha(repo, env)
+
+    (repo / ".githooks/pre-push/secrets").unlink()
+    commit(repo, env, "later.txt", "clean\n", "later")
+    pushed = git(repo, "push", "origin", "main", env=env)
+
+    assert pushed.returncode != 0 and remote_sha(repo, env) == base

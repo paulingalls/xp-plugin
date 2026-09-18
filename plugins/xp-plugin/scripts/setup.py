@@ -62,15 +62,20 @@ def write_hook_lib() -> None:
 
 
 def write_lefthook_secrets() -> None:
+    # +x here because lefthook chmods the script itself on first run, which lands as an
+    # unexplained mode change in the consumer's worktree the moment their wall works.
     destination = Path(".githooks/pre-push/secrets")
     destination.parent.mkdir()
     shutil.copy(TEMPLATES / "lefthook-pre-push-secrets", destination)
+    destination.chmod(destination.stat().st_mode | stat.S_IEXEC | stat.S_IXGRP | stat.S_IXOTH)
 
 
 def unmigrated_lefthook_configs() -> list[str]:
-    """Names only the configs still routing the scan through `commands:`. A security
-    refusal that fires on a repo it never read is one the reader learns to skip, and an
-    unreadable or unrecognised spelling stays in the list: unsure must not read as safe."""
+    """Names every config that does not already carry the migrated `script:` job — NOT
+    only those routing the scan through `commands:`: an unreadable, unrecognised or
+    scan-less spelling stays in the list, because unsure must not read as safe. The
+    refusal it feeds therefore tells the reader to READ the arm, never asserting a hole
+    in a config it only knows lacks the marker."""
     stale = []
     for name in LEFTHOOK_CONFIGS:
         config = Path(name)
@@ -126,13 +131,16 @@ def main() -> int:
         message = "refused: .xp/ already exists — setup never overwrites"
         if stale := unmigrated_lefthook_configs():
             message += (
-                f". Security migration: lefthook's push-file matching can skip a"
-                f" `commands:` entry, so {', '.join(stale)} lets an outgoing secret reach"
-                f" the remote unscanned — lefthook scripts have no file matching to elide."
-                f" Copy {TEMPLATES / 'lefthook-pre-push-secrets'} to .githooks/pre-push/secrets,"
-                f" add `source_dir: .githooks` at the top level, replace the pre-push secrets"
-                f" command with `jobs:` / `- script: secrets` / `runner: sh` /"
-                f" `use_stdin: true`, then rerun `lefthook install`"
+                f". Security migration: lefthook's push-file matching can skip a pre-push"
+                f" secrets `commands:` entry, letting an outgoing secret reach the remote"
+                f" unscanned; {', '.join(stale)} carries no migrated `script: secrets` job,"
+                f" so read its pre-push arm. Scripts have no file matching to elide: copy"
+                f" {TEMPLATES / 'lefthook-pre-push-secrets'} to .githooks/pre-push/secrets and"
+                f" add `source_dir: .githooks` at the top level — but if the config ALREADY"
+                f" declares a source_dir, put the script under THAT directory and leave the key"
+                f" alone, because a second source_dir makes lefthook refuse to parse at all."
+                f" Then give the arm `jobs:` / `- script: secrets` / `runner: sh` /"
+                f" `use_stdin: true`, and rerun `lefthook install`"
             )
         return fail(message)
     if plan_path().exists():
