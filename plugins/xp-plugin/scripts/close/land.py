@@ -121,7 +121,6 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
     tier_key = "story"
     tier = work.config_block_value("tests", tier_key)
     branch = close.git("rev-parse", "--abbrev-ref", "HEAD").stdout.strip()
-    verdict = bookkeep.render_merge_body(rounds, story_id)
     versioned = True
     version = ""
     if free:
@@ -143,12 +142,16 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
         return close.fail(str(e))
     exempt = set(version_files()) if free and versioned else set()
     exempt.discard("none")
-    if undeclared := sorted(changed - declared - exempt):
-        paths = "\n".join(f"  {path}" for path in undeclared)
+    beyond_map = sorted(changed - declared - exempt)
+    protected = [path for path in beyond_map if path.startswith(".xp/")]
+    files_beyond_map = [path for path in beyond_map if not path.startswith(".xp/")]
+    if protected:
+        paths = "\n".join(f"  {path}" for path in protected)
         return close.fail(
             f"refused: {story_id} changes paths its Files declaration does not name:\n"
             f"{paths}\nAdd them to Files. {ready.AMEND.format(story_id)}"
         )
+    verdict = bookkeep.render_merge_body(rounds, story_id, files_beyond_map)
     message = f"Merge {branch} ({story_id})\n\n{verdict}\n"
     title = (f"{noun} — {version}" if version else noun) if free else story_id
     pr_cmds = [["git", "push", "-u", "origin", branch]]
@@ -274,7 +277,7 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
         story_tree if held else "", branch, close.config_flat("teardown_timeout")
     )
     bookkeep.delete_story_markers(story_id)
-    bookkeep.log_close(story_id, card, rounds, merge_sha)
+    bookkeep.log_close(story_id, card, rounds, merge_sha, files_beyond_map)
     marker.unlink()
     if bookkeep.report_incomplete(failed):
         return 3
