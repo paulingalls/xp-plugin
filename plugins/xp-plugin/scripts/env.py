@@ -47,7 +47,7 @@ def refuse_direct_invocation(invocation: str) -> None:
 
 def data_root() -> Path:
     if env := os.environ.get("XP_DATA"):
-        return Path(env)
+        return Path(env).expanduser()
     proc = subprocess.run(["git", "rev-parse", "--git-common-dir"], capture_output=True, text=True)
     if proc.returncode != 0:
         print("not inside a git repository and XP_DATA is unset", file=sys.stderr)
@@ -55,6 +55,23 @@ def data_root() -> Path:
     common = proc.stdout.strip()
     project_id = hashlib.sha256(os.path.realpath(common).encode()).hexdigest()[:12]
     return Path.home() / ".xp" / "data" / project_id
+
+
+def display_path(value) -> str:
+    path = Path(value)
+    if not path.is_absolute():
+        return str(value)
+    try:
+        relative = path.relative_to(Path.home())
+    except ValueError:
+        return str(value)
+    return str(Path("~") / relative)
+
+
+def display_text(value) -> str:
+    """Collapse HOME inside free text an OSError carries; display_path owns real paths.
+    Anchored on the separator, so a SIBLING of HOME keeps its own name."""
+    return str(value).replace(f"{Path.home()}/", "~/")
 
 
 def sprint_branch_name(identifier: str) -> str:
@@ -143,9 +160,9 @@ def refresh_env(root: Path, version: str) -> str:
     try:
         previous = write_env(root, version)
     except Exception as exc:
-        return f"plugin root refresh FAILED for {str(env_path())!r}: {exc!r}"
+        return f"plugin root refresh FAILED for {display_path(env_path())!r}: {exc!r}"
     if previous and previous != str(root):
-        return f"plugin root moved from {previous!r} to {str(root)!r}"
+        return f"plugin root moved from {display_path(previous)!r} to {display_path(root)!r}"
     return ""
 
 

@@ -11,7 +11,14 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 sys.path.insert(0, str(Path(__file__).parent / "session_start"))
-from env import plugin_manifest_value, plugin_version, refresh_env, run_hook
+from env import (
+    display_path,
+    display_text,
+    plugin_manifest_value,
+    plugin_version,
+    refresh_env,
+    run_hook,
+)
 from profile_output import (
     BEGIN,
     END,
@@ -234,20 +241,21 @@ def recovery_block() -> str:
 
 def digest_output() -> str:
     path = data_root() / "session.md"
-    absent = f"session digest ABSENT: {path}"
+    shown = display_path(path)
+    absent = f"session digest ABSENT: {shown}"
     try:
         text = path.read_text(errors="replace")
     except FileNotFoundError:
         return absent
     except OSError as exc:
-        return f"session digest UNREADABLE: {path} — {exc}"
+        return f"session digest UNREADABLE: {shown} — {display_text(exc)}"
     if not text:
         return absent
     count = len(text.splitlines())
     warning = ""
     if count > DIGEST_CAP:
         warning = (
-            f"session digest WARNING: {path} is {count} lines against the"
+            f"session digest WARNING: {shown} is {count} lines against the"
             f" {DIGEST_CAP}-line bound; full digest follows"
         )
     return "\n".join(filter(None, (warning, digest_with_staleness(text))))
@@ -293,15 +301,16 @@ def _worktree_state(root: Path, story_id: str) -> tuple[bool, str]:
 
 def _next_action() -> str:
     path = plan_path()
+    shown = display_path(path)
     try:
         plan = path.read_text(errors="replace")
     except FileNotFoundError:
-        return f"NEXT: recover plan at {path} — missing"
+        return f"NEXT: recover plan at {shown} — missing"
     except OSError:
-        return f"NEXT: recover plan at {path} — unreadable"
+        return f"NEXT: recover plan at {shown} — unreadable"
     sprint, sections = sprint_sections(plan)
     if not sections:
-        return f"NEXT: recovery required — no numbered sprint in {path}"
+        return f"NEXT: recovery required — no numbered sprint in {shown}"
     text = "\n".join(sections)
     headings = [line for line in text.splitlines() if line.startswith("#### ")]
     cards = CARD.findall(text)
@@ -313,7 +322,9 @@ def _next_action() -> str:
         return f"NEXT: recovery required — {story} has unknown status [{status}]"
     released, release_path = release_state(sprint)
     if released == "unreadable":
-        return f"NEXT: recovery required — release record {release_path} is unreadable"
+        return (
+            f"NEXT: recovery required — release record {display_path(release_path)} is unreadable"
+        )
     active = [card for card in cards if card[1] == "in-progress"]
     selected = active or [card for card in cards if card[1] == "ready"]
     selected = selected or [card for card in cards if card[1] == "planned"]
@@ -372,15 +383,15 @@ def teammate_marker() -> str:
 
 
 def banner(root: Path) -> str:
-    version = plugin_version(PLUGIN_ROOT)
     hooks = "lefthook" if (root / "lefthook.yml").exists() else ""
     hooks = hooks or (".githooks" if (root / ".githooks").is_dir() else "none detected")
-    constraints_lines = len(read(root / ".xp" / "constraints.md").splitlines())
-    recover = shlex.quote(str(Path(__file__)))
+    recover = display_path(Path(__file__))
+    recover = f"~/{shlex.quote(recover[2:])}" if recover.startswith("~/") else shlex.quote(recover)
     return (
-        f"xp-plugin {version} · git hooks: {hooks} · constraints.md: {constraints_lines}"
+        f"xp-plugin {plugin_version(PLUGIN_ROOT)} · git hooks: {hooks} · constraints.md: "
+        f"{len(read(root / '.xp' / 'constraints.md').splitlines())}"
         f" lines · recover: python3 {recover} recover · scripts: spawn.py, close.py"
-        f" · data: {data_root()}"
+        f" · data: {display_path(data_root())}"
     )
 
 
@@ -393,7 +404,7 @@ def safe(build, name: str = "") -> str:
     try:
         return build() or (f"({name}: nothing recorded)" if name else "")
     except Exception as exc:
-        return f"({name} UNAVAILABLE: {exc})" if name else ""
+        return f"({name} UNAVAILABLE: {display_text(exc)})" if name else ""
 
 
 def recover() -> int:
@@ -403,6 +414,7 @@ def recover() -> int:
 
     regions = [
         ("", BEGIN),
+        ("NEXT", next_action()),
         ("digest", "## digest\n" + safe(digest_output, "digest")),
         ("recovery block", "## recovery block\n" + safe(recovery_block, "recovery block")),
         ("sprint slice", "## sprint slice\n" + safe(sprint_slice, "sprint slice")),
@@ -428,10 +440,9 @@ def main(data: dict) -> int:
 
     rules = safe(lambda: read(root / ".xp" / "constraints.md"))
     heading = safe(lambda: banner(root))
-    if refresh:  # the notice must be PAID FOR, and only the copy it republishes is spare:
-        # a refresh FAILURE names env.json, not the root, and a shortened move notice
-        # can lose the root it was cutting to. Ask the rendered notice, not its shape.
-        delimiter = " · scripts: " if str(PLUGIN_ROOT) in environment else " · recover: "
+    if refresh:  # trim only a root the rendered notice retained; failures and capped
+        # move notices keep the executable recovery path
+        delimiter = " · scripts: " if display_path(PLUGIN_ROOT) in environment else " · recover: "
         _before, field, invocation = heading.partition(delimiter)
         heading = heading.partition(" · ")[0] + field + invocation
     regions = [
@@ -441,7 +452,6 @@ def main(data: dict) -> int:
         ("JUDGMENT.md", safe(lambda: read(PLUGIN_ROOT / "JUDGMENT.md"))),
         ("PROCESS.md", safe(lambda: read(PLUGIN_ROOT / "PROCESS.md"))),
         ("", BEGIN),
-        ("NEXT", next_action()),
         ("environment notice", environment),
         ("constraints.md", rules),
         ("", END),

@@ -43,7 +43,10 @@ class EnvRefreshCases:
         self.assert_current(tmp_path)
         # The WHOLE line, not the two roots separately: `repr(7)` is "7", which any
         # profile holds by accident, so the non-str arm greened against NO notice at all.
-        assert f"plugin root moved from {str(old)!r} to {str(self.PLUGIN)!r}" in result.stdout
+        shown_old = (
+            "~/recorded-plugin" if isinstance(old, str) and old.startswith(str(tmp_path)) else old
+        )
+        assert f"plugin root moved from {str(shown_old)!r} to {str(self.PLUGIN)!r}" in result.stdout
 
     def test_the_refresh_leaves_non_plugin_keys_alone(self, tmp_path):
         repo, _g = xp_repo(tmp_path)
@@ -71,9 +74,18 @@ class EnvRefreshCases:
         assert r.returncode == 0
         assert "CONSTRAINT-SENTINEL" in r.stdout, r.stdout or r.stderr
         assert "plugin root refresh FAILED" in r.stdout, r.stdout
-        assert str(path) in r.stdout, r.stdout
+        assert "'~/xp/env.json'" in r.stdout, r.stdout
         assert "plugin root moved" not in r.stdout
         assert "Traceback" not in r.stdout + r.stderr
+
+    def test_xp_data_expands_the_home_form_the_profile_prints(self, tmp_path, monkeypatch):
+        from env import data_root
+
+        home = tmp_path / "home"
+        monkeypatch.setenv("HOME", str(home))
+        monkeypatch.setenv("XP_DATA", "~/.xp/data/project")
+
+        assert data_root() == home / ".xp" / "data" / "project"
 
     def test_a_failed_replace_is_not_reported_as_a_move_that_did_not_land(
         self, tmp_path, monkeypatch
@@ -196,7 +208,7 @@ class InstallProbeCases:
         # NOT "[environment notice shortened]": whether the notice is cut depends on
         # tmp_path's ambient length, so that assertion reports the machine. What the
         # move must always publish is the root it moved TO (story-131's property).
-        assert str(running) in output
+        assert "~/running" in output
         assert "installed 0.21.4" in output and "running 0.22.0" in output
         assert json.loads(env_path.read_text()) == {
             "plugin_root": str(running),
