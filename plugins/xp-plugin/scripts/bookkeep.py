@@ -48,8 +48,12 @@ def _render_rounds(rounds: list[dict], story_id: str = "") -> str:
     return "\n".join(out)
 
 
-def render_merge_body(rounds: list[dict], story_id: str) -> str:
-    return _render_rounds(rounds, story_id)
+def render_merge_body(rounds: list[dict], story_id: str, files_beyond_map: list[str]) -> str:
+    body = _render_rounds(rounds, story_id)
+    if not files_beyond_map:
+        return body
+    files = "\n".join(f"- {path}" for path in files_beyond_map)
+    return f"{body}\n\n## The card mapped the work; the diff is what shipped\n{files}"
 
 
 def render_prior_rounds(rounds: list[dict]) -> str:
@@ -105,7 +109,13 @@ def render_noted(rounds: list[dict]) -> str:
     )
 
 
-def log_close(story_id: str, card: str, rounds: list[dict], merge_sha: str) -> None:
+def log_close(
+    story_id: str,
+    card: str,
+    rounds: list[dict],
+    merge_sha: str,
+    files_beyond_map: list[str],
+) -> None:
     """Append because two closes in one sprint must both reach the retro."""
     from datetime import datetime, timezone
 
@@ -114,6 +124,7 @@ def log_close(story_id: str, card: str, rounds: list[dict], merge_sha: str) -> N
         "title": card_title(card),
         "rounds": rounds,
         "merge_sha": merge_sha,
+        "files_beyond_map": files_beyond_map,
         "closed_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
     }
     with (data_root() / "closes.jsonl").open("a") as fh:

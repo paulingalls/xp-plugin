@@ -15,6 +15,8 @@ from close_free_card_cases import (
 )
 from close_helpers import CONFIG, SPAWN, close, free, free_repo, gh_calls, make_repo
 
+HEADING = "## The card mapped the work; the diff is what shipped"
+
 
 def commit(g, repo, path, text, message):
     target = repo / path
@@ -67,6 +69,21 @@ def git_calls(path):
     return [json.loads(line) for line in path.read_text().splitlines()]
 
 
+def close_record(tmp_path):
+    path = tmp_path / "data" / "closes.jsonl"
+    return json.loads(path.read_text().splitlines()[-1])
+
+
+def assert_report(g, tmp_path, paths, ref="main"):
+    body = g("log", "-1", "--format=%B", ref).stdout
+    if paths:
+        section = body.split(HEADING + "\n", 1)[1]
+        assert section.strip().splitlines() == [f"- {path}" for path in paths]
+    else:
+        assert HEADING not in body
+    assert close_record(tmp_path)["files_beyond_map"] == list(paths)
+
+
 class TestDeclaredLandScope:
     def modified_helper_story(self, tmp_path):
         repo, env, g = make_repo(tmp_path)
@@ -81,19 +98,24 @@ class TestDeclaredLandScope:
         commit(g, repo, "trunk.py", "trunk moved\n", "move trunk outside story scope")
         g("checkout", "-q", "story-042-branch")
         before = g("rev-parse", "main").stdout.strip()
-        calls = record_git(tmp_path, env)
+
+        landed = close(repo, env, "land")
+
+        assert landed.returncode == 0, landed.stderr
+        assert g("rev-parse", "main").stdout.strip() != before
+        assert g("show", "main:helper.py").stdout == "changed\n"
+        assert_report(g, tmp_path, ["helper.py"])
+        assert "trunk.py" not in g("log", "-1", "--format=%B", "main").stdout
+
+    def test_the_preview_names_what_the_merge_body_will_report(self, tmp_path):
+        repo, env, _g = self.modified_helper_story(tmp_path)
 
         preview = close(repo, env, "land", "--dry-run")
-        real = close(repo, env, "land")
 
-        assert not any(call and call[0] in {"merge", "push"} for call in git_calls(calls))
-        assert gh_calls(tmp_path) == []
-        assert preview.returncode == real.returncode == 2
-        assert preview.stderr == real.stderr
-        assert "helper.py" in real.stderr and "trunk.py" not in real.stderr
-        assert "Add them to Files" in real.stderr
-        assert "spawn.py amend story-042 --reason" in real.stderr
-        assert g("rev-parse", "main").stdout.strip() == before
+        assert preview.returncode == 0, preview.stderr
+        assert "beyond the card's Files map" in preview.stdout
+        assert "\n  helper.py\n" in preview.stdout
+        assert "src/thing.py" not in preview.stdout.split("Files map")[1]
 
     def test_every_added_modified_and_deleted_undeclared_path_is_named(self, tmp_path):
         repo, env, g = make_repo(tmp_path)
@@ -105,13 +127,11 @@ class TestDeclaredLandScope:
         g("commit", "-qm", "all undeclared statuses")
         assert close(repo, env, "review").returncode == 0
 
-        refused = close(repo, env, "land", "--dry-run")
+        landed = close(repo, env, "land")
 
-        assert refused.returncode == 2
+        assert landed.returncode == 0, landed.stderr
         paths = ("added.py", "deleted.py", "modified.py")
-        assert all(refused.stderr.count(path) == 1 for path in paths)
-        names = [refused.stderr.index(path) for path in paths]
-        assert names == sorted(names)
+        assert_report(g, tmp_path, paths)
 
     def test_no_renames_keeps_a_renamed_away_undeclared_path_visible(self, tmp_path):
         repo, env, g = make_repo(tmp_path, files="src/thing.py, src/renamed.py")
@@ -120,22 +140,36 @@ class TestDeclaredLandScope:
         g("commit", "-qm", "rename undeclared source to declared destination")
         assert close(repo, env, "review").returncode == 0
 
-        refused = close(repo, env, "land", "--dry-run")
+        landed = close(repo, env, "land")
 
-        assert refused.returncode == 2 and "old.py" in refused.stderr
-        assert "  src/renamed.py" not in refused.stderr
+        assert landed.returncode == 0, landed.stderr
+        assert_report(g, tmp_path, ["old.py"])
+        assert "src/renamed.py" not in g("log", "-1", "--format=%B", "main").stdout
 
     def test_the_named_files_and_amend_route_then_land(self, tmp_path):
-        repo, env, g = self.modified_helper_story(tmp_path)
-        assert close(repo, env, "land", "--dry-run").returncode == 2
+        repo, env, g = make_repo(tmp_path)
+        commit(g, repo, ".xp/local.md", "protected\n", "change undeclared project artifact")
+        assert close(repo, env, "review").returncode == 0
+        before = g("rev-parse", "main").stdout.strip()
+        calls = record_git(tmp_path, env)
+
+        preview = close(repo, env, "land", "--dry-run")
+        real = close(repo, env, "land")
+
+        assert preview.returncode == real.returncode == 2
+        assert preview.stderr == real.stderr and ".xp/local.md" in real.stderr
+        assert "Add them to Files" in real.stderr
+        assert "spawn.py amend story-042 --reason" in real.stderr
+        assert not any(call and call[0] in {"merge", "push"} for call in git_calls(calls))
+        assert gh_calls(tmp_path) == []
+        assert g("rev-parse", "main").stdout.strip() == before
         plan = Path(env["XP_DATA"]) / "plan.md"
         plan.write_text(
-            plan.read_text().replace("Files: src/thing.py", "Files: src/thing.py, helper.py")
+            plan.read_text().replace("Files: src/thing.py", "Files: src/thing.py, .xp/local.md")
         )
         drifted = close(repo, env, "land", "--dry-run")
 
         amended = amend(repo, env, "story-042")
-        before = g("rev-parse", "main").stdout.strip()
         landed = close(repo, env, "land")
 
         assert drifted.returncode == 2 and "edited after its plan review" in drifted.stderr
@@ -143,7 +177,8 @@ class TestDeclaredLandScope:
         assert "card amended" in landed.stdout
         assert landed.returncode == 0, landed.stderr
         assert g("rev-parse", "main").stdout.strip() != before
-        assert g("show", "main:helper.py").stdout == "changed\n"
+        assert g("show", "main:.xp/local.md").stdout == "protected\n"
+        assert_report(g, tmp_path, [])
 
     def test_a_story_changing_only_declared_paths_lands_as_before(self, tmp_path):
         repo, env, g = make_repo(tmp_path)
@@ -155,6 +190,7 @@ class TestDeclaredLandScope:
         assert landed.returncode == 0, landed.stderr
         assert "Files declaration" not in landed.stderr
         assert g("rev-parse", "main").stdout.strip() != before
+        assert_report(g, tmp_path, [])
 
     def test_a_declared_non_ascii_path_is_compared_unquoted(self, tmp_path):
         repo, env, g = make_repo(tmp_path, files="src/thing.py, café.py")
@@ -189,6 +225,7 @@ class TestDeclaredLandScope:
         assert "sibling.py" not in landed.stderr and "later.py" not in landed.stderr
         assert g("show", "sprint-001:sibling.py").stdout == "sibling\n"
         assert g("show", "sprint-001:src/thing.py").stdout == "A = 2\n"
+        assert_report(g, tmp_path, [], "sprint-001")
 
     def test_a_carded_story_never_borrows_the_free_release_exemption(self, tmp_path):
         repo, env, g = make_repo(tmp_path, files="src/thing.py, .xp/config.yml")
@@ -196,9 +233,10 @@ class TestDeclaredLandScope:
         commit(g, repo, "plugin.json", '{"version": "0.2.1"}\n', "bump a manifest in a story")
         assert close(repo, env, "review").returncode == 0
 
-        refused = close(repo, env, "land", "--dry-run")
+        landed = close(repo, env, "land")
 
-        assert refused.returncode == 2 and "  plugin.json\n" in refused.stderr
+        assert landed.returncode == 0, landed.stderr
+        assert_report(g, tmp_path, ["plugin.json"])
 
     def test_an_unparseable_files_entry_is_never_an_empty_declaration(self, tmp_path):
         repo, env, _g = make_repo(tmp_path)
@@ -219,6 +257,24 @@ class TestDeclaredLandScope:
         assert "Traceback" not in real.stderr and "changes paths" not in real.stderr
         assert not any(call and call[0] in {"merge", "push"} for call in git_calls(calls))
         assert gh_calls(tmp_path) == []
+
+    def test_project_size_and_duplication_rules_outrank_files(self):
+        executor = Path(__file__).parents[1] / "plugins" / "xp-plugin" / "EXECUTOR.md"
+        prose = " ".join(executor.read_text().split())
+        sentences = [s for s in prose.split(". ") if "duplication rubric" in s]
+
+        assert len(sentences) == 1
+        sentence = sentences[0]
+        for fragment in (
+            "project's own size cap",
+            "outrank Files",
+            "extract",
+            "dedupe",
+            "extend Files",
+            "report",
+        ):
+            assert fragment in sentence
+        assert not any(character.isdigit() for character in sentence)
 
 
 class TestFreeDeclaredLandScope:
@@ -256,18 +312,13 @@ class TestFreeDeclaredLandScope:
         g("checkout", "-q", branch)
         assert free(repo, env, "scope", "review").returncode == 0
 
-        refused = free(repo, env, "scope", "land", "--dry-run")
-
-        assert refused.returncode == 2 and "CHANGELOG.md" in refused.stderr
-        assert "  plugin.json" not in refused.stderr
-        plan = Path(env["XP_DATA"]) / "plan.md"
-        plan.write_text(
-            plan.read_text().replace("Files: src/free.py", "Files: src/free.py, CHANGELOG.md")
-        )
-        assert amend(repo, env, key).returncode == 0
         landed = free(repo, env, "scope", "land")
+
         assert landed.returncode == 0, landed.stderr
-        assert any(call[:2] == ["pr", "create"] for call in gh_calls(tmp_path))
+        create = next(call for call in gh_calls(tmp_path) if call[:2] == ["pr", "create"])
+        body = create[create.index("--body") + 1]
+        assert HEADING in body and body.count("CHANGELOG.md") == 1
+        assert "plugin.json" not in body
 
     @pytest.mark.parametrize(
         ("config", "path"),
@@ -279,6 +330,9 @@ class TestFreeDeclaredLandScope:
     def test_inactive_or_waived_manifest_names_are_not_exempt(self, tmp_path, config, path):
         repo, env, _g, _key = self.reviewed_free(tmp_path, config, path)
 
-        refused = free(repo, env, "scope", "land", "--dry-run")
+        landed = free(repo, env, "scope", "land")
 
-        assert refused.returncode == 2 and f"  {path}\n" in refused.stderr
+        assert landed.returncode == 0, landed.stderr
+        create = next(call for call in gh_calls(tmp_path) if call[:2] == ["pr", "create"])
+        body = create[create.index("--body") + 1]
+        assert HEADING in body and body.count(path) == 1

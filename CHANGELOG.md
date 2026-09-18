@@ -4,6 +4,15 @@ Release notes started at v0.6.0; earlier entries are summarized from their
 tag and merge messages. Full detail lives in the merge history and the
 per-sprint review reports.
 
+## v0.23.15 — Files maps the work; the diff is what shipped
+
+Source paths beyond a card's `Files:` map now land and are named in the merge or PR
+body, in the land preview, and — at story close, the leg that keeps one — in
+`closes.jsonl`; undeclared `.xp/` paths still refuse. Active free-release
+`version_files` remain silent exemptions. Ready receipts, exact-path semantics,
+review scope, and test tiers are unchanged. This closes GitHub #97 by removing the
+source-file fence rather than extending it with directory or glob semantics.
+
 ## v0.23.14 — the next action moves to recover, and HOME stops costing the profile
 
 The lead profile no longer carries a `NEXT:` region. `recover` now recomputes the same
