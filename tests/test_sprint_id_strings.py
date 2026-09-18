@@ -6,7 +6,7 @@ from types import SimpleNamespace
 
 import pytest
 import slate_review
-from session_start_helpers import run_hook_as, run_recovery, xp_repo
+from session_start_helpers import run_recovery, xp_repo
 from sprint_helpers import PLUGIN, sprint
 
 sys.path.insert(0, str(PLUGIN / "scripts" / "close"))
@@ -41,10 +41,9 @@ def test_a_lettered_sprint_opens_releases_and_reads_back_as_released(tmp_path):
     (data / "plan.md").write_text(LETTERED_PLAN.format(status="ready"))
     (data / "sprint_branch").write_text("sprint-2b-11\n")
 
-    opened = run_hook_as(repo, tmp_path, role="lead")
     recovered = run_recovery(repo, tmp_path)
 
-    assert next_lines(opened.stdout) == ["NEXT: story-201 is [ready] — run `spawn.py story-201`"]
+    assert next_lines(recovered.stdout) == ["NEXT: story-201 is [ready] — run `spawn.py story-201`"]
     assert "LETTERED-SENTINEL" in sprint_slice(recovered.stdout)
 
     configure_release(repo)
@@ -68,7 +67,7 @@ def test_a_lettered_sprint_opens_releases_and_reads_back_as_released(tmp_path):
     assert record == {"sprint": "2b-11", "merged_sha": merged_sha, "tag": "v0.3.0"}
     assert g("rev-list", "-n1", "v0.3.0").stdout.strip() == merged_sha
     assert not (data / "sprint_branch").exists()
-    assert next_lines(run_hook_as(repo, tmp_path, role="lead").stdout) == [
+    assert next_lines(run_recovery(repo, tmp_path).stdout) == [
         "NEXT: Sprint 2b-11 was released — run `/create-sprint`"
     ]
 
@@ -82,8 +81,9 @@ def test_a_lettered_recorded_branch_selects_only_its_derived_heading(tmp_path):
     )
     (data / "sprint_branch").write_text("sprint-2b-11\n")
 
-    recovered = sprint_slice(run_recovery(repo, tmp_path).stdout)
-    opened = next_lines(run_hook_as(repo, tmp_path, role="lead").stdout)
+    recovery = run_recovery(repo, tmp_path).stdout
+    recovered = sprint_slice(recovery)
+    opened = next_lines(recovery)
 
     assert "recorded branch sprint-2b-11 selected plan Sprint 2b-11" in recovered
     assert "LETTERED-SENTINEL" in recovered and "LATER-SENTINEL" not in recovered
@@ -116,8 +116,9 @@ def test_a_recorded_branch_with_no_derived_heading_never_falls_back(tmp_path):
     (data / "plan.md").write_text(LETTERED_PLAN.format(status="ready"))
     (data / "sprint_branch").write_text("sprint-2b-12\n")
 
-    recovered = sprint_slice(run_recovery(repo, tmp_path).stdout)
-    opened = next_lines(run_hook_as(repo, tmp_path, role="lead").stdout)
+    recovery = run_recovery(repo, tmp_path).stdout
+    recovered = sprint_slice(recovery)
+    opened = next_lines(recovery)
 
     assert "sprint slice UNAVAILABLE" in recovered
     assert "recorded branch sprint-2b-12 has no matching heading" in recovered
@@ -136,7 +137,7 @@ def test_a_digit_led_id_opens_and_reads_back_as_released(tmp_path, sprint_id):
     (data / "plan.md").write_text(plan.format(status="ready"))
     (data / "sprint_branch").write_text(f"sprint-{sprint_id}\n")
 
-    opened = next_lines(run_hook_as(repo, tmp_path, role="lead").stdout)
+    opened = next_lines(run_recovery(repo, tmp_path).stdout)
 
     assert opened == ["NEXT: story-201 is [ready] — run `spawn.py story-201`"]
     (data / "sprint_branch").unlink()
@@ -146,7 +147,7 @@ def test_a_digit_led_id_opens_and_reads_back_as_released(tmp_path, sprint_id):
         json.dumps({"sprint": sprint_id, "merged_sha": "a" * 40, "tag": "v0.3.0"})
     )
 
-    released = next_lines(run_hook_as(repo, tmp_path, role="lead").stdout)
+    released = next_lines(run_recovery(repo, tmp_path).stdout)
 
     assert released == [f"NEXT: Sprint {sprint_id} was released — run `/create-sprint`"]
 
@@ -201,7 +202,7 @@ def test_release_record_identity_and_numeric_type_are_strict(
         json.dumps({"sprint": recorded, "merged_sha": "a" * 40, "tag": "v0.3.0"})
     )
 
-    opened = next_lines(run_hook_as(repo, tmp_path, role="lead").stdout)
+    opened = next_lines(run_recovery(repo, tmp_path).stdout)
 
     assert opened == [
         f"NEXT: recovery required — release record {releases / filename} is unreadable"
@@ -217,7 +218,7 @@ def test_a_lettered_slate_review_marker_uses_the_writer_spelling(tmp_path, monke
     marker.parent.mkdir(parents=True, exist_ok=True)
     marker.write_text("{}")
 
-    opened = next_lines(run_hook_as(repo, tmp_path, role="lead").stdout)
+    opened = next_lines(run_recovery(repo, tmp_path).stdout)
 
     assert marker.name == "2b-11.slate-review-incomplete"
     assert opened == ["NEXT: Sprint 2b-11 slate review incomplete — run `slate_review.py 2b-11`"]

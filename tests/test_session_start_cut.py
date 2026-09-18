@@ -7,7 +7,9 @@ Verify: pytest -q tests/test_session_start_cut.py"""
 
 import os
 import re
+import shutil
 import subprocess
+import sys
 
 from session_start import END, OUTPUT_CAP, PLUGIN_ROOT, RECOVER_CAP
 from session_start_helpers import run_hook, run_recovery, xp_repo
@@ -55,20 +57,41 @@ class TestWhatTheProfileLeadsWith:
 
     def test_process_recovery_instruction_runs_the_banner_command(self, tmp_path):
         repo, _g = xp_repo(tmp_path)
-        profile = run_hook(repo, tmp_path).stdout
+        home = tmp_path / "home with spaces"
+        plugin = home / "plugin root"
+        data = home / "xp"
+        shutil.copytree(PLUGIN_ROOT, plugin)
+        data.mkdir()
+        (data / "plan.md").write_text("# plan\n### Sprint 1\n#### story-042 — demo   [ready]\n")
+        profile = subprocess.run(
+            [sys.executable, str(plugin / "scripts" / "session_start.py")],
+            input='{"session_id": "process-walk"}',
+            cwd=repo,
+            env={
+                "PATH": f"{os.path.dirname(sys.executable)}:/usr/bin:/bin",
+                "HOME": str(home),
+                "XP_DATA": str(data),
+            },
+            capture_output=True,
+            text=True,
+        ).stdout
         assert "exact `recover:` command" in PROCESS
         line = next(ln for ln in profile.splitlines() if " · recover: " in ln)
         command = line.split(" · recover: ", 1)[1].split(" · scripts: ", 1)[0]
         recovered = subprocess.run(
-            command,
-            shell=True,
+            ["/bin/sh", "-c", command],
             cwd=repo,
-            env=dict(os.environ) | {"XP_DATA": str(tmp_path / "xp")},
+            env={
+                "PATH": f"{os.path.dirname(sys.executable)}:/usr/bin:/bin",
+                "HOME": str(home),
+                "XP_DATA": str(data),
+            },
             capture_output=True,
             text=True,
         )
         assert recovered.returncode == 0 and "branch: main" in recovered.stdout
         assert "story-042" in recovered.stdout and "session digest" in recovered.stdout
+        assert recovered.stdout.index("NEXT:") < recovered.stdout.index("## digest")
 
     def test_the_recovery_surface_delivers_the_current_sprints_whole_slice(self, tmp_path):
         """MEASURED VACUOUS without body assertions: `sprint_slice` could `return ""`

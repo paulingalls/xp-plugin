@@ -64,25 +64,23 @@ class TestTheRealProfileAgainstTheRealCap:
         below moves it to a tmp plugin pytest then deletes. The suite was the
         defect the story it guards exists to fix.
 
-        Its 70-character path is not what bounds this. Re-measured at THIS HEAD
-        against .xp/constraints.md: the move-notice arm lands 15/15 at every data
-        root from 70 through 200. What cuts is the PLUGIN root, and the notice is
-        not what saves it — this arm's 5,000-character PREVIOUS root fills the
-        bounded notice at every plugin length, so the new root is republished
-        nowhere and the banner carries BOTH paths throughout; 134 is the last that
-        delivers all 15 and 135 the first to drop two, against 133 before the
-        field. The cut stays LOUD: render names every rule it took. THESE NUMBERS
-        ROT ON EVERY SHIPPED-PROSE EDIT — re-measure them here; never cite them.
+        Re-measured at THIS HEAD with a 70-character data root beneath the same
+        HOME as the plugin: this arm's 5,000-character PREVIOUS root fills the
+        bounded notice, so the new root is not present there and the banner carries
+        recover and data. A 248-character plugin root is the last that delivers all
+        15 constraints; 249 drops two. The cut stays LOUD: render names every rule
+        it took. THESE NUMBERS ROT ON EVERY SHIPPED-PROSE EDIT — re-measure them
+        here; never cite them.
         """
         sys.path.insert(0, str(HOOK.parent))
         from env import data_root, plugin_version
 
         source = data_root()
         base = Path(tempfile.mkdtemp(prefix="xp-profile-", dir="/tmp"))
-        expected = self.path_at_length(base, "d", ConstraintsWallCases.DATA_ROOT_BUDGET)
+        home, expected = self.data_under_home(base)
         try:
             isolated = expected
-            isolated.mkdir()
+            isolated.mkdir(parents=True)
             for name in ("plan.md", "installed-claude-version", "installed-codex-version"):
                 if (path := source / name).exists():
                     shutil.copy2(path, isolated / name)
@@ -105,7 +103,8 @@ class TestTheRealProfileAgainstTheRealCap:
                 capture_output=True,
                 text=True,
                 cwd=repo,
-                env=dict(os.environ) | {"XP_ROLE": "lead", "XP_DATA": str(isolated)},
+                env=dict(os.environ)
+                | {"HOME": str(home), "XP_ROLE": "lead", "XP_DATA": str(isolated)},
             ).stdout
             assert "teammate session" not in out, (
                 "the role gate ate the profile; this asserts nothing"
@@ -114,21 +113,30 @@ class TestTheRealProfileAgainstTheRealCap:
                 "the hook printed nothing (stderr holds the traceback); nothing asserts"
             )
             rendered = out.splitlines()[0].partition(" · data: ")[2]
-            assert rendered == str(expected)
-            assert len(rendered) == ConstraintsWallCases.DATA_ROOT_BUDGET == 70
+            assert rendered == "~/.xp/data/000000000000"
+            assert len(str(expected)) == ConstraintsWallCases.DATA_ROOT_BUDGET == 70
             return out
         finally:
             shutil.rmtree(base, ignore_errors=True)
 
     def path_at_length(self, base, name, target):
+        while target - len(str(base / name)) > 200:
+            base /= "p" * 200
         pad = target - len(str(base / name))
         assert pad >= 0, f"{base / name} is longer than the requested {target}-byte path"
         path = base / (name + "p" * pad)
         assert len(str(path)) == target
         return path
 
+    def data_under_home(self, base):
+        identifier = "0" * 12
+        target = ConstraintsWallCases.DATA_ROOT_BUDGET - len(f"/.xp/data/{identifier}")
+        home = self.path_at_length(base, "h", target)
+        return home, home / ".xp" / "data" / identifier
+
     def copied_plugin(self, tmp_path, name, target, output_cap=None):
         root = self.path_at_length(tmp_path, name, target)
+        root.parent.mkdir(parents=True, exist_ok=True)
         shutil.copytree(HOOK.parent.parent, root)
         if output_cap is not None:
             hook = root / "scripts" / "session_start.py"
@@ -154,9 +162,10 @@ class TestTheRealProfileAgainstTheRealCap:
 
     def run_constructed(self, tmp_path, name, plugin, rules, recorded_root=None):
         repo = tmp_path / f"{name}-repo"
-        data = tmp_path / f"{name}-data"
+        data_base = Path(tempfile.mkdtemp(prefix="xp-data-", dir="/tmp"))
+        home, data = self.data_under_home(data_base)
         (repo / ".xp").mkdir(parents=True)
-        data.mkdir()
+        data.mkdir(parents=True)
         (repo / ".xp" / "config.yml").write_text("constraints_chars_cap: 4500\n")
         (repo / ".xp" / "constraints.md").write_text(rules)
         manifest = json.loads((plugin / ".claude-plugin" / "plugin.json").read_text())
@@ -169,19 +178,22 @@ class TestTheRealProfileAgainstTheRealCap:
             )
         )
         subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
-        result = subprocess.run(
-            [sys.executable, str(plugin / "scripts" / "session_start.py")],
-            input=json.dumps({"cwd": str(repo), "session_id": "s", "source": "startup"}),
-            env={
-                "PATH": "/usr/bin:/bin",
-                "HOME": str(data),
-                "XP_DATA": str(data),
-                "XP_ROLE": "lead",
-            },
-            cwd=repo,
-            capture_output=True,
-            text=True,
-        )
+        try:
+            result = subprocess.run(
+                [sys.executable, str(plugin / "scripts" / "session_start.py")],
+                input=json.dumps({"cwd": str(repo), "session_id": "s", "source": "startup"}),
+                env={
+                    "PATH": "/usr/bin:/bin",
+                    "HOME": str(home),
+                    "XP_DATA": str(data),
+                    "XP_ROLE": "lead",
+                },
+                cwd=repo,
+                capture_output=True,
+                text=True,
+            )
+        finally:
+            shutil.rmtree(data_base, ignore_errors=True)
         assert result.returncode == 0
         assert not result.stderr, result.stderr
         assert result.stdout, "the copied hook emitted no profile"
@@ -305,8 +317,8 @@ class TestTheRealProfileAgainstTheRealCap:
         so it buys its 102 bytes out of delivery margin. Re-measured at THIS HEAD
         against .xp/constraints.md — this arm records no move notice, so nothing is
         trimmed and the banner carries the recover path and the data root: the
-        warning starts at a 267-character plugin path and all 15 rules still land
-        through 299; 300 is the first that cuts two. THIS NUMBER ROTS ON EVERY
+        warning starts at a 457-character plugin path and all 15 rules still land
+        through 489; 490 is the first that cuts one. THIS NUMBER ROTS ON EVERY
         SHIPPED-PROSE EDIT and already has — it read "343, through 375" until this
         round, which is the number measured on the tree BEFORE the data field.
         Re-measure it here; never cite it, and never cite the card's ~175.
@@ -357,12 +369,10 @@ class TestTheRealProfileAgainstTheRealCap:
         assert CODEX_OUTPUT_BOUND - OUTPUT_CAP == HEADROOM
         out = self.run_real()
         assert len(out.encode()) <= OUTPUT_CAP, (
-            f"{len(out.encode())} bytes over {OUTPUT_CAP}; NEXT is the newest region, but any"
-            " of them can be the one that grew — read the profile, do not assume"
+            f"{len(out.encode())} bytes over {OUTPUT_CAP}; any profile region can be the one"
+            " that grew — read the profile, do not assume"
         )
-        assert len([line for line in out.splitlines() if line.startswith("NEXT:")]) == 1, (
-            "the NEXT region did not reach the real lead profile exactly once"
-        )
+        assert not any(line.startswith("NEXT:") for line in out.splitlines())
         self.assert_all_constraints_delivered(out)
         plugin = Path(__file__).parent.parent / "plugins" / "xp-plugin"
         values = (plugin / "VALUES.md").read_text()[:60]

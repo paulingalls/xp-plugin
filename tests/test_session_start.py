@@ -69,7 +69,7 @@ class TestInjection:
         assert r.returncode == 0, r.stderr
         for sentinel in ("XP Values", "CONSTRAINT-SENTINEL"):
             assert sentinel in r.stdout, f"missing {sentinel}"
-        assert len([line for line in r.stdout.splitlines() if line.startswith("NEXT:")]) == 1
+        assert not any(line.startswith("NEXT:") for line in r.stdout.splitlines())
         # story-042 is the FIXTURE PLAN's only card, and this fixture has no numbered
         # sprint, so no NEXT line can name it: the plan body still stays behind `recover`.
         assert all(item not in r.stdout for item in ("story-042", "branch: main", "is a hook"))
@@ -130,15 +130,17 @@ class TestReviewFindings:
 class TestTrustBoundary:
     def test_repo_sourced_sections_are_fenced_as_data(self, tmp_path):
         repo, _g = xp_repo(tmp_path)
-        r = run_hook(repo, tmp_path)
-        assert "BEGIN project content" in r.stdout and "END project content" in r.stdout
-        fenced = r.stdout.split("BEGIN project content")[1].split("END project content")[0]
+        profile = run_hook(repo, tmp_path).stdout
+        recovery = run_recovery(repo, tmp_path).stdout
+        assert "BEGIN project content" in profile and "END project content" in profile
+        fenced = profile.split("BEGIN project content")[1].split("END project content")[0]
         assert "CONSTRAINT-SENTINEL" in fenced  # repo files inside the fence
-        assert "NEXT:" in fenced  # derived from plan.md, so it carries data authority
+        recovered = recovery.split("BEGIN project content")[1].split("END project content")[0]
+        assert "NEXT:" in recovered  # derived from plan.md, so it carries data authority
         # BOUNDED at END, not "everything after BEGIN": the property is that
         # plugin prose sits outside the fence, and reading it as "before it" was
         # a proxy that only held while the profile put static prose first
-        assert "XP Values" not in fenced and "XP Values" in r.stdout
+        assert "XP Values" not in fenced and "XP Values" in profile
 
 
 class TestSprintCloseFindings:

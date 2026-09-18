@@ -125,6 +125,8 @@ class ConstraintsWallCases:
         machine, not the guarantee (constraint 11). It does NOT skip when the base
         is too long: a skip is a measurement of nothing that reads as a pass.
         """
+        while target - len(str(base / name)) > 200:
+            base /= "d" * 200
         pad = target - len(str(base / name))
         assert pad >= 0, (
             f"cannot measure: {base}/{name} is already {-pad} chars over the"
@@ -133,9 +135,14 @@ class ConstraintsWallCases:
         return base / (name + "d" * pad)
 
     def _run_ascii_profile(self, tmp_path, constraints, plugin_path_budget=None):
-        base = Path(tempfile.mkdtemp())
+        base = Path(tempfile.mkdtemp(prefix="xp-wall-", dir="/tmp"))
         plugin_root = self._at_path_length(base, "p", plugin_path_budget or self.PLUGIN_PATH_BUDGET)
-        data_root = self._at_path_length(base, "d", self.DATA_ROOT_BUDGET)
+        identifier = "0" * 12
+        home_target = self.DATA_ROOT_BUDGET - len(f"/.xp/data/{identifier}")
+        home = self._at_path_length(base, "h", home_target)
+        data_root = home / ".xp" / "data" / identifier
+        assert len(str(data_root)) == self.DATA_ROOT_BUDGET
+        plugin_root.parent.mkdir(parents=True, exist_ok=True)
         shutil.copytree(self.REPO / "plugins" / "xp-plugin", plugin_root)
         data_root.mkdir(parents=True, exist_ok=True)
         repo = tmp_path / "repo"
@@ -150,7 +157,7 @@ class ConstraintsWallCases:
                 input=json.dumps({"cwd": str(repo), "session_id": "s", "source": "startup"}),
                 env={
                     "PATH": "/usr/bin:/bin",
-                    "HOME": str(data_root),
+                    "HOME": str(home),
                     "XP_DATA": str(data_root),
                     # PINNED, not inherited from the hook's `get("XP_ROLE", "lead")`
                     # default: bug 10ecc92e records that default as constraint 15's
@@ -183,7 +190,7 @@ class ConstraintsWallCases:
         # bought back the banner's duplicate root. A longer path buys the gap instead.
         match = BUDGET_WARNING.search(
             self._run_ascii_profile(
-                tmp_path, constraints, plugin_path_budget=self.PLUGIN_PATH_BUDGET + 100
+                tmp_path, constraints, plugin_path_budget=self.PLUGIN_PATH_BUDGET + 210
             )
         )
         assert match, "the constructed profile did not report its SessionStart byte budget"

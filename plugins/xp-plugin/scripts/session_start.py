@@ -11,7 +11,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 sys.path.insert(0, str(Path(__file__).parent / "session_start"))
-from env import plugin_manifest_value, plugin_version, refresh_env, run_hook
+from env import display_path, plugin_manifest_value, plugin_version, refresh_env, run_hook
 from profile_output import (
     BEGIN,
     END,
@@ -372,15 +372,15 @@ def teammate_marker() -> str:
 
 
 def banner(root: Path) -> str:
-    version = plugin_version(PLUGIN_ROOT)
     hooks = "lefthook" if (root / "lefthook.yml").exists() else ""
     hooks = hooks or (".githooks" if (root / ".githooks").is_dir() else "none detected")
-    constraints_lines = len(read(root / ".xp" / "constraints.md").splitlines())
-    recover = shlex.quote(str(Path(__file__)))
+    recover = display_path(Path(__file__))
+    recover = f"~/{shlex.quote(recover[2:])}" if recover.startswith("~/") else shlex.quote(recover)
     return (
-        f"xp-plugin {version} · git hooks: {hooks} · constraints.md: {constraints_lines}"
+        f"xp-plugin {plugin_version(PLUGIN_ROOT)} · git hooks: {hooks} · constraints.md: "
+        f"{len(read(root / '.xp' / 'constraints.md').splitlines())}"
         f" lines · recover: python3 {recover} recover · scripts: spawn.py, close.py"
-        f" · data: {data_root()}"
+        f" · data: {display_path(data_root())}"
     )
 
 
@@ -403,6 +403,7 @@ def recover() -> int:
 
     regions = [
         ("", BEGIN),
+        ("NEXT", next_action()),
         ("digest", "## digest\n" + safe(digest_output, "digest")),
         ("recovery block", "## recovery block\n" + safe(recovery_block, "recovery block")),
         ("sprint slice", "## sprint slice\n" + safe(sprint_slice, "sprint slice")),
@@ -428,10 +429,9 @@ def main(data: dict) -> int:
 
     rules = safe(lambda: read(root / ".xp" / "constraints.md"))
     heading = safe(lambda: banner(root))
-    if refresh:  # the notice must be PAID FOR, and only the copy it republishes is spare:
-        # a refresh FAILURE names env.json, not the root, and a shortened move notice
-        # can lose the root it was cutting to. Ask the rendered notice, not its shape.
-        delimiter = " · scripts: " if str(PLUGIN_ROOT) in environment else " · recover: "
+    if refresh:  # trim only a root the rendered notice retained; failures and capped
+        # move notices keep the executable recovery path
+        delimiter = " · scripts: " if display_path(PLUGIN_ROOT) in environment else " · recover: "
         _before, field, invocation = heading.partition(delimiter)
         heading = heading.partition(" · ")[0] + field + invocation
     regions = [
@@ -441,7 +441,6 @@ def main(data: dict) -> int:
         ("JUDGMENT.md", safe(lambda: read(PLUGIN_ROOT / "JUDGMENT.md"))),
         ("PROCESS.md", safe(lambda: read(PLUGIN_ROOT / "PROCESS.md"))),
         ("", BEGIN),
-        ("NEXT", next_action()),
         ("environment notice", environment),
         ("constraints.md", rules),
         ("", END),

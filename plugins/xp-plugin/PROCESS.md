@@ -2,7 +2,8 @@
 
 ## Start here
 
-`/xp-setup` once; run the exact `recover:` command. Artifacts win.
+`/xp-setup` once; run the exact `recover:` command. Its first region is the next action.
+Artifacts win.
 
 ## The loop
 

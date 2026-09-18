@@ -10,7 +10,7 @@ import tempfile
 from pathlib import Path
 
 from session_start import OUTPUT_CAP
-from session_start_helpers import HOOK, run_hook, xp_repo
+from session_start_helpers import HOOK, run_hook, run_recovery, xp_repo
 
 
 def banner_line(output):
@@ -19,7 +19,7 @@ def banner_line(output):
 
 def banner_recovery_executable(output):
     command = banner_line(output).partition(" · recover: ")[2].partition(" · scripts: ")[0]
-    return Path(shlex.split(command)[1])
+    return Path(shlex.split(command)[1]).expanduser()
 
 
 def banner_scripts_directory(output):
@@ -27,7 +27,7 @@ def banner_scripts_directory(output):
     if " · recover: " in first:
         return banner_recovery_executable(output).parent
     notice = next(line for line in output.splitlines() if "plugin root moved from" in line)
-    return Path(ast.literal_eval(notice.rpartition(" to ")[2])) / "scripts"
+    return Path(ast.literal_eval(notice.rpartition(" to ")[2])).expanduser() / "scripts"
 
 
 def run_banner_script(output, cwd, data_dir, script="work.py env"):
@@ -55,10 +55,11 @@ class BannerCases:
         r = run_hook(repo, tmp_path)
         manifest = HOOK.parent.parent / ".claude-plugin" / "plugin.json"
         version = json.loads(manifest.read_text())["version"]
-        assert "NEXT: story-042 is [ready]" in r.stdout, r.stdout
+        assert "NEXT: story-042 is [ready]" in run_recovery(repo, tmp_path).stdout
+        assert "NEXT:" not in r.stdout
         assert "xp-plugin" in r.stdout and version in r.stdout
         assert "git hooks: none detected" in r.stdout
-        assert str(tmp_path / "xp") in r.stdout.splitlines()[0]
+        assert " · data: ~/xp" in r.stdout.splitlines()[0]
         invoked = run_banner_script(r.stdout, repo, tmp_path)
         assert invoked.returncode == 0 and invoked.stdout.strip() == str(HOOK.parent.parent)
 
@@ -70,7 +71,7 @@ class BannerCases:
         assert len(output.encode()) <= OUTPUT_CAP
         line = output.splitlines()[0]
         assert line.count(str(HOOK.parent.parent)) == 1
-        assert str(tmp_path / "xp") in line
+        assert " · data: ~/xp" in line
 
     def test_banner_locates_spawn_and_close(self, tmp_path):
         repo, _g = xp_repo(tmp_path)
@@ -90,7 +91,7 @@ class BannerCases:
         assert str(HOOK.parent.parent) not in notice, "the notice republished the root after all"
         assert banner_line(output).count(str(HOOK.parent.parent)) == 1
         # Both trim branches must carry the field; the case below covers the other tail.
-        assert str(tmp_path / "xp") in output.splitlines()[0]
+        assert " · data: ~/xp" in output.splitlines()[0]
         ran = run_banner_script(output, repo, tmp_path, "session_start.py recover")
         assert ran.returncode == 0 and "branch: main" in ran.stdout, ran.stderr
 
@@ -116,11 +117,84 @@ class BannerCases:
                     },
                 )
                 assert str(plugin) in result.stdout, "the moved root is published nowhere"
-                assert str(tmp_path / "xp") in result.stdout.splitlines()[0]
+                assert " · data: ~/xp" in result.stdout.splitlines()[0]
                 invoked = run_banner_script(result.stdout, repo, tmp_path, "banner_probe.py")
                 assert invoked.returncode == 0 and invoked.stdout.strip() == str(probe)
                 banners.append(result.stdout.splitlines()[0])
         assert banners[0] != banners[1]
+
+    def test_home_paths_are_collapsed_and_both_banner_arms_execute(self, tmp_path, monkeypatch):
+        repo, _g = xp_repo(tmp_path)
+        home = tmp_path / "home with spaces"
+        data = home / "xp"
+        data.mkdir(parents=True)
+        (data / "plan.md").write_text("# plan\n### Sprint 1\n#### story-042 — demo   [ready]\n")
+        monkeypatch.setenv("HOME", str(home))
+        outputs = []
+        for name in ("plugin one", "plugin moved"):
+            plugin = home / name
+            shutil.copytree(HOOK.parent.parent, plugin)
+            probe = plugin / "scripts" / "banner_probe.py"
+            probe.write_text("print(__file__)\n")
+            result = subprocess.run(
+                [sys.executable, str(plugin / "scripts" / "session_start.py")],
+                input=json.dumps({"session_id": name}),
+                cwd=repo,
+                capture_output=True,
+                text=True,
+                env={"PATH": "/usr/bin:/bin", "HOME": str(home), "XP_DATA": str(data)},
+            )
+            assert str(home) not in result.stdout
+            assert " · data: ~/xp" in result.stdout.splitlines()[0]
+            invoked = run_banner_script(result.stdout, repo, home, "banner_probe.py")
+            assert invoked.returncode == 0 and invoked.stdout.strip() == str(probe)
+            outputs.append(result.stdout)
+        assert " · recover: python3 ~/" in outputs[0]
+        assert " · recover: " not in outputs[1].splitlines()[0]
+        assert "plugin root moved from '~/plugin one' to '~/plugin moved'" in outputs[1]
+        recorded = json.loads((data / "env.json").read_text())
+        assert recorded["plugin_root"] == str(home / "plugin moved")
+
+    def test_paths_outside_home_remain_absolute(self, tmp_path):
+        repo, _g = xp_repo(tmp_path)
+        with tempfile.TemporaryDirectory(prefix="xp-outside-", dir="/tmp") as root:
+            root = Path(root)
+            home = root / "home"
+            outside = root / "home-sibling"
+            data = outside / "data"
+            home.mkdir()
+            data.mkdir(parents=True)
+            (data / "plan.md").write_text("# plan\n### Sprint 1\n")
+            outputs = []
+            for name in ("first", "moved"):
+                plugin = outside / name
+                shutil.copytree(HOOK.parent.parent, plugin)
+                result = subprocess.run(
+                    [sys.executable, str(plugin / "scripts" / "session_start.py")],
+                    input=json.dumps({"session_id": name}),
+                    cwd=repo,
+                    capture_output=True,
+                    text=True,
+                    env={"PATH": "/usr/bin:/bin", "HOME": str(home), "XP_DATA": str(data)},
+                )
+                outputs.append(result.stdout)
+            assert str(outside / "first") in outputs[0]
+            assert str(data) in outputs[0].splitlines()[0]
+            assert f"plugin root moved from {str(outside / 'first')!r}" in outputs[1]
+            assert f"to {str(outside / 'moved')!r}" in outputs[1]
+
+            failed = outside / "failed"
+            failed.mkdir()
+            (failed / "env.json").mkdir()
+            failure = subprocess.run(
+                [sys.executable, str(outside / "moved" / "scripts" / "session_start.py")],
+                input=json.dumps({"session_id": "failed"}),
+                cwd=repo,
+                capture_output=True,
+                text=True,
+                env={"PATH": "/usr/bin:/bin", "HOME": str(home), "XP_DATA": str(failed)},
+            ).stdout
+            assert repr(str(failed / "env.json")) in failure
 
     def test_codex_payload_refreshes_the_plugin_pointer(self, tmp_path):
         repo, _g = xp_repo(tmp_path)
