@@ -2,7 +2,8 @@
 
 Work one story. Card defines scope; Files maps it. Extend Files and report
 deviations. Declare each `.xp/` path before editing.
-A project's own size cap and duplication rubric outrank Files: extract, dedupe, extend Files, and report the deviation.
+A project's own size cap and duplication rubric outrank Files: extract, dedupe,
+extend Files, and report the deviation.
 
 - **Use the reviewed plan.** The lead owns **slate review**. Spawn stages a planner
   and **execution plan review** before multi-file work. Re-read the reviewed plan

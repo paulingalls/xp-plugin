@@ -107,6 +107,16 @@ class TestDeclaredLandScope:
         assert_report(g, tmp_path, ["helper.py"])
         assert "trunk.py" not in g("log", "-1", "--format=%B", "main").stdout
 
+    def test_the_preview_names_what_the_merge_body_will_report(self, tmp_path):
+        repo, env, _g = self.modified_helper_story(tmp_path)
+
+        preview = close(repo, env, "land", "--dry-run")
+
+        assert preview.returncode == 0, preview.stderr
+        assert "beyond the card's Files map" in preview.stdout
+        assert "\n  helper.py\n" in preview.stdout
+        assert "src/thing.py" not in preview.stdout.split("Files map")[1]
+
     def test_every_added_modified_and_deleted_undeclared_path_is_named(self, tmp_path):
         repo, env, g = make_repo(tmp_path)
         add_base_files(repo, g, ["modified.py", "deleted.py"])
@@ -250,9 +260,8 @@ class TestDeclaredLandScope:
 
     def test_project_size_and_duplication_rules_outrank_files(self):
         executor = Path(__file__).parents[1] / "plugins" / "xp-plugin" / "EXECUTOR.md"
-        sentences = [
-            line for line in executor.read_text().splitlines() if "duplication rubric" in line
-        ]
+        prose = " ".join(executor.read_text().split())
+        sentences = [s for s in prose.split(". ") if "duplication rubric" in s]
 
         assert len(sentences) == 1
         sentence = sentences[0]

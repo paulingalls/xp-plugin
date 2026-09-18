@@ -148,8 +148,9 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
     if protected:
         paths = "\n".join(f"  {path}" for path in protected)
         return close.fail(
-            f"refused: {story_id} changes paths its Files declaration does not name:\n"
-            f"{paths}\nAdd them to Files. {ready.AMEND.format(story_id)}"
+            f"refused: {story_id} changes `.xp/` paths its Files declaration does not"
+            f" name:\n{paths}\nThese are the project's own artifacts, the one class land"
+            f" still fences. Add them to Files. {ready.AMEND.format(story_id)}"
         )
     verdict = bookkeep.render_merge_body(rounds, story_id, files_beyond_map)
     message = f"Merge {branch} ({story_id})\n\n{verdict}\n"
@@ -174,6 +175,9 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
         # never take is the same lie in the other direction.
         if refusal := overlap.tier_refusal(tier, tier_key):
             return close.fail(refusal)
+        if files_beyond_map:
+            print("beyond the card's Files map — the merge body will name:")
+            print("".join(f"  {path}\n" for path in files_beyond_map), end="")
         if free:
             print(f"would run: {tier}")
             for command in pr_cmds:
