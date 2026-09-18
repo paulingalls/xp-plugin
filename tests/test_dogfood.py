@@ -268,17 +268,21 @@ class TestDogfoodMatchesTheScaffold(ConstraintsWallCases):
         )
         assert f"teardown_timeout: {TEARDOWN_TIMEOUT}" in line, line
 
-    def test_the_digest_bound_the_skill_states_is_the_one_the_hook_enforces(self):
-        """Two copies of one number, and only one of them is runnable: the SKILL
-        is what a lead reads at the moment of writing the digest, and
-        session_start is what refuses over it. Bug c2d7ffdf was exactly this
-        drift between two prose copies nobody could run — here the prose copy is
-        pinned to the code's, so it reds instead of drifting."""
+    def test_the_digest_authoring_bounds_are_the_one_the_hook_enforces(self):
+        """Three copies of one number, and only one of them is runnable: PROCESS
+        and the SKILL are what leads read when maintaining the digest, and
+        session_start warns over it. Bug c2d7ffdf was exactly this drift between
+        prose copies nobody could run — here they are pinned to the code's, so
+        they red instead of drifting."""
         from session_start import DIGEST_CAP
 
         skill = (self.REPO / "plugins/xp-plugin/skills/story-close/SKILL.md").read_text()
+        process = (self.REPO / "plugins/xp-plugin/PROCESS.md").read_text()
         assert f"≤{DIGEST_CAP} lines" in skill, (
             f"the SKILL does not state the {DIGEST_CAP}-line bound the hook enforces"
+        )
+        assert f"≤{DIGEST_CAP}-line session digest" in process, (
+            f"PROCESS does not state the {DIGEST_CAP}-line bound the hook enforces"
         )
 
     def test_setup_offers_the_install_commands_the_spawn_refusal_names(self):

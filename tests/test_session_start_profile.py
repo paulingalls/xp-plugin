@@ -18,6 +18,7 @@ import tempfile
 from pathlib import Path
 
 import pytest
+from constraints_wall_cases import ConstraintsWallCases
 from session_start_helpers import BUDGET_WARNING, HOOK
 
 CODEX_RETAINED_BYTES = [(4_916, 5_084)] * 6
@@ -44,7 +45,7 @@ class TestTheRealProfileAgainstTheRealCap:
     caused by the retro that added constraint 15 so the lead would read it.
     """
 
-    def run_real(self, tmp_path, hook=HOOK, recorded_root=None):
+    def run_real(self, hook=HOOK, recorded_root=None):
         """XP_ROLE PINNED, and the marker asserted absent: the whole suite runs
         under a reviewer role at every sprint review, where the hook's role gate
         prints its 121-char teammate line and returns before a profile is built.
@@ -62,40 +63,62 @@ class TestTheRealProfileAgainstTheRealCap:
         so against the real root it MOVES the live pin — and the cap-mutation case
         below moves it to a tmp plugin pytest then deletes. The suite was the
         defect the story it guards exists to fix.
+
+        Its 70-character path is not what bounds this. Re-measured at THIS HEAD
+        against .xp/constraints.md: the move-notice arm lands 15/15 at every data
+        root from 70 through 200. What cuts is the PLUGIN root, and the notice is
+        not what saves it — this arm's 5,000-character PREVIOUS root fills the
+        bounded notice at every plugin length, so the new root is republished
+        nowhere and the banner carries BOTH paths throughout; 134 is the last that
+        delivers all 15 and 135 the first to drop two, against 133 before the
+        field. The cut stays LOUD: render names every rule it took. THESE NUMBERS
+        ROT ON EVERY SHIPPED-PROSE EDIT — re-measure them here; never cite them.
         """
         sys.path.insert(0, str(HOOK.parent))
         from env import data_root, plugin_version
 
         source = data_root()
-        isolated = tmp_path / "profile-data"
-        isolated.mkdir()
-        for name in ("plan.md", "installed-claude-version", "installed-codex-version"):
-            if (path := source / name).exists():
-                shutil.copy2(path, isolated / name)
-        if (source / "markers").exists():
-            shutil.copytree(source / "markers", isolated / "markers")
-        plugin = hook.parent.parent
-        (isolated / "env.json").write_text(
-            json.dumps(
-                {
-                    "plugin_root": str(plugin if recorded_root is None else recorded_root),
-                    "plugin_version": plugin_version(plugin),
-                }
+        base = Path(tempfile.mkdtemp(prefix="xp-profile-", dir="/tmp"))
+        expected = self.path_at_length(base, "d", ConstraintsWallCases.DATA_ROOT_BUDGET)
+        try:
+            isolated = expected
+            isolated.mkdir()
+            for name in ("plan.md", "installed-claude-version", "installed-codex-version"):
+                if (path := source / name).exists():
+                    shutil.copy2(path, isolated / name)
+            if (source / "markers").exists():
+                shutil.copytree(source / "markers", isolated / "markers")
+            plugin = hook.parent.parent
+            (isolated / "env.json").write_text(
+                json.dumps(
+                    {
+                        "plugin_root": str(plugin if recorded_root is None else recorded_root),
+                        "plugin_version": plugin_version(plugin),
+                    }
+                )
             )
-        )
-        repo = Path(__file__).parent.parent
-        payload = {"hook_event_name": "SessionStart", "cwd": str(repo)}
-        out = subprocess.run(
-            [sys.executable, str(hook)],
-            input=json.dumps(payload),
-            capture_output=True,
-            text=True,
-            cwd=repo,
-            env=dict(os.environ) | {"XP_ROLE": "lead", "XP_DATA": str(isolated)},
-        ).stdout
-        assert "teammate session" not in out, "the role gate ate the profile; this asserts nothing"
-        assert out.strip(), "the hook printed nothing (stderr holds the traceback); nothing asserts"
-        return out
+            repo = Path(__file__).parent.parent
+            payload = {"hook_event_name": "SessionStart", "cwd": str(repo)}
+            out = subprocess.run(
+                [sys.executable, str(hook)],
+                input=json.dumps(payload),
+                capture_output=True,
+                text=True,
+                cwd=repo,
+                env=dict(os.environ) | {"XP_ROLE": "lead", "XP_DATA": str(isolated)},
+            ).stdout
+            assert "teammate session" not in out, (
+                "the role gate ate the profile; this asserts nothing"
+            )
+            assert out.strip(), (
+                "the hook printed nothing (stderr holds the traceback); nothing asserts"
+            )
+            rendered = out.splitlines()[0].partition(" · data: ")[2]
+            assert rendered == str(expected)
+            assert len(rendered) == ConstraintsWallCases.DATA_ROOT_BUDGET == 70
+            return out
+        finally:
+            shutil.rmtree(base, ignore_errors=True)
 
     def path_at_length(self, base, name, target):
         pad = target - len(str(base / name))
@@ -272,7 +295,7 @@ class TestTheRealProfileAgainstTheRealCap:
         ]
         assert absent and sorted(absent) == sorted(lost), f"cut {absent}, named {lost}"
 
-    def test_this_repos_constraints_survive_a_long_checkout_path(self, tmp_path):
+    def test_this_repos_constraints_survive_a_long_checkout_path(self):
         """AC6's property for the file we actually ship under, CONSTRUCTED rather than
         read off this checkout (constraint 11) — the sibling above certifies only the
         78-character path the suite happens to sit in, which is how a worktree-length
@@ -280,17 +303,19 @@ class TestTheRealProfileAgainstTheRealCap:
 
         THE BUDGET WARNING IS NOT FREE: it is emitted into the budget it reports on,
         so it buys its 102 bytes out of delivery margin. Re-measured at THIS HEAD
-        against .xp/constraints.md: the warning starts at a 147-character plugin
-        path and all 15 rules still land through 162; 163 is the first that cuts
-        one. THIS NUMBER ROTS ON EVERY SHIPPED-PROSE EDIT and already has — it read
-        "~132, 13/15 by 150" one commit before 591c2b9 returned 81 bytes to the
-        budget. Re-measure it here; never cite it, and never cite the card's ~175.
+        against .xp/constraints.md — this arm records no move notice, so nothing is
+        trimmed and the banner carries the recover path and the data root: the
+        warning starts at a 267-character plugin path and all 15 rules still land
+        through 299; 300 is the first that cuts two. THIS NUMBER ROTS ON EVERY
+        SHIPPED-PROSE EDIT and already has — it read "343, through 375" until this
+        round, which is the number measured on the tree BEFORE the data field.
+        Re-measure it here; never cite it, and never cite the card's ~175.
         """
         base = Path(tempfile.mkdtemp())
         try:
             plugin = self.path_at_length(base, "p", 110)
             shutil.copytree(HOOK.parent.parent, plugin)
-            out = self.run_real(tmp_path, plugin / "scripts" / "session_start.py")
+            out = self.run_real(plugin / "scripts" / "session_start.py")
         finally:
             shutil.rmtree(base, ignore_errors=True)
         assert "[truncated at" not in out, "a 110-character plugin path already cuts the profile"
@@ -303,7 +328,7 @@ class TestTheRealProfileAgainstTheRealCap:
         whole reason to exist.
 
         Absent reads as zero: a fresh clone legitimately has no digest yet, and
-        that is a different state from one too big to inject (constraint 15).
+        that is a different state from one that warns at load (constraint 15).
         """
         sys.path.insert(0, str(Path(__file__).parent.parent / "plugins/xp-plugin/scripts"))
         from session_start import DIGEST_CAP, data_root
@@ -319,7 +344,7 @@ class TestTheRealProfileAgainstTheRealCap:
         delivered = [heading for heading in headings if heading in out]
         assert len(delivered) == 15, f"only {len(delivered)}/15 constraints reached the lead"
 
-    def test_this_repos_profile_delivers_every_constraint_in_bytes(self, tmp_path):
+    def test_this_repos_profile_delivers_every_constraint_in_bytes(self):
         """Bug ab6a1354, on the HOOK'S OWN STDOUT — not on a sum of parts, which
         misses the joins and the trust markers by 117 chars.
 
@@ -330,7 +355,7 @@ class TestTheRealProfileAgainstTheRealCap:
 
         assert all(head + tail == CODEX_OUTPUT_BOUND for head, tail in CODEX_RETAINED_BYTES)
         assert CODEX_OUTPUT_BOUND - OUTPUT_CAP == HEADROOM
-        out = self.run_real(tmp_path)
+        out = self.run_real()
         assert len(out.encode()) <= OUTPUT_CAP, (
             f"{len(out.encode())} bytes over {OUTPUT_CAP}; NEXT is the newest region, but any"
             " of them can be the one that grew — read the profile, do not assume"
@@ -347,9 +372,9 @@ class TestTheRealProfileAgainstTheRealCap:
         )
 
     @pytest.mark.parametrize("suffix", ["a" * 5_000, "界" * 2_500])
-    def test_a_root_move_notice_preserves_every_constraint(self, tmp_path, suffix):
+    def test_a_root_move_notice_preserves_every_constraint(self, suffix):
         previous = Path(str(HOOK.parents[4] / "story-123") + suffix) / "plugins" / "xp-plugin"
-        out = self.run_real(tmp_path, recorded_root=previous)
+        out = self.run_real(recorded_root=previous)
         from session_start import OUTPUT_CAP
 
         self.assert_all_constraints_delivered(out)
@@ -362,7 +387,7 @@ class TestTheRealProfileAgainstTheRealCap:
         shutil.copytree(HOOK.parent.parent, plugin)
         hook = plugin / "scripts" / "session_start.py"
         hook.write_text(hook.read_text().replace("OUTPUT_CAP = 9_500", "OUTPUT_CAP = 7_500"))
-        out = self.run_real(tmp_path, hook)
+        out = self.run_real(hook)
         with pytest.raises(AssertionError, match=r"only \d+/15 constraints"):
             self.assert_all_constraints_delivered(out)
 
@@ -382,27 +407,27 @@ class TestTheRealProfileAgainstTheRealCap:
             f" against codex's {CODEX_EXEC_TOKEN_BOUND}-token exec budget"
         )
 
-    def test_digest_recovery_and_sprint_slice_are_not_injected(self, tmp_path):
-        out = self.run_real(tmp_path)
+    def test_digest_recovery_and_sprint_slice_are_not_injected(self):
+        out = self.run_real()
         for removed in ("branch:", "recent work.md entries:", "stories:", "Session digest"):
             assert removed not in out, f"{removed!r} still spends the SessionStart payload"
 
-    def test_a_truncated_profile_names_the_constraints_it_dropped(self, tmp_path):
+    def test_a_truncated_profile_names_the_constraints_it_dropped(self):
         """The budget is allowed not to fit. It is NOT allowed to hide which
         rules it cut: a silently-absent constraint is one the lead never knew it
         was breaking, which is why session_start orders them ahead of the digest
         in the first place."""
-        out = self.run_real(tmp_path)
+        out = self.run_real()
         if "[truncated" not in out:
             return  # everything fit; nothing to name
         marker = out[out.index("[truncated") :]
         assert "constraints.md" in marker, f"the cut does not say where to read them: {marker}"
         assert re.search(r"CONSTRAINTS [\d, ]+ ARE NOT ABOVE", marker), marker
 
-    def test_the_constraints_it_names_are_genuinely_absent(self, tmp_path):
+    def test_the_constraints_it_names_are_genuinely_absent(self):
         """And the claim must be TRUE — a marker naming the wrong numbers sends
         the lead to re-read rules it already has and to skip ones it does not."""
-        out = self.run_real(tmp_path)
+        out = self.run_real()
         if "[truncated" not in out:
             return
         body, marker = out.split("[truncated", 1)

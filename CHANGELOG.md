@@ -4,6 +4,30 @@ Release notes started at v0.6.0; earlier entries are summarized from their
 tag and merge messages. Full detail lives in the merge history and the
 per-sprint review reports.
 
+## v0.23.13 — the lead's first line names the data root, and a long digest warns
+
+The SessionStart banner now ends with `data: <root>`, the directory holding `plan.md`,
+`work.md`, `session.md`, `plans/`, `worktrees/` and `closes.jsonl`. It was published
+nowhere, so an agent could only re-derive it from a hash of the git common dir or find
+a script that happened to print it. It is appended last on purpose: the trim that pays
+for a moved-plugin notice keeps the banner's first field and the tail from its
+delimiter on, so the field survives in exactly the sessions a moved install makes the
+hunt likeliest. Its bytes come out of PROCESS.md, not the adopter's constraints
+allowance, which the story left a byte better at 4,578 against the 4,576 floor.
+What it does cost is the profile's tolerance for a long PLUGIN path in the ORDINARY
+case, where the banner carries the recover path and the data root together:
+measured, the last plugin root delivering every constraint falls from 374
+characters to 299. The moved-install case, whose trimmed banner is the tighter one
+of the two, does not move — 133 before, 134 now. Real install roots sit well under
+either, and past them the cut stays loud: the notice names every rule it took.
+
+A session digest over the 30-line bound is no longer withheld. `recover` prints a
+WARNING naming the path, the count and the bound, and then the whole digest, staleness
+prefix included. The bound was filed when the digest rode in the SessionStart profile
+and evicted constraints from it; it rides only in `recover` now, where an over-long one
+costs the regions after it at that call's own budget — a cost the lead can see. The
+30-line target is unchanged, and an ABSENT digest stays distinct from an UNREADABLE one.
+
 ## v0.23.12 — a story lands only the files its card declares
 
 GitHub #86. Nothing at story close compared the paths a story changed with its card's

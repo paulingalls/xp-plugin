@@ -2,8 +2,7 @@
 
 ## Start here
 
-`/xp-setup` once. Run the exact `recover:` command from SessionStart; read
-uninjected digest, recovery block and sprint slice. Artifacts win.
+`/xp-setup` once; run the exact `recover:` command. Artifacts win.
 
 ## The loop
 
@@ -18,7 +17,7 @@ Background long legs. No timeout.
    `spawn.py ready <story-id>` follows the corrected slate and refuses until
    `slate_review.py --refresh` has run; the lead owns that non-review. Multi-file spawn stages a planner, then **execution plan
    review** (`plan_review.py`); the planner writes the plan. Human-only questions stop.
-2. **Story** — `spawn.py <story-id>`; red → green → refactor, small commits. Carded story or free work stays
+2. **Story** — `spawn.py <story-id>`; red → green → refactor, small commits. Carded or free work stays
    in its worktree, never in the lead's checkout; practice, not a wall: data root
    proves spawn, not authorship. Done means ACs at the surface.
 3. **Story close** — `/story-close`. One full review always.

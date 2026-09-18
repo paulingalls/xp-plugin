@@ -1,4 +1,4 @@
-"""The session digest layer: staleness, and the bound that refuses over it.
+"""The session digest layer: staleness and the soft size bound.
 
 Extracted from test_session_start.py when the digest bound took it to 496 of the
 500-line cap — over cap means extract, not scroll, and the digest is the cohesive
@@ -49,10 +49,10 @@ class TestTheDigestLayer:
         assert r.returncode == 0
         assert "STALE" not in r.stdout and "story-042" in r.stdout
 
-    def test_a_digest_over_the_bound_is_refused_by_path_and_count(self, tmp_path):
+    def test_an_over_bound_digest_warns_then_injects_the_whole_body(self, tmp_path):
         """bug 597c32db: the size was stated in three prose places and measured
         nowhere, so ours reached 380 lines and evicted four constraints. The
-        refusal names the path, the count and the bound — one that said only
+        warning names the path, the count and the bound — one that said only
         "too long" would leave the lead guessing which file.
 
         Asserted through the WHOLE hook, not through the measuring function: the
@@ -62,14 +62,36 @@ class TestTheDigestLayer:
         data = tmp_path / "xp"
         data.mkdir(exist_ok=True)
         digest = data / "session.md"
-        digest.write_text("# Session digest — written x at y\n" + "DIGEST-BODY\n" * 40)
+        body = [f"DIGEST-BODY-{line}" for line in range(1, 41)]
+        digest.write_text("# Session digest — written x at y\n" + "\n".join(body) + "\n")
         out = run_recovery(repo, tmp_path).stdout
-        assert str(digest) in out and "41 lines" in out and "30-line" in out, out
-        assert "DIGEST-BODY" not in out, "the oversized digest was injected anyway"
+        region = out.split("## digest\n", 1)[1].split("## recovery block", 1)[0]
+        warning = region.splitlines()[0]
+        assert str(digest) in warning and "41 lines" in warning and "30-line" in warning
+        assert "WARNING" in warning and "full digest follows" in warning.lower()
+        assert [line for line in region.splitlines() if line.startswith("DIGEST-BODY-")] == body
+        assert region.index(warning) < region.index(body[0]) < region.index(body[-1])
+
+    def test_an_over_bound_stale_digest_keeps_warning_and_staleness(self, tmp_path):
+        repo, g = xp_repo(tmp_path)
+        old = g("rev-parse", "--short", "HEAD").stdout.strip()
+        data = tmp_path / "xp"
+        data.mkdir(exist_ok=True)
+        digest = data / "session.md"
+        body = [f"STALE-DIGEST-BODY-{line}" for line in range(1, 31)]
+        digest.write_text(f"# Session digest — written x at {old}\n" + "\n".join(body) + "\n")
+        (repo / "f.py").write_text("A = 2\n")
+        g("add", "-A")
+        g("commit", "-qm", "advance")
+
+        region = run_recovery(repo, tmp_path).stdout.split("## recovery block", 1)[0]
+        assert str(digest) in region and "31 lines" in region and "30-line" in region
+        assert region.index("WARNING") < region.index("STALE")
+        assert region.index("STALE") < region.index(body[0]) < region.index(body[-1])
 
     def test_a_digest_at_the_bound_is_injected_untouched(self, tmp_path):
         """Constraint 2: without this arm the check above passes just as well
-        against a mechanism that refuses every digest there is."""
+        against a mechanism that warns for every digest there is."""
         repo, g = xp_repo(tmp_path)
         head = g("rev-parse", "--short", "HEAD").stdout.strip()
         data = tmp_path / "xp"
@@ -78,20 +100,14 @@ class TestTheDigestLayer:
             f"# Session digest — written x at {head}\n" + "DIGEST-BODY\n" * 29
         )
         out = run_recovery(repo, tmp_path).stdout
-        assert "DIGEST-BODY" in out and "NOT INJECTED" not in out, out
+        assert "DIGEST-BODY" in out and "session digest WARNING" not in out, out
 
     def test_an_unreadable_digest_costs_the_digest_and_not_the_recovery_block(self, tmp_path):
-        """Constraint 15, and the file's own "one bad file degrades one section".
-        `digest_refusal` is read from INSIDE `recovery_block`, so a raise there
-        takes branch, dirty count, stories and work.md entries with it — the one
-        layer that cannot go stale, gone in silence at exit 0.
-
-        A DIRECTORY at the path is the cheap unreadable: `exists()` is true and
-        `read_text` raises, which is exactly the absent-vs-unreadable split.
-        """
+        """A directory constructs unreadable rather than absent (constraint 15)."""
         repo, _g = xp_repo(tmp_path)
         (tmp_path / "xp").mkdir(exist_ok=True)
         (tmp_path / "xp" / "session.md").mkdir()
         out = run_recovery(repo, tmp_path).stdout
         assert "story-042" in out, "the unreadable digest ate the whole recovery block"
         assert "UNREADABLE" in out, out
+        assert "session digest WARNING" not in out and "lines against" not in out
