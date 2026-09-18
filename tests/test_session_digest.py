@@ -47,6 +47,7 @@ class TestTheDigestLayer:
         repo, _g = xp_repo(tmp_path)
         r = run_recovery(repo, tmp_path)
         assert r.returncode == 0
+        assert "session digest ABSENT: ~/xp/session.md" in r.stdout
         assert "STALE" not in r.stdout and "story-042" in r.stdout
 
     def test_an_over_bound_digest_warns_then_injects_the_whole_body(self, tmp_path):
@@ -67,7 +68,7 @@ class TestTheDigestLayer:
         out = run_recovery(repo, tmp_path).stdout
         region = out.split("## digest\n", 1)[1].split("## recovery block", 1)[0]
         warning = region.splitlines()[0]
-        assert str(digest) in warning and "41 lines" in warning and "30-line" in warning
+        assert "~/xp/session.md" in warning and "41 lines" in warning and "30-line" in warning
         assert "WARNING" in warning and "full digest follows" in warning.lower()
         assert [line for line in region.splitlines() if line.startswith("DIGEST-BODY-")] == body
         assert region.index(warning) < region.index(body[0]) < region.index(body[-1])
@@ -85,7 +86,7 @@ class TestTheDigestLayer:
         g("commit", "-qm", "advance")
 
         region = run_recovery(repo, tmp_path).stdout.split("## recovery block", 1)[0]
-        assert str(digest) in region and "31 lines" in region and "30-line" in region
+        assert "~/xp/session.md" in region and "31 lines" in region and "30-line" in region
         assert region.index("WARNING") < region.index("STALE")
         assert region.index("STALE") < region.index(body[0]) < region.index(body[-1])
 
@@ -109,5 +110,5 @@ class TestTheDigestLayer:
         (tmp_path / "xp" / "session.md").mkdir()
         out = run_recovery(repo, tmp_path).stdout
         assert "story-042" in out, "the unreadable digest ate the whole recovery block"
-        assert "UNREADABLE" in out, out
+        assert "session digest UNREADABLE: ~/xp/session.md" in out, out
         assert "session digest WARNING" not in out and "lines against" not in out

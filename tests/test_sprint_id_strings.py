@@ -201,7 +201,7 @@ def test_release_record_identity_and_numeric_type_are_strict(
     opened = next_lines(run_recovery(repo, tmp_path).stdout)
 
     assert opened == [
-        f"NEXT: recovery required — release record {releases / filename} is unreadable"
+        f"NEXT: recovery required — release record ~/xp/releases/{filename} is unreadable"
     ]
 
 

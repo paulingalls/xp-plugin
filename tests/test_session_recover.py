@@ -16,6 +16,28 @@ class TestTheNextLoopAction(NextLoopActionCases):
     pass
 
 
+class TestDisplayedRecoveryPaths:
+    def test_outside_home_paths_remain_absolute(self, tmp_path):
+        repo, _g = xp_repo(tmp_path)
+        home = tmp_path / "home"
+        data = tmp_path / "home-sibling" / "data"
+        home.mkdir()
+        data.mkdir(parents=True)
+
+        missing = run_recovery(repo, home, data)
+        plan = data / "plan.md"
+        digest = data / "session.md"
+        assert f"NEXT: recover plan at {plan} — missing" in missing.stdout
+        assert f"session digest ABSENT: {digest}" in missing.stdout
+
+        plan.write_text("# plan\n### Sprint 1\n#### story-042 — done   [done]\n")
+        release = data / "releases" / "sprint-1.json"
+        release.mkdir(parents=True)
+        unreadable = run_recovery(repo, home, data)
+        assert f"release record {release} is unreadable" in unreadable.stdout
+        assert "~/" not in missing.stdout + unreadable.stdout
+
+
 class TestTheOpenSprintSelection:
     @staticmethod
     def plan(open_id="21"):

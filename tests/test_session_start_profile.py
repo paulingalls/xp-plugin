@@ -45,7 +45,12 @@ class TestTheRealProfileAgainstTheRealCap:
     caused by the retro that added constraint 15 so the lead would read it.
     """
 
-    def run_real(self, hook=HOOK, recorded_root=None):
+    def run_real(
+        self,
+        hook=HOOK,
+        recorded_root=None,
+        plugin_path_budget=ConstraintsWallCases.PLUGIN_PATH_BUDGET,
+    ):
         """XP_ROLE PINNED, and the marker asserted absent: the whole suite runs
         under a reviewer role at every sprint review, where the hook's role gate
         prints its 121-char teammate line and returns before a profile is built.
@@ -64,24 +69,22 @@ class TestTheRealProfileAgainstTheRealCap:
         below moves it to a tmp plugin pytest then deletes. The suite was the
         defect the story it guards exists to fix.
 
-        Re-measured at THIS HEAD with a 70-character data root beneath the same
-        HOME as the plugin: this arm's 5,000-character PREVIOUS root fills the
-        bounded notice, so the new root is not present there and the banner carries
-        recover and data. A 248-character plugin root is the last that delivers all
-        15 constraints; 249 drops two. THAT ARRANGEMENT IS NOT THE ONE BELOW: this
-        helper fabricates the HOME but leaves the plugin wherever its caller put it,
-        outside that HOME, so the banner spells the root in full and the same
-        boundary lands 47 characters lower, at 201. The cut stays LOUD: render names
-        every rule it took. THESE NUMBERS ROT ON EVERY SHIPPED-PROSE EDIT —
-        re-measure them with the plugin moved under this HOME; never cite them.
+        The plugin and 70-character data root are copied beneath one fabricated
+        HOME, matching the install whose path savings this suite measures. A
+        supplied hook remains the copy source so cap mutations survive relocation.
         """
         sys.path.insert(0, str(HOOK.parent))
         from env import data_root, plugin_version
 
         source = data_root()
+        source_plugin = hook.parent.parent
         base = Path(tempfile.mkdtemp(prefix="xp-profile-", dir="/tmp"))
         home, expected = self.data_under_home(base)
         try:
+            plugin = self.path_at_length(home, "p", plugin_path_budget)
+            plugin.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copytree(source_plugin, plugin)
+            hook = plugin / "scripts" / "session_start.py"
             isolated = expected
             isolated.mkdir(parents=True)
             for name in ("plan.md", "installed-claude-version", "installed-codex-version"):
@@ -89,7 +92,8 @@ class TestTheRealProfileAgainstTheRealCap:
                     shutil.copy2(path, isolated / name)
             if (source / "markers").exists():
                 shutil.copytree(source / "markers", isolated / "markers")
-            plugin = hook.parent.parent
+            assert plugin.is_relative_to(home)
+            assert isolated.is_relative_to(home)
             (isolated / "env.json").write_text(
                 json.dumps(
                     {
@@ -167,6 +171,12 @@ class TestTheRealProfileAgainstTheRealCap:
         repo = tmp_path / f"{name}-repo"
         data_base = Path(tempfile.mkdtemp(prefix="xp-data-", dir="/tmp"))
         home, data = self.data_under_home(data_base)
+        source_plugin = plugin
+        plugin = self.path_at_length(home, "p", len(str(source_plugin)))
+        plugin.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copytree(source_plugin, plugin)
+        assert plugin.is_relative_to(home)
+        assert data.is_relative_to(home)
         (repo / ".xp").mkdir(parents=True)
         data.mkdir(parents=True)
         (repo / ".xp" / "config.yml").write_text("constraints_chars_cap: 4500\n")
@@ -311,32 +321,22 @@ class TestTheRealProfileAgainstTheRealCap:
         assert absent and sorted(absent) == sorted(lost), f"cut {absent}, named {lost}"
 
     def test_this_repos_constraints_survive_a_long_checkout_path(self):
-        """AC6's property for the file we actually ship under, CONSTRUCTED rather than
-        read off this checkout (constraint 11) — the sibling above certifies only the
-        78-character path the suite happens to sit in, which is how a worktree-length
-        path went unnoticed until one blocked the commit wall (764bd9e).
-
-        THE BUDGET WARNING IS NOT FREE: it is emitted into the budget it reports on,
-        so it buys its 102 bytes out of delivery margin. Re-measured at THIS HEAD
-        against .xp/constraints.md — this arm records no move notice, so nothing is
-        trimmed and the banner carries the recover path and the data root: the
-        warning starts at a 457-character plugin path and all 15 rules still land
-        through 489; 490 is the first that cuts one — MEASURED WITH THE PLUGIN ROOT
-        BENEATH THE FABRICATED HOME, which the sibling temp dir below is not, so
-        re-measuring it as written answers 442 instead. THIS NUMBER ROTS ON EVERY
-        SHIPPED-PROSE EDIT and already has — it read "343, through 375" until this
-        round, which is the number measured on the tree BEFORE the data field.
-        Re-measure it under that HOME; never cite it, and never cite the card's ~175.
-        """
-        base = Path(tempfile.mkdtemp())
-        try:
-            plugin = self.path_at_length(base, "p", 110)
-            shutil.copytree(HOOK.parent.parent, plugin)
-            out = self.run_real(plugin / "scripts" / "session_start.py")
-        finally:
-            shutil.rmtree(base, ignore_errors=True)
+        """Construct the budgeted path; a checkout only measures its own machine."""
+        out = self.run_real(plugin_path_budget=110)
         assert "[truncated at" not in out, "a 110-character plugin path already cuts the profile"
         self.assert_all_constraints_delivered(out)
+
+    @pytest.mark.parametrize(
+        ("last_good", "recorded_root"),
+        [(489, None), (248, Path("/" + "p" * 4_999))],
+        ids=["ordinary", "moved-install"],
+    )
+    def test_published_plugin_root_boundaries_are_constructed(self, last_good, recorded_root):
+        good = self.run_real(recorded_root=recorded_root, plugin_path_budget=last_good)
+        bad = self.run_real(recorded_root=recorded_root, plugin_path_budget=last_good + 1)
+        self.assert_all_constraints_delivered(good)
+        with pytest.raises(AssertionError, match=r"only \d+/15 constraints"):
+            self.assert_all_constraints_delivered(bad)
 
     def test_our_own_digest_is_within_the_bound_the_hook_enforces(self):
         """The dogfood arm of bug 597c32db. Ours was 380 lines and 26,797 chars

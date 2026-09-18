@@ -234,20 +234,21 @@ def recovery_block() -> str:
 
 def digest_output() -> str:
     path = data_root() / "session.md"
-    absent = f"session digest ABSENT: {path}"
+    shown = display_path(path)
+    absent = f"session digest ABSENT: {shown}"
     try:
         text = path.read_text(errors="replace")
     except FileNotFoundError:
         return absent
     except OSError as exc:
-        return f"session digest UNREADABLE: {path} — {exc}"
+        return f"session digest UNREADABLE: {shown} — {str(exc).replace(str(path), shown)}"
     if not text:
         return absent
     count = len(text.splitlines())
     warning = ""
     if count > DIGEST_CAP:
         warning = (
-            f"session digest WARNING: {path} is {count} lines against the"
+            f"session digest WARNING: {shown} is {count} lines against the"
             f" {DIGEST_CAP}-line bound; full digest follows"
         )
     return "\n".join(filter(None, (warning, digest_with_staleness(text))))
@@ -293,15 +294,16 @@ def _worktree_state(root: Path, story_id: str) -> tuple[bool, str]:
 
 def _next_action() -> str:
     path = plan_path()
+    shown = display_path(path)
     try:
         plan = path.read_text(errors="replace")
     except FileNotFoundError:
-        return f"NEXT: recover plan at {path} — missing"
+        return f"NEXT: recover plan at {shown} — missing"
     except OSError:
-        return f"NEXT: recover plan at {path} — unreadable"
+        return f"NEXT: recover plan at {shown} — unreadable"
     sprint, sections = sprint_sections(plan)
     if not sections:
-        return f"NEXT: recovery required — no numbered sprint in {path}"
+        return f"NEXT: recovery required — no numbered sprint in {shown}"
     text = "\n".join(sections)
     headings = [line for line in text.splitlines() if line.startswith("#### ")]
     cards = CARD.findall(text)
@@ -313,7 +315,9 @@ def _next_action() -> str:
         return f"NEXT: recovery required — {story} has unknown status [{status}]"
     released, release_path = release_state(sprint)
     if released == "unreadable":
-        return f"NEXT: recovery required — release record {release_path} is unreadable"
+        return (
+            f"NEXT: recovery required — release record {display_path(release_path)} is unreadable"
+        )
     active = [card for card in cards if card[1] == "in-progress"]
     selected = active or [card for card in cards if card[1] == "ready"]
     selected = selected or [card for card in cards if card[1] == "planned"]

@@ -35,10 +35,11 @@ def run_hook(cwd, data_dir, session_id="sess-abc123"):
     )
 
 
-def run_recovery(cwd, data_dir):
+def run_recovery(cwd, home, data_dir=None):
+    data_dir = data_dir or home / "xp"
     return subprocess.run(
         [sys.executable, str(HOOK), "recover"],
-        env={"PATH": "/usr/bin:/bin", "HOME": str(data_dir), "XP_DATA": str(data_dir / "xp")},
+        env={"PATH": "/usr/bin:/bin", "HOME": str(home), "XP_DATA": str(data_dir)},
         cwd=cwd,
         capture_output=True,
         text=True,

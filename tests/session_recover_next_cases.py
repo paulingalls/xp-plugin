@@ -285,7 +285,7 @@ class NextLoopActionCases:
         lines = next_lines(result.stdout)
 
         assert result.returncode == 0
-        assert lines == [f"NEXT: recover plan at {plan} — {expected}"]
+        assert lines == [f"NEXT: recover plan at ~/xp/{plan.name} — {expected}"]
         assert "Traceback" not in result.stderr
 
     def test_a_plan_without_a_numbered_sprint_names_recovery(self, tmp_path):
@@ -295,7 +295,7 @@ class NextLoopActionCases:
 
         lines = next_lines(run_recovery(repo, tmp_path).stdout)
 
-        assert lines == [f"NEXT: recovery required — no numbered sprint in {plan}"]
+        assert lines == [f"NEXT: recovery required — no numbered sprint in ~/xp/{plan.name}"]
 
     def test_a_600_character_status_is_first_in_recover_and_costs_the_profile_nothing(
         self, tmp_path

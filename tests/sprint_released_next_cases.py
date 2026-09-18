@@ -78,7 +78,9 @@ class ReleasedNextActionCases:
 
         lines = next_lines(run_recovery(repo, tmp_path).stdout)
 
-        assert len(lines) == 1 and str(path) in lines[0] and "unreadable" in lines[0]
+        assert lines == [
+            "NEXT: recovery required — release record ~/xp/releases/sprint-1.json is unreadable"
+        ]
         forbidden = ("was released", "spawn.py", "/sprint-close", "/create-sprint")
         assert not any(term in lines[0] for term in forbidden)
 
@@ -92,7 +94,9 @@ class ReleasedNextActionCases:
 
         lines = next_lines(run_recovery(repo, tmp_path).stdout)
 
-        assert len(lines) == 1 and str(path) in lines[0] and "unreadable" in lines[0]
+        assert lines == [
+            "NEXT: recovery required — release record ~/xp/releases/sprint-1.json is unreadable"
+        ]
 
     def test_an_undecodable_release_record_names_recovery(self, tmp_path):
         repo, _g = xp_repo(tmp_path)
@@ -105,7 +109,9 @@ class ReleasedNextActionCases:
 
         lines = next_lines(run_recovery(repo, tmp_path).stdout)
 
-        assert len(lines) == 1 and str(path) in lines[0] and "unreadable" in lines[0]
+        assert lines == [
+            "NEXT: recovery required — release record ~/xp/releases/sprint-1.json is unreadable"
+        ]
 
     def test_a_different_sprints_record_does_not_release_the_selected_sprint(self, tmp_path):
         repo, _g = xp_repo(tmp_path)
@@ -154,7 +160,9 @@ class ReleasedNextActionCases:
         profile = run_hook_as(repo, tmp_path, role="lead").stdout
 
         lines = next_lines(recovery)
-        assert len(lines) == 1 and str(path) in lines[0] and "unreadable" in lines[0]
+        assert lines == [
+            "NEXT: recovery required — release record ~/xp/releases/sprint-1.json is unreadable"
+        ]
         assert next_lines(profile) == []
         headings = [line for line in rules.splitlines() if line[:1].isdigit()]
         assert headings and all(line in profile for line in headings)

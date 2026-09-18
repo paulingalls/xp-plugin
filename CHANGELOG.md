@@ -21,7 +21,7 @@ absolute. With the real 15 constraints and a 70-character data root beneath the 
 HOME as the plugin, the last plugin-root length that delivers all constraints is now
 248 characters in the binding moved-install arm and 489 in the ordinary arm. The live
 marketplace root remains far below both boundaries, and the constraints allowance grew
-from 4,578 to 4,702 bytes with the 4,576-byte floor unchanged.
+from 4,578 to 4,749 bytes with the 4,576-byte floor unchanged.
 
 ## v0.23.13 — the lead's first line names the data root, and a long digest warns
 
