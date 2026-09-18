@@ -109,7 +109,7 @@ def test_lefthook_delivers_remote_and_ref_stream_to_scanner(tmp_path, real_tools
     assert "no ref updates" not in (pushed.stdout + pushed.stderr).lower()
 
 
-def test_setup_names_the_existing_lefthook_security_migration(tmp_path, real_tools):
+def existing_lefthook_repo(tmp_path, real_tools, pre_push):
     repo = tmp_path / "existing"
     env = isolated_env(tmp_path, real_tools, "lefthook")
     init_repo(repo, env)
@@ -118,13 +118,21 @@ def test_setup_names_the_existing_lefthook_security_migration(tmp_path, real_too
     hook_lib = repo / ".githooks" / "hook-lib.sh"
     hook_lib.write_bytes((ROOT / "plugins/xp-plugin/templates/hook-lib.sh").read_bytes())
     config = repo / "lefthook.yml"
-    config.write_text(
-        "pre-push:\n"
-        "  commands:\n"
-        "    secrets:\n"
-        "      run: sh -c '. .githooks/hook-lib.sh; secrets_scan_push \"$1\"' _ {1}\n"
-        "      use_stdin: true\n"
-    )
+    config.write_text(pre_push)
+    return repo, env, config, hook_lib
+
+
+OLD_COMMAND_CONFIG = (
+    "pre-push:\n"
+    "  commands:\n"
+    "    secrets:\n"
+    "      run: sh -c '. .githooks/hook-lib.sh; secrets_scan_push \"$1\"' _ {1}\n"
+    "      use_stdin: true\n"
+)
+
+
+def test_setup_names_the_existing_lefthook_security_migration(tmp_path, real_tools):
+    repo, env, config, hook_lib = existing_lefthook_repo(tmp_path, real_tools, OLD_COMMAND_CONFIG)
     before = (config.read_bytes(), hook_lib.read_bytes())
 
     result = run(repo, sys.executable, str(SETUP), env=env)
@@ -132,8 +140,26 @@ def test_setup_names_the_existing_lefthook_security_migration(tmp_path, real_too
     output = (result.stdout + result.stderr).lower()
     assert result.returncode == 2
     assert (config.read_bytes(), hook_lib.read_bytes()) == before
+    assert "lefthook.yml lets an outgoing secret reach the remote" in output
     for term in ("pre-push", "scripts", "stdin", "lefthook install"):
         assert term in output
+    # the destination, the template it comes from and source_dir are the three things
+    # the walk cannot recover from lefthook.yml alone: without any one of them the
+    # migrated push refuses with `script does not exist` and names no way out
+    assert ".githooks/pre-push/secrets" in output
+    assert str(ROOT / "plugins/xp-plugin/templates/lefthook-pre-push-secrets").lower() in output
+    assert "source_dir: .githooks" in output
+
+
+def test_setup_does_not_cry_migration_at_an_already_migrated_config(tmp_path, real_tools):
+    migrated = (ROOT / "plugins/xp-plugin/templates/lefthook.yml").read_text()
+    repo, env, _, _ = existing_lefthook_repo(tmp_path, real_tools, migrated)
+
+    result = run(repo, sys.executable, str(SETUP), env=env)
+
+    output = (result.stdout + result.stderr).lower()
+    assert result.returncode == 2 and "setup never overwrites" in output
+    assert "security migration" not in output
 
 
 def construct_operation(repo, env, operation):

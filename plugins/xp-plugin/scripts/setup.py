@@ -67,6 +67,21 @@ def write_lefthook_secrets() -> None:
     shutil.copy(TEMPLATES / "lefthook-pre-push-secrets", destination)
 
 
+def unmigrated_lefthook_configs() -> list[str]:
+    """Names only the configs still routing the scan through `commands:`. A security
+    refusal that fires on a repo it never read is one the reader learns to skip, and an
+    unreadable or unrecognised spelling stays in the list: unsure must not read as safe."""
+    stale = []
+    for name in LEFTHOOK_CONFIGS:
+        config = Path(name)
+        if not config.exists():
+            continue
+        if "script: secrets" in config.read_text(encoding="utf-8", errors="replace"):
+            continue
+        stale.append(name)
+    return stale
+
+
 def scaffold_wall() -> tuple[str, bool]:
     """(summary, wrote_a_hook). The flag exists because the closing advice named a
     pre-commit hook unconditionally, including where we deliberately wrote none."""
@@ -109,11 +124,15 @@ def main() -> int:
         return fail("refused: not inside a git repository")
     if Path(".xp").exists():
         message = "refused: .xp/ already exists — setup never overwrites"
-        if any(Path(name).exists() for name in LEFTHOOK_CONFIGS):
+        if stale := unmigrated_lefthook_configs():
             message += (
-                ". Security migration: compare the current template and move the pre-push"
-                " scanner from commands to jobs with a script (older Lefthook configs use"
-                " scripts), preserve use_stdin: true, then rerun `lefthook install`"
+                f". Security migration: lefthook's push-file matching can skip a"
+                f" `commands:` entry, so {', '.join(stale)} lets an outgoing secret reach"
+                f" the remote unscanned — lefthook scripts have no file matching to elide."
+                f" Copy {TEMPLATES / 'lefthook-pre-push-secrets'} to .githooks/pre-push/secrets,"
+                f" add `source_dir: .githooks` at the top level, replace the pre-push secrets"
+                f" command with `jobs:` / `- script: secrets` / `runner: sh` /"
+                f" `use_stdin: true`, then rerun `lefthook install`"
             )
         return fail(message)
     if plan_path().exists():
