@@ -11,7 +11,14 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 sys.path.insert(0, str(Path(__file__).parent / "session_start"))
-from env import display_path, plugin_manifest_value, plugin_version, refresh_env, run_hook
+from env import (
+    display_path,
+    display_text,
+    plugin_manifest_value,
+    plugin_version,
+    refresh_env,
+    run_hook,
+)
 from profile_output import (
     BEGIN,
     END,
@@ -241,7 +248,7 @@ def digest_output() -> str:
     except FileNotFoundError:
         return absent
     except OSError as exc:
-        return f"session digest UNREADABLE: {shown} — {str(exc).replace(str(path), shown)}"
+        return f"session digest UNREADABLE: {shown} — {display_text(exc)}"
     if not text:
         return absent
     count = len(text.splitlines())
@@ -397,7 +404,7 @@ def safe(build, name: str = "") -> str:
     try:
         return build() or (f"({name}: nothing recorded)" if name else "")
     except Exception as exc:
-        return f"({name} UNAVAILABLE: {exc})" if name else ""
+        return f"({name} UNAVAILABLE: {display_text(exc)})" if name else ""
 
 
 def recover() -> int:

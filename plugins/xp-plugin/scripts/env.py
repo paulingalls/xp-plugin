@@ -65,7 +65,13 @@ def display_path(value) -> str:
         relative = path.relative_to(Path.home())
     except ValueError:
         return str(value)
-    return "~" if relative == Path(".") else str(Path("~") / relative)
+    return str(Path("~") / relative)
+
+
+def display_text(value) -> str:
+    """Collapse HOME inside free text an OSError carries; display_path owns real paths.
+    Anchored on the separator, so a SIBLING of HOME keeps its own name."""
+    return str(value).replace(f"{Path.home()}/", "~/")
 
 
 def sprint_branch_name(identifier: str) -> str:

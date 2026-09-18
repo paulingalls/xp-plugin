@@ -176,7 +176,10 @@ class TestARegionThatProducedNothing:
         assert r.returncode == 0, r.stderr
         for region in ("recovery block", "sprint slice"):
             assert f"## {region}\n({region} UNAVAILABLE" in r.stdout, r.stdout
-        assert str(plan) in r.stdout, "the cause is what the lead repairs"
+        # the cause is what the lead repairs, in the SAME form the NEXT line beside it
+        # prints: two spellings of one path a line apart is what display_path removed.
+        assert "'~/xp/plan.md'" in r.stdout, r.stdout
+        assert str(plan) not in r.stdout, r.stdout
 
     def test_an_empty_region_says_which_nothing_it_has(self, tmp_path):
         """Distinct states stay distinct: a plan carrying no `### Sprint` section is

@@ -111,4 +111,5 @@ class TestTheDigestLayer:
         out = run_recovery(repo, tmp_path).stdout
         assert "story-042" in out, "the unreadable digest ate the whole recovery block"
         assert "session digest UNREADABLE: ~/xp/session.md" in out, out
+        assert str(tmp_path) not in out, "the OSError tail republished the absolute path"
         assert "session digest WARNING" not in out and "lines against" not in out
