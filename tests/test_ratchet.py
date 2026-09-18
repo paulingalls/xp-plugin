@@ -324,7 +324,7 @@ def test_an_EMPTY_tests_directory_refuses_too(tmp_path):
 def test_lefthook_pre_push_runs_story_tier_without_ratchet():
     text = LEFTHOOK.read_text()
     pre_push = text.split("pre-push:", 1)[1]
-    full_tests = pre_push.split("    full-tests:\n", 1)[1].split("\n    ", 1)[0]
+    full_tests = pre_push.split("    - name: full-tests\n", 1)[1].split("\n    - ", 1)[0]
     assert "run_tier story" in full_tests
     assert "ratchet.py" not in pre_push
 

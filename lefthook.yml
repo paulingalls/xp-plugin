@@ -1,5 +1,6 @@
 # The unforgeable floor (DESIGN.md §7). pre-commit = seconds; full suite at push.
 # piped: rewriters run before readers; first failure aborts (single clear error).
+source_dir: .lefthook
 pre-commit:
   piped: true
   commands:
@@ -43,18 +44,17 @@ pre-push:
   # own timing tests teaches the lead to re-run until green, which is how
   # --no-verify becomes tempting (debt 15aec3fc's risk, arriving sideways).
   piped: true
-  # secrets FIRST: lefthook orders UNPRIORITISED commands alphabetically, which
-  # measured this scan running last, 5m21s behind the tier it is meant to guard.
-  commands:
-    secrets:
-      priority: 1
-      run: sh -c '. plugins/xp-plugin/templates/hook-lib.sh; secrets_scan_push "$1"' _ {1}
+  # secrets FIRST: the jobs list preserves the declared order; the old command
+  # route measured this scan running last, 5m21s behind the tier it guards.
+  jobs:
+    - script: secrets
+      runner: sh
       use_stdin: true
-    lint:
+    - name: lint
       run: ruff check .
-    constraints-size:
+    - name: constraints-size
       run: sh -c '. plugins/xp-plugin/templates/hook-lib.sh; constraints_size'
-    full-tests:
+    - name: full-tests
       run: sh -c '. plugins/xp-plugin/templates/hook-lib.sh; run_tier story; s=$?; [ $s -eq 5 ] && exit 0; exit $s'
-    falsifier-node-ids:
+    - name: falsifier-node-ids
       run: python3 tests/scripts/check_falsifier_node_ids.py

@@ -61,6 +61,12 @@ def write_hook_lib() -> None:
     shutil.copy(TEMPLATES / "hook-lib.sh", ".githooks/hook-lib.sh")
 
 
+def write_lefthook_secrets() -> None:
+    destination = Path(".githooks/pre-push/secrets")
+    destination.parent.mkdir()
+    shutil.copy(TEMPLATES / "lefthook-pre-push-secrets", destination)
+
+
 def scaffold_wall() -> tuple[str, bool]:
     """(summary, wrote_a_hook). The flag exists because the closing advice named a
     pre-commit hook unconditionally, including where we deliberately wrote none."""
@@ -77,6 +83,7 @@ def scaffold_wall() -> tuple[str, bool]:
         )
     if shutil.which("lefthook"):
         write_hook_lib()
+        write_lefthook_secrets()
         shutil.copy(TEMPLATES / "lefthook.yml", "lefthook.yml")
         installed = subprocess.run(["lefthook", "install"], check=False)
         if installed.returncode != 0:
@@ -101,7 +108,14 @@ def main() -> int:
     if not chdir_repo_root():
         return fail("refused: not inside a git repository")
     if Path(".xp").exists():
-        return fail("refused: .xp/ already exists — setup never overwrites")
+        message = "refused: .xp/ already exists — setup never overwrites"
+        if any(Path(name).exists() for name in LEFTHOOK_CONFIGS):
+            message += (
+                ". Security migration: compare the current template and move the pre-push"
+                " scanner from commands to jobs with a script (older Lefthook configs use"
+                " scripts), preserve use_stdin: true, then rerun `lefthook install`"
+            )
+        return fail(message)
     if plan_path().exists():
         return fail(f"refused: a plan already exists at {plan_path()} — setup never overwrites")
     version = plugin_version(PLUGIN_ROOT)

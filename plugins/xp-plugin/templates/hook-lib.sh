@@ -57,7 +57,7 @@ secrets_scan_push() {
         fi
         scan_range="$local_sha --not --remotes=$push_remote";;
     esac
-    if ! gitleaks git --log-opts="$scan_range" --no-banner --redact </dev/null; then
+    if ! gitleaks git --log-opts="$scan_range" --no-banner --redact --verbose </dev/null; then
       echo "xp wall: rewrite the outgoing history to remove the secret, then retry." >&2
       return 1
     fi
