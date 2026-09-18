@@ -4,6 +4,25 @@ Release notes started at v0.6.0; earlier entries are summarized from their
 tag and merge messages. Full detail lives in the merge history and the
 per-sprint review reports.
 
+## v0.23.14 — the next action moves to recover, and HOME stops costing the profile
+
+The lead profile no longer carries a `NEXT:` region. `recover` now recomputes the same
+decision as its first region, before the digest, so even missing and unreadable plans
+remain loud without charging every SessionStart for an unbounded card status. PROCESS's
+first instruction names that path. Environment and install notices remain in
+SessionStart because they report transitions consumed there and cannot be reconstructed
+later without another state file.
+
+Every absolute path the profile prints beneath HOME now uses `~`: the banner's recovery
+command and data root, plus both roots in environment notices. The command remains
+shell-executable, banner-derived script paths expand back to absolute paths, and
+`XP_DATA=~/...` is accepted when a printed path is pasted back. Paths outside HOME stay
+absolute. With the real 15 constraints and a 70-character data root beneath the same
+HOME as the plugin, the last plugin-root length that delivers all constraints is now
+248 characters in the binding moved-install arm and 489 in the ordinary arm. The live
+marketplace root remains far below both boundaries, and the constraints allowance grew
+from 4,578 to 4,702 bytes with the 4,576-byte floor unchanged.
+
 ## v0.23.13 — the lead's first line names the data root, and a long digest warns
 
 The SessionStart banner now ends with `data: <root>`, the directory holding `plan.md`,
