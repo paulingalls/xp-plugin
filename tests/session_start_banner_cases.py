@@ -89,6 +89,8 @@ class BannerCases:
         notice = next(line for line in output.splitlines() if "refresh FAILED" in line)
         assert str(HOOK.parent.parent) not in notice, "the notice republished the root after all"
         assert banner_line(output).count(str(HOOK.parent.parent)) == 1
+        # Both trim branches must carry the field; the case below covers the other tail.
+        assert str(tmp_path / "xp") in output.splitlines()[0]
         ran = run_banner_script(output, repo, tmp_path, "session_start.py recover")
         assert ran.returncode == 0 and "branch: main" in ran.stdout, ran.stderr
 

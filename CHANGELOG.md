@@ -13,11 +13,13 @@ a script that happened to print it. It is appended last on purpose: the trim tha
 for a moved-plugin notice keeps the banner's first field and the tail from its
 delimiter on, so the field survives in exactly the sessions a moved install makes the
 hunt likeliest. Its bytes come out of PROCESS.md, not the adopter's constraints
-allowance, which is unchanged at 4,578 against the 4,576 floor. What it does cost
-is the profile's tolerance for a long PLUGIN path in the moved-install case, where
-the banner keeps both paths: measured, the last plugin root delivering every
-constraint moves from 210 characters to 134. The marketplace root is 59. Past it
-the cut stays loud — the notice names every rule it took.
+allowance, which the story left a byte better at 4,578 against the 4,576 floor.
+What it does cost is the profile's tolerance for a long PLUGIN path in the ORDINARY
+case, where the banner carries the recover path and the data root together:
+measured, the last plugin root delivering every constraint falls from 374
+characters to 299. The moved-install case, whose trimmed banner is the tighter one
+of the two, does not move — 133 before, 134 now. Real install roots sit well under
+either, and past them the cut stays loud: the notice names every rule it took.
 
 A session digest over the 30-line bound is no longer withheld. `recover` prints a
 WARNING naming the path, the count and the bound, and then the whole digest, staleness

@@ -66,12 +66,13 @@ class TestTheRealProfileAgainstTheRealCap:
 
         Its 70-character path is not what bounds this. Re-measured at THIS HEAD
         against .xp/constraints.md: the move-notice arm lands 15/15 at every data
-        root from 70 through 200. What cuts is the PLUGIN root — past ~130
-        characters the shortened notice stops republishing it and the banner keeps
-        BOTH paths; 134 is the last that delivers all 15 and 135 the first to drop
-        two, where before this field 210 still delivered all 15. The cut stays
-        LOUD: render names every rule it took. THESE NUMBERS ROT ON EVERY
-        SHIPPED-PROSE EDIT — re-measure them here; never cite them.
+        root from 70 through 200. What cuts is the PLUGIN root, and the notice is
+        not what saves it — this arm's 5,000-character PREVIOUS root fills the
+        bounded notice at every plugin length, so the new root is republished
+        nowhere and the banner carries BOTH paths throughout; 134 is the last that
+        delivers all 15 and 135 the first to drop two, against 133 before the
+        field. The cut stays LOUD: render names every rule it took. THESE NUMBERS
+        ROT ON EVERY SHIPPED-PROSE EDIT — re-measure them here; never cite them.
         """
         sys.path.insert(0, str(HOOK.parent))
         from env import data_root, plugin_version
@@ -302,11 +303,13 @@ class TestTheRealProfileAgainstTheRealCap:
 
         THE BUDGET WARNING IS NOT FREE: it is emitted into the budget it reports on,
         so it buys its 102 bytes out of delivery margin. Re-measured at THIS HEAD
-        against .xp/constraints.md: the warning starts at a 343-character plugin
-        path and all 15 rules still land through 375; 376 is the first that cuts
-        one. THIS NUMBER ROTS ON EVERY SHIPPED-PROSE EDIT and already has — it read
-        "~132, 13/15 by 150" one commit before 591c2b9 returned 81 bytes to the
-        budget. Re-measure it here; never cite it, and never cite the card's ~175.
+        against .xp/constraints.md — this arm records no move notice, so nothing is
+        trimmed and the banner carries the recover path and the data root: the
+        warning starts at a 267-character plugin path and all 15 rules still land
+        through 299; 300 is the first that cuts two. THIS NUMBER ROTS ON EVERY
+        SHIPPED-PROSE EDIT and already has — it read "343, through 375" until this
+        round, which is the number measured on the tree BEFORE the data field.
+        Re-measure it here; never cite it, and never cite the card's ~175.
         """
         base = Path(tempfile.mkdtemp())
         try:
