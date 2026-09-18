@@ -5,11 +5,7 @@ import subprocess
 import sys
 
 import pytest
-from session_start_helpers import HOOK, run_hook_as, run_recovery, xp_repo
-
-
-def next_lines(output):
-    return [line for line in output.splitlines() if line.startswith("NEXT:")]
+from session_start_helpers import HOOK, next_lines, run_hook_as, run_recovery, xp_repo
 
 
 class NextLoopActionCases:

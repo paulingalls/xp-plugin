@@ -68,9 +68,12 @@ class TestTheRealProfileAgainstTheRealCap:
         HOME as the plugin: this arm's 5,000-character PREVIOUS root fills the
         bounded notice, so the new root is not present there and the banner carries
         recover and data. A 248-character plugin root is the last that delivers all
-        15 constraints; 249 drops two. The cut stays LOUD: render names every rule
-        it took. THESE NUMBERS ROT ON EVERY SHIPPED-PROSE EDIT — re-measure them
-        here; never cite them.
+        15 constraints; 249 drops two. THAT ARRANGEMENT IS NOT THE ONE BELOW: this
+        helper fabricates the HOME but leaves the plugin wherever its caller put it,
+        outside that HOME, so the banner spells the root in full and the same
+        boundary lands 47 characters lower, at 201. The cut stays LOUD: render names
+        every rule it took. THESE NUMBERS ROT ON EVERY SHIPPED-PROSE EDIT —
+        re-measure them with the plugin moved under this HOME; never cite them.
         """
         sys.path.insert(0, str(HOOK.parent))
         from env import data_root, plugin_version
@@ -318,10 +321,12 @@ class TestTheRealProfileAgainstTheRealCap:
         against .xp/constraints.md — this arm records no move notice, so nothing is
         trimmed and the banner carries the recover path and the data root: the
         warning starts at a 457-character plugin path and all 15 rules still land
-        through 489; 490 is the first that cuts one. THIS NUMBER ROTS ON EVERY
+        through 489; 490 is the first that cuts one — MEASURED WITH THE PLUGIN ROOT
+        BENEATH THE FABRICATED HOME, which the sibling temp dir below is not, so
+        re-measuring it as written answers 442 instead. THIS NUMBER ROTS ON EVERY
         SHIPPED-PROSE EDIT and already has — it read "343, through 375" until this
         round, which is the number measured on the tree BEFORE the data field.
-        Re-measure it here; never cite it, and never cite the card's ~175.
+        Re-measure it under that HOME; never cite it, and never cite the card's ~175.
         """
         base = Path(tempfile.mkdtemp())
         try:

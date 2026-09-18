@@ -19,6 +19,10 @@ BUDGET_WARNING = re.compile(
 )
 
 
+def next_lines(output):
+    return [line for line in output.splitlines() if line.startswith("NEXT:")]
+
+
 def run_hook(cwd, data_dir, session_id="sess-abc123"):
     stdin = json.dumps({"cwd": str(cwd), "session_id": session_id, "source": "startup"})
     return subprocess.run(

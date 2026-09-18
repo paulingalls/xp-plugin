@@ -6,7 +6,7 @@ from types import SimpleNamespace
 
 import pytest
 import slate_review
-from session_start_helpers import run_recovery, xp_repo
+from session_start_helpers import next_lines, run_recovery, xp_repo
 from sprint_helpers import PLUGIN, sprint
 
 sys.path.insert(0, str(PLUGIN / "scripts" / "close"))
@@ -18,10 +18,6 @@ LETTERED_PLAN = """# plan
 Verify: true
 LETTERED-SENTINEL
 """
-
-
-def next_lines(output):
-    return [line for line in output.splitlines() if line.startswith("NEXT:")]
 
 
 def sprint_slice(output):

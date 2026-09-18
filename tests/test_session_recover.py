@@ -4,8 +4,8 @@ Its own file because test_session_start.py sits AT constraint 8's 500-line cap:
 extract, not scroll. Verify: pytest -q tests/test_session_recover.py"""
 
 import pytest
-from session_recover_next_cases import NextLoopActionCases, next_lines
-from session_start_helpers import run_recovery, xp_repo
+from session_recover_next_cases import NextLoopActionCases
+from session_start_helpers import next_lines, run_recovery, xp_repo
 
 
 def sprint_slice(output):

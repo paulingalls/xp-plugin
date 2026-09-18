@@ -6,7 +6,7 @@ import subprocess
 import sys
 
 import pytest
-from session_start_helpers import HOOK
+from session_start_helpers import HOOK, next_lines
 from sprint_helpers import CONFIG, make_repo, sprint
 from sprint_released_next_cases import ReleasedNextActionCases
 
@@ -48,10 +48,6 @@ def run_release_recovery(repo, root):
 
 def env_for(root):
     return {"PATH": "/usr/bin:/bin", "HOME": str(root), "XP_DATA": str(root / "data")}
-
-
-def next_lines(output):
-    return [line for line in output.splitlines() if line.startswith("NEXT:")]
 
 
 class TestReleaseRecord:

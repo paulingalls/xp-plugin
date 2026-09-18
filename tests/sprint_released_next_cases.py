@@ -5,13 +5,9 @@ from pathlib import Path
 
 import pytest
 from session_start import OUTPUT_CAP
-from session_start_helpers import run_hook_as, run_recovery, xp_repo
+from session_start_helpers import next_lines, run_hook_as, run_recovery, xp_repo
 
 REPO = Path(__file__).parent.parent
-
-
-def next_lines(output):
-    return [line for line in output.splitlines() if line.startswith("NEXT:")]
 
 
 def write_record(data, sprint_id=1):
