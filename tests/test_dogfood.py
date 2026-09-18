@@ -34,12 +34,16 @@ class TestDogfoodMatchesTheScaffold(ConstraintsWallCases):
             )
             return "\n".join(lines[start:end])
 
-        expected = {
-            "pre-commit": "secrets_scan_index",
-            "pre-merge-commit": "secrets_scan_index",
-            "pre-push": "secrets_scan_push",
-        }
-        for path in (self.SHIPPED / "lefthook.yml", self.REPO / "lefthook.yml"):
+        expected = {"pre-commit": "secrets_scan_index", "pre-merge-commit": "secrets_scan_index"}
+        configs = (
+            (
+                self.SHIPPED / "lefthook.yml",
+                ".githooks",
+                self.SHIPPED / "lefthook-pre-push-secrets",
+            ),
+            (self.REPO / "lefthook.yml", ".lefthook", self.REPO / ".lefthook/pre-push/secrets"),
+        )
+        for path, source_dir, scanner_path in configs:
             text = path.read_text()
             for hook_name, helper in expected.items():
                 route = hook(text, hook_name)
@@ -47,11 +51,14 @@ class TestDogfoodMatchesTheScaffold(ConstraintsWallCases):
                 other = {value for value in expected.values() if value != helper}
                 assert not any(value in route for value in other)
             route = hook(text, "pre-push")
-            scanner = route.split("secrets_scan_push", 1)[1].split("\n", 2)[1]
-            assert scanner == "      use_stdin: true"
-            # lefthook orders UNPRIORITISED commands alphabetically, so dropping this
-            # runs the scan behind the whole tier instead of ahead of it
-            assert route.split("    secrets:\n", 1)[1].startswith("      priority: 1\n")
+            assert f"source_dir: {source_dir}" in text
+            script_job = "  jobs:\n    - script: secrets\n      runner: sh\n      use_stdin: true"
+            assert script_job in route
+            assert route.index("- script: secrets") < route.index("- name:")
+            scanner = scanner_path.read_text()
+            assert scanner.count("secrets_scan_push") == 1
+            assert 'secrets_scan_push "$1"' in scanner
+            assert "secrets_scan_index" not in scanner
 
     def keys(self, path):
         lines = path.read_text().splitlines()

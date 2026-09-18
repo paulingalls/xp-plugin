@@ -61,6 +61,32 @@ def write_hook_lib() -> None:
     shutil.copy(TEMPLATES / "hook-lib.sh", ".githooks/hook-lib.sh")
 
 
+def write_lefthook_secrets() -> None:
+    # +x here because lefthook chmods the script itself on first run, which lands as an
+    # unexplained mode change in the consumer's worktree the moment their wall works.
+    destination = Path(".githooks/pre-push/secrets")
+    destination.parent.mkdir()
+    shutil.copy(TEMPLATES / "lefthook-pre-push-secrets", destination)
+    destination.chmod(destination.stat().st_mode | stat.S_IEXEC | stat.S_IXGRP | stat.S_IXOTH)
+
+
+def unmigrated_lefthook_configs() -> list[str]:
+    """Names every config that does not already carry the migrated `script:` job — NOT
+    only those routing the scan through `commands:`: an unreadable, unrecognised or
+    scan-less spelling stays in the list, because unsure must not read as safe. The
+    refusal it feeds therefore tells the reader to READ the arm, never asserting a hole
+    in a config it only knows lacks the marker."""
+    stale = []
+    for name in LEFTHOOK_CONFIGS:
+        config = Path(name)
+        if not config.exists():
+            continue
+        if "script: secrets" in config.read_text(encoding="utf-8", errors="replace"):
+            continue
+        stale.append(name)
+    return stale
+
+
 def scaffold_wall() -> tuple[str, bool]:
     """(summary, wrote_a_hook). The flag exists because the closing advice named a
     pre-commit hook unconditionally, including where we deliberately wrote none."""
@@ -77,6 +103,7 @@ def scaffold_wall() -> tuple[str, bool]:
         )
     if shutil.which("lefthook"):
         write_hook_lib()
+        write_lefthook_secrets()
         shutil.copy(TEMPLATES / "lefthook.yml", "lefthook.yml")
         installed = subprocess.run(["lefthook", "install"], check=False)
         if installed.returncode != 0:
@@ -101,7 +128,21 @@ def main() -> int:
     if not chdir_repo_root():
         return fail("refused: not inside a git repository")
     if Path(".xp").exists():
-        return fail("refused: .xp/ already exists — setup never overwrites")
+        message = "refused: .xp/ already exists — setup never overwrites"
+        if stale := unmigrated_lefthook_configs():
+            message += (
+                f". Security migration: lefthook's push-file matching can skip a pre-push"
+                f" secrets `commands:` entry, letting an outgoing secret reach the remote"
+                f" unscanned; {', '.join(stale)} carries no migrated `script: secrets` job,"
+                f" so read its pre-push arm. Scripts have no file matching to elide: copy"
+                f" {TEMPLATES / 'lefthook-pre-push-secrets'} to .githooks/pre-push/secrets and"
+                f" add `source_dir: .githooks` at the top level — but if the config ALREADY"
+                f" declares a source_dir, put the script under THAT directory and leave the key"
+                f" alone, because a second source_dir makes lefthook refuse to parse at all."
+                f" Then give the arm `jobs:` / `- script: secrets` / `runner: sh` /"
+                f" `use_stdin: true`, and rerun `lefthook install`"
+            )
+        return fail(message)
     if plan_path().exists():
         return fail(f"refused: a plan already exists at {plan_path()} — setup never overwrites")
     version = plugin_version(PLUGIN_ROOT)
