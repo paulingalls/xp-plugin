@@ -53,7 +53,8 @@ def main(argv: list[str]) -> int:
                 "threshold_seconds": threshold,
                 "measured_at": sha,
                 "measured_on": date.today().isoformat(),
-                "census": f"{len(per)} tests timed, {sum(per.values()):.0f}s CPU",
+                "census": f"{len(per)} tests with timed rows, {sum(per.values()):.0f}s CPU"
+                " (pytest hides rows under --durations-min, so this is NOT the suite size)",
                 "ids": ids,
             },
             indent=1,

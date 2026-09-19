@@ -3,7 +3,7 @@
  "threshold_seconds": 1.0,
  "measured_at": "2520cdb",
  "measured_on": "2026-09-18",
- "census": "1540 tests timed, 2110s CPU",
+ "census": "1540 tests with timed rows, 2110s CPU (pytest hides rows under --durations-min, so this is NOT the suite size; 1816 collected that run)",
  "ids": [
   "tests/test_card_refresh.py::TestRefreshRestoreIsCardScoped::test_a_rejection_restores_the_card_and_not_a_concurrent_lanes_write",
   "tests/test_card_refresh.py::test_a_candidate_that_never_reaches_the_plan_is_refused[knob0-did not apply it]",
