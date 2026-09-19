@@ -28,9 +28,7 @@ is pinned by a test that constructs its condition:
   and `/create-sprint` says how.
 - The card-budget report names a contributor the author can change.
 
-No refusal changed what it decides. `spawn/profile.py` is renamed `card_profile.py`:
-`spawn.py` puts its directory on `sys.path[0]`, where it shadowed the stdlib `profile`
-that `cProfile` imports.
+No refusal changed what it decides.
 
 ## v0.23.16 — the push secret scan cannot be skipped
 
