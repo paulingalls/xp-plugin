@@ -4,6 +4,27 @@ Release notes started at v0.6.0; earlier entries are summarized from their
 tag and merge messages. Full detail lives in the merge history and the
 per-sprint review reports.
 
+## v0.23.18 — no plugin change; this repo's own falsifier corpus
+
+THE SHIPPED PLUGIN IS BYTE-IDENTICAL TO v0.23.17. Nothing under `plugins/xp-plugin/`
+changed. The version moves only because a tag whose manifest names a different version
+ships the previously cached copy under the new name, so the two are kept in step.
+Upgrading gains a consuming project nothing; skipping it costs nothing.
+
+What changed is this repo's own test infrastructure. Seven falsifier scripts answering
+to no live record are deleted, and `check_falsifier_node_ids.py` now constructs the
+correspondence between `tests/scripts/` and work.md's live records instead of trusting
+a hand-kept list — it names an orphan rather than deleting it, and distinguishes a
+script that FAILED from one that could not RUN. One of the seven,
+`falsifier_land_undeclared_files.py`, had been asserting that land refuses undeclared
+source paths, which v0.23.15 deliberately changed to a report: a filed falsifier reding
+against shipped intent sends the next close chasing a defect that does not exist.
+
+The slow-test partition was also re-measured. It had gone stale since 2026-09-03, so
+the commit gate had drifted to 1,371 tests and 187.5s against its 180s ceiling while
+per-test cost stayed green. Re-running the census at the unchanged 1.0s threshold put
+it back to 1,105 tests and 68.3s. Neither declared bound moved.
+
 ## v0.23.17 — a refusal names an action that can succeed
 
 Eight shipped refusals sent the operator somewhere that could not work, or collapsed
