@@ -330,7 +330,10 @@ def _next_action() -> str:
     selected = selected or [card for card in cards if card[1] == "planned"]
     if released == "released" and selected:
         story, _status = selected[0]
-        return f"NEXT: Sprint {sprint} was released — schedule {story} into a new sprint"
+        return (
+            f"NEXT: Sprint {sprint} was released — run `/create-sprint` and carry {story}"
+            " unchanged into the new sprint"
+        )
     if slate_review_marker(sprint).exists():
         return f"NEXT: Sprint {sprint} slate review incomplete — run `slate_review.py {sprint}`"
     if len(active) > 1:

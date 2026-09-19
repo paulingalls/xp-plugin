@@ -2,6 +2,7 @@
 story-021, which needed the room under constraint 8's 500-line cap for the
 codex leg's tee ACs — the card's Verify names test_spawn_run.py."""
 
+import re
 import shutil
 from pathlib import Path
 
@@ -23,6 +24,45 @@ def set_target(repo, value):
 
 
 class TestProfile:
+    @pytest.mark.parametrize("largest", ["plugin", "claude", "constraints", "handoff"])
+    def test_the_card_overage_names_a_remedy_that_clears_that_overage(
+        self, tmp_path, monkeypatch, largest
+    ):
+        import spawn as spawn_module
+
+        repo, _env, _g = make_repo(tmp_path)
+        monkeypatch.chdir(repo)
+        card = "#### story-042 — demo   [ready]\nContext: " + "card " * 120
+        prompt = card
+        handoff = ""
+        if largest == "plugin":
+            prompt += "plugin prompt " * 2000
+        elif largest == "claude":
+            (repo / "CLAUDE.md").write_text("project guidance " * 2000)
+        elif largest == "constraints":
+            (repo / ".xp/constraints.md").write_text("constraint " * 2000)
+        else:
+            handoff = "predecessor evidence " * 2000
+        card_tokens = len(card) // 4
+        set_target(repo, card_tokens - 1)
+
+        _line, warning = spawn_module.profile_report(card, prompt, handoff)
+        measured = [int(value) for value in re.findall(r"\d+", warning)]
+        assert card_tokens in measured and card_tokens - 1 in measured
+        assert largest not in warning.lower()
+
+        config = repo / ".xp/config.yml"
+        config.write_text(
+            "\n".join(
+                line
+                for line in config.read_text().splitlines()
+                if not line.startswith("profile_target:")
+            )
+            + f"\nprofile_target: {card_tokens}\n"
+        )
+        _line, cleared = spawn_module.profile_report(card, prompt, handoff)
+        assert cleared == ""
+
     def test_new_agent_frontmatter_is_included_in_component_metadata(self, tmp_path, monkeypatch):
         import spawn as spawn_module
 
@@ -170,8 +210,8 @@ class TestProfile:
         (repo / "CLAUDE.md").unlink(missing_ok=True)
         result = spawn(repo, env, "story-042", "--dry-run")
         assert result.returncode == 0
-        assert "plugin" in result.stderr.lower()
-        assert "largest contributor" in result.stderr.lower()
+        assert "plugin share" in result.stdout.lower()
+        assert "plugin" not in result.stderr.lower()
         assert "yours" not in result.stderr
         assert "retire" not in result.stderr
 
@@ -183,11 +223,11 @@ class TestProfile:
         result = spawn(repo, env, "story-042", "--dry-run")
         note = result.stderr.lower()
         assert result.returncode == 0
-        assert "the story card" in note and "largest contributor" in note
-        assert "reconsider" in note and "allowance" in note
+        assert "story card" in note and "allowance" in note
+        assert "shorten" in note
         assert all(word not in note for word in ("retire", "waste", "yours to"))
 
-    def test_warning_names_the_largest_project_owned_contributor(self, tmp_path):
+    def test_warning_names_no_contributor_the_author_may_not_be_able_to_change(self, tmp_path):
         repo, env, _g = make_repo(tmp_path)
         stub_claude(tmp_path)
         quiet = spawn(repo, env, "story-042", "--dry-run")
@@ -196,7 +236,8 @@ class TestProfile:
         set_target(repo, 0)
         (repo / ".xp" / "constraints.md").write_text("# Constraints\n" + "bloat\n" * 3000)
         loud = spawn(repo, env, "story-042", "--dry-run")
-        assert "constraints.md" in loud.stderr and "over the" in loud.stderr
+        assert "constraints.md" in loud.stdout and "over the" in loud.stderr
+        assert "constraints.md" not in loud.stderr
         assert loud.returncode == 0  # reports, never refuses: the project's tradeoff
 
     def test_an_inherited_handoff_is_a_contributor_the_breakdown_names(self, tmp_path):
@@ -214,7 +255,7 @@ class TestProfile:
         set_target(repo, 0)
         loud = spawn(repo, env, "story-042", "--dry-run")
         assert "predecessor handoff" in loud.stdout, loud.stdout
-        assert "predecessor handoff" in loud.stderr and "over the" in loud.stderr, loud.stderr
+        assert "predecessor handoff" not in loud.stderr and "over the" in loud.stderr, loud.stderr
 
     def test_project_owned_absences_stay_tolerant_at_each_consumer(self, tmp_path):
         repo, env, _g = make_repo(tmp_path)

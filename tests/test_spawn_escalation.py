@@ -20,7 +20,7 @@ import time
 from pathlib import Path
 
 import pytest
-from spawn_helpers import SPAWN, make_repo, spawn
+from spawn_helpers import SPAWN, make_repo, spawn, stub_claude
 
 WORK = SPAWN.parent / "work.py"
 
@@ -113,6 +113,27 @@ LAUNCH_POLLS = 6_000  # x 10ms
 
 
 class TestDeliberateStop:
+    def test_human_only_and_dead_teammate_are_distinct_and_resumable(self, tmp_path):
+        states = {}
+        for name, crash in (("human", False), ("dead", True)):
+            root = tmp_path / name
+            root.mkdir()
+            repo, env, _g = make_repo(root)
+            stub_escalating(root, note=False, crash=crash)
+            stopped = spawn(repo, env, "story-042")
+            marker = root / "data/plans/story-042.handoff.json"
+            state = json.loads(marker.read_text())
+            assert stopped.returncode != 0 and state["state"] == "STOPPED"
+            # Every path in the refusal carries this case's own root, so the raw
+            # strings differ even when both states collapse to one message.
+            states[name] = state["why"].replace(str(root), "ROOT")
+            stub_claude(root)
+            resumed = spawn(repo, env, "resume", "story-042")
+            assert resumed.returncode == 0, resumed.stderr
+        assert states["human"] != states["dead"]
+        assert "final response" in states["human"].lower()
+        assert "log" in states["dead"].lower() and "resume" in states["dead"].lower()
+
     def test_a_dead_teammate_with_a_clean_commit_is_not_reported_as_finished(self, tmp_path):
         repo, env, _g = make_repo(tmp_path)
         stub_escalating(tmp_path, commit=True, note=False, crash=True)

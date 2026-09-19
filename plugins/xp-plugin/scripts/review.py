@@ -178,6 +178,7 @@ def check_reviewer_motion(
     story_id: str = "",
     moved: str = "",
     salvage=False,
+    preserve_motion=False,
 ) -> str:
     """The complete refusal text, or "" if the reviewer behaved.
 
@@ -225,6 +226,8 @@ def check_reviewer_motion(
             " history, so commits it was handed are not in what would merge"
         )
     if git("rev-parse", "HEAD").stdout.strip() != reviewed_head:
+        if preserve_motion:
+            return f"refused: {moved}"
         return refuse(moved or "the read-only reviewer changed HEAD; no reviewer leg may commit")
     return ""
 
@@ -368,7 +371,8 @@ def write_reviewer_diff(report: Path, reviewed_head: str, noun: str) -> str:
     recorded: stdout is lossy and this was the only place the assent artifact
     lived. The tree has ALREADY moved here, so a write that fails rolls back
     rather than leave the lead accepting commits nothing showed them, and
-    abort_text covers a rollback that itself fails. `noun` is the caller's
+    a rollback that itself fails keeps the patch commit and offers no reset for it,
+    because close.py authored it. `noun` is the caller's
     `story <id>` / `sprint <id>` / `free <slug>`: one rule, one implementation."""
     from close import git
 
@@ -381,7 +385,16 @@ def write_reviewer_diff(report: Path, reviewed_head: str, noun: str) -> str:
     except OSError as exc:
         why = f"could not write reviewer handoff at {diff} ({exc})"
         if git("reset", "--hard", reviewed_head, check=False).returncode:
-            return abort_text(reviewed_head, why)
+            # abort_text reads only whether the tree MOVED, so here it would offer to
+            # reset away close.py's own patch commit — the reset that just failed.
+            applied = git("rev-parse", "HEAD").stdout.strip()
+            return (
+                f"refused: {why}; rolling back to {reviewed_head[:8]} ALSO failed, so"
+                f" {applied[:8]} — the patch commit close.py applied — is still HEAD, and"
+                f" no reset is offered for a commit close.py authored. Clear whatever"
+                f" blocked both (a stale .git/index.lock is the usual one), then"
+                f" `close.py {noun} review` again from this tree."
+            )
         return f"refused: {why}; rolled the fix back — fix that path, then `close.py {noun} review`"
     print(
         f"the script-applied review fix changed the tree. Read its commit and full"

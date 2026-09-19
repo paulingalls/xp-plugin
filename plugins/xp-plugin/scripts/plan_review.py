@@ -8,6 +8,7 @@ makes the shipped charter reachable there.
 import argparse
 import json
 import re
+import shlex
 import subprocess
 import sys
 from pathlib import Path
@@ -278,7 +279,16 @@ def _run_review(
             out.write_text(findings)
         except OSError as error:
             return fail(f"refused: cannot write plan-review findings at {out}: {error}"), "failed"
-    outcome, problem = evaluate_disposition(findings, before_plan, plan_bytes(plan_file))
+    after_plan = plan_bytes(plan_file)
+    if after_plan is None:
+        retry = shlex.join(
+            [sys.executable, str(Path(__file__).resolve()), story_id, str(plan_file)]
+        )
+        return fail(
+            f"refused: cannot read the reviewed plan at {plan_file}; restore a readable plan"
+            f" there, then rerun `{retry}`"
+        ), "failed"
+    outcome, problem = evaluate_disposition(findings, before_plan, after_plan)
     if problem:
         return fail(f"refused: {problem}"), outcome
     incomplete_marker(story_id).unlink(missing_ok=True)  # the child's own verdict

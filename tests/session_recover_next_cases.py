@@ -1,6 +1,8 @@
 """The recovery matrix for the lead's next loop action."""
 
 import json
+import re
+import shlex
 import subprocess
 import sys
 
@@ -9,6 +11,37 @@ from session_start_helpers import HOOK, next_lines, run_hook_as, run_recovery, x
 
 
 class NextLoopActionCases:
+    def test_a_released_open_card_routes_through_create_sprint_and_can_be_carried(self, tmp_path):
+        from close import story_card
+        from spawn_helpers import SPAWN, make_repo, seed_refresh_receipt
+
+        repo, env, _g = make_repo(tmp_path, status="planned")
+        root = tmp_path / "data"
+        plan = root / "plan.md"
+        (root / "sprint_branch").unlink()
+        original, _status = story_card(plan.read_text(), "story-042")
+        release = root / "releases/sprint-1.json"
+        release.parent.mkdir(parents=True)
+        release.write_text(json.dumps({"sprint": 1, "merged_sha": "a" * 40, "tag": "v1.0.0"}))
+        recovery = run_recovery(repo, tmp_path, data_dir=root)
+        line = next_lines(recovery.stdout)[0]
+        routes = re.findall(r"`(/[^`]+)`", line)
+        assert routes == ["/create-sprint"] and "story-042" in line, line
+
+        skill = SPAWN.parent.parent / "skills" / routes[0].removeprefix("/") / "SKILL.md"
+        assert skill.is_file() and "story-042" not in skill.read_text()
+        plan.write_text(f"# plan\n### Sprint 2\n{original}")
+        carried, _status = story_card(plan.read_text(), "story-042")
+        assert carried == original
+        next_line = next_lines(run_recovery(repo, tmp_path, data_dir=root).stdout)[0]
+        command = next_line.split("`", 2)[1]
+        argv = shlex.split(command)
+        assert argv[:2] == ["spawn.py", "ready"] and argv[-1] == "story-042"
+        seed_refresh_receipt(repo, env, "story-042")
+        argv[:1] = [sys.executable, str(SPAWN)]
+        ready = subprocess.run(argv, cwd=repo, env=env, capture_output=True, text=True)
+        assert ready.returncode == 0, ready.stderr
+
     @pytest.mark.parametrize(
         ("status", "handoff", "expected"),
         [

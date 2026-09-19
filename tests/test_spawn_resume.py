@@ -7,6 +7,7 @@ import sys
 
 import pytest
 from spawn_helpers import SPAWN, in_tree, make_repo, spawn, stub_claude
+from spawn_resume_bootstrap_cases import BootstrapLeftTreeCases
 
 
 def stopped_story(tmp_path):
@@ -116,7 +117,7 @@ def resume(repo, env, *args):
     return spawn(repo, env, "resume", "story-042", *args)
 
 
-class TestResume:
+class TestResume(BootstrapLeftTreeCases):
     def test_a_clean_finished_handback_is_resumed_without_recreating_it(self, tmp_path):
         repo, env, _g, tree, _marker = finished_story(tmp_path)
         predecessor = in_tree(tree, env, "rev-parse", "HEAD")
@@ -303,7 +304,7 @@ class TestResume:
 
         result = spawn(repo, env, "story-042")
 
-        assert result.returncode == 2 and "already spawned" in result.stderr
+        assert result.returncode == 2 and "spawn.py resume story-042" in result.stderr
         assert not rec.exists(), "plain spawn launched a second teammate"
 
     def test_plain_spawn_refuses_a_finished_worktree_too(self, tmp_path):
@@ -313,7 +314,7 @@ class TestResume:
 
         result = spawn(repo, env, "story-042")
 
-        assert result.returncode == 2 and "already spawned" in result.stderr
+        assert result.returncode == 2 and "spawn.py resume story-042" in result.stderr
 
     def test_card_drift_refuses_until_the_real_remint_route_runs(self, tmp_path):
         repo, env, _g, tree, _marker = stopped_story(tmp_path)

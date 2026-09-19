@@ -21,7 +21,7 @@ from spawn_helpers import (  # noqa: F401
     stub_claude_requiring_verbose,
     stub_codex,
 )
-from test_spawn_escalation import ESCALATION, stub_escalating
+from test_spawn_escalation import ESCALATION, TestDeliberateStop, stub_escalating  # noqa: F401
 from test_spawn_role_briefs import TestRoleBriefs  # noqa: F401
 
 

@@ -357,15 +357,18 @@ class TestTheReviewersOwnFixIsUnderTheGateItPasses:
         assert not marker_file(tmp_path).exists(), "a round certified a tree Verify never saw"
 
     def test_a_recorded_round_is_not_offered_an_undo_that_denies_it(self, tmp_path):
-        """The same red tree, but with findings, so story-054 records the round.
-        The `git reset --hard` this refusal still offers would orphan the sha that
-        round names, and the sentence above it used to say no round existed."""
-        repo, env, _g = make_repo(tmp_path, verify=self.VERIFY)
+        """The same red tree, but with findings, so story-054 records the round. The
+        commit the undo would destroy is close.py's own patch-apply, and it is the sha
+        that round names: no reset may be offered for it."""
+        repo, env, g = make_repo(tmp_path, verify=self.VERIFY)
         report = {"fixed": [], "blocking": ["B"], "noted": []}
         stub_reviewer(tmp_path, patch=self.BREAKS_VERIFY, report=report)
+        launched = g("rev-parse", "HEAD").stdout.strip()
 
         r = close(repo, env, "review")
-        assert r.returncode != 0 and "git reset --hard" in r.stderr, r.stderr
+        assert r.returncode != 0 and g("rev-parse", "HEAD").stdout.strip() != launched
+        assert "git reset" not in r.stderr, r.stderr
+        assert "close.py applied" in r.stderr, r.stderr
         assert "No round was" not in r.stderr and "IS recorded" in r.stderr, r.stderr
         assert marker(tmp_path)["rounds"][-1]["blocking"] == ["B"]
 
@@ -415,3 +418,45 @@ class TestTheFreeLegNamesItsOwnLandCommand:
         assert "the script-applied review fix changed the tree" in r.stdout, r.stdout
         assert "close.py free fix-typo land" in r.stdout, r.stdout
         assert "close.py story" not in r.stdout, r.stdout
+
+
+class TestTheRollbackThatItselfFails:
+    """The sibling of TestTheRoundNeedsItsHandoffDiff: there the rollback SUCCEEDS
+    and the tree returns to the reviewed sha. When it fails, close.py's own patch
+    commit stays at HEAD — and abort_text, which reads only whether the tree MOVED,
+    would offer to reset it away. That is the reset this card forbids for work
+    close.py authored, on the one path where it has already been proven to fail.
+    """
+
+    def test_a_failed_rollback_keeps_the_patch_commit_and_offers_no_reset(
+        self, tmp_path, monkeypatch
+    ):
+        """Both failures are real on-disk state, not injected: a directory at the
+        diff path makes the write fail, and a stale `.git/index.lock` — what a
+        crashed git leaves behind — makes `git reset --hard` fail. The seam is
+        called directly because that lock would also block the apply_patch commit
+        that has to happen first.
+        """
+        import review
+
+        repo, env, g = make_repo(tmp_path)
+        reviewed = g("rev-parse", "HEAD").stdout.strip()
+        (repo / "reviewer-fix.txt").write_text("the reviewer's fix\n")
+        g("add", "-A")
+        g("commit", "-qm", "reviewer patch")
+        applied = g("rev-parse", "HEAD").stdout.strip()
+        assert applied != reviewed, "the fixture never moved the tree"
+
+        report = pathlib.Path(env["XP_DATA"]) / "reports" / "story-042.round-1.json"
+        report.parent.mkdir(parents=True, exist_ok=True)
+        review.diff_path(report).mkdir(parents=True, exist_ok=True)
+        (repo / ".git" / "index.lock").write_text("")
+
+        monkeypatch.chdir(repo)
+        refusal = review.write_reviewer_diff(report, reviewed, "story story-042")
+
+        assert refusal.startswith("refused: "), refusal
+        assert "reset --hard" not in refusal, f"a destructive undo for OUR commit:\n{refusal}"
+        assert applied[:8] in refusal, "the refusal does not name the commit it kept"
+        assert "close.py story story-042 review" in refusal, "no next action that can succeed"
+        assert g("rev-parse", "HEAD").stdout.strip() == applied, "the patch commit was lost"
