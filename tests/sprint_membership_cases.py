@@ -115,10 +115,7 @@ class SprintMembershipCases:
         """The one branch-state boundary story-061 drew that nothing constructed.
         EMPTY IS NOT ABSENT: absent falls back to the default branch on purpose, so
         a truncated record read as absent silently retargets every story merge of
-        the sprint to trunk — the single failure this whole card refuses to risk.
-        The OTHER reader, close.integration_target, is walked by
-        falsifier_sprint_branch_insulation.py — `review` resolves trunk, not the
-        integration target, so this leg cannot stand in for it."""
+        the sprint to trunk — the single failure this whole card refuses to risk."""
         repo, env, _g = make_repo(tmp_path)
         path = tmp_path / "data" / "sprint_branch"
         path.write_text("\n")

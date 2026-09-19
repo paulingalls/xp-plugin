@@ -19,7 +19,10 @@ from datetime import date
 from pathlib import Path
 
 OUT = Path(__file__).resolve().parents[1] / "slow_tests.json"
-ROW = re.compile(r"^(\d+\.\d+)s (?:call|setup|teardown)\s+(\S+)")
+# The node id runs to END OF LINE: a parametrized id may contain spaces, and `\S+`
+# truncated it to a key that matches no test AND aggregates its siblings' durations
+# into one threshold decision (measured: 10 of 718 ids at the 2026-09-18 census).
+ROW = re.compile(r"^(\d+\.\d+)s (?:call|setup|teardown)\s+(.+?)\s*$")
 
 
 def totals(census: str) -> dict[str, float]:
@@ -50,7 +53,8 @@ def main(argv: list[str]) -> int:
                 "threshold_seconds": threshold,
                 "measured_at": sha,
                 "measured_on": date.today().isoformat(),
-                "census": f"{len(per)} tests timed, {sum(per.values()):.0f}s CPU",
+                "census": f"{len(per)} tests with timed rows, {sum(per.values()):.0f}s CPU"
+                " (pytest hides rows under --durations-min, so this is NOT the suite size)",
                 "ids": ids,
             },
             indent=1,

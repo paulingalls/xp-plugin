@@ -53,6 +53,15 @@ and builds four git template repos), not by cores. Superseded here: the earlier
 note that the dogfood tier caps xdist at eight workers, measured when the tier
 was the whole suite.
 
+THE FIFTH RED WAS NOT GROWTH AT ALL, and that is the new failure mode (2026-09-18,
+Paul's call): 187.5s normalized / 1,371 tests, per-test 137ms and GREEN, so only the
+usability ceiling crossed. The cause was a STALE PARTITION — slow_tests.json still
+held the 421 ids of the 2026-09-03 census, so every test added in the fifteen sprints
+since ran at commit however slow it was. Re-running the census at the UNCHANGED 1.0s
+threshold marked 718 of 1,540 and the tier fell to 68.3s / 1,105 tests / 62ms each.
+Neither bound moved and neither should have: a ceiling red whose per-test bound is
+green means the PARTITION is stale before it means the suite is slow. Check that first.
+
 The five-build git fixture is also the same-run load control. Wall clock alone
 measured 137-242s on this tree while unrelated simulator and build work moved
 host load from 16 to 320. Normalize only when that control is slower than its

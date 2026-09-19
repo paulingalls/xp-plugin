@@ -16,7 +16,13 @@ LEFTHOOK = Path(__file__).parent.parent / "lefthook.yml"
 
 def check_records(root, text):
     (root / "work.md").write_text(text)
-    return subprocess.run([sys.executable, CHECKER, root], capture_output=True, text=True)
+    scripts = root / "tests" / "scripts"
+    scripts.mkdir(parents=True)
+    return subprocess.run(
+        [sys.executable, CHECKER, "--scripts-dir", scripts, root],
+        capture_output=True,
+        text=True,
+    )
 
 
 def record(command, replacement=None):
@@ -110,9 +116,16 @@ def test_repo_checker_needs_no_ambient_data_root_when_told_where_to_look(tmp_pat
     assert result.returncode == 0, result.stderr
 
 
-def test_repo_pre_push_runs_the_falsifier_checker():
+def test_repo_pre_push_runs_the_node_id_leg_and_not_the_script_audit():
+    """The audit EXECUTES all 14 live falsifiers, one of which drives `lefthook run
+    pre-push` over a fixture repo and another of which times the fast tier — a nested
+    wall inside the wall, and the contention lefthook.yml:38-45 already paid for once.
+    It belongs to sprint close and this story's Verify, not the push gate. Asserting
+    only the script name let `--skip-script-audit` be added without the guard moving,
+    so the flag is named here: adding OR dropping it must be a deliberate edit.
+    """
     pre_push = LEFTHOOK.read_text().split("pre-push:", 1)[1]
-    assert "python3 tests/scripts/check_falsifier_node_ids.py" in pre_push
+    assert "python3 tests/scripts/check_falsifier_node_ids.py --skip-script-audit" in pre_push
 
 
 def test_non_pytest_falsifier_with_k_is_untouched(tmp_path):
