@@ -304,7 +304,8 @@ def _record_round(
                 if recorded
                 else review.abort_text(head, why, salvage=salvage)
             )
-        note = f" {recorded}" if recorded else ""
+        # `recorded` warns against abort_text's reset; none is offered below.
+        note = " The round IS recorded, and it names this tree." if recorded else ""
         return (
             f"refused: {why}. {applied_head[:8]} is the patch commit close.py applied;"
             f" keep and inspect it, repair the failure, then review again from this tree.{note}"

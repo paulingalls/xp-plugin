@@ -124,7 +124,9 @@ class TestDeliberateStop:
             marker = root / "data/plans/story-042.handoff.json"
             state = json.loads(marker.read_text())
             assert stopped.returncode != 0 and state["state"] == "STOPPED"
-            states[name] = state["why"]
+            # Every path in the refusal carries this case's own root, so the raw
+            # strings differ even when both states collapse to one message.
+            states[name] = state["why"].replace(str(root), "ROOT")
             stub_claude(root)
             resumed = spawn(repo, env, "resume", "story-042")
             assert resumed.returncode == 0, resumed.stderr
