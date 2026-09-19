@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Refuse this repository's open falsifiers that select tests by name."""
+"""Refuse stale node IDs and unowned or unconstructable falsifier scripts."""
 
 import argparse
 import re
@@ -14,6 +14,9 @@ sys.path.insert(0, str(ROOT / "plugins/xp-plugin/scripts/close"))
 
 from env import data_root  # noqa: E402
 from falsifier_batch import corpus  # noqa: E402
+from work import falsifier_result  # noqa: E402
+
+SCRIPT_PATH = re.compile(r"^tests/scripts/falsifier_[^/]+\.py$")
 
 
 def _pytest_words(command: str) -> list[str]:
@@ -67,25 +70,88 @@ def collected_ids() -> tuple[set[str], str]:
     return {line.strip() for line in result.stdout.splitlines() if "::" in line}, ""
 
 
-def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__)
-    # A ROOT, not a work.md path, because corpus() reads root/work.md itself: a file
-    # argument it ignored would report a clean scan of a file it never opened. Resolved
-    # after parsing so --help needs neither a git repo nor XP_DATA.
-    parser.add_argument("root", nargs="?", type=Path, help="data root holding work.md")
-    args = parser.parse_args()
-    root = args.root or data_root()
-    work = root / "work.md"
-    if not work.exists():
-        print(f"scanned nothing: {work} is absent")
-        return 0
-    try:
-        records = list(corpus(root))
-        broad = [eid for eid, _h, command, _c in records if selects_broadly(command)]
-        named = [(eid, nid) for eid, _h, command, _c in records for nid in node_ids(command)]
-    except OSError as exc:
-        print(f"refused: cannot read {work}: {exc}", file=sys.stderr)
-        return 2
+def script_owners(records) -> dict[str, list[str]]:
+    owners = {}
+    for eid, _head, command, _coverage in records:
+        try:
+            paths = {word for word in shlex.split(command) if SCRIPT_PATH.fullmatch(word)}
+        except ValueError:
+            paths = set()
+        for path in paths:
+            owners.setdefault(path, []).append(eid)
+    return owners
+
+
+def script_correspondence(records, scripts_dir: Path) -> int:
+    owners = script_owners(records)
+    present = {f"tests/scripts/{path.name}" for path in scripts_dir.glob("falsifier_*.py")}
+    orphans = present - owners.keys()
+    missing = owners.keys() - present
+    for path in sorted(orphans):
+        print(
+            f"refused: orphan falsifier script {path}; no live Falsifier line owns it."
+            " Remove it if its record was archived, or restore a live Falsifier line",
+            file=sys.stderr,
+        )
+    for path in sorted(missing):
+        print(
+            f"refused: live record(s) {', '.join(owners[path])} name missing script {path}."
+            " Restore the script or repoint the live Falsifier line",
+            file=sys.stderr,
+        )
+    return int(bool(orphans or missing))
+
+
+def could_not_run(command: str, result) -> bool:
+    output = result.stdout + result.stderr
+    if "COULD NOT RUN" in output:
+        return True
+    if "Traceback" not in output:
+        return False
+    if "ImportError" in output or "ModuleNotFoundError" in output:
+        return True
+    paths = [word for word in shlex.split(command) if SCRIPT_PATH.fullmatch(word)]
+    return "FileNotFoundError" in output and any(path in output for path in paths)
+
+
+def audit_scripts(records, runner=falsifier_result) -> int:
+    commands = {}
+    for eid, _head, command, _coverage in records:
+        try:
+            owns_script = any(SCRIPT_PATH.fullmatch(word) for word in shlex.split(command))
+        except ValueError:
+            owns_script = False
+        if owns_script:
+            commands.setdefault(command, []).append(eid)
+    status = 0
+    for command, eids in commands.items():
+        result = runner(command)
+        if not result.returncode:
+            continue
+        unrunnable = could_not_run(command, result)
+        status = 2 if unrunnable else max(status, 1)
+        print(
+            f"{'COULD NOT RUN' if unrunnable else 'RED'}: {command} (record(s) {', '.join(eids)})",
+            file=sys.stderr,
+        )
+        print(f"stdout:\n{result.stdout or '(empty)'}", file=sys.stderr)
+        print(f"stderr:\n{result.stderr or '(empty)'}", file=sys.stderr)
+        print(
+            "Repair the command or fixture" if unrunnable else "Fix the falsified claim",
+            file=sys.stderr,
+        )
+    return status
+
+
+def check_scripts(records, scripts_dir: Path, execute=True, runner=falsifier_result) -> int:
+    if status := script_correspondence(records, scripts_dir):
+        return status
+    return audit_scripts(records, runner) if execute else 0
+
+
+def check_node_ids(records, work: Path) -> int:
+    broad = [eid for eid, _h, command, _c in records if selects_broadly(command)]
+    named = [(eid, nid) for eid, _h, command, _c in records for nid in node_ids(command)]
     if broad:
         print(
             f"refused: open falsifiers {', '.join(broad)} select tests by name; replace"
@@ -115,6 +181,43 @@ def main() -> int:
         )
         return 1
     print(f"checked open falsifiers in {work} ({len(named)} node ids resolve)")
+    return 0
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    # A ROOT, not a work.md path, because corpus() reads root/work.md itself: a file
+    # argument it ignored would report a clean scan of a file it never opened. Resolved
+    # after parsing so --help needs neither a git repo nor XP_DATA.
+    parser.add_argument("root", nargs="?", type=Path, help="data root holding work.md")
+    parser.add_argument(
+        "--scripts-dir",
+        type=Path,
+        default=ROOT / "tests" / "scripts",
+        help="directory holding falsifier scripts",
+    )
+    parser.add_argument(
+        "--skip-script-audit",
+        action="store_true",
+        help="check script ownership without executing live script commands",
+    )
+    args = parser.parse_args()
+    root = args.root or data_root()
+    work = root / "work.md"
+    if not work.exists():
+        print(f"scanned nothing: {work} is absent")
+        return 0
+    try:
+        records = list(corpus(root))
+    except OSError as exc:
+        print(f"refused: cannot read {work}: {exc}", file=sys.stderr)
+        return 2
+    if script_correspondence(records, args.scripts_dir):
+        return 1
+    if status := check_node_ids(records, work):
+        return status
+    if not args.skip_script_audit:
+        return audit_scripts(records)
     return 0
 
 

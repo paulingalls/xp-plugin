@@ -16,7 +16,13 @@ LEFTHOOK = Path(__file__).parent.parent / "lefthook.yml"
 
 def check_records(root, text):
     (root / "work.md").write_text(text)
-    return subprocess.run([sys.executable, CHECKER, root], capture_output=True, text=True)
+    scripts = root / "tests" / "scripts"
+    scripts.mkdir(parents=True)
+    return subprocess.run(
+        [sys.executable, CHECKER, "--scripts-dir", scripts, root],
+        capture_output=True,
+        text=True,
+    )
 
 
 def record(command, replacement=None):

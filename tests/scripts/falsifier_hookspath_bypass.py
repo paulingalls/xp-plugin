@@ -36,14 +36,22 @@ from pathlib import Path
 REPO = Path(__file__).parents[2]
 
 
+def could_not_run(message: str, output="") -> int:
+    print(f"COULD NOT RUN: {message}{output}", file=sys.stderr)
+    return 2
+
+
 def main(tmp: Path) -> int:
     if not shutil.which("lefthook"):
-        print("lefthook absent — cannot construct the condition", file=sys.stderr)
-        return 1
+        return could_not_run("lefthook is absent; cannot construct the condition")
     run = lambda *a, **k: subprocess.run(a, cwd=tmp, capture_output=True, text=True, **k)  # noqa: E731
-    run("git", "init", "-q", "-b", "main")
-    run("git", "config", "user.email", "lead@xp.local")
-    run("git", "config", "user.name", "the lead")
+    setup = (
+        run("git", "init", "-q", "-b", "main"),
+        run("git", "config", "user.email", "lead@xp.local"),
+        run("git", "config", "user.name", "the lead"),
+    )
+    if any(result.returncode for result in setup):
+        return could_not_run("fixture repository setup failed")
     lefthook_yml = REPO / "lefthook.yml"
     LEFTHOOK = lefthook_yml.read_text()
     shutil.copy(lefthook_yml, tmp / "lefthook.yml")
@@ -53,6 +61,20 @@ def main(tmp: Path) -> int:
     stub = tmp / "tests" / "scripts"
     stub.mkdir(parents=True)
     (stub / "check_falsifier_node_ids.py").write_text("raise SystemExit(0)\n")
+    source = re.search(r"(?m)^source_dir:\s*([^\s#]+)", LEFTHOOK)
+    hook = None
+    script_jobs = []
+    for line in LEFTHOOK.splitlines():
+        if match := re.fullmatch(r"([a-z][a-z0-9-]*):", line):
+            hook = match.group(1)
+        if match := re.match(r"\s*-\s*script:\s*([^\s#]+)", line):
+            script_jobs.append((hook, match.group(1)))
+    if script_jobs and (not source or any(not job_hook for job_hook, _name in script_jobs)):
+        return could_not_run("script jobs exist but source_dir cannot be derived")
+    for job_hook, name in script_jobs:
+        script = tmp / source.group(1) / job_hook / name
+        script.parent.mkdir(parents=True, exist_ok=True)
+        script.write_text("#!/bin/sh\nexit 0\n")
     lib = tmp / "plugins" / "xp-plugin" / "templates"
     lib.mkdir(parents=True)
     # DERIVED from lefthook.yml, never hand-listed: a stub that misses ONE helper
@@ -63,24 +85,21 @@ def main(tmp: Path) -> int:
     # the hook reads, and a stanza that sources a new helper cannot outrun it.
     sourced = sorted(set(re.findall(r"hook-lib\.sh;\s*([a-z_][a-z0-9_]*)", LEFTHOOK)))
     if not sourced:
-        raise SystemExit(
-            "refused: no `hook-lib.sh; <fn>` stanza found in lefthook.yml — the"
-            " stub would define nothing and pre-push would exit 127"
+        return could_not_run(
+            "no `hook-lib.sh; <fn>` stanza found; the fixture would define nothing"
         )
     (lib / "hook-lib.sh").write_text("".join(f"{fn}() {{ :; }}\n" for fn in sourced))
     (tmp / "clean.py").write_text("A = 1\n")
     run("git", "add", "-A")
-    run("git", "commit", "-qm", "base")
+    if run("git", "commit", "-qm", "base").returncode:
+        return could_not_run("fixture baseline commit failed")
 
     control = run("lefthook", "run", "pre-push")
     if control.returncode != 0:
-        print(
-            "pre-push already REFUSES this fixture before any violation exists, so a"
-            " refusal below would prove nothing about the wall — fix the fixture or the"
-            f" broken stanza first:\n{control.stdout}{control.stderr}",
-            file=sys.stderr,
+        return could_not_run(
+            "pre-push refused the clean fixture; fix the fixture or broken stanza:\n",
+            control.stdout + control.stderr,
         )
-        return 1
 
     # ruff rejects an unused import; the commit skips every hook by pointing
     # core.hooksPath at a directory that does not exist — git says nothing.
@@ -88,8 +107,7 @@ def main(tmp: Path) -> int:
     run("git", "add", "-A")
     bypassed = run("git", "-c", "core.hooksPath=/nonexistent-hooks", "commit", "-qm", "sneaked")
     if bypassed.returncode != 0:
-        print("the bypass itself failed; the condition was never built", file=sys.stderr)
-        return 1
+        return could_not_run("the bypass commit failed; the condition was never built")
 
     walled = run("lefthook", "run", "pre-push")
     if walled.returncode == 0:

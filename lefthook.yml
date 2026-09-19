@@ -57,4 +57,4 @@ pre-push:
     - name: full-tests
       run: sh -c '. plugins/xp-plugin/templates/hook-lib.sh; run_tier story; s=$?; [ $s -eq 5 ] && exit 0; exit $s'
     - name: falsifier-node-ids
-      run: python3 tests/scripts/check_falsifier_node_ids.py
+      run: python3 tests/scripts/check_falsifier_node_ids.py --skip-script-audit
