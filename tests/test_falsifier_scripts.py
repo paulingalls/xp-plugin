@@ -40,6 +40,10 @@ def records(root, text):
     return list(checker.corpus(root))
 
 
+def checks(root, live, directory, **kwargs):
+    return checker.run_checks(live, root / "work.md", directory, **kwargs)
+
+
 def scripts(repo, names):
     directory = repo / "tests" / "scripts"
     directory.mkdir(parents=True)
@@ -68,7 +72,7 @@ def test_live_falsifier_lines_and_directory_scripts_must_correspond(tmp_path, ca
     )
     live = records(tmp_path / "data", record("python3 tests/scripts/falsifier_live.py"))
 
-    assert checker.check_scripts(live, directory, execute=False) == 1
+    assert checks(tmp_path / "data", live, directory, execute=False) == 1
     error = capsys.readouterr().err
     assert "falsifier_orphan.py" in error
     assert "falsifier_live.py" not in error
@@ -88,8 +92,11 @@ def test_a_files_line_does_not_own_a_resolution_script(tmp_path, capsys):
     )
 
     assert (
-        checker.check_scripts(
-            records(tmp_path / "data", original + replacement), directory, execute=False
+        checks(
+            tmp_path / "data",
+            records(tmp_path / "data", original + replacement),
+            directory,
+            execute=False,
         )
         == 1
     )
@@ -101,14 +108,14 @@ def test_archiving_a_record_names_the_orphan_without_removing_it(tmp_path, capsy
     directory = scripts(tmp_path, {"falsifier_retired.py": body})
     original = record("python3 tests/scripts/falsifier_retired.py")
     root = tmp_path / "data"
-    assert checker.check_scripts(records(root, original), directory, execute=False) == 0
+    assert checks(root, records(root, original), directory, execute=False) == 0
     archived = (
         "## archived 2026-09-18T00:00:01Z\n"
         f"Archives: {entry_id(original)}\n"
         "Disposition: removed after archive\n\n"
     )
 
-    assert checker.check_scripts(records(root, original + archived), directory, execute=False) == 1
+    assert checks(root, records(root, original + archived), directory, execute=False) == 1
     assert "falsifier_retired.py" in capsys.readouterr().err
     assert (directory / "falsifier_retired.py").read_text() == body
 
@@ -118,7 +125,7 @@ def test_a_live_record_naming_a_missing_script_is_refused_before_execution(tmp_p
     live = records(tmp_path / "data", record("python3 tests/scripts/falsifier_missing.py"))
     called = []
 
-    assert checker.check_scripts(live, directory, runner=called.append) == 1
+    assert checks(tmp_path / "data", live, directory, runner=called.append) == 1
     error = capsys.readouterr().err
     expected_id = entry_id(record("python3 tests/scripts/falsifier_missing.py"))
     assert "falsifier_missing.py" in error and expected_id in error
@@ -142,7 +149,8 @@ def test_claim_red_and_could_not_run_are_distinct(tmp_path, capsys):
         for index, name in enumerate(bodies)
     )
 
-    status = checker.check_scripts(
+    status = checks(
+        tmp_path / "data",
         records(tmp_path / "data", ledger),
         directory,
         runner=lambda command: run_in(tmp_path, command),
@@ -162,6 +170,35 @@ def test_claim_red_and_could_not_run_are_distinct(tmp_path, capsys):
     assert checker.audit_scripts(claim, runner=lambda command: run_in(tmp_path, command)) == 1
 
 
+def test_a_script_the_interpreter_cannot_open_is_not_a_claim_red(tmp_path, capsys):
+    """The working directory, not the claim: `can't open file` carries no traceback at
+    all, so the Traceback-shaped tests above cannot stand in for this one."""
+    directory = scripts(tmp_path, {"falsifier_moved.py": "raise SystemExit(0)\n"})
+    command = "python3 tests/scripts/falsifier_moved.py"
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+
+    status = checks(
+        tmp_path / "data",
+        records(tmp_path / "data", record(command)),
+        directory,
+        runner=lambda c: run_in(elsewhere, c),
+    )
+
+    assert status == 2
+    assert f"COULD NOT RUN: {command}" in capsys.readouterr().err
+
+
+def test_the_audit_runs_a_live_falsifier_from_any_working_directory(tmp_path, monkeypatch):
+    """The DEFAULT runner is the shipped path and the least-walked one: a Falsifier line
+    is repo-relative, so an ambient cwd decided whether the command ran at all."""
+    monkeypatch.chdir(tmp_path)
+    command = "cat tests/scripts/falsifier_fast_tier_cost.py"
+
+    assert checker.audit_scripts(records(tmp_path / "data", record(command))) == 0
+    assert Path.cwd().resolve() == tmp_path.resolve()
+
+
 def test_duplicate_records_run_one_complete_command_once(tmp_path):
     command = f"{sys.executable} tests/scripts/falsifier_shared.py --complete"
     directory = scripts(tmp_path, {"falsifier_shared.py": "raise SystemExit(0)\n"})
@@ -172,7 +209,8 @@ def test_duplicate_records_run_one_complete_command_once(tmp_path):
         return SimpleNamespace(returncode=0, stdout="", stderr="", elapsed=0.0)
 
     assert (
-        checker.check_scripts(
+        checks(
+            tmp_path / "data",
             records(tmp_path / "data", record(command, "one.py") + record(command, "two.py")),
             directory,
             runner=green,

@@ -2,6 +2,7 @@
 """Refuse stale node IDs and unowned or unconstructable falsifier scripts."""
 
 import argparse
+import os
 import re
 import shlex
 import subprocess
@@ -102,19 +103,37 @@ def script_correspondence(records, scripts_dir: Path) -> int:
     return int(bool(orphans or missing))
 
 
+def run_at_repo_root(command: str):
+    """A falsifier command is repo-relative, so the CHECK's working directory must not
+    decide whether it runs: from anywhere else the interpreter never opens the script,
+    and its "can't open file" is not a traceback — the audit would read a claim red
+    that never ran, which is the inversion this whole audit exists to prevent."""
+    here = Path.cwd()
+    os.chdir(ROOT)
+    try:
+        return falsifier_result(command)
+    finally:
+        os.chdir(here)
+
+
 def could_not_run(command: str, result) -> bool:
     output = result.stdout + result.stderr
     if "COULD NOT RUN" in output:
+        return True
+    paths = [word for word in shlex.split(command) if SCRIPT_PATH.fullmatch(word)]
+    names_the_script = any(path in output for path in paths)
+    # No traceback at all when the INTERPRETER cannot open the script — a move or a
+    # stale path, never the claim.
+    if "No such file or directory" in output and names_the_script:
         return True
     if "Traceback" not in output:
         return False
     if "ImportError" in output or "ModuleNotFoundError" in output:
         return True
-    paths = [word for word in shlex.split(command) if SCRIPT_PATH.fullmatch(word)]
-    return "FileNotFoundError" in output and any(path in output for path in paths)
+    return "FileNotFoundError" in output and names_the_script
 
 
-def audit_scripts(records, runner=falsifier_result) -> int:
+def audit_scripts(records, runner=run_at_repo_root) -> int:
     commands = {}
     for eid, _head, command, _coverage in records:
         try:
@@ -141,12 +160,6 @@ def audit_scripts(records, runner=falsifier_result) -> int:
             file=sys.stderr,
         )
     return status
-
-
-def check_scripts(records, scripts_dir: Path, execute=True, runner=falsifier_result) -> int:
-    if status := script_correspondence(records, scripts_dir):
-        return status
-    return audit_scripts(records, runner) if execute else 0
 
 
 def check_node_ids(records, work: Path) -> int:
@@ -184,6 +197,19 @@ def check_node_ids(records, work: Path) -> int:
     return 0
 
 
+def run_checks(
+    records, work: Path, scripts_dir: Path, execute=True, runner=run_at_repo_root
+) -> int:
+    """The WHOLE check, in the order the CLI runs it, so a test walks the shipped path:
+    correspondence first because a missing script makes every later verdict a guess,
+    then the cheap node-id resolution, then the audit that spends two minutes."""
+    if status := script_correspondence(records, scripts_dir):
+        return status
+    if status := check_node_ids(records, work):
+        return status
+    return audit_scripts(records, runner) if execute else 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     # A ROOT, not a work.md path, because corpus() reads root/work.md itself: a file
@@ -212,13 +238,7 @@ def main() -> int:
     except OSError as exc:
         print(f"refused: cannot read {work}: {exc}", file=sys.stderr)
         return 2
-    if script_correspondence(records, args.scripts_dir):
-        return 1
-    if status := check_node_ids(records, work):
-        return status
-    if not args.skip_script_audit:
-        return audit_scripts(records)
-    return 0
+    return run_checks(records, work, args.scripts_dir, execute=not args.skip_script_audit)
 
 
 if __name__ == "__main__":
