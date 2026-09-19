@@ -18,6 +18,7 @@ from falsifier_batch import corpus  # noqa: E402
 from work import falsifier_result  # noqa: E402
 
 SCRIPT_PATH = re.compile(r"^tests/scripts/falsifier_[^/]+\.py$")
+CANNOT_OPEN = re.compile(r"can't open file '[^']*': \[Errno 2\]")
 
 
 def _pytest_words(command: str) -> list[str]:
@@ -26,15 +27,6 @@ def _pytest_words(command: str) -> list[str]:
     except ValueError:
         return []
     return words if any(Path(w).name in ("pytest", "py.test") for w in words) else []
-
-
-def selects_by_name(command: str) -> bool:
-    """Any name-based selection, -k OR a node id. A node id IS a name (constraint
-    11), and naming one buys nothing if nothing checks it still resolves — the
-    2026-09-02 close aborted on a node id left behind by a test that moved file."""
-    words = _pytest_words(command)
-    broad = any(w.startswith("-k") or re.fullmatch(r"-[dflqsvx]+k.*", w) for w in words)
-    return bool(words) and (broad or any("::" in w for w in words))
 
 
 def selects_broadly(command: str) -> bool:
@@ -122,8 +114,12 @@ def could_not_run(command: str, result) -> bool:
         return True
     paths = [word for word in shlex.split(command) if SCRIPT_PATH.fullmatch(word)]
     names_the_script = any(path in output for path in paths)
-    # No traceback at all when the INTERPRETER cannot open the script — a move or a
-    # stale path, never the claim.
+    # No traceback at all when an interpreter cannot open a script, and the file it
+    # names is often NOT the falsifier's: a falsifier that drives a repo script by
+    # path reports the SUBJECT's rename this way, which is the very move AC 3 says
+    # must not read as the claim going red.
+    if CANNOT_OPEN.search(output):
+        return True
     if "No such file or directory" in output and names_the_script:
         return True
     if "Traceback" not in output:
@@ -163,6 +159,9 @@ def audit_scripts(records, runner=run_at_repo_root) -> int:
 
 
 def check_node_ids(records, work: Path) -> int:
+    """A node id IS a name (constraint 11), and naming one buys nothing if nothing
+    checks it still resolves — the 2026-09-02 close aborted on a node id left behind
+    by a test that moved file."""
     broad = [eid for eid, _h, command, _c in records if selects_broadly(command)]
     named = [(eid, nid) for eid, _h, command, _c in records for nid in node_ids(command)]
     if broad:

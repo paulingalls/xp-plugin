@@ -189,6 +189,36 @@ def test_a_script_the_interpreter_cannot_open_is_not_a_claim_red(tmp_path, capsy
     assert f"COULD NOT RUN: {command}" in capsys.readouterr().err
 
 
+def test_a_renamed_subject_script_is_not_a_claim_red(tmp_path, capsys):
+    """The falsifier is not the only script an interpreter must open. A falsifier that
+    drives a repo script by path reports THAT script's rename, so the message names
+    the subject and not the falsifier — which is why the cwd test above, matching on
+    the falsifier's own path, passed while this case still read RED."""
+    directory = scripts(
+        tmp_path,
+        {
+            "falsifier_drives.py": (
+                "import subprocess,sys\n"
+                "r=subprocess.run([sys.executable,'plugins/renamed_away.py'],"
+                "capture_output=True,text=True)\n"
+                "print(r.stdout,end=''); print(r.stderr,end='',file=sys.stderr)\n"
+                "raise SystemExit(r.returncode)\n"
+            )
+        },
+    )
+    command = "python3 tests/scripts/falsifier_drives.py"
+
+    status = checks(
+        tmp_path / "data",
+        records(tmp_path / "data", record(command)),
+        directory,
+        runner=lambda c: run_in(tmp_path, c),
+    )
+
+    assert status == 2
+    assert f"COULD NOT RUN: {command}" in capsys.readouterr().err
+
+
 def test_the_audit_runs_a_live_falsifier_from_any_working_directory(tmp_path, monkeypatch):
     """The DEFAULT runner is the shipped path and the least-walked one: a Falsifier line
     is repo-relative, so an ambient cwd decided whether the command ran at all."""
