@@ -420,3 +420,24 @@ class TestTheProfileCarriesTheInvocation:
 
 from plan_review_disposition import TestPlanEditsInPlace  # noqa: E402,F401
 from plan_review_liveness import TestTheReviewOutlivesItsCaller  # noqa: E402,F401
+
+
+def test_blocked_plan_reviews_converge_on_the_cap_instead_of_restarting(tmp_path):
+    """A block replans, but a replanned block is round 2 — not round 1 again."""
+    from test_spawn_stages import stub_stages
+
+    repo, env, _g = make_repo(tmp_path, files="src/thing.py, src/other.py")
+    stub_stages(tmp_path, blocking_plan=True)
+    plans = Path(env["XP_DATA"]) / "plans"
+    assert spawn(repo, env, "story-042").returncode == 2
+    (plans / "story-042.round-1.md").write_text("BLOCKED-ON-THE-FIRST-PLAN")
+
+    second = spawn(repo, env, "resume", "story-042")
+
+    assert second.returncode == 2
+    assert (plans / "story-042.round-2.md").is_file()
+    launched = [json.loads(line) for line in (tmp_path / "events.jsonl").read_text().splitlines()]
+    assert "BLOCKED-ON-THE-FIRST-PLAN" in launched[-1]["prompt"]
+    third = spawn(repo, env, "resume", "story-042")
+    assert third.returncode == 2 and "cap" in third.stderr
+    assert not (plans / "story-042.round-3.md").exists()

@@ -18,6 +18,7 @@ from review_runner import _dead as _dead
 from review_runner import _detach as _detach
 from review_runner import (
     _marker_state,
+    archive_failed_findings,
     review_findings_path,
     review_is_capped,
     review_marker,
@@ -103,19 +104,26 @@ def _run_review(sprint_id: str, out: Path, dry_run: bool) -> int:
     )
     if dry_run:
         return fail("refused: " + error) if error else 0
+
+    # A refused round is not a round: left in place it spends one of the two the cap
+    # allows, and two dead reviewers would lock the slate out of every review it has
+    # yet to get, under a refusal telling the lead to judge findings nobody wrote.
+    def refused(message: str) -> int:
+        return fail(message + archive_failed_findings(out))
+
     if (tree_state(Path.cwd()), _slate(sprint_id)) != before:
-        return fail(
+        return refused(
             "refused: the slate reviewer changed the repository or the slate — restore it"
             " and review again. The plan lives outside the repo, so no diff shows it"
         )
     if error:
-        return fail(error)
+        return refused(error)
     try:
         findings = out.read_text().strip()
     except OSError:
         findings = ""
     if not findings:
-        return fail(f"refused: the slate reviewer wrote no findings at {out.resolve()}")
+        return refused(f"refused: the slate reviewer wrote no findings at {out.resolve()}")
     review_marker(sprint_id, "slate").unlink(missing_ok=True)
     print(findings)
     return 0

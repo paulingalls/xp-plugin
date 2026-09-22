@@ -364,7 +364,13 @@ def cmd_spawn(story_id: str, override: str, dry_run: bool, resuming: bool = Fals
             return stop(why, 0)
         from review_runner import archive_review_rounds
 
-        if problem := archive_review_rounds(story_id, "plan"):
+        # Only a CARD amendment starts the count over. A reviewer's own block also
+        # replans, and archiving there would hand every block a fresh pair of rounds:
+        # measured, four blocks ran four planner+reviewer pairs, all numbered round 1
+        # and none carrying the last one's findings.
+        if prior_stages.get("plan-reviewer") != "blocked" and (
+            problem := archive_review_rounds(story_id, "plan")
+        ):
             return stop(
                 f"{problem}; preserve the replacement draft and repair the plan-review"
                 " artifacts before resuming",

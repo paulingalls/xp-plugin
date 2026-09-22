@@ -87,6 +87,25 @@ def test_round_two_bundle_carries_round_one_findings(tmp_path):
     assert "sprint-1.round-2.md" in prompt
 
 
+def test_dead_slate_reviewers_do_not_satisfy_the_two_round_cap(tmp_path):
+    repo, env = slate_repo(tmp_path)
+    binary = tmp_path / "bin" / "claude"
+    stub_slate_reviewer(tmp_path)  # dies AFTER writing findings — the burnable shape
+    binary.write_text(
+        binary.read_text().replace("print(json.dumps(", "sys.exit(9)\nprint(json.dumps(")
+    )
+    binary.chmod(0o755)
+    root = Path(env["XP_DATA"]) / "slate-reviews"
+    for _attempt in range(2):
+        assert slate_review(repo, env).returncode == 2
+    assert not (root / "sprint-1.round-1.md").exists()
+    assert len(list(root.glob("sprint-1.round-1.failed-*.md"))) == 2
+
+    launch = stub_slate_reviewer(tmp_path)
+    assert slate_review(repo, env).returncode == 0
+    assert launch.exists() and (root / "sprint-1.round-1.md").is_file()
+
+
 @pytest.mark.parametrize("verdict", ["RED", "GREEN"])
 def test_a_third_slate_round_is_refused_on_count_without_launching(tmp_path, verdict):
     repo, env = slate_repo(tmp_path)
