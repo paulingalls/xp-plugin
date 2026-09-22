@@ -7,6 +7,7 @@ from sprint_helpers import head, make_repo, marker_path, sprint, stage_key, stag
 FINDERS = ["find-security", "find-state-lifecycle", "find-test-vacuity"]
 READ_ONLY = [*FINDERS, "verify-1", "verify-2"]
 FINDING = {"fixed": [], "blocking": ["F"], "noted": []}
+CLEAN = {"fixed": [], "blocking": [], "noted": []}
 
 
 def _stop_at_closer(tmp_path, target="src.py"):
@@ -370,3 +371,44 @@ def test_a_round_recorded_during_the_closer_survives_the_resume(tmp_path):
     assert len(rounds) == 2
     assert rounds[1] == landed, "the resume rewrote the round that landed beside it"
     assert "close marker changed" in rounds[0]["incomplete"], rounds[0]
+
+
+def test_rebatched_verifiers_are_not_reused_over_a_different_candidate_set(tmp_path):
+    """`verify-N` is a batch INDEX, not a candidate set. Reusing it because the key
+    is recorded credits a refutation the verifier never made: here three candidates
+    that batched into verify-1 and verify-2 become one, which batches into verify-1
+    alone, so neither recorded report covers what this round must judge."""
+    repo, env, _g = make_repo(tmp_path)
+    _stop_at_closer(tmp_path)
+    assert sprint(repo, env, "review").returncode == 2
+    root = Path(env["XP_DATA"]) / "reports/sprint"
+    for slug in FINDERS[1:]:
+        (root / f"2.{slug}.round-1.json").write_text(json.dumps(CLEAN))
+    before = len(launches(tmp_path))
+
+    resumed, stages = _fresh_stages(tmp_path, repo, env, before)
+
+    assert resumed.returncode == 0, resumed.stderr
+    assert stages == ["verify-1", "close"], stages
+    assert "cannot reuse verifiers" in resumed.stdout, resumed.stdout
+    round_ = json.loads(marker_path(tmp_path).read_text())["rounds"][0]
+    assert round_["reused"] == FINDERS and round_["ran"] == ["verify-1", "close"]
+
+
+def test_an_incomplete_round_naming_no_stages_opens_a_fresh_round(tmp_path):
+    """A round recorded before `stages` existed names no prefix to resume from, and
+    absent is not empty: taking it would read a key that is not there."""
+    repo, env, _g = make_repo(tmp_path)
+    _stop_at_closer(tmp_path)
+    assert sprint(repo, env, "review").returncode == 2
+    state = json.loads(marker_path(tmp_path).read_text())
+    state["rounds"][0].pop("stages")
+    marker_path(tmp_path).write_text(json.dumps(state))
+    before = len(launches(tmp_path))
+
+    retried, stages = _fresh_stages(tmp_path, repo, env, before)
+
+    assert retried.returncode == 0, retried.stderr
+    assert "Traceback" not in retried.stderr, retried.stderr
+    assert stages[0].startswith("find-"), stages
+    assert len(json.loads(marker_path(tmp_path).read_text())["rounds"]) == 2
