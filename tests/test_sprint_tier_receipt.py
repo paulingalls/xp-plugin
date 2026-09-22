@@ -13,6 +13,7 @@ from sprint_helpers import (
     marker_path,
     record_reviews,
     sprint,
+    staged_stub,
     work,
 )
 
@@ -87,8 +88,8 @@ def advance_origin(repo, g, filename=None, content="", empty=False):
 
 
 class TestStartReceipt:
-    def test_start_records_a_green_full_tier_receipt_for_the_clean_tree(self, tmp_path):
-        repo, env, g, events, tier = counted_repo(tmp_path)
+    def test_start_emits_close_material_without_running_the_full_tier(self, tmp_path):
+        repo, env, _g, events, _tier = counted_repo(tmp_path)
         path = marker_path(tmp_path)
         path.parent.mkdir(parents=True)
         path.write_text(json.dumps({"rounds": [{"sentinel": "preserved"}]}))
@@ -96,21 +97,14 @@ class TestStartReceipt:
         result = sprint(repo, env, "start")
 
         assert result.returncode == 0, result.stderr
-        assert run_count(events) == 1
-        receipt = state(tmp_path)["full_tier"]
-        assert receipt == {
-            "tier": "full",
-            "command": tier,
-            "tree": tree(g),
-            "head": head(repo, env),
-            "verdict": "passed",
-            "ran_by": "start",
-            "reused": False,
-        }
+        assert run_count(events) == 0
+        assert "full_tier" not in state(tmp_path)
+        assert "notes to triage" in result.stdout
+        assert "Session digest" in result.stdout
         assert state(tmp_path)["rounds"] == [{"sentinel": "preserved"}]
 
     @pytest.mark.parametrize("kind", ["tracked", "untracked"])
-    def test_start_refuses_dirt_before_the_batch_or_tier(self, tmp_path, kind):
+    def test_start_refuses_dirt_before_the_batch(self, tmp_path, kind):
         repo, env, _g, events, _tier = counted_repo(tmp_path)
         target = repo / ("src.py" if kind == "tracked" else "untracked.py")
         target.write_text(target.read_text() + "DIRT = 1\n" if target.exists() else "DIRT = 1\n")
@@ -143,8 +137,8 @@ class TestStartReceipt:
 
         result = sprint(repo, env, "start")
 
-        assert result.returncode == 2 and "batch" in result.stderr.lower()
-        assert run_count(events) == 0
+        assert result.returncode == 2 and "falsifier batch left" in result.stderr
+        assert "notes to triage" not in result.stdout and run_count(events) == 0
 
     def test_an_initial_unfinished_open_still_records_without_close_checks(self, tmp_path):
         plan = """# plan
@@ -163,32 +157,34 @@ Verify: true
         assert not events.exists()
 
     @pytest.mark.parametrize("kind", ["tracked", "untracked", "commit"])
-    def test_green_tier_motion_is_reported_without_a_receipt(self, tmp_path, kind):
+    def test_start_does_not_run_a_tier_that_moves_the_tree(self, tmp_path, kind):
         if kind == "tracked":
             command = "printf '\\nMOVED = 1' >> src.py"
         elif kind == "untracked":
             command = "touch generated.py"
         else:
             command = "printf '\\nMOVED = 1' >> src.py && git commit -qam tier-motion"
-        repo, env, _g, _events, _tier = counted_repo(tmp_path, command)
+        repo, env, g, _events, _tier = counted_repo(tmp_path, command)
+        before, old_head = (repo / "src.py").read_bytes(), head(repo, env)
 
         result = sprint(repo, env, "start")
 
         assert result.returncode == 0, result.stderr
-        assert "no reusable receipt" in result.stdout.lower()
+        assert (repo / "src.py").read_bytes() == before and head(repo, env) == old_head
+        assert not g("status", "--porcelain").stdout
+        assert not (repo / "generated.py").exists()
         assert "full_tier" not in state(tmp_path)
 
-    def test_a_red_retry_invalidates_the_prior_green_receipt(self, tmp_path):
+    def test_start_reentry_preserves_the_land_receipt(self, tmp_path):
         flag = tmp_path / "red"
         repo, env, _g, _events, _tier = counted_repo(tmp_path, f"test ! -e {flag}")
         assert sprint(repo, env, "start").returncode == 0
-        assert "full_tier" in state(tmp_path)
+        record_reviews(tmp_path, repo, env)
+        assert sprint(repo, env, "land").returncode == 2
+        before = marker_path(tmp_path).read_bytes()
         flag.touch()
-
         result = sprint(repo, env, "start")
-
-        assert result.returncode == 2 and "full tier red" in result.stderr
-        assert "full_tier" not in state(tmp_path)
+        assert result.returncode == 0 and marker_path(tmp_path).read_bytes() == before
 
     def test_start_refuses_an_unreadable_sprint_marker_without_overwriting_it(self, tmp_path):
         repo, env, _g, events, _tier = counted_repo(tmp_path)
@@ -203,36 +199,70 @@ Verify: true
         assert "Traceback" not in result.stderr and run_count(events) == 0
         assert path.read_bytes() == before
 
-    def test_a_green_tier_that_locks_the_index_records_no_receipt(self, tmp_path):
-        """The pre-tier write-tree refuses; the post-tier one raised, so a tier that
-        left a lock behind ended a GREEN close in a stack trace at exit 1 — after the
-        deferred falsifiers had already been printed as trusted by it."""
+    def test_start_does_not_run_a_tier_that_locks_the_index(self, tmp_path):
         repo, env, _g, _events, _tier = counted_repo(tmp_path, "touch .git/index.lock")
 
         result = sprint(repo, env, "start")
 
         assert result.returncode == 0, result.stdout + result.stderr
         assert "Traceback" not in result.stderr
-        assert "no reusable receipt" in result.stdout
+        assert not (repo / ".git" / "index.lock").exists()
         assert "full_tier" not in state(tmp_path)
 
-    def test_start_refuses_when_git_cannot_name_the_tree(self, tmp_path):
+    def test_land_refuses_when_git_cannot_name_the_tree(self, tmp_path):
         repo, env, _g, events, _tier = counted_repo(tmp_path)
+        record_reviews(tmp_path, repo, env)
         (repo / ".git" / "index.lock").touch()
 
-        result = sprint(repo, env, "start")
+        result = sprint(repo, env, "land")
 
         assert result.returncode == 2 and "write tree" in result.stderr.lower()
         assert "Traceback" not in result.stderr and run_count(events) == 0
 
 
 class TestFullTierReceipt:
+    def test_review_fix_is_measured_once_by_land(self, tmp_path):
+        repo, env, g, events, _tier = counted_repo(tmp_path)
+        staged_stub(
+            tmp_path,
+            patches=[("fix", "src.py", "C = 2")],
+            find={"fixed": [], "blocking": ["FIXED"], "noted": []},
+            verify={"fixed": [], "blocking": ["FIXED"], "noted": []},
+            fix={"fixed": ["FIXED"], "blocking": [], "noted": []},
+        )
+        assert sprint(repo, env, "start").returncode == 0
+        assert run_count(events) == 0
+        reviewed = sprint(repo, env, "review")
+        assert reviewed.returncode == 0, reviewed.stderr
+        assert run_count(events) == 0 and "C = 2" in (repo / "src.py").read_text()
+        reviewed_tree = tree(g)
+
+        landed = sprint(repo, env, "land")
+
+        assert landed.returncode == 2 and "gh" in landed.stderr
+        assert run_count(events) == 1
+        assert state(tmp_path)["full_tier"]["tree"] == reviewed_tree
+        assert state(tmp_path)["full_tier"]["ran_by"] == "land"
+
     def start_and_review(self, tmp_path, origin=False):
         repo, env, g, events, tier = counted_repo(tmp_path)
         if origin:
             add_origin(tmp_path, repo, env, g)
         assert sprint(repo, env, "start").returncode == 0
-        receipt = state(tmp_path)["full_tier"].copy()
+        assert run_count(events) == 0
+        receipt = {
+            "tier": "full",
+            "command": tier,
+            "tree": tree(g),
+            "head": head(repo, env),
+            "verdict": "passed",
+            "ran_by": "start",
+            "reused": False,
+        }
+        events.write_text("x")
+        path = marker_path(tmp_path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps({"full_tier": receipt}))
         record_reviews(tmp_path, repo, env)
         return repo, env, g, events, tier, receipt
 
@@ -376,3 +406,64 @@ class TestFullTierReceipt:
         assert result.returncode == 2 and "write tree" in result.stderr.lower()
         assert "Traceback" not in result.stderr and run_count(events) == 1
         assert marker_path(tmp_path).read_bytes() == before
+
+    def test_pending_trunk_red_falsifier_runs_before_trial_merge_aborts(self, tmp_path):
+        repo, env, g, _events, _tier = counted_repo(tmp_path, "test ! -f trunk-only")
+        add_origin(tmp_path, repo, env, g)
+        filed = work(
+            repo,
+            env,
+            "debt",
+            "--claim",
+            "trunk must stay clear",
+            "--falsifier",
+            "test ! -f trunk-only",
+            "--covered-by",
+            "full",
+            "--files",
+            "trunk-only",
+        )
+        assert filed.returncode == 0
+        source = filed.stdout.strip()
+        assert sprint(repo, env, "start").returncode == 0
+        record_reviews(tmp_path, repo, env)
+        advance_origin(repo, g, "trunk-only", "present\n")
+
+        result = sprint(repo, env, "land")
+
+        assert result.returncode == 2 and f"source {source}" in result.stderr
+        assert "`close.py sprint 2 land` again" in result.stderr
+        assert "## bug " in (tmp_path / "data" / "work.md").read_text()
+        assert g("rev-parse", "-q", "--verify", "MERGE_HEAD").returncode != 0
+        assert not g("status", "--porcelain").stdout
+
+    def test_green_pending_merge_receipt_names_staged_tree_without_deferred_rerun(self, tmp_path):
+        repo, env, g, events, _tier = counted_repo(tmp_path, "true")
+        add_origin(tmp_path, repo, env, g)
+        command = f"printf x >> {events}"
+        filed = work(
+            repo,
+            env,
+            "debt",
+            "--claim",
+            "covered",
+            "--falsifier",
+            command,
+            "--covered-by",
+            "full",
+            "--files",
+            "src.py",
+        )
+        assert filed.returncode == 0 and run_count(events) == 1
+        assert sprint(repo, env, "start").returncode == 0
+        record_reviews(tmp_path, repo, env)
+        advance_origin(repo, g, "trunk-only", "present\n")
+        assert g("merge", "--no-commit", "--no-ff", "origin/main").returncode == 0
+        staged_tree = tree(g)
+        assert g("merge", "--abort").returncode == 0
+
+        result = sprint(repo, env, "land")
+
+        assert result.returncode == 2 and "gh" in result.stderr
+        assert run_count(events) == 1
+        assert state(tmp_path)["full_tier"]["tree"] == staged_tree

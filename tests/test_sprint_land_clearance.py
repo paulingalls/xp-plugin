@@ -75,6 +75,19 @@ class TestBoundFullClearance:
         repo, env, g = make_repo(tmp_path, config=config_for(command))
         assert sprint(repo, env, "start").returncode == 0
         record_round(tmp_path, repo, env, ["GATE-ME"], ["GATE-ME"])
+        marker = marker_path(tmp_path)
+        recorded = json.loads(marker.read_text())
+        recorded["full_tier"] = {
+            "tier": "full",
+            "command": command,
+            "tree": g("write-tree").stdout.strip(),
+            "head": g("rev-parse", "HEAD").stdout.strip(),
+            "verdict": "passed",
+            "ran_by": "start",
+            "reused": False,
+        }
+        marker.write_text(json.dumps(recorded))
+        events.write_text("x")
         release_tools(tmp_path, env, g)
 
         result = sprint(repo, env, "land")

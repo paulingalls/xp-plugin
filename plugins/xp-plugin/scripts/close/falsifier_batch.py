@@ -168,6 +168,27 @@ def unavailable_coverage(records: list[LedgerRecord], tiers: dict[str, str]) -> 
     return lines
 
 
+def grouped_batch(root: Path) -> tuple[dict, dict, list[LedgerRecord], list, str]:
+    source = entries(root)
+    records = ledger(root, source)
+    tiers = config_block_value("tests")
+    graph, error = validated_coverage(tiers)
+    if error:
+        return {}, {}, records, source, error
+    grouped = {}
+    for eid, head, falsifier, covered in corpus(root, records):
+        grouped.setdefault(falsifier, []).append((eid, head, covered))
+    deferred = {
+        command: sources
+        for command, sources in grouped.items()
+        if all(tier_covers(covered, "full", tiers, graph) for _eid, _head, covered in sources)
+    }
+    standalone = {
+        command: sources for command, sources in grouped.items() if command not in deferred
+    }
+    return standalone, deferred, records, source, ""
+
+
 def triage_notes(source: list[tuple[str, str]]) -> list[str]:
     notes, archived = {}, set()
     for eid, text in source:
@@ -186,6 +207,7 @@ def batch_refusal(
     root: Path,
     grouped: dict[str, list[tuple[str, str, str]]],
     results: dict[str, FalsifierResult] | None = None,
+    retry: str = "start",
 ) -> str:
     results = execute_batch(grouped) if results is None else results
     red = [
@@ -235,7 +257,7 @@ def batch_refusal(
                 f"Files: {', '.join(files)}\n\n",
             )
             decision = "Filed as one bug."
-    return f"refused: {evidence}\n{decision} Fix it, then run start again"
+    return f"refused: {evidence}\n{decision} Fix it, then run {retry} again"
 
 
 def resolved_offers(

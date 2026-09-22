@@ -9,9 +9,10 @@ description: >-
 `close.py sprint <id>` runs the mechanics; judgment stays here.
 
 1. **Re-run `close.py sprint <id> start` at close** — the same recorded branch is
-   a no-op; now it runs the batch and emits the close material.
-   A red falsifier ABORTS the close and is re-filed as a bug (JUDGMENT.md carries
-   the polarity contract).
+   a no-op; now it runs standalone falsifiers and emits notes and the retro
+   template. A red falsifier ABORTS the close and is re-filed as a bug
+   (JUDGMENT.md carries the polarity contract). Land runs the full tier and
+   its deferred falsifiers on the shipping tree.
 2. **Note triage, then the retro — YOURS, and they come FIRST.**
    Promote each note through the retro diff, or `work.py archive` it; then
    decide which offered resolved records to archive, knowing that disposal

@@ -4,6 +4,7 @@ import shlex
 import subprocess
 import sys
 from pathlib import Path
+from typing import Callable
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from close import git, origin_trunk_sha
@@ -190,6 +191,7 @@ def gates(
     tier_key: str,
     pending: bool,
     prior_receipt: object = _NO_RECEIPT,
+    after_full: Callable[[str], str] | None = None,
 ) -> tuple[str, dict | None]:
     """Verify and the tier, run on the tree that will EXIST. Merging INTO the story
     branch rather than in the tree holding trunk: same merged content either way,
@@ -225,9 +227,13 @@ def gates(
         reusable, decision = _receipt_matches(prior_receipt, tier, tree)
         if reusable:
             print("full tier receipt reused")
+            if after_full and (red := after_full("")):
+                return red, None
             return "", dict(prior_receipt, reused=True)
         print(f"full tier receipt {decision}; running the shipping tree")
         if red := run_checks(verify, tier, where, tier_key):
+            return (after_full(red) or red) if after_full else red, None
+        if after_full and (red := after_full("")):
             return red, None
         return "", {
             "tier": "full",
