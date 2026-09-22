@@ -67,7 +67,7 @@ def cmd_review(sprint_id: str, dry_run: bool) -> int:
     head = git("rev-parse", "HEAD").stdout.strip()
     dirty = git("status", "--porcelain").stdout.strip()
     if dirty and (why := sprint_review_resume.dirty_fixer(rounds, head, sprint_id, review)):
-        return fail(why.removeprefix("refused: "))
+        return fail(f"refused: {why}")
     if dirty:
         return fail("refused: working tree is dirty — commit or stash first")
     plan = plan_path()
@@ -84,8 +84,12 @@ def cmd_review(sprint_id: str, dry_run: bool) -> int:
     complete_n, reviewed_head, resume_round, why, refusal = sprint_review_resume.state(
         rounds, head, sprint_id, review, git
     )
-    if refusal:
-        return fail(refusal)
+    if refusal:  # `review` is the only command that runs one, so a refusal that names
+        return fail(  # no way out of the round leaves the sprint with no next action
+            f"refused: {refusal}; or discard the incomplete round by moving {marker}"
+            " aside — it holds this sprint's recorded rounds and moving it forfeits"
+            f" them — then `close.py sprint {sprint_id} review` for a fresh fanout"
+        )
     if why:
         print(f"warning: {why} — running a fresh round instead", file=sys.stderr)
     resume = resume_round is not None

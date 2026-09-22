@@ -48,8 +48,8 @@ def reviewed_head(round_: dict, head: str, patch: Path, git, reviewer_name: str)
         commits = git("log", "--oneline", f"{shown}..{head}").stdout.strip()
         return "", (
             f"HEAD moved through commits not covered by the saved fixer patch ({commits});"
-            f" unaccounted paths: {', '.join(outside)}. Discard this incomplete round to"
-            f" run a fresh fanout over HEAD, or reset to {reviewed[:8]}"
+            f" unaccounted paths: {', '.join(outside)}. Reset to {reviewed[:8]} to resume"
+            " this round"
         )
     return reviewed, ""
 
@@ -98,7 +98,7 @@ def dirty_fixer(rounds: list[dict], head: str, sprint_id: str, review) -> str:
     report = review.sprint_report_path(sprint_id, "fix", 1)
     patch = review.patch_path(report)
     return (
-        "refused: the staged fixer work from incomplete round 1 still needs the lead."
+        "the staged fixer work from incomplete round 1 still needs the lead."
         " Repair the commit gate and finish/commit that staged work, or discard it before"
         f" rerunning the fixer. The saved report is {report}; the patch is {patch}"
     )
@@ -186,12 +186,21 @@ def take(prefix, role, key, reports, number):
 
 
 # BY ROUND NUMBER: the marker is re-read under its lock, where salvage may have
-# appended a different round while a stage ran.
-def keep_incomplete(marker: Path, number: int, round_: dict, edit) -> None:
+# appended a different round while a stage ran. `round_` of None is a resume that
+# re-derived NOTHING — overwriting the round there forfeits the findings it already
+# holds and leaves it with no stages, which `resumable` never takes again.
+def keep_incomplete(marker: Path, number: int, round_: dict | None, error: str, edit) -> list[str]:
+    kept: list[str] = []
+
     def keep(current: dict) -> None:
-        current["rounds"][number - 1] = round_
+        if round_ is None:
+            current["rounds"][number - 1]["incomplete"] = error
+        else:
+            current["rounds"][number - 1] = round_
+        kept.extend(current["rounds"][number - 1].get("stages", []))
 
     edit(marker, keep)
+    return kept
 
 
 def stop(
@@ -210,6 +219,7 @@ def stop(
     edit,
 ):
     reused = prefix.reused if prefix else None
+    recorded = f"Round {number} IS recorded, incomplete."
 
     def make_record(error):
         return record(
@@ -226,12 +236,13 @@ def stop(
     if resume:
         if dry_run:
             return error, ""
-        round_ = make_record(error)
-        keep_incomplete(marker, number, round_, edit)
-        return error, f"round {number} remains incomplete after {', '.join(round_['stages'])}"
+        error = error.replace(review.NO_ROUND, recorded)
+        round_ = make_record(error) if reused or ran else None
+        kept = keep_incomplete(marker, number, round_, error, edit)
+        return error, f"round {number} remains incomplete after {', '.join(kept)}"
     if not reports:
         return error, ""
-    error = error.replace(review.NO_ROUND, f"Round {number} IS recorded, incomplete.")
+    error = error.replace(review.NO_ROUND, recorded)
     round_ = make_record(error)
     review.write_round(
         marker,

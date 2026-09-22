@@ -120,6 +120,7 @@ def test_an_unresolved_fixer_tree_refuses_before_any_reviewer_launch(tmp_path):
 
     assert refused.returncode == 2
     assert len(launches(tmp_path)) == before and marker_path(tmp_path).read_text() == marker
+    assert refused.stderr.startswith("refused:"), refused.stderr
     assert "finish" in refused.stderr and "commit" in refused.stderr
     assert "discard" in refused.stderr
 
@@ -154,6 +155,31 @@ def test_a_lead_discarded_fixer_reruns_it_before_the_closer(tmp_path):
     assert len(json.loads(marker_path(tmp_path).read_text())["rounds"]) == 1
     assert round_["fixed"] == [] and "fix" not in round_["reused"]
     assert round_["ran"] == ["fix", "close"]
+
+
+def test_a_second_death_during_a_resume_does_not_empty_the_round(tmp_path):
+    """A resume that re-derives NOTHING must leave the round it read alone: an empty
+    record forfeits the findings land reads AND leaves stages [], which `resumable`
+    never takes again — so the evidence on disk becomes unreachable."""
+    repo, env, _g = make_repo(tmp_path)
+    _stop_at_closer(tmp_path)
+    assert sprint(repo, env, "review").returncode == 2
+    before = json.loads(marker_path(tmp_path).read_text())["rounds"][0]
+    assert before["blocking"] == ["F"] and before["stages"][-1] == "fix"
+
+    (Path(env["XP_DATA"]) / "reports/sprint/2.find-security.round-1.json").unlink()
+    claude = tmp_path / "bin/claude"
+    write = "open(m.group(1).strip(), 'w').write(json.dumps(report))"
+    claude.write_text(claude.read_text().replace(write, f"None if 'find' in key else {write}"))
+    claude.chmod(0o755)
+
+    second = sprint(repo, env, "review")
+
+    assert second.returncode == 2
+    after = json.loads(marker_path(tmp_path).read_text())["rounds"][0]
+    assert after["stages"] == before["stages"] and after["blocking"] == ["F"]
+    assert after["fixed"] == ["F"], after
+    assert "No round was recorded" not in after["incomplete"], after["incomplete"]
 
 
 def test_an_incomplete_round_after_fixer_resumes_at_closer(tmp_path):
@@ -267,6 +293,9 @@ def test_unaccounted_head_motion_after_an_incomplete_round_refuses(tmp_path):
     retried = sprint(repo, env, "review")
 
     assert retried.returncode == 2 and "unaccounted paths: other.py" in retried.stderr
+    # `review` is the only command that runs one, so the refusal must name a file the
+    # lead can actually move; "discard this round" with no mechanism is a dead end.
+    assert str(marker_path(tmp_path)) in retried.stderr, retried.stderr
     assert len(launches(tmp_path)) == before
 
 
@@ -284,6 +313,7 @@ def test_a_non_descendant_head_is_not_treated_as_discarded_fixer_work(tmp_path):
     refused = sprint(repo, env, "review")
 
     assert refused.returncode == 2 and "not a descendant" in refused.stderr
+    assert str(marker_path(tmp_path)) in refused.stderr, refused.stderr
     assert len(launches(tmp_path)) == before
 
 
