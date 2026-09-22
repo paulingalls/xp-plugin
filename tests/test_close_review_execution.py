@@ -51,8 +51,7 @@ class TestCompletedVerifyState:
         assert "no close in progress" not in refused.stderr
 
     def test_a_re_review_clears_the_verify_red_refusal(self, tmp_path):
-        """What CLEARS the state land now reads. Nothing else does, so a story whose
-        Verify was fixed would refuse at land forever on a tree that is green."""
+        """Re-review clears verify-red; the superseded attempt still needs disposition."""
         repo, env, _g = make_repo(tmp_path, verify="false")
         assert close(repo, env, "review").returncode == 2
         assert close(repo, env, "land").returncode == 2
@@ -61,6 +60,10 @@ class TestCompletedVerifyState:
         mint_ready(repo, env)
 
         assert close(repo, env, "review").returncode == 0
+        refused = close(repo, env, "land")
+        assert refused.returncode == 2 and "salvage" in refused.stderr
+        assert close(repo, env, "salvage").returncode == 2
+        (tmp_path / "data/markers/story-042.round-2.launch").unlink()
         assert close(repo, env, "land").returncode == 0
 
     def test_a_relaunch_that_refuses_before_launch_does_not_clear_the_verify_red_gate(

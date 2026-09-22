@@ -6,6 +6,7 @@ import tempfile
 from pathlib import Path
 
 import lifecycle as lc
+import sprint_state
 from close import config_flat, config_has, default_branch, fail, git
 from env import (
     clear_sprint_branch,
@@ -84,6 +85,24 @@ def version_files() -> list[str]:
     return [part.strip() for part in config_flat("version_files").split(",") if part.strip()]
 
 
+def recorded_release_head(state: dict) -> tuple[str, str]:
+    latest = {}
+    if "rounds" in state:
+        rounds = state["rounds"]
+        if not isinstance(rounds, list) or (rounds and not isinstance(rounds[-1], dict)):
+            return "", "recorded release rounds are unreadable"
+        latest = rounds[-1] if rounds else {}
+    for key in ("shown_sha", "reviewed_head"):
+        source = latest if key in latest else state
+        if key not in source:
+            continue
+        value = source[key]
+        if not isinstance(value, str) or not value:
+            return "", f"recorded release {key} is unreadable"
+        return value, ""
+    return "", ""
+
+
 WAIVED = (
     "NO manifest was checked — `version_files: none` waives the wall, and the tag"
     " can name a version no file in this tree declares"
@@ -142,6 +161,7 @@ def cmd_post_merge(
     part: str = "minor",
     retire_sprint: bool = True,
     dry_run: bool = False,
+    recorded_head: str = "",
 ) -> int:
     try:
         safe_release_id(release_id)
@@ -160,14 +180,50 @@ def cmd_post_merge(
         return fail("refused: no sprint branch recorded — open the sprint before releasing it")
     if retire_sprint and release_branch != sprint_branch_name(release_id):
         return fail(f"refused: sprint {release_id} does not own recorded branch {release_branch}")
-    if (
-        release_branch
-        and git("merge-base", "--is-ancestor", release_branch, "HEAD", check=False).returncode
-    ):
+    if retire_sprint:
+        marker, state, marker_error = sprint_state.read_sprint_state(release_id)
+        if marker_error:
+            return fail(marker_error)
+        recorded_head, identity_error = recorded_release_head(state)
+        if identity_error:
+            return fail(f"refused: {identity_error} in {marker}")
+    head_is_merged = (
+        recorded_head
+        and not git("merge-base", "--is-ancestor", recorded_head, "HEAD", check=False).returncode
+    )
+    resolved = ""
+    if release_branch:
+        resolved = git(
+            "rev-parse", "--verify", "-q", f"{release_branch}^{{commit}}", check=False
+        ).stdout.strip()
+    branch_is_merged = (
+        resolved
+        and not git("merge-base", "--is-ancestor", resolved, "HEAD", check=False).returncode
+    )
+    # The recorded head stands in for a ref the merge DELETED. It may not overrule a ref
+    # that still resolves: a merge that took only the reviewed commit would ship as whole.
+    if release_branch and not branch_is_merged and head_is_merged and resolved:
         action = "tagging here would" if versioned else "shipping here would"
         return fail(
-            f"refused: {release_branch} is not merged into {trunk} — {action}"
-            f" name a commit containing none of {release_id}. Merge the release PR first"
+            f"refused: {release_branch} resolves at {resolved} and carries commits"
+            f" {trunk} does not, though the recorded release head is merged —"
+            f" {action} name a tree missing them. Read `git log {trunk}..{release_branch}`,"
+            " then merge or drop those commits and retry"
+        )
+    if release_branch and not head_is_merged and not branch_is_merged:
+        action = "tagging here would" if versioned else "shipping here would"
+        observed = (
+            f"{release_branch} does not resolve"
+            if not resolved
+            else f"{release_branch} resolves at {resolved}, outside {trunk}"
+        )
+        return fail(
+            f"refused: {observed}, and the recorded release head is not in {trunk} —"
+            f" {action} name a commit containing none of {release_id}. Possible states:"
+            " not merged, or merged with history rewritten by GitHub. Run"
+            " `gh pr view --json mergeCommit`; only if mergeCommit is non-null and"
+            f" verified on trunk {trunk}, recreate or move the recorded ref with"
+            f" `git branch -f {release_branch} <mergeCommit>`, then retry"
         )
     if not versioned:
         if dry_run:

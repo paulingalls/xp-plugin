@@ -148,14 +148,16 @@ class TestFreePostMerge:
         g("checkout", "-q", "main")
         g("merge", "-q", "--no-ff", branch, "-m", "merge free release")
 
-    def test_post_merge_tags_the_merged_sha_and_retires_a_card(self, tmp_path):
+    def test_post_merge_uses_recorded_head_after_release_ref_is_deleted(self, tmp_path):
         repo, env, g, branch = self.reviewed(tmp_path)
         self.merge_pr(g, branch)
         merged = g("rev-parse", "HEAD").stdout.strip()
+        g("branch", "-D", branch)
         result = free(repo, env, "fix-typo", "post-merge")
         assert result.returncode == 0, result.stderr
         assert g("rev-list", "-n1", "v0.2.1").stdout.strip() == merged
         assert "[done]" in (Path(env["XP_DATA"]) / "plan.md").read_text()
+        assert not marker_file(tmp_path, branch.split("/", 1)[1]).exists()
         assert "manifests matching v0.2.1: plugin.json" in result.stdout, result.stdout
 
     def test_post_merge_before_the_pr_merges_refuses_and_cuts_no_tag(self, tmp_path):
@@ -201,3 +203,26 @@ class TestFreePostMerge:
         else:  # the pass NAMES what it checked, or it reads like the arm above
             assert "manifests matching v0.2.1: plugin.json" in result.stdout, result.stdout
         assert ("v0.2.1" in g("tag").stdout.split()) is (rc == 0)
+
+    @pytest.mark.parametrize(
+        "damage", ["malformed-json", "invalid-shown-sha"], ids=["malformed", "unreadable-sha"]
+    )
+    def test_post_merge_refuses_an_unreadable_free_close_marker(self, tmp_path, damage):
+        """The sprint half of this gate has its red; the free half had none, so
+        deleting free's identity refusal left both free suites green."""
+        repo, env, g, branch = self.reviewed(tmp_path)
+        self.merge_pr(g, branch)
+        path = marker_file(tmp_path, branch.split("/", 1)[1])
+        if damage == "malformed-json":
+            path.write_text("{not json")
+        else:
+            state = json.loads(path.read_text())
+            state["rounds"][-1]["shown_sha"] = 7
+            path.write_text(json.dumps(state))
+
+        result = free(repo, env, "fix-typo", "post-merge")
+
+        assert result.returncode == 2, result.stdout
+        assert "Traceback" not in result.stderr and str(path) in result.stderr
+        assert "v0.2.1" not in g("tag").stdout.split()
+        assert "[in-progress]" in (Path(env["XP_DATA"]) / "plan.md").read_text()
