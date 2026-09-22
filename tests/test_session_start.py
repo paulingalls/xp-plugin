@@ -383,11 +383,7 @@ class TestInstallProbe(InstallProbeCases):
     def current_codex_listing(self):
         import harness
 
-        manifest = json.loads((harness.PLUGIN_ROOT / ".claude-plugin" / "plugin.json").read_text())
-        record = {
-            "pluginId": f"{manifest['name']}@fixture-market",
-            "version": manifest["version"],
-        }
+        record = self.entry("codex", harness.PLUGIN_ROOT)
         return subprocess.CompletedProcess([], 0, stdout=json.dumps({"installed": [record]}))
 
     def test_spawn_allows_a_probe_slower_than_the_hook_budget(self, monkeypatch):
