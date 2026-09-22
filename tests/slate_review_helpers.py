@@ -176,12 +176,13 @@ def assert_charter_contract(charter):
         # sprint-015 retro promotion: story-089's first teammate stopped and escalated,
         # and its Verify said nothing about whether the escalation was correct.
         "Stop states",
-        "Mutation",
     }
     assert all(word in checks["Slate"] for word in ("order", "funding", "collisions", "capacity"))
     assert "execute" in checks["Premises"] and "reachable" in checks["Premises"]
     assert "search" in checks["Omitted pins"] and "card does not name" in checks["Omitted pins"]
-    assert "disposable copy" in checks["Mutation"] and "acceptance" in checks["Mutation"]
+    # Sprint-24 retro, Paul: a slate reader that builds the change in a disposable copy
+    # bought what reading and the card's own Verify already find, at 29 minutes a round.
+    assert "never apply a card's change" in charter
     output = charter.split("## Output", 1)[1]
     assert "one `## <story-id> — RED|GREEN`" in output
     assert "falsified premise" in output and "checked evidence" in output
