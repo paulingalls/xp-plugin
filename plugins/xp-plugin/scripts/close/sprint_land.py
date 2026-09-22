@@ -322,7 +322,10 @@ def cmd_land(sprint_id: str, dry_run: bool) -> int:
         )
     start_ids = state.get("start_deferred_ids", [])
     if not isinstance(start_ids, list) or any(not isinstance(eid, str) for eid in start_ids):
-        return fail(f"refused: unreadable start_deferred_ids in sprint marker {marker} — repair it")
+        return fail(
+            f"refused: unreadable start_deferred_ids in sprint marker {marker} — delete that"
+            f" key, run `close.py sprint {sprint_id} start` to re-record it, then land again"
+        )
     root = data_root()
     _standalone, pre_deferred, _records, _source, error = grouped_batch(root)
     if error:

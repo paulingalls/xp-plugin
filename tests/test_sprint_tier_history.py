@@ -99,6 +99,22 @@ def test_corrupt_history_cannot_certify_receipt(tmp_path):
     assert marker.read_bytes() == before and run_count(events) == 1
 
 
+@pytest.mark.parametrize("value", ["F-1", [1]])
+def test_unreadable_start_deferred_ids_refuses_before_the_tier(tmp_path, value):
+    """A string would turn `eid in start_ids` into a substring match."""
+    repo, env, _g, events, _tier = counted_repo(tmp_path)
+    record_reviews(tmp_path, repo, env)
+    marker = marker_path(tmp_path)
+    saved = state(tmp_path)
+    saved["start_deferred_ids"] = value
+    marker.write_text(json.dumps(saved))
+
+    result = sprint(repo, env, "land")
+
+    assert result.returncode == 2 and "unreadable start_deferred_ids" in result.stderr
+    assert "sprint 2 start" in result.stderr and run_count(events) == 0
+
+
 def test_unmeasured_refusals_preserve_history(tmp_path):
     repo, env, _g, events, _tier = counted_repo(tmp_path)
     record_reviews(tmp_path, repo, env)
