@@ -269,6 +269,12 @@ def _child_environment(harness: str, env: dict, timeout: float | None) -> dict:
     return child_env
 
 
+def quiet(line: str) -> None:
+    """A concurrent leg's echo: its stream stays in its own log, its warnings do not."""
+    if line.startswith("warning:"):
+        print(line, file=sys.stderr)
+
+
 def run_stream(
     argv: list[str],
     cwd: Path,
@@ -279,6 +285,7 @@ def run_stream(
     env: dict,
     timeout: float | None = None,
     widen_git: bool = False,
+    echo: bool = True,
 ) -> subprocess.CompletedProcess:
     """Every spawned agent streams live and tees to a durable log; `widen_git`
     is executor-only commit access, and it defaults OFF for the reason run_agent's
@@ -380,7 +387,8 @@ def run_stream(
         except OSError as exc:
             print(f"warning: log write failed ({exc}); continuing without it", file=sys.stderr)
         assert proc.stdout is not None
-        result = tee_stream(ticking(proc.stdout), log_write, print, parse, tasks)
+        out = print if echo else quiet
+        result = tee_stream(ticking(proc.stdout), log_write, out, parse, tasks)
     except BaseException:
         # Ctrl-C no longer reaches the child, because it has its own session now.
         # Only here: a run that DRAINED is already exiting, and killing on the way

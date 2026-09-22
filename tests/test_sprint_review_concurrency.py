@@ -268,3 +268,32 @@ def test_ctrl_c_kills_every_running_finder(tmp_path):
             proc.kill()
             proc.wait()
     assert proc.returncode != 0
+
+
+def test_concurrent_legs_stream_to_their_own_logs_and_label_their_results(tmp_path):
+    """Concurrent legs sharing one stdout interleave unlabelled lines; each leg's
+    stream belongs in its own log, and only its labelled result reaches the lead."""
+    repo, env, _git = make_repo(tmp_path)
+    staged_stub(tmp_path)
+
+    result = sprint(repo, env, "review")
+
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.count("[system] init") == 1  # the closer, which runs alone
+    for name in ("find-security", "find-state-lifecycle", "find-test-vacuity"):
+        assert f"--- {name} ---\nfindings above" in result.stdout
+        log = tmp_path / "data" / "logs" / f"sprint-{name}-review.log"
+        assert '"subtype": "init"' in log.read_text()
+
+
+def test_a_quiet_leg_still_surfaces_a_log_write_failure(capsys):
+    from teammate_tee import quiet, tee_stream
+
+    def failing_log(_line):
+        raise OSError("disk full")
+
+    tee_stream(['{"type": "system", "subtype": "init"}\n'], failing_log, quiet)
+
+    captured = capsys.readouterr()
+    assert "warning: log write failed" in captured.err
+    assert "[system]" not in captured.out + captured.err

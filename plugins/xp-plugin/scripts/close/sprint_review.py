@@ -156,7 +156,9 @@ def cmd_review(sprint_id: str, dry_run: bool) -> int:
         if err:  # stage_head, not head: an undo from the ROUND's start spans an applied fix
             empty = {k: [] for k in review.REPORT_KEYS}
             return report if batch_head else empty, review.abort_text(stage_head, err)
-        print(result)  # before any refusal: the findings exist nowhere else yet
+        print(
+            f"--- {key} ---\n{result}" if batch_head else result
+        )  # before any refusal: the findings exist nowhere else yet
         if not batch_head and (
             motion := review.check_reviewer_motion(stage_head, marker, digest_before, cards)
         ):
