@@ -3,6 +3,8 @@
 import shlex
 import subprocess
 import sys
+import time
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable
 
@@ -123,12 +125,19 @@ def report_merge(story_id: str, files: list[str]) -> None:
     print("  " + "\n  ".join(files))
 
 
-def run_one(label: str, cmd: str | list[str], where: str = "") -> str:
-    shown = cmd if isinstance(cmd, str) else shlex.join(cmd)
+def _returncode(cmd: str | list[str]) -> int:
     try:
-        rc = subprocess.run(cmd, shell=isinstance(cmd, str)).returncode
+        return subprocess.run(cmd, shell=isinstance(cmd, str)).returncode
     except OSError:
-        rc = 127
+        return 127
+
+
+def run_one(label: str, cmd: str | list[str], where: str = "") -> str:
+    return _red(label, cmd, _returncode(cmd), where)
+
+
+def _red(label: str, cmd: str | list[str], rc: int, where: str) -> str:
+    shown = cmd if isinstance(cmd, str) else shlex.join(cmd)
     if rc == 127:
         return (
             f"refused: {label} could not be RUN{where}: {shown}\nNothing was measured"
@@ -185,6 +194,22 @@ def _receipt_matches(receipt: object, tier: str, tree: str) -> tuple[bool, str]:
     return True, "reused"
 
 
+def _tier_event(
+    outcome: str, tier: str, tree: str, head: str, start: datetime, elapsed: float
+) -> dict:
+    end = max(start, datetime.now(timezone.utc))
+    return {
+        "leg": "land",
+        "outcome": outcome,
+        "command": tier,
+        "tree": tree,
+        "head": head,
+        "started_at": start.isoformat().replace("+00:00", "Z"),
+        "ended_at": end.isoformat().replace("+00:00", "Z"),
+        "duration_seconds": max(0.0, elapsed),
+    }
+
+
 def gates(
     ref: str,
     verify: list[list[str]],
@@ -192,6 +217,8 @@ def gates(
     pending: bool,
     prior_receipt: object = _NO_RECEIPT,
     after_full: Callable[[str], str] | None = None,
+    record_attempt: Callable[[dict, dict | None], str] | None = None,
+    history: list[dict] | None = None,
 ) -> tuple[str, dict | None]:
     """Verify and the tier, run on the tree that will EXIST. Merging INTO the story
     branch rather than in the tree holding trunk: same merged content either way,
@@ -225,17 +252,46 @@ def gates(
             )
         tree = written.stdout.strip()
         reusable, decision = _receipt_matches(prior_receipt, tier, tree)
+        if reusable and history is not None:
+            from sprint_state import LATEST_FAILED, reuse_veto
+
+            if veto := reuse_veto(history, tree, tier, prior_receipt["head"]):
+                if veto != LATEST_FAILED:
+                    return (
+                        f"refused: {veto} — delete full_tier from the sprint marker to"
+                        " measure the shipping tree afresh, then run land again",
+                        None,
+                    )
+                reusable, decision = False, veto
         if reusable:
+            start = datetime.now(timezone.utc)
+            receipt = dict(prior_receipt, reused=True)
+            if record_attempt:
+                event = _tier_event("reused", tier, tree, receipt["head"], start, 0.0)
+                if red := record_attempt(event, receipt):
+                    return red, None
             print("full tier receipt reused")
             if after_full and (red := after_full("")):
                 return red, None
-            return "", dict(prior_receipt, reused=True)
+            return "", receipt
         print(f"full tier receipt {decision}; running the shipping tree")
-        if red := run_checks(verify, tier, where, tier_key):
-            return (after_full(red) or red) if after_full else red, None
-        if after_full and (red := after_full("")):
-            return red, None
-        return "", {
+        for cmd in verify:
+            if red := run_one("Verify", cmd, where):
+                return red, None
+        start = datetime.now(timezone.utc)
+        begin = time.monotonic()
+        rc = _returncode(tier)
+        elapsed = time.monotonic() - begin
+        shown = _red("test tier", tier, rc, where)
+        if rc == 127:
+            return shown, None
+        if rc < 0:
+            return (
+                f"refused: test tier interrupted by signal {-rc}{where}: {tier} — nothing"
+                " was measured or recorded; run land again",
+                None,
+            )
+        receipt = {
             "tier": "full",
             "command": tier,
             "tree": tree,
@@ -244,6 +300,17 @@ def gates(
             "ran_by": "land",
             "reused": False,
         }
+        if record_attempt:
+            event = _tier_event(
+                "failed" if rc else "passed", tier, tree, receipt["head"], start, elapsed
+            )
+            if persistence_error := record_attempt(event, receipt if not rc else None):
+                return persistence_error, None
+        if rc:
+            return (after_full(shown) or shown) if after_full else shown, None
+        if after_full and (red := after_full("")):
+            return red, None
+        return "", receipt
     finally:
         if staged is not None:
             git("merge", "--abort", check=False)

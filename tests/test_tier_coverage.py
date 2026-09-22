@@ -1,9 +1,10 @@
 """Project-declared tier containment suppresses only checked duplicate work."""
 
+import json
 import shlex
 
 import pytest
-from sprint_helpers import make_repo, record_reviews, sprint, work
+from sprint_helpers import make_repo, marker_path, record_reviews, sprint, work
 
 
 def command(path, succeeds=True):
@@ -76,6 +77,7 @@ def test_transitive_declared_coverage_defers_the_honest_cheaper_tag(tmp_path):
     record_reviews(tmp_path, repo, env)
     landed = sprint(repo, env, "land")
     assert (tmp_path / "full").read_text() == "x"
+    assert (tmp_path / "fast").read_text() == before
     assert f"trusted {ref}" in landed.stdout and "via tier fast" in landed.stdout
 
 
@@ -120,6 +122,149 @@ def trunk_drops_coverage(tmp_path, full, falsifier):
     g("commit", "-qm", "trunk removes coverage")
     g("checkout", "-q", "sprint-002")
     return repo, env, g, ref
+
+
+def test_start_deferred_red_runs_after_coverage_change(tmp_path):
+    flag = tmp_path / "flag"
+    flag.touch()
+    fast = command(tmp_path / "fast").replace("true", f"test -f {shlex.quote(str(flag))}")
+    full = command(tmp_path / "full")
+    cfg = config(
+        (("fast", "true"), ("full", full)),
+        (("fast", "full"),),
+        (("fast", "true"), ("full", full)),
+    )
+    repo, env, g = make_repo(tmp_path, config=cfg)
+    ref = covered_debt(repo, env, fast, "fast")
+    before = (tmp_path / "fast").read_text()
+    assert sprint(repo, env, "start").returncode == 0
+    flag.unlink()
+    path = repo / ".xp/config.yml"
+    path.write_text(cfg.replace("tier_coverage:\n  fast: full\n", ""))
+    g("add", ".xp/config.yml")
+    g("commit", "-qm", "remove coverage")
+    record_reviews(tmp_path, repo, env)
+
+    result = sprint(repo, env, "land")
+
+    assert result.returncode == 2 and ref in result.stderr
+    assert (tmp_path / "fast").read_text() == before + "x"
+    assert "trusted" not in result.stdout
+    saved = json.loads(marker_path(tmp_path).read_text())
+    assert saved["full_tier_history"][-1]["outcome"] == "passed"
+
+
+def test_start_deferred_green_runs_once_after_coverage_change(tmp_path):
+    flag = tmp_path / "check-marker"
+    script = tmp_path / "falsifier.py"
+    script.write_text(
+        "import json, pathlib, sys\n"
+        f"counter = pathlib.Path({str(tmp_path / 'fast')!r})\n"
+        "counter.write_text((counter.read_text() if counter.exists() else '') + 'x')\n"
+        f"if pathlib.Path({str(flag)!r}).exists():\n"
+        f"    state = json.loads(pathlib.Path({str(marker_path(tmp_path))!r}).read_text())\n"
+        "    sys.exit(0 if state['full_tier_history'][-1]['outcome'] == 'passed' else 9)\n"
+    )
+    fast, full = f"python3 {shlex.quote(str(script))}", command(tmp_path / "full")
+    cfg = config(
+        (("fast", "true"), ("full", full)),
+        (("fast", "full"),),
+        (("fast", "true"), ("full", full)),
+    )
+    repo, env, g = make_repo(tmp_path, config=cfg)
+    covered_debt(repo, env, fast, "fast")
+    before = (tmp_path / "fast").read_text()
+    assert sprint(repo, env, "start").returncode == 0
+    flag.touch()
+    path = repo / ".xp/config.yml"
+    path.write_text(cfg.replace("tier_coverage:\n  fast: full\n", ""))
+    g("add", ".xp/config.yml")
+    g("commit", "-qm", "remove coverage")
+    record_reviews(tmp_path, repo, env)
+
+    result = sprint(repo, env, "land")
+
+    assert result.returncode == 2 and "gh" in result.stderr
+    assert (tmp_path / "fast").read_text() == before + "x"
+    assert (tmp_path / "full").read_text() == "x"
+
+
+def test_start_deferred_id_runs_its_current_command(tmp_path):
+    old, new = command(tmp_path / "old"), command(tmp_path / "new")
+    full = command(tmp_path / "full")
+    cfg = config(
+        (("fast", "true"), ("full", full)),
+        (("fast", "full"),),
+        (("fast", "true"), ("full", full)),
+    )
+    repo, env, g = make_repo(tmp_path, config=cfg)
+    ref = covered_debt(repo, env, old, "fast")
+    assert sprint(repo, env, "start").returncode == 0
+    before = (tmp_path / "old").read_text()
+    changed = work(repo, env, "resolve", "--ref", ref, "--falsifier", new, "--covered-by", "fast")
+    assert changed.returncode == 0, changed.stderr
+    path = repo / ".xp/config.yml"
+    path.write_text(cfg.replace("tier_coverage:\n  fast: full\n", ""))
+    g("add", ".xp/config.yml")
+    g("commit", "-qm", "remove coverage")
+    record_reviews(tmp_path, repo, env)
+
+    result = sprint(repo, env, "land")
+
+    assert result.returncode == 2 and "gh" in result.stderr
+    assert (tmp_path / "old").read_text() == before
+    assert (tmp_path / "new").read_text() == "xx"
+
+
+def test_start_deferred_retired_id_is_not_replayed(tmp_path):
+    fast, full = command(tmp_path / "fast"), command(tmp_path / "full")
+    cfg = config(
+        (("fast", "true"), ("full", full)),
+        (("fast", "full"),),
+        (("fast", "true"), ("full", full)),
+    )
+    repo, env, g = make_repo(tmp_path, config=cfg)
+    ref = covered_debt(repo, env, fast, "fast")
+    before = (tmp_path / "fast").read_text()
+    assert sprint(repo, env, "start").returncode == 0
+    assert work(repo, env, "archive", "--ref", ref, "--disposition", "retired").returncode == 0
+    path = repo / ".xp/config.yml"
+    path.write_text(cfg.replace("tier_coverage:\n  fast: full\n", ""))
+    g("add", ".xp/config.yml")
+    g("commit", "-qm", "remove coverage")
+    record_reviews(tmp_path, repo, env)
+
+    result = sprint(repo, env, "land")
+
+    assert result.returncode == 2 and "gh" in result.stderr
+    assert (tmp_path / "fast").read_text() == before
+
+
+def test_red_tier_is_recorded_before_deferred_falsifier_runs(tmp_path):
+    flag, observed, script = (tmp_path / name for name in ("check", "observed", "falsifier.py"))
+    script.write_text(
+        "import json, pathlib\n"
+        f"if pathlib.Path({str(flag)!r}).exists():\n"
+        f"    state = json.loads(pathlib.Path({str(marker_path(tmp_path))!r}).read_text())\n"
+        "    if state['full_tier_history'][-1]['outcome'] == 'failed':\n"
+        f"        pathlib.Path({str(observed)!r}).touch()\n"
+    )
+    fast = f"python3 {shlex.quote(str(script))}"
+    cfg = config(
+        (("fast", "true"), ("full", "false")),
+        (("fast", "full"),),
+        (("fast", "true"), ("full", "false")),
+    )
+    repo, env, _g = make_repo(tmp_path, config=cfg)
+    covered_debt(repo, env, fast, "fast")
+    assert sprint(repo, env, "start").returncode == 0
+    flag.touch()
+    record_reviews(tmp_path, repo, env)
+
+    result = sprint(repo, env, "land")
+
+    assert result.returncode == 2 and "test tier red" in result.stderr
+    assert observed.exists()
 
 
 @pytest.mark.parametrize("full", ("true", "false"))
