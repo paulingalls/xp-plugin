@@ -12,19 +12,15 @@ sys.path.insert(0, str(Path(__file__).parent / "close"))
 import close as story_close
 import lifecycle as lc
 import milestone
-import overlap
 from close import config_flat, default_branch, fail, git, story_card
 from env import record_sprint_branch, refuse_direct_invocation, sprint_branch, sprint_branch_name
 from falsifier_batch import (
     batch_refusal,
-    corpus,
     execute_batch,
-    ledger,
+    grouped_batch,
     resolved_offers,
-    tier_covers,
     triage_notes,
     unavailable_coverage,
-    validated_coverage,
 )
 from review_artifacts import (
     restore_sprint_queue,
@@ -34,7 +30,6 @@ from sprint_state import read_sprint_state, sprint_marker, write_sprint_state
 from work import (
     config_block_value,
     data_root,
-    entries,
     missing_plan_refusal,
     plan_path,
     record_summary,
@@ -136,7 +131,7 @@ def cmd_start(sprint_id: str, dry_run: bool = False) -> int:
         print(f"recorded; {len(unfinished)} stories unfinished — close checks wait")
         return 0
 
-    marker, state, marker_error = read_sprint_state(sprint_id)
+    _marker, _state, marker_error = read_sprint_state(sprint_id)
     if marker_error:
         return fail(marker_error)
     if dirty := git("status", "--porcelain").stdout.strip():
@@ -144,88 +139,16 @@ def cmd_start(sprint_id: str, dry_run: bool = False) -> int:
             "refused: the working tree is dirty before the close batch — commit or"
             f" remove these files first:\n  {dirty}"
         )
-    if "full_tier" in state:
-        state.pop("full_tier")
-        write_sprint_state(marker, {}, remove=("full_tier",))
-
     root = data_root()
-    source = entries(root)
-    records = ledger(root, source)
-    batch = corpus(root, records)
-    grouped = {}
-    for eid, head, falsifier, covered in batch:
-        grouped.setdefault(falsifier, []).append((eid, head, covered))
-    tiers = config_block_value("tests")
-    graph, coverage_error = validated_coverage(tiers)
+    standalone, _deferred, records, source, coverage_error = grouped_batch(root)
     if coverage_error:
         return fail(f"refused: {coverage_error}")
+    tiers = config_block_value("tests")
     for notice in unavailable_coverage(records, tiers):
         print(notice)
-    tier = tiers.get("full", "")
-    # EDIT-ME ONLY — an absent full tier is a tested position (test_falsifier_batch runs
-    # the batch without one); EDIT-ME reached `sh -c`, returned 127, and refused as red.
-    if tier == "EDIT-ME":
-        return fail(overlap.tier_refusal(tier, "full"))
-    deferred = {
-        command: records
-        for command, records in grouped.items()
-        if tier
-        and all(tier_covers(covered, "full", tiers, graph) for _eid, _head, covered in records)
-    }
-    standalone = {key: value for key, value in grouped.items() if key not in deferred}
     results = execute_batch(standalone)
     if red := batch_refusal(root, standalone, results):
         return fail(red)
-
-    if tier:
-        if dirty := git("status", "--porcelain").stdout.strip():
-            return fail(
-                "refused: the falsifier batch left the working tree dirty before the"
-                f" full tier:\n  {dirty}"
-            )
-        tree = git("write-tree", check=False)
-        if tree.returncode:
-            return fail(
-                f"refused: Git could not write tree for the full tier: {tree.stderr.strip()}"
-            )
-        before = {
-            "command": tier,
-            "head": git("rev-parse", "HEAD").stdout.strip(),
-            "tree": tree.stdout.strip(),
-        }
-        print(f"running the full tier: {tier}")
-        if subprocess.run(tier, shell=True).returncode == 0:
-            for sources in deferred.values():
-                for eid, head, covered in sources:
-                    print(f"trusted {eid} ({head}) via tier {covered}")
-            written = git("write-tree", check=False)
-            after = {
-                "command": config_block_value("tests", "full"),
-                "head": git("rev-parse", "HEAD").stdout.strip(),
-                "tree": written.stdout.strip(),
-            }
-            dirty = git("status", "--porcelain").stdout.strip()
-            if before == after and not dirty:
-                state["full_tier"] = {
-                    "tier": "full",
-                    **before,
-                    "verdict": "passed",
-                    "ran_by": "start",
-                    "reused": False,
-                }
-                write_sprint_state(marker, {"full_tier": state["full_tier"]})
-            else:
-                motion = (
-                    f"Git could not name the tree again: {written.stderr.strip()}"
-                    if written.returncode
-                    else dirty or f"HEAD/tree/command moved from {before} to {after}"
-                )
-                print(f"full tier passed, but no reusable receipt was recorded: {motion}")
-        else:
-            deferred_results = execute_batch(deferred)
-            if red := batch_refusal(root, deferred, deferred_results):
-                return fail(red)
-            return fail(f"refused: full tier red: {tier}")
 
     if completion := milestone.candidate(plan.read_text(), sprint_id):
         print(f"\n{completion.heading.rstrip()}")

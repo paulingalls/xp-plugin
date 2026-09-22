@@ -6,7 +6,7 @@ from pathlib import Path
 
 import sprint_close
 import work as work_module
-from sprint_helpers import make_repo, snapshot, sprint, work
+from sprint_helpers import CONFIG, make_repo, record_reviews, snapshot, sprint, work
 
 batch_module = sys.modules[sprint_close.resolved_offers.__module__]
 
@@ -47,6 +47,37 @@ def assert_evidence(text, expected):
         assert marker in section
         assert f"stdout:\n{stdout}" in section
         assert f"stderr:\n{stderr}" in section
+
+
+def test_land_red_deferred_evidence_names_land_as_retry(tmp_path):
+    flag = tmp_path / "covered-flag"
+    flag.write_text("ok")
+    command = f"test -f {shlex.quote(str(flag))} || {{ printf OUT; printf ERR >&2; false; }}"
+    config = CONFIG.replace("full: true", f"full: test -f {flag}")
+    repo, env, _g = make_repo(tmp_path, config=config)
+    filed = work(
+        repo,
+        env,
+        "debt",
+        "--claim",
+        "covered debt",
+        "--falsifier",
+        command,
+        "--covered-by",
+        "full",
+        "--files",
+        "a.py",
+    )
+    assert filed.returncode == 0
+    assert sprint(repo, env, "start").returncode == 0
+    record_reviews(tmp_path, repo, env)
+    flag.unlink()
+
+    result = sprint(repo, env, "land")
+
+    assert result.returncode == 2
+    assert_evidence(result.stderr, [(filed.stdout.strip(), command, "OUT", "ERR")])
+    assert "run `close.py sprint 2 land` again" in result.stderr
 
 
 def test_three_commands_report_two_reds_once_in_one_bug(tmp_path):

@@ -6,6 +6,7 @@ import tempfile
 
 import overlap
 from env import data_root
+from falsifier_batch import batch_refusal, execute_batch, grouped_batch
 from milestone import sprint_stories
 from release import VERSIONING_OFF_TEXT, next_version, refuse_unbumpable, versioning_mode
 from release import cmd_post_merge as release_post_merge
@@ -313,7 +314,33 @@ def cmd_land(sprint_id: str, dry_run: bool) -> int:
             " that ships, and these files are not in it:\n  " + dirty
         )
     prior = state.get("full_tier", overlap.MISSING_RECEIPT)
-    red, receipt = overlap.gates(ref, [], "full", pending, prior)
+    root = data_root()
+    _standalone, pre_deferred, _records, _source, error = grouped_batch(root)
+    if error:
+        return fail(f"refused: {error}")
+    retry = f"`close.py sprint {sprint_id} land`"
+
+    def after_full(tier_red: str) -> str:
+        _standalone, deferred, _records, _source, error = grouped_batch(root)
+        if error:
+            return f"refused: {error}"
+        displaced = {key: sources for key, sources in pre_deferred.items() if key not in deferred}
+        if tier_red:
+            if "could not be RUN" in tier_red:
+                return tier_red
+            rerun = deferred | displaced
+            results = execute_batch(rerun)
+            return batch_refusal(root, rerun, results, retry) or tier_red
+        if displaced:
+            results = execute_batch(displaced)
+            if red := batch_refusal(root, displaced, results, retry):
+                return red
+        for sources in deferred.values():
+            for eid, head, covered in sources:
+                print(f"trusted {eid} ({head}) via tier {covered}")
+        return ""
+
+    red, receipt = overlap.gates(ref, [], "full", pending, prior, after_full)
     if red:
         return fail(_clearance_failure(red, bound) if bound else red)
     # The MERGED marker, not the snapshot read before the tier: a round recorded inside

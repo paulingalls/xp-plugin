@@ -87,9 +87,11 @@ class TestFullTier:
         returncode check left every test passing. It is the primary gate of the
         leg: unguarded, sprint close certifies a red suite as a release."""
         repo, env, _g = make_repo(tmp_path, config=CONFIG.replace("full: true", "full: false"))
-        r = sprint(repo, env, "start")
+        assert sprint(repo, env, "start").returncode == 0
+        record_reviews(tmp_path, repo, env)
+        r = sprint(repo, env, "land")
         assert r.returncode == 2, "a red full tier did not stop the close"
-        assert "full tier" in r.stderr
+        assert "test tier red" in r.stderr
         path = marker_path(tmp_path)
         assert not path.exists() or "full_tier" not in json.loads(path.read_text())
 
@@ -112,7 +114,10 @@ class TestFullTier:
         assert not sentinel.exists(), "the expensive tier ran before the cheap batch refused"
         flag.write_text("ok")
         assert sprint(repo, env, "start").returncode == 0
-        assert sentinel.exists(), "a green batch never reached the tier"
+        assert not sentinel.exists()
+        record_reviews(tmp_path, repo, env)
+        assert sprint(repo, env, "land").returncode == 2
+        assert sentinel.exists(), "land never reached the tier"
 
     def test_the_unedited_scaffold_tier_never_reaches_the_shell(self, tmp_path):
         """DRIVEN at story-046 review: `EDIT-ME` reached `sh -c`, came back 127 and
@@ -120,7 +125,9 @@ class TestFullTier:
         config. An ABSENT tier stays legal here; test_falsifier_batch owns that."""
         config = CONFIG.replace("full: true", "full: EDIT-ME")
         repo, env, _g = make_repo(tmp_path, config=config)
-        r = sprint(repo, env, "start")
+        assert sprint(repo, env, "start").returncode == 0
+        record_reviews(tmp_path, repo, env)
+        r = sprint(repo, env, "land")
         assert r.returncode == 2 and "Set tests.full" in r.stderr, r.stdout
         assert "full tier red" not in r.stderr and "running the full tier" not in r.stdout
 
@@ -131,22 +138,9 @@ class TestFullTier:
         repo, env, _g = make_repo(
             tmp_path, config="full: true\n" + CONFIG.replace("full: true", "full: false")
         )
-        assert sprint(repo, env, "start").returncode == 2, "a stray key shadowed the real tier"
-
-    def test_a_round_written_during_start_tier_survives(self, tmp_path):
-        config, started, release = blocking_tier(tmp_path)
-        repo, env, _g = make_repo(tmp_path, config=config)
-        process = start_sprint_process(repo, env, "start")
-        wait_for(started, process)
-
-        salvage_round(tmp_path, repo, env, 1, "concurrent start round")
-        release.touch()
-        stdout, stderr = process.communicate(timeout=120)
-
-        assert process.returncode == 0, stdout + stderr
-        marker = json.loads(marker_path(tmp_path).read_text())
-        assert marker["rounds"][-1]["noted"] == ["concurrent start round"]
-        assert marker["full_tier"]["ran_by"] == "start"
+        assert sprint(repo, env, "start").returncode == 0
+        record_reviews(tmp_path, repo, env)
+        assert sprint(repo, env, "land").returncode == 2, "a stray key shadowed the real tier"
 
     def test_a_round_written_during_land_tier_survives(self, tmp_path):
         config, started, release = blocking_tier(tmp_path)

@@ -3,7 +3,7 @@
 import shlex
 
 import pytest
-from sprint_helpers import make_repo, sprint, work
+from sprint_helpers import make_repo, record_reviews, sprint, work
 
 
 def command(path, succeeds=True):
@@ -49,8 +49,12 @@ def test_equal_tier_commands_defer_without_a_declaration(tmp_path, same):
 
     result = sprint(repo, env, "start")
 
-    assert result.returncode == 0 and falsifier.read_text() == before + "x"
-    assert (f"trusted {ref}" in result.stdout) is same
+    assert result.returncode == 0
+    assert falsifier.read_text() == (before if same else before + "x")
+    record_reviews(tmp_path, repo, env)
+    landed = sprint(repo, env, "land")
+    assert landed.returncode == 2 and "gh" in landed.stderr
+    assert (f"trusted {ref}" in landed.stdout) is same
     if not same:
         assert tier.read_text() == "x"
 
@@ -69,8 +73,10 @@ def test_transitive_declared_coverage_defers_the_honest_cheaper_tag(tmp_path):
     result = sprint(repo, env, "start")
 
     assert result.returncode == 0 and (tmp_path / "fast").read_text() == before
+    record_reviews(tmp_path, repo, env)
+    landed = sprint(repo, env, "land")
     assert (tmp_path / "full").read_text() == "x"
-    assert f"trusted {ref}" in result.stdout and "via tier fast" in result.stdout
+    assert f"trusted {ref}" in landed.stdout and "via tier fast" in landed.stdout
 
 
 def test_a_red_covering_tier_runs_the_deferred_command_with_attribution(tmp_path):
@@ -89,10 +95,57 @@ def test_a_red_covering_tier_runs_the_deferred_command_with_attribution(tmp_path
     before = (tmp_path / "fast").read_text()
     flag.unlink()
 
-    result = sprint(repo, env, "start")
+    assert sprint(repo, env, "start").returncode == 0
+    record_reviews(tmp_path, repo, env)
+    result = sprint(repo, env, "land")
 
     assert result.returncode == 2 and (tmp_path / "fast").read_text() == before + "x"
     assert ref in result.stderr and "trusted" not in result.stdout
+
+
+def test_pending_coverage_change_runs_previously_deferred_debt(tmp_path):
+    full = "true"
+    fast = "printf fast >/dev/null"
+    cfg = config(
+        (("fast", fast), ("full", full)), (("fast", "full"),), (("fast", fast), ("full", full))
+    )
+    repo, env, g = make_repo(tmp_path, config=cfg)
+    ref = covered_debt(repo, env, "test ! -f trunk-only", "fast")
+    assert sprint(repo, env, "start").returncode == 0
+    record_reviews(tmp_path, repo, env)
+    g("checkout", "-q", "main")
+    (repo / "trunk-only").write_text("present\n")
+    path = repo / ".xp" / "config.yml"
+    path.write_text(cfg.replace("tier_coverage:\n  fast: full\n", ""))
+    g("add", "-A")
+    g("commit", "-qm", "trunk removes coverage")
+    g("checkout", "-q", "sprint-002")
+
+    result = sprint(repo, env, "land")
+
+    assert result.returncode == 2 and f"source {ref}" in result.stderr
+    assert "## bug " in (tmp_path / "data" / "work.md").read_text()
+    assert g("rev-parse", "-q", "--verify", "MERGE_HEAD").returncode != 0
+
+
+def test_staged_coverage_pin_error_refuses_land(tmp_path):
+    cfg = config(
+        (("fast", "true"), ("full", "false")),
+        (("fast", "full"),),
+        (("fast", "true"), ("full", "false")),
+    )
+    repo, env, g = make_repo(tmp_path, config=cfg)
+    assert sprint(repo, env, "start").returncode == 0
+    record_reviews(tmp_path, repo, env)
+    g("checkout", "-q", "main")
+    path = repo / ".xp" / "config.yml"
+    path.write_text(cfg.replace("fast: true", "fast: false", 1))
+    g("add", "-A")
+    g("commit", "-qm", "trunk changes fast tier without pin")
+    g("checkout", "-q", "sprint-002")
+
+    result = sprint(repo, env, "land")
+    assert result.returncode == 2 and "stale tier_coverage_pins" in result.stderr
 
 
 def test_a_changed_tier_command_refuses_before_any_execution(tmp_path):
