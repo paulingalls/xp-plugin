@@ -6,7 +6,7 @@ import tempfile
 
 import overlap
 from env import data_root
-from falsifier_batch import batch_refusal, execute_batch, grouped_batch
+from falsifier_batch import ARCHIVED, batch_refusal, execute_batch, grouped_batch
 from milestone import sprint_stories
 from release import VERSIONING_OFF_TEXT, next_version, refuse_unbumpable, versioning_mode
 from release import cmd_post_merge as release_post_merge
@@ -343,7 +343,7 @@ def cmd_land(sprint_id: str, dry_run: bool) -> int:
             if (
                 record.eid in start_ids
                 and record.eid not in deferred_ids | displaced_ids
-                and record.state != "ARCHIVED"
+                and record.state != ARCHIVED
             ):
                 displaced.setdefault(record.falsifier, []).append(
                     (record.eid, record.head, record.covered)

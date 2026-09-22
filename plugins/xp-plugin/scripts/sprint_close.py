@@ -131,7 +131,7 @@ def cmd_start(sprint_id: str, dry_run: bool = False) -> int:
         print(f"recorded; {len(unfinished)} stories unfinished — close checks wait")
         return 0
 
-    _marker, _state, marker_error = read_sprint_state(sprint_id)
+    marker, state, marker_error = read_sprint_state(sprint_id)
     if marker_error:
         return fail(marker_error)
     if dirty := git("status", "--porcelain").stdout.strip():
@@ -152,8 +152,7 @@ def cmd_start(sprint_id: str, dry_run: bool = False) -> int:
     if dirty := git("status", "--porcelain").stdout.strip():
         return fail(f"refused: the falsifier batch left the working tree dirty:\n  {dirty}")
     deferred_ids = sorted(eid for sources in deferred.values() for eid, _head, _covered in sources)
-    marker = sprint_marker(sprint_id)
-    if (deferred_ids or "start_deferred_ids" in _state) and _state.get(
+    if (deferred_ids or "start_deferred_ids" in state) and state.get(
         "start_deferred_ids"
     ) != deferred_ids:
         try:

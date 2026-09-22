@@ -83,13 +83,28 @@ def test_fail_then_pass_reuses_latest_pass(tmp_path):
     ]
 
 
-def test_corrupt_history_cannot_certify_receipt(tmp_path):
+@pytest.mark.parametrize(
+    "corrupt",
+    (
+        lambda h: [{"outcome": "passed"}],
+        lambda h: 7,
+        lambda h: [dict(h[0], outcome="passd")],
+        lambda h: [dict(h[0], leg="start")],
+        lambda h: [dict(h[0], tree="")],
+        lambda h: [dict(h[0], duration_seconds=-1)],
+        lambda h: [dict(h[0], duration_seconds=True)],
+        lambda h: [dict(h[0], started_at="2026-09-22T00:00:00")],
+        lambda h: [dict(h[0], started_at="2026-09-22T00:00:00+01:00")],
+        lambda h: [dict(h[0], ended_at="2000-01-01T00:00:00Z")],
+    ),
+)
+def test_corrupt_history_cannot_certify_receipt(tmp_path, corrupt):
     repo, env, _g, events, _tier = counted_repo(tmp_path)
     record_reviews(tmp_path, repo, env)
     assert sprint(repo, env, "land").returncode == 2
     marker = marker_path(tmp_path)
     saved = state(tmp_path)
-    saved["full_tier_history"] = [{"outcome": "passed"}]
+    saved["full_tier_history"] = corrupt(saved["full_tier_history"])
     marker.write_text(json.dumps(saved))
     before = marker.read_bytes()
 
@@ -203,7 +218,11 @@ def test_round_recorded_during_the_falsifier_batch_gates_land(tmp_path):
 
 @pytest.mark.parametrize(
     ("field", "reason"),
-    (("tree", "no matching history entry"), ("head", "contradicts full_tier_history")),
+    (
+        ("tree", "no matching history entry"),
+        ("head", "contradicts full_tier_history"),
+        ("command", "contradicts full_tier_history"),
+    ),
 )
 def test_history_that_does_not_vouch_for_the_receipt_refuses_reuse(tmp_path, field, reason):
     repo, env, _g, events, _tier = counted_repo(tmp_path)
