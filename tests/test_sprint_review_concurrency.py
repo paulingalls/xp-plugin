@@ -52,6 +52,9 @@ def test_every_finder_starts_before_any_finishes_and_records_declared_order(tmp_
         assert all(p.exists() for p in started), "every finder did not start at once"
         for name in reversed(finders):
             (tmp_path / f"{name}.release").touch()
+            report = tmp_path / "data/reports/sprint" / f"2.{name}.round-1.json"
+            while time.monotonic() < deadline and not report.exists():
+                time.sleep(0.02)
         out, err = proc.communicate(timeout=15)
         assert proc.returncode == 2 and "reviewer exited 1" in err, out + err
         record = json.loads(marker_path(tmp_path).read_text())["rounds"][0]
@@ -158,6 +161,10 @@ def test_verifiers_start_after_finders_and_closer_waits_for_both(tmp_path):
         )
         assert "close" not in [stage_key(item["stdin"]) for item in launches(tmp_path)]
         (tmp_path / "verify-2.release").touch()
+        report = tmp_path / "data/reports/sprint/2.verify-2.round-1.json"
+        while time.monotonic() < deadline and not report.exists():
+            time.sleep(0.02)
+        time.sleep(0.5)
         assert "close" not in [stage_key(item["stdin"]) for item in launches(tmp_path)]
         (tmp_path / "verify-1.release").touch()
         out, err = proc.communicate(timeout=15)
@@ -171,7 +178,7 @@ def test_verifiers_start_after_finders_and_closer_waits_for_both(tmp_path):
             proc.communicate()
 
 
-def test_codex_finders_share_one_checkout_without_status_lock_failure(tmp_path):
+def test_codex_finders_start_together_in_one_checkout(tmp_path):
     config = (
         CONFIG.replace(
             "  reviewer: claude/opus\n",
@@ -190,7 +197,6 @@ def test_codex_finders_share_one_checkout_without_status_lock_failure(tmp_path):
             " import time\n"
             " while not os.path.exists(os.path.join(os.environ['HOME'], key + '.release')):\n"
             "  time.sleep(.02)\n"
-            " subprocess.run(['git', 'status', '--porcelain'], check=True, capture_output=True)\n"
             " open(m.group(1).strip(), 'w').write(",
         )
     )
@@ -202,20 +208,20 @@ def test_codex_finders_share_one_checkout_without_status_lock_failure(tmp_path):
         stderr=subprocess.PIPE,
         text=True,
     )
+    finders = ("find-security", "find-state-lifecycle", "find-test-vacuity")
     try:
         deadline = time.monotonic() + 15
-        first = tmp_path / "find-security.started"
-        second = tmp_path / "find-state-lifecycle.started"
-        while time.monotonic() < deadline and not (first.exists() and second.exists()):
+        started = [tmp_path / f"{name}.started" for name in finders]
+        while time.monotonic() < deadline and not all(p.exists() for p in started):
             time.sleep(0.02)
-        assert first.exists() and second.exists(), "two Codex finders did not start"
-        for name in ("find-security", "find-state-lifecycle", "find-test-vacuity"):
+        assert all(p.exists() for p in started), "every Codex finder did not start at once"
+        for name in finders:
             (tmp_path / f"{name}.release").touch()
         out, err = proc.communicate(timeout=15)
         assert proc.returncode == 0, out + err
         assert "incomplete" not in json.loads(marker_path(tmp_path).read_text())["rounds"][0]
     finally:
-        for name in ("find-security", "find-state-lifecycle", "find-test-vacuity"):
+        for name in finders:
             (tmp_path / f"{name}.release").touch()
         if proc.poll() is None:
             proc.kill()

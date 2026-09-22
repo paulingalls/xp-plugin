@@ -23,7 +23,8 @@ Story ACs must be executed by a test named in the story's Verify.
 - Component and density totals are review guidance; structural file and
   measurement guards still refuse.
 - **Worktree bootstrap**: none needed (stdlib only, no install step).
-- **Concurrency**: at most two review streams and one `pytest -n auto` gate. Reviews
+- **Concurrency**: at most two review streams — a sprint review's finders, and then its
+  verifiers, each run all at once as one stream — and one `pytest -n auto` gate. Reviews
   have no wall-clock limit; rejoin instead of relaunching.
 - **Triage**: name any tier that still covers a dropped debt; without coverage, the
   drop is final.
