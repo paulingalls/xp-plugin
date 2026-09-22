@@ -114,6 +114,7 @@ class TestReadyCredential:
         before = json.loads(marker.read_text())
         self.edit_card(tmp_path, "Files: src/thing.py", "Files: src/thing.py, tests/test_a.py")
         self.edit_card(tmp_path, "Verify: true", "Verify: python3 -m pytest -q tests/test_a.py")
+        seed_refresh_receipt(repo, env)
 
         amended = spawn(
             repo, env, "amend", "story-042", "--reason", "the implementation added its test"

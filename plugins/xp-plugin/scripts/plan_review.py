@@ -20,7 +20,8 @@ import review
 from close import fail, story_card
 from slate_review import review_findings_path, review_marker, run_detached
 from spawn import _read, _read_shipped, tree_state
-from work import chdir_repo_root, plan_path
+from teammate_tee import agent_log_id, log_path
+from work import chdir_repo_root, data_root, plan_path
 
 PLUGIN_ROOT = Path(__file__).parent.parent
 
@@ -222,8 +223,25 @@ def _cmd_review(
     if not detach:
         for path in (out, incomplete_marker(story_id)):
             path.parent.mkdir(parents=True, exist_ok=True)
+        resume = shlex.join(
+            [
+                sys.executable,
+                str(Path(__file__).with_name("spawn.py").resolve()),
+                "resume",
+                story_id,
+            ]
+        )
         incomplete_marker(story_id).write_text(
-            json.dumps({"state": "PLAN REVIEW DID NOT COMPLETE", "findings": str(out)})
+            json.dumps(
+                {
+                    "findings": str(out),
+                    "log": str(
+                        log_path(data_root(), agent_log_id("plan-reviewer", "plan-reviewer", card))
+                    ),
+                    "state": "PLAN REVIEW DID NOT COMPLETE",
+                    "next": f"run {resume} to resume the story",
+                }
+            )
         )
         return _run_review(story_id, plan_file, charter, plan, card, out, False)
     rc = run_detached(

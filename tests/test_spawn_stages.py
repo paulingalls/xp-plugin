@@ -5,6 +5,7 @@ import subprocess
 import sys
 
 from spawn_helpers import SPAWN, make_repo, seed_refresh_receipt, spawn
+from spawn_stash_cases import TestDirtyReviewStash, dirty_review_repo  # noqa: F401
 
 CLEAN = {"fixed": [], "blocking": [], "noted": []}
 
@@ -323,8 +324,9 @@ class TestSpawnStages:
         """Release blocker found by story-102's round-2 reviewer. `planner` is marked
         "ran" BEFORE the plan review runs, so a block leaves it set and every resume
         skips replanning and re-reviews the IDENTICAL draft — blocking again, forever.
-        Constructs the stall rather than observing it: the same stub blocks both times,
-        so a green here means the planner was re-run and the draft is new."""
+        Resume is driven through the incomplete marker's OWN `next` command, so the
+        recovery that marker names is itself under test; with the stub no longer
+        blocking, a second planner event is the only way it can reach a clean round."""
         repo, env, _g = make_repo(tmp_path, files="src/thing.py, src/other.py")
         events = stub_stages(tmp_path, blocking_plan=True)
         stopped = spawn(repo, env, "story-042")
@@ -336,7 +338,21 @@ class TestSpawnStages:
         )
         assert "blocked" in state["why"] and "failed" not in state["why"], state["why"]
         handoff.write_text(json.dumps({**json.loads(handoff.read_text()), "state": "STOPPED"}))
-        spawn(repo, env, "resume", "story-042")
+        stub_stages(tmp_path)
+        marker = tmp_path / "data/markers/story-042.plan-review-incomplete"
+        action = (
+            json.loads(marker.read_text())["next"]
+            .removeprefix("run ")
+            .removesuffix(" to resume the story")
+        )
+        recovered = subprocess.run(
+            shlex.split(action),
+            cwd=repo,
+            env=dict(env, XP_SPAWN_TEST="1"),
+            capture_output=True,
+            text=True,
+        )
+        assert recovered.returncode == 0, recovered.stdout + recovered.stderr
         assert event_roles(events).count("planner") == 2, (
             "resume re-reviewed the same draft instead of replanning: " + str(event_roles(events))
         )
