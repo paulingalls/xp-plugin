@@ -387,14 +387,15 @@ class TestTheCommitGateRefusalIsActionable:
         assert "CAUSE-ABOVE-THE-CUT" not in out, "the fixture no longer truncates"
         assert "last 12 of 15 lines" in out, f"the refusal hid its own truncation:\n{out}"
 
-    def test_the_humans_commit_is_followed_by_round_two_without_erasing_round_one(self, tmp_path):
+    def test_the_humans_commit_completes_the_incomplete_round(self, tmp_path):
         repo, env, g, _out = self.refusal(tmp_path, LEFTHOOK)
         (repo / ".git" / "hooks" / "pre-commit").unlink()
         assert g("commit", "-qm", "human accepts fixer patch").returncode == 0
         staged_stub(tmp_path)
         assert sprint(repo, env, "review").returncode == 0
         rounds = json.loads(marker_path(tmp_path).read_text())["rounds"]
-        assert len(rounds) == 2 and rounds[0]["incomplete"] and "incomplete" not in rounds[1]
+        assert len(rounds) == 1 and "incomplete" not in rounds[0]
+        assert rounds[0]["reused"][-1] == "fix" and rounds[0]["ran"] == ["close"]
         assert (tmp_path / "data/reports/sprint/2.fix.round-1.json").exists()
 
 

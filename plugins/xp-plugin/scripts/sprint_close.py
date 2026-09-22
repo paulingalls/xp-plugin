@@ -61,7 +61,14 @@ def cmd_review(sprint_id: str, dry_run: bool) -> int:
     import sprint_review_resume
     from bookkeep import render_sprint_prior
 
-    if git("status", "--porcelain").stdout.strip():
+    marker = sprint_marker(sprint_id)
+    state = json.loads(marker.read_text()) if marker.exists() else {}
+    rounds = state.get("rounds", [])
+    head = git("rev-parse", "HEAD").stdout.strip()
+    dirty = git("status", "--porcelain").stdout.strip()
+    if dirty and (why := sprint_review_resume.dirty_fixer(rounds, head, sprint_id, review)):
+        return fail(f"refused: {why}")
+    if dirty:
         return fail("refused: working tree is dirty — commit or stash first")
     plan = plan_path()
     if not plan.exists():
@@ -74,48 +81,22 @@ def cmd_review(sprint_id: str, dry_run: bool) -> int:
         )
     if not (cards := sprint_cards(plan.read_text(), sprint_id)):
         return fail(f"refused: no `### Sprint {sprint_id}` section in {plan}")
-    marker = sprint_marker(sprint_id)
-    state = json.loads(marker.read_text()) if marker.exists() else {}
-    rounds = state.get("rounds", [])
-    complete_n = max((n for n, r in enumerate(rounds, 1) if not r.get("incomplete")), default=0)
-    head = git("rev-parse", "HEAD").stdout.strip()
-    reviewed_head, resume_round = head, None
-    # Only the round-one fanout HAS a closer to resume at: a later round is the fixer
-    # alone, and its charters are never loaded. Every unmet precondition falls back to
-    # a fresh round rather than refusing — `review` is the only command that runs one,
-    # so a refusal telling the lead to run a full review has no next action at all.
-    if not complete_n and (stopped := sprint_review_resume.closer_round(rounds)):
-        saved = review.sprint_report_path(sprint_id, "fix", len(rounds))
-        derived, why = sprint_review_resume.reviewed_head(
-            stopped, head, review.patch_path(saved), git, review.REVIEWER_NAME
+    complete_n, reviewed_head, resume_round, why, refusal = sprint_review_resume.state(
+        rounds, head, sprint_id, review, git
+    )
+    if refusal:  # `review` is the only command that runs one, so a refusal that names
+        return fail(  # no way out of the round leaves the sprint with no next action
+            f"refused: {refusal}; or discard the incomplete round by moving {marker}"
+            " aside — it holds this sprint's recorded rounds and moving it forfeits"
+            f" them — then `close.py sprint {sprint_id} review` for a fresh fanout"
         )
-        if why:
-            print(f"warning: {why} — running a fresh round instead", file=sys.stderr)
-        else:
-            reviewed_head, resume_round = derived, stopped
+    if why:
+        print(f"warning: {why} — running a fresh round instead", file=sys.stderr)
     resume = resume_round is not None
     round_n = len(rounds) if resume else len(rounds) + 1
-    found, cap, charters, altitude = [], 0, {}, ""
-    if complete_n:
-        altitude, err = stages.altitude()
-        if err:
-            return fail(err)
-    elif resume:
-        charters, err = stages.charters()
-        if err:
-            return fail(err)
-        stages.check_roles(cards)
-    else:
-        found, err = stages.angles()
-        if err:
-            return fail(err)
-        cap, err = stages.batch_cap()
-        if err:
-            return fail(err)
-        charters, err = stages.charters()
-        if err:
-            return fail(err)
-        stages.check_roles(cards)
+    found, cap, charters, altitude, err = sprint_review_resume.inputs(complete_n, cards, stages)
+    if err:
+        return fail(err)
     authority = story_close.review_authority_sections()
     base = git("merge-base", f"refs/heads/{trunk}", "HEAD").stdout.strip()
     digest_before = review.marker_digest(marker)
@@ -130,31 +111,36 @@ def cmd_review(sprint_id: str, dry_run: bool) -> int:
             print("warning: " + left, file=sys.stderr)
 
     ran, reports = [], []
+    prefix = (
+        sprint_review_resume.Prefix(
+            resume_round, review.read_report, review.sprint_report_path, sprint_id, round_n
+        )
+        if resume
+        else None
+    )
 
     def stop(err: str) -> int:
-        if resume:
-            if not dry_run:  # a preview must not rewrite the round it previews
-                sprint_review_resume.keep_incomplete(marker, round_n, err, write_sprint_state)
-                ran_before = ", ".join(rounds[-1]["stages"])
-                print(f"round {round_n} remains incomplete after {ran_before}")
-            return fail(err)
-        if reports:
-            err = err.replace(review.NO_ROUND, f"Round {round_n} IS recorded, incomplete.")
-            seen = {k: dict.fromkeys(i for r in reports for i in r[k]) for k in review.REPORT_KEYS}
-            round_ = {k: list(v) for k, v in seen.items()} | {"incomplete": err, "stages": ran}
-            coverage = (
-                {"reviewed_head": head, "shown_sha": git("rev-parse", "HEAD").stdout.strip()}
-                if "fix" in ran
-                else {}
-            )
-            review.write_round(marker, state, round_, edit=write_sprint_state, **coverage)
-            print(f"round {round_n} recorded incomplete after {', '.join(ran)}")
+        err, notice = sprint_review_resume.stop(
+            resume,
+            dry_run,
+            marker,
+            round_n,
+            err,
+            reports,
+            prefix,
+            ran,
+            reviewed_head,
+            lambda: git("rev-parse", "HEAD").stdout.strip(),
+            state,
+            review,
+            write_sprint_state,
+        )
+        if notice:
+            print(notice)
         return fail(err)
 
     def leg(stage: str, key: str, extra: list, charter: str = "") -> tuple[dict, str]:
         path = review.sprint_report_path(sprint_id, key, round_n)
-        # A resume skips the rotation above and re-runs only the closer, so its own
-        # slot may still hold the DEAD closer's report — read back as this leg's.
         if not dry_run and (aside := rotate_artifacts([path, review.patch_path(path)])):
             print("warning: " + artifact_notice(aside, salvage_cmd), file=sys.stderr)
         if stage == "fixer":
@@ -190,18 +176,14 @@ def cmd_review(sprint_id: str, dry_run: bool) -> int:
             report_err = review.apply_patch(path, cards)
         return report, review.abort_text(stage_head, report_err) if report_err else ""
 
+    def stage(stage_name: str, key: str, extra: list, charter: str = "") -> tuple[dict, str]:
+        report, _error = sprint_review_resume.take(prefix, stage_name, key, reports, round_n)
+        if report is not None:
+            return report, ""
+        return leg(stage_name, key, extra, charter)
+
     prior = [("Findings from earlier rounds", render_sprint_prior(rounds if complete_n else []))]
-    if resume:
-        fix_report = review.sprint_report_path(sprint_id, "fix", round_n)
-        fixed, err = review.read_report(fix_report, stage="fixer")
-        if err:
-            return stop(review.abort_text(head, err))
-        closing, err = leg("closer", "close", [("What the fixer reported", json.dumps(fixed))])
-        if err:
-            return stop(err)
-        if dry_run:
-            return 0
-    elif complete_n:
+    if complete_n:
         fixed, err = leg("fixer", "fix", [("Sprint altitude", altitude), *prior], review.charter())
         if err:
             return stop(err)
@@ -212,7 +194,7 @@ def cmd_review(sprint_id: str, dry_run: bool) -> int:
         fixed = {k: [] for k in review.REPORT_KEYS}
         candidates = []
         for slug, prose in found:
-            report, err = leg("finder", f"find-{slug}", [("Your angle", prose), *prior])
+            report, err = stage("finder", f"find-{slug}", [("Your angle", prose), *prior])
             if err:
                 return stop(err)
             candidates += report["blocking"]
@@ -220,19 +202,26 @@ def cmd_review(sprint_id: str, dry_run: bool) -> int:
             print("(then: verifiers, the fixer, the closer)")
             return 0
         survivors = []
-        for n, batch in enumerate(stages.batches(candidates, cap), 1):
+        batches = stages.batches(candidates, cap)
+        verify_keys = [f"verify-{n}" for n in range(1, len(batches) + 1)]
+        if prefix and (why := prefix.match_verifiers(verify_keys)):
+            print(f"round {round_n}: cannot reuse verifiers: {why}")
+        for n, batch in enumerate(batches, 1):
             judged = [("The candidates you are judging", "\n".join(f"- {c}" for c in batch))]
-            report, err = leg("verifier", f"verify-{n}", judged)
+            report, err = stage("verifier", f"verify-{n}", judged)
             if err:
                 return stop(err)
             survivors += report["blocking"]
         print(f"{len(candidates)} candidates, {len(survivors)} survived refutation")
         if survivors:
             told = [("The findings you must fix", "\n".join(f"- {s}" for s in survivors))]
-            fixed, err = leg("fixer", "fix", told)
+            if prefix and prefix.open and head == reviewed_head and resume_round.get("fixed"):
+                why = prefix.close("the tree is unchanged and carries none of the claimed fixes")
+                print(f"round {round_n}: cannot reuse fix: {why}")
+            fixed, err = stage("fixer", "fix", told)
             if err:
                 return stop(err)
-        closing, err = leg("closer", "close", [("What the fixer reported", json.dumps(fixed))])
+        closing, err = stage("closer", "close", [("What the fixer reported", json.dumps(fixed))])
         if err:
             return stop(err)
     shown_sha = git("rev-parse", "HEAD").stdout.strip()
@@ -249,16 +238,22 @@ def cmd_review(sprint_id: str, dry_run: bool) -> int:
     if err := review.write_reviewer_diff(fix_report, reviewed_head, f"sprint {sprint_id}"):
         # A rolled-back fix must not remain in the recorded round.
         if "fix" in ran and git("rev-parse", "HEAD").stdout.strip() == head:
-            reports.pop(ran.index("fix"))
+            reports.pop([*(prefix.reused if prefix else []), *ran].index("fix"))
             ran.remove("fix")
         return stop(err)
-    if resume:
-        sprint_review_resume.complete(
-            marker, round_n, round_, reviewed_head, shown_sha, write_sprint_state
-        )
-    else:
-        coverage = {"reviewed_head": head, "shown_sha": shown_sha}
-        review.write_round(marker, state, round_, edit=write_sprint_state, **coverage)
+    sprint_review_resume.finish(
+        resume,
+        marker,
+        state,
+        round_n,
+        round_,
+        reviewed_head if resume else head,
+        shown_sha,
+        prefix,
+        ran,
+        review,
+        write_sprint_state,
+    )
     print(
         f"round {round_n} recorded at {shown_sha[:8]}:"
         f" {len(round_['fixed'])} fixed, {len(round_['blocking'])} blocking"
