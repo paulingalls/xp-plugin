@@ -28,7 +28,11 @@ DOC = "The plan-review credential: minted from [planned], amended only with a re
 
 def refresh_instruction(story_id: str) -> str:
     script = str(Path(__file__).parent.parent / "slate_review.py")
-    return f"Run `{shlex.join(['python3', script, story_id, '--refresh'])}`."
+    command = shlex.join(["python3", script, story_id, "--refresh"])
+    return (
+        f"Finish all card edits. Refresh once: Run `{command}`. Then run"
+        f" `spawn.py ready {story_id}`."
+    )
 
 
 def spawned(story_id: str) -> bool:
@@ -167,7 +171,75 @@ def write_refresh_receipt(story_id: str, card: str, changed: bool) -> str:
         "changed": changed,
         "files": files,
     }
-    path.write_text(json.dumps(receipt, ensure_ascii=False))
+    _write_refresh_receipt(path, receipt)
+    return ""
+
+
+def _write_refresh_receipt(path: Path, receipt: dict) -> None:
+    temporary = path.with_suffix(".json.part")
+    temporary.write_text(json.dumps(receipt, ensure_ascii=False))
+    temporary.replace(path)
+
+
+def _load_refresh_receipt(story_id: str) -> tuple[Path | None, dict | None, str]:
+    try:
+        path = refresh_receipt_path(story_id)
+    except ValueError as error:
+        return None, None, f"{error}. {refresh_instruction(story_id)}"
+    if not path.exists():
+        return (
+            path,
+            None,
+            f"refused: no card refresh has run for {story_id}. {refresh_instruction(story_id)}",
+        )
+    try:
+        receipt = json.loads(path.read_text())
+    except (OSError, ValueError):
+        return path, None, f"refused: {path} is unreadable. {refresh_instruction(story_id)}"
+    if not isinstance(receipt, dict) or not isinstance(receipt.get("files"), dict):
+        return (
+            path,
+            None,
+            f"refused: {path} is not a card refresh receipt. {refresh_instruction(story_id)}",
+        )
+    return path, receipt, ""
+
+
+def refresh_path_receipt(story_id: str, card: str) -> tuple[dict | None, str]:
+    _path, receipt, problem = _load_refresh_receipt(story_id)
+    if problem:
+        return None, problem
+    try:
+        paths = declared_files(card)
+    except ValueError as error:
+        return None, UNPARSABLE.format(error, plan_path(), story_id)
+    for declared in paths:
+        if declared not in receipt["files"]:
+            return None, (
+                f"refused: {story_id}'s card refresh receipt does not cover {declared}"
+                f" — it predates the path being declared. {refresh_instruction(story_id)}"
+            )
+        if path_state(declared) != receipt["files"][declared]:
+            return None, (
+                f"refused: {declared} changed since {story_id}'s card refresh"
+                f" — the receipt no longer reflects HEAD. {refresh_instruction(story_id)}"
+            )
+    return receipt, ""
+
+
+def remint_refresh_receipt(story_id: str, card: str, receipt: dict) -> str:
+    try:
+        declared = sorted(declared_files(card))
+        path = refresh_receipt_path(story_id)
+    except ValueError as error:
+        return UNPARSABLE.format(error, plan_path(), story_id)
+    updated = receipt | {
+        "head": git("rev-parse", "HEAD", check=False).stdout.strip(),
+        "digest": card_digest(card),
+        "files": {name: path_state(name) for name in declared},
+        "reminted": True,
+    }
+    _write_refresh_receipt(path, updated)
     return ""
 
 
@@ -175,18 +247,9 @@ def check_refresh(
     story_id: str, card: str, require_digest: bool = True, require_paths: bool = True
 ) -> str:
     """Return a refusal unless the receipt matches this card and its paths."""
-    try:
-        path = refresh_receipt_path(story_id)
-    except ValueError as error:
-        return f"{error}. {refresh_instruction(story_id)}"
-    if not path.exists():
-        return f"refused: no card refresh has run for {story_id}. {refresh_instruction(story_id)}"
-    try:
-        receipt = json.loads(path.read_text())
-    except (OSError, ValueError):
-        return f"refused: {path} is unreadable. {refresh_instruction(story_id)}"
-    if not isinstance(receipt, dict) or not isinstance(receipt.get("files"), dict):
-        return f"refused: {path} is not a card refresh receipt. {refresh_instruction(story_id)}"
+    _path, receipt, problem = _load_refresh_receipt(story_id)
+    if problem:
+        return problem
     if require_digest and receipt.get("digest") != card_digest(card):
         return (
             f"refused: {story_id}'s card refresh receipt does not match the current card"
@@ -194,22 +257,7 @@ def check_refresh(
         )
     if not require_paths:
         return ""
-    try:
-        paths = declared_files(card)
-    except ValueError as error:
-        return UNPARSABLE.format(error, plan_path(), story_id)
-    for declared in paths:
-        if declared not in receipt["files"]:
-            return (
-                f"refused: {story_id}'s card refresh receipt does not cover {declared}"
-                f" — it predates the path being declared. {refresh_instruction(story_id)}"
-            )
-        if path_state(declared) != receipt["files"][declared]:
-            return (
-                f"refused: {declared} changed since {story_id}'s card refresh"
-                f" — the receipt no longer reflects HEAD. {refresh_instruction(story_id)}"
-            )
-    return ""
+    return refresh_path_receipt(story_id, card)[1]
 
 
 def mint(story_id: str, require_refresh: bool) -> int:

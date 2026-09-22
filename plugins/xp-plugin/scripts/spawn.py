@@ -249,6 +249,7 @@ def cmd_spawn(story_id: str, override: str, dry_run: bool, resuming: bool = Fals
     tree = worktree_path(story_id)
     trunk = integration_target()
     free_ref = False
+    inherited_state = handoff_state(data_root(), story_id)
     handoff = inheritance(data_root(), story_id)
     if resuming and tree.is_dir():
         handoff += resume().inherited_evidence(tree, trunk)
@@ -352,7 +353,7 @@ def cmd_spawn(story_id: str, override: str, dry_run: bool, resuming: bool = Fals
         return result
 
     mark_handoff(data_root(), story_id)
-    prior_handoff = handoff_state(data_root(), story_id) or {}
+    prior_handoff = inherited_state or {}
     prior_stages = prior_handoff.get("stages", {})
     replan = ready().plan_needs_replan(story_id, prior_handoff)
     if multifile and (replan or prior_stages.get("planner") != "ran"):
@@ -361,6 +362,14 @@ def cmd_spawn(story_id: str, override: str, dry_run: bool, resuming: bool = Fals
         # for the human did not DIE, and saying so sends the lead to the wrong log.
         if rc:
             return stop(why, 0)
+        from review_runner import archive_review_rounds
+
+        if problem := archive_review_rounds(story_id, "plan"):
+            return stop(
+                f"{problem}; preserve the replacement draft and repair the plan-review"
+                " artifacts before resuming",
+                0,
+            )
         mark_stage(data_root(), story_id, "planner", "ran")
     elif not multifile:
         mark_stage(data_root(), story_id, "planner", "skipped")
@@ -371,6 +380,13 @@ def cmd_spawn(story_id: str, override: str, dry_run: bool, resuming: bool = Fals
         with contextlib.chdir(tree):
             rc, outcome = plan_review.run_foreground(story_id, draft_path(data_root(), story_id))
         if rc:
+            if outcome == "capped":
+                handoff_io.mark_plan_reviewed(data_root(), story_id, reviewed_card)
+                return stop(
+                    "execution plan review reached its two-round cap; read and apply both"
+                    f" dispositions, then run `spawn.py resume {story_id}`",
+                    0,
+                )
             mark_stage(data_root(), story_id, "plan-reviewer", outcome)
             # NAMED, because inheritance() hands the successor this sentence and never
             # `stages`: a rejected plan and a verdict nothing could read read alike there.
@@ -379,10 +395,13 @@ def cmd_spawn(story_id: str, override: str, dry_run: bool, resuming: bool = Fals
         handoff_io.mark_plan_reviewed(data_root(), story_id, reviewed_card)
     elif not multifile:
         mark_stage(data_root(), story_id, "plan-reviewer", "skipped")
-    # The prompt is the one built above, NEVER rebuilt here: mark_handoff has since
-    # set this run RUNNING, so a second inheritance() would tell the successor it
-    # inherits its own state and drop the predecessor's commits. The stages changed
-    # nothing it reads — the executor reaches the reviewed plan by PLAN_PATH.
+    if replan:
+        handoff = inheritance(data_root(), story_id, inherited_state)
+        if resuming and tree.is_dir():
+            handoff += resume().inherited_evidence(tree, trunk)
+        prompt = build_prompt(teammate_sections(card, story_id, handoff, PLUGIN_ROOT))
+    # A replan rebuilds from the captured predecessor state so the executor sees only
+    # the replacement plan's findings, never this run's temporary RUNNING handoff.
     rc = run_teammate(argv, tree, prompt, story_id, data_root(), harness)
     outcome = "terminal-stop" if rc == 0 else "harness-death"
     executor_log = data_root() / "logs" / f"{story_id}-executor.log"

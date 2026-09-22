@@ -74,6 +74,36 @@ def test_runner_builds_the_complete_bundle_and_returns_absolute_findings(tmp_pat
     assert not (Path(env["XP_DATA"]) / "markers" / "1.slate-review-incomplete").exists()
 
 
+def test_round_two_bundle_carries_round_one_findings(tmp_path):
+    repo, env = slate_repo(tmp_path)
+    prior = "## unique first-round finding\n\nKeep both lines."
+    launch_path = stub_slate_reviewer(tmp_path, findings=prior)
+    assert slate_review(repo, env).returncode == 0
+    launch_path.unlink()
+
+    assert slate_review(repo, env).returncode == 0
+    prompt = json.loads(launch_path.read_text())["prompt"]
+    assert prior in prompt
+    assert "sprint-1.round-2.md" in prompt
+
+
+@pytest.mark.parametrize("verdict", ["RED", "GREEN"])
+def test_a_third_slate_round_is_refused_on_count_without_launching(tmp_path, verdict):
+    repo, env = slate_repo(tmp_path)
+    root = Path(env["XP_DATA"]) / "slate-reviews"
+    root.mkdir(parents=True)
+    (root / "sprint-1.round-1.md").write_text("first")
+    (root / "sprint-1.round-2.md").write_text(f"second says {verdict}")
+    launch = stub_slate_reviewer(tmp_path)
+
+    result = slate_review(repo, env)
+
+    assert result.returncode == 2
+    assert not launch.exists()
+    assert not (root / "sprint-1.round-3.md").exists()
+    assert "open" in result.stderr.lower() and "sprint" in result.stderr.lower()
+
+
 def test_slate_review_uses_its_configured_model(tmp_path):
     repo, env = slate_repo(tmp_path)
     config = repo / ".xp/config.yml"

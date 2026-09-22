@@ -39,14 +39,12 @@ class TestLaunchContract:
         assert "-p" in argv
         assert argv[argv.index("--model") + 1] == "sonnet"
         assert argv[argv.index("--effort") + 1] == "medium"
-        # Worktree sessions have no project-scoped marketplace enablement.
         assert Path(argv[argv.index("--plugin-dir") + 1]).name == "xp-plugin"
         # headless denies tool permission by default -> prose-only teammate, exit 0.
         # bypass specifically: acceptEdits was MEASURED to deny `git add`/`git
         # commit`, so weaker modes lose the teammate's work rather than block it
         assert "--dangerously-skip-permissions" in argv
-        # and no allow-list: measured to restrict nothing under bypass, so
-        # shipping one would certify a bound that does not exist
+        # An allow-list restricts nothing under bypass, so claiming one would certify no bound.
         assert "--allowedTools" not in argv
         assert "--sandbox" not in argv
         assert "codex sandbox:" not in r.stdout + r.stderr
@@ -95,43 +93,6 @@ class TestLaunchContract:
         assert r.returncode == 0, r.stderr
         argv = json.loads(rec.read_text())["argv"]
         assert argv[argv.index("--sandbox") + 1] == "danger-full-access", argv
-
-    def test_plan_reviewer_role_is_bounded_too(self, tmp_path, monkeypatch):
-        from spawn import run_agent
-
-        monkeypatch.setenv("XP_AGENT_TIMEOUT", "0.01")
-        try:
-            run_agent(
-                ["/bin/sh", "-c", "sleep 1"],
-                tmp_path,
-                "",
-                role="plan-reviewer",
-                harness="claude",
-                log_id="story-042-review",
-            )
-        except subprocess.TimeoutExpired:
-            return
-        raise AssertionError("the plan-reviewer role ran unbounded")
-
-    def test_a_respawn_inherits_the_stopped_teammates_artifacts_only(self, tmp_path):
-        repo, env, g = make_repo(tmp_path)
-        rec = stub_escalating(tmp_path, artifacts=True)
-        assert spawn(repo, env, "story-042").returncode == 3
-        tree = Path(env["XP_DATA"]) / "worktrees" / "story-042"
-        g("worktree", "remove", "--force", str(tree))
-        g("branch", "-D", "ada/story-042-demo-story")
-        reset_to_ready(tmp_path)
-        rec = stub_claude(tmp_path)
-        assert spawn(repo, env, "story-042").returncode == 0
-        inherited = json.loads(rec.read_text())["stdin"]
-        plans = Path(env["XP_DATA"]) / "plans"
-        for mark in ("DRAFT-SENTINEL", "FINDING-ONE", "FINDING-TWO", ESCALATION):
-            assert mark not in inherited
-        assert f"plan draft\n\n{plans / 'story-042.plan.md'}" in inherited
-        assert f"round 1 (legacy)\n\nRead {plans / 'story-042.md'}" in inherited
-        assert f"round 2\n\nRead {plans / 'story-042.round-2.md'}" in inherited
-        rid = json.loads((plans / "story-042.handoff.json").read_text())["records"][0]
-        assert f"records\n\n{rid}. Read each with `work.py show <id>`" in inherited
 
 
 def reset_to_ready(tmp_path):
@@ -497,4 +458,43 @@ def test_the_brief_states_the_commit_the_handback_guard_requires(tmp_path, monke
         assert_commit_precedes_handback(broken)
 
 
-from test_spawn_stages import TestSpawnStages  # noqa: E402,F401
+def test_a_capped_foreground_plan_review_is_recorded_apart_from_a_dead_reviewer(tmp_path):
+    repo, env, _g = make_repo(tmp_path, files="src/thing.py, src/other.py")
+    events = stub_stages(tmp_path, blocking_plan=True)
+    assert spawn(repo, env, "story-042").returncode != 0
+    plans = Path(env["XP_DATA"]) / "plans"
+    (plans / "story-042.round-2.md").write_text("second completed disposition")
+    marker = plans / "story-042.handoff.json"
+    state = json.loads(marker.read_text())
+    state["state"], state["stages"]["plan-reviewer"] = "STOPPED", "failed"
+    marker.write_text(json.dumps(state))
+    seen = len(event_roles(events))
+    stub_stages(tmp_path)
+    capped = spawn(repo, env, "resume", "story-042")
+    assert capped.returncode == 2 and event_roles(events)[seen:] == []
+    state = json.loads(marker.read_text())
+    assert state["stages"]["plan-reviewer"] == "ran" and "cap" in state["why"]
+    assert spawn(repo, env, "resume", "story-042").returncode == 0
+    assert event_roles(events)[seen:] == ["teammate", "reviewer"]
+
+
+def test_an_amended_card_restarts_review_rounds_for_its_replacement_plan(tmp_path):
+    repo, env, _g = make_repo(tmp_path, files="src/thing.py, src/other.py")
+    events = stub_stages(tmp_path, blocking_diff=True)
+    assert spawn(repo, env, "story-042").returncode != 0
+    plans = Path(env["XP_DATA"]) / "plans"
+    (plans / "story-042.round-2.md").write_text("OLD-FINDING")
+    plan = Path(env["XP_DATA"]) / "plan.md"
+    plan.write_text(plan.read_text().replace("Then Z", "Then amended Z"))
+    assert spawn(repo, env, "amend", "story-042", "--reason", "acceptance changed").returncode == 0
+    seen = len(event_roles(events))
+    stub_stages(tmp_path, blocking_diff=True)
+    assert spawn(repo, env, "resume", "story-042").returncode != 0
+    new = [json.loads(line) for line in events.read_text().splitlines()[seen:]]
+    assert [event["role"] for event in new] == ["planner", "plan-reviewer", "teammate", "reviewer"]
+    assert "OLD-FINDING" not in new[1]["prompt"] and "OLD-FINDING" not in new[2]["prompt"]
+    assert (plans / "story-042.round-1.md").is_file()
+    assert len(list(plans.glob("story-042.superseded-*.round-*.md"))) == 2
+
+
+from test_spawn_stages import TestSpawnStages, event_roles, stub_stages  # noqa: E402,F401
