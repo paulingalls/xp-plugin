@@ -5,7 +5,6 @@ import subprocess
 import sys
 import time
 
-import pytest
 from close_helpers import launches
 from spawn_helpers import stub_codex
 from sprint_helpers import (
@@ -20,9 +19,8 @@ from sprint_helpers import (
 )
 
 
-@pytest.mark.parametrize("config", [CONFIG, CONFIG + "review:\n  concurrent_legs: 2\n"])
-def test_two_finders_start_before_either_finishes_and_record_declared_order(tmp_path, config):
-    repo, env, _git = make_repo(tmp_path, config=config)
+def test_every_finder_starts_before_any_finishes_and_records_declared_order(tmp_path):
+    repo, env, _git = make_repo(tmp_path)
     staged_stub(tmp_path)
     stub = tmp_path / "bin" / "claude"
     stub.write_text(
@@ -45,29 +43,23 @@ def test_two_finders_start_before_either_finishes_and_record_declared_order(tmp_
         stderr=subprocess.PIPE,
         text=True,
     )
+    finders = ("find-security", "find-state-lifecycle", "find-test-vacuity")
     try:
         deadline = time.monotonic() + 15
-        first = tmp_path / "find-security.started"
-        second = tmp_path / "find-state-lifecycle.started"
-        third = tmp_path / "find-test-vacuity.started"
-        while time.monotonic() < deadline and not (first.exists() and second.exists()):
+        started = [tmp_path / f"{name}.started" for name in finders]
+        while time.monotonic() < deadline and not all(p.exists() for p in started):
             time.sleep(0.02)
-        assert first.exists() and second.exists(), "two finders did not start"
-        assert not third.exists(), "configured bound was exceeded"
-        (tmp_path / "find-state-lifecycle.release").touch()
-        while time.monotonic() < deadline and not third.exists():
-            time.sleep(0.02)
-        assert third.exists(), "third finder did not start after a slot freed"
-        (tmp_path / "find-test-vacuity.release").touch()
-        (tmp_path / "find-security.release").touch()
+        assert all(p.exists() for p in started), "every finder did not start at once"
+        for name in reversed(finders):
+            (tmp_path / f"{name}.release").touch()
         out, err = proc.communicate(timeout=15)
         assert proc.returncode == 2 and "reviewer exited 1" in err, out + err
         record = json.loads(marker_path(tmp_path).read_text())["rounds"][0]
-        assert record["stages"] == ["find-security", "find-state-lifecycle", "find-test-vacuity"]
+        assert record["stages"] == list(finders)
         assert len(launches(tmp_path)) == 4
         assert record["reviewed_head"] == head(repo, env)
     finally:
-        for name in ("find-security", "find-state-lifecycle", "find-test-vacuity"):
+        for name in finders:
             (tmp_path / f"{name}.release").touch()
         if proc.poll() is None:
             proc.kill()
@@ -129,16 +121,8 @@ def test_a_finder_commit_is_refused_after_its_concurrent_batch(tmp_path):
     assert "close" not in [stage_key(item["stdin"]) for item in launches(tmp_path)]
 
 
-@pytest.mark.parametrize("value", ["0", "-1", "many", ""])
-def test_invalid_concurrency_bound_refuses_before_any_launch(tmp_path, value):
-    repo, env, _git = make_repo(tmp_path, config=CONFIG + f"review:\n  concurrent_legs: {value}\n")
-    result = sprint(repo, env, "review")
-    assert result.returncode == 2 and "review.concurrent_legs" in result.stderr
-    assert launches(tmp_path) == []
-
-
 def test_verifiers_start_after_finders_and_closer_waits_for_both(tmp_path):
-    config = CONFIG + "review:\n  concurrent_legs: 2\n  verify_batches: 2\n"
+    config = CONFIG + "review:\n  verify_batches: 2\n"
     repo, env, _git = make_repo(tmp_path, config=config)
     staged_stub(tmp_path, find={"fixed": [], "blocking": ["one", "two"], "noted": []})
     stub = tmp_path / "bin" / "claude"
@@ -193,7 +177,7 @@ def test_codex_finders_share_one_checkout_without_status_lock_failure(tmp_path):
             "  reviewer: claude/opus\n",
             "  reviewer: claude/opus\n  finder: codex/gpt-6-sol/medium\n",
         )
-        + "codex_sandbox: danger-full-access\nreview:\n  concurrent_legs: 2\n"
+        + "codex_sandbox: danger-full-access\n"
     )
     repo, env, _git = make_repo(tmp_path, config=config)
     stub_codex(tmp_path, commit=False, sandbox="danger-full-access")

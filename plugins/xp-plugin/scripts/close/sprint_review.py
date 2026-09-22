@@ -74,9 +74,6 @@ def cmd_review(sprint_id: str, dry_run: bool) -> int:
     found, cap, charters, altitude, err = sprint_review_resume.inputs(complete_n, cards, stages)
     if err:
         return fail(err)
-    concurrent, err = stages.concurrent_legs()
-    if err:
-        return fail(err)
     authority = story_close.review_authority_sections()
     base = git("merge-base", f"refs/heads/{trunk}", "HEAD").stdout.strip()
     digest_before = review.marker_digest(marker)
@@ -190,7 +187,7 @@ def cmd_review(sprint_id: str, dry_run: bool) -> int:
             return [report for report, _ in results], next((err for _, err in results if err), "")
         batch_head = git("rev-parse", "HEAD").stdout.strip()
         ordered = []
-        with ThreadPoolExecutor(max_workers=concurrent) as pool:
+        with ThreadPoolExecutor(max_workers=max(1, len(jobs))) as pool:
             for key, extra in jobs:
                 report, _ = sprint_review_resume.take(prefix, stage_name, key, reports, round_n)
                 if report is not None:
