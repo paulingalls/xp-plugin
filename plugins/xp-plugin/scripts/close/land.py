@@ -4,7 +4,6 @@ import json
 import os
 import shutil
 import subprocess
-import sys
 from pathlib import Path
 
 import bookkeep
@@ -64,11 +63,14 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
                 " cover this tree; fix it, then run review again"
             )
     if queued := story_sidecars(story_id):
-        print(
-            f"warning: {len(queued)} unrecorded review round(s) are set aside at"
-            f" {', '.join(str(p) for p in queued)} — `close.py {close.leg(story_id)[0]}"
-            " salvage` records them; landing leaves them unread",
-            file=sys.stderr,
+        noun = close.leg(story_id)[0]
+        return close.fail(
+            f"refused: {len(queued)} unrecorded review round(s) are set aside at"
+            f" {', '.join(str(p) for p in queued)} — `close.py {noun} salvage` records"
+            " them. If salvage refuses because the"
+            " recorded tree or marker moved, inspect the saved report and patch,"
+            " explicitly accept that the round cannot enter the ledger, remove only"
+            f" the named .launch path(s), then retry `close.py {noun} land`"
         )
     if not marker.exists():
         return close.fail(f"refused: no close in progress for {story_id} — run review first")

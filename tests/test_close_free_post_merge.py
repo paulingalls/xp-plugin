@@ -148,14 +148,16 @@ class TestFreePostMerge:
         g("checkout", "-q", "main")
         g("merge", "-q", "--no-ff", branch, "-m", "merge free release")
 
-    def test_post_merge_tags_the_merged_sha_and_retires_a_card(self, tmp_path):
+    def test_post_merge_uses_recorded_head_after_release_ref_is_deleted(self, tmp_path):
         repo, env, g, branch = self.reviewed(tmp_path)
         self.merge_pr(g, branch)
         merged = g("rev-parse", "HEAD").stdout.strip()
+        g("branch", "-D", branch)
         result = free(repo, env, "fix-typo", "post-merge")
         assert result.returncode == 0, result.stderr
         assert g("rev-list", "-n1", "v0.2.1").stdout.strip() == merged
         assert "[done]" in (Path(env["XP_DATA"]) / "plan.md").read_text()
+        assert not marker_file(tmp_path, branch.split("/", 1)[1]).exists()
         assert "manifests matching v0.2.1: plugin.json" in result.stdout, result.stdout
 
     def test_post_merge_before_the_pr_merges_refuses_and_cuts_no_tag(self, tmp_path):
