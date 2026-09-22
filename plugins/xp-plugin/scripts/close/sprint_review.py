@@ -2,6 +2,8 @@
 
 import json
 import sys
+import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -23,6 +25,7 @@ from sprint_bundle import build
 # second home for either is the one-rule-two-implementations shape this repo keeps filing.
 from sprint_close import _shown_diff, sprint_cards
 from sprint_state import sprint_marker, write_sprint_state
+from teammate_tee import kill_live
 from work import missing_plan_refusal, plan_path
 
 
@@ -115,7 +118,14 @@ def cmd_review(sprint_id: str, dry_run: bool) -> int:
             print(notice)
         return fail(err)
 
-    def leg(stage: str, key: str, extra: list, charter: str = "") -> tuple[dict, str]:
+    def leg(
+        stage: str,
+        key: str,
+        extra: list,
+        charter: str = "",
+        *,
+        batch_head: str = "",
+    ) -> tuple[dict, str]:
         path = review.sprint_report_path(sprint_id, key, round_n)
         if not dry_run and (aside := rotate_artifacts([path, review.patch_path(path)])):
             print("warning: " + artifact_notice(aside, salvage_cmd), file=sys.stderr)
@@ -124,7 +134,7 @@ def cmd_review(sprint_id: str, dry_run: bool) -> int:
         bundle = build(
             sprint_id, cards, base, path, charter or charters[stage], extra, authority, diff_base
         )
-        stage_head = git("rev-parse", "HEAD").stdout.strip()
+        stage_head = batch_head or git("rev-parse", "HEAD").stdout.strip()
         role = stage if not complete_n else ""
         result, err = review.run(
             bundle,
@@ -140,14 +150,19 @@ def cmd_review(sprint_id: str, dry_run: bool) -> int:
             empty = {k: [] for k in review.REPORT_KEYS}
             return empty, review.abort_text(head, err) if err else ""
         report, report_err = review.read_report(path, stage=stage)
-        if not report_err:  # `ran` is what the round CONTAINS: a stage that wrote
-            ran.append(key)  # nothing did not cover it, whatever it was launched for
+        if not report_err and not batch_head:
+            ran.append(key)
             reports.append(report)
         if err:  # stage_head, not head: an undo from the ROUND's start spans an applied fix
-            return {k: [] for k in review.REPORT_KEYS}, review.abort_text(stage_head, err)
+            empty = {k: [] for k in review.REPORT_KEYS}
+            return report if batch_head else empty, review.abort_text(stage_head, err)
         print(result)  # before any refusal: the findings exist nowhere else yet
-        if motion := review.check_reviewer_motion(stage_head, marker, digest_before, cards):
+        if not batch_head and (
+            motion := review.check_reviewer_motion(stage_head, marker, digest_before, cards)
+        ):
             return {k: [] for k in review.REPORT_KEYS}, motion
+        if batch_head:
+            return report, review.abort_text(stage_head, report_err) if report_err else ""
         if not report_err and stage == "fixer":
             report_err = review.apply_patch(path, cards)
         return report, review.abort_text(stage_head, report_err) if report_err else ""
@@ -164,6 +179,49 @@ def cmd_review(sprint_id: str, dry_run: bool) -> int:
             resume_announced = True
         return leg(stage_name, key, extra, charter)
 
+    def batch(stage_name: str, jobs: list[tuple[str, list]]) -> tuple[list[dict], str]:
+        nonlocal resume_announced
+        if dry_run:
+            results = [stage(stage_name, key, extra) for key, extra in jobs]
+            launched = [key for key, _ in jobs if not prefix or key not in prefix.reused]
+            if launched:
+                print(f"concurrent {stage_name} stages: " + ", ".join(launched))
+            return [report for report, _ in results], next((err for _, err in results if err), "")
+        batch_head = git("rev-parse", "HEAD").stdout.strip()
+        ordered = []
+        with ThreadPoolExecutor(max_workers=max(1, len(jobs))) as pool:
+            for key, extra in jobs:
+                report, _ = sprint_review_resume.take(prefix, stage_name, key, reports, round_n)
+                if report is not None:
+                    ordered.append((key, report, None))
+                    continue
+                if resume and not resume_announced:
+                    print(f"round {round_n} resumes at {key}")
+                    resume_announced = True
+                future = pool.submit(leg, stage_name, key, extra, batch_head=batch_head)
+                ordered.append((key, None, future))
+            results = []
+            errors = []
+            for key, reused_report, future in ordered:
+                if future is None:
+                    results.append(reused_report)
+                    continue
+                try:
+                    report, error = future.result()
+                except BaseException:  # a KeyboardInterrupt lands here, never in a leg
+                    while not all(f.done() for _, _, f in ordered if f):
+                        kill_live()
+                        time.sleep(0.1)
+                    raise
+                if report:  # DECLARED order, never completion order: resume reuses this prefix
+                    ran.append(key)
+                    reports.append(report)
+                results.append(report)
+                if error:
+                    errors.append(error)
+        motion = review.check_reviewer_motion(batch_head, marker, digest_before, cards)
+        return results, motion or (errors[0] if errors else "")
+
     prior = [("Findings from earlier rounds", render_sprint_prior(rounds if complete_n else []))]
     if complete_n:
         fixed, err = leg("fixer", "fix", [("Sprint altitude", altitude), *prior], review.charter())
@@ -175,10 +233,11 @@ def cmd_review(sprint_id: str, dry_run: bool) -> int:
     else:
         fixed = {k: [] for k in review.REPORT_KEYS}
         candidates = []
-        for slug, prose in found:
-            report, err = stage("finder", f"find-{slug}", [("Your angle", prose), *prior])
-            if err:
-                return stop(err)
+        jobs = [(f"find-{slug}", [("Your angle", prose), *prior]) for slug, prose in found]
+        finder_reports, err = batch("finder", jobs)
+        if err:
+            return stop(err)
+        for report in finder_reports:
             candidates += report["blocking"]
         if dry_run:
             print("(then: verifiers, the fixer, the closer)")
@@ -188,11 +247,17 @@ def cmd_review(sprint_id: str, dry_run: bool) -> int:
         verify_keys = [f"verify-{n}" for n in range(1, len(batches) + 1)]
         if prefix and (why := prefix.match_verifiers(verify_keys)):
             print(f"round {round_n}: cannot reuse verifiers: {why}")
-        for n, batch in enumerate(batches, 1):
-            judged = [("The candidates you are judging", "\n".join(f"- {c}" for c in batch))]
-            report, err = stage("verifier", f"verify-{n}", judged)
-            if err:
-                return stop(err)
+        jobs = [
+            (
+                f"verify-{n}",
+                [("The candidates you are judging", "\n".join(f"- {c}" for c in items))],
+            )
+            for n, items in enumerate(batches, 1)
+        ]
+        verifier_reports, err = batch("verifier", jobs)
+        if err:
+            return stop(err)
+        for report in verifier_reports:
             survivors += report["blocking"]
         print(f"{len(candidates)} candidates, {len(survivors)} survived refutation")
         if survivors:

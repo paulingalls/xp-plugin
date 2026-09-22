@@ -164,7 +164,8 @@ class TestConfirmingRound:
         # confirming round resolving the FIXER key looks identical.
         repo, env, g, split = self._round_one(tmp_path, stage_config("fixer", "claude/haiku"))
         first = [stage_key(r["stdin"]) for r in launches(tmp_path)]
-        assert first == ["find-security", "find-state-lifecycle", "find-test-vacuity", "close"]
+        assert set(first) == {"find-security", "find-state-lifecycle", "find-test-vacuity", "close"}
+        assert first[-1] == "close"
         self._commit(repo, g)
         staged_stub(tmp_path)
 

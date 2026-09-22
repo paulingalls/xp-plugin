@@ -90,8 +90,16 @@ def test_a_missing_finder_report_runs_it_and_every_later_stage(tmp_path):
     stages = [stage_key(item["stdin"]) for item in launches(tmp_path)[before:]]
 
     assert resumed.returncode == 0, resumed.stderr
-    assert stages == [*FINDERS[1:], "verify-1", "verify-2", "fix", "close"]
-    assert "resume" in resumed.stdout.lower() and stages[0] in resumed.stdout
+    assert set(stages) == {*FINDERS[1:], "verify-1", "verify-2", "fix", "close"}
+    assert stages[-2:] == ["fix", "close"]
+    assert "resumes at find-state-lifecycle" in resumed.stdout
+    assert json.loads(marker_path(tmp_path).read_text())["rounds"][0]["ran"] == [
+        *FINDERS[1:],
+        "verify-1",
+        "verify-2",
+        "fix",
+        "close",
+    ]
     assert "reused find-security" in resumed.stdout
     assert "wrote no report" in resumed.stdout + resumed.stderr
 
@@ -109,8 +117,15 @@ def test_an_invalid_verifier_report_runs_it_and_every_later_stage(tmp_path):
     stages = [stage_key(item["stdin"]) for item in launches(tmp_path)[before:]]
 
     assert resumed.returncode == 0, resumed.stderr
-    assert stages == ["verify-1", "verify-2", "fix", "close"]
-    assert "resume" in resumed.stdout.lower() and stages[0] in resumed.stdout
+    assert set(stages) == {"verify-1", "verify-2", "fix", "close"}
+    assert stages[-2:] == ["fix", "close"]
+    assert "resumes at verify-1" in resumed.stdout
+    assert json.loads(marker_path(tmp_path).read_text())["rounds"][0]["ran"] == [
+        "verify-1",
+        "verify-2",
+        "fix",
+        "close",
+    ]
     assert all(f"reused {key}" in resumed.stdout for key in FINDERS)
     assert "not JSON" in resumed.stdout + resumed.stderr
 
@@ -351,6 +366,7 @@ def test_a_preview_names_reuse_without_mutating_the_round_or_launching(tmp_path)
     preview = sprint(repo, env, "review", "--dry-run")
     assert preview.returncode == 0
     assert "reused find-security" in preview.stdout
+    assert "concurrent finder stages" not in preview.stdout
     assert len(launches(tmp_path)) == before
     assert marker_path(tmp_path).read_text() == recorded, "the preview rewrote the round"
 
