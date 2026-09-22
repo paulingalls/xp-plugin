@@ -265,6 +265,27 @@ class TestTheLaunch:
         assert not rec.exists()
         assert not (root / "story-042.round-3.md").exists()
 
+    def test_a_live_round_is_joined_rather_than_counted_against_the_cap(self, tmp_path):
+        from test_slate_review_prose import orphan_pid
+
+        repo, env, draft = self.repo(tmp_path)
+        root = Path(env["XP_DATA"]) / "plans"
+        root.mkdir(parents=True, exist_ok=True)
+        (root / "story-042.round-1.md").write_text("first")
+        live = root / "story-042.round-2.md"
+        live.write_text("second, still being written")
+        pid = orphan_pid()
+        marker = Path(env["XP_DATA"]) / "markers" / "story-042.plan-review-incomplete"
+        marker.parent.mkdir(parents=True, exist_ok=True)
+        marker.write_text(json.dumps({"findings": str(live), "pid": pid}))
+        rec = stub_planner(tmp_path)
+
+        joined = plan_review(repo, env, "story-042", str(draft))
+
+        assert f"joining the plan review already running (pid {pid})" in joined.stderr
+        assert "already exist" not in joined.stderr
+        assert not rec.exists() and not (root / "story-042.round-3.md").exists()
+
     def test_the_foreground_cap_is_not_a_failed_reviewer(self, tmp_path, monkeypatch):
         from plan_review import run_foreground
 
@@ -441,3 +462,28 @@ def test_blocked_plan_reviews_converge_on_the_cap_instead_of_restarting(tmp_path
     third = spawn(repo, env, "resume", "story-042")
     assert third.returncode == 2 and "cap" in third.stderr
     assert not (plans / "story-042.round-3.md").exists()
+
+
+def test_a_replanned_executor_is_handed_the_replacement_rounds_not_the_archived_ones(tmp_path):
+    """The prompt built before the planner names round files the archive has since renamed
+    away, and rebuilding it off the live marker would label this very run the predecessor.
+    (Here rather than beside its sibling: test_spawn.py sits at constraint 8's hard cap.)"""
+    from test_spawn_stages import event_roles, stub_stages
+
+    repo, env, _g = make_repo(tmp_path, files="src/thing.py, src/other.py")
+    events = stub_stages(tmp_path, blocking_diff=True)
+    assert spawn(repo, env, "story-042").returncode != 0
+    plans = Path(env["XP_DATA"]) / "plans"
+    (plans / "story-042.round-2.md").write_text("OLD-FINDING")
+    plan = Path(env["XP_DATA"]) / "plan.md"
+    plan.write_text(plan.read_text().replace("Then Z", "Then amended Z"))
+    assert spawn(repo, env, "amend", "story-042", "--reason", "acceptance changed").returncode == 0
+    seen = len(event_roles(events))
+    stub_stages(tmp_path, blocking_diff=True)
+    assert spawn(repo, env, "resume", "story-042").returncode != 0
+
+    teammate = [json.loads(line) for line in events.read_text().splitlines()[seen:]][2]["prompt"]
+
+    assert "story-042.round-1.md" in teammate
+    assert "story-042.round-2.md" not in teammate
+    assert "handback — RUNNING" not in teammate

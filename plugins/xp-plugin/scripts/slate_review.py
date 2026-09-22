@@ -142,7 +142,10 @@ def cmd_review(sprint_id: str, dry_run: bool) -> int:
     _prior, problem = review_prior(sprint_id, "slate")
     if problem:
         return fail(problem)
-    if review_is_capped(sprint_id, "slate"):
+    # A round already launched under the cap writes its findings file while it runs, so
+    # counting alone would refuse the rejoin the lead is told to use instead of relaunching
+    # — stranding the live round's marker and reading its half-written file as a round.
+    if review_is_capped(sprint_id, "slate") and not _running(sprint_id, "slate"):
         return fail(
             "refused: two slate-review rounds already exist — judge and apply their findings,"
             " then open the sprint"

@@ -401,13 +401,14 @@ def cmd_spawn(story_id: str, override: str, dry_run: bool, resuming: bool = Fals
         handoff_io.mark_plan_reviewed(data_root(), story_id, reviewed_card)
     elif not multifile:
         mark_stage(data_root(), story_id, "plan-reviewer", "skipped")
+    # The prompt built above names the round files archive_review_rounds has since
+    # renamed away, so a replan must rebuild it — from the state CAPTURED before
+    # mark_handoff, since re-reading now would label this very run the predecessor.
     if replan:
         handoff = inheritance(data_root(), story_id, inherited_state)
         if resuming and tree.is_dir():
             handoff += resume().inherited_evidence(tree, trunk)
         prompt = build_prompt(teammate_sections(card, story_id, handoff, PLUGIN_ROOT))
-    # A replan rebuilds from the captured predecessor state so the executor sees only
-    # the replacement plan's findings, never this run's temporary RUNNING handoff.
     rc = run_teammate(argv, tree, prompt, story_id, data_root(), harness)
     outcome = "terminal-stop" if rc == 0 else "harness-death"
     executor_log = data_root() / "logs" / f"{story_id}-executor.log"
