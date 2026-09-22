@@ -135,12 +135,17 @@ class TestFullTier:
         """`full:` is only ever nested under `tests:` — the flat lookup was dead
         code, and worse than dead: a stray top-level key silently replaced the
         real tier with a green one and the close certified an unrun suite."""
+        sentinel = tmp_path / "declared-tier-ran"
         repo, env, _g = make_repo(
-            tmp_path, config="full: true\n" + CONFIG.replace("full: true", "full: false")
+            tmp_path,
+            config="full: true\n"
+            + CONFIG.replace("full: true", f"full: touch {shlex.quote(str(sentinel))}; false"),
         )
         assert sprint(repo, env, "start").returncode == 0
         record_reviews(tmp_path, repo, env)
-        assert sprint(repo, env, "land").returncode == 2, "a stray key shadowed the real tier"
+        result = sprint(repo, env, "land")
+        assert sentinel.exists(), "land did not run the declared tier"
+        assert result.returncode == 2 and "test tier red" in result.stderr, result.stderr
 
     def test_a_round_written_during_land_tier_survives(self, tmp_path):
         config, started, release = blocking_tier(tmp_path)
