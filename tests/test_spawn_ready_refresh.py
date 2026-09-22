@@ -131,6 +131,34 @@ class TestCardRefreshGate:
         assert amended.returncode == 2 and "does not cover src/new.py" in amended.stderr
         assert marker.read_bytes() == before
 
+    def test_a_progressed_story_may_declare_the_path_its_implementation_discovered(self, tmp_path):
+        """close.py land refuses an undeclared touched file and names amend as the
+        route; no refresher can have covered a path the work itself invented."""
+        repo, env, _g = make_repo(tmp_path)
+        (tmp_path / "data/markers/story-042.close.json").write_text("{}")
+        plan = tmp_path / "data/plan.md"
+        plan.write_text(
+            plan.read_text().replace("Files: src/thing.py", "Files: src/thing.py, src/new.py")
+        )
+
+        amended = spawn(repo, env, "amend", "story-042", "--reason", "the work touched src/new.py")
+
+        assert amended.returncode == 0, amended.stderr
+        marker = json.loads((tmp_path / "data/markers/story-042.ready.json").read_text())
+        assert "src/new.py" in marker["card"]
+
+    def test_a_progressed_story_still_needs_a_receipt_to_exist(self, tmp_path):
+        repo, env, _g = make_repo(tmp_path)
+        (tmp_path / "data/markers/story-042.close.json").write_text("{}")
+        self.receipt(tmp_path).unlink()
+        marker = tmp_path / "data/markers/story-042.ready.json"
+        before = marker.read_bytes()
+
+        amended = spawn(repo, env, "amend", "story-042", "--reason", "new evidence")
+
+        assert amended.returncode == 2 and "no card refresh has run" in amended.stderr
+        assert marker.read_bytes() == before
+
     def test_amend_accepts_a_pre_edit_digest_when_all_declared_paths_remain_covered(self, tmp_path):
         repo, env, _g = make_repo(tmp_path)
         receipt = json.loads(self.receipt(tmp_path).read_text())

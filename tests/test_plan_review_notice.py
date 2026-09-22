@@ -10,6 +10,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parent.parent / "plugins" / "xp-plugin" / "scripts"))
 import plan_review
 import review
+from teammate_tee import agent_log_id
 
 
 def artifacts(tmp_path, monkeypatch):
@@ -27,28 +28,42 @@ def bind(marker, findings):
     marker.write_text(json.dumps({"pid": 1234, "findings": str(findings)}))
 
 
-def test_a_killed_foreground_plan_review_leaves_the_complete_recovery_shape(tmp_path, monkeypatch):
+@pytest.mark.parametrize(
+    ("card_id", "log_name"),
+    [
+        ("story-042", "story-042-plan-reviewer.log"),
+        ("free-2026-09-21-demo", "plan-reviewer-review.log"),
+    ],
+)
+def test_a_killed_foreground_plan_review_leaves_the_complete_recovery_shape(
+    tmp_path, monkeypatch, card_id, log_name
+):
     monkeypatch.setenv("XP_DATA", str(tmp_path))
     (tmp_path / "plan.md").write_text(
-        "#### story-042 — demo   [ready]\nContext: x\nFiles: x.py\nAC:\n- x\nVerify: true\n"
+        f"#### {card_id} — demo   [ready]\nContext: x\nFiles: x.py\nAC:\n- x\nVerify: true\n"
     )
-    draft = tmp_path / "story-042.plan.md"
+    draft = tmp_path / f"{card_id}.plan.md"
     draft.write_text("red then green\n")
     monkeypatch.setattr(
         plan_review, "_run_review", lambda *args: (_ for _ in ()).throw(KeyboardInterrupt())
     )
 
     with pytest.raises(KeyboardInterrupt):
-        plan_review.run_foreground("story-042", draft)
+        plan_review.run_foreground(card_id, draft)
 
-    marker = plan_review.incomplete_marker("story-042")
-    state = json.loads(marker.read_text())
+    state = json.loads(plan_review.incomplete_marker(card_id).read_text())
     assert set(state) == {"findings", "log", "state", "next"}
-    assert state["findings"] == str(plan_review.findings_path("story-042"))
-    assert state["log"] == str(tmp_path / "logs/story-042-plan-reviewer.log")
+    assert state["findings"] == str(plan_review.findings_path(card_id))
+    # The log review.run will actually tee to, not a name built from the id: a free
+    # card carries no `#### story-NNN` heading, which is what that name keys off.
+    assert state["log"] == str(tmp_path / "logs" / log_name)
+    assert (
+        agent_log_id("plan-reviewer", "plan-reviewer", plan_review.card_for(card_id)) + ".log"
+        == log_name
+    )
     action = state["next"].removeprefix("run ").removesuffix(" to resume the story")
-    assert shlex.split(action)[-2:] == ["resume", "story-042"]
-    assert str(plan_review.findings_path("story-042")) in review.plan_review_notice("story-042")
+    assert shlex.split(action)[-2:] == ["resume", card_id]
+    assert str(plan_review.findings_path(card_id)) in review.plan_review_notice(card_id)
 
 
 @pytest.mark.parametrize("marker_text", ["not json", "[]"])

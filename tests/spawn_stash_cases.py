@@ -91,3 +91,18 @@ class TestDirtyReviewStash:
         assert "refs/stash" in refusal and review in refusal
         assert stash_shas(repo) == {human, review}
         assert tracked.read_text() == "other output\n"
+
+    def test_a_review_that_raises_still_drops_the_entry_it_pushed(
+        self, dirty_review_repo, monkeypatch
+    ):
+        repo, tracked, human = dirty_review_repo
+
+        def killed(_story_id):
+            raise KeyboardInterrupt
+
+        monkeypatch.setattr(close, "cmd_review", killed)
+        with pytest.raises(KeyboardInterrupt):
+            story_stages.review_story(repo, "story-042")
+
+        assert tracked.read_text() == "review dirt\n"
+        assert stash_shas(repo) == {human}

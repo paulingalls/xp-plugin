@@ -20,6 +20,7 @@ import review
 from close import fail, story_card
 from slate_review import review_findings_path, review_marker, run_detached
 from spawn import _read, _read_shipped, tree_state
+from teammate_tee import agent_log_id
 from work import chdir_repo_root, data_root, plan_path
 
 PLUGIN_ROOT = Path(__file__).parent.parent
@@ -234,7 +235,11 @@ def _cmd_review(
             json.dumps(
                 {
                     "findings": str(out),
-                    "log": str(data_root() / "logs" / f"{story_id}-plan-reviewer.log"),
+                    "log": str(
+                        data_root()
+                        / "logs"
+                        / f"{agent_log_id('plan-reviewer', 'plan-reviewer', card)}.log"
+                    ),
                     "state": "PLAN REVIEW DID NOT COMPLETE",
                     "next": f"run {resume} to resume the story",
                 }

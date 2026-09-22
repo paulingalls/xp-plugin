@@ -23,6 +23,7 @@ from review_report import (
     validate_clearable,  # noqa: F401
 )
 from review_scope import declared_files
+from teammate_tee import agent_log_id
 from work import data_root
 
 PLUGIN_ROOT = Path(__file__).parent.parent
@@ -450,8 +451,7 @@ def run(
         print("would launch: " + " ".join(argv))
         print(prompt)
         return "", ""
-    story = re.search(r"#### (story-\d+)", card) if not stage else None
-    log_id = (f"{story[1]}-{role}" if story else f"{name}-review").replace(" ", "-")
+    log_id = agent_log_id(name, role, "" if stage else card)
     try:
         proc = run_agent(argv, cwd, prompt, "reviewer" if stage else role, harness, log_id)
     except OSError as e:  # claude absent from PATH
