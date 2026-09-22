@@ -5,6 +5,7 @@ import subprocess
 import sys
 
 from spawn_helpers import SPAWN, make_repo, seed_refresh_receipt, spawn
+from spawn_stash_cases import TestDirtyReviewStash, dirty_review_repo  # noqa: F401
 
 CLEAN = {"fixed": [], "blocking": [], "noted": []}
 
@@ -336,7 +337,21 @@ class TestSpawnStages:
         )
         assert "blocked" in state["why"] and "failed" not in state["why"], state["why"]
         handoff.write_text(json.dumps({**json.loads(handoff.read_text()), "state": "STOPPED"}))
-        spawn(repo, env, "resume", "story-042")
+        stub_stages(tmp_path)
+        marker = tmp_path / "data/markers/story-042.plan-review-incomplete"
+        action = (
+            json.loads(marker.read_text())["next"]
+            .removeprefix("run ")
+            .removesuffix(" to resume the story")
+        )
+        recovered = subprocess.run(
+            shlex.split(action),
+            cwd=repo,
+            env=dict(env, XP_SPAWN_TEST="1"),
+            capture_output=True,
+            text=True,
+        )
+        assert recovered.returncode == 0, recovered.stdout + recovered.stderr
         assert event_roles(events).count("planner") == 2, (
             "resume re-reviewed the same draft instead of replanning: " + str(event_roles(events))
         )

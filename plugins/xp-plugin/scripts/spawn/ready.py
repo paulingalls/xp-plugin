@@ -109,6 +109,8 @@ def amend(story_id: str, reason: str) -> int:
         verify_commands(story_id, card)
     except ValueError as e:
         return fail(str(e))
+    if not leg(story_id)[1] and (problem := check_refresh(story_id, card, require_digest=False)):
+        return fail(problem)
     marker = ready_marker_path(story_id)
     previous = credential(marker)
     if previous is None and not progressed(story_id):
@@ -151,6 +153,7 @@ def write_refresh_receipt(story_id: str, card: str, changed: bool) -> str:
     path.parent.mkdir(parents=True, exist_ok=True)
     files = {p: path_state(p) for p in declared}
     receipt = {
+        "basis": "HEAD",
         "head": git("rev-parse", "HEAD", check=False).stdout.strip(),
         "digest": card_digest(card),
         "changed": changed,
@@ -160,7 +163,7 @@ def write_refresh_receipt(story_id: str, card: str, changed: bool) -> str:
     return ""
 
 
-def check_refresh(story_id: str, card: str) -> str:
+def check_refresh(story_id: str, card: str, require_digest: bool = True) -> str:
     """Return a refusal unless the receipt matches this card and its paths."""
     try:
         path = refresh_receipt_path(story_id)
@@ -174,7 +177,7 @@ def check_refresh(story_id: str, card: str) -> str:
         return f"refused: {path} is unreadable. {refresh_instruction(story_id)}"
     if not isinstance(receipt, dict) or not isinstance(receipt.get("files"), dict):
         return f"refused: {path} is not a card refresh receipt. {refresh_instruction(story_id)}"
-    if receipt.get("digest") != card_digest(card):
+    if require_digest and receipt.get("digest") != card_digest(card):
         return (
             f"refused: {story_id}'s card refresh receipt does not match the current card"
             f" — it ran against different text. {refresh_instruction(story_id)}"
