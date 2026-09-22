@@ -351,7 +351,7 @@ class TestSalvage:
     def test_the_sprint_leg_ITSELF_passes_the_noun_its_kill_text_needs(self, tmp_path):
         """The case above hands review.run a noun, so it proves the `if noun` branch
         that already worked — never that the sprint leg passes one, which WAS the
-        defect. Measured: delete `noun=` from sprint_close's review.run call and the
+        defect. Measured: delete `noun=` from sprint_review's review.run call and the
         whole suite greens. Only driving the leg end to end reds."""
         repo, env, _g = sprint_repo(tmp_path)
         stub = tmp_path / "bin" / "claude"
