@@ -217,12 +217,14 @@ def _run_refresh(story_id: str, out: Path, dry_run: bool) -> int:
         def refuse(message: str) -> int:
             action = ready.refresh_instruction(story_id)
             refusal = message if action in message else f"{message} {action}"
+            # Archive as the slate and plan paths do, but for a reason only this one
+            # has: refresh is read by no cap and no prior-findings render, and the
+            # retry REUSES this round path, so text left here is what the "wrote no
+            # findings" guard below reads when the next refresher writes none.
+            refusal += archive_failed_findings(out)
             marker = review_marker(story_id, "refresh")
             marker.write_text(json.dumps(_marker_state(story_id, "refresh") | {"refusal": refusal}))
-            # The slate and plan paths archive here for the same reason: a refused
-            # round left in place is COUNTABLE by the cap and READABLE as findings
-            # nobody wrote, so the next attempt reuses a round that never completed.
-            return fail(refusal + archive_failed_findings(out))
+            return fail(refusal)
 
         if tree_state(Path.cwd()) != before:
             return refuse(
