@@ -3,6 +3,8 @@
 import shlex
 import subprocess
 import sys
+import time
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable
 
@@ -185,6 +187,22 @@ def _receipt_matches(receipt: object, tier: str, tree: str) -> tuple[bool, str]:
     return True, "reused"
 
 
+def _tier_event(
+    outcome: str, tier: str, tree: str, head: str, start: datetime, elapsed: float
+) -> dict:
+    end = max(start, datetime.now(timezone.utc))
+    return {
+        "leg": "land",
+        "outcome": outcome,
+        "command": tier,
+        "tree": tree,
+        "head": head,
+        "started_at": start.isoformat().replace("+00:00", "Z"),
+        "ended_at": end.isoformat().replace("+00:00", "Z"),
+        "duration_seconds": max(0.0, elapsed),
+    }
+
+
 def gates(
     ref: str,
     verify: list[list[str]],
@@ -192,6 +210,8 @@ def gates(
     pending: bool,
     prior_receipt: object = _NO_RECEIPT,
     after_full: Callable[[str], str] | None = None,
+    record_attempt: Callable[[dict, dict | None], str] | None = None,
+    history: list[dict] | None = None,
 ) -> tuple[str, dict | None]:
     """Verify and the tier, run on the tree that will EXIST. Merging INTO the story
     branch rather than in the tree holding trunk: same merged content either way,
@@ -225,17 +245,53 @@ def gates(
             )
         tree = written.stdout.strip()
         reusable, decision = _receipt_matches(prior_receipt, tier, tree)
+        if reusable and history is not None:
+            latest = next((item for item in reversed(history) if item["tree"] == tree), None)
+            if latest is None:
+                return (
+                    "refused: receipt has no matching history entry — repair the sprint marker",
+                    None,
+                )
+            if latest["outcome"] == "failed":
+                reusable, decision = False, "latest outcome failed"
+            elif latest["command"] != tier or latest["head"] != prior_receipt["head"]:
+                return (
+                    "refused: receipt contradicts full_tier_history — repair the sprint marker",
+                    None,
+                )
         if reusable:
+            start = datetime.now(timezone.utc)
+            receipt = dict(prior_receipt, reused=True)
+            if record_attempt:
+                event = _tier_event("reused", tier, tree, receipt["head"], start, 0.0)
+                if red := record_attempt(event, receipt):
+                    return red, None
             print("full tier receipt reused")
             if after_full and (red := after_full("")):
                 return red, None
-            return "", dict(prior_receipt, reused=True)
+            return "", receipt
         print(f"full tier receipt {decision}; running the shipping tree")
-        if red := run_checks(verify, tier, where, tier_key):
-            return (after_full(red) or red) if after_full else red, None
-        if after_full and (red := after_full("")):
-            return red, None
-        return "", {
+        for cmd in verify:
+            if red := run_one("Verify", cmd, where):
+                return red, None
+        start = datetime.now(timezone.utc)
+        begin = time.monotonic()
+        try:
+            rc = subprocess.run(tier, shell=True).returncode
+        except OSError:
+            rc = 127
+        elapsed = time.monotonic() - begin
+        shown = f"refused: test tier red{where}: {tier}"
+        if rc == 127:
+            return (
+                f"refused: test tier could not be RUN{where}: {tier}\nNothing was measured"
+                " — it is not on PATH where this ran, which is a harness or sandbox"
+                " problem, not a red tree. Fix where it runs",
+                None,
+            )
+        if rc < 0:
+            return f"refused: test tier interrupted{where}: {tier}", None
+        receipt = {
             "tier": "full",
             "command": tier,
             "tree": tree,
@@ -244,6 +300,17 @@ def gates(
             "ran_by": "land",
             "reused": False,
         }
+        if record_attempt:
+            event = _tier_event(
+                "failed" if rc else "passed", tier, tree, receipt["head"], start, elapsed
+            )
+            if persistence_error := record_attempt(event, receipt if not rc else None):
+                return persistence_error, None
+        if rc:
+            return (after_full(shown) or shown) if after_full else shown, None
+        if after_full and (red := after_full("")):
+            return red, None
+        return "", receipt
     finally:
         if staged is not None:
             git("merge", "--abort", check=False)

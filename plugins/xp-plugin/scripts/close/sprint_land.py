@@ -17,8 +17,8 @@ from sprint_close import (
     fail,
     git,
     read_sprint_state,
-    write_sprint_state,
 )
+from sprint_state import append_tier_evidence, read_tier_history
 from work import config_block_value, plan_path
 
 # GitHub's own ceiling on a pull request body; gh rejects a longer --body-file.
@@ -314,6 +314,15 @@ def cmd_land(sprint_id: str, dry_run: bool) -> int:
             " that ships, and these files are not in it:\n  " + dirty
         )
     prior = state.get("full_tier", overlap.MISSING_RECEIPT)
+    history, history_error = read_tier_history(state)
+    if history_error:
+        return fail(
+            f"refused: {history_error} in sprint marker {marker} — repair or delete"
+            " full_tier_history, then run land again"
+        )
+    start_ids = state.get("start_deferred_ids", [])
+    if not isinstance(start_ids, list) or any(not isinstance(eid, str) for eid in start_ids):
+        return fail(f"refused: unreadable start_deferred_ids in sprint marker {marker} — repair it")
     root = data_root()
     _standalone, pre_deferred, _records, _source, error = grouped_batch(root)
     if error:
@@ -321,10 +330,21 @@ def cmd_land(sprint_id: str, dry_run: bool) -> int:
     retry = f"`close.py sprint {sprint_id} land`"
 
     def after_full(tier_red: str) -> str:
-        _standalone, deferred, _records, _source, error = grouped_batch(root)
+        _standalone, deferred, records, _source, error = grouped_batch(root)
         if error:
             return f"refused: {error}"
         displaced = {key: sources for key, sources in pre_deferred.items() if key not in deferred}
+        deferred_ids = {eid for sources in deferred.values() for eid, _head, _covered in sources}
+        displaced_ids = {eid for sources in displaced.values() for eid, _head, _covered in sources}
+        for record in records:
+            if (
+                record.eid in start_ids
+                and record.eid not in deferred_ids | displaced_ids
+                and record.state != "ARCHIVED"
+            ):
+                displaced.setdefault(record.falsifier, []).append(
+                    (record.eid, record.head, record.covered)
+                )
         if tier_red:
             if "could not be RUN" in tier_red:
                 return tier_red
@@ -340,15 +360,19 @@ def cmd_land(sprint_id: str, dry_run: bool) -> int:
                 print(f"trusted {eid} ({head}) via tier {covered}")
         return ""
 
-    red, receipt = overlap.gates(ref, [], "full", pending, prior, after_full)
+    def record_attempt(event: dict, receipt: dict | None) -> str:
+        nonlocal state
+        try:
+            state = append_tier_evidence(marker, event, receipt)
+        except (OSError, ValueError) as exc:
+            return f"refused: could not persist the full tier evidence at {marker}: {exc}"
+        return ""
+
+    red, receipt = overlap.gates(
+        ref, [], "full", pending, prior, after_full, record_attempt, history
+    )
     if red:
         return fail(_clearance_failure(red, bound) if bound else red)
-    # The MERGED marker, not the snapshot read before the tier: a round recorded inside
-    # that window reaches the disclosure below only if this reads what the write returned.
-    try:
-        state = write_sprint_state(marker, {"full_tier": receipt})
-    except (OSError, ValueError) as exc:
-        return fail(f"refused: could not persist the full tier receipt at {marker}: {exc}")
     head = git("rev-parse", "HEAD").stdout.strip()
     if refusal := _coverage_refusal(sprint_id, head, state):
         return fail(refusal)

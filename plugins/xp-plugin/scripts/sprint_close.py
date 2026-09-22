@@ -140,7 +140,7 @@ def cmd_start(sprint_id: str, dry_run: bool = False) -> int:
             f" remove these files first:\n  {dirty}"
         )
     root = data_root()
-    standalone, _deferred, records, source, coverage_error = grouped_batch(root)
+    standalone, deferred, records, source, coverage_error = grouped_batch(root)
     if coverage_error:
         return fail(f"refused: {coverage_error}")
     tiers = config_block_value("tests")
@@ -151,6 +151,15 @@ def cmd_start(sprint_id: str, dry_run: bool = False) -> int:
         return fail(red)
     if dirty := git("status", "--porcelain").stdout.strip():
         return fail(f"refused: the falsifier batch left the working tree dirty:\n  {dirty}")
+    deferred_ids = sorted(eid for sources in deferred.values() for eid, _head, _covered in sources)
+    marker = sprint_marker(sprint_id)
+    if (deferred_ids or "start_deferred_ids" in _state) and _state.get(
+        "start_deferred_ids"
+    ) != deferred_ids:
+        try:
+            write_sprint_state(marker, {"start_deferred_ids": deferred_ids})
+        except (OSError, ValueError) as exc:
+            return fail(f"refused: could not record deferred falsifiers at {marker}: {exc}")
 
     if completion := milestone.candidate(plan.read_text(), sprint_id):
         print(f"\n{completion.heading.rstrip()}")
