@@ -213,18 +213,22 @@ def refresh_path_receipt(story_id: str, card: str) -> tuple[dict | None, str]:
         paths = declared_files(card)
     except ValueError as error:
         return None, UNPARSABLE.format(error, plan_path(), story_id)
+    files = receipt["files"].copy()
     for declared in paths:
+        state = path_state(declared)
         if declared not in receipt["files"]:
-            return None, (
-                f"refused: {story_id}'s card refresh receipt does not cover {declared}"
-                f" — it predates the path being declared. {refresh_instruction(story_id)}"
-            )
-        if path_state(declared) != receipt["files"][declared]:
+            if state is not None:
+                return None, (
+                    f"refused: {story_id}'s card refresh receipt does not cover {declared}"
+                    f" — it predates the path being declared. {refresh_instruction(story_id)}"
+                )
+            files[declared] = None
+        elif state != receipt["files"][declared]:
             return None, (
                 f"refused: {declared} changed since {story_id}'s card refresh"
                 f" — the receipt no longer reflects HEAD. {refresh_instruction(story_id)}"
             )
-    return receipt, ""
+    return receipt | {"files": files}, ""
 
 
 def remint_refresh_receipt(story_id: str, card: str, receipt: dict) -> str:
@@ -234,9 +238,8 @@ def remint_refresh_receipt(story_id: str, card: str, receipt: dict) -> str:
     except ValueError as error:
         return UNPARSABLE.format(error, plan_path(), story_id)
     updated = receipt | {
-        "head": git("rev-parse", "HEAD", check=False).stdout.strip(),
         "digest": card_digest(card),
-        "files": {name: path_state(name) for name in declared},
+        "files": {name: receipt["files"][name] for name in declared},
         "reminted": True,
     }
     _write_refresh_receipt(path, updated)
