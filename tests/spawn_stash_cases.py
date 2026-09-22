@@ -106,3 +106,18 @@ class TestDirtyReviewStash:
 
         assert tracked.read_text() == "review dirt\n"
         assert stash_shas(repo) == {human}
+
+    def test_an_undroppable_entry_keeps_the_review_that_passed(
+        self, dirty_review_repo, monkeypatch, capsys
+    ):
+        """A concurrent worktree holding the stash reflog lock makes `drop` fail.
+        The leaked entry is a nuisance; the recorded round it would cost is not."""
+        repo, tracked, human = dirty_review_repo
+        lock = repo / ".git/logs/refs/stash.lock"
+
+        result, review = run_review(repo, tracked, monkeypatch, lambda *_: lock.touch())
+
+        assert result == (0, {"fixed": [], "blocking": [], "noted": []}, "")
+        assert tracked.read_text() == "review dirt\n"
+        assert stash_shas(repo) == {human, review}
+        assert review in capsys.readouterr().err

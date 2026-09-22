@@ -120,7 +120,16 @@ def review_story(tree: Path, story_id: str) -> tuple[int, dict, str]:
                 f" review refusal. The change remains in refs/stash at {entry}",
             )
         if dirty and not dropped:
-            return 2, {}, f"the diff review restored the dirty tree but could not drop {entry}"
+            # LOUD, not fatal. A leaked entry is the nuisance this leg exists to stop;
+            # throwing away a review that ran and was recorded, to report bookkeeping,
+            # is the DEFECT it exists to stop — and `drop` fails on a concurrent
+            # worktree's held stash reflog lock, which is a supported configuration.
+            print(
+                f"the diff review restored the dirty tree but could not drop {entry} —"
+                f" find it with `git stash list --format='%gd %H' | grep {entry}`"
+                " and `git stash drop` that selector",
+                file=stderr,
+            )
     # Each half is capped ON ITS OWN and close.py's refusal goes LAST: one budget over
     # the pair spends it all on a megabyte reviewer log and drops the refusal entirely.
     captured = refusal.getvalue().strip()[-REVIEW_REFUSAL_TAIL:]

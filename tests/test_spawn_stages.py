@@ -324,8 +324,9 @@ class TestSpawnStages:
         """Release blocker found by story-102's round-2 reviewer. `planner` is marked
         "ran" BEFORE the plan review runs, so a block leaves it set and every resume
         skips replanning and re-reviews the IDENTICAL draft — blocking again, forever.
-        Constructs the stall rather than observing it: the same stub blocks both times,
-        so a green here means the planner was re-run and the draft is new."""
+        Resume is driven through the incomplete marker's OWN `next` command, so the
+        recovery that marker names is itself under test; with the stub no longer
+        blocking, a second planner event is the only way it can reach a clean round."""
         repo, env, _g = make_repo(tmp_path, files="src/thing.py, src/other.py")
         events = stub_stages(tmp_path, blocking_plan=True)
         stopped = spawn(repo, env, "story-042")
