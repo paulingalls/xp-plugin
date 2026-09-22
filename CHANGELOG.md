@@ -4,6 +4,40 @@ Release notes started at v0.6.0; earlier entries are summarized from their
 tag and merge messages. Full detail lives in the merge history and the
 per-sprint review reports.
 
+## v0.25.0 — the close wall: run the expensive proof once, and never buy an answer twice
+
+UPGRADING MOVES THE FULL TIER. `close.py sprint <id> start` no longer runs the full tier
+or writes a receipt: it runs the standalone falsifiers and prints the notes and retro
+template. `land` runs the full tier ONCE, on the shipping tree after review, together
+with every falsifier the tier covers (#108). Measured in the field before this change:
+~3h20m of two consecutive closes was the same full tier passing twice. A falsifier batch
+that dirties the tree still refuses at start. Re-entering start no longer deletes a
+receipt land wrote.
+
+WHAT A RE-ENTERED CLOSE KEEPS (#109). Land records every tier attempt in a
+`full_tier_history` beside the receipt — command, tree, UTC start and end, a monotonic
+duration, and passed/failed/reused. A pass is reused only while it is the latest outcome
+for its tree; a later failure on the same tree is never re-promoted. A tier killed by a
+signal is refused as interrupted and records no failure. Falsifiers start deferred to the
+tier are recorded, so a review fixer that changes tier coverage cannot leave one run by
+neither leg. The per-leg protocol and waiver lines of #109 are NOT met.
+
+SPRINT REVIEW RUNS ITS LEGS AT ONCE (#110). Every finder starts together, then every
+verifier batch; fixer and closer stay serial. The recorded stage order is the declared
+order whatever the completion order, so resume is unchanged. Each concurrent leg streams to
+its own log (`logs/sprint-find-<angle>-review.log`, `sprint-verify-<n>-review.log`) and
+its result reaches the lead under a `--- <stage> ---` label. Ctrl-C stops every running
+leg. A finder that moves HEAD or dirties the tree still refuses the round, unattributed.
+Verifier fan-out stays bounded by `review.verify_batches`.
+
+A REFRESH WITH NOTHING TO CHECK DOES NOT RUN (#106). A card that declares a path absent at
+HEAD — a file the story will create — no longer launches a refresher agent at
+`slate_review.py --refresh` or `spawn.py amend`; the receipt covers it by construction. A
+re-minted receipt keeps the HEAD the refresher actually read.
+
+The slate reviewer no longer builds a card's change in a disposable copy (its Mutation
+check is retired): it reads and runs the checkout as it is.
+
 ## v0.24.0 — the field's bills: five refusals that were warnings, and a review that resumes
 
 UPGRADING CHANGES WHAT REFUSES. Five paths that previously succeeded or warned now
