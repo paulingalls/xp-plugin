@@ -69,6 +69,7 @@ def test_valid_report_prefix_is_reused_in_the_same_round(tmp_path):
 
     assert resumed.returncode == 0, resumed.stderr
     assert stages == ["fix", "close"]
+    assert "resume" in resumed.stdout.lower() and stages[0] in resumed.stdout
     assert all(f"reused {key}" in resumed.stdout for key in READ_ONLY)
     rounds = json.loads(marker_path(tmp_path).read_text())["rounds"]
     assert len(rounds) == 1
@@ -90,6 +91,7 @@ def test_a_missing_finder_report_runs_it_and_every_later_stage(tmp_path):
 
     assert resumed.returncode == 0, resumed.stderr
     assert stages == [*FINDERS[1:], "verify-1", "verify-2", "fix", "close"]
+    assert "resume" in resumed.stdout.lower() and stages[0] in resumed.stdout
     assert "reused find-security" in resumed.stdout
     assert "wrote no report" in resumed.stdout + resumed.stderr
 
@@ -108,6 +110,7 @@ def test_an_invalid_verifier_report_runs_it_and_every_later_stage(tmp_path):
 
     assert resumed.returncode == 0, resumed.stderr
     assert stages == ["verify-1", "verify-2", "fix", "close"]
+    assert "resume" in resumed.stdout.lower() and stages[0] in resumed.stdout
     assert all(f"reused {key}" in resumed.stdout for key in FINDERS)
     assert "not JSON" in resumed.stdout + resumed.stderr
 
@@ -136,6 +139,7 @@ def test_a_lead_committed_fixer_resumes_only_the_closer(tmp_path):
 
     assert resumed.returncode == 0, resumed.stderr
     assert stages == ["close"] and "reused fix" in resumed.stdout
+    assert "resume" in resumed.stdout.lower() and stages[0] in resumed.stdout
     round_ = json.loads(marker_path(tmp_path).read_text())["rounds"][0]
     assert round_["reused"] == [*READ_ONLY, "fix"] and round_["ran"] == ["close"]
     handoff = Path(env["XP_DATA"]) / "reports/sprint/2.fix.round-1.diff"
@@ -152,6 +156,7 @@ def test_a_lead_discarded_fixer_reruns_it_before_the_closer(tmp_path):
 
     assert resumed.returncode == 0, resumed.stderr
     assert stages == ["fix", "close"]
+    assert "resume" in resumed.stdout.lower() and stages[0] in resumed.stdout
     round_ = json.loads(marker_path(tmp_path).read_text())["rounds"][0]
     assert len(json.loads(marker_path(tmp_path).read_text())["rounds"]) == 1
     assert round_["fixed"] == [] and "fix" not in round_["reused"]
@@ -279,7 +284,24 @@ def test_an_underivable_legacy_round_falls_back_to_a_full_round(tmp_path):
     retried, stages = _fresh_stages(tmp_path, repo, env, len(launches(tmp_path)))
     assert retried.returncode == 0, retried.stderr
     assert "cannot be derived" in retried.stderr and "fresh round" in retried.stderr
+    assert all(stage in retried.stderr for stage in [*READ_ONLY, "fix"])
     assert stages[0].startswith("find-"), stages
+
+
+def test_head_moved_after_a_pre_fix_stop_opens_a_fresh_round(tmp_path):
+    repo, env, g = make_repo(tmp_path)
+    _stop_at_fixer(tmp_path)
+    assert sprint(repo, env, "review").returncode == 2
+    recorded = json.loads(marker_path(tmp_path).read_text())["rounds"][0]["stages"]
+    (repo / "src.py").write_text("A = 2\n")
+    assert g("add", "src.py").returncode == 0
+    assert g("commit", "-qm", "lead moves a declared path").returncode == 0
+
+    retried, stages = _fresh_stages(tmp_path, repo, env, len(launches(tmp_path)))
+
+    assert retried.returncode == 0, retried.stderr
+    assert stages[0].startswith("find-")
+    assert "fresh round" in retried.stderr and all(stage in retried.stderr for stage in recorded)
 
 
 def test_unaccounted_head_motion_after_an_incomplete_round_refuses(tmp_path):
@@ -411,4 +433,5 @@ def test_an_incomplete_round_naming_no_stages_opens_a_fresh_round(tmp_path):
     assert retried.returncode == 0, retried.stderr
     assert "Traceback" not in retried.stderr, retried.stderr
     assert stages[0].startswith("find-"), stages
+    assert "fresh round" in retried.stderr and "discard" in retried.stderr
     assert len(json.loads(marker_path(tmp_path).read_text())["rounds"]) == 2

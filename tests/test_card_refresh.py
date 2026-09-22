@@ -120,11 +120,72 @@ def test_a_dirty_refresh_records_that_its_path_evidence_covers_head(tmp_path):
 
     subprocess.run(["git", "commit", "-am", "working claim"], cwd=repo, env=env, check=True)
     new_head = git_out(repo, env, "rev-parse", "HEAD")
-    stub_card_refresher(tmp_path, findings="nothing stale\n")
+    launch = stub_card_refresher(tmp_path, findings="nothing stale\n")
+    launch.unlink()
     assert card_refresh(repo, env).returncode == 0
+    assert launch.exists()
+    assert (Path(env["XP_DATA"]) / "plans/story-042.refresh.round-2.md").is_file()
     receipt = json.loads(receipt_of(env).read_text())
     assert receipt["head"] == new_head != committed
     assert receipt["files"] == {"src/thing.py": new_head}
+
+
+def test_an_unchanged_second_refresh_refuses_before_launch_and_names_the_order(tmp_path):
+    repo, env, _g, _plan = refresh_repo(tmp_path)
+    launch = stub_card_refresher(tmp_path, findings="nothing stale\n")
+    assert card_refresh(repo, env).returncode == 0
+    launch.unlink()
+
+    second = card_refresh(repo, env)
+
+    assert second.returncode == 2
+    assert not launch.exists()
+    assert not (Path(env["XP_DATA"]) / "plans/story-042.refresh.round-2.md").exists()
+    said = (second.stdout + second.stderr).lower()
+    assert said.index("finish") < said.index("refresh once") < said.index("ready")
+
+
+def test_a_card_edit_remints_the_receipt_without_launching(tmp_path):
+    repo, env, _g, plan = refresh_repo(tmp_path)
+    launch = stub_card_refresher(tmp_path, findings="nothing stale\n")
+    assert card_refresh(repo, env).returncode == 0
+    first = json.loads(receipt_of(env).read_text())
+    plan.write_text(plan.read_text().replace("Context: demo.", "Context: lead-corrected prose."))
+    launch.unlink()
+
+    reminted = card_refresh(repo, env)
+
+    card = story_card(plan.read_text(), "story-042")[0]
+    receipt = json.loads(receipt_of(env).read_text())
+    assert reminted.returncode == 0, reminted.stderr
+    assert not launch.exists()
+    assert receipt["digest"] == card_digest(card) and receipt["files"] == first["files"]
+    assert receipt["changed"] == first["changed"] and receipt["reminted"] is True
+    assert "agent" in reminted.stdout.lower() and "ready" in reminted.stdout.lower()
+
+
+def test_an_uncovered_declared_path_runs_the_refresher(tmp_path):
+    repo, env, g, plan = refresh_repo(tmp_path)
+    launch = stub_card_refresher(tmp_path, findings="nothing stale\n")
+    assert card_refresh(repo, env).returncode == 0
+    other = repo / "src/other.py"
+    other.parent.mkdir(exist_ok=True)
+    other.write_text("OTHER = 1\n")
+    assert g("add", "src/other.py").returncode == 0
+    assert g("commit", "-qm", "add declared path").returncode == 0
+    plan.write_text(
+        plan.read_text().replace("Files: src/thing.py", "Files: src/thing.py, src/other.py")
+    )
+    launch.unlink()
+
+    rerun = card_refresh(repo, env)
+
+    assert rerun.returncode == 0, rerun.stderr
+    assert launch.exists()
+    assert set(json.loads(receipt_of(env).read_text())["files"]) == {
+        "src/thing.py",
+        "src/other.py",
+    }
 
 
 def test_card_refresh_uses_its_configured_model(tmp_path):
@@ -328,7 +389,7 @@ def test_a_story_id_cannot_escape_the_refresh_data_root(tmp_path):
     import ready
 
     quoted = "story-'quoted"
-    command = ready.refresh_instruction(quoted).removeprefix("Run `").removesuffix("`.")
+    command = ready.refresh_instruction(quoted).split("`", 2)[1]
     assert shlex.split(command)[-2:] == [quoted, "--refresh"]
 
 

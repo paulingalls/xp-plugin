@@ -90,9 +90,15 @@ def cmd_review(sprint_id: str, dry_run: bool) -> int:
             " aside — it holds this sprint's recorded rounds and moving it forfeits"
             f" them — then `close.py sprint {sprint_id} review` for a fresh fanout"
         )
-    if why:
-        print(f"warning: {why} — running a fresh round instead", file=sys.stderr)
     resume = resume_round is not None
+    discarded = next((r for r in reversed(rounds) if r.get("incomplete")), None)
+    if not resume and discarded:
+        names = ", ".join(discarded.get("stages", [])) or "no recorded stages"
+        reason = why or "the recorded round is not resumable"
+        print(
+            f"warning: {reason} — opening a fresh round and discarding completed stages: {names}",
+            file=sys.stderr,
+        )
     round_n = len(rounds) if resume else len(rounds) + 1
     found, cap, charters, altitude, err = sprint_review_resume.inputs(complete_n, cards, stages)
     if err:
@@ -176,10 +182,16 @@ def cmd_review(sprint_id: str, dry_run: bool) -> int:
             report_err = review.apply_patch(path, cards)
         return report, review.abort_text(stage_head, report_err) if report_err else ""
 
+    resume_announced = False
+
     def stage(stage_name: str, key: str, extra: list, charter: str = "") -> tuple[dict, str]:
+        nonlocal resume_announced
         report, _error = sprint_review_resume.take(prefix, stage_name, key, reports, round_n)
         if report is not None:
             return report, ""
+        if resume and not resume_announced:
+            print(f"round {round_n} resumes at {key}")
+            resume_announced = True
         return leg(stage_name, key, extra, charter)
 
     prior = [("Findings from earlier rounds", render_sprint_prior(rounds if complete_n else []))]
