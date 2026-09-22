@@ -219,7 +219,10 @@ def _run_refresh(story_id: str, out: Path, dry_run: bool) -> int:
             refusal = message if action in message else f"{message} {action}"
             marker = review_marker(story_id, "refresh")
             marker.write_text(json.dumps(_marker_state(story_id, "refresh") | {"refusal": refusal}))
-            return fail(refusal)
+            # The slate and plan paths archive here for the same reason: a refused
+            # round left in place is COUNTABLE by the cap and READABLE as findings
+            # nobody wrote, so the next attempt reuses a round that never completed.
+            return fail(refusal + archive_failed_findings(out))
 
         if tree_state(Path.cwd()) != before:
             return refuse(

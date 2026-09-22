@@ -470,3 +470,18 @@ def test_a_refresher_that_leaves_the_card_unparsable_names_the_repair(tmp_path):
     assert plan.read_text() == before
     assert not receipt_of(env).exists(), "a refused refresh must not mint a receipt"
     assert spawn(repo, env, "ready", "story-042").returncode == 2
+
+
+def test_a_refused_refresh_does_not_leave_its_round_reusable(tmp_path):
+    """Sprint-23 sprint-review blocking finding. slate_review's own slate path and
+    plan_review both archive a refused round's findings; the refresh path rewrote the
+    marker and left the file, so the next attempt read a round nobody completed."""
+    repo, env, _g, _plan = refresh_repo(tmp_path)
+    stub_card_refresher(tmp_path, correction=CORRECTED, skip_apply=True)
+    assert card_refresh(repo, env).returncode == 2
+
+    findings = Path(env["XP_DATA"]) / "plans/story-042.refresh.round-1.md"
+    assert not findings.exists(), "a refused refresh left its round countable and readable"
+    assert list(findings.parent.glob("story-042.refresh.round-1.failed-*.md")), (
+        "the refused round's findings were destroyed rather than archived"
+    )
