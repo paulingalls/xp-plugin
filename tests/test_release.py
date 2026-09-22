@@ -262,6 +262,28 @@ def test_post_merge_does_not_accept_only_the_pre_reviewed_head(tmp_path):
     assert not (data / "releases" / "sprint-11.json").exists()
 
 
+def test_post_merge_refuses_a_branch_carrying_commits_the_merge_left_behind(tmp_path):
+    """The recorded head answers a DELETED ref. A ref that still resolves and sits
+    outside trunk is the pre-existing refusal, and a merge that took only the
+    reviewed commit must not read as whole."""
+    repo, data, git, close, _reviewed, shown, marker = _sprint_release_repo(tmp_path)
+    git("checkout", "-q", "main")
+    git("merge", "-q", "--no-ff", shown, "-m", "merge the reviewed tree only")
+    git("checkout", "-q", "sprint-011")
+    (repo / "release.txt").write_text("after the merge\n")
+    git("commit", "-qam", "left behind")
+    stranded = git("rev-parse", "HEAD").stdout.strip()
+    git("checkout", "-q", "main")
+    before = marker.read_bytes()
+
+    refused = close()
+
+    assert refused.returncode == 2 and marker.read_bytes() == before
+    assert not (data / "releases" / "sprint-11.json").exists()
+    assert (data / "sprint_branch").exists()
+    assert stranded in refused.stderr and "main..sprint-011" in refused.stderr
+
+
 @pytest.mark.parametrize("malformed", [True, False], ids=["malformed-json", "invalid-shown-sha"])
 def test_post_merge_refuses_unreadable_recorded_identity(tmp_path, malformed):
     _repo, data, git, close, _reviewed, _shown, marker = _sprint_release_repo(tmp_path)

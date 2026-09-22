@@ -86,8 +86,6 @@ def version_files() -> list[str]:
 
 
 def recorded_release_head(state: dict) -> tuple[str, str]:
-    if not isinstance(state, dict):
-        return "", "recorded release identity is not a JSON object"
     latest = {}
     if "rounds" in state:
         rounds = state["rounds"]
@@ -194,7 +192,7 @@ def cmd_post_merge(
         and not git("merge-base", "--is-ancestor", recorded_head, "HEAD", check=False).returncode
     )
     resolved = ""
-    if release_branch and not head_is_merged:
+    if release_branch:
         resolved = git(
             "rev-parse", "--verify", "-q", f"{release_branch}^{{commit}}", check=False
         ).stdout.strip()
@@ -202,6 +200,16 @@ def cmd_post_merge(
         resolved
         and not git("merge-base", "--is-ancestor", resolved, "HEAD", check=False).returncode
     )
+    # The recorded head stands in for a ref the merge DELETED. It may not overrule a ref
+    # that still resolves: a merge that took only the reviewed commit would ship as whole.
+    if release_branch and not branch_is_merged and head_is_merged and resolved:
+        action = "tagging here would" if versioned else "shipping here would"
+        return fail(
+            f"refused: {release_branch} resolves at {resolved} and carries commits"
+            f" {trunk} does not, though the recorded release head is merged —"
+            f" {action} name a tree missing them. Read `git log {trunk}..{release_branch}`,"
+            " then merge or drop those commits and retry"
+        )
     if release_branch and not head_is_merged and not branch_is_merged:
         action = "tagging here would" if versioned else "shipping here would"
         observed = (
