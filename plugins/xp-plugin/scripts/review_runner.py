@@ -15,6 +15,7 @@ from work import data_root
 POLL_SECONDS = 3
 LOG_TAIL = 2000
 ACTIVITY_NOUN = {"slate": "slate review", "plan": "plan review", "refresh": "card refresh"}
+REVIEW_ROUND_CAP = 2
 
 
 def safe_story_id(identifier: str) -> str:
@@ -23,7 +24,7 @@ def safe_story_id(identifier: str) -> str:
     return identifier
 
 
-def review_findings_path(identifier: str, kind: str) -> Path:
+def _round_location(identifier: str, kind: str) -> tuple[Path, str]:
     identifier = safe_story_id(identifier)
     parent = data_root() / ("plans" if kind in ("plan", "refresh") else "slate-reviews")
     if kind == "plan":
@@ -32,17 +33,106 @@ def review_findings_path(identifier: str, kind: str) -> Path:
         stem = f"{identifier}.refresh"
     else:
         stem = f"sprint-{identifier}"
+    return parent, stem
+
+
+def review_rounds(identifier: str, kind: str) -> list[tuple[int, Path]]:
+    parent, stem = _round_location(identifier, kind)
     legacy = parent / f"{stem}.md"
-    rounds = [1] if legacy.exists() else []
+    rounds = []
     prefix = f"{stem}.round-"
     if parent.is_dir():
         for path in parent.iterdir():
             name = path.name
             if name.startswith(prefix) and name.endswith(".md"):
                 encoded = name[len(prefix) : -3]
-                if encoded.isdecimal() and int(encoded) > 0 and encoded == str(int(encoded)):
-                    rounds.append(int(encoded))
-    return parent / f"{stem}.round-{max(rounds, default=0) + 1}.md"
+                if (
+                    path.is_file()
+                    and encoded.isdecimal()
+                    and int(encoded) > 0
+                    and encoded == str(int(encoded))
+                ):
+                    rounds.append((int(encoded), path))
+    if legacy.is_file() and not any(number == 1 for number, _path in rounds):
+        rounds.append((1, legacy))
+    return sorted(rounds)
+
+
+def review_findings_path(identifier: str, kind: str) -> Path:
+    parent, stem = _round_location(identifier, kind)
+    rounds = review_rounds(identifier, kind)
+    if incomplete := _incomplete_round(identifier, kind, rounds):
+        return incomplete
+    return parent / f"{stem}.round-{max((n for n, _p in rounds), default=0) + 1}.md"
+
+
+def _incomplete_round(identifier: str, kind: str, rounds: list[tuple[int, Path]]) -> Path | None:
+    state = _marker_state(identifier, kind)
+    if state.get("disposition") == "blocked":
+        return None
+    findings = state.get("findings")
+    if not isinstance(findings, str):
+        return None
+    candidate = Path(findings).resolve()
+    return next((path for _number, path in rounds if path.resolve() == candidate), None)
+
+
+def completed_review_rounds(identifier: str, kind: str) -> list[tuple[int, Path]]:
+    rounds = review_rounds(identifier, kind)
+    incomplete = _incomplete_round(identifier, kind, rounds)
+    return [(number, path) for number, path in rounds if path != incomplete]
+
+
+def review_prior(identifier: str, kind: str) -> tuple[str, str]:
+    rendered = []
+    for number, path in completed_review_rounds(identifier, kind):
+        try:
+            body = path.read_text()
+        except OSError as error:
+            return "", f"refused: cannot read prior round {number} at {path}: {error}"
+        rendered.append(f"### Round {number}\n\n{body.rstrip()}")
+    return "\n\n".join(rendered), ""
+
+
+def review_is_capped(identifier: str, kind: str) -> bool:
+    return len(completed_review_rounds(identifier, kind)) >= REVIEW_ROUND_CAP
+
+
+def archive_review_rounds(identifier: str, kind: str, label: str = "superseded") -> str:
+    rounds = review_rounds(identifier, kind)
+    if not rounds:
+        return ""
+    parent, stem = _round_location(identifier, kind)
+    generation = 1
+    while any(
+        (parent / f"{stem}.{label}-{generation}.round-{number}.md").exists()
+        for number, _path in rounds
+    ):
+        generation += 1
+    targets = [
+        parent / f"{stem}.{label}-{generation}.round-{number}.md" for number, _path in rounds
+    ]
+    try:
+        for (_number, path), target in zip(rounds, targets, strict=True):
+            path.replace(target)
+    except OSError as error:
+        return f"refused: cannot archive review rounds: {error}"
+    return ""
+
+
+def archive_failed_findings(out: Path) -> str:
+    if not out.is_file():
+        return ""
+    generation = 1
+    target = out.with_name(f"{out.stem}.failed-{generation}{out.suffix}")
+    while target.exists():
+        generation += 1
+        target = out.with_name(f"{out.stem}.failed-{generation}{out.suffix}")
+    try:
+        out.replace(target)
+    except OSError as error:
+        return f"; could not preserve failed findings outside the round count: {error}"
+    return ""
 
 
 def review_marker(identifier: str, kind: str) -> Path:

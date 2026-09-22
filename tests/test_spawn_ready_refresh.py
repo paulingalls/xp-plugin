@@ -104,6 +104,74 @@ class TestCardRefreshGate:
         assert r.returncode == 2, r.stdout
         assert "ran against different text" in r.stderr, r.stderr
 
+    def test_amend_refuses_without_a_refresh_receipt(self, tmp_path):
+        repo, env, _g = make_repo(tmp_path)
+        self.receipt(tmp_path).unlink()
+        plan = tmp_path / "data/plan.md"
+        plan.write_text(plan.read_text().replace("Context: demo.", "Context: amended."))
+        marker = tmp_path / "data/markers/story-042.ready.json"
+        before = marker.read_bytes()
+
+        amended = spawn(repo, env, "amend", "story-042", "--reason", "new evidence")
+
+        assert amended.returncode == 2 and "no card refresh has run" in amended.stderr
+        assert marker.read_bytes() == before
+
+    def test_amend_refuses_a_receipt_that_does_not_cover_a_new_declared_path(self, tmp_path):
+        repo, env, _g = make_repo(tmp_path)
+        plan = tmp_path / "data/plan.md"
+        plan.write_text(
+            plan.read_text().replace("Files: src/thing.py", "Files: src/thing.py, src/new.py")
+        )
+        marker = tmp_path / "data/markers/story-042.ready.json"
+        before = marker.read_bytes()
+
+        amended = spawn(repo, env, "amend", "story-042", "--reason", "new implementation path")
+
+        assert amended.returncode == 2 and "does not cover src/new.py" in amended.stderr
+        assert marker.read_bytes() == before
+
+    def test_a_progressed_story_may_declare_the_path_its_implementation_discovered(self, tmp_path):
+        """close.py land refuses an undeclared touched file and names amend as the
+        route; no refresher can have covered a path the work itself invented."""
+        repo, env, _g = make_repo(tmp_path)
+        (tmp_path / "data/markers/story-042.close.json").write_text("{}")
+        plan = tmp_path / "data/plan.md"
+        plan.write_text(
+            plan.read_text().replace("Files: src/thing.py", "Files: src/thing.py, src/new.py")
+        )
+
+        amended = spawn(repo, env, "amend", "story-042", "--reason", "the work touched src/new.py")
+
+        assert amended.returncode == 0, amended.stderr
+        marker = json.loads((tmp_path / "data/markers/story-042.ready.json").read_text())
+        assert "src/new.py" in marker["card"]
+
+    def test_a_progressed_story_still_needs_a_receipt_to_exist(self, tmp_path):
+        repo, env, _g = make_repo(tmp_path)
+        (tmp_path / "data/markers/story-042.close.json").write_text("{}")
+        self.receipt(tmp_path).unlink()
+        marker = tmp_path / "data/markers/story-042.ready.json"
+        before = marker.read_bytes()
+
+        amended = spawn(repo, env, "amend", "story-042", "--reason", "new evidence")
+
+        assert amended.returncode == 2 and "no card refresh has run" in amended.stderr
+        assert marker.read_bytes() == before
+
+    def test_amend_accepts_a_pre_edit_digest_when_all_declared_paths_remain_covered(self, tmp_path):
+        repo, env, _g = make_repo(tmp_path)
+        receipt = json.loads(self.receipt(tmp_path).read_text())
+        plan = tmp_path / "data/plan.md"
+        plan.write_text(plan.read_text().replace("Context: demo.", "Context: amended."))
+
+        amended = spawn(repo, env, "amend", "story-042", "--reason", "new evidence")
+
+        assert amended.returncode == 0, amended.stderr
+        marker = json.loads((tmp_path / "data/markers/story-042.ready.json").read_text())
+        assert marker["digest"] != receipt["digest"]
+        assert marker["amendments"][-1]["reason"] == "new evidence"
+
     @pytest.mark.parametrize(
         ("payload", "diagnosis"),
         [
@@ -189,13 +257,16 @@ class TestCardRefreshGate:
         assert "[ready]" not in (tmp_path / "data" / "plan.md").read_text()
 
     def test_spawn_refuses_a_card_it_cannot_parse_rather_than_tracing_back(self, tmp_path):
-        """`cmd_spawn` parses the Files line too, and `amend` — which rewrites the
-        credential from the card without reading it — is the production path that
-        walks a minted card past the mint's gate and into that call."""
+        """`cmd_spawn` parses the Files line too. A legacy credential could carry
+        malformed Files past the mint, so construct that persisted state directly."""
         repo, env, _g = make_repo(tmp_path)
         plan = tmp_path / "data" / "plan.md"
         plan.write_text(plan.read_text().replace("Files: src/thing.py", f"Files: {self.PROSE}"))
-        assert spawn(repo, env, "amend", "story-042", "--reason", "another file").returncode == 0
+        marker = tmp_path / "data/markers/story-042.ready.json"
+        legacy = json.loads(marker.read_text())
+        legacy["digest"] = self.digest(repo, env)
+        legacy["card"] = legacy["card"].replace("Files: src/thing.py", f"Files: {self.PROSE}")
+        marker.write_text(json.dumps(legacy))
         r = spawn(repo, env, "story-042", "--dry-run")
         assert r.returncode == 2, r.stdout
         assert "Traceback" not in r.stderr, r.stderr

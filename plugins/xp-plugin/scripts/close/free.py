@@ -159,9 +159,19 @@ def cmd_post_merge(slug: str, dry_run: bool = False) -> int:
         return fail(f"refused: {key} is [{status}], post-merge requires [in-progress]")
     if refusal := spawn.ready().drift(key, card):
         return fail(refusal)
-    state = json.loads(matches[0].read_text())
+    try:
+        state = json.loads(matches[0].read_text())
+        if not isinstance(state, dict):
+            raise ValueError("expected a JSON object")
+    except (OSError, UnicodeError, ValueError) as exc:
+        return fail(f"refused: unreadable close marker {matches[0]}: {exc}")
     branch = str(state.get("branch", ""))
-    result = release.cmd_post_merge(key, branch, "patch", False, dry_run)
+    recorded_head, identity_error = release.recorded_release_head(state)
+    if identity_error:
+        return fail(f"refused: {identity_error} in {matches[0]}")
+    result = release.cmd_post_merge(
+        key, branch, "patch", False, dry_run, recorded_head=recorded_head
+    )
     if result:
         return result
     if dry_run:

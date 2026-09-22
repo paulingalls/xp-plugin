@@ -88,6 +88,45 @@ class TestRegistration:
         cmds = [h["command"] for e in entries for h in e["hooks"]]
         assert any("${CLAUDE_PLUGIN_ROOT}/scripts/session_start.py" in c for c in cmds)
 
+    def test_session_start_probe_budget_stays_inside_hook_ceiling(self, tmp_path, monkeypatch):
+        import session_start
+
+        repo, _g = xp_repo(tmp_path)
+        calls = []
+        install_status = session_start.install_status
+
+        def record_policy(*args, **kwargs):
+            calls.append((args, kwargs))
+            return "current", ""
+
+        monkeypatch.setenv("XP_DATA", str(tmp_path / "xp"))
+        monkeypatch.setattr(session_start, "install_status", record_policy)
+        monkeypatch.chdir(repo)
+        session_start.main({"cwd": str(repo), "session_id": "budget", "source": "startup"})
+        assert calls == [((), {})]
+
+        timeouts = []
+
+        def expired(args, **options):
+            timeouts.append(options["timeout"])
+            raise subprocess.TimeoutExpired(args, options["timeout"])
+
+        monkeypatch.setattr(session_start, "install_status", install_status)
+        monkeypatch.setattr(session_start.subprocess, "run", expired)
+        monkeypatch.setenv("XP_HARNESS", "claude")
+        assert session_start.install_status()[0] == "unreadable"
+
+        entries = json.loads(HOOKS_JSON.read_text())["hooks"]["SessionStart"]
+        hook = next(
+            item
+            for entry in entries
+            for item in entry["hooks"]
+            if "session_start.py" in item["command"]
+        )
+        assert hook["timeout"] == 10
+        assert timeouts == [8]
+        assert timeouts[0] < hook["timeout"]
+
 
 class TestReviewFindings:
     """story-003 close review: resilience, content, guard pins."""
@@ -341,7 +380,65 @@ class TestEnvRefresh(EnvRefreshCases):
 
 
 class TestInstallProbe(InstallProbeCases):
-    pass
+    def current_codex_listing(self):
+        import harness
+
+        record = self.entry("codex", harness.PLUGIN_ROOT)
+        return subprocess.CompletedProcess([], 0, stdout=json.dumps({"installed": [record]}))
+
+    def test_spawn_allows_a_probe_slower_than_the_hook_budget(self, monkeypatch):
+        import harness
+        import session_start
+
+        timeouts = []
+
+        def slow_probe(args, **options):
+            timeouts.append(options["timeout"])
+            if options["timeout"] < 21:
+                raise subprocess.TimeoutExpired(args, options["timeout"])
+            return self.current_codex_listing()
+
+        monkeypatch.setattr(harness.shutil, "which", lambda _name: "/bin/codex")
+        monkeypatch.setattr(session_start.subprocess, "run", slow_probe)
+
+        assert harness.missing_harness("codex") == ""
+        assert timeouts == [30]
+
+    def test_spawn_retries_one_timeout_then_accepts_the_listing(self, monkeypatch):
+        import harness
+        import session_start
+
+        timeouts = []
+
+        def cold_then_warm(args, **options):
+            timeouts.append(options["timeout"])
+            if len(timeouts) == 1:
+                raise subprocess.TimeoutExpired(args, options["timeout"])
+            return self.current_codex_listing()
+
+        monkeypatch.setattr(harness.shutil, "which", lambda _name: "/bin/codex")
+        monkeypatch.setattr(session_start.subprocess, "run", cold_then_warm)
+
+        assert harness.missing_harness("codex") == ""
+        assert timeouts == [30, 30]
+
+    def test_spawn_stops_after_one_retry_as_unreadable(self, monkeypatch):
+        import harness
+        import session_start
+
+        timeouts = []
+
+        def always_times_out(args, **options):
+            timeouts.append(options["timeout"])
+            raise subprocess.TimeoutExpired(args, options["timeout"])
+
+        monkeypatch.setattr(harness.shutil, "which", lambda _name: "/bin/codex")
+        monkeypatch.setattr(session_start.subprocess, "run", always_times_out)
+
+        refusal = harness.missing_harness("codex")
+        assert "plugin state is unreadable" in refusal
+        assert "no ENABLED copy" not in refusal
+        assert timeouts == [30, 30]
 
 
 class TestTheStoryStampIsProvenanceNotContent:

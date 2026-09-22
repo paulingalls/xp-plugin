@@ -74,6 +74,89 @@ def test_runner_builds_the_complete_bundle_and_returns_absolute_findings(tmp_pat
     assert not (Path(env["XP_DATA"]) / "markers" / "1.slate-review-incomplete").exists()
 
 
+def test_round_two_bundle_carries_round_one_findings(tmp_path):
+    repo, env = slate_repo(tmp_path)
+    prior = "## unique first-round finding\n\nKeep both lines."
+    launch_path = stub_slate_reviewer(tmp_path, findings=prior)
+    assert slate_review(repo, env).returncode == 0
+    launch_path.unlink()
+
+    assert slate_review(repo, env).returncode == 0
+    prompt = json.loads(launch_path.read_text())["prompt"]
+    assert prior in prompt
+    assert "sprint-1.round-2.md" in prompt
+
+
+def test_dead_slate_reviewers_do_not_satisfy_the_two_round_cap(tmp_path):
+    repo, env = slate_repo(tmp_path)
+    binary = tmp_path / "bin" / "claude"
+    stub_slate_reviewer(tmp_path)  # dies AFTER writing findings — the burnable shape
+    binary.write_text(
+        binary.read_text().replace("print(json.dumps(", "sys.exit(9)\nprint(json.dumps(")
+    )
+    binary.chmod(0o755)
+    root = Path(env["XP_DATA"]) / "slate-reviews"
+    for _attempt in range(2):
+        assert slate_review(repo, env).returncode == 2
+    assert not (root / "sprint-1.round-1.md").exists()
+    assert len(list(root.glob("sprint-1.round-1.failed-*.md"))) == 2
+
+    launch = stub_slate_reviewer(tmp_path)
+    assert slate_review(repo, env).returncode == 0
+    assert launch.exists() and (root / "sprint-1.round-1.md").is_file()
+
+
+def orphan_pid(seconds=4):
+    """A live pid this process will never reap: a zombie child reads as alive forever.
+
+    The background job's stdout is closed, or capture_output blocks on the inherited
+    pipe for the whole sleep and hands back a pid that is already gone.
+    """
+    run = subprocess.run(
+        ["sh", "-c", f"sleep {seconds} >/dev/null 2>&1 & echo $!"], capture_output=True, text=True
+    )
+    return int(run.stdout.strip())
+
+
+def test_a_live_round_is_joined_rather_than_counted_against_the_cap(tmp_path):
+    """The reviewer writes its findings file while it is still running, so counting
+    alone would refuse the rejoin and strand a live round under a marker nothing clears."""
+    repo, env = slate_repo(tmp_path)
+    root = Path(env["XP_DATA"]) / "slate-reviews"
+    root.mkdir(parents=True)
+    (root / "sprint-1.round-1.md").write_text("first")
+    live = root / "sprint-1.round-2.md"
+    live.write_text("second, still being written")
+    pid = orphan_pid()
+    marker = Path(env["XP_DATA"]) / "markers" / "1.slate-review-incomplete"
+    marker.parent.mkdir(parents=True, exist_ok=True)
+    marker.write_text(json.dumps({"findings": str(live), "pid": pid}))
+    launch = stub_slate_reviewer(tmp_path)
+
+    joined = slate_review(repo, env)
+
+    assert f"joining the slate review already running (pid {pid})" in joined.stderr
+    assert "already exist" not in joined.stderr
+    assert not launch.exists() and not (root / "sprint-1.round-3.md").exists()
+
+
+@pytest.mark.parametrize("verdict", ["RED", "GREEN"])
+def test_a_third_slate_round_is_refused_on_count_without_launching(tmp_path, verdict):
+    repo, env = slate_repo(tmp_path)
+    root = Path(env["XP_DATA"]) / "slate-reviews"
+    root.mkdir(parents=True)
+    (root / "sprint-1.round-1.md").write_text("first")
+    (root / "sprint-1.round-2.md").write_text(f"second says {verdict}")
+    launch = stub_slate_reviewer(tmp_path)
+
+    result = slate_review(repo, env)
+
+    assert result.returncode == 2
+    assert not launch.exists()
+    assert not (root / "sprint-1.round-3.md").exists()
+    assert "open" in result.stderr.lower() and "sprint" in result.stderr.lower()
+
+
 def test_slate_review_uses_its_configured_model(tmp_path):
     repo, env = slate_repo(tmp_path)
     config = repo / ".xp/config.yml"

@@ -28,7 +28,11 @@ DOC = "The plan-review credential: minted from [planned], amended only with a re
 
 def refresh_instruction(story_id: str) -> str:
     script = str(Path(__file__).parent.parent / "slate_review.py")
-    return f"Run `{shlex.join(['python3', script, story_id, '--refresh'])}`."
+    command = shlex.join(["python3", script, story_id, "--refresh"])
+    return (
+        f"Finish all card edits. Refresh once: Run `{command}`. Then run"
+        f" `spawn.py ready {story_id}`."
+    )
 
 
 def spawned(story_id: str) -> bool:
@@ -109,6 +113,16 @@ def amend(story_id: str, reason: str) -> int:
         verify_commands(story_id, card)
     except ValueError as e:
         return fail(str(e))
+    # Once the story has progressed its Files line records what was BUILT: no refresher
+    # can have credentialed a path the implementation discovered, and close.py land
+    # names amend as the ONLY route to declare one. Before it, an added path is a new
+    # claim about existing code and the receipt has to cover it.
+    if not leg(story_id)[1] and (
+        problem := check_refresh(
+            story_id, card, require_digest=False, require_paths=not progressed(story_id)
+        )
+    ):
+        return fail(problem)
     marker = ready_marker_path(story_id)
     previous = credential(marker)
     if previous is None and not progressed(story_id):
@@ -151,50 +165,99 @@ def write_refresh_receipt(story_id: str, card: str, changed: bool) -> str:
     path.parent.mkdir(parents=True, exist_ok=True)
     files = {p: path_state(p) for p in declared}
     receipt = {
+        "basis": "HEAD",
         "head": git("rev-parse", "HEAD", check=False).stdout.strip(),
         "digest": card_digest(card),
         "changed": changed,
         "files": files,
     }
-    path.write_text(json.dumps(receipt, ensure_ascii=False))
+    _write_refresh_receipt(path, receipt)
     return ""
 
 
-def check_refresh(story_id: str, card: str) -> str:
-    """Return a refusal unless the receipt matches this card and its paths."""
+def _write_refresh_receipt(path: Path, receipt: dict) -> None:
+    temporary = path.with_suffix(".json.part")
+    temporary.write_text(json.dumps(receipt, ensure_ascii=False))
+    temporary.replace(path)
+
+
+def _load_refresh_receipt(story_id: str) -> tuple[Path | None, dict | None, str]:
     try:
         path = refresh_receipt_path(story_id)
     except ValueError as error:
-        return f"{error}. {refresh_instruction(story_id)}"
+        return None, None, f"{error}. {refresh_instruction(story_id)}"
     if not path.exists():
-        return f"refused: no card refresh has run for {story_id}. {refresh_instruction(story_id)}"
+        return (
+            path,
+            None,
+            f"refused: no card refresh has run for {story_id}. {refresh_instruction(story_id)}",
+        )
     try:
         receipt = json.loads(path.read_text())
     except (OSError, ValueError):
-        return f"refused: {path} is unreadable. {refresh_instruction(story_id)}"
+        return path, None, f"refused: {path} is unreadable. {refresh_instruction(story_id)}"
     if not isinstance(receipt, dict) or not isinstance(receipt.get("files"), dict):
-        return f"refused: {path} is not a card refresh receipt. {refresh_instruction(story_id)}"
-    if receipt.get("digest") != card_digest(card):
         return (
-            f"refused: {story_id}'s card refresh receipt does not match the current card"
-            f" — it ran against different text. {refresh_instruction(story_id)}"
+            path,
+            None,
+            f"refused: {path} is not a card refresh receipt. {refresh_instruction(story_id)}",
         )
+    return path, receipt, ""
+
+
+def refresh_path_receipt(story_id: str, card: str) -> tuple[dict | None, str]:
+    _path, receipt, problem = _load_refresh_receipt(story_id)
+    if problem:
+        return None, problem
     try:
         paths = declared_files(card)
     except ValueError as error:
-        return UNPARSABLE.format(error, plan_path(), story_id)
+        return None, UNPARSABLE.format(error, plan_path(), story_id)
     for declared in paths:
         if declared not in receipt["files"]:
-            return (
+            return None, (
                 f"refused: {story_id}'s card refresh receipt does not cover {declared}"
                 f" — it predates the path being declared. {refresh_instruction(story_id)}"
             )
         if path_state(declared) != receipt["files"][declared]:
-            return (
+            return None, (
                 f"refused: {declared} changed since {story_id}'s card refresh"
                 f" — the receipt no longer reflects HEAD. {refresh_instruction(story_id)}"
             )
+    return receipt, ""
+
+
+def remint_refresh_receipt(story_id: str, card: str, receipt: dict) -> str:
+    try:
+        declared = sorted(declared_files(card))
+        path = refresh_receipt_path(story_id)
+    except ValueError as error:
+        return UNPARSABLE.format(error, plan_path(), story_id)
+    updated = receipt | {
+        "head": git("rev-parse", "HEAD", check=False).stdout.strip(),
+        "digest": card_digest(card),
+        "files": {name: path_state(name) for name in declared},
+        "reminted": True,
+    }
+    _write_refresh_receipt(path, updated)
     return ""
+
+
+def check_refresh(
+    story_id: str, card: str, require_digest: bool = True, require_paths: bool = True
+) -> str:
+    """Return a refusal unless the receipt matches this card and its paths."""
+    _path, receipt, problem = _load_refresh_receipt(story_id)
+    if problem:
+        return problem
+    if require_digest and receipt.get("digest") != card_digest(card):
+        return (
+            f"refused: {story_id}'s card refresh receipt does not match the current card"
+            f" — it ran against different text. {refresh_instruction(story_id)}"
+        )
+    if not require_paths:
+        return ""
+    return refresh_path_receipt(story_id, card)[1]
 
 
 def mint(story_id: str, require_refresh: bool) -> int:

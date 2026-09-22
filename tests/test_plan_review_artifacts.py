@@ -107,7 +107,9 @@ class TestPlanReviewArtifacts:
         r = plan_review(repo, env, "story-042", str(draft))
         assert r.returncode == 2
         assert "the harness could not read" in r.stderr, r.stderr
-        assert (tmp_path / "data/plans/story-042.round-1.md").read_text() == malformed
+        plans = tmp_path / "data/plans"
+        assert not (plans / "story-042.round-1.md").exists()
+        assert (plans / "story-042.round-1.failed-1.md").read_text() == malformed
 
 
 class TestIncompleteReviewIsVisibleToTheLead:

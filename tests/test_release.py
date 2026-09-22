@@ -138,6 +138,171 @@ def _release_repo(tmp_path, monkeypatch, config, manifest=None):
     return git
 
 
+def _sprint_release_repo(tmp_path):
+    repo = tmp_path / "repo"
+    data = tmp_path / "data"
+    repo.mkdir()
+    env = {"PATH": "/usr/bin:/bin", "HOME": str(tmp_path), "XP_DATA": str(data)}
+
+    def git(*args, check=True):
+        return subprocess.run(
+            ["git", *args], cwd=repo, env=env, check=check, capture_output=True, text=True
+        )
+
+    git("init", "-q", "-b", "main")
+    git("config", "user.email", "t@t")
+    git("config", "user.name", "t")
+    (repo / ".xp").mkdir()
+    (repo / ".xp" / "config.yml").write_text("versioning: off\n")
+    (repo / "release.txt").write_text("base\n")
+    git("add", "-A")
+    git("commit", "-qm", "base")
+    git("checkout", "-qb", "sprint-011")
+    (repo / "release.txt").write_text("reviewed\n")
+    git("commit", "-qam", "reviewed")
+    reviewed = git("rev-parse", "HEAD").stdout.strip()
+    (repo / "release.txt").write_text("shown\n")
+    git("commit", "-qam", "reviewer fix")
+    shown = git("rev-parse", "HEAD").stdout.strip()
+    marker = data / "markers" / "sprint" / "11.json"
+    marker.parent.mkdir(parents=True)
+    state = {"reviewed_head": reviewed, "shown_sha": shown}
+    marker.write_text(json.dumps(state | {"rounds": [state]}))
+    (data / "sprint_branch").write_text("sprint-011\n")
+
+    def close():
+        return subprocess.run(
+            [
+                sys.executable,
+                str(REPO / "plugins/xp-plugin/scripts/close.py"),
+                "sprint",
+                "11",
+                "post-merge",
+            ],
+            cwd=repo,
+            env=env,
+            capture_output=True,
+            text=True,
+        )
+
+    return repo, data, git, close, reviewed, shown, marker
+
+
+def test_sprint_post_merge_uses_recorded_head_after_release_ref_is_deleted(tmp_path):
+    _repo, data, git, close, _reviewed, shown, _marker = _sprint_release_repo(tmp_path)
+    git("checkout", "-q", "main")
+    git("merge", "-q", "--no-ff", "sprint-011", "-m", "merge release")
+    git("branch", "-D", "sprint-011")
+
+    result = close()
+
+    assert result.returncode == 0, result.stderr
+    record = json.loads((data / "releases" / "sprint-11.json").read_text())
+    assert record["merged_sha"] == git("rev-parse", "HEAD").stdout.strip()
+    assert not (data / "sprint_branch").exists()
+    assert git("merge-base", "--is-ancestor", shown, "HEAD", check=False).returncode == 0
+
+
+@pytest.mark.parametrize("method", ["squash", "rebase"])
+@pytest.mark.parametrize("deleted", [False, True], ids=["retained-ref", "deleted-ref"])
+def test_squash_and_rebase_refuse_with_a_walkable_branch_recovery(tmp_path, method, deleted):
+    repo, data, git, close, _reviewed, shown, marker = _sprint_release_repo(tmp_path)
+    git("checkout", "-q", "main")
+    if method == "squash":
+        git("merge", "-q", "--squash", "sprint-011")
+        git("commit", "-qm", "squashed release")
+    else:
+        (repo / "trunk.txt").write_text("motion\n")
+        git("add", "-A")
+        git("commit", "-qm", "trunk motion")
+        git("checkout", "-qb", "server-rebase", "sprint-011")
+        git("rebase", "-q", "main")
+        git("checkout", "-q", "main")
+        git("merge", "-q", "--ff-only", "server-rebase")
+        git("branch", "-D", "server-rebase")
+    assert git("merge-base", "--is-ancestor", shown, "HEAD", check=False).returncode != 0
+    if deleted:
+        git("branch", "-D", "sprint-011")
+    before = marker.read_bytes()
+
+    refused = close()
+
+    assert refused.returncode == 2 and marker.read_bytes() == before
+    assert not (data / "releases" / "sprint-11.json").exists()
+    for text in ("gh pr view --json mergeCommit", "sprint-011", "non-null", "on trunk"):
+        assert text in refused.stderr
+    assert ("does not resolve" if deleted else shown) in refused.stderr
+    merged = git("rev-parse", "HEAD").stdout.strip()
+    git("branch", "-f", "sprint-011", merged)
+    completed = close()
+    assert completed.returncode == 0, completed.stderr
+
+
+def test_post_merge_refuses_a_resolving_unmerged_release_branch(tmp_path):
+    _repo, data, git, close, _reviewed, shown, marker = _sprint_release_repo(tmp_path)
+    git("checkout", "-q", "main")
+    before = marker.read_bytes()
+
+    refused = close()
+
+    assert refused.returncode == 2 and marker.read_bytes() == before
+    assert "sprint-011" in refused.stderr and shown in refused.stderr
+    assert "gh pr view --json mergeCommit" in refused.stderr and "non-null" in refused.stderr
+    assert not (data / "releases" / "sprint-11.json").exists()
+
+
+def test_post_merge_does_not_accept_only_the_pre_reviewed_head(tmp_path):
+    _repo, data, git, close, reviewed, _shown, marker = _sprint_release_repo(tmp_path)
+    git("checkout", "-q", "main")
+    git("merge", "-q", "--no-ff", reviewed, "-m", "merge only reviewed input")
+    git("branch", "-D", "sprint-011")
+    before = marker.read_bytes()
+    refused = close()
+    assert refused.returncode == 2 and marker.read_bytes() == before
+    assert not (data / "releases" / "sprint-11.json").exists()
+
+
+def test_post_merge_refuses_a_branch_carrying_commits_the_merge_left_behind(tmp_path):
+    """The recorded head answers a DELETED ref. A ref that still resolves and sits
+    outside trunk is the pre-existing refusal, and a merge that took only the
+    reviewed commit must not read as whole."""
+    repo, data, git, close, _reviewed, shown, marker = _sprint_release_repo(tmp_path)
+    git("checkout", "-q", "main")
+    git("merge", "-q", "--no-ff", shown, "-m", "merge the reviewed tree only")
+    git("checkout", "-q", "sprint-011")
+    (repo / "release.txt").write_text("after the merge\n")
+    git("commit", "-qam", "left behind")
+    stranded = git("rev-parse", "HEAD").stdout.strip()
+    git("checkout", "-q", "main")
+    before = marker.read_bytes()
+
+    refused = close()
+
+    assert refused.returncode == 2 and marker.read_bytes() == before
+    assert not (data / "releases" / "sprint-11.json").exists()
+    assert (data / "sprint_branch").exists()
+    assert stranded in refused.stderr and "main..sprint-011" in refused.stderr
+
+
+@pytest.mark.parametrize("malformed", [True, False], ids=["malformed-json", "invalid-shown-sha"])
+def test_post_merge_refuses_unreadable_recorded_identity(tmp_path, malformed):
+    _repo, data, git, close, _reviewed, _shown, marker = _sprint_release_repo(tmp_path)
+    git("checkout", "-q", "main")
+    git("merge", "-q", "--no-ff", "sprint-011", "-m", "merge release")
+    if malformed:
+        marker.write_text("{not json")
+    else:
+        state = json.loads(marker.read_text())
+        state["rounds"][-1]["shown_sha"] = 7
+        marker.write_text(json.dumps(state))
+
+    refused = close()
+
+    assert refused.returncode == 2
+    assert not (data / "releases" / "sprint-11.json").exists()
+    assert (data / "sprint_branch").exists()
+
+
 @pytest.mark.parametrize(
     "config",
     [

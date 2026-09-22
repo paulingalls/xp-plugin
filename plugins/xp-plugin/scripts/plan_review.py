@@ -18,9 +18,11 @@ sys.path.insert(0, str(Path(__file__).parent / "spawn"))
 
 import review
 from close import fail, story_card
+from review_runner import _running, archive_failed_findings, review_is_capped, review_prior
 from slate_review import review_findings_path, review_marker, run_detached
 from spawn import _read, _read_shipped, tree_state
-from work import chdir_repo_root, plan_path
+from teammate_tee import agent_log_id, log_path
+from work import chdir_repo_root, data_root, plan_path
 
 PLUGIN_ROOT = Path(__file__).parent.parent
 
@@ -47,7 +49,9 @@ def card_for(story_id: str) -> str:
         return ""
 
 
-def build_bundle(charter: str, plan: str, card: str, plan_file: Path, out: Path) -> str:
+def build_bundle(
+    charter: str, plan: str, card: str, plan_file: Path, out: Path, prior: str = ""
+) -> str:
     sections = [
         ("Your charter", charter),
         ("Your findings file", f"FINDINGS_PATH: {out}"),
@@ -59,6 +63,8 @@ def build_bundle(charter: str, plan: str, card: str, plan_file: Path, out: Path)
         ("Constraints", _read(Path(".xp/constraints.md"))),
         ("System context", _read(Path(".xp/system.md"))),
     ]
+    if prior:
+        sections.insert(5, ("Findings from prior rounds", prior))
     return "".join(f"## {title}\n\n{body}\n\n" for title, body in sections)
 
 
@@ -216,16 +222,43 @@ def _cmd_review(
     card = card_for(story_id)
     if not card:
         return fail(f"refused: no {story_id} card in {plan_path()}"), "failed"
+    prior, problem = review_prior(story_id, "plan")
+    if problem:
+        return fail(problem), "failed"
+    # Detached, the findings file exists while the round still runs: counting alone would
+    # refuse the rejoin and strand the live round rather than wait for its verdict.
+    if review_is_capped(story_id, "plan") and not (detach and _running(story_id, "plan")):
+        return fail(
+            "refused: two execution-plan review rounds already exist — read and apply their"
+            " findings, then resume the story"
+        ), "capped"
     out = findings_path(story_id)
     if dry_run:
-        return _run_review(story_id, plan_file, charter, plan, card, out, True)
+        return _run_review(story_id, plan_file, charter, plan, card, out, True, prior)
     if not detach:
         for path in (out, incomplete_marker(story_id)):
             path.parent.mkdir(parents=True, exist_ok=True)
-        incomplete_marker(story_id).write_text(
-            json.dumps({"state": "PLAN REVIEW DID NOT COMPLETE", "findings": str(out)})
+        resume = shlex.join(
+            [
+                sys.executable,
+                str(Path(__file__).with_name("spawn.py").resolve()),
+                "resume",
+                story_id,
+            ]
         )
-        return _run_review(story_id, plan_file, charter, plan, card, out, False)
+        incomplete_marker(story_id).write_text(
+            json.dumps(
+                {
+                    "findings": str(out),
+                    "log": str(
+                        log_path(data_root(), agent_log_id("plan-reviewer", "plan-reviewer", card))
+                    ),
+                    "state": "PLAN REVIEW DID NOT COMPLETE",
+                    "next": f"run {resume} to resume the story",
+                }
+            )
+        )
+        return _run_review(story_id, plan_file, charter, plan, card, out, False, prior)
     rc = run_detached(
         story_id, "plan", out, [str(Path(__file__).resolve()), story_id, str(plan_file)]
     )
@@ -244,53 +277,73 @@ def run_foreground(story_id: str, plan_file: Path) -> tuple[int, str]:
 
 
 def _run_review(
-    story_id: str, plan_file: Path, charter: str, plan: str, card: str, out: Path, dry_run: bool
+    story_id: str,
+    plan_file: Path,
+    charter: str,
+    plan: str,
+    card: str,
+    out: Path,
+    dry_run: bool,
+    prior: str = "",
 ) -> tuple[int, str]:
     try:
         before = review_state(plan_file, story_id)
     except OSError as e:
         return fail(f"refused: cannot snapshot the repository before review: {e}"), "failed"
     before_plan = plan_bytes(plan_file)
-    bundle = build_bundle(charter, plan, card, plan_file, out)
+    bundle = build_bundle(charter, plan, card, plan_file, out, prior)
     result, err = review.run(bundle, Path.cwd(), dry_run, name="plan-reviewer", card=card)
     if dry_run:
         return (fail("refused: " + err), "failed") if err else (0, "ran")
+
+    def refused(message: str, outcome: str = "failed") -> tuple[int, str]:
+        archived = archive_failed_findings(out) if outcome == "failed" else ""
+        return fail(message + archived), outcome
+
     try:
         changed = review_state(plan_file, story_id) != before
     except OSError as e:
-        return fail(f"refused: the plan reviewer left the repository unreadable: {e}"), "failed"
+        return refused(f"refused: the plan reviewer left the repository unreadable: {e}")
     if changed:
-        rc = fail(
+        return refused(
             "refused: the plan reviewer changed the repository or story card"
             " — inspect and restore its changes before continuing"
         )
-        return rc, "failed"
     if err:
-        return fail(err), "failed"
+        return refused(err)
     try:
         findings = out.read_text().strip() if out.is_file() else ""
     except OSError as error:
-        return fail(f"refused: cannot read plan-review findings at {out}: {error}"), "failed"
+        return refused(f"refused: cannot read plan-review findings at {out}: {error}")
     if not findings:
         findings = result.strip()
         if not findings:
-            return fail(f"refused: the plan reviewer wrote no findings at {out}"), "failed"
+            return refused(f"refused: the plan reviewer wrote no findings at {out}")
         try:
             out.write_text(findings)
         except OSError as error:
-            return fail(f"refused: cannot write plan-review findings at {out}: {error}"), "failed"
+            return refused(f"refused: cannot write plan-review findings at {out}: {error}")
     after_plan = plan_bytes(plan_file)
     if after_plan is None:
         retry = shlex.join(
             [sys.executable, str(Path(__file__).resolve()), story_id, str(plan_file)]
         )
-        return fail(
+        return refused(
             f"refused: cannot read the reviewed plan at {plan_file}; restore a readable plan"
             f" there, then rerun `{retry}`"
-        ), "failed"
+        )
     outcome, problem = evaluate_disposition(findings, before_plan, after_plan)
     if problem:
-        return fail(f"refused: {problem}"), outcome
+        if outcome == "blocked":
+            marker = incomplete_marker(story_id)
+            try:
+                state = json.loads(marker.read_text())
+            except (OSError, ValueError):
+                state = {}
+            marker.write_text(
+                json.dumps(state | {"state": "PLAN REVIEW BLOCKED", "disposition": "blocked"})
+            )
+        return refused(f"refused: {problem}", outcome)
     incomplete_marker(story_id).unlink(missing_ok=True)  # the child's own verdict
     print(findings)
     return 0, outcome
@@ -311,8 +364,18 @@ def main() -> int:
     if a._review:
         charter = review.charter("plan-reviewer")
         card = card_for(a.story_id)
+        prior, problem = review_prior(a.story_id, "plan")
+        if problem:
+            return fail(problem)
         return _run_review(
-            a.story_id, plan_file, charter, plan_file.read_text(), card, Path(a._review), False
+            a.story_id,
+            plan_file,
+            charter,
+            plan_file.read_text(),
+            card,
+            Path(a._review),
+            False,
+            prior,
         )[0]
     return cmd_review(a.story_id, plan_file, a.dry_run)
 

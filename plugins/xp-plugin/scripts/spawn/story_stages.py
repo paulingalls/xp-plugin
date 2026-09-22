@@ -1,6 +1,54 @@
+import subprocess
 from pathlib import Path
 
 REVIEW_REFUSAL_TAIL = 2000
+
+
+def _review_stash(git, story_id: str) -> str:
+    listed = git("stash", "list", "--format=%H%x00%gs", check=False)
+    if listed.returncode:
+        return ""
+    suffix = f": {story_id}"
+    for line in listed.stdout.splitlines():
+        sha, separator, subject = line.partition("\0")
+        if separator and subject.endswith(suffix):
+            return sha
+    return ""
+
+
+def _stash_selector(git, entry: str) -> str | None:
+    """The entry's current `stash@{n}`, "" when the stack no longer holds it, None
+    when the stack could not be read — a leak the caller must not report as a drop."""
+    listed = git("stash", "list", "--format=%H%x00%gd", check=False)
+    if listed.returncode:
+        return None
+    for line in listed.stdout.splitlines():
+        sha, separator, selector = line.partition("\0")
+        if separator and sha == entry:
+            return selector
+    return ""
+
+
+def _already_restored(git, entry: str) -> bool:
+    shown = git("stash", "show", "-p", "--binary", "--include-untracked", entry, check=False)
+    if shown.returncode:
+        return False
+    return (
+        subprocess.run(
+            ["git", "apply", "--reverse", "--check"],
+            input=shown.stdout,
+            capture_output=True,
+            text=True,
+        ).returncode
+        == 0
+    )
+
+
+def _drop_stash(git, entry: str) -> bool:
+    selector = _stash_selector(git, entry)
+    if selector is None:
+        return False
+    return not selector or git("stash", "drop", "-q", selector, check=False).returncode == 0
 
 
 def run_planner(story_id: str, card: str, tree: Path, handoff: str) -> tuple[int, str]:
@@ -48,15 +96,40 @@ def review_story(tree: Path, story_id: str) -> tuple[int, dict, str]:
         dirty = bool(git("status", "--porcelain").stdout.strip())
         if dirty and git("stash", "push", "-qu", "-m", story_id, check=False).returncode:
             return 2, {}, "the diff review could not preserve the dirty tree"
-        entry = git("rev-parse", "-q", "--verify", "stash@{0}", check=False).stdout.strip()
+        entry = _review_stash(git, story_id) if dirty else ""
+        if dirty and not entry:
+            return 2, {}, "the diff review could not identify its dirty-tree entry in refs/stash"
+        preserved = dropped = False
         try:
             with contextlib.redirect_stderr(refusal):
                 rc = cmd_review(story_id)
             state = json.loads(marker_path(story_id).read_text()) if not rc else {}
         finally:
-            restored = git("stash", "apply", "-q", entry, check=False) if dirty else None
-    if restored and restored.returncode:
-        return 2, {}, "the diff review could not restore the dirty tree"
+            # Restore AND drop inside the finally: a review that raises — a kill, an
+            # unreadable marker — otherwise unwinds past the drop and leaks the entry
+            # it pushed onto the stack every other worktree shares.
+            if dirty:
+                restored = git("stash", "apply", "-q", entry, check=False)
+                preserved = bool(restored.returncode) and not _already_restored(git, entry)
+                dropped = preserved or _drop_stash(git, entry)
+        if preserved:
+            return (
+                2,
+                {},
+                "the diff review completed, but its dirty-tree restore failed; this is not a"
+                f" review refusal. The change remains in refs/stash at {entry}",
+            )
+        if dirty and not dropped:
+            # LOUD, not fatal. A leaked entry is the nuisance this leg exists to stop;
+            # throwing away a review that ran and was recorded, to report bookkeeping,
+            # is the DEFECT it exists to stop — and `drop` fails on a concurrent
+            # worktree's held stash reflog lock, which is a supported configuration.
+            print(
+                f"the diff review restored the dirty tree but could not drop {entry} —"
+                f" find it with `git stash list --format='%gd %H' | grep {entry}`"
+                " and `git stash drop` that selector",
+                file=stderr,
+            )
     # Each half is capped ON ITS OWN and close.py's refusal goes LAST: one budget over
     # the pair spends it all on a megabyte reviewer log and drops the refusal entirely.
     captured = refusal.getvalue().strip()[-REVIEW_REFUSAL_TAIL:]

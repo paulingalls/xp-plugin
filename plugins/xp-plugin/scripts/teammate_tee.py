@@ -7,6 +7,7 @@ One drain, two stream shapes — only the per-line parse differs by harness."""
 import contextlib
 import json
 import os
+import re
 import signal
 import subprocess
 import sys
@@ -27,6 +28,13 @@ AGENT_TIMEOUT_DEFAULT = 4 * 60 * 60
 
 def spawn_header(log_id: str, iso_ts: str) -> str:
     return f"===== spawn {log_id} {iso_ts} =====\n"
+
+
+def agent_log_id(name: str, role: str, card: str) -> str:
+    """The log id review.run tees an agent to. Callable without launching one,
+    because a crash-recovery marker must name the log before the agent exists."""
+    story = re.search(r"#### (story-\d+)", card)
+    return (f"{story[1]}-{role}" if story else f"{name}-review").replace(" ", "-")
 
 
 def log_path(data_root: Path, log_id: str) -> Path:

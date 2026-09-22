@@ -4,6 +4,41 @@ Release notes started at v0.6.0; earlier entries are summarized from their
 tag and merge messages. Full detail lives in the merge history and the
 per-sprint review reports.
 
+## v0.24.0 — the field's bills: five refusals that were warnings, and a review that resumes
+
+UPGRADING CHANGES WHAT REFUSES. Five paths that previously succeeded or warned now
+refuse, and a consuming project's close can stop where it did not before:
+  - `land` REFUSES over unrecorded review rounds instead of warning and proceeding
+    (#105). The warning named `salvage` as the remedy and then flipped the card to
+    [done], which salvage refuses — a one-way door that left a round permanently
+    missing from `closes.jsonl`. It now refuses while the card is still [in-progress].
+  - Slate review and execution-plan review CAP AT TWO ROUNDS (#111), refusing a third
+    without launching a reviewer, whatever the last report said. Round 2 now carries
+    round 1's findings, which nothing did before.
+  - A second card refresh REFUSES when neither a declared path nor its HEAD state has
+    moved, and names the ordering instead: finish the card's edits, THEN refresh once,
+    THEN `spawn.py ready`. A lead edit re-mints the receipt with no agent run.
+  - `spawn.py amend` now requires a refresh receipt covering the amended card's
+    declared paths; it previously rewrote the credential with no check at all.
+  - `post-merge` gains a distinct refusal for a squash- or rebase-merged release,
+    which the recorded SHA cannot be an ancestor of, and names the recovery.
+
+WHAT GOT FASTER. A sprint review whose stage dies now RESUMES the round it was in
+(#107): validated finder and verifier reports are reused, the output names each stage
+it reused and why the next cannot be, and it continues at the first missing stage
+instead of opening a fresh round and re-running the whole fanout. Verified against a
+real provider capacity failure during this sprint's own close, not a staged one.
+
+FIXED. `post-merge` validates the recorded release-head SHA rather than requiring a
+local branch ref, so `gh pr merge --delete-branch` no longer makes a merged sprint
+look unmerged (#115). The plugin-enablement probe gets a realistic budget and one
+bounded retry ON THE SPAWN PATH ONLY — the SessionStart hook keeps its 8s under
+hooks.json's declared 10s ceiling, because widening it there kills the hook (#116).
+A review on a dirty tree no longer leaks a stash entry per run, and a review that
+passed is no longer discarded because restoring that tree failed (#102). A killed
+foreground plan review leaves a marker carrying its next action. A refused card
+refresh archives its round instead of leaving it countable and readable.
+
 ## v0.23.18 — no plugin change; this repo's own falsifier corpus
 
 THE SHIPPED PLUGIN IS BYTE-IDENTICAL TO v0.23.17. Nothing under `plugins/xp-plugin/`

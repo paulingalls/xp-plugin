@@ -11,21 +11,25 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 sys.path.insert(0, str(Path(__file__).parent / "spawn"))
 
-from close import fail, story_card
+from close import fail, git, story_card
 from plan_writer import strip_lifecycle
 from review_runner import ACTIVITY_NOUN as ACTIVITY_NOUN
 from review_runner import _dead as _dead
 from review_runner import _detach as _detach
 from review_runner import (
     _marker_state,
+    archive_failed_findings,
     review_findings_path,
+    review_is_capped,
     review_marker,
+    review_prior,
     run_detached,
     safe_story_id,
 )
 from review_runner import _running as _running
 from review_runner import _wait as _wait
 from review_runner import subprocess as subprocess
+from review_scope import declared_files
 from work import (
     card_digest,
     chdir_repo_root,
@@ -38,7 +42,14 @@ from work import (
 PLUGIN_ROOT = Path(__file__).parent.parent
 
 
-def build_bundle(charter: str, cards: str, sprint_cap: str, debt_budget: str, out: Path) -> str:
+def build_bundle(
+    charter: str,
+    cards: str,
+    sprint_cap: str,
+    debt_budget: str,
+    out: Path,
+    prior: str = "",
+) -> str:
     from spawn import _read, _read_shipped
 
     sections = [
@@ -51,6 +62,8 @@ def build_bundle(charter: str, cards: str, sprint_cap: str, debt_budget: str, ou
         ("Constraints", _read(Path(".xp/constraints.md"))),
         ("System context", _read(Path(".xp/system.md"))),
     ]
+    if prior:
+        sections.insert(4, ("Findings from prior rounds", prior))
     return "".join(f"## {title}\n\n{body}\n\n" for title, body in sections)
 
 
@@ -80,28 +93,38 @@ def _run_review(sprint_id: str, out: Path, dry_run: bool) -> int:
     from spawn import tree_state
 
     charter, cards, sprint_cap, debt_budget = _inputs(sprint_id)
+    prior, problem = review_prior(sprint_id, "slate")
+    if problem:
+        return fail(problem)
     before = tree_state(Path.cwd()), cards
     _result, error = review.run(
-        build_bundle(charter, cards, sprint_cap, debt_budget, out),
+        build_bundle(charter, cards, sprint_cap, debt_budget, out, prior),
         Path.cwd(),
         dry_run,
         name="slate-reviewer",
     )
     if dry_run:
         return fail("refused: " + error) if error else 0
+
+    # A refused round is not a round: left in place it spends one of the two the cap
+    # allows, and two dead reviewers would lock the slate out of every review it has
+    # yet to get, under a refusal telling the lead to judge findings nobody wrote.
+    def refused(message: str) -> int:
+        return fail(message + archive_failed_findings(out))
+
     if (tree_state(Path.cwd()), _slate(sprint_id)) != before:
-        return fail(
+        return refused(
             "refused: the slate reviewer changed the repository or the slate — restore it"
             " and review again. The plan lives outside the repo, so no diff shows it"
         )
     if error:
-        return fail(error)
+        return refused(error)
     try:
         findings = out.read_text().strip()
     except OSError:
         findings = ""
     if not findings:
-        return fail(f"refused: the slate reviewer wrote no findings at {out.resolve()}")
+        return refused(f"refused: the slate reviewer wrote no findings at {out.resolve()}")
     review_marker(sprint_id, "slate").unlink(missing_ok=True)
     print(findings)
     return 0
@@ -117,6 +140,17 @@ def cmd_review(sprint_id: str, dry_run: bool) -> int:
         return fail("refused: .xp/config.yml carries no sprint_cap")
     if not debt_budget:
         return fail("refused: .xp/config.yml carries no debt_budget")
+    _prior, problem = review_prior(sprint_id, "slate")
+    if problem:
+        return fail(problem)
+    # A round already launched under the cap writes its findings file while it runs, so
+    # counting alone would refuse the rejoin the lead is told to use instead of relaunching
+    # — stranding the live round's marker and reading its half-written file as a round.
+    if review_is_capped(sprint_id, "slate") and not _running(sprint_id, "slate"):
+        return fail(
+            "refused: two slate-review rounds already exist — judge and apply their findings,"
+            " then open the sprint"
+        )
     out = review_findings_path(sprint_id, "slate")
     if dry_run:
         return _run_review(sprint_id, out, True)
@@ -183,6 +217,11 @@ def _run_refresh(story_id: str, out: Path, dry_run: bool) -> int:
         def refuse(message: str) -> int:
             action = ready.refresh_instruction(story_id)
             refusal = message if action in message else f"{message} {action}"
+            # Archive as the slate and plan paths do, but for a reason only this one
+            # has: refresh is read by no cap and no prior-findings render, and the
+            # retry REUSES this round path, so text left here is what the "wrote no
+            # findings" guard below reads when the next refresher writes none.
+            refusal += archive_failed_findings(out)
             marker = review_marker(story_id, "refresh")
             marker.write_text(json.dumps(_marker_state(story_id, "refresh") | {"refusal": refusal}))
             return fail(refusal)
@@ -314,9 +353,38 @@ def cmd_refresh(story_id: str, dry_run: bool) -> int:
     if not plan_path().exists():
         return fail("refused: " + missing_plan_refusal())
     try:
-        story_card(plan_path().read_text(), story_id)
+        card, _status = story_card(plan_path().read_text(), story_id)
     except KeyError as e:
         return fail(f"refused: {e.args[0]}")
+    if not dry_run:
+        import ready
+
+        try:
+            paths = sorted(declared_files(card))
+        except ValueError as error:
+            return fail(ready.UNPARSABLE.format(error, plan_path(), story_id))
+        pathspecs = [f":(literal){path}" for path in paths]
+        state = git("status", "--porcelain", "--untracked-files=all", "--", *pathspecs, check=False)
+        if state.returncode:
+            return fail("refused: cannot read the declared paths' working-tree state")
+        if dirty := state.stdout.strip():
+            return fail(
+                "refused: card refresh reads declared paths from HEAD, but these paths have"
+                f" working-tree edits:\n{dirty}\nCommit or restore them, then refresh again"
+            )
+        receipt, path_problem = ready.refresh_path_receipt(story_id, card)
+        if not path_problem:
+            if receipt.get("digest") == card_digest(card):
+                return fail(
+                    "refused: the receipt is current. " + ready.refresh_instruction(story_id)
+                )
+            if problem := ready.remint_refresh_receipt(story_id, card, receipt):
+                return fail(problem)
+            print(
+                f"{story_id} receipt re-minted locally; no agent ran."
+                f" Next run `spawn.py ready {story_id}`"
+            )
+            return 0
     out = review_findings_path(story_id, "refresh")
     if dry_run:
         return _run_refresh(story_id, out, True)

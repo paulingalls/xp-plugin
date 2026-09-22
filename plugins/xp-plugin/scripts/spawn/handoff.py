@@ -24,6 +24,7 @@ STAGES = ("planner", "plan-reviewer", "executor", "reviewer")
 # Shared so a new result cannot pass the writer and red the reader: mark_stage
 # and resume.validate spelled ("ran", "skipped") separately until story-102.
 RESULTS = ("ran", "skipped", "blocked", "failed")
+CURRENT_STATE = object()
 
 
 def handoff_state(root: Path, story_id: str) -> dict | None:
@@ -124,11 +125,11 @@ def _findings(root: Path, story_id: str) -> list[tuple[int, Path, bool]]:
     return sorted(rounds)
 
 
-def inheritance(root: Path, story_id: str) -> str:
+def inheritance(root: Path, story_id: str, inherited_state=CURRENT_STATE) -> str:
     marker = marker_path(root, story_id)
-    if not marker.exists():
+    if inherited_state is CURRENT_STATE and not marker.exists():
         return ""  # no marker: a first spawn inherits nothing and says nothing
-    state = handoff_state(root, story_id)
+    state = handoff_state(root, story_id) if inherited_state is CURRENT_STATE else inherited_state
     if state is None:
         label = "UNREADABLE"
         why = (
