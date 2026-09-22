@@ -151,6 +151,7 @@
   "tests/test_close_land.py::TestLandFailureModes::test_a_successful_pr_close_does_not_cry_wolf_on_exit_3",
   "tests/test_close_land.py::TestLandFailureModes::test_an_UNREADABLE_launch_marker_refuses_rather_than_reading_as_absent",
   "tests/test_close_land.py::TestLandFailureModes::test_an_actual_final_merge_conflict_keeps_conflict_recovery_distinct",
+  "tests/test_close_land.py::TestLandFailureModes::test_an_unrotated_launch_marker_refuses_land_too",
   "tests/test_close_land.py::TestLandFailureModes::test_land_discloses_the_amendment_route_reason_and_card_diff",
   "tests/test_close_land.py::TestLandFailureModes::test_land_walks_abandonment_when_a_sidecar_cannot_be_salvaged",
   "tests/test_close_land.py::TestLandFailureModes::test_local_dry_run_previews_the_destructive_steps_too",

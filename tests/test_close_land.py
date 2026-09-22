@@ -18,7 +18,7 @@ from close_helpers import (
     stub_reviewer,
     worktree_land_setup,
 )
-from test_close_salvage import FIXED, salvage
+from test_close_salvage import FIXED, KILLED, dying_reviewer, salvage
 
 
 def recording_git(tmp_path, env, construct_conflict=False):
@@ -59,6 +59,10 @@ def recording_git(tmp_path, env, construct_conflict=False):
     return calls, sentinel
 
 
+def story_sidecars(tmp_path, story_id="story-042"):
+    return sorted((tmp_path / "data/markers").glob(f"{story_id}.round-*.launch"))
+
+
 def git_calls(path):
     return [json.loads(line) for line in path.read_text().splitlines()]
 
@@ -85,6 +89,28 @@ class TestLandFailureModes:
         assert salvage(repo, env).returncode == 0
         assert marker(tmp_path)["rounds"][0]["fixed"] == ["queued finding"]
         assert not sidecar.exists()
+        assert close(repo, env, "land").returncode == 0
+
+    def test_an_unrotated_launch_marker_refuses_land_too(self, tmp_path):
+        """The CANONICAL marker is the unrecorded round nothing has rotated yet, and
+        it is the one salvage reads first. Reading only the sidecars landed it."""
+        repo, env, g = make_repo(tmp_path)
+        stub_reviewer(tmp_path)
+        assert close(repo, env, "review").returncode == 0
+        dying_reviewer(tmp_path)
+        assert close(repo, env | KILLED, "review").returncode == 2
+        launch = tmp_path / "data/markers/story-042.review-launch"
+        assert launch.exists() and not story_sidecars(tmp_path)
+        before = (g("rev-parse", "main").stdout, marker_file(tmp_path).read_bytes())
+
+        refused = close(repo, env, "land")
+
+        assert refused.returncode == 2 and str(launch) in refused.stderr
+        assert "close.py story story-042 salvage" in refused.stderr
+        assert before == (g("rev-parse", "main").stdout, marker_file(tmp_path).read_bytes())
+        assert "[in-progress]" in (tmp_path / "data/plan.md").read_text()
+        assert salvage(repo, env).returncode == 0
+        assert len(marker(tmp_path)["rounds"]) == 2 and not launch.exists()
         assert close(repo, env, "land").returncode == 0
 
     def test_land_walks_abandonment_when_a_sidecar_cannot_be_salvaged(self, tmp_path):

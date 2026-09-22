@@ -62,7 +62,9 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
                 " THAT round is not recorded — any earlier one still is, and does not"
                 " cover this tree; fix it, then run review again"
             )
-    if queued := story_sidecars(story_id):
+    # launch_paths, not the sidecars alone: the CANONICAL marker is what a review
+    # that never recorded leaves behind, and salvage reads it first.
+    if queued := [path for path in launch_paths if path.exists()]:
         noun = close.leg(story_id)[0]
         return close.fail(
             f"refused: {len(queued)} unrecorded review round(s) are set aside at"
@@ -70,7 +72,7 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
             " them. If salvage refuses because the"
             " recorded tree or marker moved, inspect the saved report and patch,"
             " explicitly accept that the round cannot enter the ledger, remove only"
-            f" the named .launch path(s), then retry `close.py {noun} land`"
+            f" the named launch marker(s), then retry `close.py {noun} land`"
         )
     if not marker.exists():
         return close.fail(f"refused: no close in progress for {story_id} — run review first")
