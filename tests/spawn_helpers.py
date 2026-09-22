@@ -174,8 +174,8 @@ def stub_claude(
 
 def seed_refresh_receipt(repo, env, story_id="story-042", refuses=False):
     """Route a fixture's `ready` mint through a REAL card-refresh receipt, via
-    the one production writer (`ready.write_refresh_receipt`) — never a
-    hand-built JSON shape, so a raw acceptance test still exercises the actual
+    `ready.write_refresh_receipt`; local re-mints use `ready.remint_refresh_receipt`.
+    Never hand-build JSON: a raw acceptance test must exercise the actual
     refusal `check_refresh` would otherwise raise. A subprocess, not an
     in-process import: `close.git` shells out with no explicit cwd, so calling
     it from the pytest process itself would touch this repo's OWN git, and

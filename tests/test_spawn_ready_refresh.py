@@ -117,19 +117,27 @@ class TestCardRefreshGate:
         assert amended.returncode == 2 and "no card refresh has run" in amended.stderr
         assert marker.read_bytes() == before
 
-    def test_amend_refuses_a_receipt_that_does_not_cover_a_new_declared_path(self, tmp_path):
+    def test_amend_accepts_a_new_declared_path_absent_at_head(self, tmp_path):
         repo, env, _g = make_repo(tmp_path)
+        receipt = self.receipt(tmp_path).read_bytes()
         plan = tmp_path / "data/plan.md"
         plan.write_text(
             plan.read_text().replace("Files: src/thing.py", "Files: src/thing.py, src/new.py")
         )
         marker = tmp_path / "data/markers/story-042.ready.json"
-        before = marker.read_bytes()
+        before = json.loads(marker.read_text())
 
         amended = spawn(repo, env, "amend", "story-042", "--reason", "new implementation path")
 
-        assert amended.returncode == 2 and "does not cover src/new.py" in amended.stderr
-        assert marker.read_bytes() == before
+        assert amended.returncode == 0, amended.stderr
+        updated = json.loads(marker.read_text())
+        assert "src/new.py" in updated["card"]
+        assert updated["digest"] != before["digest"]
+        assert updated["amendments"][-1] == {
+            "reason": "new implementation path",
+            "card": before["card"],
+        }
+        assert self.receipt(tmp_path).read_bytes() == receipt
 
     def test_a_progressed_story_may_declare_the_path_its_implementation_discovered(self, tmp_path):
         """close.py land refuses an undeclared touched file and names amend as the
@@ -192,12 +200,9 @@ class TestCardRefreshGate:
         assert "Traceback" not in r.stderr and diagnosis in r.stderr, r.stderr
 
     def test_a_receipt_covering_fewer_paths_than_the_card_declares_is_refused(self, tmp_path):
-        """No card EDIT reaches this branch — changing `Files:` moves the digest,
-        which refuses one check earlier — so the state it guards is a receipt
-        written by an older `declared_files`, and it is constructed here directly.
-        Left in place rather than deleted: the alternative is `.get`, which lets
-        an uncovered path pass as absent."""
+        """An omitted existing path needs refresh even when the digest matches."""
         repo, env, _g = make_repo(tmp_path, status="planned")
+        self.commit(repo, env, "src/thing.py", "existing code\n")
         seed_refresh_receipt(repo, env)
         kept = json.loads(self.receipt(tmp_path).read_text()) | {"files": {}}
         self.receipt(tmp_path).write_text(json.dumps(kept))
