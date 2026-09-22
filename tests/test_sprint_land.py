@@ -209,8 +209,7 @@ class TestReleasePrBody:
         repo, env, g = make_repo(tmp_path, config=CONFIG.replace("full: true", f"full: {command}"))
         assert sprint(repo, env, "start").returncode == 0
         marker = marker_path(tmp_path)
-        state = json.loads(marker.read_text())
-        state["full_tier"]["head"] = "recorded-start-head"
+        state = {}
         covered = head(repo, env)
         bound = ["RUN-FULL-BEFORE-RELEASE"]
         second = dict(blocking=bound, clearable_by_full=bound, fixed=["second fix", "third fix"])
@@ -219,6 +218,7 @@ class TestReleasePrBody:
             release_round(repo, env, **second),
         ]
         state.update(rounds=rounds, reviewed_head=covered, shown_sha=covered)
+        marker.parent.mkdir(parents=True, exist_ok=True)
         marker.write_text(json.dumps(state))
         closed = [("story-043", "also done", "4"), ("story-042", "done thing", "2")]
         closed += [("story-099", "not this sprint", "9")]
@@ -228,6 +228,7 @@ class TestReleasePrBody:
         result = sprint(repo, env, "land")
 
         assert result.returncode == 0, result.stdout + result.stderr
+        receipt = json.loads(marker.read_text())["full_tier"]
         assert events.read_text() == "x" and not (tmp_path / "launches.jsonl").exists()
         call = json.loads(gh_record.read_text())
         assert "--body-file" in call["argv"] and "--body" not in call["argv"]
@@ -243,8 +244,8 @@ class TestReleasePrBody:
             "Tier: full",
             "Verdict: passed",
             command,
-            state["full_tier"]["tree"],
-            "reused from start at recorded-start-head",
+            f"Measured tree: {receipt['tree']}",
+            "ran by land",
         ):
             assert value in body
 

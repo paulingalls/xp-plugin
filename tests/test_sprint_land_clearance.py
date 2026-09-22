@@ -62,7 +62,11 @@ class TestBoundFullClearance:
         assert "cleared these closer-bound blockers:\n  GATE-ME" in result.stdout
         marker_after = json.loads(marker_path(tmp_path).read_text())
         receipt = marker_after.pop("full_tier")
+        history = marker_after.pop("full_tier_history")
         assert marker_after == marker_before
+        assert [(entry["outcome"], entry["tree"]) for entry in history] == [
+            ("passed", receipt["tree"])
+        ]
         assert receipt["command"] == f"/usr/bin/touch {sentinel}"
         assert receipt["ran_by"] == "land" and not receipt["reused"]
         assert not (tmp_path / "launches.jsonl").exists()
@@ -75,6 +79,19 @@ class TestBoundFullClearance:
         repo, env, g = make_repo(tmp_path, config=config_for(command))
         assert sprint(repo, env, "start").returncode == 0
         record_round(tmp_path, repo, env, ["GATE-ME"], ["GATE-ME"])
+        marker = marker_path(tmp_path)
+        recorded = json.loads(marker.read_text())
+        recorded["full_tier"] = {
+            "tier": "full",
+            "command": command,
+            "tree": g("write-tree").stdout.strip(),
+            "head": g("rev-parse", "HEAD").stdout.strip(),
+            "verdict": "passed",
+            "ran_by": "start",
+            "reused": False,
+        }
+        marker.write_text(json.dumps(recorded))
+        events.write_text("x")
         release_tools(tmp_path, env, g)
 
         result = sprint(repo, env, "land")
@@ -117,7 +134,14 @@ class TestBoundFullClearance:
         result = sprint(repo, env, "land")
         assert result.returncode == 2
         assert "BOUND-IDENTITY" in result.stderr and diagnosis in result.stderr
-        assert marker_path(tmp_path).read_bytes() == before
+        if command == "/usr/bin/false":
+            saved = json.loads(marker_path(tmp_path).read_text())
+            history = saved.pop("full_tier_history")
+            assert saved == json.loads(before)
+            assert len(history) == 1 and history[0]["outcome"] == "failed"
+            assert history[0]["tree"] == _g("write-tree").stdout.strip()
+        else:
+            assert marker_path(tmp_path).read_bytes() == before
 
     def test_shell_argv_and_command_fields_are_inert(self, tmp_path):
         tier = tmp_path / "tier"

@@ -453,7 +453,9 @@ def run(
         return "", ""
     log_id = agent_log_id(name, role, "" if stage else card)
     try:
-        proc = run_agent(argv, cwd, prompt, "reviewer" if stage else role, harness, log_id)
+        # finders, then verifiers, run concurrently: their streams stay in their own logs
+        echo = stage not in ("finder", "verifier")
+        proc = run_agent(argv, cwd, prompt, "reviewer" if stage else role, harness, log_id, echo)
     except OSError as e:  # claude absent from PATH
         return "", f"could not launch the reviewer: {e}"
     except subprocess.TimeoutExpired as e:

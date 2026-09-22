@@ -14,6 +14,7 @@ from sprint_helpers import (
     WORK_SECTION,
     launches,
     make_repo,
+    record_reviews,
     section,
     sprint,
     work,
@@ -310,9 +311,11 @@ def test_a_green_full_tier_is_trusted_without_reexecuting_the_falsifier(tmp_path
     result = sprint(repo, env, "start")
 
     assert result.returncode == 0, result.stderr
+    assert not tier.exists() and falsifier.read_text() == before
+    record_reviews(tmp_path, repo, env)
+    result = sprint(repo, env, "land")
+    assert result.returncode == 2 and "gh" in result.stderr
     assert tier.read_text() == "x" and falsifier.read_text() == before
-    # not `"full" in stdout`: the `running the full tier:` line already carries
-    # the name, so that spelling greens against a report naming no tier at all
     assert f"trusted {ref}" in result.stdout and "via tier full" in result.stdout
 
 
@@ -328,7 +331,7 @@ def test_a_shared_command_with_a_legacy_record_is_not_deferred(tmp_path):
     result = sprint(repo, env, "start")
 
     assert result.returncode == 0, result.stderr
-    assert tier.read_text() == "x" and falsifier.read_text() == before + "x"
+    assert not tier.exists() and falsifier.read_text() == before + "x"
     assert "trusted" not in result.stdout
 
 
@@ -372,9 +375,11 @@ def test_a_red_full_tier_runs_the_deferred_falsifier_before_refusing(tmp_path):
     file_debt(repo, env, "covered claim", writes(falsifier), "full")
     before = falsifier.read_text()
 
-    result = sprint(repo, env, "start")
+    assert sprint(repo, env, "start").returncode == 0
+    record_reviews(tmp_path, repo, env)
+    result = sprint(repo, env, "land")
 
-    assert result.returncode == 2 and "full tier" in result.stderr
+    assert result.returncode == 2 and "test tier red" in result.stderr
     assert tier.read_text() == "x" and falsifier.read_text() == before + "x"
 
 

@@ -155,6 +155,7 @@ def run_agent(
     role: str,
     harness: str,
     log_id: str,
+    echo: bool = True,
 ) -> subprocess.CompletedProcess:
     """Run one role with its prompt off argv and the reviewer silence bound on."""
     env = os.environ | {"XP_ROLE": role, "XP_HARNESS": harness}
@@ -167,7 +168,7 @@ def run_agent(
         # never the permission mode — bypass stays (harness.PERMISSION_ARGV).
         env = {k: v for k, v in env.items() if not k.startswith(("GIT_AUTHOR_", "GIT_COMMITTER_"))}
     return run_stream(
-        argv, cwd, prompt, log_id, data_root(), harness, env, timeout, widen_git=False
+        argv, cwd, prompt, log_id, data_root(), harness, env, timeout, widen_git=False, echo=echo
     )
 
 

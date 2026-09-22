@@ -194,6 +194,16 @@ def closing_line(story_id: str, result: dict) -> str:
     return f"{story_id}: {turns} turns, {duration_s}, {cost_s}, {status}"
 
 
+LIVE: set[subprocess.Popen] = set()
+
+
+def kill_live() -> None:
+    """Ctrl-C reaches only the main thread, so an agent run on a worker thread
+    never sees it and would outlive the interrupt in its own session."""
+    for proc in list(LIVE):
+        kill_group(proc)
+
+
 def kill_group(proc: subprocess.Popen) -> None:
     """Kill the agent's whole session, never just its leader: a real agent shells
     out constantly and its children inherit the stdout pipe, so killing the leader
@@ -259,6 +269,12 @@ def _child_environment(harness: str, env: dict, timeout: float | None) -> dict:
     return child_env
 
 
+def quiet(line: str) -> None:
+    """A concurrent leg's echo: its stream stays in its own log, its warnings do not."""
+    if line.startswith("warning:"):
+        print(line, file=sys.stderr)
+
+
 def run_stream(
     argv: list[str],
     cwd: Path,
@@ -269,6 +285,7 @@ def run_stream(
     env: dict,
     timeout: float | None = None,
     widen_git: bool = False,
+    echo: bool = True,
 ) -> subprocess.CompletedProcess:
     """Every spawned agent streams live and tees to a durable log; `widen_git`
     is executor-only commit access, and it defaults OFF for the reason run_agent's
@@ -306,6 +323,7 @@ def run_stream(
         env=child_env,
         start_new_session=True,  # so kill_group has a group that is not ours
     )
+    LIVE.add(proc)
     feeder = threading.Thread(target=_feed_stdin, args=(proc, prompt))
     feeder.start()
     timed_out, finished, last = threading.Event(), threading.Event(), [time.monotonic()]
@@ -369,7 +387,8 @@ def run_stream(
         except OSError as exc:
             print(f"warning: log write failed ({exc}); continuing without it", file=sys.stderr)
         assert proc.stdout is not None
-        result = tee_stream(ticking(proc.stdout), log_write, print, parse, tasks)
+        out = print if echo else quiet
+        result = tee_stream(ticking(proc.stdout), log_write, out, parse, tasks)
     except BaseException:
         # Ctrl-C no longer reaches the child, because it has its own session now.
         # Only here: a run that DRAINED is already exiting, and killing on the way
@@ -382,6 +401,7 @@ def run_stream(
             watcher.join()
         feeder.join()
         proc.wait()
+        LIVE.discard(proc)
         if log:
             log.close()
     if timed_out.is_set():

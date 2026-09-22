@@ -346,7 +346,12 @@ def test_charter_contract_and_its_fault_injections():
         ).group()
         with pytest.raises(AssertionError):
             assert_charter_contract(charter.replace(item, ""))
-    for fragment in ("lead's conclusions", "falsified premise", "## Slate — RED|GREEN"):
+    for fragment in (
+        "lead's conclusions",
+        "falsified premise",
+        "## Slate — RED|GREEN",
+        "never apply a card's change",
+    ):
         line = next(line for line in charter.splitlines() if fragment in line)
         with pytest.raises(AssertionError):
             assert_charter_contract(charter.replace(line + "\n", ""))

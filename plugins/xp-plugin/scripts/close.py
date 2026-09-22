@@ -445,7 +445,9 @@ def main() -> int:
         if a.action == "start":
             return sprint_close.cmd_start(a.sprint_id, a.dry_run)
         if a.action == "review":
-            return sprint_close.cmd_review(a.sprint_id, a.dry_run)
+            import sprint_review
+
+            return sprint_review.cmd_review(a.sprint_id, a.dry_run)
         if a.action == "salvage":
             return sprint_close.cmd_salvage(a.sprint_id, a.dry_run)
         if a.action == "land":

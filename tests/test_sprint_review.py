@@ -217,6 +217,10 @@ class TestReviewLeg:
         repo, env, _g = make_repo(tmp_path)
         r = sprint(repo, env, "review", "--dry-run")
         assert r.returncode == 0, r.stderr
+        assert (
+            "concurrent finder stages: find-security, find-state-lifecycle, find-test-vacuity"
+            in r.stdout
+        )
         assert launches(tmp_path) == []
         assert not marker_path(tmp_path).exists()
 

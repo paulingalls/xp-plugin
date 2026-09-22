@@ -74,7 +74,7 @@ def test_a_round_that_recorded_no_coverage_still_holds_its_ROUND_NUMBER(tmp_path
     """The sprint-17 blocking finding, one round further on: land was fixed to name
     each round's own diff, but covered_ranges DROPS an uncovered round instead of
     holding its place, so every later round shifts down one and is disclosed under an
-    earlier round's diff. `sprint_close.stop` and `cmd_salvage` both write exactly such
+    earlier round's diff. `sprint_review.stop` and `cmd_salvage` both write exactly such
     a round — a review killed mid-flight — so this needs no legacy state to reach."""
     import review
 
