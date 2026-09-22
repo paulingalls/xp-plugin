@@ -115,8 +115,8 @@ def amend(story_id: str, reason: str) -> int:
         return fail(str(e))
     # Once the story has progressed its Files line records what was BUILT: no refresher
     # can have credentialed a path the implementation discovered, and close.py land
-    # names amend as the ONLY route to declare one. Before it, an added path is a new
-    # claim about existing code and the receipt has to cover it.
+    # names amend as the ONLY route to declare one. Before it, an added path that exists
+    # at HEAD is a new claim about existing code and the receipt has to cover it.
     if not leg(story_id)[1] and (
         problem := check_refresh(
             story_id, card, require_digest=False, require_paths=not progressed(story_id)
