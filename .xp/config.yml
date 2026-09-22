@@ -9,8 +9,8 @@ version_files: plugins/xp-plugin/.claude-plugin/plugin.json
 
 roles:                 # harness/model[/effort]; lead overrides per story in plan.md
   lead: claude/opus
-  planner: codex/gpt-5.6-sol/high  # falls back to `executor` when absent in an older config
-  executor: codex/gpt-5.6-sol/high  # Sprint-5 retro, Paul: codex authoring proven at 028 — opus reviews, codex writes
+  planner: codex/gpt-6-sol/medium  # falls back to `executor` when absent in an older config
+  executor: codex/gpt-6-sol/medium  # Sprint-5 retro, Paul: codex authoring proven at 028 — opus reviews, codex writes
   reviewer: claude/opus/high  # Sprint-5 retro, Paul: the inverse pairing — codex authors, opus reviews (its 028 round was the sprint's best). /high at Sprint-6 open (Paul): the segment had never been set, so every round to date ran at the harness default — unknown, and unknowable from here
   slate-reviewer: claude/opus/high  # falls back to `reviewer` when absent in an older config
   card-refresher: claude/opus/high  # falls back to `reviewer` when absent in an older config
@@ -24,9 +24,9 @@ roles:                 # harness/model[/effort]; lead overrides per story in pla
   # Paul's call at the retro, not a lead's under release pressure — his Sprint-5
   # pairing is codex authors / claude reviews, and flipping finders to codex inverts
   # it for the stage that feeds every other one.
-  finder: codex/gpt-5.6-sol/high
+  finder: codex/gpt-6-sol/medium
   verifier: claude/opus/high
-  fixer: codex/gpt-5.6-sol/high
+  fixer: codex/gpt-6-sol/medium
   closer: claude/opus/high
 
 tests:
