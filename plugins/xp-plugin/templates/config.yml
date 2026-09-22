@@ -15,7 +15,8 @@ profile_target: 806  # story-card token allowance; also the default when absent
 #                      # `none` releases WITHOUT that wall — say it deliberately, because
 #                      # unset refuses: a tag no file declares is the failure this prevents.
 # teardown_timeout: 60  # seconds before close kills worktree teardown
-# review:
+review:
+  concurrent_legs: 2  # maximum independent finder or verifier legs at once
 #   verify_batches: 2   # sprint-close verifier AGENTS per round. Bounds the
 #                       # spend: candidates are batched across this many, never
 #                       # one agent per candidate.

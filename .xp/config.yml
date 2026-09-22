@@ -6,6 +6,8 @@ debt_budget: 0.2       # max share of sprint stories that are scheduled debt
 constraints_chars_cap: 4500  # hard character ceiling; retire or shorten a rule
 profile_target: 1209  # this project's measured story-card token allowance
 version_files: plugins/xp-plugin/.claude-plugin/plugin.json
+review:
+  concurrent_legs: 2
 
 roles:                 # harness/model[/effort]; lead overrides per story in plan.md
   lead: claude/opus

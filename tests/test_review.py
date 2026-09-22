@@ -1,10 +1,4 @@
-"""story-022: the sprint review finds, judges, fixes, then clears.
-
-Sprint-003: one reviewer found 1 blocking + 8 noted; 28 agents found FOUR more, all
-confirmed and silent, at 1.47M tokens. The shape buys N blind finders, BATCHED
-verification, a fixer, and a blockers-only closing pass.
-Verify: pytest -q tests/test_review.py
-"""
+"""Sprint review finds, judges, fixes, then clears."""
 
 import json
 import re
@@ -298,7 +292,13 @@ class TestTheFixerFixes:
         r = sprint(repo, env, "review")
         assert r.returncode == 2 and "dirty" in r.stderr
         round_ = json.loads(marker_path(tmp_path).read_text())["rounds"][-1]
-        assert round_["blocking"] == ["a silent one"] and round_["stages"] == ["find-security"]
+        assert round_["blocking"] == ["a silent one"]
+        assert round_["stages"] == [f"find-{name}" for name in angle_names()]
+        assert all(
+            (tmp_path / "data/reports/sprint" / f"2.find-{name}.round-1.json").exists()
+            for name in angle_names()
+        )
+        assert "reviewer changed HEAD" not in r.stderr
         assert "IS recorded" in round_["incomplete"] and "No round was" not in round_["incomplete"]
 
     def test_no_survivors_means_no_fixer_is_launched(self, tmp_path):

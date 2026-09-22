@@ -12,6 +12,7 @@ from work import config_block_value
 
 ANGLES = Path(__file__).parent.parent / "angles"
 DEFAULT_BATCHES = 2
+DEFAULT_CONCURRENT_LEGS = 2
 STAGES = ("finder", "verifier", "fixer", "closer")
 
 
@@ -95,4 +96,13 @@ def batch_cap() -> tuple[int, str]:
         return DEFAULT_BATCHES, ""
     if not (raw.isdigit() and int(raw) > 0):
         return 0, f"refused: review.verify_batches must be a positive integer, not {raw!r}"
+    return int(raw), ""
+
+
+def concurrent_legs() -> tuple[int, str]:
+    raw = config_block_value("review").get("concurrent_legs")
+    if raw is None:
+        return DEFAULT_CONCURRENT_LEGS, ""
+    if not (raw.isdigit() and int(raw) > 0):
+        return 0, f"refused: review.concurrent_legs must be a positive integer, not {raw!r}"
     return int(raw), ""
