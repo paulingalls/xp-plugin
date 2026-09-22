@@ -2,6 +2,7 @@
 
 import json
 import sys
+import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
@@ -24,6 +25,7 @@ from sprint_bundle import build
 # second home for either is the one-rule-two-implementations shape this repo keeps filing.
 from sprint_close import _shown_diff, sprint_cards
 from sprint_state import sprint_marker, write_sprint_state
+from teammate_tee import kill_live
 from work import missing_plan_refusal, plan_path
 
 
@@ -204,7 +206,13 @@ def cmd_review(sprint_id: str, dry_run: bool) -> int:
                 if future is None:
                     results.append(reused_report)
                     continue
-                report, error = future.result()
+                try:
+                    report, error = future.result()
+                except BaseException:  # a KeyboardInterrupt lands here, never in a leg
+                    while not all(f.done() for _, _, f in ordered if f):
+                        kill_live()
+                        time.sleep(0.1)
+                    raise
                 if report:  # DECLARED order, never completion order: resume reuses this prefix
                     ran.append(key)
                     reports.append(report)

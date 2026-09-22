@@ -1,6 +1,9 @@
 """Concurrent sprint review stages preserve the recorded prefix."""
 
+import contextlib
 import json
+import os
+import signal
 import subprocess
 import sys
 import time
@@ -226,3 +229,42 @@ def test_codex_finders_start_together_in_one_checkout(tmp_path):
         if proc.poll() is None:
             proc.kill()
             proc.communicate()
+
+
+def test_ctrl_c_kills_every_running_finder(tmp_path):
+    repo, env, _git = make_repo(tmp_path)
+    staged_stub(tmp_path)
+    stub = tmp_path / "bin" / "claude"
+    stub.write_text(
+        stub.read_text().replace(
+            "open(m.group(1).strip(), 'w').write(json.dumps(report))\n",
+            "if key.startswith('find-'):\n"
+            "    pid = os.path.join(os.environ['HOME'], key + '.pid')\n"
+            "    open(pid, 'w').write(str(os.getpid()))\n"
+            "    import time\n"
+            "    time.sleep(120)\n"
+            "open(m.group(1).strip(), 'w').write(json.dumps(report))\n",
+        )
+    )
+    proc = subprocess.Popen(
+        [sys.executable, str(CLOSE), "sprint", "2", "review"], cwd=repo, env=env
+    )
+    pids = [
+        tmp_path / f"find-{name}.pid" for name in ("security", "state-lifecycle", "test-vacuity")
+    ]
+    try:
+        deadline = time.monotonic() + 15
+        while time.monotonic() < deadline and not all(p.exists() and p.read_text() for p in pids):
+            time.sleep(0.02)
+        assert all(p.exists() and p.read_text() for p in pids), "every finder did not start"
+        proc.send_signal(signal.SIGINT)
+        proc.wait(timeout=15)  # hang guard: each finder sleeps 120s
+    finally:
+        for p in pids:
+            if p.exists() and p.read_text():
+                with contextlib.suppress(ProcessLookupError):
+                    os.kill(int(p.read_text()), signal.SIGKILL)
+        if proc.poll() is None:
+            proc.kill()
+            proc.wait()
+    assert proc.returncode != 0

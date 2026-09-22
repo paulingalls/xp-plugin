@@ -194,6 +194,16 @@ def closing_line(story_id: str, result: dict) -> str:
     return f"{story_id}: {turns} turns, {duration_s}, {cost_s}, {status}"
 
 
+LIVE: set[subprocess.Popen] = set()
+
+
+def kill_live() -> None:
+    """Ctrl-C reaches only the main thread, so an agent run on a worker thread
+    never sees it and would outlive the interrupt in its own session."""
+    for proc in list(LIVE):
+        kill_group(proc)
+
+
 def kill_group(proc: subprocess.Popen) -> None:
     """Kill the agent's whole session, never just its leader: a real agent shells
     out constantly and its children inherit the stdout pipe, so killing the leader
@@ -306,6 +316,7 @@ def run_stream(
         env=child_env,
         start_new_session=True,  # so kill_group has a group that is not ours
     )
+    LIVE.add(proc)
     feeder = threading.Thread(target=_feed_stdin, args=(proc, prompt))
     feeder.start()
     timed_out, finished, last = threading.Event(), threading.Event(), [time.monotonic()]
@@ -382,6 +393,7 @@ def run_stream(
             watcher.join()
         feeder.join()
         proc.wait()
+        LIVE.discard(proc)
         if log:
             log.close()
     if timed_out.is_set():
