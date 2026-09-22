@@ -334,6 +334,15 @@ def _run_review(
         )
     outcome, problem = evaluate_disposition(findings, before_plan, after_plan)
     if problem:
+        if outcome == "blocked":
+            marker = incomplete_marker(story_id)
+            try:
+                state = json.loads(marker.read_text())
+            except (OSError, ValueError):
+                state = {}
+            marker.write_text(
+                json.dumps(state | {"state": "PLAN REVIEW BLOCKED", "disposition": "blocked"})
+            )
         return refused(f"refused: {problem}", outcome)
     incomplete_marker(story_id).unlink(missing_ok=True)  # the child's own verdict
     print(findings)

@@ -15,8 +15,9 @@ number, a fact about existing code that has changed since the card was
 written. A path the card names as work it will CREATE is not stale merely
 because it does not exist yet: leave it.
 
-Read, Grep, Glob, and commands see working-tree edits. The runner's receipt
-separately credentials the declared paths' committed HEAD state.
+Read, Grep, Glob, and commands may see unrelated working-tree edits. The runner
+refuses when a declared path differs from HEAD, so your claims about those paths
+and its receipt cover the same state.
 
 Preserve the story's identity, status bracket, and intent. Text that is
 already correct is left byte-identical — you are not here to rewrite for

@@ -11,7 +11,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 sys.path.insert(0, str(Path(__file__).parent / "spawn"))
 
-from close import fail, story_card
+from close import fail, git, story_card
 from plan_writer import strip_lifecycle
 from review_runner import ACTIVITY_NOUN as ACTIVITY_NOUN
 from review_runner import _dead as _dead
@@ -29,6 +29,7 @@ from review_runner import (
 from review_runner import _running as _running
 from review_runner import _wait as _wait
 from review_runner import subprocess as subprocess
+from review_scope import declared_files
 from work import (
     card_digest,
     chdir_repo_root,
@@ -353,6 +354,19 @@ def cmd_refresh(story_id: str, dry_run: bool) -> int:
     if not dry_run:
         import ready
 
+        try:
+            paths = sorted(declared_files(card))
+        except ValueError as error:
+            return fail(ready.UNPARSABLE.format(error, plan_path(), story_id))
+        pathspecs = [f":(literal){path}" for path in paths]
+        state = git("status", "--porcelain", "--untracked-files=all", "--", *pathspecs, check=False)
+        if state.returncode:
+            return fail("refused: cannot read the declared paths' working-tree state")
+        if dirty := state.stdout.strip():
+            return fail(
+                "refused: card refresh reads declared paths from HEAD, but these paths have"
+                f" working-tree edits:\n{dirty}\nCommit or restore them, then refresh again"
+            )
         receipt, path_problem = ready.refresh_path_receipt(story_id, card)
         if not path_problem:
             if receipt.get("digest") == card_digest(card):

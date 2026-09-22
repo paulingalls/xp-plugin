@@ -98,36 +98,28 @@ def test_card_refresh_rewrites_the_card_and_ready_digests_the_rewrite(tmp_path):
     assert receipt["digest"] in minted.stdout, "ready digested text the refresh never saw"
 
 
-def test_a_dirty_refresh_records_that_its_path_evidence_covers_head(tmp_path):
+def test_a_dirty_declared_path_refuses_refresh_before_agent_launch(tmp_path):
     repo, env, _g, _plan = refresh_repo(tmp_path)
     source = repo / "src/thing.py"
     source.parent.mkdir(exist_ok=True)
     source.write_text("committed claim\n")
     subprocess.run(["git", "add", "src/thing.py"], cwd=repo, env=env, check=True)
     subprocess.run(["git", "commit", "-qm", "committed claim"], cwd=repo, env=env, check=True)
-    committed = git_out(repo, env, "rev-parse", "HEAD")
     source.write_text("working-tree claim\n")
-    stub_card_refresher(tmp_path, findings="nothing stale\n")
+    launch = stub_card_refresher(tmp_path, findings="nothing stale\n")
 
     result = card_refresh(repo, env)
 
-    assert result.returncode == 0, result.stdout + result.stderr
+    assert result.returncode == 2
+    assert "src/thing.py" in result.stderr and "commit or restore" in result.stderr.lower()
+    assert not launch.exists() and not receipt_of(env).exists()
     assert source.read_text() == "working-tree claim\n"
-    receipt = json.loads(receipt_of(env).read_text())
-    assert receipt["basis"] == "HEAD"
-    assert receipt["head"] == committed
-    assert receipt["files"] == {"src/thing.py": committed}
-
     subprocess.run(["git", "commit", "-am", "working claim"], cwd=repo, env=env, check=True)
-    new_head = git_out(repo, env, "rev-parse", "HEAD")
-    launch = stub_card_refresher(tmp_path, findings="nothing stale\n")
-    launch.unlink()
     assert card_refresh(repo, env).returncode == 0
     assert launch.exists()
-    assert (Path(env["XP_DATA"]) / "plans/story-042.refresh.round-2.md").is_file()
-    receipt = json.loads(receipt_of(env).read_text())
-    assert receipt["head"] == new_head != committed
-    assert receipt["files"] == {"src/thing.py": new_head}
+    assert json.loads(receipt_of(env).read_text())["head"] == git_out(
+        repo, env, "rev-parse", "HEAD"
+    )
 
 
 def test_an_unchanged_second_refresh_refuses_before_launch_and_names_the_order(tmp_path):

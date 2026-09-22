@@ -287,17 +287,23 @@ class TestTheLaunch:
         assert not rec.exists() and not (root / "story-042.round-3.md").exists()
 
     def test_the_foreground_cap_is_not_a_failed_reviewer(self, tmp_path, monkeypatch):
-        from plan_review import run_foreground
+        import plan_review
 
         repo, env, draft = self.repo(tmp_path)
         root = Path(env["XP_DATA"]) / "plans"
         root.mkdir(parents=True, exist_ok=True)
         (root / "story-042.round-1.md").write_text(CLEAN)
-        (root / "story-042.round-2.md").write_text(CLEAN)
+        second = root / "story-042.round-2.md"
+        second.write_text(CLEAN)
         monkeypatch.setenv("XP_DATA", env["XP_DATA"])
         monkeypatch.chdir(repo)
 
-        assert run_foreground("story-042", draft) == (2, "capped")
+        assert plan_review.run_foreground("story-042", draft) == (2, "capped")
+        incomplete = Path(env["XP_DATA"]) / "markers/story-042.plan-review-incomplete"
+        incomplete.parent.mkdir(parents=True, exist_ok=True)
+        incomplete.write_text(json.dumps({"findings": str(second)}))
+        monkeypatch.setattr(plan_review, "_run_review", lambda *_args: (2, "attempted"))
+        assert plan_review.run_foreground("story-042", draft) == (2, "attempted")
 
     def test_dead_reviewers_do_not_satisfy_the_two_round_cap(self, tmp_path):
         repo, env, draft = self.repo(tmp_path)

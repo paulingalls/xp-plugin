@@ -61,12 +61,31 @@ def review_rounds(identifier: str, kind: str) -> list[tuple[int, Path]]:
 def review_findings_path(identifier: str, kind: str) -> Path:
     parent, stem = _round_location(identifier, kind)
     rounds = review_rounds(identifier, kind)
+    if incomplete := _incomplete_round(identifier, kind, rounds):
+        return incomplete
     return parent / f"{stem}.round-{max((n for n, _p in rounds), default=0) + 1}.md"
+
+
+def _incomplete_round(identifier: str, kind: str, rounds: list[tuple[int, Path]]) -> Path | None:
+    state = _marker_state(identifier, kind)
+    if state.get("disposition") == "blocked":
+        return None
+    findings = state.get("findings")
+    if not isinstance(findings, str):
+        return None
+    candidate = Path(findings).resolve()
+    return next((path for _number, path in rounds if path.resolve() == candidate), None)
+
+
+def completed_review_rounds(identifier: str, kind: str) -> list[tuple[int, Path]]:
+    rounds = review_rounds(identifier, kind)
+    incomplete = _incomplete_round(identifier, kind, rounds)
+    return [(number, path) for number, path in rounds if path != incomplete]
 
 
 def review_prior(identifier: str, kind: str) -> tuple[str, str]:
     rendered = []
-    for number, path in review_rounds(identifier, kind):
+    for number, path in completed_review_rounds(identifier, kind):
         try:
             body = path.read_text()
         except OSError as error:
@@ -76,8 +95,7 @@ def review_prior(identifier: str, kind: str) -> tuple[str, str]:
 
 
 def review_is_capped(identifier: str, kind: str) -> bool:
-    rounds = review_rounds(identifier, kind)
-    return max((number for number, _path in rounds), default=0) >= REVIEW_ROUND_CAP
+    return len(completed_review_rounds(identifier, kind)) >= REVIEW_ROUND_CAP
 
 
 def archive_review_rounds(identifier: str, kind: str, label: str = "superseded") -> str:
