@@ -77,7 +77,7 @@ def config_age(root: Path) -> str:
     )
 
 
-def install_status(source="", name="", running="") -> tuple[str, str]:
+def install_status(source="", name="", running="", timeout=8, retries=0) -> tuple[str, str]:
     observing = not source
     if observing:
         harness = os.environ.get("XP_HARNESS", "")
@@ -89,8 +89,14 @@ def install_status(source="", name="", running="") -> tuple[str, str]:
         source = "claude" if harness == "codex" else "codex"
         name, running = plugin_manifest_value(PLUGIN_ROOT, "name"), plugin_version(PLUGIN_ROOT)
     try:
-        options = {"capture_output": True, "text": True, "timeout": 8, "check": True}
-        listed = subprocess.run([source, "plugin", "list", "--json"], **options)
+        options = {"capture_output": True, "text": True, "timeout": timeout, "check": True}
+        for attempt in range(retries + 1):
+            try:
+                listed = subprocess.run([source, "plugin", "list", "--json"], **options)
+                break
+            except subprocess.TimeoutExpired:
+                if attempt == retries:
+                    raise
         payload = json.loads(listed.stdout)
         records = payload.get("installed", []) if source == "codex" else payload
     except (AttributeError, OSError, ValueError, subprocess.SubprocessError) as exc:

@@ -44,7 +44,11 @@ def missing_harness(harness: str) -> str:
             " or point the role at a harness that is"
         )
     status, _notice = install_status(
-        harness, plugin_manifest_value(PLUGIN_ROOT, "name"), plugin_version(PLUGIN_ROOT)
+        harness,
+        plugin_manifest_value(PLUGIN_ROOT, "name"),
+        plugin_version(PLUGIN_ROOT),
+        timeout=30,
+        retries=1,
     )
     if status == "absent-plugin":
         return (

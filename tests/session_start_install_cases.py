@@ -410,3 +410,34 @@ class InstallProbeCases:
         monkeypatch.setattr(session_start.subprocess, "run", expired)
         monkeypatch.setenv("XP_HARNESS", "claude")
         assert session_start.install_status()[0] == "unreadable"
+
+    def test_spawn_does_not_retry_malformed_output_and_keeps_it_distinct_from_absent(
+        self, monkeypatch
+    ):
+        import harness
+        import session_start
+
+        calls = []
+
+        def malformed(_args, **_options):
+            calls.append("malformed")
+            return subprocess.CompletedProcess([], 0, stdout="not json")
+
+        monkeypatch.setattr(harness.shutil, "which", lambda _name: "/bin/codex")
+        monkeypatch.setattr(session_start.subprocess, "run", malformed)
+        unreadable = harness.missing_harness("codex")
+
+        assert "plugin state is unreadable" in unreadable
+        assert "no ENABLED copy" not in unreadable
+        assert calls == ["malformed"]
+
+        monkeypatch.setattr(
+            session_start.subprocess,
+            "run",
+            lambda _args, **_options: subprocess.CompletedProcess(
+                [], 0, stdout=json.dumps({"installed": []})
+            ),
+        )
+        absent = harness.missing_harness("codex")
+        assert "no ENABLED copy" in absent
+        assert "plugin state is unreadable" not in absent
