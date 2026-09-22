@@ -125,12 +125,19 @@ def report_merge(story_id: str, files: list[str]) -> None:
     print("  " + "\n  ".join(files))
 
 
-def run_one(label: str, cmd: str | list[str], where: str = "") -> str:
-    shown = cmd if isinstance(cmd, str) else shlex.join(cmd)
+def _returncode(cmd: str | list[str]) -> int:
     try:
-        rc = subprocess.run(cmd, shell=isinstance(cmd, str)).returncode
+        return subprocess.run(cmd, shell=isinstance(cmd, str)).returncode
     except OSError:
-        rc = 127
+        return 127
+
+
+def run_one(label: str, cmd: str | list[str], where: str = "") -> str:
+    return _red(label, cmd, _returncode(cmd), where)
+
+
+def _red(label: str, cmd: str | list[str], rc: int, where: str) -> str:
+    shown = cmd if isinstance(cmd, str) else shlex.join(cmd)
     if rc == 127:
         return (
             f"refused: {label} could not be RUN{where}: {shown}\nNothing was measured"
@@ -246,19 +253,16 @@ def gates(
         tree = written.stdout.strip()
         reusable, decision = _receipt_matches(prior_receipt, tier, tree)
         if reusable and history is not None:
-            latest = next((item for item in reversed(history) if item["tree"] == tree), None)
-            if latest is None:
-                return (
-                    "refused: receipt has no matching history entry — repair the sprint marker",
-                    None,
-                )
-            if latest["outcome"] == "failed":
-                reusable, decision = False, "latest outcome failed"
-            elif latest["command"] != tier or latest["head"] != prior_receipt["head"]:
-                return (
-                    "refused: receipt contradicts full_tier_history — repair the sprint marker",
-                    None,
-                )
+            from sprint_state import LATEST_FAILED, reuse_veto
+
+            if veto := reuse_veto(history, tree, tier, prior_receipt["head"]):
+                if veto != LATEST_FAILED:
+                    return (
+                        f"refused: {veto} — delete full_tier from the sprint marker to"
+                        " measure the shipping tree afresh, then run land again",
+                        None,
+                    )
+                reusable, decision = False, veto
         if reusable:
             start = datetime.now(timezone.utc)
             receipt = dict(prior_receipt, reused=True)
@@ -276,21 +280,17 @@ def gates(
                 return red, None
         start = datetime.now(timezone.utc)
         begin = time.monotonic()
-        try:
-            rc = subprocess.run(tier, shell=True).returncode
-        except OSError:
-            rc = 127
+        rc = _returncode(tier)
         elapsed = time.monotonic() - begin
-        shown = f"refused: test tier red{where}: {tier}"
+        shown = _red("test tier", tier, rc, where)
         if rc == 127:
+            return shown, None
+        if rc < 0:
             return (
-                f"refused: test tier could not be RUN{where}: {tier}\nNothing was measured"
-                " — it is not on PATH where this ran, which is a harness or sandbox"
-                " problem, not a red tree. Fix where it runs",
+                f"refused: test tier interrupted by signal {-rc}{where}: {tier} — nothing"
+                " was measured or recorded; run land again",
                 None,
             )
-        if rc < 0:
-            return f"refused: test tier interrupted{where}: {tier}", None
         receipt = {
             "tier": "full",
             "command": tier,

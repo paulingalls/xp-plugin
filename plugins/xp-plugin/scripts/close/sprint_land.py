@@ -346,8 +346,6 @@ def cmd_land(sprint_id: str, dry_run: bool) -> int:
                     (record.eid, record.head, record.covered)
                 )
         if tier_red:
-            if "could not be RUN" in tier_red:
-                return tier_red
             rerun = deferred | displaced
             results = execute_batch(rerun)
             return batch_refusal(root, rerun, results, retry) or tier_red
@@ -361,9 +359,8 @@ def cmd_land(sprint_id: str, dry_run: bool) -> int:
         return ""
 
     def record_attempt(event: dict, receipt: dict | None) -> str:
-        nonlocal state
         try:
-            state = append_tier_evidence(marker, event, receipt)
+            append_tier_evidence(marker, event, receipt)
         except (OSError, ValueError) as exc:
             return f"refused: could not persist the full tier evidence at {marker}: {exc}"
         return ""
@@ -373,6 +370,11 @@ def cmd_land(sprint_id: str, dry_run: bool) -> int:
     )
     if red:
         return fail(_clearance_failure(red, bound) if bound else red)
+    # Read AFTER the falsifier batch, not the snapshot from before the tier: a round
+    # recorded while either ran must reach the gate and the disclosure below.
+    marker, state, marker_error = read_sprint_state(sprint_id)
+    if marker_error:
+        return fail(marker_error)
     head = git("rev-parse", "HEAD").stdout.strip()
     if refusal := _coverage_refusal(sprint_id, head, state):
         return fail(refusal)

@@ -77,6 +77,7 @@ def test_transitive_declared_coverage_defers_the_honest_cheaper_tag(tmp_path):
     record_reviews(tmp_path, repo, env)
     landed = sprint(repo, env, "land")
     assert (tmp_path / "full").read_text() == "x"
+    assert (tmp_path / "fast").read_text() == before
     assert f"trusted {ref}" in landed.stdout and "via tier fast" in landed.stdout
 
 

@@ -92,21 +92,33 @@ def read_tier_history(state: dict) -> tuple[list[dict] | None, str]:
     return history, ""
 
 
+LATEST_FAILED = "latest outcome failed"
+
+
+def reuse_veto(history: list[dict], tree: str, command: str, head: str) -> str:
+    """Why a receipt matching `tree` may not be reused; only the LATEST outcome for a
+    tree counts, so a superseded pass is never re-promoted."""
+    latest = next((item for item in reversed(history) if item["tree"] == tree), None)
+    if latest is None:
+        return "receipt has no matching history entry"
+    if latest["outcome"] == "failed":
+        return LATEST_FAILED
+    if latest["command"] != command or latest["head"] != head:
+        return "receipt contradicts full_tier_history"
+    return ""
+
+
 def append_tier_evidence(path: Path, event: dict, receipt: dict | None) -> dict:
     def update(current: dict) -> None:
         history, error = read_tier_history(current)
         if error:
             raise ValueError(error)
-        if event["outcome"] == "reused" and history is not None:
-            latest = next(
-                (item for item in reversed(history) if item["tree"] == event["tree"]), None
-            )
-            if latest is None:
-                raise ValueError("receipt has no matching history entry")
-            if latest["outcome"] == "failed":
-                raise ValueError("latest outcome failed; run the full tier again")
-            if latest["command"] != event["command"] or latest["head"] != event["head"]:
-                raise ValueError("receipt contradicts full_tier_history")
+        if (
+            event["outcome"] == "reused"
+            and history is not None
+            and (veto := reuse_veto(history, event["tree"], event["command"], event["head"]))
+        ):
+            raise ValueError(veto)
         current["full_tier_history"] = [*(history or []), event]
         if receipt is not None:
             current["full_tier"] = receipt

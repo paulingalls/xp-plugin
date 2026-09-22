@@ -5,8 +5,9 @@ import json
 from datetime import datetime, timezone
 
 import pytest
-from sprint_helpers import marker_path, record_reviews, sprint, staged_stub
+from sprint_helpers import make_repo, marker_path, record_reviews, sprint, staged_stub
 from test_sprint_tier_receipt import counted_repo, run_count, state, tree
+from test_tier_coverage import config, covered_debt
 
 
 def test_reentry_records_reuse_without_running_again(tmp_path):
@@ -155,3 +156,51 @@ def test_reuse_append_rechecks_latest_outcome_under_lock(tmp_path, monkeypatch):
             marker, dict(failed, outcome="reused"), dict(saved["full_tier"], reused=True)
         )
     assert state(tmp_path) == saved
+
+
+def test_round_recorded_during_the_falsifier_batch_gates_land(tmp_path):
+    script, flag = tmp_path / "falsifier.py", tmp_path / "armed"
+    script.write_text(
+        "import json, pathlib\n"
+        f"marker = pathlib.Path({str(marker_path(tmp_path))!r})\n"
+        f"if not pathlib.Path({str(flag)!r}).exists():\n"
+        "    raise SystemExit(0)\n"
+        "state = json.loads(marker.read_text())\n"
+        "state['rounds'].append({'incomplete': 'concurrent round', 'blocking': []})\n"
+        "marker.write_text(json.dumps(state))\n"
+    )
+    full = f"printf x >> {tmp_path / 'full'}"
+    tiers = (("fast", "true"), ("full", full))
+    cfg = config(tiers, (("fast", "full"),), tiers)
+    repo, env, g = make_repo(tmp_path, config=cfg)
+    covered_debt(repo, env, f"python3 {script}", "fast")
+    assert sprint(repo, env, "start").returncode == 0
+    (repo / ".xp/config.yml").write_text(cfg.replace("tier_coverage:\n  fast: full\n", ""))
+    g("commit", "-qam", "remove coverage")
+    record_reviews(tmp_path, repo, env)
+    flag.touch()
+
+    result = sprint(repo, env, "land")
+
+    assert result.returncode == 2 and "concurrent round" in result.stderr
+
+
+@pytest.mark.parametrize(
+    ("field", "reason"),
+    (("tree", "no matching history entry"), ("head", "contradicts full_tier_history")),
+)
+def test_history_that_does_not_vouch_for_the_receipt_refuses_reuse(tmp_path, field, reason):
+    repo, env, _g, events, _tier = counted_repo(tmp_path)
+    record_reviews(tmp_path, repo, env)
+    assert sprint(repo, env, "land").returncode == 2
+    marker = marker_path(tmp_path)
+    saved = state(tmp_path)
+    saved["full_tier_history"][-1][field] = "0" * 40
+    marker.write_text(json.dumps(saved))
+    before = marker.read_bytes()
+
+    result = sprint(repo, env, "land")
+
+    assert result.returncode == 2 and reason in result.stderr
+    assert "delete full_tier" in result.stderr
+    assert marker.read_bytes() == before and run_count(events) == 1
