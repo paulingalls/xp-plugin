@@ -366,6 +366,7 @@ def test_a_preview_names_reuse_without_mutating_the_round_or_launching(tmp_path)
     preview = sprint(repo, env, "review", "--dry-run")
     assert preview.returncode == 0
     assert "reused find-security" in preview.stdout
+    assert "concurrent finder stages" not in preview.stdout
     assert len(launches(tmp_path)) == before
     assert marker_path(tmp_path).read_text() == recorded, "the preview rewrote the round"
 

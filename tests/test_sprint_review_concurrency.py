@@ -8,7 +8,16 @@ import time
 import pytest
 from close_helpers import launches
 from spawn_helpers import stub_codex
-from sprint_helpers import CLOSE, CONFIG, head, make_repo, marker_path, sprint, staged_stub
+from sprint_helpers import (
+    CLOSE,
+    CONFIG,
+    head,
+    make_repo,
+    marker_path,
+    sprint,
+    stage_key,
+    staged_stub,
+)
 
 
 @pytest.mark.parametrize("config", [CONFIG, CONFIG + "review:\n  concurrent_legs: 2\n"])
@@ -19,6 +28,7 @@ def test_two_finders_start_before_either_finishes_and_record_declared_order(tmp_
     stub.write_text(
         stub.read_text().replace(
             "open(m.group(1).strip(), 'w').write(json.dumps(report))\n",
+            "if key == 'close': sys.exit(1)\n"
             "if key.startswith('find-'):\n"
             "    open(os.path.join(os.environ['HOME'], key + '.started'), 'w').close()\n"
             "    import time\n"
@@ -51,9 +61,9 @@ def test_two_finders_start_before_either_finishes_and_record_declared_order(tmp_
         (tmp_path / "find-test-vacuity.release").touch()
         (tmp_path / "find-security.release").touch()
         out, err = proc.communicate(timeout=15)
-        assert proc.returncode == 0, out + err
+        assert proc.returncode == 2 and "reviewer exited 1" in err, out + err
         record = json.loads(marker_path(tmp_path).read_text())["rounds"][0]
-        assert "incomplete" not in record
+        assert record["stages"] == ["find-security", "find-state-lifecycle", "find-test-vacuity"]
         assert len(launches(tmp_path)) == 4
         assert record["reviewed_head"] == head(repo, env)
     finally:
@@ -94,12 +104,29 @@ def test_failed_finder_keeps_completed_siblings_and_reruns_the_post_gap_report(t
     resumed = json.loads(marker_path(tmp_path).read_text())["rounds"][0]
     assert resumed["reused"] == ["find-security"]
     assert resumed["ran"][:2] == ["find-state-lifecycle", "find-test-vacuity"]
-    from sprint_helpers import stage_key
-
     assert {stage_key(item["stdin"]) for item in launches(tmp_path)[count:]} >= {
         "find-state-lifecycle",
         "find-test-vacuity",
     }
+
+
+def test_a_finder_commit_is_refused_after_its_concurrent_batch(tmp_path):
+    repo, env, _git = make_repo(tmp_path)
+    staged_stub(tmp_path)
+    stub = tmp_path / "bin" / "claude"
+    stub.write_text(
+        stub.read_text().replace(
+            "open(m.group(1).strip(), 'w').write(json.dumps(report))\n",
+            "if key == 'find-test-vacuity':\n"
+            "    os.system('echo X >> src.py && git commit -qam snuck')\n"
+            "open(m.group(1).strip(), 'w').write(json.dumps(report))\n",
+        )
+    )
+    result = sprint(repo, env, "review")
+    assert result.returncode == 2 and "read-only reviewer changed HEAD" in result.stderr
+    record = json.loads(marker_path(tmp_path).read_text())["rounds"][0]
+    assert record["stages"] == ["find-security", "find-state-lifecycle", "find-test-vacuity"]
+    assert "close" not in [stage_key(item["stdin"]) for item in launches(tmp_path)]
 
 
 @pytest.mark.parametrize("value", ["0", "-1", "many", ""])
@@ -145,8 +172,6 @@ def test_verifiers_start_after_finders_and_closer_waits_for_both(tmp_path):
             (tmp_path / "data/reports/sprint" / f"2.find-{name}.round-1.json").exists()
             for name in ("security", "state-lifecycle", "test-vacuity")
         )
-        from sprint_helpers import stage_key
-
         assert "close" not in [stage_key(item["stdin"]) for item in launches(tmp_path)]
         (tmp_path / "verify-2.release").touch()
         assert "close" not in [stage_key(item["stdin"]) for item in launches(tmp_path)]

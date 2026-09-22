@@ -183,8 +183,10 @@ def cmd_review(sprint_id: str, dry_run: bool) -> int:
     def batch(stage_name: str, jobs: list[tuple[str, list]]) -> tuple[list[dict], str]:
         nonlocal resume_announced
         if dry_run:
-            print("concurrent " + stage_name + " stages: " + ", ".join(key for key, _ in jobs))
             results = [stage(stage_name, key, extra) for key, extra in jobs]
+            launched = [key for key, _ in jobs if not prefix or key not in prefix.reused]
+            if launched:
+                print(f"concurrent {stage_name} stages: " + ", ".join(launched))
             return [report for report, _ in results], next((err for _, err in results if err), "")
         batch_head = git("rev-parse", "HEAD").stdout.strip()
         ordered = []
@@ -206,12 +208,9 @@ def cmd_review(sprint_id: str, dry_run: bool) -> int:
                     results.append(reused_report)
                     continue
                 report, error = future.result()
-                saved, report_error = review.read_report(
-                    review.sprint_report_path(sprint_id, key, round_n), stage=stage_name
-                )
-                if not report_error:
+                if report:  # DECLARED order, never completion order: resume reuses this prefix
                     ran.append(key)
-                    reports.append(saved)
+                    reports.append(report)
                 results.append(report)
                 if error:
                     errors.append(error)
