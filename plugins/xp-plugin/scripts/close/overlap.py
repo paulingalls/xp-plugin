@@ -231,17 +231,8 @@ def gates(
                 return red, None
             return "", dict(prior_receipt, reused=True)
         print(f"full tier receipt {decision}; running the shipping tree")
-        if after_full:
-            for command in verify:
-                if red := run_one("Verify", command, where):
-                    return red, None
-            red = run_one("test tier", tier, where)
-        else:
-            red = run_checks(verify, tier, where, tier_key)
-        if red:
-            if after_full:
-                red = after_full(red) or red
-            return red, None
+        if red := run_checks(verify, tier, where, tier_key):
+            return (after_full(red) or red) if after_full else red, None
         if after_full and (red := after_full("")):
             return red, None
         return "", {

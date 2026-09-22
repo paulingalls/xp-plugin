@@ -149,6 +149,8 @@ def cmd_start(sprint_id: str, dry_run: bool = False) -> int:
     results = execute_batch(standalone)
     if red := batch_refusal(root, standalone, results):
         return fail(red)
+    if dirty := git("status", "--porcelain").stdout.strip():
+        return fail(f"refused: the falsifier batch left the working tree dirty:\n  {dirty}")
 
     if completion := milestone.candidate(plan.read_text(), sprint_id):
         print(f"\n{completion.heading.rstrip()}")

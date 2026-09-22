@@ -129,7 +129,7 @@ class TestFullTier:
         record_reviews(tmp_path, repo, env)
         r = sprint(repo, env, "land")
         assert r.returncode == 2 and "Set tests.full" in r.stderr, r.stdout
-        assert "full tier red" not in r.stderr and "running the full tier" not in r.stdout
+        assert "test tier red" not in r.stderr and "running the shipping tree" not in r.stdout
 
     def test_a_stray_top_level_key_cannot_override_the_declared_tier(self, tmp_path):
         """`full:` is only ever nested under `tests:` — the flat lookup was dead

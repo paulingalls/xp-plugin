@@ -103,14 +103,13 @@ def test_a_red_covering_tier_runs_the_deferred_command_with_attribution(tmp_path
     assert ref in result.stderr and "trusted" not in result.stdout
 
 
-def test_pending_coverage_change_runs_previously_deferred_debt(tmp_path):
-    full = "true"
+def trunk_drops_coverage(tmp_path, full, falsifier):
     fast = "printf fast >/dev/null"
     cfg = config(
         (("fast", fast), ("full", full)), (("fast", "full"),), (("fast", fast), ("full", full))
     )
     repo, env, g = make_repo(tmp_path, config=cfg)
-    ref = covered_debt(repo, env, "test ! -f trunk-only", "fast")
+    ref = covered_debt(repo, env, falsifier, "fast")
     assert sprint(repo, env, "start").returncode == 0
     record_reviews(tmp_path, repo, env)
     g("checkout", "-q", "main")
@@ -120,12 +119,47 @@ def test_pending_coverage_change_runs_previously_deferred_debt(tmp_path):
     g("add", "-A")
     g("commit", "-qm", "trunk removes coverage")
     g("checkout", "-q", "sprint-002")
+    return repo, env, g, ref
+
+
+@pytest.mark.parametrize("full", ("true", "false"))
+def test_pending_coverage_change_runs_previously_deferred_debt(tmp_path, full):
+    repo, env, g, ref = trunk_drops_coverage(tmp_path, full, "test ! -f trunk-only")
 
     result = sprint(repo, env, "land")
 
     assert result.returncode == 2 and f"source {ref}" in result.stderr
+    assert "run `close.py sprint 2 land` again" in result.stderr
     assert "## bug " in (tmp_path / "data" / "work.md").read_text()
     assert g("rev-parse", "-q", "--verify", "MERGE_HEAD").returncode != 0
+
+
+def test_a_reused_receipt_still_runs_debt_the_merge_uncovered(tmp_path):
+    flag = tmp_path / "flag"
+    repo, env, _g, ref = trunk_drops_coverage(tmp_path, "true", f"test ! -f {flag}")
+    assert "gh" in sprint(repo, env, "land").stderr
+    flag.touch()
+
+    result = sprint(repo, env, "land")
+
+    assert "full tier receipt reused" in result.stdout
+    assert result.returncode == 2 and f"source {ref}" in result.stderr
+
+
+def test_an_unrunnable_tier_files_no_bug_from_its_deferred_debt(tmp_path):
+    cfg = config((("full", "no-such-tier-xyz"),))
+    repo, env, _g = make_repo(tmp_path, config=cfg)
+    flag = tmp_path / "flag"
+    flag.touch()
+    covered_debt(repo, env, f"test -f {flag}", "full")
+    flag.unlink()
+    assert sprint(repo, env, "start").returncode == 0
+    record_reviews(tmp_path, repo, env)
+
+    result = sprint(repo, env, "land")
+
+    assert result.returncode == 2 and "could not be RUN" in result.stderr
+    assert "## bug " not in (tmp_path / "data" / "work.md").read_text()
 
 
 def test_staged_coverage_pin_error_refuses_land(tmp_path):

@@ -116,7 +116,7 @@ class TestStartReceipt:
         assert not marker_path(tmp_path).exists() or "full_tier" not in state(tmp_path)
 
     @pytest.mark.parametrize("kind", ["tracked", "untracked"])
-    def test_land_refuses_dirt_created_by_the_falsifier_batch(self, tmp_path, kind):
+    def test_start_refuses_dirt_created_by_the_falsifier_batch(self, tmp_path, kind):
         repo, env, _g, events, _tier = counted_repo(tmp_path)
         generated = repo / ("src.py" if kind == "tracked" else "generated.py")
         before = generated.read_text() if generated.exists() else None
@@ -135,12 +135,10 @@ class TestStartReceipt:
         assert result.returncode == 0, result.stderr
         generated.write_text(before) if before is not None else generated.unlink()
 
-        assert sprint(repo, env, "start").returncode == 0
-        record_reviews(tmp_path, repo, env)
-        result = sprint(repo, env, "land")
+        result = sprint(repo, env, "start")
 
-        assert result.returncode == 2 and "dirty" in result.stderr.lower()
-        assert run_count(events) == 0
+        assert result.returncode == 2 and "falsifier batch left" in result.stderr
+        assert "notes to triage" not in result.stdout and run_count(events) == 0
 
     def test_an_initial_unfinished_open_still_records_without_close_checks(self, tmp_path):
         plan = """# plan

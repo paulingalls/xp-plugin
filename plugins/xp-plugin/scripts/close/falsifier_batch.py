@@ -169,26 +169,24 @@ def unavailable_coverage(records: list[LedgerRecord], tiers: dict[str, str]) -> 
 
 
 def grouped_batch(root: Path) -> tuple[dict, dict, list[LedgerRecord], list, str]:
-    records = ledger(root)
+    source = entries(root)
+    records = ledger(root, source)
     tiers = config_block_value("tests")
     graph, error = validated_coverage(tiers)
     if error:
-        return {}, {}, records, [], error
+        return {}, {}, records, source, error
     grouped = {}
     for eid, head, falsifier, covered in corpus(root, records):
         grouped.setdefault(falsifier, []).append((eid, head, covered))
-    tier = tiers.get("full", "")
     deferred = {
         command: sources
         for command, sources in grouped.items()
-        if tier != "EDIT-ME"
-        and tier
-        and all(tier_covers(covered, "full", tiers, graph) for _eid, _head, covered in sources)
+        if all(tier_covers(covered, "full", tiers, graph) for _eid, _head, covered in sources)
     }
     standalone = {
         command: sources for command, sources in grouped.items() if command not in deferred
     }
-    return standalone, deferred, records, entries(root), ""
+    return standalone, deferred, records, source, ""
 
 
 def triage_notes(source: list[tuple[str, str]]) -> list[str]:
