@@ -49,6 +49,7 @@ class TestCompletedVerifyState:
         assert verified[:8] in refused.stderr, refused.stderr
         assert launched[:8] not in refused.stderr, refused.stderr
         assert "no close in progress" not in refused.stderr
+        assert "close.py story story-042 repair" in refused.stderr
 
     def test_a_re_review_clears_the_verify_red_refusal(self, tmp_path):
         """Re-review clears verify-red; the superseded attempt still needs disposition."""

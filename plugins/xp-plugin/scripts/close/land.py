@@ -57,10 +57,15 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
             if covered:
                 continue
             verified = str(unrecorded.get("verify_head", unrecorded.get("head", "")))[:8]
+            next_action = (
+                f"fix it, then run `close.py {close.leg(story_id)[0]} repair`"
+                if launch == launch_paths[0]
+                else f"run `close.py {close.leg(story_id)[0]} salvage`, or review again"
+            )
             return close.fail(
                 f"refused: the review completed on tree {verified}, but {verify_red}."
                 " THAT round is not recorded — any earlier one still is, and does not"
-                " cover this tree; fix it, then run review again"
+                f" cover this tree; {next_action}"
             )
     # launch_paths, not the sidecars alone: the CANONICAL marker is what a review
     # that never recorded leaves behind, and salvage reads it first.
