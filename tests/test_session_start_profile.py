@@ -20,6 +20,7 @@ from pathlib import Path
 import pytest
 from constraints_wall_cases import ConstraintsWallCases
 from session_start_helpers import BUDGET_WARNING, HOOK
+from test_data_root_guard import real_data_root
 
 CODEX_RETAINED_BYTES = [(4_916, 5_084)] * 6
 CODEX_OUTPUT_BOUND = 10_000
@@ -35,6 +36,32 @@ HEADROOM = 500
 # prose (branch names, SHAs, timestamps).
 CODEX_EXEC_TOKEN_BOUND = 10_000
 DENSITY_FLOOR = 3.5  # bytes/token
+
+
+def required_live_path(path):
+    if not path.exists():
+        pytest.skip(f"live profile input absent: {path}")
+    return path
+
+
+@pytest.mark.parametrize(
+    "missing", ["plan.md", "installed-claude-version", "installed-codex-version", "markers"]
+)
+def test_real_profile_reports_missing_input(tmp_path, monkeypatch, missing):
+    for name in ("plan.md", "installed-claude-version", "installed-codex-version"):
+        if name != missing:
+            (tmp_path / name).touch()
+    if missing != "markers":
+        (tmp_path / "markers").mkdir()
+    monkeypatch.setattr("test_session_start_profile.real_data_root", lambda: tmp_path)
+    with pytest.raises(pytest.skip.Exception, match=f"live profile input absent: .*{missing}"):
+        TestTheRealProfileAgainstTheRealCap().run_real()
+
+
+def test_real_digest_reports_missing_input(tmp_path, monkeypatch):
+    monkeypatch.setattr("test_session_start_profile.real_data_root", lambda: tmp_path)
+    with pytest.raises(pytest.skip.Exception, match=r"live profile input absent: .*session.md"):
+        TestTheRealProfileAgainstTheRealCap().test_our_own_digest_is_within_the_bound_the_hook_enforces()
 
 
 class TestTheRealProfileAgainstTheRealCap:
@@ -74,9 +101,11 @@ class TestTheRealProfileAgainstTheRealCap:
         supplied hook remains the copy source so cap mutations survive relocation.
         """
         sys.path.insert(0, str(HOOK.parent))
-        from env import data_root, plugin_version
+        from env import plugin_version
 
-        source = data_root()
+        source = real_data_root()
+        for name in ("plan.md", "installed-claude-version", "installed-codex-version", "markers"):
+            required_live_path(source / name)
         source_plugin = hook.parent.parent
         base = Path(tempfile.mkdtemp(prefix="xp-profile-", dir="/tmp"))
         home, expected = self.data_under_home(base)
@@ -88,10 +117,8 @@ class TestTheRealProfileAgainstTheRealCap:
             isolated = expected
             isolated.mkdir(parents=True)
             for name in ("plan.md", "installed-claude-version", "installed-codex-version"):
-                if (path := source / name).exists():
-                    shutil.copy2(path, isolated / name)
-            if (source / "markers").exists():
-                shutil.copytree(source / "markers", isolated / "markers")
+                shutil.copy2(source / name, isolated / name)
+            shutil.copytree(source / "markers", isolated / "markers")
             assert plugin.is_relative_to(home)
             assert isolated.is_relative_to(home)
             (isolated / "env.json").write_text(
@@ -349,14 +376,13 @@ class TestTheRealProfileAgainstTheRealCap:
         toy fixtures next door stayed green throughout, which is this file's
         whole reason to exist.
 
-        Absent reads as zero: a fresh clone legitimately has no digest yet, and
-        that is a different state from one that warns at load (constraint 15).
+        A fresh clone can lack a digest; report that state as a named skip.
         """
         sys.path.insert(0, str(Path(__file__).parent.parent / "plugins/xp-plugin/scripts"))
-        from session_start import DIGEST_CAP, data_root
+        from session_start import DIGEST_CAP
 
-        digest = data_root() / "session.md"
-        count = len(digest.read_text().splitlines()) if digest.exists() else 0
+        digest = required_live_path(real_data_root() / "session.md")
+        count = len(digest.read_text().splitlines())
         assert count <= DIGEST_CAP, f"{digest} is {count} lines against {DIGEST_CAP}"
 
     def assert_all_constraints_delivered(self, out):

@@ -38,6 +38,7 @@ sys.path.insert(0, str(_SCRIPTS))
 sys.path.insert(0, str(_SCRIPTS / "spawn"))
 
 _TEMPLATE_ENV = "XP_TEST_REPO_TEMPLATES"
+_DATA_ENV = "XP_TEST_DATA_ROOT"
 _SLOW = Path(__file__).parent / "slow_tests.json"
 
 
@@ -56,6 +57,13 @@ def pytest_collection_modifyitems(items):
 
 
 def pytest_configure(config):
+    if guard := os.environ.get(_DATA_ENV):
+        os.environ["XP_DATA"] = guard
+    else:
+        holder = tempfile.TemporaryDirectory(prefix="xp-test-data-")
+        config._xp_data_root = holder
+        os.environ[_DATA_ENV] = holder.name
+        os.environ["XP_DATA"] = holder.name
     if _TEMPLATE_ENV in os.environ:
         return
     holder = tempfile.TemporaryDirectory(prefix="xp-test-repo-templates-")
@@ -93,6 +101,10 @@ def pytest_configure(config):
 
 
 def pytest_unconfigure(config):
+    if holder := getattr(config, "_xp_data_root", None):
+        os.environ.pop(_DATA_ENV, None)
+        os.environ.pop("XP_DATA", None)
+        holder.cleanup()
     if holder := getattr(config, "_xp_repo_templates", None):
         os.environ.pop(_TEMPLATE_ENV, None)
         holder.cleanup()

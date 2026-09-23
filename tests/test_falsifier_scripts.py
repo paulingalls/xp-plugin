@@ -6,7 +6,8 @@ import sys
 from pathlib import Path
 from types import SimpleNamespace
 
-from env import data_root
+import pytest
+from test_data_root_guard import real_data_root
 from work import entry_id
 
 ROOT = Path(__file__).parent.parent
@@ -251,12 +252,22 @@ def test_duplicate_records_run_one_complete_command_once(tmp_path):
 
 
 def test_this_repositories_scripts_equal_the_live_record_scripts():
-    live = list(checker.corpus(data_root()))
+    root = real_data_root()
+    work = root / "work.md"
+    if not work.is_file():
+        pytest.skip(f"live work records absent: {work}")
+    live = list(checker.corpus(root))
     owned = set(checker.script_owners(live))
     present = {
         f"tests/scripts/{path.name}" for path in (ROOT / "tests" / "scripts").glob("falsifier_*.py")
     }
     assert present == owned
+
+
+def test_live_script_check_reports_missing_work(tmp_path, monkeypatch):
+    monkeypatch.setattr("test_falsifier_scripts.real_data_root", lambda: tmp_path)
+    with pytest.raises(pytest.skip.Exception, match=r"live work records absent: .*work.md"):
+        test_this_repositories_scripts_equal_the_live_record_scripts()
 
 
 def test_hookspath_falsifier_constructs_or_explicitly_declines(tmp_path, capsys):
