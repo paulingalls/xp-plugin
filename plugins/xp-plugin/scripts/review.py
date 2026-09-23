@@ -10,6 +10,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 from env import refuse_direct_invocation
+from review_card import card_now
 from review_refusal import abort_text
 from review_report import (
     CLEARABLE_BY_FULL,  # noqa: F401
@@ -306,16 +307,6 @@ def apply_patch(report: Path, card: str) -> str:
     return ""
 
 
-def card_now(story_id: str) -> str:
-    from close import story_card
-    from work import plan_path
-
-    try:
-        return story_card(plan_path().read_text(), story_id)[0]
-    except (KeyError, OSError):
-        return ""
-
-
 def reviewer_range(start: str, end: str) -> str:
     """Show the commits and stat in one covered range."""
     from close import git
@@ -419,7 +410,15 @@ def stage_role(stage: str, card: str, fallback: str = "") -> tuple[str, str, str
 
 
 def run(
-    prompt: str, cwd: Path, dry_run=False, name="", card="", role="", checked=False, noun=""
+    prompt: str,
+    cwd: Path,
+    dry_run=False,
+    name="",
+    card="",
+    role="",
+    checked=False,
+    noun="",
+    cancel=None,
 ) -> tuple[str, str]:
     """Launch a configured reviewer, returning (result text, error).
     Function-local imports avoid spawn -> close -> review cycling at import time."""
@@ -455,7 +454,9 @@ def run(
     try:
         # finders, then verifiers, run concurrently: their streams stay in their own logs
         echo = stage not in ("finder", "verifier")
-        proc = run_agent(argv, cwd, prompt, "reviewer" if stage else role, harness, log_id, echo)
+        proc = run_agent(
+            argv, cwd, prompt, "reviewer" if stage else role, harness, log_id, echo, cancel=cancel
+        )
     except OSError as e:  # claude absent from PATH
         return "", f"could not launch the reviewer: {e}"
     except subprocess.TimeoutExpired as e:

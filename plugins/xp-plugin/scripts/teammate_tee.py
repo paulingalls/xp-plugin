@@ -275,6 +275,11 @@ def quiet(line: str) -> None:
         print(line, file=sys.stderr)
 
 
+class ReviewCancelled(Exception):
+    def __init__(self, log: Path):
+        self.log = log
+
+
 def run_stream(
     argv: list[str],
     cwd: Path,
@@ -286,6 +291,7 @@ def run_stream(
     timeout: float | None = None,
     widen_git: bool = False,
     echo: bool = True,
+    cancel=None,
 ) -> subprocess.CompletedProcess:
     """Every spawned agent streams live and tees to a durable log; `widen_git`
     is executor-only commit access, and it defaults OFF for the reason run_agent's
@@ -327,6 +333,7 @@ def run_stream(
     feeder = threading.Thread(target=_feed_stdin, args=(proc, prompt))
     feeder.start()
     timed_out, finished, last = threading.Event(), threading.Event(), [time.monotonic()]
+    cancelled = threading.Event()
 
     def kill() -> None:
         # poll FIRST, but kill EITHER WAY: a watchdog that fires as the last line
@@ -353,9 +360,19 @@ def run_stream(
             last[0] = time.monotonic()
             yield line
 
+    def watch_card() -> None:
+        while not finished.wait(0.2):
+            if proc.poll() is None and cancel():
+                cancelled.set()
+                kill_group(proc)
+                return
+
     watcher = threading.Thread(target=watch, daemon=True) if timeout is not None else None
+    card_watcher = threading.Thread(target=watch_card, daemon=True) if cancel else None
     if watcher:
         watcher.start()
+    if card_watcher:
+        card_watcher.start()
     path = log_path(data_root, log_id)
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -399,11 +416,15 @@ def run_stream(
         finished.set()
         if watcher:
             watcher.join()
+        if card_watcher:
+            card_watcher.join()
         feeder.join()
         proc.wait()
         LIVE.discard(proc)
         if log:
             log.close()
+    if cancelled.is_set():
+        raise ReviewCancelled(path)
     if timed_out.is_set():
         raise subprocess.TimeoutExpired(argv, timeout, stderr=str(path))
     rc = proc.returncode

@@ -207,7 +207,7 @@ class TestSalvage:
         assert refused.returncode == 2, refused.stdout
         assert launched[:8] in refused.stderr, refused.stderr
         assert "outside close.py" in refused.stderr, refused.stderr
-        assert "review again" in refused.stderr, refused.stderr
+        assert "remove the named launch marker" in refused.stderr.lower(), refused.stderr
         assert not marker_file(tmp_path).exists(), "a forbidden commit reached a round"
 
     @pytest.mark.slow

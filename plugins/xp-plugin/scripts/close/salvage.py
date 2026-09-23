@@ -1,6 +1,7 @@
 """Recover an interrupted story review."""
 
 import json
+import sys
 
 from review_artifacts import restore_story_queue, story_sidecar
 
@@ -66,11 +67,15 @@ def cmd_salvage(story_id: str, dry_run: bool = False) -> int:
     else:
         at["moved"] = (
             f"HEAD is no longer {at['head'][:8]}, the tree the killed review was launched"
-            " against. The motion happened outside close.py; review again from the current"
-            " HEAD, or explicitly abandon that work by restoring the reviewed sha"
+            " against. The motion happened outside close.py"
         )
     if dry_run:
         print(f"dry run: would record round {round_n} for {story_id} from {launch}")
         return 0
     # The launch card is the dead reviewer's scope; a later edit must not widen it.
-    return close._record_round(story_id, at["card"], path, marker, state, at, launch, salvage=True)
+    result = close._record_round(
+        story_id, at["card"], path, marker, state, at, launch, salvage=True
+    )
+    if result and launch.exists():
+        print(f"Launch marker for this review: {launch}", file=sys.stderr)
+    return result
