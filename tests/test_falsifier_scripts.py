@@ -6,6 +6,7 @@ import sys
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
 from env import data_root
 from work import entry_id
 
@@ -250,13 +251,25 @@ def test_duplicate_records_run_one_complete_command_once(tmp_path):
     assert calls == [command]
 
 
-def test_this_repositories_scripts_equal_the_live_record_scripts():
-    live = list(checker.corpus(data_root()))
+def test_this_repositories_scripts_equal_the_live_record_scripts(monkeypatch):
+    with monkeypatch.context() as env:
+        env.delenv("XP_DATA", raising=False)
+        root = data_root()
+    work = root / "work.md"
+    if not work.is_file():
+        pytest.skip(f"live work records absent: {work}")
+    live = list(checker.corpus(root))
     owned = set(checker.script_owners(live))
     present = {
         f"tests/scripts/{path.name}" for path in (ROOT / "tests" / "scripts").glob("falsifier_*.py")
     }
     assert present == owned
+
+
+def test_live_script_check_reports_missing_work(tmp_path, monkeypatch):
+    monkeypatch.setattr("test_falsifier_scripts.data_root", lambda: tmp_path)
+    with pytest.raises(pytest.skip.Exception, match=r"live work records absent: .*work.md"):
+        test_this_repositories_scripts_equal_the_live_record_scripts(monkeypatch)
 
 
 def test_hookspath_falsifier_constructs_or_explicitly_declines(tmp_path, capsys):
