@@ -91,10 +91,10 @@ def cmd_repair(story_id: str) -> int:
     verify = close.verify_commands(story_id, card)[1]
     if red := overlap.run_checks(verify, None):
         return close.fail(f"{red} — fix it, then run {retry} again")
-    if head == verified:
+    if not paths:
         return close.fail(
-            f"refused: HEAD equals verify_head {verified[:8]}; green rerun is a flake,"
-            f" not a repair — run {rereview}"
+            f"refused: HEAD's tree equals verify_head {verified[:8]}; a green rerun of"
+            f" the reviewed tree is a flake, not a repair — run {rereview}"
         )
     position = at.get("round_index")
     path = review.report_path(story_id, position + 1)
@@ -136,4 +136,8 @@ def cmd_repair(story_id: str) -> int:
     raw["repaired"] = repair["range"]
     path.write_text(json.dumps(raw, indent=2))
     launch.unlink()
+    print(
+        f"recorded round {review.round_number(path)}; land prints the repair"
+        f" {verified[:8]}..{head[:8]} as unreviewed — next: `close.py {noun} land`"
+    )
     return 0

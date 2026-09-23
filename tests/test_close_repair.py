@@ -133,6 +133,9 @@ class TestRepairRefusals:
             ("ledger_shape", "unreadable close marker", "review"),
             ("round_identity", "lacks round identity", "review"),
             ("base", "review base does not precede", "review"),
+            ("report", "unusable or blocking", "review"),
+            ("blocking", "unusable or blocking", "review"),
+            ("reviewed", "reviewed head does not precede", "review"),
         ],
     )
     def test_each_guard_records_nothing(self, tmp_path, fault, message, action):
@@ -173,13 +176,24 @@ class TestRepairRefusals:
             at = json.loads(before)
             at["base"] = "missing-sha"
             launch.write_text(json.dumps(at))
+        elif fault in ("report", "blocking", "reviewed"):
+            commit(g, repo, "src/thing.py", "A = 2\nbroken = True\n")
+            report = tmp_path / "data/reports/story-042.round-1.json"
+            if fault == "report":
+                report.unlink()
+            elif fault == "blocking":
+                report.write_text('{"fixed": [], "blocking": ["x"], "noted": []}')
+            else:
+                at = json.loads(before)
+                at["head"] = "missing-sha"
+                launch.write_text(json.dumps(at))
         refused = close(repo, env, "repair")
         assert refused.returncode == 2 and message in refused.stderr, refused.stderr
         assert f"close.py story story-042 {action}" in refused.stderr
         if fault == "unreadable":
             assert str(launch) in refused.stderr
         assert not marker_file(tmp_path).exists() or fault in ("ledger", "ledger_shape")
-        if fault not in ("missing", "unreadable", "no_red", "round_identity", "base"):
+        if fault not in ("missing", "unreadable", "no_red", "round_identity", "base", "reviewed"):
             assert launch.read_bytes() == before
         assert close(repo, env, "land").returncode == 2
 
@@ -196,6 +210,19 @@ class TestRepairRefusals:
         assert "close.py story story-042 review" in refused.stderr
         assert not marker_file(tmp_path).exists()
         assert close(repo, env, "land").returncode == 2
+
+    def test_a_commit_that_leaves_the_reviewed_tree_is_a_flake(self, tmp_path):
+        gate = tmp_path / "verify-gate"
+        gate.write_text("#!/bin/sh\nexit 1\n")
+        gate.chmod(0o755)
+        repo, env, g = make_repo(tmp_path, verify=str(gate))
+        stub_reviewer(tmp_path, patch=BROKEN_PATCH)
+        assert close(repo, env, "review").returncode == 2
+        gate.write_text("#!/bin/sh\nexit 0\n")
+        assert g("commit", "-q", "--allow-empty", "-m", "no change").returncode == 0
+        refused = close(repo, env, "repair")
+        assert refused.returncode == 2 and "flake" in refused.stderr, refused.stderr
+        assert not marker_file(tmp_path).exists()
 
     def test_red_rerun_on_same_head_requests_a_fix(self, tmp_path):
         repo, env, _g, _launch = red_round(tmp_path)

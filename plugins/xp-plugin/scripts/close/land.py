@@ -60,7 +60,7 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
             next_action = (
                 f"fix it, then run `close.py {close.leg(story_id)[0]} repair`"
                 if launch == launch_paths[0]
-                else "run the queued round's salvage, or review again"
+                else f"run `close.py {close.leg(story_id)[0]} salvage`, or review again"
             )
             return close.fail(
                 f"refused: the review completed on tree {verified}, but {verify_red}."
