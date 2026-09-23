@@ -22,7 +22,14 @@ def hook_scripts():
         for hook in group["hooks"]
         if hook["type"] == "command"
     )
-    return {Path(shlex.split(command)[-1]).name for command in commands}
+    scripts = set()
+    for command in commands:
+        words = shlex.split(command)
+        assert words[:2] == ["python3", "-c"]
+        assert words[-2] == "${CLAUDE_PLUGIN_ROOT}"
+        assert len(words) == 5
+        scripts.add(words[-1])
+    return scripts
 
 
 HOOK_SCRIPTS = hook_scripts()

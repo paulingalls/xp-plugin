@@ -3,6 +3,7 @@
 import json
 import os
 import pty
+import shlex
 import subprocess
 import sys
 from pathlib import Path
@@ -86,7 +87,8 @@ class TestRegistration:
         cfg = json.loads(HOOKS_JSON.read_text())
         entries = cfg["hooks"]["SessionStart"]
         cmds = [h["command"] for e in entries for h in e["hooks"]]
-        assert any("${CLAUDE_PLUGIN_ROOT}/scripts/session_start.py" in c for c in cmds)
+        expected = ["${CLAUDE_PLUGIN_ROOT}", "session_start.py"]
+        assert any(shlex.split(c)[-2:] == expected for c in cmds)
 
     def test_session_start_probe_budget_stays_inside_hook_ceiling(self, tmp_path, monkeypatch):
         import session_start
