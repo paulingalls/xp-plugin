@@ -4,7 +4,9 @@ seed's hand-list, and the rule pointers every role shares. Split out of
 test_close_prose.py at story-120, which kept the story-close and walk-fixture
 prose."""
 
+import json
 import re
+import shlex
 from pathlib import Path
 
 from close_helpers import PLUGIN, prose
@@ -154,10 +156,18 @@ class TestShippedProseMatchesTheMechanism:
             for p in PLUGIN.rglob("*")
             if p.is_file() and p.suffix in (".py", ".md", ".json", ".yml", ".sh")
         }
+        hooks = json.loads((PLUGIN / "hooks" / "hooks.json").read_text())["hooks"]
+        hook_scripts = {
+            shlex.split(hook["command"])[-1]
+            for entries in hooks.values()
+            for entry in entries
+            for hook in entry["hooks"]
+            if hook["type"] == "command"
+        }
         for script in scripts:
             name = script.stem
             forms = (f"import {name}", f"from {name} import", f"scripts/{name}.py")
-            reachable = any(
+            reachable = script.name in hook_scripts or any(
                 any(f in text for f in forms) for path, text in corpus.items() if path != script
             )
             assert reachable, (
