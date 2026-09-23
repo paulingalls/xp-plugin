@@ -1,6 +1,7 @@
 """Slate review marker state at recovery and the first sprint open."""
 
 import json
+import os
 import shlex
 import subprocess
 import sys
@@ -20,8 +21,12 @@ def _stop(child):
     child.wait(timeout=5)
 
 
-@pytest.mark.parametrize("pid_state", ["live", "dead", "absent", "malformed", "unreadable"])
+@pytest.mark.parametrize(
+    "pid_state", ["live", "dead", "absent", "malformed", "unreadable", "foreign"]
+)
 def test_recovery_distinguishes_slate_pid_states(tmp_path, pid_state):
+    if pid_state == "foreign" and os.geteuid() == 0:
+        pytest.skip("root may signal pid 1, so it cannot stand for another user's process")
     repo, _g = xp_repo(tmp_path)
     root = tmp_path / "xp"
     (root / "plan.md").write_text("# plan\n### Sprint 1\n#### story-042 — planned   [planned]\n")
@@ -31,7 +36,9 @@ def test_recovery_distinguishes_slate_pid_states(tmp_path, pid_state):
     try:
         if pid_state == "dead":
             _stop(child)
-        pid = {"live": child.pid, "dead": child.pid, "malformed": "bad"}.get(pid_state)
+        pid = {"live": child.pid, "dead": child.pid, "malformed": "bad", "foreign": 1}.get(
+            pid_state
+        )
         marker.write_text(
             "[]"
             if pid_state == "unreadable"
@@ -40,6 +47,7 @@ def test_recovery_distinguishes_slate_pid_states(tmp_path, pid_state):
         lines = next_lines(run_recovery(repo, tmp_path).stdout)
         expected = (
             f"NEXT: Sprint 1 slate review running (pid {child.pid})"
+            " — run `slate_review.py 1` to join it"
             if pid_state == "live"
             else "NEXT: Sprint 1 slate review incomplete — run `slate_review.py 1`"
         )
@@ -112,6 +120,18 @@ def test_dead_marker_open_preserves_round_count_and_log(tmp_path, monkeypatch):
         .stdout.split("NEXT:", 1)[1]
         .splitlines()[0]
     )
+
+
+def test_open_archives_only_a_round_the_marker_hides(tmp_path):
+    repo, env, _g, _root, marker, findings, _log = _open_fixture(tmp_path)
+    foreign = tmp_path / "foreign.md"
+    foreign.write_text("not a round\n")
+    marker.write_text(json.dumps(json.loads(marker.read_text()) | {"findings": str(foreign)}))
+
+    assert sprint(repo, env, "start").returncode == 0
+    assert not marker.exists()
+    assert foreign.read_text() == "not a round\n"
+    assert findings.read_text() == "half-written round\n"
 
 
 def test_live_marker_refuses_open_before_hook(tmp_path):

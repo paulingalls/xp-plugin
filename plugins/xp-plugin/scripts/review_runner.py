@@ -170,10 +170,8 @@ def slate_review_pid(identifier: str) -> int | None:
         return None
     try:
         os.kill(pid, 0)
-    except ProcessLookupError:
+    except OSError:
         return None
-    except PermissionError:
-        pass
     return pid
 
 

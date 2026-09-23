@@ -343,7 +343,10 @@ def _next_action() -> str:
     if released != "released":
         slate_state, pid = slate_review_state(sprint)
         if slate_state == "running":
-            return f"NEXT: Sprint {sprint} slate review running (pid {pid})"
+            return (
+                f"NEXT: Sprint {sprint} slate review running (pid {pid})"
+                f" — run `slate_review.py {sprint}` to join it"
+            )
         if slate_state == "incomplete":
             return f"NEXT: Sprint {sprint} slate review incomplete — run `slate_review.py {sprint}`"
     if len(active) > 1:
