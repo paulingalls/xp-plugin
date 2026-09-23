@@ -257,6 +257,35 @@ def test_dirty_cancel_keeps_launch_marker(tmp_path):
     assert "unrecorded review" in close(repo, env, "land").stderr
 
 
+def test_close_marker_edit_during_cancel_keeps_launch_marker(tmp_path):
+    repo, env, _g = make_repo(tmp_path)
+    sleeping_reviewer(tmp_path)
+    proc = subprocess.Popen(
+        [sys.executable, str(CLOSE), "story", "story-042", "review"],
+        cwd=repo,
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    try:
+        end = time.monotonic() + 10
+        while not (tmp_path / "started").exists() and time.monotonic() < end:
+            time.sleep(0.05)
+        assert (tmp_path / "started").exists()
+        marker = tmp_path / "data" / "markers" / "story-042.close.json"
+        marker.write_text('{"rounds": [], "blocking": ["changed"]}')
+        plan = tmp_path / "data" / "plan.md"
+        plan.write_text(plan.read_text().replace("Context: demo.", "Context: changed."))
+        out, err = proc.communicate(timeout=10)
+    finally:
+        stop_stuck(proc, tmp_path)
+    assert proc.returncode == 2 and "CANCELLED" in err, (out, err)
+    assert "close marker changed" in err
+    assert (tmp_path / "data" / "markers" / "story-042.review-launch").exists()
+    assert "unrecorded review" in close(repo, env, "land").stderr
+
+
 def test_moved_head_cancel_keeps_launch_marker_without_reset(tmp_path):
     repo, env, _g = make_repo(tmp_path)
     (tmp_path / "mode").write_text("moved")

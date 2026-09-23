@@ -389,7 +389,7 @@ def cmd_review(story_id: str, dry_run: bool = False) -> int:
             cancel=None if dry_run else card_changed(story_id, card),
         )
     except ReviewCancelled as stopped:
-        return cancelled(story_id, head, path, launch, stopped.log)
+        return cancelled(story_id, head, at["digest"], path, launch, stopped.log)
     if dry_run:
         return fail("refused: " + err) if err else 0
     if err:  # crash, timeout, absent binary — it may still have committed first

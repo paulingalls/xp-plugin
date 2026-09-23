@@ -20,7 +20,7 @@ def card_changed(story_id: str, card: str):
     return changed
 
 
-def cancelled(story_id: str, head: str, report: Path, launch: Path, log: Path) -> int:
+def cancelled(story_id: str, head: str, digest: str, report: Path, launch: Path, log: Path) -> int:
     import close
     import review
 
@@ -29,9 +29,13 @@ def cancelled(story_id: str, head: str, report: Path, launch: Path, log: Path) -
     why = f"CANCELLED: {story_id}'s card changed while its reviewer ran"
     if dirty:
         why += f"; uncommitted:\n  {dirty}"
+    marker = close.marker_path(story_id)
+    marker_changed = review.marker_digest(marker) != digest
+    if marker_changed:
+        why += f"; close marker changed during the review ({marker})"
     message = review.abort_text(head, why, salvage=True)
     moved = close.git("rev-parse", "HEAD").stdout.strip() != head
-    if not dirty and not moved:
+    if not dirty and not moved and not marker_changed:
         launch.unlink(missing_ok=True)
     else:
         message += (
