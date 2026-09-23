@@ -90,13 +90,14 @@ def test_open_from_subdirectory_records_branch_and_runs_hook(tmp_path):
         ("sprint-003", False, False, "records sprint-003, not sprint-002", False),
     ],
 )
-def test_distinct_open_states(tmp_path, recorded, terminal, retired, message, names_close):
+@pytest.mark.parametrize("dry", [(), ("--dry-run",)])
+def test_distinct_open_states(tmp_path, recorded, terminal, retired, message, names_close, dry):
     repo, env, _g, branch = fixture(tmp_path, terminal=terminal, retired=retired, recorded=recorded)
     output = hook(repo, tmp_path)
     batch = falsifier(tmp_path)
     before = (tmp_path / "data/plan.md").read_bytes()
 
-    result = invoke(repo, env, "2")
+    result = invoke(repo, env, "2", *dry)
 
     assert result.returncode == 2, result.stderr
     assert message in result.stderr

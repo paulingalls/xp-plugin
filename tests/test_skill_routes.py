@@ -1,5 +1,6 @@
 """Every shipped skill and PROCESS route is reachable at its action site."""
 
+import os
 import re
 import shlex
 import subprocess
@@ -49,6 +50,10 @@ def _walk_command(command):
     assert words, f"{command} names no script"
     script = PLUGIN / "scripts" / words[0]
     assert script.is_file(), f"{command} does not resolve"
+    # A path in first position runs as a program, and no shipped script has the exec bit.
+    head = shlex.split(command)[0]
+    runs = "/" not in head or not head.endswith(".py") or os.access(script, os.X_OK)
+    assert runs, f"{command} is not executable; spell it `python3 {head}`"
     argv = ["walk" if word.startswith("<") else word for word in words]
     result = subprocess.run(
         [sys.executable, str(script), *argv[1:], "--help"],

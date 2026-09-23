@@ -25,8 +25,8 @@ def main() -> int:
     role = os.environ.get("XP_ROLE", "lead")
     if role != "lead":
         return fail(
-            f"refused: XP_ROLE={role!r} — only the lead may close. You hand back a green"
-            " Verify; the lead owns the judgment gap and the merge"
+            f"refused: XP_ROLE={role!r} — only the lead may open a sprint. You hand back"
+            " a green Verify; the lead owns the sprint's branch and its merge"
         )
     if not chdir_repo_root():
         return fail("refused: not inside a git repository")
@@ -51,7 +51,7 @@ def main() -> int:
     if recorded == branch:
         next_step = " Run `/sprint-close`" if terminal else ""
         return fail(f"refused: sprint {args.sprint_id} is already open.{next_step}")
-    if recorded and args.dry_run:
+    if recorded:  # another sprint's branch: this refuses and writes nothing
         env.record_sprint_branch(branch)
     return cmd_start(args.sprint_id, args.dry_run)
 
