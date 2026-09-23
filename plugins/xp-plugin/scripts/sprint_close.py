@@ -5,6 +5,7 @@ import glob
 import json
 import subprocess
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
@@ -25,6 +26,13 @@ from falsifier_batch import (
 from review_artifacts import (
     restore_sprint_queue,
     sprint_paths,
+)
+from review_runner import (
+    archive_failed_findings,
+    completed_review_rounds,
+    review_marker,
+    review_rounds,
+    slate_review_pid,
 )
 from sprint_state import read_sprint_state, sprint_marker, write_sprint_state
 from work import (
@@ -115,12 +123,20 @@ def cmd_start(sprint_id: str, dry_run: bool = False) -> int:
         return fail("refused: open the sprint from its freshly cut branch, not trunk")
     if branch != (expected := sprint_branch_name(sprint_id)):
         return fail(f"refused: open sprint {sprint_id} from {expected}, not {branch}")
+    first_open = not sprint_branch()
+    if first_open and (running := _running_slate_refusal(sprint_id)):
+        return fail(running)
     if dry_run:
-        does = "re-runs the close checks for" if sprint_branch() else "opens"
+        does = "opens" if first_open else "re-runs the close checks for"
         print(f"dry run: {branch} {does} sprint {sprint_id}; nothing ran, nothing recorded")
         return 0
-    if not sprint_branch() and (red := lc.run(config_flat(lc.KEY), "sprint-open", sprint_id)):
+    if first_open and (red := lc.run(config_flat(lc.KEY), "sprint-open", sprint_id)):
         return fail(red)
+    if first_open:
+        if running := _running_slate_refusal(sprint_id):
+            return fail(running)
+        if error := supersede_slate_marker(sprint_id):
+            return fail(error)
     opening = record_sprint_branch(branch)
     if (owner := milestone.find(plan.read_text(), sprint_id)) and owner.status == "planned":
         milestone.move(sprint_id)
@@ -178,6 +194,50 @@ def cmd_start(sprint_id: str, dry_run: bool = False) -> int:
         " # Session digest — written <ISO-ts> at <short-sha>"
     )
     return 0
+
+
+def _running_slate_refusal(sprint_id: str) -> str:
+    if pid := slate_review_pid(sprint_id):
+        return (
+            f"refused: slate review running (pid {pid}) — run `slate_review.py {sprint_id}`"
+            " to join it, then open the sprint"
+        )
+    return ""
+
+
+def supersede_slate_marker(sprint_id: str) -> str:
+    marker = review_marker(sprint_id, "slate")
+    try:
+        text = marker.read_text(errors="replace")
+    except FileNotFoundError:
+        return ""
+    except OSError as error:
+        return f"refused: cannot read slate marker {marker}: {error}"
+    # Archive exactly the round the marker hides from the count; retiring the marker
+    # would otherwise promote that fragment to a completed round.
+    completed = completed_review_rounds(sprint_id, "slate")
+    for number, path in review_rounds(sprint_id, "slate"):
+        if (number, path) not in completed and (error := archive_failed_findings(path)):
+            return f"refused: {error.lstrip('; ')}"
+    try:
+        state = json.loads(text)
+    except ValueError:
+        state = None
+    record = state if isinstance(state, dict) else {"unparsed": text}
+    record.update(
+        state="superseded",
+        reason="sprint opened after the slate review stopped without a verdict",
+        timestamp=datetime.now(timezone.utc).isoformat(),
+    )
+    generation = 1
+    while (target := marker.with_name(f"{marker.name}.superseded-{generation}.json")).exists():
+        generation += 1
+    try:
+        marker.replace(target)
+        target.write_text(json.dumps(record))
+    except OSError as error:
+        return f"refused: cannot supersede slate marker {marker}: {error}"
+    return ""
 
 
 def _shown_diff(sprint_id: str, shown: str, head: str) -> tuple[subprocess.CompletedProcess, str]:

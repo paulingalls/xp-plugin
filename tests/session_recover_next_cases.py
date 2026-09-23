@@ -11,6 +11,22 @@ from session_start_helpers import HOOK, next_lines, run_hook_as, run_recovery, x
 
 
 class NextLoopActionCases:
+    def test_released_terminal_with_dead_slate_marker(self, tmp_path):
+        repo, _g = xp_repo(tmp_path)
+        root = tmp_path / "xp"
+        (root / "plan.md").write_text("# plan\n### Sprint 1\n#### story-042 — done   [done]\n")
+        release = root / "releases" / "sprint-1.json"
+        release.parent.mkdir()
+        release.write_text(json.dumps({"sprint": 1, "merged_sha": "a" * 40}))
+        marker = root / "markers" / "1.slate-review-incomplete"
+        marker.parent.mkdir()
+        marker.write_text(json.dumps({"pid": 99999999}))
+
+        assert next_lines(run_recovery(repo, tmp_path).stdout) == [
+            "NEXT: Sprint 1 was released — run `/create-sprint`"
+        ]
+        assert marker.exists()
+
     def test_a_released_open_card_routes_through_create_sprint_and_can_be_carried(self, tmp_path):
         from close import story_card
         from spawn_helpers import SPAWN, make_repo, seed_refresh_receipt
