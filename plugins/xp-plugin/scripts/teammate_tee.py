@@ -18,6 +18,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from env import refuse_direct_invocation
+from log_rotate import open_log
+from timing import Span
 
 LogWrite = Callable[[str], None]
 OutWrite = Callable[[str], None]
@@ -303,6 +305,7 @@ def run_stream(
     writing it inline before draining stdout would deadlock a child that starts
     producing output before it has finished reading stdin.
     """
+    span = Span(data_root, "agent", log_id)
     parse = STREAMS[harness]
     tasks = _ClaudeTasks() if harness == "claude" else None
     if widen_git and argv[:2] == ["codex", "exec"]:
@@ -374,9 +377,10 @@ def run_stream(
     if card_watcher:
         card_watcher.start()
     path = log_path(data_root, log_id)
+    lease = None
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
-        log = open(path, "a")  # noqa: SIM115 — the no-log fallback has no file to enter
+        log, lease = open_log(path)
     except OSError as exc:
         print(f"warning: log open failed ({exc}); continuing without it", file=sys.stderr)
         log = None
@@ -395,6 +399,7 @@ def run_stream(
         log.flush()
 
     result = None
+    outcome = None
     try:
         # The header alone is outside tee_stream's OSError arm, and it is written
         # before any session id exists — which is why the pointer is never in it.
@@ -411,6 +416,7 @@ def run_stream(
         # Only here: a run that DRAINED is already exiting, and killing on the way
         # past would throw away the review it just finished.
         kill_group(proc)
+        outcome = "interrupted"
         raise
     finally:
         finished.set()
@@ -423,6 +429,17 @@ def run_stream(
         LIVE.discard(proc)
         if log:
             log.close()
+        if lease:
+            lease.close()
+        if outcome is None:
+            outcome = (
+                "cancelled"
+                if cancelled.is_set()
+                else "failed"
+                if timed_out.is_set() or proc.returncode or result is None
+                else "passed"
+            )
+        span.finish(outcome)
     if cancelled.is_set():
         raise ReviewCancelled(path)
     if timed_out.is_set():

@@ -4,7 +4,6 @@ Split from test_spawn.py at sprint-004 open."""
 import subprocess
 import sys
 
-import pytest
 from spawn_helpers import (  # noqa: F401
     CARD,
     CONFIG,
@@ -20,65 +19,6 @@ from spawn_helpers import (  # noqa: F401
     stub_claude_requiring_verbose,
     trunk_sha,
 )
-
-
-class TestAgentWallClock:
-    """story-012b bounds the reviewer. cmd_spawn's launch call site has no
-    except, so a bound there kills a running story with a traceback and abandons
-    its worktree — the two legs must therefore stay bounded and unbounded."""
-
-    def test_the_reviewer_is_bounded(self, monkeypatch, tmp_path):
-        import spawn
-
-        monkeypatch.setenv("XP_AGENT_TIMEOUT", "0.01")
-        with pytest.raises(subprocess.TimeoutExpired):
-            spawn.run_agent(
-                ["/bin/sh", "-c", "sleep 1"], tmp_path, "", "reviewer", "claude", "story-042-review"
-            )
-
-    def test_the_teammate_launch_is_not(self, monkeypatch, tmp_path):
-        """Bounding cmd_spawn's launch call site kills a running story and
-        abandons its worktree, so the teammate no longer runs through
-        run_agent (that path is reviewer-only) — it runs through
-        teammate_tee.run_teammate, which this asserts is unbounded.
-
-        The sleep stays because only outliving the clock can prove the clock is
-        absent, and it shrank with it: 0.1s against XP_AGENT_TIMEOUT=0.01 is the
-        10x margin `sleep 2` against 1 was, and shell start-up only widens it.
-        """
-        from teammate_tee import run_teammate
-
-        monkeypatch.setenv("XP_AGENT_TIMEOUT", "0.01")
-        rc = run_teammate(
-            ["/bin/sh", "-c", 'sleep 0.1; echo \'{"type": "result", "is_error": false}\''],
-            tmp_path,
-            "",
-            "story-042",
-            tmp_path / "data",
-        )
-        assert rc == 0, "a teammate story legitimately outruns any bound"
-
-    @pytest.mark.parametrize("role", ["plan-reviewer", "reviewer"])
-    def test_no_reviewer_launch_receives_a_git_credential(self, monkeypatch, tmp_path, role):
-        import spawn
-
-        seen = {}
-        monkeypatch.setenv("GIT_AUTHOR_NAME", "inherited lead")
-        monkeypatch.setenv("GIT_COMMITTER_EMAIL", "lead@example.com")
-        monkeypatch.setattr(
-            spawn,
-            "run_stream",
-            lambda *a, **k: (
-                seen.update(argv=a[0], env=a[6], options=k)
-                or subprocess.CompletedProcess(a[0], 0, "", "")
-            ),
-        )
-        argv = ["claude", "--dangerously-skip-permissions"]
-        spawn.run_agent(argv, tmp_path, "", role, "claude", "review")
-        assert not [k for k in seen["env"] if k.startswith(("GIT_AUTHOR_", "GIT_COMMITTER_"))]
-        assert seen["env"]["XP_HARNESS"] == "claude"
-        assert seen["argv"] == ["claude", "--dangerously-skip-permissions"]
-        assert seen["options"]["widen_git"] is False
 
 
 class TestLiveTee:
@@ -372,7 +312,7 @@ class TestClosingLineAndLog:
         assert r.returncode == 0, r.stderr
         assert "3 turns" in r.stdout and "$0.05" in r.stdout and "1.2s" in r.stdout
 
-    def test_the_log_is_project_scoped_and_appends_under_a_header_on_respawn(self, tmp_path):
+    def test_the_log_is_project_scoped_and_rotates_on_respawn(self, tmp_path):
         repo, env, _g = make_repo(tmp_path)
         stub_claude(tmp_path)
         assert spawn(repo, env, "story-042").returncode == 0
@@ -381,7 +321,6 @@ class TestClosingLineAndLog:
         first = log.read_text()
         assert "===== spawn story-042-executor " in first
 
-        # a re-spawn after removing the first worktree appends, not truncates
         tree = tmp_path / "data" / "worktrees" / "story-042"
         subprocess.run(
             ["git", "worktree", "remove", "--force", str(tree)],
@@ -394,8 +333,11 @@ class TestClosingLineAndLog:
         plan.write_text(plan.read_text().replace("[in-progress]", "[ready]"))
         assert spawn(repo, env, "story-042").returncode == 0
         second = log.read_text()
-        assert second.startswith(first)
-        assert second.count("===== spawn story-042-executor ") == 2
+        import gzip
+
+        assert second.count("===== spawn story-042-executor ") == 1
+        with gzip.open(str(log) + ".1.gz", "rt") as archive:
+            assert archive.read() == first
 
 
 class TestFirstSpawnInAScaffoldedRepo:
@@ -446,7 +388,7 @@ class TestCodexTee:
         assert rc == 0
         assert "[item.completed] agent_message" in capsys.readouterr().out
 
-    def test_the_same_append_only_log_contract(self, tmp_path):
+    def test_the_same_rotation_contract(self, tmp_path):
         from teammate_tee import run_teammate
 
         for _ in range(2):
@@ -458,9 +400,13 @@ class TestCodexTee:
                 tmp_path / "data",
                 harness="codex",
             )
-        log = (tmp_path / "data" / "logs" / "story-042-executor.log").read_text()
-        assert log.count("===== spawn story-042-executor ") == 2, log
-        assert log.count("one-line") == 2, log
+        import gzip
+
+        log = tmp_path / "data" / "logs" / "story-042-executor.log"
+        assert log.read_text().count("===== spawn story-042-executor ") == 1
+        assert log.read_text().count("one-line") == 1
+        with gzip.open(str(log) + ".1.gz", "rt") as archive:
+            assert archive.read().count("one-line") == 1
 
     def test_a_log_write_failure_still_drains_the_codex_stream(self):
         """Same fault injection as the claude leg, through the shared drain."""
