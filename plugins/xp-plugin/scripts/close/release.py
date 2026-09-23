@@ -159,9 +159,9 @@ def version_refusal(version: str, names: list[str] | None = None) -> str:
     return ""
 
 
-def release_bump_paths(shown: str, head: str, version: str, paths: list[str]) -> set[str]:
+def release_bump_paths(shown: str, head: str, paths: list[str]) -> set[str]:
     """Prove the post-review delta is only a release declaration."""
-    if not version or not versioning_mode()[0]:
+    if not versioning_mode()[0] or not (version := next_version()):
         return set()
     target = version.removeprefix("v")
     accepted = set()

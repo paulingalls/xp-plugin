@@ -35,6 +35,13 @@ def test_review_off_ignores_a_declared_manifest(tmp_path):
     assert r.returncode == 0, r.stdout + r.stderr
 
 
+def test_review_refuses_an_invalid_versioning_value_before_launch(tmp_path):
+    repo, env, _g = make_repo(tmp_path, config=CONFIG + "versioning: on\n")
+    r = sprint(repo, env, "review", "--dry-run")
+    assert r.returncode == 2 and "only valid value" in r.stderr
+    assert not launches(tmp_path)
+
+
 def test_review_unbumpable_tag_refuses_before_launch(tmp_path):
     repo, env, g = make_repo(tmp_path)
     g("tag", "-d", "v0.2.0")

@@ -13,6 +13,7 @@ from release import (
     VERSIONING_OFF_TEXT,
     next_version,
     refuse_unbumpable,
+    release_bump_paths,
     version_refusal,
     versioning_mode,
 )
@@ -260,22 +261,19 @@ def _coverage_refusal(sprint_id: str, head: str, state: dict | None = None) -> s
     if not strays and not any(f in overlap.GATE_FILES for f in moved.stdout.splitlines()):
         print(f"the delta since {shown[:8]} is the reviewer's own fixes")
         return ""
-    from release import release_bump_paths
-
     paths = git("diff", "--no-renames", "--name-only", shown, head).stdout.splitlines()
-    versioned, _ = versioning_mode()
-    version = next_version() if versioned else ""
-    bumps = release_bump_paths(shown, head, version, paths)
-    bumps.difference_update(overlap.GATE_FILES)
+    bumps = release_bump_paths(shown, head, paths) - set(overlap.GATE_FILES)
     if code := [f for f in paths if not _is_retro_prose(f) and f not in bumps]:
         return (
             f"refused: the review did not cover HEAD — {', '.join(code)}"
             f" changed since {shown[:8]}. {rerun}"
         )
-    if retro := sorted(f for f in paths if _is_retro_prose(f)):
-        print(f"reviewed earlier; the delta since is .xp/ only: {', '.join(retro)}")
+    retro = sorted(set(paths) - bumps)
+    kinds = [f".xp/ prose: {', '.join(retro)}"] if retro else []
     if bumps:
-        print(f"reviewed earlier; the delta since is the release bump: {', '.join(sorted(bumps))}")
+        kinds.append(f"the release bump: {', '.join(sorted(bumps))}")
+    if kinds:
+        print(f"reviewed earlier; the delta since is {' and '.join(kinds)}")
     return ""
 
 
