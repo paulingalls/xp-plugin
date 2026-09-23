@@ -101,6 +101,26 @@ def test_land_rejects_invalid_manifest_delta(tmp_path, version):
     assert "did not cover HEAD" in r.stderr
 
 
+@pytest.mark.parametrize(
+    "before,after",
+    [
+        ('{"enabled": true}', '{"enabled": 1}'),
+        ('{"nested": [1]}', '{"nested": [1.0]}'),
+    ],
+)
+def test_land_rejects_manifest_value_type_changes(tmp_path, before, after):
+    repo, env, g = make_repo(tmp_path)
+    manifest = repo / "manifest.json"
+    manifest.write_text('{"version": "0.2.0", "data": ' + before + "}\n")
+    g("commit", "-qam", "old manifest")
+    record_reviews(tmp_path, repo, env)
+    manifest.write_text('{"version": "0.3.0", "data": ' + after + "}\n")
+    g("commit", "-qam", "typed manifest delta")
+    r = sprint(repo, env, "land", "--dry-run")
+    assert r.returncode == 2 and "manifest.json" in r.stderr
+    assert "did not cover HEAD" in r.stderr
+
+
 @pytest.mark.parametrize("old", [None, "not JSON\n"])
 def test_land_rejects_missing_or_malformed_recorded_manifest(tmp_path, old):
     repo, env, g = make_repo(tmp_path)

@@ -183,7 +183,7 @@ def release_bump_paths(shown: str, head: str, paths: list[str]) -> set[str]:
         after = after.copy()
         before.pop("version", None)
         after.pop("version", None)
-        if before == after:
+        if json.dumps(before, sort_keys=True) == json.dumps(after, sort_keys=True):
             accepted.add(name)
     if "CHANGELOG.md" in paths:
         patch = git(
