@@ -4,6 +4,43 @@ Release notes started at v0.6.0; earlier entries are summarized from their
 tag and merge messages. Full detail lives in the merge history and the
 per-sprint review reports.
 
+## v0.27.0 — a dead attempt is not live work, a repaired Verify is not a new review
+
+No action needed on upgrade: the hook commands are unchanged, so Codex does not ask for a
+`/hooks` re-review.
+
+A REPAIRED VERIFY NO LONGER COSTS A SECOND BROAD REVIEW (#118). When a story or free review
+completes without blocking findings but the card's Verify is red on the reviewed tree, fix the
+defect, commit, and run `close.py story <id> repair` (or `close.py free <slug> repair`). It records
+the round only when all of these hold:
+- the card is unchanged since the review launched, and the tree is clean;
+- every path the repair touches was in the range the review saw or in the card's Files;
+- no gate file is touched;
+- the card's exact Verify is green on the repaired HEAD.
+
+Land then lists the reviewer's patch as the reviewer's work and the repair as commits merged
+unreviewed. The round records the repair range, its paths, the Verify command and the result. An
+accepted repair owes no confirming round, an exception now written into the stopping rule; every
+other lead fix still owes one. Refusals name their condition and next step. A dirty tree or a
+still-red Verify means fix it and repair again. A repair that changes nothing (an empty commit, or
+a green rerun of the reviewed tree) is a flake, not a repair, and it refuses. Out-of-bound paths,
+a changed card and missing or unreadable launch records mean review again.
+
+AN ABANDONED SLATE REVIEW NO LONGER READS AS LIVE WORK (#122). Session recovery now reports a slate
+review as running when its process is alive and incomplete when it is dead. Once the sprint is
+released it reports nothing. Opening a sprint retires a dead slate-review marker, marks it
+superseded with a reason and timestamp, and archives the half-written findings it was hiding, so
+the two-round cap counts exactly what it counted before. A slate review that is still running
+refuses the open before the `sprint-open` hook runs. NOT SHIPPED: a `--cancel` for a running
+review. The reviewer agent runs in its own process session, so stopping the runner would orphan it.
+A slate review that dies after the sprint has opened still reads as incomplete until release.
+
+OPEN A SPRINT WITHOUT TYPING CLOSE (#124). `open_sprint.py <id>` opens a sprint from its freshly
+cut branch and never runs close checks. It refuses, and names what comes next, when every story is
+already done, when the sprint is already open, or when another sprint's branch is recorded. It runs
+the `sprint-open` hook from any subdirectory. `/create-sprint` names it. `close.py sprint <id> start`
+still works unchanged.
+
 ## v0.26.0 — nothing is lost to an upgrade, a card edit or one broken container
 
 CODEX USERS: RE-REVIEW `/hooks` ONCE AFTER UPGRADING. This release rewrites all four hook
