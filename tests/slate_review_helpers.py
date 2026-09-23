@@ -55,8 +55,8 @@ def numbered_items(text):
 def assert_open_route(create_skill, close_skill, process):
     opening = section(create_skill, "## Open", "## Done")
     card_step = section(process, "1. **Slate review**", "2. **Story**")
-    assert opening.index("slate-reviewer") < opening.index("close.py sprint <id> start")
-    assert opening.index("slate_review.py") < opening.index("close.py sprint <id> start")
+    assert opening.index("slate-reviewer") < opening.index("open_sprint.py <id>")
+    assert opening.index("slate_review.py") < opening.index("open_sprint.py <id>")
     assert "full proposed slate" in opening and "`sprint_cap`" in opening
     assert "author's conclusions" in opening and "do not give" in opening
     assert "corrected cards" in opening and "work.py note" in opening

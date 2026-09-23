@@ -201,7 +201,7 @@ role with no key and no fallback refuses and prints the line to paste.
 
 | Key | Values | Absent | What it does |
 |---|---|---|---|
-| `release` | `sprint`, or anything else | stories land on trunk | `sprint`: stories merge into the sprint branch this clone recorded at `close.py sprint <id> start`, and sprint close PRs it to trunk. Otherwise stories land on trunk directly. |
+| `release` | `sprint`, or anything else | stories land on trunk | `sprint`: stories merge into the sprint branch this clone recorded at `open_sprint.py <id>`, and sprint close PRs it to trunk. Otherwise stories land on trunk directly. |
 | `trunk` | branch name | git's default | Where releases land and tag. A configured branch that doesn't exist refuses — it never falls back. |
 | `version_files` | manifest paths, comma-separated, or `none` | refuses at release | The tag must match `version` in every named manifest. `none` waives the wall and says so on the release line. |
 | `sprint_cap` | integer | refuses at slate review | Story slots a sprint may spend. |
@@ -225,7 +225,7 @@ lifecycle_command: ./scripts/xp-lifecycle "fixed value"
 
 | Event | Fires at | Second arg | Non-zero exit |
 |---|---|---|---|
-| `sprint-open` | `close.py sprint <id> start`, on the open that records the branch | sprint id | refuses the open |
+| `sprint-open` | `open_sprint.py <id>`, on the open that records the branch | sprint id | refuses the open |
 | `story-close` | `close.py story <id> land`, after the gates, before refs move | story id | refuses the land |
 | `sprint-close` | `close.py sprint <id> post-merge`, on trunk, before the tag | sprint id | refuses before tagging |
 
