@@ -4,6 +4,38 @@ Release notes started at v0.6.0; earlier entries are summarized from their
 tag and merge messages. Full detail lives in the merge history and the
 per-sprint review reports.
 
+## v0.29.0 — a release costs one review, and a card that only grew never refuses a land
+
+No action needed on upgrade: the hook commands are unchanged.
+
+A RELEASE BUMP NO LONGER BUYS A CONFIRMING ROUND (#128). `close.py sprint <id> review` now checks
+the manifests named by `version_files` against the next tag's version before it launches any
+stage, and refuses, naming each file, its version and the target, so the bump happens before the
+round is bought. It skips under `versioning: off`, `version_files: none` and an unset
+`version_files`: versioning is supported, never forced. Sprint land also treats a post-review
+delta as covered when every changed path is `.xp/` prose (as before) or a release bump: a
+`version_files` manifest whose only change is its top-level `"version"`, set to the next tag's
+version, or `CHANGELOG.md` gaining one added section whose heading names that version. Anything
+else, any gate file, `versioning: off` or a latest tag that cannot be bumped still refuses. Free
+land now runs the same version check before its trial merge (and in `--dry-run`), so an unbumped
+free-patch PR no longer merges only to be refused when the tag is cut.
+
+A CARD THAT ONLY GREW AFTER ITS PLAN REVIEW NO LONGER REFUSES (field report from a consuming
+project: 3 of 5 stories refused at land). The executor charter tells agents to extend `Files:`
+when a size cap forces an extraction, and every such edit used to refuse land, spawn resume and
+free post-merge with "edited after its plan review". A card whose only changes are added `Files:`
+paths (across the whole wrapped field) and/or its `Verify:` line extended with ` && <more>` is now
+reported, not refused: land runs the extended Verify, so it checks more, never less. Adding a
+`.xp/` or gate path, removing a path, or any other edit still refuses and still needs
+`spawn.py amend`. `close.py review` now runs the same check before it spawns a reviewer, so a
+refusable edit is caught before the review is paid for.
+
+A SLATE REVIEW THAT DIES AFTER THE SPRINT OPENS IS NO LONGER THE NEXT ACTION (#122). Once the
+sprint branch is recorded, recovery skips a dead slate-review marker and names the next card; a
+running review still leads. Rerunning a capped slate review on an open sprint now says the dead
+attempt owes nothing. A review that ends without a verdict names the rerun command from the
+current install, not the path of the install that launched it.
+
 ## v0.28.0 — resume the legs already green, and measure where the time goes
 
 No action needed on upgrade: the hook commands are unchanged.
