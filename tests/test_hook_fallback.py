@@ -17,9 +17,14 @@ SCRIPTS = {
 
 def commands():
     hooks = json.loads(HOOKS.read_text())["hooks"]
-    return {
-        event: entry["hooks"][0]["command"] for event, entries in hooks.items() for entry in entries
-    }
+    pairs = [
+        (event, hook["command"])
+        for event, entries in hooks.items()
+        for entry in entries
+        for hook in entry["hooks"]
+    ]
+    assert len(pairs) == len(SCRIPTS)
+    return dict(pairs)
 
 
 def script(root, name, stdout, status):
@@ -44,15 +49,10 @@ def run(command, root, payload=b"input\x00bytes"):
     )
 
 
-@pytest.mark.parametrize("event", ["Stop", "PostToolUseFailure", "SessionStart"])
+@pytest.mark.parametrize("event", SCRIPTS)
 def test_deleted_root_runs_sibling_with_streams_and_status(tmp_path, event):
     name = SCRIPTS[event]
     gone = tmp_path / "0.23.9"
-    script(gone, name, b"old", 1)
-    gone_script = gone / "scripts" / name
-    gone_script.unlink()
-    (gone / "scripts").rmdir()
-    gone.rmdir()
     new = tmp_path / "0.23.10"
     output = b'{"decision": "block"}\n' if event == "Stop" else b"context\n"
     script(new, name, output, 23)
@@ -107,7 +107,6 @@ def test_intact_root_never_switches(script_present, tmp_path):
         assert result.returncode == 0
         assert result.stdout == b""
         assert str(pinned).encode() in result.stderr
-    assert b"sibling" not in result.stdout
 
 
 def test_all_four_commands_share_one_launcher():
