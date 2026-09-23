@@ -224,7 +224,7 @@ def test_the_audit_runs_a_live_falsifier_from_any_working_directory(tmp_path, mo
     """The DEFAULT runner is the shipped path and the least-walked one: a Falsifier line
     is repo-relative, so an ambient cwd decided whether the command ran at all."""
     monkeypatch.chdir(tmp_path)
-    command = "cat tests/scripts/falsifier_fast_tier_cost.py"
+    command = "cat tests/scripts/falsifier_dup_story_id.py"
 
     assert checker.audit_scripts(records(tmp_path / "data", record(command))) == 0
     assert Path.cwd().resolve() == tmp_path.resolve()
