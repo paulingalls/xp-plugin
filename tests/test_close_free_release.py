@@ -183,7 +183,7 @@ class TestFreeLand:
 
 
 class TestFreeIsUndocumentedNowhere:
-    def test_free_help_names_the_five_actions(self, tmp_path):
+    def test_free_help_names_the_six_actions(self, tmp_path):
         """Constraint 12: a surface a consuming project drives must answer
         --help without doing anything."""
         r = subprocess.run(
@@ -193,5 +193,5 @@ class TestFreeIsUndocumentedNowhere:
             cwd=tmp_path,
         )
         assert r.returncode == 0
-        for action in ("start", "review", "salvage", "land", "post-merge"):
+        for action in ("start", "review", "repair", "salvage", "land", "post-merge"):
             assert action in r.stdout

@@ -1,5 +1,6 @@
 """Every shipped skill and PROCESS route is reachable at its action site."""
 
+import os
 import re
 import shlex
 import subprocess
@@ -49,6 +50,10 @@ def _walk_command(command):
     assert words, f"{command} names no script"
     script = PLUGIN / "scripts" / words[0]
     assert script.is_file(), f"{command} does not resolve"
+    # A path in first position runs as a program, and no shipped script has the exec bit.
+    head = shlex.split(command)[0]
+    runs = "/" not in head or not head.endswith(".py") or os.access(script, os.X_OK)
+    assert runs, f"{command} is not executable; spell it `python3 {head}`"
     argv = ["walk" if word.startswith("<") else word for word in words]
     result = subprocess.run(
         [sys.executable, str(script), *argv[1:], "--help"],
@@ -101,12 +106,12 @@ def _assert_authoring_content(skill, closing):
     behind it, so a later trim must red on the missing behavior."""
     for token in ("`sprint_cap`", "`debt_budget`", "merge order", "collisions", "argv", "`cd`"):
         assert token in skill, f"create-sprint no longer names {token}"
-    for token in ("slate_review.py", "close.py sprint <id> start", "`spawn.py ready"):
+    for token in ("slate_review.py", "open_sprint.py <id>", "`spawn.py ready"):
         assert token in skill, f"create-sprint no longer names {token}"
-    assert skill.index("slate_review.py") < skill.index("close.py sprint <id> start"), (
+    assert skill.index("slate_review.py") < skill.index("open_sprint.py <id>"), (
         "slate review must precede sprint start"
     )
-    assert skill.index("close.py sprint <id> start") < skill.index("`spawn.py ready"), (
+    assert skill.index("open_sprint.py <id>") < skill.index("`spawn.py ready"), (
         "sprint start must precede spawn ready"
     )
     for token in ("slate_review.py", "git switch", "Open the sprint"):

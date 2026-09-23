@@ -134,6 +134,13 @@ def cmd_salvage(slug: str, dry_run: bool = False) -> int:
     return fail(err) if err else close.cmd_salvage(key, dry_run)
 
 
+def cmd_repair(slug: str) -> int:
+    import close
+
+    key, _branch, err = current_free(slug)
+    return fail(err) if err else close.cmd_repair(key)
+
+
 def cmd_land(slug: str, dry_run: bool) -> int:
     import close
 

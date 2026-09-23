@@ -404,6 +404,12 @@ def cmd_salvage(story_id: str, dry_run: bool = False) -> int:
     return salvage.cmd_salvage(story_id, dry_run)
 
 
+def cmd_repair(story_id: str) -> int:
+    import repair
+
+    return repair.cmd_repair(story_id)
+
+
 def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
     sys.path[:0] = [str(Path(__file__).parent / d) for d in ("close", "spawn")]
     import land
@@ -422,11 +428,11 @@ def main() -> int:
     sp.add_argument("--dry-run", action="store_true")
     f = sub.add_parser("free")
     f.add_argument("slug")
-    f.add_argument("action", choices=["start", "review", "salvage", "land", "post-merge"])
+    f.add_argument("action", choices=["start", "review", "repair", "salvage", "land", "post-merge"])
     f.add_argument("--dry-run", action="store_true")
     s = sub.add_parser("story")
     s.add_argument("story_id")
-    s.add_argument("action", choices=["review", "salvage", "land"])
+    s.add_argument("action", choices=["review", "repair", "salvage", "land"])
     # Derived: PR mode cannot integrate into a recorded sprint branch.
     s.add_argument("--merge-mode", choices=["pr", "local"], default=None)
     s.add_argument("--dry-run", action="store_true")
@@ -440,6 +446,8 @@ def main() -> int:
         )
     if not chdir_repo_root():
         return fail("refused: not inside a git repository")
+    if a.kind in ("story", "free") and a.action == "repair" and a.dry_run:
+        return fail("refused: repair has no dry run — rerun without --dry-run")
     if a.kind == "free":
         import free
 
@@ -449,6 +457,8 @@ def main() -> int:
             return free.cmd_review(a.slug, a.dry_run)
         if a.action == "salvage":
             return free.cmd_salvage(a.slug, a.dry_run)
+        if a.action == "repair":
+            return free.cmd_repair(a.slug)
         if a.action == "land":
             return free.cmd_land(a.slug, a.dry_run)
         return free.cmd_post_merge(a.slug, a.dry_run)
@@ -472,6 +482,8 @@ def main() -> int:
         return cmd_review(a.story_id, a.dry_run)
     if a.action == "salvage":
         return cmd_salvage(a.story_id, a.dry_run)
+    if a.action == "repair":
+        return cmd_repair(a.story_id)
     mode = a.merge_mode or ("local" if integration_target() != default_branch() else "pr")
     return cmd_land(a.story_id, mode, a.dry_run)
 

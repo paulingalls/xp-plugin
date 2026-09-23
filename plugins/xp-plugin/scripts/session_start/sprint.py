@@ -5,6 +5,7 @@ import re
 from pathlib import Path
 
 from env import data_root, sprint_branch, sprint_branch_name, sprint_id_value
+from review_runner import slate_review_pid
 
 
 class SprintSelectionError(RuntimeError):
@@ -36,6 +37,13 @@ def release_state(sprint: str) -> tuple[str, Path]:
 
 def slate_review_marker(sprint: str) -> Path:
     return data_root() / "markers" / f"{sprint_id_value(sprint)}.slate-review-incomplete"
+
+
+def slate_review_state(sprint: str) -> tuple[str, int | None]:
+    if not slate_review_marker(sprint).exists():
+        return "absent", None
+    pid = slate_review_pid(sprint)
+    return ("running", pid) if pid is not None else ("incomplete", None)
 
 
 def _recorded_branch() -> str:
