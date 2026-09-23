@@ -13,6 +13,15 @@ ROOT = Path(__file__).parent.parent
 MARKER = "XP_TEST_DATA_ROOT"
 
 
+def real_data_root():
+    saved = os.environ.pop("XP_DATA", None)
+    try:
+        return data_root()
+    finally:
+        if saved is not None:
+            os.environ["XP_DATA"] = saved
+
+
 def child_root(env):
     proc = subprocess.run(
         [sys.executable, "-c", "from env import data_root; print(data_root())"],
@@ -32,6 +41,12 @@ def test_inherited_data_root_is_guarded():
     assert not guard.is_relative_to(Path.home() / ".xp")
     assert data_root() == guard
     assert child_root(dict(os.environ)) == guard
+
+
+def test_real_data_root_escapes_the_guard():
+    guard = os.environ["XP_DATA"]
+    assert real_data_root().parent == Path.home() / ".xp" / "data"
+    assert os.environ["XP_DATA"] == guard
 
 
 @pytest.mark.parametrize("probe", range(4))

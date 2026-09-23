@@ -20,6 +20,7 @@ from pathlib import Path
 import pytest
 from constraints_wall_cases import ConstraintsWallCases
 from session_start_helpers import BUDGET_WARNING, HOOK
+from test_data_root_guard import real_data_root
 
 CODEX_RETAINED_BYTES = [(4_916, 5_084)] * 6
 CODEX_OUTPUT_BOUND = 10_000
@@ -35,17 +36,6 @@ HEADROOM = 500
 # prose (branch names, SHAs, timestamps).
 CODEX_EXEC_TOKEN_BOUND = 10_000
 DENSITY_FLOOR = 3.5  # bytes/token
-
-
-def real_data_root():
-    from env import data_root
-
-    saved = os.environ.pop("XP_DATA", None)
-    try:
-        return data_root()
-    finally:
-        if saved is not None:
-            os.environ["XP_DATA"] = saved
 
 
 def required_live_path(path):
