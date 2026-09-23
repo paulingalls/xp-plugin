@@ -27,7 +27,7 @@ from profile_output import (
     constraints_warning,
     render,
 )
-from sprint import release_state, select_sprint, slate_review_marker, sprint_sections
+from sprint import release_state, select_sprint, slate_review_state, sprint_sections
 from work import data_root, entries, plan_path, record_summary, strip_comment
 
 PLUGIN_ROOT = Path(__file__).parent.parent
@@ -340,8 +340,12 @@ def _next_action() -> str:
             f"NEXT: Sprint {sprint} was released — run `/create-sprint` and carry {story}"
             " unchanged into the new sprint"
         )
-    if slate_review_marker(sprint).exists():
-        return f"NEXT: Sprint {sprint} slate review incomplete — run `slate_review.py {sprint}`"
+    if released != "released":
+        slate_state, pid = slate_review_state(sprint)
+        if slate_state == "running":
+            return f"NEXT: Sprint {sprint} slate review running (pid {pid})"
+        if slate_state == "incomplete":
+            return f"NEXT: Sprint {sprint} slate review incomplete — run `slate_review.py {sprint}`"
     if len(active) > 1:
         return f"NEXT: recovery required — multiple [in-progress] cards in Sprint {sprint}"
     if not selected:

@@ -146,8 +146,9 @@ def review_marker(identifier: str, kind: str) -> Path:
 
 def _marker_state(identifier: str, kind: str) -> dict:
     try:
-        return json.loads(review_marker(identifier, kind).read_text())
-    except (OSError, ValueError):
+        state = json.loads(review_marker(identifier, kind).read_text())
+        return state if isinstance(state, dict) else {}
+    except (OSError, UnicodeError, ValueError):
         return {}
 
 
@@ -161,6 +162,19 @@ def _running(identifier: str, kind: str) -> tuple[Path, int] | None:
     except (OSError, ValueError):
         return None
     return Path(out), int(pid)
+
+
+def slate_review_pid(identifier: str) -> int | None:
+    pid = _marker_state(identifier, "slate").get("pid")
+    if type(pid) is not int or pid <= 0:
+        return None
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return None
+    except PermissionError:
+        pass
+    return pid
 
 
 def run_detached(identifier: str, kind: str, out: Path, argv: list[str]) -> int:
