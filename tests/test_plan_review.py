@@ -127,6 +127,8 @@ def test_plan_reviewer_role_is_bounded_too(tmp_path, monkeypatch):
     from spawn import run_agent
 
     monkeypatch.setenv("XP_AGENT_TIMEOUT", "0.01")
+    # Unset, data_root() is the real project's root: each run leaked a log and a timing line
+    monkeypatch.setenv("XP_DATA", str(tmp_path / "data"))
     with pytest.raises(subprocess.TimeoutExpired):
         run_agent(
             ["/bin/sh", "-c", "sleep 1"],
