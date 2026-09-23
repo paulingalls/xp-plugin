@@ -53,8 +53,17 @@ def inspect(ref: str, pending: bool) -> tuple[list[tuple[str, str]] | None, str]
     if pending:
         local = current.read_text(errors="replace") if current.exists() else ""
         incoming = git("show", f"{ref}:.xp/config.yml", check=False).stdout
-        if "full_legs:" not in local and "full_legs:" not in incoming:
+        if not any(
+            strip_comment(line).rstrip() == "full_legs:"
+            for line in (local + "\n" + incoming).splitlines()
+        ):
             return None, ""
+        # git refuses to merge over staged or overlapping edits, which would read as a conflict
+        if dirty := git("status", "--porcelain", "--untracked-files=no").stdout.strip():
+            return None, (
+                f"refused: the working tree is dirty — full_legs is read from a trial merge"
+                f" with {ref}, and git will not stage one over these:\n  {dirty}"
+            )
     staged = git("merge", "--no-commit", "--no-ff", ref, check=False) if pending else None
     try:
         if staged is not None and staged.returncode:
