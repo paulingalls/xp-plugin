@@ -63,6 +63,7 @@ def test_released_at_precedes_legacy_tag_lookup(tmp_path):
     (releases / "sprint-1.json").write_text(
         json.dumps({"released_at": stamp.isoformat(), "tag": "missing"})
     )
+    (releases / "sprint-0.json").write_text(json.dumps({"tag": None}))
     assert release_start(tmp_path) == stamp
 
 
@@ -91,8 +92,8 @@ def test_old_record_uses_tag_date_and_never_file_mtime(tmp_path, monkeypatch):
     )
     subprocess.run(["git", "-C", str(tmp_path), "config", "user.name", "Test"], check=True)
     env = os.environ | {
-        "GIT_AUTHOR_DATE": "2020-01-02T03:04:05+00:00",
-        "GIT_COMMITTER_DATE": "2020-01-02T03:04:05+00:00",
+        "GIT_AUTHOR_DATE": "2020-01-02T03:04:05-07:00",
+        "GIT_COMMITTER_DATE": "2020-01-02T03:04:05-07:00",
     }
     (tmp_path / "a").write_text("a")
     subprocess.run(["git", "-C", str(tmp_path), "add", "a"], check=True)
@@ -104,7 +105,7 @@ def test_old_record_uses_tag_date_and_never_file_mtime(tmp_path, monkeypatch):
     record.write_text(json.dumps({"tag": "v1.0.0"}))
     os.utime(record, (1_900_000_000, 1_900_000_000))
     monkeypatch.chdir(tmp_path)
-    assert release_start(tmp_path) == datetime(2020, 1, 2, 3, 4, 5, tzinfo=timezone.utc)
+    assert release_start(tmp_path) == datetime(2020, 1, 2, 10, 4, 5, tzinfo=timezone.utc)
     record.write_text(json.dumps({"tag": "missing"}))
     try:
         release_start(tmp_path)
@@ -139,6 +140,19 @@ def test_post_merge_prints_prior_window_and_then_records_release(tmp_path):
     assert "prior-release-window" in result.stdout
     assert "no release yet" in result.stdout
     assert release_path(tmp_path).is_file()
+
+
+def test_free_post_merge_prints_no_table(tmp_path, monkeypatch, capsys):
+    from test_release import REPO, _release_repo
+
+    sys.path.insert(0, str(REPO / "plugins" / "xp-plugin" / "scripts" / "close"))
+    import release
+
+    _release_repo(tmp_path, monkeypatch, "version_files: manifest.json\n", manifest="0.2.0")
+    monkeypatch.setenv("XP_DATA", str(tmp_path / "data"))
+    Span(tmp_path / "data", "agent", "free-window").finish("passed")
+    assert release.cmd_post_merge("fixture", retire_sprint=False) == 0
+    assert "free-window" not in capsys.readouterr().out
 
 
 def test_story_land_gates_write_a_timing_row(tmp_path):

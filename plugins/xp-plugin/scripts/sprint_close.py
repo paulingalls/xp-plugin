@@ -35,7 +35,7 @@ from review_runner import (
     slate_review_pid,
 )
 from sprint_state import read_sprint_state, sprint_marker, write_sprint_state
-from timing import Span, table
+from timing import Span, report
 from work import (
     config_block_value,
     data_root,
@@ -195,10 +195,8 @@ def cmd_start(sprint_id: str, dry_run: bool = False) -> int:
     for text in notes:
         heading, body = record_summary(text)
         print(f"  {heading[3:]} — {body[:100]}")
-    try:
-        print("\n" + table(root, state.get("full_tier_history", [])))
-    except (OSError, ValueError, KeyError) as exc:
-        print(f"warning: timing table unavailable: {exc}", file=sys.stderr)
+    if shown := report(root, state.get("full_tier_history", [])):
+        print("\n" + shown)
     print("\n" + (PLUGIN_ROOT / "templates" / "retro.md").read_text())
     print(
         "Then write the sprint digest yourself — this leg emits facts, never a"

@@ -1,6 +1,7 @@
 """The canonical log survives both rotation and overlapping writers."""
 
 import gzip
+import io
 import os
 import subprocess
 import sys
@@ -93,10 +94,24 @@ def test_two_child_runs_share_one_live_log_and_paths_stay_valid(tmp_path):
 
 
 def test_tail_bounds_bytes_and_keeps_last_characters(tmp_path, monkeypatch):
+    read = []
+
+    class Counted(io.FileIO):
+        def read(self, size=-1):
+            data = super().read(size)
+            read.append(len(data))
+            return data
+
     path = tmp_path / "large.log"
     path.write_text("x" * 2_000_001 + "é" + "z" * 2000)
+    split = tmp_path / "split.log"
+    # 3-byte characters, then one ASCII byte: the seek lands mid-character.
+    split.write_text("€" * 5000 + "a")
+    monkeypatch.setattr(type(path), "open", lambda self, mode="r", **_: Counted(self, mode))
     assert tail(path) == "z" * 2000
     assert tail(path, 2001) == "é" + "z" * 2000
+    assert max(read) < 10_000
+    assert tail(split) == "€" * 1999 + "a"
 
 
 def test_detached_review_continues_when_log_cannot_open(tmp_path, monkeypatch, capsys):

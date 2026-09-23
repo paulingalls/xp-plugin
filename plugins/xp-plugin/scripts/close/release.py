@@ -2,7 +2,6 @@
 
 import json
 import re
-import sys
 import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
@@ -17,7 +16,7 @@ from env import (
     sprint_branch_name,
     sprint_id_value,
 )
-from timing import table
+from timing import report
 
 
 def safe_release_id(release_id: str) -> str:
@@ -243,10 +242,7 @@ def cmd_post_merge(
         if retire_sprint and (red := lc.run(config_flat(lc.KEY), "sprint-close", release_id)):
             return fail(red)
         if retire_sprint:
-            try:
-                cycle = table(data_root(), state.get("full_tier_history", []))
-            except (OSError, ValueError, KeyError) as exc:
-                print(f"warning: timing table unavailable: {exc}", file=sys.stderr)
+            cycle = report(data_root(), state.get("full_tier_history", []))
             try:
                 write_release_record(release_id, None)
             except Exception as exc:
@@ -283,10 +279,7 @@ def cmd_post_merge(
     if retire_sprint and (red := lc.run(config_flat(lc.KEY), "sprint-close", release_id)):
         return fail(red)
     if retire_sprint:
-        try:
-            cycle = table(data_root(), state.get("full_tier_history", []))
-        except (OSError, ValueError, KeyError) as exc:
-            print(f"warning: timing table unavailable: {exc}", file=sys.stderr)
+        cycle = report(data_root(), state.get("full_tier_history", []))
     if git("tag", version, check=False).returncode:
         return fail(f"refused: could not create tag {version}")
     if retire_sprint:

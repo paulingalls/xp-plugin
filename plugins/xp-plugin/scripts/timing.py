@@ -27,7 +27,7 @@ class Span:
             "name": self.name,
             "started_at": self.start.isoformat(),
             "ended_at": utc_now().isoformat(),
-            "duration_seconds": max(time.monotonic() - self.tick, 1e-9),
+            "duration_seconds": time.monotonic() - self.tick,
             "outcome": outcome,
         }
         try:
@@ -42,18 +42,20 @@ class Span:
 
 def _date(value):
     stamp = datetime.fromisoformat(value.replace("Z", "+00:00"))
-    if stamp.utcoffset() != timezone.utc.utcoffset(stamp):
-        raise ValueError(f"timestamp is not UTC: {value}")
-    return stamp
+    if stamp.utcoffset() is None:
+        raise ValueError(f"timestamp has no offset: {value}")
+    return stamp.astimezone(timezone.utc)
 
 
 def release_start(root: Path):
-    records = []
-    for path in (root / "releases").glob("*.json"):
-        record = json.loads(path.read_text())
-        if "released_at" in record:
-            stamp = _date(record["released_at"])
-        elif tag := record.get("tag"):
+    records = [(path, json.loads(path.read_text())) for path in (root / "releases").glob("*.json")]
+    # Every record without `released_at` predates the first one with it, so a legacy
+    # record that git cannot date (versioning off, tag deleted) never blocks the window.
+    if stamped := [_date(r["released_at"]) for _, r in records if "released_at" in r]:
+        return max(stamped)
+    dates = []
+    for path, record in records:
+        if tag := record.get("tag"):
             result = subprocess.run(
                 ["git", "for-each-ref", "--format=%(creatordate:iso-strict)", f"refs/tags/{tag}"],
                 capture_output=True,
@@ -61,11 +63,19 @@ def release_start(root: Path):
             )
             if result.returncode or not result.stdout.strip():
                 raise ValueError(f"release record {path} tag {tag} has no creation date")
-            stamp = _date(result.stdout.strip())
+            dates.append(_date(result.stdout.strip()))
         else:
             raise ValueError(f"release record {path} has no released_at or tag")
-        records.append(stamp)
-    return max(records) if records else None
+    return max(dates) if dates else None
+
+
+def report(root: Path, tier_history=()) -> str:
+    """The table, or "" after a warning: the report never fails the leg printing it."""
+    try:
+        return table(root, tier_history)
+    except Exception as exc:
+        print(f"warning: timing table unavailable: {exc}", file=sys.stderr)
+        return ""
 
 
 def table(root: Path, tier_history=()) -> str:

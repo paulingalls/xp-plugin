@@ -40,16 +40,10 @@ def open_log(path: Path):
         try:
             fcntl.flock(lease, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:
-            fcntl.flock(lease, fcntl.LOCK_SH)
-            mode = "a"
+            pass  # a live run holds the log: append under its lease
         else:
-            try:
-                _archive(path)
-            except OSError:
-                lease.close()
-                raise
-            mode = "a"
-        writer = open(path, mode)  # noqa: SIM115 — returned to caller
+            _archive(path)
+        writer = open(path, "a")  # noqa: SIM115 — returned to caller
         fcntl.flock(lease, fcntl.LOCK_SH)
         return writer, lease
     except BaseException:
