@@ -260,13 +260,22 @@ def _coverage_refusal(sprint_id: str, head: str, state: dict | None = None) -> s
     if not strays and not any(f in overlap.GATE_FILES for f in moved.stdout.splitlines()):
         print(f"the delta since {shown[:8]} is the reviewer's own fixes")
         return ""
-    if code := [f for f in moved.stdout.splitlines() if not _is_retro_prose(f)]:
+    from release import release_bump_paths
+
+    paths = git("diff", "--no-renames", "--name-only", shown, head).stdout.splitlines()
+    versioned, _ = versioning_mode()
+    version = next_version() if versioned else ""
+    bumps = release_bump_paths(shown, head, version, paths)
+    bumps.difference_update(overlap.GATE_FILES)
+    if code := [f for f in paths if not _is_retro_prose(f) and f not in bumps]:
         return (
             f"refused: the review did not cover HEAD — {', '.join(code)}"
             f" changed since {shown[:8]}. {rerun}"
         )
-    if exempt := moved.stdout.splitlines():
-        print(f"reviewed earlier; the delta since is .xp/ only: {', '.join(sorted(set(exempt)))}")
+    if retro := sorted(f for f in paths if _is_retro_prose(f)):
+        print(f"reviewed earlier; the delta since is .xp/ only: {', '.join(retro)}")
+    if bumps:
+        print(f"reviewed earlier; the delta since is the release bump: {', '.join(sorted(bumps))}")
     return ""
 
 

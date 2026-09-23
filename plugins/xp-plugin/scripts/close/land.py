@@ -18,6 +18,7 @@ from release import (
     next_version,
     refuse_unbumpable,
     version_files,
+    version_refusal,
     versioning_mode,
 )
 from review_artifacts import story_sidecars
@@ -185,6 +186,14 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
         # never take is the same lie in the other direction.
         if refusal := overlap.tier_refusal(tier, tier_key):
             return close.fail(refusal)
+        if (
+            free
+            and versioned
+            and (names := version_files())
+            and names != ["none"]
+            and (refusal := version_refusal(version, names))
+        ):
+            return close.fail(refusal)
         if files_beyond_map:
             print("beyond the card's Files map — the merge body will name:")
             print("".join(f"  {path}\n" for path in files_beyond_map), end="")
@@ -201,6 +210,14 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
             end="",
         )
         return 0
+    if (
+        free
+        and versioned
+        and (names := version_files())
+        and names != ["none"]
+        and (refusal := version_refusal(version, names))
+    ):
+        return close.fail(refusal)
     span = Span(work.data_root(), "story-land-gates", f"{story_id}: trial merge, Verify and tier")
     try:
         red, _receipt = overlap.gates(ref, verify, tier_key, pending)
