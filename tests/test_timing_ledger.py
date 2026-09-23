@@ -6,7 +6,28 @@ import subprocess
 import sys
 from datetime import datetime, timedelta, timezone
 
-from timing import Span, release_start, table
+from timing import Span, release_start, report, table
+
+
+def tier_event(started_at, ended_at, command="tier-history-sentinel"):
+    return {
+        "leg": "not-slow",
+        "outcome": "passed",
+        "command": command,
+        "tree": "tree",
+        "head": "head",
+        "started_at": started_at.isoformat(),
+        "ended_at": ended_at.isoformat(),
+        "duration_seconds": (ended_at - started_at).total_seconds(),
+    }
+
+
+def write_tier_history(marker):
+    marker.parent.mkdir(parents=True, exist_ok=True)
+    start = datetime.now(timezone.utc) - timedelta(seconds=2)
+    marker.write_text(
+        json.dumps({"full_tier_history": [tier_event(start, start + timedelta(seconds=1))]})
+    )
 
 
 def test_span_writes_one_utc_row_and_warns_without_failing(tmp_path, capsys):
@@ -42,12 +63,15 @@ def test_release_window_uses_union_and_reports_idle(tmp_path):
                 )
                 + "\n"
             )
-    shown = table(tmp_path)
+    history = [tier_event(base + timedelta(minutes=10), base + timedelta(minutes=20))]
+    shown = table(tmp_path, history)
     assert "run 0" not in shown
     assert shown.count("agent |") == 3
-    assert "ACTIVE 900.0s" in shown
+    assert "full-tier | tier-history-sentinel" in shown
+    assert "ACTIVE 1200.0s" in shown
     assert "CALENDAR 2700.0s" in shown
-    assert "idle — awaiting human or CI (not distinguished): 1800.0s" in shown
+    assert "idle — awaiting human or CI (not distinguished): 1500.0s" in shown
+    assert report(tmp_path, history) == shown
 
 
 def test_first_sprint_is_labelled_and_includes_every_event(tmp_path):
@@ -116,11 +140,15 @@ def test_old_record_uses_tag_date_and_never_file_mtime(tmp_path, monkeypatch):
 
 
 def test_start_and_milestone_write_distinct_rows(tmp_path):
-    from sprint_helpers import make_repo, sprint
+    from sprint_helpers import make_repo, marker_path, sprint
     from test_milestone import active_plan
 
     repo, env, _g = make_repo(tmp_path, plan=active_plan())
-    assert sprint(repo, env, "start").returncode == 0
+    marker = marker_path(tmp_path)
+    write_tier_history(marker)
+    started = sprint(repo, env, "start")
+    assert started.returncode == 0, started.stderr
+    assert "full-tier | tier-history-sentinel" in started.stdout
     assert sprint(repo, env, "milestone-done").returncode == 0
     ledger = tmp_path / "data" / "timing.jsonl"
     rows = [json.loads(line) for line in ledger.read_text().splitlines()]
@@ -129,15 +157,18 @@ def test_start_and_milestone_write_distinct_rows(tmp_path):
 
 
 def test_post_merge_prints_prior_window_and_then_records_release(tmp_path):
-    from sprint_helpers import sprint
+    from sprint_helpers import marker_path, sprint
     from test_sprint_released import release_path, released_repo
 
     repo, env, _g = released_repo(tmp_path)
     root = tmp_path / "data"
     Span(root, "agent", "prior-release-window").finish("passed")
+    marker = marker_path(tmp_path, sprint_id="002")
+    write_tier_history(marker)
     result = sprint(repo, env, "post-merge", sprint_id="002")
     assert result.returncode == 0, result.stderr
     assert "prior-release-window" in result.stdout
+    assert "full-tier | tier-history-sentinel" in result.stdout
     assert "no release yet" in result.stdout
     assert release_path(tmp_path).is_file()
 
