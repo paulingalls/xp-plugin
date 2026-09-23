@@ -159,6 +159,56 @@ def version_refusal(version: str, names: list[str] | None = None) -> str:
     return ""
 
 
+def release_bump_paths(shown: str, head: str, paths: list[str]) -> set[str]:
+    """Prove the post-review delta is only a release declaration."""
+    if not versioning_mode()[0] or not (version := next_version()):
+        return set()
+    target = version.removeprefix("v")
+    accepted = set()
+    for name in set(paths) & set(version_files()) - {"none"}:
+        objects = []
+        for revision in (shown, head):
+            result = git("show", f"{revision}:{name}", check=False)
+            try:
+                value = json.loads(result.stdout) if result.returncode == 0 else None
+            except (ValueError, TypeError):
+                value = None
+            if not isinstance(value, dict):
+                break
+            objects.append(value)
+        if len(objects) != 2 or str(objects[1].get("version", "")).removeprefix("v") != target:
+            continue
+        before, after = objects
+        before = before.copy()
+        after = after.copy()
+        before.pop("version", None)
+        after.pop("version", None)
+        if before == after:
+            accepted.add(name)
+    if "CHANGELOG.md" in paths:
+        patch = git(
+            "diff",
+            "--no-renames",
+            "--unified=0",
+            shown,
+            head,
+            "--",
+            "CHANGELOG.md",
+            check=False,
+        )
+        if patch.returncode == 0:
+            lines = patch.stdout.splitlines()
+            hunks = [line for line in lines if line.startswith("@@")]
+            body = lines[lines.index(hunks[0]) + 1 :] if hunks else []
+            added = [line[1:] for line in body if line.startswith("+")]
+            deleted = any(line.startswith("-") for line in body)
+            first = next((line for line in added if line.strip()), "")
+            heading = re.fullmatch(r"#{1,6}\s+v?" + re.escape(target) + r"(?:\s+.*)?", first)
+            if len(hunks) == 1 and added and not deleted and heading:
+                accepted.add("CHANGELOG.md")
+    return accepted
+
+
 def cmd_post_merge(
     release_id: str,
     merged_branch: str = "",

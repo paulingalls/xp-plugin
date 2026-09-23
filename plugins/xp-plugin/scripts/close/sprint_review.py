@@ -11,6 +11,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 import close as story_close
 import stages
 from close import default_branch, fail, git
+from release import next_version, refuse_unbumpable, version_files, version_refusal, versioning_mode
 from review_artifacts import (
     notice as artifact_notice,
 )
@@ -54,6 +55,14 @@ def cmd_review(sprint_id: str, dry_run: bool) -> int:
         )
     if not (cards := sprint_cards(plan.read_text(), sprint_id)):
         return fail(f"refused: no `### Sprint {sprint_id}` section in {plan}")
+    versioned, refusal = versioning_mode()
+    if refusal:
+        return fail(refusal)
+    if versioned and (names := version_files()) and names != ["none"]:
+        if not (version := next_version()):
+            return refuse_unbumpable()
+        if refusal := version_refusal(version, names):
+            return fail(f"{refusal} — bump before the review")
     complete_n, reviewed_head, resume_round, why, refusal = sprint_review_resume.state(
         rounds, head, sprint_id, review, git
     )
