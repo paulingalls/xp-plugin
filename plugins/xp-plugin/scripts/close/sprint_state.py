@@ -57,7 +57,7 @@ HISTORY_KEYS = {
 }
 
 
-def read_tier_history(state: dict) -> tuple[list[dict] | None, str]:
+def read_tier_history(state: dict, declared_legs=()) -> tuple[list[dict] | None, str]:
     if "full_tier_history" not in state:
         return None, ""
     history = state["full_tier_history"]
@@ -67,7 +67,7 @@ def read_tier_history(state: dict) -> tuple[list[dict] | None, str]:
         valid = isinstance(entry, dict) and set(entry) == HISTORY_KEYS
         if valid:
             valid = (
-                entry["leg"] == "land"
+                entry["leg"] in ("land", *declared_legs)
                 and entry["outcome"] in ("passed", "failed", "reused")
                 and all(
                     isinstance(entry[key], str) and entry[key]
@@ -108,16 +108,39 @@ def reuse_veto(history: list[dict], tree: str, command: str, head: str) -> str:
     return ""
 
 
-def append_tier_evidence(path: Path, event: dict, receipt: dict | None) -> dict:
+def leg_reuse_veto(history: list[dict], event: dict) -> str:
+    latest = next(
+        (
+            item
+            for item in reversed(history)
+            if (item["leg"], item["command"], item["tree"])
+            == (event["leg"], event["command"], event["tree"])
+        ),
+        None,
+    )
+    if latest is None:
+        return "leg receipt has no matching history entry"
+    if latest["outcome"] == "failed":
+        return LATEST_FAILED
+    if latest["head"] != event["head"]:
+        return "leg receipt contradicts full_tier_history"
+    return ""
+
+
+def append_tier_evidence(path: Path, event: dict, receipt: dict | None, declared_legs=()) -> dict:
     def update(current: dict) -> None:
-        history, error = read_tier_history(current)
+        history, error = read_tier_history(current, declared_legs)
         if error:
             raise ValueError(error)
-        if (
-            event["outcome"] == "reused"
-            and history is not None
-            and (veto := reuse_veto(history, event["tree"], event["command"], event["head"]))
-        ):
+        if event["outcome"] == "reused" and history is not None:
+            veto = (
+                leg_reuse_veto(history, event)
+                if event["leg"] in declared_legs
+                else reuse_veto(history, event["tree"], event["command"], event["head"])
+            )
+        else:
+            veto = ""
+        if veto:
             raise ValueError(veto)
         current["full_tier_history"] = [*(history or []), event]
         if receipt is not None:

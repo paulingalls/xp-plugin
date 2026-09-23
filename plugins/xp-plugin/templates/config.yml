@@ -38,5 +38,10 @@ tests:
   story: EDIT-ME     # pre-push + story close: the suite you trust before a merge
   full: EDIT-ME      # sprint close: everything incl. e2e; records may declare `--covered-by full`
 
+# full_legs:          # optional ordered name: command lines; tests.full must join commands with ` && `
+#   unit: ./run-unit-suite
+#   integration: ./run-integration-suite
+#                    # legs share no shell state; whitespace followed by # starts a comment
+
 tier_coverage:       # e.g. covered: covering
 tier_coverage_pins:  # e.g. tier: exact configured command
