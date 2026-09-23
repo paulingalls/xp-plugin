@@ -150,8 +150,8 @@ def cmd_review(sprint_id: str, dry_run: bool) -> int:
     if review_is_capped(sprint_id, "slate") and not _running(sprint_id, "slate"):
         if sprint_branch() == sprint_branch_name(sprint_id):
             return fail(
-                "refused: two slate-review rounds already exist — the dead attempt owes nothing;"
-                " continue with the cards"
+                "refused: two slate-review rounds already exist and the sprint is open — a dead"
+                " attempt owes nothing; continue with the cards"
             )
         return fail(
             "refused: two slate-review rounds already exist — judge and apply their findings,"
