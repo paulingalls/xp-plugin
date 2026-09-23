@@ -332,12 +332,8 @@ def run_stream(
     LIVE.add(proc)
     feeder = threading.Thread(target=_feed_stdin, args=(proc, prompt))
     feeder.start()
-    timed_out, cancelled, finished, last = (
-        threading.Event(),
-        threading.Event(),
-        threading.Event(),
-        [time.monotonic()],
-    )
+    timed_out, finished, last = threading.Event(), threading.Event(), [time.monotonic()]
+    cancelled = threading.Event()
 
     def kill() -> None:
         # poll FIRST, but kill EITHER WAY: a watchdog that fires as the last line

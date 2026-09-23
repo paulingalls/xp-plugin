@@ -3,6 +3,21 @@
 from pathlib import Path
 
 from review_artifacts import archive_cancelled
+from review_card import card_now
+
+
+def card_changed(story_id: str, card: str):
+    """A plan read mid-write can cut this card short and look edited, so a cancel
+    needs the same differing card on two consecutive polls."""
+    seen = [""]
+
+    def changed() -> bool:
+        now = card_now(story_id)
+        agreed = bool(now) and now != card and now == seen[0]
+        seen[0] = now
+        return agreed
+
+    return changed
 
 
 def cancelled(story_id: str, head: str, report: Path, launch: Path, log: Path) -> int:

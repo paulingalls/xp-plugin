@@ -312,3 +312,14 @@ def test_free_review_inherits_card_cancel(tmp_path):
     finally:
         stop_stuck(proc, tmp_path)
     assert proc.returncode == 2 and "CANCELLED" in err, (out, err)
+
+
+def test_torn_plan_read_does_not_cancel_until_seen_twice(monkeypatch):
+    sys.path.insert(0, str(SCRIPTS / "close"))
+    import review_cancel
+
+    reads = iter(["#### story-042 — de", "launch card", "edited", "edited"])
+    monkeypatch.setattr(review_cancel, "card_now", lambda _story: next(reads))
+    changed = review_cancel.card_changed("story-042", "launch card")
+
+    assert [changed() for _ in range(4)] == [False, False, False, True]

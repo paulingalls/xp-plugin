@@ -12,7 +12,8 @@ from review_report import NO_ROUND
 def _save_dirty_patch(reviewed_head: str) -> tuple[Path | None, str]:
     path = None
     try:
-        # Bytes, not close.git: text mode folds CRLF and raises on a non-UTF-8 line.
+        # Bytes, not close.git: text mode folds CRLF and raises on a non-UTF-8 line,
+        # and either way the one copy the reset is about to destroy no longer applies.
         diff = subprocess.run(
             ["git", "diff-index", "-p", "--binary", reviewed_head, "--"],
             capture_output=True,
@@ -65,7 +66,7 @@ def abort_text(reviewed_head: str, why: str, recorded: str = NO_ROUND, salvage=F
             )
         return (
             f"refused: {why}\n\nCommits since launch {reviewed_head[:8]}:\n{commits}"
-            f"{stat}{saved}\nInspect the saved report and patch and these commits."
+            f"{stat}\n{recorded}{saved}\nInspect the saved report and patch and these commits."
             " Remove the named launch marker, then retry land."
         )
     saved = ""
@@ -82,9 +83,7 @@ def abort_text(reviewed_head: str, why: str, recorded: str = NO_ROUND, salvage=F
                 f" Saved the staged and unstaged work at {patch}; after restoring"
                 f" {reviewed_head[:8]}, recover it with git apply {patch}."
             )
-    undo = f" yours to keep or undo: git reset --hard {reviewed_head[:8]}"
-    if salvage and dirty:
-        undo = f" but reset --hard {reviewed_head[:8]} only after reading the uncommitted lines"
     return (
-        f"refused: {why}\n\n{stat}\n{recorded}{saved} The reviewer's work is in your tree —{undo}"
+        f"refused: {why}\n\n{stat}\n{recorded}{saved} The reviewer's work is in your tree —"
+        f" yours to keep or undo: git reset --hard {reviewed_head[:8]}"
     )

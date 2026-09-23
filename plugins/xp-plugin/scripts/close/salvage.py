@@ -67,8 +67,7 @@ def cmd_salvage(story_id: str, dry_run: bool = False) -> int:
     else:
         at["moved"] = (
             f"HEAD is no longer {at['head'][:8]}, the tree the killed review was launched"
-            " against. The motion happened outside close.py; review again from the current"
-            " HEAD after inspecting the saved review artifacts and commits"
+            " against. The motion happened outside close.py"
         )
     if dry_run:
         print(f"dry run: would record round {round_n} for {story_id} from {launch}")
@@ -77,6 +76,6 @@ def cmd_salvage(story_id: str, dry_run: bool = False) -> int:
     result = close._record_round(
         story_id, at["card"], path, marker, state, at, launch, salvage=True
     )
-    if result:
+    if result and launch.exists():
         print(f"Launch marker for this review: {launch}", file=sys.stderr)
     return result
