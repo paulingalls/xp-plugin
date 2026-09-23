@@ -101,12 +101,12 @@ def _assert_authoring_content(skill, closing):
     behind it, so a later trim must red on the missing behavior."""
     for token in ("`sprint_cap`", "`debt_budget`", "merge order", "collisions", "argv", "`cd`"):
         assert token in skill, f"create-sprint no longer names {token}"
-    for token in ("slate_review.py", "close.py sprint <id> start", "`spawn.py ready"):
+    for token in ("slate_review.py", "open_sprint.py <id>", "`spawn.py ready"):
         assert token in skill, f"create-sprint no longer names {token}"
-    assert skill.index("slate_review.py") < skill.index("close.py sprint <id> start"), (
+    assert skill.index("slate_review.py") < skill.index("open_sprint.py <id>"), (
         "slate review must precede sprint start"
     )
-    assert skill.index("close.py sprint <id> start") < skill.index("`spawn.py ready"), (
+    assert skill.index("open_sprint.py <id>") < skill.index("`spawn.py ready"), (
         "sprint start must precede spawn ready"
     )
     for token in ("slate_review.py", "git switch", "Open the sprint"):
