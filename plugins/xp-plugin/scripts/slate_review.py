@@ -12,6 +12,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 sys.path.insert(0, str(Path(__file__).parent / "spawn"))
 
 from close import fail, git, story_card
+from env import sprint_branch, sprint_branch_name
 from plan_writer import strip_lifecycle
 from review_runner import ACTIVITY_NOUN as ACTIVITY_NOUN
 from review_runner import _dead as _dead
@@ -147,6 +148,11 @@ def cmd_review(sprint_id: str, dry_run: bool) -> int:
     # counting alone would refuse the rejoin the lead is told to use instead of relaunching
     # — stranding the live round's marker and reading its half-written file as a round.
     if review_is_capped(sprint_id, "slate") and not _running(sprint_id, "slate"):
+        if sprint_branch() == sprint_branch_name(sprint_id):
+            return fail(
+                "refused: two slate-review rounds already exist — the dead attempt owes nothing;"
+                " continue with the cards"
+            )
         return fail(
             "refused: two slate-review rounds already exist — judge and apply their findings,"
             " then open the sprint"
