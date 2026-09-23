@@ -181,10 +181,10 @@ def run_detached(identifier: str, kind: str, out: Path, argv: list[str]) -> int:
     if running := _running(identifier, kind):
         running_out, pid = running
         print(f"joining the {ACTIVITY_NOUN[kind]} already running (pid {pid})", file=sys.stderr)
-        return _wait(identifier, kind, running_out, pid)
+        return _wait(identifier, kind, running_out, pid, argv)
     out.parent.mkdir(parents=True, exist_ok=True)
     pid, child = _detach(identifier, kind, out, argv)
-    return _wait(identifier, kind, out, pid, child)
+    return _wait(identifier, kind, out, pid, argv, child)
 
 
 def _detach(identifier: str, kind: str, out: Path, argv: list[str]) -> tuple[int, subprocess.Popen]:
@@ -239,6 +239,7 @@ def _wait(
     kind: str,
     out: Path,
     pid: int,
+    argv: list[str],
     child: subprocess.Popen | None = None,
 ) -> int:
     while not _dead(pid, child):
@@ -252,7 +253,7 @@ def _wait(
             tail = log_tail(Path(state.get("log", "")), LOG_TAIL).strip()
         except OSError:
             tail = ""
-        action = state.get("next", f"run the {ACTIVITY_NOUN[kind]} again")
+        action = f"run {shlex.join(['python3', *argv])} again to join or restart it"
         log = state.get("log", "(no log)")
         return fail(
             f"{tail}\n(the {ACTIVITY_NOUN[kind]} ended without a verdict; full output in"

@@ -43,7 +43,11 @@ def slate_review_state(sprint: str) -> tuple[str, int | None]:
     if not slate_review_marker(sprint).exists():
         return "absent", None
     pid = slate_review_pid(sprint)
-    return ("running", pid) if pid is not None else ("incomplete", None)
+    if pid is not None:
+        return "running", pid
+    if sprint_branch() == sprint_branch_name(sprint):
+        return "stale-after-open", None
+    return "incomplete", None
 
 
 def _recorded_branch() -> str:
