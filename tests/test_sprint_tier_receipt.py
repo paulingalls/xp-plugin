@@ -45,6 +45,33 @@ def run_count(events):
     return len(events.read_text()) if events.exists() else 0
 
 
+@pytest.mark.parametrize("dry", [False, True])
+@pytest.mark.parametrize("declared, reason", [("0.2.0", "BEHIND"), ("0.4.0", "does not match")])
+def test_land_rejects_stale_manifest_before_tier_and_falsifier(tmp_path, dry, declared, reason):
+    # a RED tier is what makes land run a deferred falsifier: a green one trusts it
+    repo, env, g, events, _tier = counted_repo(
+        tmp_path, f"printf x >> {tmp_path / 'tier-events'}; false"
+    )
+    falsifier_events = tmp_path / "falsifier-events"
+    args = ["debt", "--claim", "deferred", "--falsifier", f"printf x >> {falsifier_events}"]
+    filed = work(repo, env, *args, "--covered-by", "full", "--files", "src.py")
+    assert filed.returncode == 0
+    assert sprint(repo, env, "start").returncode == 0
+    (repo / "manifest.json").write_text(json.dumps({"version": declared}) + "\n")
+    assert g("add", "manifest.json").returncode == 0
+    assert g("commit", "-qm", "stale manifest").returncode == 0
+    record_reviews(tmp_path, repo, env)
+    before = falsifier_events.read_text()
+    ledger = (tmp_path / "data" / "work.md").read_bytes()
+
+    result = sprint(repo, env, "land", *(("--dry-run",) if dry else ()))
+
+    assert result.returncode == 2
+    assert all(part in result.stderr for part in ("manifest.json", declared, "v0.3.0", reason))
+    assert run_count(events) == 0 and falsifier_events.read_text() == before
+    assert (tmp_path / "data" / "work.md").read_bytes() == ledger
+
+
 def test_a_nonpassing_receipt_never_matches_the_shipping_tree():
     receipt = {
         "tier": "full",

@@ -93,7 +93,7 @@ class TestLandAndPostMerge:
             subprocess.run(
                 ["git", "tag"], cwd=repo, env=env, capture_output=True, text=True
             ).stdout.strip()
-            == ""
+            == "v0.2.0"
         ), "a preview created a tag"
 
     def test_land_refuses_to_advertise_a_version_it_cannot_compute(self, tmp_path):
@@ -175,12 +175,14 @@ class TestLandAndPostMerge:
         a CONSUMING project — whose tag scheme is exactly the input we do not
         control. `v1.x` tracebacked; `release-2024` minted `vrelease-2024.1.0`."""
         repo, env, g = make_repo(tmp_path)
-        g("tag", "release-2024")
         g("checkout", "-q", "main")
         g("merge", "-q", "--no-ff", "sprint-002", "-m", "release")
+        g("tag", "release-2024")
         r = sprint(repo, env, "post-merge")
         assert r.returncode == 2 and "Traceback" not in r.stderr, r.stderr
-        assert g("tag").stdout.split() == ["release-2024"], "minted a version off a non-semver tag"
+        assert sorted(g("tag").stdout.split()) == ["release-2024", "v0.2.0"], (
+            "minted a version off a non-semver tag"
+        )
 
     def test_post_merge_without_a_config_refuses_rather_than_tracebacks(self, tmp_path):
         repo, env, g = make_repo(tmp_path)

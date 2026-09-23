@@ -1,6 +1,5 @@
 """Run the sprint-close falsifier batch and attribute failures."""
 
-import shlex
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -228,6 +227,12 @@ def batch_refusal(
             (f"stdout:\n{result.stdout or '(empty)'}", f"stderr:\n{result.stderr or '(empty)'}")
         )
     evidence = "\n".join(lines)
+    # 126/127 is the shell's own "not executable"/"not found": nothing was measured
+    unrun = ", ".join(
+        f"`{falsifier}` (exit {result.returncode})"
+        for falsifier, _records, result in red
+        if result.returncode in (126, 127)
+    )
     known = any(head.startswith("bug ") for _f, records, _r in red for _e, head, _c in records)
     if known:
         decision = "No bug filed because an open source bug already filed this batch."
@@ -238,25 +243,21 @@ def batch_refusal(
         elif missing:
             malformed = "; ".join(f"{ref} has no usable Files declaration" for ref in missing)
             decision = f"No bug filed because {malformed}."
+        elif unrun:
+            decision = f"No bug filed: {unrun} could not run."
+        elif len(red) != 1:
+            decision = "No bug filed for several red commands."
         else:
-            commands = [falsifier for falsifier, _records, _result in red]
-            combined = (
-                commands[0]
-                if len(commands) == 1
-                else "status=0; "
-                + "; ".join(
-                    f"/bin/sh -c {shlex.quote(command)} || status=1" for command in commands
-                )
-                + '; exit "$status"'
-            )
             append(
                 root,
                 f"## bug {stamp()}\nClaim: batch falsifier RED for source records "
                 f"{', '.join(refs)}; debt/archive red means the latent problem materialised.\n"
-                f"{neutralize(evidence)}\nFalsifier: `{combined}`\n"
+                f"{neutralize(evidence)}\nFalsifier: `{red[0][0]}`\n"
                 f"Files: {', '.join(files)}\n\n",
             )
             decision = "Filed as one bug."
+    if unrun or len(red) != 1:
+        decision += " Triage the commands, then use `work.py bug` if a product bug is confirmed."
     return f"refused: {evidence}\n{decision} Fix it, then run {retry} again"
 
 
