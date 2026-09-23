@@ -4,6 +4,36 @@ Release notes started at v0.6.0; earlier entries are summarized from their
 tag and merge messages. Full detail lives in the merge history and the
 per-sprint review reports.
 
+## v0.28.0 — resume the legs already green, and measure where the time goes
+
+No action needed on upgrade: the hook commands are unchanged.
+
+A FAILED SPRINT LAND RE-RUNS ONLY THE LEGS THAT WERE NOT GREEN (#109). Declare an optional
+`full_legs:` block of ordered `name: command` lines in `.xp/config.yml`. `tests.full` must equal
+those commands joined with ` && `, which keeps hooks, tier-coverage pins and falsifier coverage
+unchanged. Sprint land then runs each leg in order, stops at the first red, and records every
+attempt per leg against the tree. Landing again on the same tree reuses every leg whose latest
+outcome there is passed or reused, and runs the rest. The receipt passes only when every declared
+leg passed or was reused on that tree. Land output and the release PR list each leg as ran or
+reused. Land refuses a duplicate or reserved (`land`, `start`) leg name, or a `tests.full` that is
+not the join, before it reads history or runs anything, in `--dry-run` too. A leg killed by a
+signal, or one that could not run, records nothing, and earlier legs stay reusable. Legs share no
+shell state, so a chain that passes a shell variable between pieces must stay one leg. Without
+`full_legs`, nothing changes.
+
+EVERY AGENT RUN GETS ITS OWN LOG, AND THE CLOSE SHOWS WHERE THE TIME WENT (#114). Each agent,
+slate, plan and card-refresh run now starts a fresh log at its usual path. The previous run is
+kept gzipped as `<name>.1.gz` through `.3.gz`, so shared role logs no longer grow without bound
+(one had reached 31 MB). Concurrent runs that share a log id never rotate each other's live file:
+a run that finds the log held appends under a spawn header, as before. Refusal tails read only the
+end of the file. Agent runs, story-land gates, milestone Done-when commands and the sprint-close
+falsifier batch each append one line to `<data>/timing.jsonl`: kind, name, UTC start and end,
+monotonic seconds, outcome. A failed ledger write only warns. `close.py sprint <id> start` prints
+the timing so far, and sprint post-merge prints the complete cycle: each event, calendar time,
+active time (overlapping runs counted once), and idle gaps over 10 minutes (awaiting a human or CI,
+which are not told apart). The window starts at the previous release. Release records now carry
+`released_at`; older ones fall back to their tag's date.
+
 ## v0.27.0 — a dead attempt is not live work, a repaired Verify is not a new review
 
 No action needed on upgrade: the hook commands are unchanged, so Codex does not ask for a

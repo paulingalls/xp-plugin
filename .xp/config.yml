@@ -34,8 +34,12 @@ tests:
                                             # serial 134s, -n2 69s, -n4 59s, -n6 62s, -n8 78s
   story: pytest -q -n 4 -m "not slow"  # pre-push + story land. = fast since Sprint 27 (Paul:
                                         # wall clock): sprint land runs full on the shipping tree
-  full: pytest -q -n 6            # measured 2026-09-03 on 1184 tests: -n 6 182s, -n 12 220s.
-                                  # Was 12 for the core count, the wrong lever: subprocess-bound
+  full: pytest -q -n 6 -m "not slow" && pytest -q -n 6 -m slow  # = the full_legs join (Sprint 27)
+                                  # measured 2026-09-03: -n 6 182s, -n 12 220s (subprocess-bound)
+
+full_legs:                        # story-147: land re-runs only the legs not green on this tree
+  not-slow: pytest -q -n 6 -m "not slow"
+  slow: pytest -q -n 6 -m slow
 
 tier_coverage:
   fast: story
@@ -43,4 +47,4 @@ tier_coverage:
 tier_coverage_pins:
   fast: pytest -q -n 4 -m "not slow"
   story: pytest -q -n 4 -m "not slow"
-  full: pytest -q -n 6
+  full: pytest -q -n 6 -m "not slow" && pytest -q -n 6 -m slow
