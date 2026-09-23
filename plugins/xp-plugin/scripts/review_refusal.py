@@ -42,9 +42,8 @@ def _save_dirty_patch(reviewed_head: str) -> tuple[Path | None, str]:
 
 def abort_text(reviewed_head: str, why: str, recorded: str = NO_ROUND, salvage=False) -> str:
     """EVERY abort in the review leg, not only the motion checks: a refused run can still have
-    left commits behind. The undo is offered only when something actually MOVED: on an untouched
-    tree it teaches the lead to skip it on the run where it is real, and under `salvage` a merely
-    dirty tree may be the dead reviewer's uninspected work: the reset is dropped, or put behind it.
+    left commits behind. Salvage never offers an undo after HEAD moved because it
+    cannot attribute that motion to a reviewer.
     `recorded` is what became of the round: a leg that records one before refusing must not offer
     the undo under a sentence saying it did not — and the reset may be what orphans the sha.
     """
@@ -55,6 +54,21 @@ def abort_text(reviewed_head: str, why: str, recorded: str = NO_ROUND, salvage=F
     if not moved and (salvage or not dirty):
         return f"refused: {why}" if recorded == NO_ROUND else f"refused: {why}\n\n{recorded}"
     stat = git("diff", "--stat", f"{reviewed_head}..HEAD").stdout
+    if salvage and moved:
+        commits = git("log", "--format=%h %s", f"{reviewed_head}..HEAD").stdout
+        saved = ""
+        if dirty:
+            patch, error = _save_dirty_patch(reviewed_head)
+            saved = (
+                f"\nRecovery patch: {patch}"
+                if patch
+                else (f"\nRecovery patch could not be saved: {error}")
+            )
+        return (
+            f"refused: {why}\n\nCommits since launch {reviewed_head[:8]}:\n{commits}"
+            f"{stat}\n{recorded}{saved}\nInspect the saved report and patch and these commits."
+            " Remove the named launch marker, then retry land."
+        )
     saved = ""
     if dirty:
         patch, error = _save_dirty_patch(reviewed_head)
@@ -69,9 +83,7 @@ def abort_text(reviewed_head: str, why: str, recorded: str = NO_ROUND, salvage=F
                 f" Saved the staged and unstaged work at {patch}; after restoring"
                 f" {reviewed_head[:8]}, recover it with git apply {patch}."
             )
-    undo = f" yours to keep or undo: git reset --hard {reviewed_head[:8]}"
-    if salvage and dirty:
-        undo = f" but reset --hard {reviewed_head[:8]} only after reading the uncommitted lines"
     return (
-        f"refused: {why}\n\n{stat}\n{recorded}{saved} The reviewer's work is in your tree —{undo}"
+        f"refused: {why}\n\n{stat}\n{recorded}{saved} The reviewer's work is in your tree —"
+        f" yours to keep or undo: git reset --hard {reviewed_head[:8]}"
     )

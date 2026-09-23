@@ -7,7 +7,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 ${CLAUDE_PLUGIN_ROOT}/scripts/session_start.py",
+            "command": "python3 -c 'import os\nimport sys\nfrom pathlib import Path\nroot = Path(sys.argv[1])\nname = sys.argv[2]\nscript = root / \"scripts\" / name\nif script.is_file():\n    os.execv(sys.executable, [sys.executable, str(script)])\nif root.exists():\n    print(f\"hook script missing: {script}; pinned root exists\", file=sys.stderr)\n    sys.exit(0)\ntry:\n    siblings = [p for p in root.parent.iterdir() if p.is_dir() and p.name.split(\".\") and all(x.isdecimal() for x in p.name.split(\".\")) and (p / \"scripts\" / name).is_file()]\nexcept OSError as error:\n    print(f\"hook root missing: {root}; sibling lookup failed: {error}\", file=sys.stderr)\n    sys.exit(0)\nif not siblings:\n    print(f\"hook root missing: {root}; no sibling has {name}\", file=sys.stderr)\n    sys.exit(0)\nchosen = max(siblings, key=lambda p: tuple(int(x) for x in p.name.split(\".\")))\nprint(f\"hook root missing: {root}; running {chosen}\", file=sys.stderr)\nos.execv(sys.executable, [sys.executable, str(chosen / \"scripts\" / name)])' \"${CLAUDE_PLUGIN_ROOT}\" session_start.py",
             "timeout": 10
           }
         ]
@@ -19,7 +19,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 ${CLAUDE_PLUGIN_ROOT}/scripts/bash_status.py",
+            "command": "python3 -c 'import os\nimport sys\nfrom pathlib import Path\nroot = Path(sys.argv[1])\nname = sys.argv[2]\nscript = root / \"scripts\" / name\nif script.is_file():\n    os.execv(sys.executable, [sys.executable, str(script)])\nif root.exists():\n    print(f\"hook script missing: {script}; pinned root exists\", file=sys.stderr)\n    sys.exit(0)\ntry:\n    siblings = [p for p in root.parent.iterdir() if p.is_dir() and p.name.split(\".\") and all(x.isdecimal() for x in p.name.split(\".\")) and (p / \"scripts\" / name).is_file()]\nexcept OSError as error:\n    print(f\"hook root missing: {root}; sibling lookup failed: {error}\", file=sys.stderr)\n    sys.exit(0)\nif not siblings:\n    print(f\"hook root missing: {root}; no sibling has {name}\", file=sys.stderr)\n    sys.exit(0)\nchosen = max(siblings, key=lambda p: tuple(int(x) for x in p.name.split(\".\")))\nprint(f\"hook root missing: {root}; running {chosen}\", file=sys.stderr)\nos.execv(sys.executable, [sys.executable, str(chosen / \"scripts\" / name)])' \"${CLAUDE_PLUGIN_ROOT}\" bash_status.py",
             "timeout": 10
           }
         ]
@@ -31,7 +31,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 ${CLAUDE_PLUGIN_ROOT}/scripts/stop_gate.py",
+            "command": "python3 -c 'import os\nimport sys\nfrom pathlib import Path\nroot = Path(sys.argv[1])\nname = sys.argv[2]\nscript = root / \"scripts\" / name\nif script.is_file():\n    os.execv(sys.executable, [sys.executable, str(script)])\nif root.exists():\n    print(f\"hook script missing: {script}; pinned root exists\", file=sys.stderr)\n    sys.exit(0)\ntry:\n    siblings = [p for p in root.parent.iterdir() if p.is_dir() and p.name.split(\".\") and all(x.isdecimal() for x in p.name.split(\".\")) and (p / \"scripts\" / name).is_file()]\nexcept OSError as error:\n    print(f\"hook root missing: {root}; sibling lookup failed: {error}\", file=sys.stderr)\n    sys.exit(0)\nif not siblings:\n    print(f\"hook root missing: {root}; no sibling has {name}\", file=sys.stderr)\n    sys.exit(0)\nchosen = max(siblings, key=lambda p: tuple(int(x) for x in p.name.split(\".\")))\nprint(f\"hook root missing: {root}; running {chosen}\", file=sys.stderr)\nos.execv(sys.executable, [sys.executable, str(chosen / \"scripts\" / name)])' \"${CLAUDE_PLUGIN_ROOT}\" stop_gate.py",
             "timeout": 10
           }
         ]
@@ -43,7 +43,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 ${CLAUDE_PLUGIN_ROOT}/scripts/bash_status.py",
+            "command": "python3 -c 'import os\nimport sys\nfrom pathlib import Path\nroot = Path(sys.argv[1])\nname = sys.argv[2]\nscript = root / \"scripts\" / name\nif script.is_file():\n    os.execv(sys.executable, [sys.executable, str(script)])\nif root.exists():\n    print(f\"hook script missing: {script}; pinned root exists\", file=sys.stderr)\n    sys.exit(0)\ntry:\n    siblings = [p for p in root.parent.iterdir() if p.is_dir() and p.name.split(\".\") and all(x.isdecimal() for x in p.name.split(\".\")) and (p / \"scripts\" / name).is_file()]\nexcept OSError as error:\n    print(f\"hook root missing: {root}; sibling lookup failed: {error}\", file=sys.stderr)\n    sys.exit(0)\nif not siblings:\n    print(f\"hook root missing: {root}; no sibling has {name}\", file=sys.stderr)\n    sys.exit(0)\nchosen = max(siblings, key=lambda p: tuple(int(x) for x in p.name.split(\".\")))\nprint(f\"hook root missing: {root}; running {chosen}\", file=sys.stderr)\nos.execv(sys.executable, [sys.executable, str(chosen / \"scripts\" / name)])' \"${CLAUDE_PLUGIN_ROOT}\" bash_status.py",
             "timeout": 10
           }
         ]

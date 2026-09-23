@@ -8,7 +8,13 @@ import overlap
 from env import data_root
 from falsifier_batch import ARCHIVED, batch_refusal, execute_batch, grouped_batch
 from milestone import sprint_stories
-from release import VERSIONING_OFF_TEXT, next_version, refuse_unbumpable, versioning_mode
+from release import (
+    VERSIONING_OFF_TEXT,
+    next_version,
+    refuse_unbumpable,
+    version_refusal,
+    versioning_mode,
+)
 from release import cmd_post_merge as release_post_merge
 from review import CLEARABLE_BY_FULL, covered_ranges, reviewer_strays, validate_clearable
 from sprint_close import (
@@ -272,6 +278,8 @@ def cmd_land(sprint_id: str, dry_run: bool) -> int:
     version = next_version() if versioned else ""
     if versioned and not version:
         return refuse_unbumpable()
+    if versioned and (refusal := version_refusal(version)):
+        return fail(refusal)
     title = f"release {version}" if versioned else f"release {branch}"
     ref = overlap.merge_source(default_branch(), "pr")
     pending = overlap.unmerged(ref)

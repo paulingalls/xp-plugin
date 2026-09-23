@@ -80,7 +80,7 @@ def test_land_red_deferred_evidence_names_land_as_retry(tmp_path):
     assert "run `close.py sprint 2 land` again" in result.stderr
 
 
-def test_three_commands_report_two_reds_once_in_one_bug(tmp_path):
+def test_three_commands_report_two_reds_without_filing(tmp_path):
     repo, env, _g = make_repo(tmp_path)
     first = red_debt(
         repo, env, tmp_path, "first", "FIRST_OUT", "FIRST_ERR", "src/z-first.py, src/shared.py"
@@ -93,18 +93,16 @@ def test_three_commands_report_two_reds_once_in_one_bug(tmp_path):
     make_legacy_stub(repo, env, tmp_path, third[0], third[1])
     first[2].unlink()
     third[2].unlink()
+    before = snapshot(tmp_path / "data")
     result = sprint(repo, env, "start")
-    bug = next(t for _eid, t in work_module.entries(tmp_path / "data") if t.startswith("## bug "))
     expected = [(*first[:2], "FIRST_OUT", "FIRST_ERR"), (*third[:2], "THIRD_OUT", "THIRD_ERR")]
     assert result.returncode == 2 and middle.read_text() == "xx"
+    assert snapshot(tmp_path / "data") == before
     assert_evidence(result.stderr, expected)
-    assert_evidence(bug, expected)
-    assert middle_id not in result.stderr + bug
-    assert "Files: src/z-first.py, src/shared.py, src/a-third.py\n" in bug
-    assert "Files: unknown" not in result.stderr + bug
+    assert middle_id not in result.stderr
+    assert "work.py bug" in result.stderr
     assert "Fix it, then run start again" in result.stderr
     assert result.stdout.count("falsifier wall clock:") == 3
-    assert "falsifier wall clock:" not in bug
 
 
 def test_missing_source_files_reports_every_red_and_files_nothing(tmp_path):
@@ -125,6 +123,28 @@ def test_missing_source_files_reports_every_red_and_files_nothing(tmp_path):
     assert "Fix it, then run start again" in result.stderr
 
 
+def test_one_distinct_red_command_with_two_sources_files_one_bug(tmp_path):
+    repo, env, _g = make_repo(tmp_path)
+    flag = tmp_path / "shared-flag"
+    flag.write_text("ok")
+    command = f"test -f {shlex.quote(str(flag))}"
+    refs = [
+        file_debt(repo, env, claim, command, files)
+        for claim, files in (("first", "first.py"), ("second", "second.py"))
+    ]
+    flag.unlink()
+
+    result = sprint(repo, env, "start")
+
+    bugs = [
+        text for _eid, text in work_module.entries(tmp_path / "data") if text.startswith("## bug ")
+    ]
+    assert result.returncode == 2 and len(bugs) == 1
+    assert all(ref in bugs[0] for ref in refs)
+    assert f"Falsifier: `{command}`" in bugs[0]
+    assert "Files: first.py, second.py" in bugs[0]
+
+
 def test_an_unreadable_archive_is_not_a_missing_declaration(tmp_path):
     repo, env, _g = make_repo(tmp_path)
     item = red_debt(repo, env, tmp_path, "legacy", "ARCHIVE_OUT", "ARCHIVE_ERR", "legacy.py")
@@ -139,20 +159,22 @@ def test_an_unreadable_archive_is_not_a_missing_declaration(tmp_path):
     assert_evidence(result.stderr, [(*item[:2], "ARCHIVE_OUT", "ARCHIVE_ERR")])
 
 
-def test_the_same_multi_red_batch_files_once_and_reports_all_reds_every_time(tmp_path):
+def test_the_same_multi_red_batch_files_nothing_and_reports_all_reds_every_time(tmp_path):
     repo, env, _g = make_repo(tmp_path)
     names = ("one", "two")
     items = [red_debt(repo, env, tmp_path, name, f"{name}_OUT", f"{name}_ERR") for name in names]
     for item in items:
         item[2].unlink()
+    before = snapshot(tmp_path / "data")
     results = [sprint(repo, env, "start") for _ in range(2)]
     assert all(result.returncode == 2 for result in results)
-    assert (tmp_path / "data" / "work.md").read_text().count("## bug ") == 1
+    assert snapshot(tmp_path / "data") == before
     expected = [
         (*item[:2], f"{name}_OUT", f"{name}_ERR") for item, name in zip(items, names, strict=True)
     ]
     for result in results:
         assert_evidence(result.stderr, expected)
+        assert "work.py bug" in result.stderr
 
 
 def test_an_open_bug_suppresses_refiling_without_hiding_other_reds(tmp_path):
@@ -178,7 +200,7 @@ def test_an_open_bug_suppresses_refiling_without_hiding_other_reds(tmp_path):
     )
 
 
-def test_combined_bug_stays_red_until_every_source_command_is_green(tmp_path):
+def test_first_source_recovery_leaves_one_runnable_red_to_file(tmp_path):
     repo, env, _g = make_repo(tmp_path)
     items = [
         red_debt(repo, env, tmp_path, name, f"{name}_OUT", f"{name}_ERR")
@@ -186,18 +208,22 @@ def test_combined_bug_stays_red_until_every_source_command_is_green(tmp_path):
     ]
     for item in items:
         item[2].unlink()
+    before = snapshot(tmp_path / "data")
     assert sprint(repo, env, "start").returncode == 2
+    assert snapshot(tmp_path / "data") == before
 
     items[0][2].write_text("ok")
     second = sprint(repo, env, "start")
-    assert second.returncode == 2 and "already filed" in second.stderr
-    assert (tmp_path / "data" / "work.md").read_text().count("## bug ") == 1
+    assert second.returncode == 2 and "Filed as one bug" in second.stderr
+    bug = next(t for _eid, t in work_module.entries(tmp_path / "data") if t.startswith("## bug "))
+    assert f"Falsifier: `{items[1][1]}`" in bug and items[1][0] in bug
+    assert items[0][0] not in bug
 
     items[1][2].write_text("ok")
     assert sprint(repo, env, "start").returncode == 0
 
 
-def test_combined_bug_stays_red_when_only_its_last_source_is_green(tmp_path):
+def test_last_source_recovery_leaves_one_runnable_red_to_file(tmp_path):
     repo, env, _g = make_repo(tmp_path)
     items = [
         red_debt(repo, env, tmp_path, name, f"{name}_OUT", f"{name}_ERR")
@@ -205,12 +231,16 @@ def test_combined_bug_stays_red_when_only_its_last_source_is_green(tmp_path):
     ]
     for item in items:
         item[2].unlink()
+    before = snapshot(tmp_path / "data")
     assert sprint(repo, env, "start").returncode == 2
+    assert snapshot(tmp_path / "data") == before
 
     items[-1][2].write_text("ok")
     still_red = sprint(repo, env, "start")
-    assert still_red.returncode == 2 and "already filed" in still_red.stderr
-    assert (tmp_path / "data/work.md").read_text().count("## bug ") == 1
+    assert still_red.returncode == 2 and "Filed as one bug" in still_red.stderr
+    bug = next(t for _eid, t in work_module.entries(tmp_path / "data") if t.startswith("## bug "))
+    assert f"Falsifier: `{items[0][1]}`" in bug and items[0][0] in bug
+    assert items[1][0] not in bug
 
     items[0][2].write_text("ok")
     assert sprint(repo, env, "start").returncode == 0
