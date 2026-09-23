@@ -25,7 +25,10 @@ yourself doing by hand is a defect in the pipeline — file it.
    that found them, and your read of its diff is the judgment. YOUR fixes move HEAD
    past what the review covered and still cost one confirming round — land REPORTS
    that delta now rather than refusing, so re-run `close.py story <id> review`
-   before land. What ends
+   before land. Exception: when a completed review's Verify redded without blocking
+   findings, fix only reviewed or card Files paths, commit, then run
+   `close.py story <id> repair`; a bounded repair passing Verify owes no confirming
+   round. What ends
    the rounds is the finding bar — silent or corrupting earns another, loud does
    not — never a count.
 4. **`close.py story <id> land`** — deterministic, and it never spawns. Run it from

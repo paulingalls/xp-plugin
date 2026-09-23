@@ -244,6 +244,17 @@ class TestShippedProseMatchesTheMechanism:
             assert "inside the round that found" in text, f"{path.name}: reviewer half"
             assert "past what the review covered" in text, f"{path.name}: lead half"
 
+    def test_red_completed_verify_has_a_bounded_repair_exception(self):
+        paths = (
+            Path(__file__).parent.parent / "docs" / "DESIGN.md",
+            PLUGIN / "skills" / "story-close" / "SKILL.md",
+            PLUGIN / "skills" / "free-close" / "SKILL.md",
+        )
+        for path in paths:
+            text = prose(path)
+            assert "Verify" in text and "repair" in text and "no confirming round" in text
+            assert "confirming round" in text
+
     def test_the_loop_states_carded_execution_once(self):
         raw = (PLUGIN / "PROCESS.md").read_text()
         process = " ".join(raw.split())
