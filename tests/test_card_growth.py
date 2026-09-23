@@ -40,6 +40,7 @@ def test_verify_extension_lands_and_runs_appended_command(tmp_path):
     edit(tmp_path, "Verify: true", f"Verify: true && touch {sentinel}")
     reviewed = close(repo, env, "review")
     assert reviewed.returncode == 0, reviewed.stderr
+    sentinel.unlink()
     landed = close(repo, env, "land")
     assert landed.returncode == 0, landed.stderr
     assert sentinel.exists()

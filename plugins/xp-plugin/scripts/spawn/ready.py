@@ -122,19 +122,16 @@ def card_growth(reviewed: str, card: str) -> str:
         return ""
     added = current - prior
     files_changed = [old[i] for i in sorted(old_files)] != [new[i] for i in sorted(new_files)]
-    if files_changed and (
-        not added or not prior < current or any(path.startswith(".xp/") for path in added)
-    ):
+    if files_changed and (not prior < current or any(p.startswith(".xp/") for p in added)):
         return ""
     old_line, new_line = old[old_verify], new[new_verify]
-    verify_added = new_line.removeprefix(old_line + " && ") if new_line != old_line else ""
-    if new_line != old_line and (
-        not new_line.startswith(old_line + " && ") or not verify_added.strip()
-    ):
+    extended = new_line.startswith(old_line + " && ")
+    if new_line != old_line and not extended:
         return ""
+    verify_added = new_line.removeprefix(old_line + " && ") if extended else ""
     if not files_changed and not verify_added:
         return ""
-    parts = [*(f"Files: {path}" for path in sorted(added))]
+    parts = [f"Files: {path}" for path in sorted(added)]
     if verify_added:
         parts.append(f"Verify: {verify_added}")
     return "; ".join(parts)
