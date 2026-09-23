@@ -179,10 +179,10 @@ class TestReadyCredential:
         stub_claude(tmp_path)
         self.mint(repo, env)
         heading = "#### story-042 — demo story   [ready]"
-        self.edit_card(tmp_path, "Files: src/thing.py", "Files: src/thing.py, src/other.py")
+        self.edit_card(tmp_path, "Context: demo.", "Context: changed after review.")
         assert heading in (tmp_path / "data" / "plan.md").read_text()
         r = spawn(repo, env, "story-042")
-        assert r.returncode == 2 and "src/other.py" in r.stderr, r.stderr
+        assert r.returncode == 2 and "changed after review" in r.stderr, r.stderr
 
     def test_a_hand_typed_ready_is_refused_because_nothing_minted_it(self, tmp_path):
         """The forgery in its purest form: the bracket typed, no digest behind it.

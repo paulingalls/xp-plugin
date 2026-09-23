@@ -1,6 +1,7 @@
 import argparse
 import difflib
 import json
+import re
 import shlex
 import sys
 from pathlib import Path
@@ -85,6 +86,60 @@ def card_diff(reviewed: str, card: str) -> str:
     )
 
 
+def card_growth(reviewed: str, card: str) -> str:
+    old, new = card_lines(reviewed), card_lines(card)
+
+    def fields(lines):
+        files = [i for i, line in enumerate(lines) if line.startswith("Files:")]
+        verify = [i for i, line in enumerate(lines) if line.startswith("Verify:")]
+        if len(files) != 1 or len(verify) != 1:
+            return None
+        start = files[0]
+        end = next(
+            (i for i in range(start + 1, len(lines)) if re.match(r"[A-Za-z][A-Za-z ]*:", lines[i])),
+            len(lines),
+        )
+        return set(range(start, end)), verify[0]
+
+    before, after = fields(old), fields(new)
+    if before is None or after is None:
+        return ""
+    old_files, old_verify = before
+    new_files, new_verify = after
+
+    def fixed(lines, files, verify):
+        return [
+            "<Files>" if i == min(files) else "<Verify>" if i == verify else line
+            for i, line in enumerate(lines)
+            if i not in files or i == min(files)
+        ]
+
+    if fixed(old, old_files, old_verify) != fixed(new, new_files, new_verify):
+        return ""
+    try:
+        prior, current = declared_files(reviewed), declared_files(card)
+    except ValueError:
+        return ""
+    added = current - prior
+    files_changed = [old[i] for i in sorted(old_files)] != [new[i] for i in sorted(new_files)]
+    if files_changed and (
+        not added or not prior < current or any(path.startswith(".xp/") for path in added)
+    ):
+        return ""
+    old_line, new_line = old[old_verify], new[new_verify]
+    verify_added = new_line.removeprefix(old_line + " && ") if new_line != old_line else ""
+    if new_line != old_line and (
+        not new_line.startswith(old_line + " && ") or not verify_added.strip()
+    ):
+        return ""
+    if not files_changed and not verify_added:
+        return ""
+    parts = [*(f"Files: {path}" for path in sorted(added))]
+    if verify_added:
+        parts.append(f"Verify: {verify_added}")
+    return "; ".join(parts)
+
+
 def drift(sid: str, card: str) -> str:
     marker = ready_marker_path(sid)
     recovery = (AMEND if progressed(sid) else REMINT).format(sid)
@@ -94,6 +149,9 @@ def drift(sid: str, card: str) -> str:
     if minted is None:
         return f"refused: {marker} is unreadable; nothing vouches for {sid}. {recovery}"
     if minted.get("digest") == card_digest(card):
+        return ""
+    if growth := card_growth(minted["card"], card):
+        print(f"{sid} card grew — {growth}")
         return ""
     diff = card_diff(minted["card"], card)
     return f"refused: {sid} was edited after its plan review:\n{diff}\n{AMEND.format(sid)}"
