@@ -100,7 +100,7 @@ def test_capped_slate_refuses_with_correct_action(tmp_path, open_sprint):
     [
         ("slate", "1", ["/current/slate_review.py", "1"]),
         ("plan", "story-042", ["/current/plan_review.py", "story-042", "/plan.md"]),
-        ("refresh", "story-042", ["/current/slate_review.py", "--refresh", "story-042"]),
+        ("refresh", "story-042", ["/current/slate_review.py", "story-042", "--refresh"]),
     ],
 )
 @pytest.mark.parametrize("route", ["rejoin", "new"])
