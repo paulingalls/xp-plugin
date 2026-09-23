@@ -4,6 +4,9 @@ import re
 
 DECORATION = re.compile(r"(?:(?<!/)\(new\)|\s+\([^()]*\))\s*$")
 TOP_LEVEL_COMMA = re.compile(r",(?![^()]*\))")
+# ONE copy: spawn/ready.py's growth check skips the Files field by this boundary, and a
+# drifted second copy would let a next-field edit hide inside it and pass drift.
+FIELD_START = re.compile(r"[A-Za-z][A-Za-z ]*:")
 
 
 def _bare(entry: str) -> str:
@@ -39,7 +42,7 @@ def declared_files(card: str) -> set[str]:
     for line in card.splitlines():
         if line.startswith("Files:"):
             in_files, line = True, line.removeprefix("Files:")
-        elif in_files and re.match(r"[A-Za-z][A-Za-z ]*:", line):
+        elif in_files and FIELD_START.match(line):
             in_files = False
         if in_files:
             declared.update(file_entries(line))

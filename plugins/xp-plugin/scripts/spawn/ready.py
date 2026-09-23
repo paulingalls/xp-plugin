@@ -1,7 +1,6 @@
 import argparse
 import difflib
 import json
-import re
 import shlex
 import sys
 from pathlib import Path
@@ -9,7 +8,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from close import fail, git, leg, story_card, verify_commands
 from handoff import marker_path as handoff_marker_path
-from review_scope import declared_files
+from review_scope import FIELD_START, declared_files
 from work import (
     card_digest,
     card_lines,
@@ -96,7 +95,7 @@ def card_growth(reviewed: str, card: str) -> str:
             return None
         start = files[0]
         end = next(
-            (i for i in range(start + 1, len(lines)) if re.match(r"[A-Za-z][A-Za-z ]*:", lines[i])),
+            (i for i in range(start + 1, len(lines)) if FIELD_START.match(lines[i])),
             len(lines),
         )
         return set(range(start, end)), verify[0]
