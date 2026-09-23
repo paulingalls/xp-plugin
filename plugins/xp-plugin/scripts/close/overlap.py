@@ -175,7 +175,7 @@ def _receipt_matches(receipt: object, tier: str, tree: str) -> tuple[bool, str]:
         return False, "missing"
     valid = (
         isinstance(receipt, dict)
-        and set(receipt) == _RECEIPT_KEYS
+        and set(receipt) in (_RECEIPT_KEYS, _RECEIPT_KEYS | {"components"})
         and receipt.get("tier") == "full"
         and all(
             isinstance(receipt.get(key), str) and receipt[key]
@@ -184,6 +184,23 @@ def _receipt_matches(receipt: object, tier: str, tree: str) -> tuple[bool, str]:
         and receipt.get("verdict") == "passed"
         and receipt.get("ran_by") in ("start", "land")
         and isinstance(receipt.get("reused"), bool)
+        and (
+            "components" not in receipt
+            or (
+                isinstance(receipt["components"], list)
+                and bool(receipt["components"])
+                and all(
+                    isinstance(c, dict)
+                    and set(c) == {"leg", "command", "status", "head"}
+                    and all(isinstance(c[k], str) and c[k] for k in ("leg", "command", "head"))
+                    and c["status"] in ("ran", "reused")
+                    for c in receipt["components"]
+                )
+                and len({c["leg"] for c in receipt["components"]}) == len(receipt["components"])
+                and " && ".join(c["command"] for c in receipt["components"]) == receipt["command"]
+                and receipt["reused"] == all(c["status"] == "reused" for c in receipt["components"])
+            )
+        )
     )
     if not valid:
         return False, "unreadable"
@@ -219,6 +236,7 @@ def gates(
     after_full: Callable[[str], str] | None = None,
     record_attempt: Callable[[dict, dict | None], str] | None = None,
     history: list[dict] | None = None,
+    legs: list[tuple[str, str]] | None = None,
 ) -> tuple[str, dict | None]:
     """Verify and the tier, run on the tree that will EXIST. Merging INTO the story
     branch rather than in the tree holding trunk: same merged content either way,
@@ -240,6 +258,13 @@ def gates(
             )
         where = f" on the tree merged with {ref}" if pending else ""
         tier = config_block_value("tests", tier_key)
+        if legs is not None:
+            from tier_legs import declared
+
+            staged_legs, error = declared()
+            if error:
+                return error, None
+            legs = staged_legs
         if refusal := tier_refusal(tier, tier_key):
             return refusal, None
         if prior_receipt is _NO_RECEIPT:
@@ -251,6 +276,13 @@ def gates(
                 None,
             )
         tree = written.stdout.strip()
+        if legs is not None:
+            from tier_legs import run
+
+            for cmd in verify:
+                if red := run_one("Verify", cmd, where):
+                    return red, None
+            return run(legs, tier, tree, where, history or [], record_attempt, after_full)
         reusable, decision = _receipt_matches(prior_receipt, tier, tree)
         if reusable and history is not None:
             from sprint_state import LATEST_FAILED, reuse_veto

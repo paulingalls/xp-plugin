@@ -5,6 +5,7 @@ import subprocess
 import tempfile
 
 import overlap
+import tier_legs
 from env import data_root
 from falsifier_batch import ARCHIVED, batch_refusal, execute_batch, grouped_batch
 from milestone import sprint_stories
@@ -147,6 +148,11 @@ def _release_body(sprint_id: str, state: dict, marker) -> tuple[str, str]:
         + f"- Tier: {receipt['tier']}\n- Verdict: {receipt['verdict']}\n"
         + f"- Command: {receipt['command']}\n- Measured tree: {receipt['tree']}\n- Run: {run}\n"
     )
+    if "components" in receipt:
+        body += "".join(
+            f"- Leg {c['leg']}: {c['status']} {c['command']} at {c['head']}\n"
+            for c in receipt["components"]
+        )
     if len(body) > PR_BODY_LIMIT:
         return "", (
             f"refused: release PR body is {len(body)} characters; limit is {PR_BODY_LIMIT}"
@@ -286,12 +292,18 @@ def cmd_land(sprint_id: str, dry_run: bool) -> int:
     marker, state, marker_error = read_sprint_state(sprint_id)
     if marker_error:
         return fail(marker_error)
+    legs, legs_error = tier_legs.inspect(ref, pending)
+    if legs_error:
+        return fail(legs_error)
     bound = state["rounds"][-1].get(CLEARABLE_BY_FULL) or []
     if dry_run:
         full = config_block_value("tests", "full")
         if refusal := overlap.tier_refusal(full, "full"):
             return fail(_clearance_failure(refusal, bound) if bound else refusal)
         print(f"would run: {full}, unless a passed receipt matches the shipping tree and command")
+        if legs is not None:
+            for name, command in legs:
+                print(f"would run leg {name}: {command}, unless passed on this tree")
         if bound:
             print("if green, " + _clearance_notice("clears", bound))
         preview = [
@@ -322,7 +334,8 @@ def cmd_land(sprint_id: str, dry_run: bool) -> int:
             " that ships, and these files are not in it:\n  " + dirty
         )
     prior = state.get("full_tier", overlap.MISSING_RECEIPT)
-    history, history_error = read_tier_history(state)
+    declared_names = tuple(name for name, _ in legs) if legs is not None else ()
+    history, history_error = read_tier_history(state, declared_names)
     if history_error:
         return fail(
             f"refused: {history_error} in sprint marker {marker} — repair or delete"
@@ -371,13 +384,13 @@ def cmd_land(sprint_id: str, dry_run: bool) -> int:
 
     def record_attempt(event: dict, receipt: dict | None) -> str:
         try:
-            append_tier_evidence(marker, event, receipt)
+            append_tier_evidence(marker, event, receipt, declared_names)
         except (OSError, ValueError) as exc:
             return f"refused: could not persist the full tier evidence at {marker}: {exc}"
         return ""
 
     red, receipt = overlap.gates(
-        ref, [], "full", pending, prior, after_full, record_attempt, history
+        ref, [], "full", pending, prior, after_full, record_attempt, history, legs
     )
     if red:
         return fail(_clearance_failure(red, bound) if bound else red)
@@ -395,6 +408,12 @@ def cmd_land(sprint_id: str, dry_run: bool) -> int:
         f"full tier receipt {marker}: {action} {receipt['command']} on tree"
         f" {receipt['tree']}, passed at HEAD {receipt['head']}"
     )
+    if legs is not None:
+        for component in receipt["components"]:
+            print(
+                f"full tier leg {component['leg']}: {component['status']} "
+                f"{component['command']} at {component['head']}"
+            )
     if bound:
         print(_clearance_notice("cleared", bound))
     review.disclose(
