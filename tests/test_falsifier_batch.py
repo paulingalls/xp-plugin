@@ -160,6 +160,28 @@ def file_debt(repo, env, claim, command, covered_by=""):
     return result.stdout.strip()
 
 
+@pytest.mark.parametrize("mode, code", [("missing", 127), ("not_executable", 126)])
+def test_unrun_falsifier_refuses_without_filing(tmp_path, mode, code):
+    repo, env, _g = make_repo(tmp_path)
+    script = tmp_path / "check"
+    script.write_text("#!/bin/sh\nexit 0\n")
+    script.chmod(0o755)
+    ref = file_debt(repo, env, "environment command", str(script))
+    ledger = tmp_path / "data" / "work.md"
+    before = ledger.read_bytes()
+    if mode == "missing":
+        script.unlink()
+    else:
+        script.chmod(0o644)
+
+    result = sprint(repo, env, "start")
+
+    assert result.returncode == 2 and ledger.read_bytes() == before
+    assert str(script) in result.stderr and ref in result.stderr
+    assert "could not run" in result.stderr and "work.py bug" in result.stderr
+    assert f"{code}" in result.stderr
+
+
 def live_control(repo, env, tmp_path):
     """A record the batch MUST run. Every exclusion below asserts only that a
     counter did not grow, and that greens just as well against a close whose

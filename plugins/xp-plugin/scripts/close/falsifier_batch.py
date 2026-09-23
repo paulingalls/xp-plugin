@@ -1,6 +1,5 @@
 """Run the sprint-close falsifier batch and attribute failures."""
 
-import shlex
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -238,25 +237,27 @@ def batch_refusal(
         elif missing:
             malformed = "; ".join(f"{ref} has no usable Files declaration" for ref in missing)
             decision = f"No bug filed because {malformed}."
-        else:
-            commands = [falsifier for falsifier, _records, _result in red]
-            combined = (
-                commands[0]
-                if len(commands) == 1
-                else "status=0; "
-                + "; ".join(
-                    f"/bin/sh -c {shlex.quote(command)} || status=1" for command in commands
-                )
-                + '; exit "$status"'
+        elif len(red) != 1:
+            decision = "No bug filed for several red commands; triage them, then use `work.py bug`."
+        elif red[0][2].returncode in (126, 127):
+            code = red[0][2].returncode
+            decision = (
+                f"No bug filed: command could not run (exit {code});"
+                " triage it, then use `work.py bug`."
             )
+        else:
             append(
                 root,
                 f"## bug {stamp()}\nClaim: batch falsifier RED for source records "
                 f"{', '.join(refs)}; debt/archive red means the latent problem materialised.\n"
-                f"{neutralize(evidence)}\nFalsifier: `{combined}`\n"
+                f"{neutralize(evidence)}\nFalsifier: `{red[0][0]}`\n"
                 f"Files: {', '.join(files)}\n\n",
             )
             decision = "Filed as one bug."
+    if (
+        len(red) != 1 or any(result.returncode in (126, 127) for _f, _r, result in red)
+    ) and "work.py bug" not in decision:
+        decision += " Triage the commands, then use `work.py bug` if a product bug is confirmed."
     return f"refused: {evidence}\n{decision} Fix it, then run {retry} again"
 
 

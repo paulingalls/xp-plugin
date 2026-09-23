@@ -75,6 +75,7 @@ def make_repo(tmp_path, plan=PLAN, config=CONFIG):
     (repo / "src.py").write_text("A = 1\n")
     g("add", "-A")
     g("commit", "-qm", "base")
+    g("tag", "v0.2.0")
     g("checkout", "-qb", "sprint-002")
     # the sprint's own work, absent from the default branch: under `release:
     # sprint` an integration_target() diff would not carry it

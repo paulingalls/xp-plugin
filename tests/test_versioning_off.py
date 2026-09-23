@@ -89,7 +89,9 @@ def test_sprint_land_off_titles_preview_and_real_with_the_sprint_branch(tmp_path
     outputs = []
     for dry in (True, False):
         root = tmp_path / ("dry" if dry else "real")
-        repo, env, g = make_repo(root, config=CONFIG + "versioning: off\n")
+        repo, env, g = make_repo(
+            root, config=CONFIG + "versioning: off\nversion_files: does-not-exist.json\n"
+        )
         nonsemver_only(g)
         record_release(root, release_state(repo, env))
         record = release_tools(root, env, g)

@@ -12,7 +12,13 @@ def command(path, succeeds=True):
 
 
 def config(tests, coverage=(), pins=()):
-    lines = ["release: sprint", "roles:", "  reviewer: claude/opus", "tests:"]
+    lines = [
+        "release: sprint",
+        "version_files: manifest.json",
+        "roles:",
+        "  reviewer: claude/opus",
+        "tests:",
+    ]
     lines += [f"  {name}: {value}" for name, value in tests]
     if coverage:
         lines += ["tier_coverage:", *(f"  {name}: {value}" for name, value in coverage)]
