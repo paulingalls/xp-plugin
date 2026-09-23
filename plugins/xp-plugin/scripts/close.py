@@ -236,6 +236,12 @@ def _preflight(story_id: str, action: str, dry_run: bool = False) -> tuple[str, 
         verify_commands(story_id, card)
     except ValueError as e:
         return "", "", str(e)
+    if action == "review" and status == "in-progress":
+        sys.path.insert(0, str(Path(__file__).parent / "spawn"))
+        import ready
+
+        if problem := ready.drift(story_id, card):
+            return "", "", problem
     branch = git("rev-parse", "--abbrev-ref", "HEAD").stdout.strip()
     if branch in (trunk, default_branch()):
         return (

@@ -5,7 +5,7 @@ import json
 import subprocess
 import sys
 
-from close_helpers import launches, stub_reviewer
+from close_helpers import launches, mint_ready, stub_reviewer
 from diff_reference_helpers import read_named_diff
 from spawn_helpers import stub_codex
 from sprint_helpers import (
@@ -165,6 +165,7 @@ class TestReviewLeg:
             "#### sprint-2 — the colliding id   [in-progress]\nVerify: true",
         )
         repo, env, g = make_repo(tmp_path, plan=plan)
+        mint_ready(repo, env, "sprint-2")
         g("checkout", "-qb", "story-branch")
         story = subprocess.run(
             [sys.executable, str(CLOSE), "story", "sprint-2", "review"],
@@ -182,7 +183,7 @@ class TestReviewLeg:
         markers = sorted(p.name for p in (data / "markers").rglob("*.json"))
         assert story_reports == ["sprint-2.round-1.json"], story_reports
         assert sprint_reports and all(n.startswith("2.") for n in sprint_reports), sprint_reports
-        assert len(markers) == 2, f"the sprint and the story shared a marker key: {markers}"
+        assert markers == ["2.json", "sprint-2.close.json", "sprint-2.ready.json"]
         assert marker_path(tmp_path).exists()
 
     def test_the_review_leg_run_from_the_default_branch_is_refused(self, tmp_path):
