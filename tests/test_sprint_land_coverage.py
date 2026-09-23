@@ -3,6 +3,7 @@
 import json
 
 from sprint_helpers import (
+    CONFIG,
     commit_as_reviewer,
     head,
     make_repo,
@@ -13,6 +14,18 @@ from sprint_helpers import (
 
 
 class TestLandCoverage:
+    def test_a_configured_manifest_that_is_a_gate_file_cannot_be_exempt(self, tmp_path):
+        config = CONFIG.replace("manifest.json", ".xp/system.md")
+        repo, env, g = make_repo(tmp_path, config=config)
+        gate = repo / ".xp" / "system.md"
+        gate.write_text('{"version": "0.2.0"}\n')
+        g("commit", "-qam", "old gate version")
+        record_reviews(tmp_path, repo, env)
+        gate.write_text('{"version": "0.3.0"}\n')
+        g("commit", "-qam", "new gate version")
+        r = sprint(repo, env, "land", "--dry-run")
+        assert r.returncode == 2 and ".xp/system.md" in r.stderr
+
     def test_land_proceeds_once_a_round_covers_head(self, tmp_path):
         repo, env, _g = make_repo(tmp_path)
         record_reviews(tmp_path, repo, env)

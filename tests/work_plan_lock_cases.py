@@ -1,6 +1,7 @@
 """Plan-writer cases collected through test_work_plan.py."""
 
 import fcntl
+import select
 import subprocess
 import sys
 import time
@@ -191,13 +192,15 @@ class TestPlanLockRecovery:
         holder = writer(EVENT_WRITER, plan_data, acquired, release, "wait")
         assert await_path(acquired), "holder never entered the mutate"
         contender = editor(plan_data, popen=True)
-        time.sleep(0.1)
+        ready, _, _ = select.select([contender.stderr], [], [], 10)
+        assert ready, "contender never reached the held lock"
+        waiting = contender.stderr.readline()
+        assert "held" in waiting and f"pid {holder.pid}" in waiting
         assert contender.poll() is None, "contender did not wait for the held flock"
         release.write_text("go")
         _out, err = contender.communicate(timeout=30)
         assert holder.wait(30) == 0 and contender.returncode == 0, err
-        assert "held" in err and "stale" not in err
-        assert f"pid {holder.pid}" in err
+        assert "stale" not in err
         final = (plan_data / "plan.md").read_text()
         assert "story-aaa HELD" in final and "fresh.py" in final
 

@@ -47,6 +47,19 @@ class TestFreeCloseSkill:
 
 
 class TestFreeLand:
+    @pytest.mark.parametrize("preview", [(), ("--dry-run",)])
+    def test_land_refuses_unbumped_manifest_before_trial_merge(self, tmp_path, preview):
+        repo, env, g = reviewed(tmp_path)
+        manifest = repo / "plugin.json"
+        data = json.loads(manifest.read_text())
+        data["version"] = "0.2.0"
+        manifest.write_text(json.dumps(data) + "\n")
+        g("commit", "-qam", "manifest behind patch")
+        r = free(repo, env, "fix-typo", "land", *preview)
+        assert r.returncode == 2, r.stdout + r.stderr
+        assert "plugin.json" in r.stderr and "v0.2.1" in r.stderr
+        assert not gh_calls(tmp_path)
+
     @pytest.mark.slow
     def test_land_opens_the_pr_to_main_with_the_patch_bump(self, tmp_path):
         """AC 3: v0.2.0 -> v0.2.1. A free close targeting main IS a release, and
@@ -111,6 +124,11 @@ class TestFreeLand:
         g("tag", "v0.3.0")
         g("push", "-q", "origin", "main")
         g("checkout", "-q", branch)
+        manifest = repo / "plugin.json"
+        data = json.loads(manifest.read_text())
+        data["version"] = "0.3.1"
+        manifest.write_text(json.dumps(data) + "\n")
+        g("commit", "-qam", "bump from trunk patch version")
         r = free(repo, env, "fix-typo", "land")
         assert r.returncode == 0, r.stderr + r.stdout
         create = next(c for c in gh_calls(tmp_path) if c[:2] == ["pr", "create"])
