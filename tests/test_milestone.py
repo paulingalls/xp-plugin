@@ -126,7 +126,7 @@ def test_a_finished_milestone_is_not_proposed_again(tmp_path):
     reclosed = sprint(repo, env, "start")
 
     assert reclosed.returncode == 0, reclosed.stderr
-    assert "milestone" not in reclosed.stdout.lower()
+    assert "milestone" not in reclosed.stdout.split("\nTiming since ", 1)[0].lower()
     assert (
         "## Milestone 2 repeats Milestone 20   [done]"
         in (tmp_path / "data" / "plan.md").read_text()

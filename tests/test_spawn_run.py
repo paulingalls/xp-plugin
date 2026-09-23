@@ -372,7 +372,7 @@ class TestClosingLineAndLog:
         assert r.returncode == 0, r.stderr
         assert "3 turns" in r.stdout and "$0.05" in r.stdout and "1.2s" in r.stdout
 
-    def test_the_log_is_project_scoped_and_appends_under_a_header_on_respawn(self, tmp_path):
+    def test_the_log_is_project_scoped_and_rotates_on_respawn(self, tmp_path):
         repo, env, _g = make_repo(tmp_path)
         stub_claude(tmp_path)
         assert spawn(repo, env, "story-042").returncode == 0
@@ -381,7 +381,6 @@ class TestClosingLineAndLog:
         first = log.read_text()
         assert "===== spawn story-042-executor " in first
 
-        # a re-spawn after removing the first worktree appends, not truncates
         tree = tmp_path / "data" / "worktrees" / "story-042"
         subprocess.run(
             ["git", "worktree", "remove", "--force", str(tree)],
@@ -394,8 +393,11 @@ class TestClosingLineAndLog:
         plan.write_text(plan.read_text().replace("[in-progress]", "[ready]"))
         assert spawn(repo, env, "story-042").returncode == 0
         second = log.read_text()
-        assert second.startswith(first)
-        assert second.count("===== spawn story-042-executor ") == 2
+        import gzip
+
+        assert second.count("===== spawn story-042-executor ") == 1
+        with gzip.open(str(log) + ".1.gz", "rt") as archive:
+            assert archive.read() == first
 
 
 class TestFirstSpawnInAScaffoldedRepo:
@@ -446,7 +448,7 @@ class TestCodexTee:
         assert rc == 0
         assert "[item.completed] agent_message" in capsys.readouterr().out
 
-    def test_the_same_append_only_log_contract(self, tmp_path):
+    def test_the_same_rotation_contract(self, tmp_path):
         from teammate_tee import run_teammate
 
         for _ in range(2):
@@ -458,9 +460,13 @@ class TestCodexTee:
                 tmp_path / "data",
                 harness="codex",
             )
-        log = (tmp_path / "data" / "logs" / "story-042-executor.log").read_text()
-        assert log.count("===== spawn story-042-executor ") == 2, log
-        assert log.count("one-line") == 2, log
+        import gzip
+
+        log = tmp_path / "data" / "logs" / "story-042-executor.log"
+        assert log.read_text().count("===== spawn story-042-executor ") == 1
+        assert log.read_text().count("one-line") == 1
+        with gzip.open(str(log) + ".1.gz", "rt") as archive:
+            assert archive.read().count("one-line") == 1
 
     def test_a_log_write_failure_still_drains_the_codex_stream(self):
         """Same fault injection as the claude leg, through the shared drain."""

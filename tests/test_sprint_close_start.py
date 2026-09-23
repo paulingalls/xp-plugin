@@ -35,7 +35,12 @@ class TestStartIsReadOnly:
         first = sprint(repo, env, "start")
         second = sprint(repo, env, "start")
         assert first.returncode == second.returncode == 0
-        assert first.stdout == second.stdout
+        assert (
+            first.stdout.split("\nTiming since ", 1)[0]
+            == second.stdout.split("\nTiming since ", 1)[0]
+        )
+        assert first.stdout.split("\n## Retro", 1)[-1] == second.stdout.split("\n## Retro", 1)[-1]
+        assert second.stdout.count("falsifier-batch | Sprint 2 start") == 2
 
     def test_start_emits_the_retro_skeleton_and_the_digest_PROMPT(self, tmp_path):
         """Constraint 7: deterministic Python may not summarize. It emits the

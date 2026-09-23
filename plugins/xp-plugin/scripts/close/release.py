@@ -3,6 +3,7 @@
 import json
 import re
 import tempfile
+from datetime import datetime, timezone
 from pathlib import Path
 
 import lifecycle as lc
@@ -15,6 +16,7 @@ from env import (
     sprint_branch_name,
     sprint_id_value,
 )
+from timing import report
 
 
 def safe_release_id(release_id: str) -> str:
@@ -39,7 +41,9 @@ def write_release_record(release_id: str, tag: str | None) -> Path:
     try:
         with tempfile.NamedTemporaryFile("w", dir=path.parent, delete=False) as stream:
             temporary = Path(stream.name)
-            json.dump(record | {"tag": tag}, stream)
+            json.dump(
+                record | {"tag": tag, "released_at": datetime.now(timezone.utc).isoformat()}, stream
+            )
             stream.write("\n")
         temporary.replace(path)
     except OSError:
@@ -187,6 +191,7 @@ def cmd_post_merge(
         recorded_head, identity_error = recorded_release_head(state)
         if identity_error:
             return fail(f"refused: {identity_error} in {marker}")
+    cycle = ""
     head_is_merged = (
         recorded_head
         and not git("merge-base", "--is-ancestor", recorded_head, "HEAD", check=False).returncode
@@ -237,6 +242,7 @@ def cmd_post_merge(
         if retire_sprint and (red := lc.run(config_flat(lc.KEY), "sprint-close", release_id)):
             return fail(red)
         if retire_sprint:
+            cycle = report(data_root(), state.get("full_tier_history", []))
             try:
                 write_release_record(release_id, None)
             except Exception as exc:
@@ -245,6 +251,8 @@ def cmd_post_merge(
             clear_sprint_branch()
         print(VERSIONING_OFF_TEXT)
         if retire_sprint:
+            if cycle:
+                print(cycle)
             print("sprint branch cleared; open the next sprint")
         return 0
     if not (version := next_version(part)):
@@ -270,6 +278,8 @@ def cmd_post_merge(
         return 0
     if retire_sprint and (red := lc.run(config_flat(lc.KEY), "sprint-close", release_id)):
         return fail(red)
+    if retire_sprint:
+        cycle = report(data_root(), state.get("full_tier_history", []))
     if git("tag", version, check=False).returncode:
         return fail(f"refused: could not create tag {version}")
     if retire_sprint:
@@ -290,6 +300,8 @@ def cmd_post_merge(
     suffix = "; sprint branch cleared" if retire_sprint else ""
     walled = walled_text(checked, version)
     print(f"tagged {version} at {git('rev-parse', 'HEAD').stdout.strip()[:8]}{suffix}; {walled}")
+    if cycle:
+        print(cycle)
     next_step = "push the tag and open the next sprint"
     print(next_step if retire_sprint else "push the tag")
     return 0
