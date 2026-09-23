@@ -4,6 +4,7 @@ import glob
 import json
 import re
 from pathlib import Path
+from uuid import uuid4
 
 from work import data_root
 
@@ -75,6 +76,18 @@ def rotate_story(report: Path, patch: Path, launch: Path) -> list[tuple[Path, Pa
         launch.rename(destination)
         moves.append((launch, destination))
     return moves
+
+
+def archive_cancelled(report: Path, patch: Path, log: Path) -> list[Path]:
+    token = uuid4().hex[:12]
+    saved = []
+    for source in (report, patch, report.with_suffix(".diff"), log):
+        if source.exists():
+            stem = report.stem.split(".round-", 1)[0]
+            target = source.with_name(f"{stem}.CANCELLED-{token}{source.suffix}")
+            source.rename(target)
+            saved.append(target)
+    return saved
 
 
 def notice(moves: list[tuple[Path, Path]], salvage: str) -> str:

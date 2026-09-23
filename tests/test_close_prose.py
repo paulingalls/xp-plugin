@@ -93,25 +93,50 @@ class TestShippedProseMatchesTheMechanism:
         assert dirt.read_text() == "dead reviewer work\n"
 
     def test_a_moved_head_does_not_order_a_reset_over_the_lines_it_says_to_read(self, tmp_path):
-        """Both hazards at once. HEAD moving still has to be disclosed by sha — a
-        salvage that moved it silently is the worse defect — but `git reset --hard`
-        must not be the unconditional offer there: it discards the uninspected work
-        this same refusal sends the lead to read, which is the tree story-093 kept."""
         repo, env, g = make_repo(tmp_path)
         launched = g("rev-parse", "HEAD").stdout.strip()
         (repo / "lead.py").write_text("committed after the kill\n")
         g("add", "-A")
         g("-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "the lead moved HEAD")
+        (repo / "round.py").write_text("recorded round patch\n")
+        g("add", "-A")
+        g("-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "recorded round patch")
         killed_review(tmp_path, g, launched)
+        reports = tmp_path / "data" / "reports"
+        (reports / "story-042.round-2.json").write_text(
+            (reports / "story-042.round-1.json").read_text()
+        )
+        marker_file(tmp_path).write_text(
+            json.dumps({"rounds": [{"fixed": [], "blocking": [], "noted": []}]})
+        )
         dirt = repo / "uninspected.txt"
         dirt.write_text("dead reviewer work\n")
 
         recovery = close(repo, env, "salvage")
 
         assert recovery.returncode == 2 and launched[:8] in recovery.stderr, recovery.stderr
-        assert "yours to keep or undo" not in recovery.stderr, recovery.stderr
-        assert "only after reading the uncommitted lines" in recovery.stderr, recovery.stderr
+        assert "the lead moved HEAD" in recovery.stderr, recovery.stderr
+        assert "recorded round patch" in recovery.stderr, recovery.stderr
+        assert "reset --hard" not in recovery.stderr, recovery.stderr
+        assert "restoring the reviewed sha" not in recovery.stderr, recovery.stderr
+        assert "reviewer's work" not in recovery.stderr, recovery.stderr
+        assert "remove the named launch marker" in recovery.stderr.lower(), recovery.stderr
         assert dirt.read_text() == "dead reviewer work\n"
+
+    def test_clean_salvage_after_lead_commit_has_no_restore_offer(self, tmp_path):
+        repo, env, g = make_repo(tmp_path)
+        launched = g("rev-parse", "HEAD").stdout.strip()
+        (repo / "lead.py").write_text("lead work\n")
+        g("add", "-A")
+        g("-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "lead commit")
+        killed_review(tmp_path, g, launched)
+
+        recovery = close(repo, env, "salvage")
+
+        assert recovery.returncode == 2, recovery.stderr
+        assert "lead commit" in recovery.stderr, recovery.stderr
+        assert "reset --hard" not in recovery.stderr, recovery.stderr
+        assert "restoring the reviewed sha" not in recovery.stderr, recovery.stderr
 
     def test_no_verdict_token_survives_in_the_shipped_prose(self):
         for path in (

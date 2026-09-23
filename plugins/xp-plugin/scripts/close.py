@@ -376,7 +376,22 @@ def cmd_review(story_id: str, dry_run: bool = False) -> int:
     bundle = build_bundle(card, base, path, prior, notice)
     if not dry_run:
         launch.write_text(json.dumps(at))
-    result, err = review.run(bundle, Path.cwd(), dry_run, card=card, noun=at["noun"])
+    from review_cancel import cancelled
+    from teammate_tee import ReviewCancelled
+
+    try:
+        result, err = review.run(
+            bundle,
+            Path.cwd(),
+            dry_run,
+            card=card,
+            noun=at["noun"],
+            cancel=None
+            if dry_run
+            else lambda: bool(now := review.card_now(story_id)) and now != card,
+        )
+    except ReviewCancelled as stopped:
+        return cancelled(story_id, head, path, launch, stopped.log)
     if dry_run:
         return fail("refused: " + err) if err else 0
     if err:  # crash, timeout, absent binary — it may still have committed first

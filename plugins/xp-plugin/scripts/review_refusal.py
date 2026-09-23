@@ -12,8 +12,7 @@ from review_report import NO_ROUND
 def _save_dirty_patch(reviewed_head: str) -> tuple[Path | None, str]:
     path = None
     try:
-        # Bytes, not close.git: text mode folds CRLF and raises on a non-UTF-8 line,
-        # and either way the one copy the reset is about to destroy no longer applies.
+        # Bytes, not close.git: text mode folds CRLF and raises on a non-UTF-8 line.
         diff = subprocess.run(
             ["git", "diff-index", "-p", "--binary", reviewed_head, "--"],
             capture_output=True,
@@ -42,9 +41,8 @@ def _save_dirty_patch(reviewed_head: str) -> tuple[Path | None, str]:
 
 def abort_text(reviewed_head: str, why: str, recorded: str = NO_ROUND, salvage=False) -> str:
     """EVERY abort in the review leg, not only the motion checks: a refused run can still have
-    left commits behind. The undo is offered only when something actually MOVED: on an untouched
-    tree it teaches the lead to skip it on the run where it is real, and under `salvage` a merely
-    dirty tree may be the dead reviewer's uninspected work: the reset is dropped, or put behind it.
+    left commits behind. Salvage never offers an undo after HEAD moved because it
+    cannot attribute that motion to a reviewer.
     `recorded` is what became of the round: a leg that records one before refusing must not offer
     the undo under a sentence saying it did not — and the reset may be what orphans the sha.
     """
@@ -55,6 +53,21 @@ def abort_text(reviewed_head: str, why: str, recorded: str = NO_ROUND, salvage=F
     if not moved and (salvage or not dirty):
         return f"refused: {why}" if recorded == NO_ROUND else f"refused: {why}\n\n{recorded}"
     stat = git("diff", "--stat", f"{reviewed_head}..HEAD").stdout
+    if salvage and moved:
+        commits = git("log", "--format=%h %s", f"{reviewed_head}..HEAD").stdout
+        saved = ""
+        if dirty:
+            patch, error = _save_dirty_patch(reviewed_head)
+            saved = (
+                f"\nRecovery patch: {patch}"
+                if patch
+                else (f"\nRecovery patch could not be saved: {error}")
+            )
+        return (
+            f"refused: {why}\n\nCommits since launch {reviewed_head[:8]}:\n{commits}"
+            f"{stat}{saved}\nInspect the saved report and patch and these commits."
+            " Remove the named launch marker, then retry land."
+        )
     saved = ""
     if dirty:
         patch, error = _save_dirty_patch(reviewed_head)
