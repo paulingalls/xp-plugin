@@ -48,9 +48,12 @@ def run_count(events):
 @pytest.mark.parametrize("dry", [False, True])
 @pytest.mark.parametrize("declared, reason", [("0.2.0", "BEHIND"), ("0.4.0", "does not match")])
 def test_land_rejects_stale_manifest_before_tier_and_falsifier(tmp_path, dry, declared, reason):
-    repo, env, g, events, _tier = counted_repo(tmp_path)
+    # a RED tier is what makes land run a deferred falsifier: a green one trusts it
+    repo, env, g, events, _tier = counted_repo(
+        tmp_path, f"printf x >> {tmp_path / 'tier-events'}; false"
+    )
     falsifier_events = tmp_path / "falsifier-events"
-    args = ["debt", "--claim", "deferred", "--falsifier", f"touch {falsifier_events}"]
+    args = ["debt", "--claim", "deferred", "--falsifier", f"printf x >> {falsifier_events}"]
     filed = work(repo, env, *args, "--covered-by", "full", "--files", "src.py")
     assert filed.returncode == 0
     assert sprint(repo, env, "start").returncode == 0

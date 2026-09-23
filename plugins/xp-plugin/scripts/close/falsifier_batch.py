@@ -227,6 +227,12 @@ def batch_refusal(
             (f"stdout:\n{result.stdout or '(empty)'}", f"stderr:\n{result.stderr or '(empty)'}")
         )
     evidence = "\n".join(lines)
+    # 126/127 is the shell's own "not executable"/"not found": nothing was measured
+    unrun = ", ".join(
+        f"`{falsifier}` (exit {result.returncode})"
+        for falsifier, _records, result in red
+        if result.returncode in (126, 127)
+    )
     known = any(head.startswith("bug ") for _f, records, _r in red for _e, head, _c in records)
     if known:
         decision = "No bug filed because an open source bug already filed this batch."
@@ -237,14 +243,10 @@ def batch_refusal(
         elif missing:
             malformed = "; ".join(f"{ref} has no usable Files declaration" for ref in missing)
             decision = f"No bug filed because {malformed}."
+        elif unrun:
+            decision = f"No bug filed: {unrun} could not run."
         elif len(red) != 1:
-            decision = "No bug filed for several red commands; triage them, then use `work.py bug`."
-        elif red[0][2].returncode in (126, 127):
-            code = red[0][2].returncode
-            decision = (
-                f"No bug filed: command could not run (exit {code});"
-                " triage it, then use `work.py bug`."
-            )
+            decision = "No bug filed for several red commands."
         else:
             append(
                 root,
@@ -254,9 +256,7 @@ def batch_refusal(
                 f"Files: {', '.join(files)}\n\n",
             )
             decision = "Filed as one bug."
-    if (
-        len(red) != 1 or any(result.returncode in (126, 127) for _f, _r, result in red)
-    ) and "work.py bug" not in decision:
+    if unrun or len(red) != 1:
         decision += " Triage the commands, then use `work.py bug` if a product bug is confirmed."
     return f"refused: {evidence}\n{decision} Fix it, then run {retry} again"
 
