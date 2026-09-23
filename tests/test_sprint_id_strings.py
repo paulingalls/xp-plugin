@@ -60,7 +60,12 @@ def test_a_lettered_sprint_opens_releases_and_reads_back_as_released(tmp_path):
 
     assert closed.returncode == 0, closed.stderr + closed.stdout
     record = json.loads((data / "releases" / "sprint-2b-11.json").read_text())
-    assert record == {"sprint": "2b-11", "merged_sha": merged_sha, "tag": "v0.3.0"}
+    assert {key: value for key, value in record.items() if key != "released_at"} == {
+        "sprint": "2b-11",
+        "merged_sha": merged_sha,
+        "tag": "v0.3.0",
+    }
+    assert record["released_at"].endswith("+00:00")
     assert g("rev-list", "-n1", "v0.3.0").stdout.strip() == merged_sha
     assert not (data / "sprint_branch").exists()
     assert next_lines(run_recovery(repo, tmp_path).stdout) == [

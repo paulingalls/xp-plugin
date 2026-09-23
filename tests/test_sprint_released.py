@@ -4,6 +4,7 @@ import json
 import shutil
 import subprocess
 import sys
+from datetime import datetime, timezone
 
 import pytest
 from session_start_helpers import HOOK, next_lines
@@ -73,7 +74,14 @@ class TestReleaseRecord:
 
         assert result.returncode == 0, result.stderr + result.stdout
         record = json.loads(release_path(tmp_path).read_text())
-        assert record == {"sprint": 2, "merged_sha": merged, "tag": "v0.3.0"}
+        assert {k: v for k, v in record.items() if k != "released_at"} == {
+            "sprint": 2,
+            "merged_sha": merged,
+            "tag": "v0.3.0",
+        }
+        assert datetime.fromisoformat(record["released_at"]).utcoffset() == timezone.utc.utcoffset(
+            None
+        )
         assert g("rev-list", "-n1", record["tag"]).stdout.strip() == merged
         assert not (tmp_path / "data" / "sprint_branch").exists()
         self.assert_session_reads_record(repo, tmp_path)
@@ -87,11 +95,15 @@ class TestReleaseRecord:
 
         assert result.returncode == 0, result.stderr + result.stdout
         assert g("tag", "--list").stdout == tags
-        assert json.loads(release_path(tmp_path).read_text()) == {
+        record = json.loads(release_path(tmp_path).read_text())
+        assert {k: v for k, v in record.items() if k != "released_at"} == {
             "sprint": 2,
             "merged_sha": merged,
             "tag": None,
         }
+        assert datetime.fromisoformat(record["released_at"]).utcoffset() == timezone.utc.utcoffset(
+            None
+        )
         assert not (tmp_path / "data" / "sprint_branch").exists()
         self.assert_session_reads_record(repo, tmp_path)
 

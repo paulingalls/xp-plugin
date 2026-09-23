@@ -4,7 +4,8 @@ from collections import namedtuple
 import lifecycle
 import overlap
 from close import fail
-from work import edit_plan, flip_status, missing_plan_refusal, plan_path
+from timing import Span
+from work import data_root, edit_plan, flip_status, missing_plan_refusal, plan_path
 
 TERMINAL = ("[done]", "[retired]")
 Milestone = namedtuple("Milestone", "heading status block members")
@@ -72,14 +73,23 @@ def cmd_done(sprint_id, dry_run=False):
         commands = lifecycle.declared_commands(found.heading.strip(), block, label="Done when")[1]
     except ValueError as error:
         return fail(str(error))
-    for command in commands:
-        if red := overlap.run_one("Done when:", command):
+    span = Span(data_root(), "milestone", f"Sprint {sprint_id}: {found.heading.strip()}")
+    outcome = "interrupted"
+    try:
+        for command in commands:
+            if red := overlap.run_one("Done when:", command):
+                outcome = "failed"
+                return fail(red)
+        head = found.heading.strip()
+        if dry_run:
+            print(f"milestone ready: {head} (dry-run; `Done when:` RAN, status unchanged)")
+            outcome = "passed"
+            return 0
+        if red := move(sprint_id, done=True):
+            outcome = "failed"
             return fail(red)
-    head = found.heading.strip()
-    if dry_run:
-        print(f"milestone ready: {head} (dry-run; `Done when:` RAN, status unchanged)")
+        print(f"milestone done: {head}")
+        outcome = "passed"
         return 0
-    if red := move(sprint_id, done=True):
-        return fail(red)
-    print(f"milestone done: {head}")
-    return 0
+    finally:
+        span.finish(outcome)

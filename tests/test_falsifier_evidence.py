@@ -11,6 +11,14 @@ from sprint_helpers import CONFIG, make_repo, record_reviews, snapshot, sprint, 
 batch_module = sys.modules[sprint_close.resolved_offers.__module__]
 
 
+def recorded_files(root):
+    return {
+        name: blob
+        for name, blob in snapshot(root).items()
+        if not name.name.startswith("timing.jsonl")
+    }
+
+
 def file_debt(repo, env, claim, command, files="a.py"):
     result = work(repo, env, "debt", "--claim", claim, "--falsifier", command, "--files", files)
     assert result.returncode == 0, result.stderr
@@ -93,11 +101,11 @@ def test_three_commands_report_two_reds_without_filing(tmp_path):
     make_legacy_stub(repo, env, tmp_path, third[0], third[1])
     first[2].unlink()
     third[2].unlink()
-    before = snapshot(tmp_path / "data")
+    before = recorded_files(tmp_path / "data")
     result = sprint(repo, env, "start")
     expected = [(*first[:2], "FIRST_OUT", "FIRST_ERR"), (*third[:2], "THIRD_OUT", "THIRD_ERR")]
     assert result.returncode == 2 and middle.read_text() == "xx"
-    assert snapshot(tmp_path / "data") == before
+    assert recorded_files(tmp_path / "data") == before
     assert_evidence(result.stderr, expected)
     assert middle_id not in result.stderr
     assert "work.py bug" in result.stderr
@@ -114,10 +122,10 @@ def test_missing_source_files_reports_every_red_and_files_nothing(tmp_path):
     archive.write_text(archive.read_text().replace("Files: bad.py\n", ""))
     good[2].unlink()
     bad[2].unlink()
-    before = snapshot(tmp_path / "data")
+    before = recorded_files(tmp_path / "data")
     result = sprint(repo, env, "start")
     expected = [(*good[:2], "GOOD_OUT", "GOOD_ERR"), (*bad[:2], "BAD_OUT", "BAD_ERR")]
-    assert result.returncode == 2 and snapshot(tmp_path / "data") == before
+    assert result.returncode == 2 and recorded_files(tmp_path / "data") == before
     assert_evidence(result.stderr, expected)
     assert f"{bad[0]} has no usable Files" in result.stderr
     assert "Fix it, then run start again" in result.stderr
@@ -165,10 +173,10 @@ def test_the_same_multi_red_batch_files_nothing_and_reports_all_reds_every_time(
     items = [red_debt(repo, env, tmp_path, name, f"{name}_OUT", f"{name}_ERR") for name in names]
     for item in items:
         item[2].unlink()
-    before = snapshot(tmp_path / "data")
+    before = recorded_files(tmp_path / "data")
     results = [sprint(repo, env, "start") for _ in range(2)]
     assert all(result.returncode == 2 for result in results)
-    assert snapshot(tmp_path / "data") == before
+    assert recorded_files(tmp_path / "data") == before
     expected = [
         (*item[:2], f"{name}_OUT", f"{name}_ERR") for item, name in zip(items, names, strict=True)
     ]
@@ -208,9 +216,9 @@ def test_first_source_recovery_leaves_one_runnable_red_to_file(tmp_path):
     ]
     for item in items:
         item[2].unlink()
-    before = snapshot(tmp_path / "data")
+    before = recorded_files(tmp_path / "data")
     assert sprint(repo, env, "start").returncode == 2
-    assert snapshot(tmp_path / "data") == before
+    assert recorded_files(tmp_path / "data") == before
 
     items[0][2].write_text("ok")
     second = sprint(repo, env, "start")
@@ -231,9 +239,9 @@ def test_last_source_recovery_leaves_one_runnable_red_to_file(tmp_path):
     ]
     for item in items:
         item[2].unlink()
-    before = snapshot(tmp_path / "data")
+    before = recorded_files(tmp_path / "data")
     assert sprint(repo, env, "start").returncode == 2
-    assert snapshot(tmp_path / "data") == before
+    assert recorded_files(tmp_path / "data") == before
 
     items[-1][2].write_text("ok")
     still_red = sprint(repo, env, "start")
@@ -259,9 +267,9 @@ def test_a_green_batch_keeps_command_streams_silent_and_writes_nothing(tmp_path)
         for n, counter in enumerate(counters)
     ]
     root = tmp_path / "data"
-    before = snapshot(root)
+    before = recorded_files(root)
     result = sprint(repo, env, "start")
-    assert result.returncode == 0 and snapshot(root) == before
+    assert result.returncode == 0 and recorded_files(root) == before
     # NAMED, not merely counted: an unattributed duration cannot answer the one
     # question the batch's cost is measured to answer — which record is expensive.
     timed = [line for line in result.stdout.splitlines() if line.startswith("falsifier wall clock")]
@@ -419,9 +427,9 @@ def test_a_shared_red_command_names_every_source_record_once(tmp_path):
     ]
     flag.unlink()
     root = tmp_path / "data"
-    before = snapshot(root)
+    before = recorded_files(root)
     result = sprint(repo, env, "start")
-    after = snapshot(root)
+    after = recorded_files(root)
     bug = next(t for _eid, t in work_module.entries(root) if t.startswith("## bug "))
     assert result.returncode == 2, result.stdout
     for text in (result.stderr, bug):
@@ -443,8 +451,8 @@ def test_a_files_declaration_of_unknown_is_not_a_declaration(tmp_path):
     repo, env, _g = make_repo(tmp_path)
     item = red_debt(repo, env, tmp_path, "legacy", "LEGACY_OUT", "LEGACY_ERR", "unknown")
     item[2].unlink()
-    before = snapshot(tmp_path / "data")
+    before = recorded_files(tmp_path / "data")
     result = sprint(repo, env, "start")
-    assert result.returncode == 2 and snapshot(tmp_path / "data") == before
+    assert result.returncode == 2 and recorded_files(tmp_path / "data") == before
     assert f"{item[0]} has no usable Files" in result.stderr
     assert_evidence(result.stderr, [(*item[:2], "LEGACY_OUT", "LEGACY_ERR")])

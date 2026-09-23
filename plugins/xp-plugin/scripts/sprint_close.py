@@ -35,6 +35,7 @@ from review_runner import (
     slate_review_pid,
 )
 from sprint_state import read_sprint_state, sprint_marker, write_sprint_state
+from timing import Span, table
 from work import (
     config_block_value,
     data_root,
@@ -162,8 +163,15 @@ def cmd_start(sprint_id: str, dry_run: bool = False) -> int:
     tiers = config_block_value("tests")
     for notice in unavailable_coverage(records, tiers):
         print(notice)
-    results = execute_batch(standalone)
-    if red := batch_refusal(root, standalone, results):
+    span = Span(root, "falsifier-batch", f"Sprint {sprint_id} start")
+    try:
+        results = execute_batch(standalone)
+    except BaseException:
+        span.finish("interrupted")
+        raise
+    red = batch_refusal(root, standalone, results)
+    span.finish("failed" if red else "passed")
+    if red:
         return fail(red)
     if dirty := git("status", "--porcelain").stdout.strip():
         return fail(f"refused: the falsifier batch left the working tree dirty:\n  {dirty}")
@@ -187,6 +195,10 @@ def cmd_start(sprint_id: str, dry_run: bool = False) -> int:
     for text in notes:
         heading, body = record_summary(text)
         print(f"  {heading[3:]} — {body[:100]}")
+    try:
+        print("\n" + table(root, state.get("full_tier_history", [])))
+    except (OSError, ValueError, KeyError) as exc:
+        print(f"warning: timing table unavailable: {exc}", file=sys.stderr)
     print("\n" + (PLUGIN_ROOT / "templates" / "retro.md").read_text())
     print(
         "Then write the sprint digest yourself — this leg emits facts, never a"

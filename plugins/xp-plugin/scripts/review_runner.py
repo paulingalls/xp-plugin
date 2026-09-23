@@ -10,6 +10,8 @@ from pathlib import Path
 
 from close import fail
 from env import sprint_id_value
+from log_rotate import open_log
+from log_rotate import tail as log_tail
 from work import data_root
 
 POLL_SECONDS = 3
@@ -203,19 +205,32 @@ def _detach(identifier: str, kind: str, out: Path, argv: list[str]) -> tuple[int
             }
         )
     )
-    handle = open(log, "a")  # noqa: SIM115 — the detached child owns it
-    child = subprocess.Popen(
-        [sys.executable, *argv, "--_review", str(out)],
-        cwd=Path.cwd(),
-        stdout=handle,
-        stderr=subprocess.STDOUT,
-        stdin=subprocess.DEVNULL,
-        start_new_session=True,
-    )
+    log_available = True
+    try:
+        handle, lease = open_log(log)
+    except OSError as exc:
+        log_available = False
+        print(f"warning: log open failed ({exc}); continuing without it", file=sys.stderr)
+        handle, lease = open(os.devnull, "w"), None  # noqa: SIM115 — child owns it
+    try:
+        child = subprocess.Popen(
+            [sys.executable, *argv, "--_review", str(out)],
+            cwd=Path.cwd(),
+            stdout=handle,
+            stderr=subprocess.STDOUT,
+            stdin=subprocess.DEVNULL,
+            start_new_session=True,
+            pass_fds=(lease.fileno(),) if lease else (),
+        )
+    finally:
+        handle.close()
+        if lease:
+            lease.close()
     # Do not recreate a marker a fast child already removed as its success signal.
     if state := _marker_state(identifier, kind):
         marker.write_text(json.dumps(state | {"pid": child.pid}))
-    print(f"{ACTIVITY_NOUN[kind]} running (pid {child.pid}); live log: {log}", file=sys.stderr)
+    detail = f"live log: {log}" if log_available else "log unavailable"
+    print(f"{ACTIVITY_NOUN[kind]} running (pid {child.pid}); {detail}", file=sys.stderr)
     return child.pid, child
 
 
@@ -234,7 +249,7 @@ def _wait(
         if refusal := state.get("refusal"):
             return fail(refusal)
         try:
-            tail = Path(state.get("log", "")).read_text(errors="replace")[-LOG_TAIL:].strip()
+            tail = log_tail(Path(state.get("log", "")), LOG_TAIL).strip()
         except OSError:
             tail = ""
         action = state.get("next", f"run the {ACTIVITY_NOUN[kind]} again")

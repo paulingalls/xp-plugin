@@ -22,6 +22,7 @@ from release import (
 )
 from review_artifacts import story_sidecars
 from review_scope import declared_files
+from timing import Span
 
 
 def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
@@ -200,7 +201,13 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
             end="",
         )
         return 0
-    red, _receipt = overlap.gates(ref, verify, tier_key, pending)
+    span = Span(work.data_root(), "story-land-gates", f"{story_id}: trial merge, Verify and tier")
+    try:
+        red, _receipt = overlap.gates(ref, verify, tier_key, pending)
+    except BaseException:
+        span.finish("interrupted")
+        raise
+    span.finish("failed" if red else "passed")
     if red:
         return close.fail(red)
     if not free and (red := lc.run(close.config_flat(lc.KEY), "story-close", story_id)):

@@ -141,6 +141,8 @@ def review_story(tree: Path, story_id: str) -> tuple[int, dict, str]:
         )
         log = data_root() / "logs" / f"{log_id}.log"
         if log.is_file():
-            tail = log.read_text(errors="replace").strip()[-REVIEW_REFUSAL_TAIL:]
+            from log_rotate import tail as log_tail
+
+            tail = log_tail(log, REVIEW_REFUSAL_TAIL).strip()
             captured = f"{tail}\n{captured}".strip() if tail else captured
     return rc, state, captured
