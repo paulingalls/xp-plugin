@@ -4,6 +4,48 @@ Release notes started at v0.6.0; earlier entries are summarized from their
 tag and merge messages. Full detail lives in the merge history and the
 per-sprint review reports.
 
+## v0.26.0 — nothing is lost to an upgrade, a card edit or one broken container
+
+CODEX USERS: RE-REVIEW `/hooks` ONCE AFTER UPGRADING. This release rewrites all four hook
+commands. Codex records hook trust against each hook's current hash, so changed hooks are
+skipped until trusted, silently, per Codex's documented behaviour. Run `/hooks` and approve the
+xp-plugin hooks once; later upgrades that leave the commands unchanged need nothing.
+
+A PLUGIN UPGRADE NO LONGER BREAKS A LIVE SESSION'S HOOKS (#121). A session fixes the plugin
+root to one versioned cache directory. When an upgrade deletes it, every hook used to fail with
+`can't open file`, and Codex reported the Stop and PostToolUse hooks as BLOCKED, so the
+session stalled at every turn. Each hook command now runs its own script while its root exists.
+If the root is gone, it runs the same script from the newest installed version that has it
+(numeric version order) and says so on stderr. The script's stdout and exit status reach the
+harness unchanged. With no usable version it exits 0 with a message. Walked on codex-cli
+0.155.1: a session pinned to one version had that version deleted and replaced mid-turn, and
+every hook still completed; the same walk on v0.25.0's commands reproduced the failure.
+
+A CARD EDIT NO LONGER THROWS AWAY A FINISHED REVIEW (#113). A story or free review whose card
+changes while its reviewer runs is stopped within seconds instead of at the end. It records no
+round (a cancelled review covered nothing), says CANCELLED and why, and keeps what the reviewer
+left under a cancelled name. A clean, unmoved tree clears its launch marker, so land is not
+blocked; if the reviewer left the tree dirty or moved HEAD, the marker stays and land refuses
+until salvage. The watcher cancels only when two reads agree on a readable, different card, so
+an editor's half-written plan never cancels a review. Plan reviews and planners are never
+cancelled.
+
+SALVAGE NO LONGER OFFERS A RESET OVER WORK IT DID NOT DO (#123). Once HEAD has moved past a
+review's launch head, salvage offers no `git reset --hard` or restore of that head in any
+wording, no longer calls the range "the reviewer's work", and names the commits in range with
+the recovery: inspect the saved report and patch, remove the named launch marker, re-run land.
+
+LAND CHECKS THE RELEASE VERSION FIRST (#119). A versioned project's manifest that is stale or
+does not match the next tag now refuses at `land`, before any falsifier or full-tier command
+runs, in `--dry-run` too — not at post-merge. `versioning: off` still never consults
+`version_files`.
+
+ONE BROKEN ENVIRONMENT NO LONGER FILES A BUG (#120). The sprint falsifier batch files a bug
+record only when exactly one distinct command reds and it actually ran. Several reds together,
+or a command that could not run (exit 126 or 127), still REFUSE with every command's output and
+every source record, file nothing, and name `work.py bug` for the lead to file after triage. The
+combined multi-command bug record is gone.
+
 ## v0.25.0 — the close wall: run the expensive proof once, and never buy an answer twice
 
 UPGRADING MOVES THE FULL TIER. `close.py sprint <id> start` no longer runs the full tier
