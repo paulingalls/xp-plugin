@@ -90,7 +90,7 @@ def test_round_two_bundle_carries_round_one_findings(tmp_path):
 def test_dead_slate_reviewers_do_not_satisfy_the_two_round_cap(tmp_path):
     repo, env = slate_repo(tmp_path)
     binary = tmp_path / "bin" / "claude"
-    stub_slate_reviewer(tmp_path)  # dies AFTER writing findings — the burnable shape
+    stub_slate_reviewer(tmp_path, findings="## story-042 — GREEN\n")
     binary.write_text(
         binary.read_text().replace("print(json.dumps(", "sys.exit(9)\nprint(json.dumps(")
     )
