@@ -250,7 +250,7 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
         for command in pr_cmds:
             result = subprocess.run(command, capture_output=True, text=True)
             if result.returncode:
-                return close.fail(f"{command[0]} failed: {result.stderr.strip()}")
+                return bookkeep.refuse_command(command, result)
         print(bookkeep.render_noted(rounds), end="")
         target = f" for {version}" if version else ""
         print(f"PR open against {trunk}{target}. After it merges: `close.py {noun} post-merge`")
@@ -267,7 +267,7 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
         for c in pr_cmds:
             r = subprocess.run(c, capture_output=True, text=True)
             if r.returncode != 0:
-                return close.fail(f"{c[0]} failed: {r.stderr.strip()}")
+                return bookkeep.refuse_command(c, r)
         if held:
             os.chdir(held)
     else:
@@ -278,6 +278,7 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
                 f"cannot check out {trunk} to merge into: {left.stderr.strip()}"
                 " — clear that, then run land again"
             )
+        before_merge = close.git("rev-parse", "HEAD").stdout.strip()
         merged = close.git("merge", "--no-ff", branch, "-m", message, check=False)
         if merged.returncode != 0:
             unmerged = close.git("diff", "--name-only", "--diff-filter=U", check=False)
@@ -298,6 +299,8 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
 
     print(bookkeep.render_noted(rounds), end="")
     failed = []
+    dependencies = []
+    retry = ""
     if files:
         overlap.report_merge(story_id, files)
     if merge_mode == "pr":
@@ -317,6 +320,17 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
             if pushed.returncode != 0:
                 why = (pushed.stderr or pushed.stdout).strip().replace("\n", " ")
                 failed.append(f"git push origin {trunk} — {why[-300:]}")
+                changed_by_merge = close.git(
+                    "-c",
+                    "core.quotepath=off",
+                    "diff",
+                    "--no-renames",
+                    "--name-only",
+                    before_merge,
+                    "HEAD",
+                ).stdout.splitlines()
+                dependencies = bookkeep.dependency_paths(changed_by_merge)
+                retry = f"git push origin {trunk}"
     else:
         for c in pr_bookkeep:
             if subprocess.run(c, capture_output=True, text=True).returncode != 0:
@@ -327,7 +341,7 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
     bookkeep.delete_story_markers(story_id)
     bookkeep.log_close(story_id, card, rounds, merge_sha, files_beyond_map)
     marker.unlink()
-    if bookkeep.report_incomplete(failed):
+    if bookkeep.report_incomplete(failed, dependencies, str(Path.cwd()), retry):
         return 3
     print(
         f"{story_id} closed. REPLACE the session digest (you are its sole writer);"
