@@ -4,6 +4,22 @@ Release notes started at v0.6.0; earlier entries are summarized from their
 tag and merge messages. Full detail lives in the merge history and the
 per-sprint review reports.
 
+## v0.29.2 — a one-file card's executor is no longer sent to a plan that does not exist
+
+No action needed on upgrade: the hook commands are unchanged.
+
+A ONE-FILE CARD'S EXECUTOR NO LONGER STOPS ON A MISSING PLAN (#133). Spawn skips the planner and
+plan review for a card with one `Files:` entry, but the executor brief still told it to re-read
+the reviewed plan at a path that was never written, and a literal executor handed back as blocked
+on absent authority. A one-file card's brief now says there is no execution plan by design and the
+card is the authority; a multi-file card's brief still names the reviewed plan. The brief also says
+story close, review and land belong to the lead, so an executor stops after its green commit.
+
+A MOVED PLUGIN ROOT KEEPS THE RECOVER COMMAND. When the plugin root moved, SessionStart shortened
+the banner to fit the move notice under Codex's output budget and dropped `recover:` with it. The
+shortened banner now keeps `recover: session_start.py recover`; the move notice names the new root
+the script lives under.
+
 ## v0.29.1 — a slate reviewer that dies after its verdict has spent its round
 
 No action needed on upgrade: the hook commands are unchanged.

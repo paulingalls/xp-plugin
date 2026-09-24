@@ -245,5 +245,9 @@ class TestPlanEditsInPlace:
             assert draft.read_bytes() == before
 
     def test_the_teammate_is_told_to_reread_the_plan(self):
-        teammate = (PLUGIN / "EXECUTOR.md").read_text().lower()
+        import spawn
+
+        teammate = dict(spawn.teammate_sections("card", "story-042", "", PLUGIN, multifile=True))[
+            "How you work"
+        ].lower()
         assert "re-read" in teammate and "reviewed plan" in teammate
