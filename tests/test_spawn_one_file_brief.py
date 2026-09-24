@@ -87,3 +87,15 @@ raise SystemExit(spawn.main())
     assert "Predecessor handback" in prompt
     assert "REBUILT AFTER STAGES" in prompt
     assert_authority(prompt, not change_to_one, Path(env["XP_DATA"]))
+
+
+def test_multi_file_respawn_without_replan_inherits_the_reviewed_plan(tmp_path):
+    repo, env, _g = make_repo(tmp_path, files="src/thing.py, src/other.py")
+    events = stub_stages(tmp_path, blocking_diff=True)
+    assert spawn(repo, env, "story-042").returncode != 0
+    before = len(events.read_text().splitlines())
+    spawn(repo, env, "resume", "story-042")
+    resumed = [json.loads(line) for line in events.read_text().splitlines()[before:]]
+    assert [e["role"] for e in resumed][:1] == ["teammate"], "the resume replanned"
+    draft = Path(env["XP_DATA"]) / "plans/story-042.plan.md"
+    assert f"Predecessor plan draft\n\n{draft.resolve()}" in resumed[0]["prompt"]

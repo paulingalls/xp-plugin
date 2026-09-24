@@ -439,7 +439,8 @@ class TestTheProfileCarriesTheInvocation:
         assert not draft.exists()
         tree = Path(env["XP_DATA"]) / "worktrees" / "story-042"
         assert not draft.is_relative_to(tree)
-        # The external directory is available even when this one-file card has no plan.
+        # spawn must MAKE it: the planner writes before plan_review.py, and a shell
+        # redirect into a missing directory sends it back to the worktree.
         assert draft.parent.is_dir(), draft
         draft.write_text("SURVIVES-UNWIND\n")
         assert g("worktree", "remove", "--force", str(tree)).returncode == 0

@@ -200,17 +200,7 @@ class BannerCases:
             result = run()
             script = plugin / "scripts/session_start.py"
             current = script.read_text()
-            full = current.replace(
-                'delimiter = " · scripts: " if display_path(PLUGIN_ROOT) in environment '
-                'else " · recover: "',
-                'delimiter = " · recover: "',
-            ).replace(
-                "heading = heading.replace(\n"
-                '                " · scripts: ", " · recover: session_start.py recover'
-                ' · scripts: ", 1\n'
-                "            )",
-                "pass",
-            )
+            full = current.replace("    if refresh:", "    if False:", 1)
             assert full != current
             script.write_text(full)
             (data / "env.json").write_text(json.dumps({"plugin_root": "/" + "x" * 400}))
