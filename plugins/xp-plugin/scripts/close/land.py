@@ -23,6 +23,7 @@ from release import (
     version_refusal,
     versioning_mode,
 )
+from repair import land_red_path
 from review_artifacts import story_sidecars
 from review_scope import declared_files
 from timing import Span
@@ -230,8 +231,28 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
         )
         return 0
     span = Span(work.data_root(), "story-land-gates", f"{story_id}: trial merge, Verify and tier")
+    land_red = land_red_path(story_id)
+
+    def record_red(kind: str, red: str) -> str:
+        try:
+            land_red.write_text(
+                json.dumps(
+                    {
+                        "head": head,
+                        "kind": kind,
+                        "red": red,
+                        "round_index": len(rounds),
+                        "digest": review.marker_digest(marker),
+                        "card": card,
+                    }
+                )
+            )
+        except OSError as exc:
+            return f"refused: could not record land red at {land_red}: {exc} — run land again"
+        return f"{red} — fix it, commit, then run `close.py {noun} repair`"
+
     try:
-        red, _receipt = overlap.gates(ref, verify, tier_key, pending)
+        red, _receipt = overlap.gates(ref, verify, tier_key, pending, measured_red=record_red)
     except BaseException:
         span.finish("interrupted")
         raise
@@ -251,6 +272,7 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
             result = subprocess.run(command, capture_output=True, text=True)
             if result.returncode:
                 return bookkeep.refuse_command(command, result)
+        land_red.unlink(missing_ok=True)
         print(bookkeep.render_noted(rounds), end="")
         target = f" for {version}" if version else ""
         print(f"PR open against {trunk}{target}. After it merges: `close.py {noun} post-merge`")
@@ -341,6 +363,7 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
     bookkeep.delete_story_markers(story_id)
     bookkeep.log_close(story_id, card, rounds, merge_sha, files_beyond_map)
     marker.unlink()
+    land_red.unlink(missing_ok=True)
     if bookkeep.report_incomplete(failed, dependencies, str(Path.cwd()), retry):
         return 3
     print(

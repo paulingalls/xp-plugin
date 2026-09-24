@@ -46,6 +46,8 @@ def _render_rounds(rounds: list[dict], story_id: str = "") -> str:
             if story_id:
                 items = review.cap_display(items, Path(f"reports/{story_id}.round-{i}.json"))
             out += [f"  {k}: {item}" for item in items]
+        repairs = ([r["repair"]] if "repair" in r else []) + r.get("repairs", [])
+        out += [f"  repair: {item['range']}" for item in repairs]
     return "\n".join(out)
 
 

@@ -9,6 +9,10 @@ from review_artifacts import story_sidecars
 from review_scope import declared_files
 
 
+def land_red_path(story_id: str):
+    return close.marker_path(story_id).with_name(f"{story_id}.land-red.json")
+
+
 def cmd_repair(story_id: str) -> int:
     noun = close.leg(story_id)[0]
     retry = f"`close.py {noun} repair`"
@@ -20,8 +24,18 @@ def cmd_repair(story_id: str) -> int:
         return close.fail(err)
     launch = review.launch_marker(story_id)
     if not launch.exists():
+        land_red = land_red_path(story_id)
+        if land_red.exists():
+            return repair_land_red(story_id, card, land_red, noun, rereview)
+        recorded = close.marker_path(story_id).exists()
+        state = (
+            "a recorded round consumed its launch marker; only a review-time"
+            " Verify red or land-time Verify/tier red can be repaired"
+            if recorded
+            else "no round has been recorded yet"
+        )
         return close.fail(
-            f"refused: no launch marker at {launch}; nothing to repair — run {rereview}"
+            f"refused: no launch marker at {launch}; {state}; nothing to repair — run {rereview}"
         )
     try:
         at = json.loads(launch.read_text())
@@ -140,4 +154,89 @@ def cmd_repair(story_id: str) -> int:
         f"recorded round {review.round_number(path)}; land prints the repair"
         f" {verified[:8]}..{head[:8]} as unreviewed — next: `close.py {noun} land`"
     )
+    return 0
+
+
+def repair_land_red(story_id: str, card: str, land_red, noun: str, rereview: str) -> int:
+    try:
+        at = json.loads(land_red.read_text())
+        if not isinstance(at, dict):
+            raise ValueError("expected a JSON object")
+    except (OSError, UnicodeError, ValueError) as exc:
+        return close.fail(
+            f"refused: unreadable land-red record {land_red} ({exc}) — run {rereview}"
+        )
+    if queued := story_sidecars(story_id):
+        return close.fail(
+            f"refused: queued review sidecar(s) {', '.join(map(str, queued))} — run {rereview}"
+        )
+    if at.get("card") != card:
+        return close.fail(f"refused: card changed since land red — run {rereview}")
+    marker = close.marker_path(story_id)
+    try:
+        state = json.loads(marker.read_text())
+        rounds = state["rounds"]
+        if not isinstance(rounds, list):
+            raise ValueError("rounds must be a list")
+    except (OSError, UnicodeError, ValueError, KeyError, TypeError) as exc:
+        return close.fail(f"refused: unreadable close marker {marker} ({exc}) — run {rereview}")
+    position = at.get("round_index")
+    if (
+        not isinstance(position, int)
+        or isinstance(position, bool)
+        or position != len(rounds)
+        or not rounds
+        or review.marker_digest(marker) != at.get("digest")
+    ):
+        return close.fail(f"refused: close ledger changed since land red — run {rereview}")
+    round_ = rounds[-1]
+    if not isinstance(round_, dict) or round_.get("blocking") or round_.get("incomplete"):
+        return close.fail(f"refused: latest review round is unusable or blocking — run {rereview}")
+    round_file = round_.get("round_file", position)
+    if not isinstance(round_file, int) or isinstance(round_file, bool) or round_file < 1:
+        return close.fail(f"refused: latest review round is unusable — run {rereview}")
+    report, err = review.read_report(review.report_path(story_id, round_file))
+    if err or report.get("blocking"):
+        return close.fail(f"refused: review report is unusable or blocking — run {rereview}")
+    red_head = at.get("head")
+    head = close.git("rev-parse", "HEAD").stdout.strip()
+    if (
+        not isinstance(red_head, str)
+        or not red_head
+        or at.get("kind") not in ("Verify", "test tier")
+        or not isinstance(at.get("red"), str)
+        or not at["red"]
+        or close.git("merge-base", "--is-ancestor", red_head, head, check=False).returncode
+    ):
+        return close.fail(f"refused: HEAD does not contain the recorded red head — run {rereview}")
+    base, shown = round_.get("review_base"), round_.get("shown_sha")
+    if not isinstance(base, str) or not isinstance(shown, str) or not base or not shown:
+        return close.fail(f"refused: latest round lacks reviewed scope — run {rereview}")
+    if close.git("merge-base", "--is-ancestor", base, shown, check=False).returncode:
+        return close.fail(f"refused: latest round has invalid reviewed scope — run {rereview}")
+    paths = sorted(overlap._files(f"{red_head}..{head}"))
+    if not paths:
+        return close.fail(
+            f"refused: HEAD's tree equals the red head; no repair delta — run {rereview}"
+        )
+    bad = sorted(set(paths) - (overlap._files(f"{base}..{shown}") | declared_files(card)))
+    gates = sorted(set(paths) & set(overlap.GATE_FILES))
+    if bad or gates:
+        listed = ", ".join(sorted(set(bad + gates)))
+        return close.fail(
+            f"refused: repair changed out-of-bound or gate paths: {listed} — run {rereview}"
+        )
+    repair = {"range": f"{red_head}..{head}", "paths": paths, "gate": at["kind"], "red": at["red"]}
+    if "repair" in round_:
+        round_.setdefault("repairs", []).append(repair)
+    else:
+        round_["repair"] = repair
+    try:
+        marker.write_text(json.dumps(state))
+        land_red.unlink()
+    except OSError as exc:
+        return close.fail(
+            f"refused: could not record repair ({exc}) — run `close.py {noun} repair` again"
+        )
+    print(f"recorded land-red repair {repair['range']}; next: `close.py {noun} land`")
     return 0
