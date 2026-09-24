@@ -23,6 +23,7 @@ from release import (
     version_refusal,
     versioning_mode,
 )
+from repair import land_red_path
 from review_artifacts import story_sidecars
 from review_scope import declared_files
 from timing import Span
@@ -230,7 +231,7 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
         )
         return 0
     span = Span(work.data_root(), "story-land-gates", f"{story_id}: trial merge, Verify and tier")
-    land_red = marker.with_name(f"{story_id}.land-red.json")
+    land_red = land_red_path(story_id)
 
     def record_red(kind: str, red: str) -> str:
         try:

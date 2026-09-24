@@ -9,6 +9,10 @@ from review_artifacts import story_sidecars
 from review_scope import declared_files
 
 
+def land_red_path(story_id: str):
+    return close.marker_path(story_id).with_name(f"{story_id}.land-red.json")
+
+
 def cmd_repair(story_id: str) -> int:
     noun = close.leg(story_id)[0]
     retry = f"`close.py {noun} repair`"
@@ -20,7 +24,7 @@ def cmd_repair(story_id: str) -> int:
         return close.fail(err)
     launch = review.launch_marker(story_id)
     if not launch.exists():
-        land_red = close.marker_path(story_id).with_name(f"{story_id}.land-red.json")
+        land_red = land_red_path(story_id)
         if land_red.exists():
             return repair_land_red(story_id, card, land_red, noun, rereview)
         recorded = close.marker_path(story_id).exists()

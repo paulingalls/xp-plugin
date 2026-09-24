@@ -72,12 +72,20 @@ def test_land_red_repair_merges_on_existing_round(tmp_path, kind):
     commit(g, repo, "src/thing.py", "A = 2\nfixed = True\n")
     repaired = close(repo, env, "repair")
     assert repaired.returncode == 0, repaired.stderr
+    assert not record.exists()
     repair_range = marker(tmp_path)["rounds"][0]["repair"]["range"]
     landed = close(repo, env, "land")
     assert landed.returncode == 0, landed.stderr
     assert repair_range in g("show", "-s", "--format=%B", "main").stdout
     assert len(launches(tmp_path)) == 1
     assert not record.exists()
+
+
+def test_green_land_without_repair_clears_the_record(tmp_path):
+    repo, env, _g = land_red(tmp_path, "Verify")
+    (tmp_path / "land-phase").unlink()
+    assert close(repo, env, "land").returncode == 0
+    assert not (tmp_path / "data/markers/story-042.land-red.json").exists()
 
 
 def test_land_red_repair_rejects_outside_review_and_files(tmp_path):
