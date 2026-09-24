@@ -29,10 +29,25 @@ DOC = "The plan-review credential: minted from [planned], amended only with a re
 def refresh_instruction(story_id: str) -> str:
     script = str(Path(__file__).parent.parent / "slate_review.py")
     command = shlex.join(["python3", script, story_id, "--refresh"])
-    return (
-        f"Finish all card edits. Refresh once: Run `{command}`. Then run"
-        f" `spawn.py ready {story_id}`."
+    return f"Finish all card edits. Refresh once: Run `{command}`. Then {refresh_next(story_id)}"
+
+
+def refresh_next(story_id: str, changed: bool | None = None) -> str:
+    try:
+        _card, status = story_card(plan_path().read_text(), story_id)
+    except (KeyError, OSError):
+        status = "planned"
+    if status != "ready":
+        return f"run `spawn.py ready {story_id}`."
+    spawn = f"run `spawn.py {story_id}`"
+    amend = (
+        f"run `spawn.py amend {story_id} --reason '<why this declaration changed>'`, then {spawn}"
     )
+    if changed is True:
+        return amend + "."
+    if changed is False:
+        return spawn + "."
+    return f"if the card is unchanged, {spawn}; if it changed, {amend}."
 
 
 def spawned(story_id: str) -> bool:

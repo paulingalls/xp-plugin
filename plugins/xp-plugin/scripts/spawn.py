@@ -224,6 +224,12 @@ def cmd_spawn(story_id: str, override: str, dry_run: bool, resuming: bool = Fals
     except ValueError as error:
         repair = ready().AMEND.format(story_id)
         return fail(f"refused: {error}. Repair the Files line in {plan_path()}. {repair}")
+    if (
+        not resuming
+        and not leg(story_id)[1]
+        and (problem := ready().check_refresh(story_id, card, require_digest=False))
+    ):
+        return fail(problem)
     harness, model, effort = resolve_role("executor", card, override)
     sandbox, problem = resolve_codex_sandbox(harness, config_flat("codex_sandbox"))
     if problem:
