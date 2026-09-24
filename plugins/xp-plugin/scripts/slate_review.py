@@ -116,7 +116,8 @@ def _run_review(sprint_id: str, out: Path, dry_run: bool) -> int:
     if dry_run:
         return fail("refused: " + error) if error else 0
 
-    # A dead reviewer spends a round only if it left a complete verdict to judge.
+    # A dead reviewer spends a round only if it left a complete verdict to judge; any
+    # other dead round counted would let two of them lock the slate out of its review.
     def refused(message: str) -> int:
         return fail(message + archive_failed_findings(out))
 
@@ -131,6 +132,10 @@ def _run_review(sprint_id: str, out: Path, dry_run: bool) -> int:
         findings = ""
     if error:
         if _complete_verdict(cards, findings):
+            error += (
+                f"\nits complete verdict at {out.resolve()} spent this round — judge those"
+                " findings before reviewing again"
+            )
             marker = review_marker(sprint_id, "slate")
             marker.write_text(
                 json.dumps(

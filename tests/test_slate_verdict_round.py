@@ -32,6 +32,7 @@ def test_dead_reviewer_with_complete_verdict_spends_round_and_reports_error(tmp_
     rounds, marker = artifacts(env)
     assert result.returncode == 2
     assert "exit" in result.stderr.lower() and "9" in result.stderr
+    assert "sprint-1.round-1.md spent this round" in result.stderr
     assert (rounds / "sprint-1.round-1.md").read_text().startswith("## story-042 — GREEN")
     assert not list(rounds.glob("*.failed-*.md"))
     assert not marker.exists()
