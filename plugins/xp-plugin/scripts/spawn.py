@@ -22,6 +22,10 @@ from close import config_flat, config_has, fail, git, integration_target, leg, s
 from handback import tree_state, unclean_teammate_result
 from handoff import draft_path, handoff_state, inheritance, mark_handoff, mark_stage, report_handoff
 from harness import HARNESS_INSTALL, agent_argv, missing_harness, resolve_codex_sandbox
+from prompt import _read as _read
+from prompt import _read_shipped as _read_shipped
+from prompt import build_prompt
+from prompt import teammate_sections as _teammate_sections
 from review_scope import declared_files
 from role_config import card_role, config_role
 from teammate_tee import AGENT_TIMEOUT_DEFAULT, run_stream, run_teammate
@@ -107,45 +111,15 @@ def resolve_role(role: str, card: str = "", override: str = "") -> tuple[str, st
     return harness, model, effort
 
 
-def build_prompt(sections: list[tuple[str, str]]) -> str:
-    return "\n".join(f"## {title}\n\n{body}\n" for title, body in sections)
-
-
 def teammate_sections(
-    card: str, story_id: str, handoff: str, plugin_root: Path, brief: str | None = None
+    card: str,
+    story_id: str,
+    handoff: str,
+    plugin_root: Path,
+    brief: str | None = None,
+    multifile: bool = True,
 ) -> list[tuple[str, str]]:
-    brief = _read_shipped(PLUGIN_ROOT / "EXECUTOR.md") if brief is None else brief
-    sections = [
-        ("VALUES", _read_shipped(PLUGIN_ROOT / "VALUES.md")),
-        ("JUDGMENT", _read_shipped(PLUGIN_ROOT / "JUDGMENT.md")),
-        # the escalation command must be runnable: work.py is not on PATH, and
-        # spawn inlines this as raw prompt text, so ${CLAUDE_PLUGIN_ROOT} would
-        # arrive literal. A teammate hitting "command not found" guesses instead.
-        (
-            "How you work",
-            brief.replace("{PLUGIN_ROOT}", str(plugin_root)).replace(
-                "{PLAN_PATH}", str(draft_path(data_root(), story_id))
-            ),
-        ),
-        ("Your story card", card),
-        ("Constraints", _read(Path(".xp/constraints.md"))),
-    ]
-    if handoff:
-        sections.append(("Predecessor handoff", handoff))
-    return sections
-
-
-def _read(path: Path) -> str:
-    """Project-owned files: a consuming project may legitimately lack them."""
-    return path.read_text() if path.exists() else f"(missing: {path})"
-
-
-def _read_shipped(path: Path) -> str:
-    """Plugin-owned prose: absence is a broken install, not a project variation.
-    Soft-reading it hands the teammate "(missing: ...)" as its VALUES section."""
-    if not path.exists():
-        raise SystemExit(fail(f"refused: {path} is missing — the plugin install is broken"))
-    return path.read_text()
+    return _teammate_sections(card, story_id, handoff, plugin_root, PLUGIN_ROOT, brief, multifile)
 
 
 def run_agent(
@@ -262,10 +236,12 @@ def cmd_spawn(story_id: str, override: str, dry_run: bool, resuming: bool = Fals
     trunk = integration_target()
     free_ref = False
     inherited_state = handoff_state(data_root(), story_id)
-    handoff = inheritance(data_root(), story_id)
+    handoff = inheritance(data_root(), story_id, multifile=multifile)
     if resuming and tree.is_dir():
         handoff += resume().inherited_evidence(tree, trunk)
-    prompt = build_prompt(teammate_sections(card, story_id, handoff, PLUGIN_ROOT))
+    prompt = build_prompt(
+        teammate_sections(card, story_id, handoff, PLUGIN_ROOT, multifile=multifile)
+    )
     report, warning = profile_report(card, prompt, handoff)
     print(report)
     if warning:
@@ -417,10 +393,12 @@ def cmd_spawn(story_id: str, override: str, dry_run: bool, resuming: bool = Fals
     # renamed away, so a replan must rebuild it — from the state CAPTURED before
     # mark_handoff, since re-reading now would label this very run the predecessor.
     if replan:
-        handoff = inheritance(data_root(), story_id, inherited_state)
+        handoff = inheritance(data_root(), story_id, inherited_state, multifile=multifile)
         if resuming and tree.is_dir():
             handoff += resume().inherited_evidence(tree, trunk)
-        prompt = build_prompt(teammate_sections(card, story_id, handoff, PLUGIN_ROOT))
+        prompt = build_prompt(
+            teammate_sections(card, story_id, handoff, PLUGIN_ROOT, multifile=multifile)
+        )
     rc = run_teammate(argv, tree, prompt, story_id, data_root(), harness)
     outcome = "terminal-stop" if rc == 0 else "harness-death"
     executor_log = data_root() / "logs" / f"{story_id}-executor.log"

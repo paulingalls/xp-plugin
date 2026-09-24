@@ -461,6 +461,10 @@ def main(data: dict) -> int:
         delimiter = " · scripts: " if display_path(PLUGIN_ROOT) in environment else " · recover: "
         _before, field, invocation = heading.partition(delimiter)
         heading = heading.partition(" · ")[0] + field + invocation
+        if delimiter == " · scripts: ":
+            heading = heading.replace(
+                " · scripts: ", " · recover: session_start.py recover · scripts: ", 1
+            )
     regions = [
         ("banner", heading),
         ("config notice", safe(lambda: config_age(root))),

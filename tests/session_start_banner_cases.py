@@ -10,7 +10,7 @@ import tempfile
 from pathlib import Path
 
 from session_start import OUTPUT_CAP
-from session_start_helpers import HOOK, run_hook, run_recovery, xp_repo
+from session_start_helpers import BUDGET_WARNING, HOOK, run_hook, run_recovery, xp_repo
 
 
 def banner_line(output):
@@ -24,7 +24,7 @@ def banner_recovery_executable(output):
 
 def banner_scripts_directory(output):
     first = output.splitlines()[0]
-    if " · recover: " in first:
+    if " · recover: python3 " in first:
         return banner_recovery_executable(output).parent
     notice = next(line for line in output.splitlines() if "plugin root moved from" in line)
     return Path(ast.literal_eval(notice.rpartition(" to ")[2])).expanduser() / "scripts"
@@ -150,10 +150,84 @@ class BannerCases:
             assert invoked.returncode == 0 and invoked.stdout.strip() == str(probe)
             outputs.append(result.stdout)
         assert " · recover: python3 ~/" in outputs[0]
-        assert " · recover: " not in outputs[1].splitlines()[0]
+        assert " · recover: session_start.py recover" in outputs[1].splitlines()[0]
         assert "plugin root moved from '~/plugin one' to '~/plugin moved'" in outputs[1]
+        ran = run_banner_script(outputs[1], repo, home, "session_start.py recover")
+        assert ran.returncode == 0 and "branch:" in ran.stdout, ran.stderr
         recorded = json.loads((data / "env.json").read_text())
         assert recorded["plugin_root"] == str(home / "plugin moved")
+
+    def test_moved_banner_keeps_whole_constraints_at_path_envelope(self, tmp_path):
+        from profile_output import ENVIRONMENT_NOTICE_CAP
+
+        repo, _g = xp_repo(tmp_path)
+        base = Path(tempfile.mkdtemp(prefix="xp-wall-", dir="/tmp"))
+
+        def padded(parent, name, size):
+            extra = size - len(str(parent / name))
+            assert extra >= 0
+            return parent / (name + "d" * extra)
+
+        home = padded(base, "h", 70 - len("/.xp/data/" + "0" * 12))
+        plugin = padded(home, "p", 110)
+        data = home / ".xp/data" / ("0" * 12)
+        assert len(str(plugin)) == 110 and len(str(data)) == 70
+        plugin.parent.mkdir(parents=True)
+        shutil.copytree(HOOK.parent.parent, plugin)
+        data.mkdir(parents=True)
+        constraints = "".join(f"{n}. **Rule {n}**\n" for n in range(1, 16))
+        constraints += "x" * (4_500 - len(constraints))
+        (repo / ".xp/constraints.md").write_text(constraints)
+        (repo / ".xp/config.yml").write_text((plugin / "templates/config.yml").read_text())
+        (data / "env.json").write_text(json.dumps({"plugin_root": "/" + "x" * 400}))
+
+        def run():
+            return subprocess.run(
+                [sys.executable, str(plugin / "scripts/session_start.py")],
+                input=json.dumps({"session_id": "moved"}),
+                cwd=repo,
+                capture_output=True,
+                text=True,
+                env={
+                    "PATH": "/usr/bin:/bin",
+                    "HOME": str(tmp_path),
+                    "XP_DATA": str(data),
+                    "XP_ROLE": "lead",
+                },
+            )
+
+        try:
+            result = run()
+            script = plugin / "scripts/session_start.py"
+            current = script.read_text()
+            full = current.replace(
+                'delimiter = " · scripts: " if display_path(PLUGIN_ROOT) in environment '
+                'else " · recover: "',
+                'delimiter = " · recover: "',
+            ).replace(
+                "heading = heading.replace(\n"
+                '                " · scripts: ", " · recover: session_start.py recover'
+                ' · scripts: ", 1\n'
+                "            )",
+                "pass",
+            )
+            assert full != current
+            script.write_text(full)
+            (data / "env.json").write_text(json.dumps({"plugin_root": "/" + "x" * 400}))
+            uncut = run()
+        finally:
+            shutil.rmtree(base, ignore_errors=True)
+        assert result.returncode == 0 and not result.stderr, result.stderr
+        start = result.stdout.index("plugin root moved from")
+        notice = result.stdout[start : result.stdout.index("\n\n", start)]
+        assert len(notice.encode()) == ENVIRONMENT_NOTICE_CAP
+        assert str(plugin) in result.stdout or "~/" + plugin.relative_to(home).as_posix() in notice
+        assert " · recover: session_start.py recover" in result.stdout.splitlines()[0]
+        assert constraints in result.stdout
+        assert not BUDGET_WARNING.search(result.stdout)
+        assert "[truncated at" not in result.stdout
+        assert len(result.stdout.encode()) <= OUTPUT_CAP
+        assert BUDGET_WARNING.search(uncut.stdout) or constraints not in uncut.stdout
 
     def test_paths_outside_home_remain_absolute(self, tmp_path):
         repo, _g = xp_repo(tmp_path)

@@ -202,14 +202,22 @@ class TestShippedProseMatchesTheMechanism:
         excluded by name: `close.py sprint <id> review` already holds it.
         """
         process = prose(PLUGIN / "PROCESS.md").lower()
-        executor = prose(PLUGIN / "EXECUTOR.md").lower()
+        import spawn
+
+        executor = " ".join(
+            dict(spawn.teammate_sections("card", "story-042", "", PLUGIN, multifile=True))[
+                "How you work"
+            ]
+            .lower()
+            .split()
+        )
         for name, text in (("PROCESS.md", process), ("EXECUTOR.md", executor)):
             assert "slate review" in text, f"{name}: the lead's review is unnamed"
             assert "execution plan review" in text, f"{name}: plan review unnamed"
         assert process.count("sprint review") == 1, "PROCESS.md confuses the routed review"
         assert "sprint review" not in executor, "EXECUTOR.md: close.py owns that phrase"
         assert "the planner writes the plan" in process, "PROCESS.md: the plan's owner is unnamed"
-        assert "re-read the reviewed plan" in executor, "EXECUTOR.md drops the handoff"
+        assert "re-read the reviewed plan" in executor, "multi-file brief drops the handoff"
 
     def test_a_mandatory_step_failing_twice_routes_to_escalation(self):
         teammate = " ".join(prose(PLUGIN / "EXECUTOR.md").lower().split())

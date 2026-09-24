@@ -125,7 +125,9 @@ def _findings(root: Path, story_id: str) -> list[tuple[int, Path, bool]]:
     return sorted(rounds)
 
 
-def inheritance(root: Path, story_id: str, inherited_state=CURRENT_STATE) -> str:
+def inheritance(
+    root: Path, story_id: str, inherited_state=CURRENT_STATE, multifile: bool = True
+) -> str:
     marker = marker_path(root, story_id)
     if inherited_state is CURRENT_STATE and not marker.exists():
         return ""  # no marker: a first spawn inherits nothing and says nothing
@@ -142,10 +144,15 @@ def inheritance(root: Path, story_id: str, inherited_state=CURRENT_STATE) -> str
         label = str(state.get("state", "INVALID"))
         why = str(state.get("why", ""))
     parts = [(f"Predecessor handback — {label}", why)]
-    draft = draft_path(root, story_id)
-    absent = "The plan draft is missing: nothing was at PLAN_PATH when this handoff was composed."
-    parts.append(("Predecessor plan draft", str(draft.resolve()) if draft.is_file() else absent))
-    for round_number, path, legacy in _findings(root, story_id):
+    if multifile:
+        draft = draft_path(root, story_id)
+        absent = (
+            "The plan draft is missing: nothing was at PLAN_PATH when this handoff was composed."
+        )
+        parts.append(
+            ("Predecessor plan draft", str(draft.resolve()) if draft.is_file() else absent)
+        )
+    for round_number, path, legacy in _findings(root, story_id) if multifile else []:
         label = f"Plan-review findings round {round_number}{' (legacy)' if legacy else ''}"
         parts.append((label, f"Read {path.resolve()}"))
     records = state.get("records", [])

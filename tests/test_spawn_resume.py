@@ -170,7 +170,8 @@ class TestResume(BootstrapLeftTreeCases):
         assert in_tree(tree, env, "branch", "--show-current") == "ada/story-042-demo-story"
         assert predecessor in in_tree(tree, env, "log", "--format=%H")
         prompt = json.loads(rec.read_text())["stdin"]
-        assert f"plan draft\n\n{tmp_path / 'data' / 'plans' / 'story-042.plan.md'}" in prompt
+        assert "Predecessor plan draft" not in prompt
+        assert str(tmp_path / "data" / "plans" / "story-042.plan.md") not in prompt
         assert "DRAFT-SENTINEL" not in prompt and "no commits" in prompt.lower()
 
     def test_a_tree_off_its_stopped_branch_is_never_taken_over(self, tmp_path):

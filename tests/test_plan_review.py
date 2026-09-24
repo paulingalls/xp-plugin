@@ -155,9 +155,8 @@ def test_a_respawn_inherits_the_stopped_teammates_artifacts_only(tmp_path):
     plans = Path(env["XP_DATA"]) / "plans"
     for mark in ("DRAFT-SENTINEL", "FINDING-ONE", "FINDING-TWO", ESCALATION):
         assert mark not in inherited
-    assert f"plan draft\n\n{plans / 'story-042.plan.md'}" in inherited
-    assert f"round 1 (legacy)\n\nRead {plans / 'story-042.md'}" in inherited
-    assert f"round 2\n\nRead {plans / 'story-042.round-2.md'}" in inherited
+    assert "Predecessor plan draft" not in inherited
+    assert "Plan-review findings" not in inherited
     rid = json.loads((plans / "story-042.handoff.json").read_text())["records"][0]
     assert f"records\n\n{rid}. Read each with `work.py show <id>`" in inherited
 
@@ -417,7 +416,7 @@ class TestTheProfileCarriesTheInvocation:
 
     def rendered(self, tmp_path, executor):
         root = tmp_path / executor.split("/")[0]
-        repo, env, _g = make_repo(root, executor=executor)
+        repo, env, _g = make_repo(root, executor=executor, files="src/thing.py, src/other.py")
         (stub_claude if executor.startswith("claude") else stub_codex)(root)
         r = spawn(repo, env, "story-042", "--dry-run")
         assert r.returncode == 0, r.stderr
@@ -436,11 +435,11 @@ class TestTheProfileCarriesTheInvocation:
         assert spawn(repo, env, "story-042").returncode == 0
         prompt = json.loads(rec.read_text())["stdin"]
         draft = Path(env["XP_DATA"]) / "plans/story-042.plan.md"
-        assert str(draft) in prompt
+        assert str(draft) not in prompt
+        assert not draft.exists()
         tree = Path(env["XP_DATA"]) / "worktrees" / "story-042"
         assert not draft.is_relative_to(tree)
-        # spawn must MAKE it: the planner writes before plan_review.py, and a shell
-        # redirect into a missing directory sends it back to the worktree.
+        # The external directory is available even when this one-file card has no plan.
         assert draft.parent.is_dir(), draft
         draft.write_text("SURVIVES-UNWIND\n")
         assert g("worktree", "remove", "--force", str(tree)).returncode == 0

@@ -5,12 +5,11 @@ deviations. Declare each `.xp/` path before editing.
 A project's own size cap and duplication rubric outrank Files: extract, dedupe,
 extend Files, and report the deviation.
 
-- **Use the reviewed plan.** The lead owns **slate review**. Spawn stages a planner
-  and **execution plan review** before multi-file work. Re-read the reviewed plan
-  at `{PLAN_PATH}` and route human-only questions to lead.
+{PLAN_GUIDANCE}
 - **Escalate reserved decisions.** Hand back a wrong card, absent authority or a
   lead-reserved choice. After a mandatory step fails twice for
   infrastructure reasons, commit the coherent in-flight change and hand back.
   File it: `python3 {PLUGIN_ROOT}/scripts/work.py note '...'`.
 - **Finish green.** Make small red-green-refactor increments. Run the card's exact
   Verify, commit the green change with hooks enabled and hand back its result.
+  Story close, review, and land belong to the lead; the executor hands back after the green commit.
