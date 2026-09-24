@@ -4,13 +4,28 @@ These two are one thing: the second is the only caller of the first that judges,
 both measure the worktree AS HANDED OVER rather than as it stands.
 """
 
+import contextlib
 import subprocess
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from bookkeep import worktree_command
-from work import plan_path
+from work import config_block_value, plan_path
+
+TIER_OUTPUT_TAIL = 2000
+
+
+def story_tier(tree: Path) -> tuple[str, str, str]:
+    with contextlib.chdir(tree):
+        command = config_block_value("tests", "story")
+    if not command or command == "EDIT-ME":
+        return "unavailable", str(command), ""
+    done = subprocess.run(
+        command, shell=True, cwd=tree, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True
+    )
+    output = done.stdout.strip()[-TIER_OUTPUT_TAIL:]
+    return ("passed" if done.returncode == 0 else "red"), command, output
 
 
 def tree_state(tree: Path) -> tuple[str, str]:

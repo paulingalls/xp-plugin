@@ -180,11 +180,15 @@ class TestSpawnStages:
             "planner": "ran",
             "plan-reviewer": "ran",
             "executor": "ran",
+            "story-tier": "ran",
             "reviewer": "ran",
         }
         close = json.loads((tmp_path / "data/markers/story-042.close.json").read_text())
         assert close["shown_sha"] == close["reviewed_head"]
-        assert "planner=ran · plan-reviewer=ran · executor=ran · reviewer=ran" in result.stdout
+        assert (
+            "planner=ran · plan-reviewer=ran · executor=ran · story-tier=ran · reviewer=ran"
+            in result.stdout
+        )
 
     def test_the_plan_review_is_spawns_own_and_the_executor_launches_none(self, tmp_path):
         """AC2, and the ONLY thing that separates this card from the defect it names:
@@ -266,6 +270,7 @@ class TestSpawnStages:
             "planner": "skipped",
             "plan-reviewer": "skipped",
             "executor": "ran",
+            "story-tier": "ran",
             "reviewer": "ran",
         }
         assert "planner=skipped" in result.stdout, result.stdout

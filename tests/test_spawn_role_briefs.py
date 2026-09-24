@@ -1,3 +1,4 @@
+import pytest
 from spawn_helpers import CARD, make_repo
 
 
@@ -6,6 +7,26 @@ def prompt_section(prompt, title):
 
 
 class TestRoleBriefs:
+    @pytest.mark.parametrize(
+        "files,multifile", [("src/thing.py", False), ("src/a.py, src/b.py", True)]
+    )
+    def test_executor_brief_directs_story_tier_for_both_card_shapes(
+        self, tmp_path, monkeypatch, files, multifile
+    ):
+        from spawn import PLUGIN_ROOT, build_prompt, teammate_sections
+
+        repo, env, _git = make_repo(tmp_path, files=files)
+        monkeypatch.chdir(repo)
+        monkeypatch.setenv("XP_DATA", env["XP_DATA"])
+        card = CARD.format(status="ready", files=files, executor="(default)")
+        prompt = build_prompt(
+            teammate_sections(card, "story-042", "", PLUGIN_ROOT, multifile=multifile)
+        )
+        work = prompt_section(prompt, "How you work")
+        assert "tests.story" in work and ".xp/config.yml" in work
+        assert "before handing back" in work
+        assert ("reviewed plan" if multifile else "card is the authority") in work
+
     def run_planner(self, tmp_path, monkeypatch, mutate_repo=False):
         import review
         from story_stages import run_planner

@@ -146,3 +146,29 @@ def review_story(tree: Path, story_id: str) -> tuple[int, dict, str]:
             tail = log_tail(log, REVIEW_REFUSAL_TAIL).strip()
             captured = f"{tail}\n{captured}".strip() if tail else captured
     return rc, state, captured
+
+
+def finish_story(tree: Path, story_id: str, stop, stage_line, held) -> int:
+    from close import leg
+    from handback import tree_state
+    from handoff import mark_handoff, mark_stage
+    from overlap import unresolved_blocking
+    from work import data_root
+
+    rc, state, refusal = review_story(tree, story_id)
+    if rc:
+        cause = refusal or "the diff review produced no readable refusal; inspect its log"
+        return stop(f"the diff review leg refused (rc {rc}): {cause}", rc)
+    mark_stage(data_root(), story_id, "reviewer", "ran")
+    if unresolved_blocking(state):
+        why = "diff review recorded blocking findings; resume with a fresh executor to fix them"
+        return stop(why, 0)
+    free_slug = leg(story_id)[1]
+    instruction = "run `/free-close` from that worktree" if free_slug else "run `/story-close`"
+    print(stage_line())
+    print(
+        f"{story_id} produced commit {tree_state(tree)[0]} at {tree}. Read it, then {instruction}."
+    )
+    mark_handoff(data_root(), story_id, True)
+    held.close()
+    return rc
