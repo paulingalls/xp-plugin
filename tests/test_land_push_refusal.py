@@ -1,6 +1,7 @@
 """Failed land commands leave a bounded, actionable final line."""
 
 import json
+import shutil
 import subprocess
 import sys
 
@@ -24,7 +25,7 @@ def failing_command(tmp_path, env, executable, match):
     directory.mkdir(exist_ok=True)
     script = directory / executable
     script.write_text(
-        "#!/usr/bin/python3\n"
+        "#!/usr/bin/env python3\n"
         "import os, sys\n"
         f"if {match!r} in sys.argv[1:] and ({executable!r} != 'git' or 'push' in sys.argv[1:]):\n"
         "    for n in range(1000):\n"
@@ -32,7 +33,7 @@ def failing_command(tmp_path, env, executable, match):
         "        if n == 998: print('Logs preserved at: /tmp/hook.log', file=sys.stderr)\n"
         "    sys.exit(1)\n"
         + (
-            "os.execv('/usr/bin/git', ['git', *sys.argv[1:]])\n"
+            f"os.execv({shutil.which('git')!r}, ['git', *sys.argv[1:]])\n"
             if executable == "git"
             else "sys.exit(0)\n"
         )
@@ -64,7 +65,7 @@ def setup_mode(tmp_path, mode):
 
 def working_gh(tmp_path, env):
     path = tmp_path / "bin" / "gh"
-    path.write_text("#!/usr/bin/python3\n")
+    path.write_text("#!/usr/bin/env python3\n")
     path.chmod(0o755)
     return env
 
