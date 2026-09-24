@@ -11,6 +11,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 sys.path.insert(0, str(Path(__file__).parent.parent / "spawn"))
 import bookkeep
 import spawn
+import verify_receipt
 from close import config_flat, default_branch, fail, git, leg, marker_path, story_card
 from work import data_root, flip_card, plan_path, ready_marker_path, slugify, user_ns
 
@@ -195,6 +196,7 @@ def cmd_post_merge(slug: str, dry_run: bool = False) -> int:
     bookkeep.delete_story_markers(key)
     ready_marker_path(key).unlink(missing_ok=True)
     marker_path(key).unlink(missing_ok=True)
+    verify_receipt.path(key).unlink(missing_ok=True)
     if bookkeep.report_incomplete(failed):
         return 3
     return 0

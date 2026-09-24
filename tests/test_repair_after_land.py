@@ -58,6 +58,7 @@ def land_red(tmp_path, kind="tier", files="src/thing.py"):
     assert close(repo, env, "review").returncode == 0
     if kind == "Verify":
         phase.write_text("land")
+        commit(g, repo, "src/thing.py", "A = 2\nland_motion = True\n")
     red = close(repo, env, "land")
     assert red.returncode == 2 and f"{kind} red" in red.stderr, red.stderr
     return repo, env, g
@@ -269,6 +270,7 @@ def test_unmeasured_gate_refusal_writes_no_land_red(tmp_path, kind):
     assert close(repo, env, "review").returncode == 0
     if kind == "verify_rc127":
         gate.write_text("#!/bin/sh\nexit 127\n")
+        commit(g, repo, "src/thing.py", "A = 2\nland_motion = True\n")
     refused = close(repo, env, "land")
     assert refused.returncode == 2, refused.stderr
     assert ("could not be RUN" if "rc127" in kind else "unset") in refused.stderr
@@ -303,6 +305,9 @@ def test_free_land_red_repair_opens_pr_and_clears_record(tmp_path):
     stub_reviewer(tmp_path)
     assert free(tree, env, "fix-typo", "review").returncode == 0
     gate.write_text("#!/bin/sh\ngrep -q fixed src/free.py\n")
+    (tree / "src/free.py").write_text("B = 1\nland_motion = True\n")
+    subprocess.run(["git", "add", "src/free.py"], cwd=tree, check=True)
+    subprocess.run(["git", "commit", "-qm", "later story work"], cwd=tree, check=True)
     red = free(tree, env, "fix-typo", "land")
     assert red.returncode == 2 and "free fix-typo repair" in red.stderr, red.stderr
     record = tmp_path / "data/markers" / f"{key}.land-red.json"

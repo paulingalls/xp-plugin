@@ -33,7 +33,7 @@ def test_files_growth_lands_and_reports_the_added_path(tmp_path):
     assert ready_marker(tmp_path).read_bytes() == credential
 
 
-def test_verify_extension_lands_and_runs_appended_command(tmp_path):
+def test_verify_extension_runs_at_review_and_reuses_that_tree_at_land(tmp_path):
     repo, env, _g = make_repo(tmp_path)
     credential = ready_marker(tmp_path).read_bytes()
     sentinel = tmp_path / "extended-ran"
@@ -43,8 +43,8 @@ def test_verify_extension_lands_and_runs_appended_command(tmp_path):
     sentinel.unlink()
     landed = close(repo, env, "land")
     assert landed.returncode == 0, landed.stderr
-    assert sentinel.exists()
-    assert "Verify" in landed.stdout
+    assert not sentinel.exists()
+    assert "Verify skipped on exact tree" in landed.stdout
     assert ready_marker(tmp_path).read_bytes() == credential
 
 

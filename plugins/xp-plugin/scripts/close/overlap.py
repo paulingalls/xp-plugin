@@ -250,6 +250,7 @@ def gates(
     history: list[dict] | None = None,
     legs: list[tuple[str, str]] | None = None,
     measured_red: Callable[[str, str], str] | None = None,
+    story_verify: Callable[[str], tuple[bool, str]] | None = None,
 ) -> tuple[str, dict | None]:
     """Verify and the tier, run on the tree that will EXIST. Merging INTO the story
     branch rather than in the tree holding trunk: same merged content either way,
@@ -280,15 +281,19 @@ def gates(
             legs = staged_legs
         if refusal := tier_refusal(tier, tier_key):
             return refusal, None
-        if prior_receipt is _NO_RECEIPT:
+        if prior_receipt is _NO_RECEIPT and story_verify is None:
             return run_checks(verify, tier, where, tier_key, measured_red), None
         written = git("write-tree", check=False)
         if written.returncode:
             return (
-                f"refused: Git could not write tree for the full tier: {written.stderr.strip()}",
+                f"refused: Git could not write tree for the gates: {written.stderr.strip()}",
                 None,
             )
         tree = written.stdout.strip()
+        if prior_receipt is _NO_RECEIPT:
+            skip, reason = story_verify(tree)
+            print(f"Verify {reason}")
+            return run_checks([] if skip else verify, tier, where, tier_key, measured_red), None
         if legs is not None:
             from tier_legs import run
 

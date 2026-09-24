@@ -213,6 +213,7 @@ def test_red_tier_stops_before_red_verify(tmp_path, free_leg):
 @pytest.mark.parametrize("free_leg", [False, True], ids=["story", "free"])
 def test_green_tier_still_runs_red_verify(tmp_path, free_leg):
     land, verify, tier = order_fixture(tmp_path, free_leg)
+    (next((tmp_path / "data/markers").glob("*.verify.json"))).unlink()
     sentinel = tmp_path / "tier-ran"
     executable(tier, f"touch {sentinel}\nexit 0\n")
     executable(verify, "exit 1\n")
