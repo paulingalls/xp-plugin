@@ -362,7 +362,7 @@ def _refresh_handoff(story_id: str, out: Path) -> int:
     observation = f" {payload.get('observation', '')}" if payload.get("observation") else ""
     print(
         f"{story_id} card refresh ran — {state}. Receipt {receipt}{corrections}."
-        f"{observation} Read it and the card, then `spawn.py ready {story_id}`"
+        f"{observation} Read it and the card, then {ready.refresh_next(story_id, changed)}"
     )
     return 0
 
@@ -409,7 +409,7 @@ def cmd_refresh(story_id: str, dry_run: bool) -> int:
                 return fail(problem)
             print(
                 f"{story_id} receipt re-minted locally; no agent ran."
-                f" Next run `spawn.py ready {story_id}`"
+                f" Next {ready.refresh_next(story_id, True)}"
             )
             return 0
     out = review_findings_path(story_id, "refresh")
