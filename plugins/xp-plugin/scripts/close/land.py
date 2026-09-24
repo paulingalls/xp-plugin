@@ -17,7 +17,9 @@ from release import (
     VERSIONING_OFF_TEXT,
     next_version,
     refuse_unbumpable,
+    trunk_version_refusal,
     version_files,
+    version_only_paths,
     version_refusal,
     versioning_mode,
 )
@@ -94,11 +96,41 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
         )
     head = close.git("rev-parse", "HEAD").stdout.strip()
     base = close.git("merge-base", f"refs/heads/{trunk}", "HEAD").stdout.strip()
-    if err := overlap.land_refusal(state, noun, base):
-        return close.fail(err)
-    rounds = state["rounds"]
     ref = overlap.merge_source(trunk, merge_mode)
-    files = overlap.overlapping(ref, base)
+    versioned = False
+    version = ""
+    names = []
+    refusal = ""
+    if free:
+        versioned, refusal = versioning_mode()
+        if versioned:
+            version = next_version("patch", ref)
+            names = version_files()
+    candidates = set(names) - {"none"} if free and versioned else set()
+    recorded = state.get("review_base")
+    prior_exempt = set()
+    if candidates and isinstance(recorded, str) and recorded != base:
+        prior_exempt = version_only_paths(recorded, base, candidates) & version_only_paths(
+            base, head, candidates
+        )
+    if err := overlap.land_refusal(state, noun, base, prior_exempt):
+        return close.fail(err)
+    if refusal:
+        return close.fail(refusal)
+    if free and versioned and not version:
+        return refuse_unbumpable(ref)
+    rounds = state["rounds"]
+    if free and versioned and names and names != ["none"]:
+        if refusal := version_refusal(version, names):
+            return close.fail(refusal)
+        if refusal := trunk_version_refusal(ref, version, names):
+            return close.fail(refusal)
+    fork_exempt = (
+        version_only_paths(base, ref, candidates) & version_only_paths(base, head, candidates)
+        if candidates
+        else set()
+    )
+    files = overlap.overlapping(ref, base, fork_exempt)
     gate_hits = [f for f in files if f in overlap.GATE_FILES]
     blocked = files if trunk == close.default_branch() else gate_hits
     if blocked:
@@ -132,16 +164,6 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
     tier_key = "story"
     tier = work.config_block_value("tests", tier_key)
     branch = close.git("rev-parse", "--abbrev-ref", "HEAD").stdout.strip()
-    versioned = True
-    version = ""
-    if free:
-        versioned, refusal = versioning_mode()
-        if refusal:
-            return close.fail(refusal)
-        if versioned:
-            version = next_version("patch", ref)
-            if not version:
-                return refuse_unbumpable(ref)
     changed = set(
         close.git(
             "-c", "core.quotepath=off", "diff", "--no-renames", "--name-only", f"{base}..HEAD"
@@ -151,7 +173,7 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
         declared = declared_files(card)
     except ValueError as e:
         return close.fail(str(e))
-    exempt = set(version_files()) if free and versioned else set()
+    exempt = set(names) if free and versioned else set()
     exempt.discard("none")
     beyond_map = sorted(changed - declared - exempt)
     protected = [path for path in beyond_map if path.startswith(".xp/")]

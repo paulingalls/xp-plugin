@@ -159,6 +159,57 @@ def version_refusal(version: str, names: list[str] | None = None) -> str:
     return ""
 
 
+def version_only_paths(before: str, after: str, names: set[str]) -> set[str]:
+    accepted = set()
+    for name in names:
+        values = []
+        for revision in (before, after):
+            blob = git("show", f"{revision}:{name}", check=False)
+            try:
+                value = json.loads(blob.stdout) if blob.returncode == 0 else None
+            except (ValueError, TypeError):
+                value = None
+            if not isinstance(value, dict) or "version" not in value:
+                break
+            values.append(value)
+        if len(values) == 2:
+            left, right = (value.copy() for value in values)
+            left.pop("version")
+            right.pop("version")
+            if left == right:
+                accepted.add(name)
+    return accepted
+
+
+def trunk_version_refusal(ref: str, version: str, names: list[str]) -> str:
+    target = tuple(map(int, version.removeprefix("v").split(".")))
+    for name in names:
+        if name == "none":
+            continue
+        blob = git("show", f"{ref}:{name}", check=False)
+        if blob.returncode:
+            listed = git("ls-tree", "-r", "--name-only", ref, "--", name, check=False)
+            if listed.returncode == 0 and name not in listed.stdout.splitlines():
+                continue
+            return f"refused: trunk manifest {name} at {ref} is unreadable"
+        try:
+            declared = str(json.loads(blob.stdout)["version"])
+            if not re.fullmatch(r"v?\d+\.\d+\.\d+", declared):
+                raise ValueError
+            current = tuple(map(int, declared.removeprefix("v").split(".")))
+        except (ValueError, KeyError, TypeError):
+            return (
+                f"refused: trunk manifest {name} at {ref} has no readable MAJOR.MINOR.PATCH version"
+            )
+        if target <= current:
+            next_patch = f"v{current[0]}.{current[1]}.{current[2] + 1}"
+            return (
+                f"refused: trunk manifest {name} declares {declared}; {version} must exceed it."
+                f" Tag the trunk release, then bump this leg to {next_patch}"
+            )
+    return ""
+
+
 def release_bump_paths(shown: str, head: str, paths: list[str]) -> set[str]:
     """Prove the post-review delta is only a release declaration."""
     if not versioning_mode()[0] or not (version := next_version()):

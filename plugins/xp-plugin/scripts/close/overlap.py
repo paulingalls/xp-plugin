@@ -45,7 +45,7 @@ def unresolved_blocking(state: dict) -> list:
     ]
 
 
-def land_refusal(state: dict, key: str, base: str) -> str:
+def land_refusal(state: dict, key: str, base: str, exempt: set[str] | None = None) -> str:
     """Whether the recorded round describes the tree in front of us — the whole
     question every land leg asks, in ONE implementation. `key` is the leg's own
     spelling of its review command, which is all that legitimately differs."""
@@ -63,7 +63,8 @@ def land_refusal(state: dict, key: str, base: str) -> str:
         # Forward-only, and files not SHAs: trunk motion that touched nothing the
         # story wrote cannot change the diff the reviewer judged, while refusing on
         # the SHAs alone charged a round for every parallel story that merged first.
-        if hit := sorted(_files(f"{recorded}..{base}") & _files(f"{base}..HEAD")):
+        shared = _files(f"{recorded}..{base}") & _files(f"{base}..HEAD")
+        if hit := sorted(shared - (exempt or set())):
             listed = "\n  ".join(hit)
             return (
                 "refused: trunk moved after the recorded round and changed files the"
@@ -107,9 +108,9 @@ def unmerged(ref: str) -> bool:
     return git("merge-base", "--is-ancestor", ref, "HEAD", check=False).returncode != 0
 
 
-def overlapping(ref: str, base: str) -> list[str]:
+def overlapping(ref: str, base: str, exempt: set[str] | None = None) -> list[str]:
     """Compare from the fork point; a since-review window misses trunk motion."""
-    return sorted(_files(f"{base}..{ref}") & _files(f"{base}..HEAD"))
+    return sorted((_files(f"{base}..{ref}") & _files(f"{base}..HEAD")) - (exempt or set()))
 
 
 def collision(ref: str, files: list[str]) -> str:
@@ -163,7 +164,7 @@ def run_checks(
 ) -> str:
     if refusal := tier_refusal(tier, tier_key):
         return refusal
-    for label, commands in (("Verify", verify), ("test tier", [tier] if tier else [])):
+    for label, commands in (("test tier", [tier] if tier else []), ("Verify", verify)):
         for cmd in commands:
             if red := run_one(label, cmd, where):
                 return red
