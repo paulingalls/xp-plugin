@@ -4,6 +4,60 @@ Release notes started at v0.6.0; earlier entries are summarized from their
 tag and merge messages. Full detail lives in the merge history and the
 per-sprint review reports.
 
+## v0.30.0 — a land-time red costs the gate that failed, not another review
+
+No action needed on upgrade: the hook commands are unchanged. Three new options are yours to adopt
+(below: `Verify reads:`, `full_legs:`), and two behaviours changed that a project should know about
+(the story tier at executor handback, and a Verify skipped on an unchanged tree).
+
+A VERSION BUMP IS NEVER AN OVERLAP (#135). Free land's trunk-moved and overlap checks no longer
+refuse on a `version_files` path when BOTH sides changed only its version; any other edit in that
+file (a dependency, say) still counts. The free-land version wall now also compares against the
+version in trunk's manifest, not only the latest tag, so a second free release in the window before
+the first one's tag is cut can no longer land under the same version.
+
+THE CHEAP TIER RUNS FIRST (#138). Story and free land run `tests.story` before the card's Verify and
+stop at the first red. Sprint land is unchanged.
+
+A FAILED PUSH ENDS WITH ONE REFUSAL (#136, #141). A failed `git push`, `gh pr create` or `gh pr merge`
+at story, free or sprint land now ends with one `refused:` line naming the command (a `--body` value is
+elided) and its exit code, under the last lines of its stderr, printed after any review disclosure.
+When a local-mode trunk push fails after a merge that changed a dependency manifest, lockfile or
+`patches/` path, the report lists those paths, names the checkout that pushed, and says to refresh
+dependencies there and re-run the push.
+
+A NARROW FIX AFTER A LAND-TIME RED IS A REPAIR (#137). When land reds on Verify or the story tier
+after a recorded round with no blocking finding, it records what `repair` needs; a fix inside the
+reviewed paths and the card's Files, followed by `close.py <leg> repair` and land, no longer costs a
+confirming review round. Repairs accumulate on the round and are named in the merge body. The
+story-close and free-close skills say so.
+
+THE EXECUTOR HANDS BACK A TREE THE STORY TIER HAS JUDGED (#139). After the executor hands back, spawn
+runs `tests.story` in its worktree before the reviewer. On red, it re-launches the executor once with
+the red command and its output; a second red stops. A tier that cannot run (exit 127) stops at once;
+an unset tier is reported and skipped. EXECUTOR.md tells the executor to run the story tier itself
+too, so a story pays one extra tier run in exchange for fewer relaunches.
+
+A CARD WHOSE FILES MOVED AFTER ITS REFRESH DOES NOT SPAWN (#140). Spawn refuses a [ready] card when a
+declared Files path changed since its card refresh (a predecessor landed on it), naming the path and
+the recovery: refresh, then spawn, or `spawn.py amend` if the refresh changed the card. Free cards
+and `spawn.py resume` are exempt. Refresh messages no longer tell a [ready] card to run `spawn.py ready`.
+
+LAND DOES NOT RE-RUN A VERIFY THE REVIEW PASSED (#142). A green review-time Verify records its
+commands and the tree it ran on. Land skips Verify when it would gate that same tree with the same
+commands. NEW, OPTIONAL: a card may carry `Verify reads: <pathspecs>` naming what its Verify depends
+on; land then also skips when the story is unchanged since that receipt and the trunk merge touched
+no declared path. Land always says which skip applied, or why it ran. TRADE TO KNOW: on an unchanged
+tree land now trusts the review's result even when Verify depends on state outside the repo
+(environment, services, untracked tools); a Verify like that should not rely on the skip. A
+malformed `Verify reads:` line is refused at `spawn.py ready` and amend.
+
+NEW OPTIONS ARE NOW DISCOVERABLE. `/xp-setup` copies the card template into a project once, so later
+card fields never reached an existing project. The slate review now reads the SHIPPED template and
+names, per card, any optional field that would pay there, as a noted candidate that never reds a
+card. `/xp-setup` also explains `full_legs:`: split the full tier into named legs and a failed sprint
+land re-runs only the legs that were not green on that tree.
+
 ## v0.29.2 — a one-file card's executor is no longer sent to a plan that does not exist
 
 No action needed on upgrade: the hook commands are unchanged.
