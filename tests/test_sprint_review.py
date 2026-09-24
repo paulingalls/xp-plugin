@@ -183,7 +183,12 @@ class TestReviewLeg:
         markers = sorted(p.name for p in (data / "markers").rglob("*.json"))
         assert story_reports == ["sprint-2.round-1.json"], story_reports
         assert sprint_reports and all(n.startswith("2.") for n in sprint_reports), sprint_reports
-        assert markers == ["2.json", "sprint-2.close.json", "sprint-2.ready.json"]
+        assert markers == [
+            "2.json",
+            "sprint-2.close.json",
+            "sprint-2.ready.json",
+            "sprint-2.verify.json",
+        ]
         assert marker_path(tmp_path).exists()
 
     def test_the_review_leg_run_from_the_default_branch_is_refused(self, tmp_path):

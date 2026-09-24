@@ -257,8 +257,8 @@ def verify_on_reviewed_tree(story_id: str, card: str) -> str:
     """Run Verify on the reviewed diff; land separately protects the merged tree."""
     import verify_receipt
 
-    _raw, commands = verify_commands(story_id, card)
-    red = verify_receipt.record(story_id, card, commands)
+    raw, commands = verify_commands(story_id, card)
+    red = verify_receipt.record(story_id, card, raw, commands)
     return red.removeprefix("refused: ")
 
 

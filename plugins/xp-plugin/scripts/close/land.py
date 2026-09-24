@@ -260,7 +260,7 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
             tier_key,
             pending,
             measured_red=record_red,
-            story_verify=lambda tree: verify_receipt.decide(story_id, card, verify, tree),
+            story_verify=lambda tree: verify_receipt.decide(story_id, card, raw, verify, tree),
         )
     except BaseException:
         span.finish("interrupted")
@@ -373,6 +373,7 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
     bookkeep.log_close(story_id, card, rounds, merge_sha, files_beyond_map)
     marker.unlink()
     land_red.unlink(missing_ok=True)
+    verify_receipt.path(story_id).unlink(missing_ok=True)
     if bookkeep.report_incomplete(failed, dependencies, str(Path.cwd()), retry):
         return 3
     print(

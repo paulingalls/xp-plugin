@@ -1,7 +1,10 @@
 import json
+import signal
+import subprocess
+import sys
 
 import pytest
-from close_helpers import FIX_PATCH, close, make_repo, mint_ready, stub_reviewer
+from close_helpers import FIX_PATCH, SPAWN, close, make_repo, mint_ready, stub_reviewer
 
 
 def counted_repo(tmp_path, declaration=None):
@@ -51,27 +54,32 @@ def test_exact_review_tree_reuses_verify(tmp_path):
     assert verify_calls.read_text().splitlines() == ["call"]
     assert tier_calls.read_text().splitlines() == ["call"]
     assert "skipped on exact tree" in landed.stdout
+    assert not (tmp_path / "data/markers/story-042.verify.json").exists()
 
 
 @pytest.mark.parametrize(
-    ("declaration", "path", "skips"),
+    ("declaration", "path", "said"),
     [
-        (None, "docs/x.md", False),
-        ("src/app/", "docs/x.md", True),
-        ("src/app/", "src/app/y.py", False),
+        (None, "docs/x.md", "ran: gated tree changed; no Verify reads declaration"),
+        ("src/app/", "docs/x.md", "skipped on declared inputs"),
+        (
+            "src/app/",
+            "src/app/y.py",
+            "ran: trunk merge changed declared Verify reads: src/app/y.py",
+        ),
+        (":(bogus)src/app/", "docs/x.md", "ran: git could not match Verify reads"),
     ],
 )
-def test_merge_inputs_control_reuse(tmp_path, declaration, path, skips):
+def test_merge_inputs_control_reuse(tmp_path, declaration, path, said):
     repo, env, git, calls = counted_repo(tmp_path, declaration)
     trunk_change(repo, git, path)
     landed = close(repo, env, "land")
     assert landed.returncode == 0, landed.stderr
+    skips = said.startswith("skipped")
     assert len(calls.read_text().splitlines()) == (1 if skips else 2)
+    assert f"Verify {said}" in landed.stdout
     if skips:
-        assert "skipped on declared inputs" in landed.stdout
         assert declaration in landed.stdout and path in landed.stdout
-    else:
-        assert "Verify ran:" in landed.stdout
 
 
 @pytest.mark.parametrize("declaration", [None, "src/app/"])
@@ -124,12 +132,32 @@ def test_reviewer_patch_tree_is_the_receipted_tree(tmp_path):
 
 def test_interrupted_review_verify_leaves_no_receipt(tmp_path):
     stopper = tmp_path / "stopper"
-    stopper.write_text("#!/bin/sh\nkill -TERM $$\n")
+    stopper.write_text("#!/bin/sh\nkill -TERM $PPID\n")
     stopper.chmod(0o755)
     repo, env, _git = make_repo(tmp_path, verify=str(stopper))
     result = close(repo, env, "review")
-    assert result.returncode != 0
+    assert result.returncode == -signal.SIGTERM, result.stderr
     assert not (tmp_path / "data/markers/story-042.verify.json").exists()
+
+
+@pytest.mark.parametrize("leg", ["ready", "amend"])
+@pytest.mark.parametrize("line", ["Verify reads: /abs/app", "Verify reads: src/, ,docs/"])
+def test_malformed_verify_reads_is_refused_before_review(tmp_path, leg, line):
+    repo, env, _git = make_repo(tmp_path)
+    plan = tmp_path / "data" / "plan.md"
+    plan.write_text(plan.read_text().replace("Verify: ", f"{line}\nVerify: "))
+    if leg == "ready":
+        with pytest.raises(AssertionError, match="Verify reads:"):
+            mint_ready(repo, env)
+        return
+    refused = subprocess.run(
+        [sys.executable, str(SPAWN), "amend", "story-042", "--reason", "declare inputs"],
+        cwd=repo,
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+    assert refused.returncode != 0 and "Verify reads:" in refused.stderr, refused.stderr
 
 
 def test_verify_reads_is_not_files_scope():

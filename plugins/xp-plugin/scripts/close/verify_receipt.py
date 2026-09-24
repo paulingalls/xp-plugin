@@ -1,7 +1,6 @@
 """Review-time Verify evidence and story/free land reuse."""
 
 import json
-import subprocess
 from pathlib import Path
 
 from close import git
@@ -28,11 +27,7 @@ def reads(card: str) -> tuple[str | None, list[str]]:
     return lines[0], specs
 
 
-def verify_line(card: str) -> str:
-    return next(line for line in card.splitlines() if line.startswith("Verify:"))
-
-
-def record(story_id: str, card: str, verify: list[list[str]]) -> str:
+def record(story_id: str, card: str, raw: str, verify: list[list[str]]) -> str:
     from overlap import run_checks
 
     destination = path(story_id)
@@ -49,7 +44,7 @@ def record(story_id: str, card: str, verify: list[list[str]]) -> str:
     receipt = {
         "tree": written.stdout.strip(),
         "head": git("rev-parse", "HEAD").stdout.strip(),
-        "raw": verify_line(card),
+        "raw": raw,
         "verify": verify,
         "reads": declaration,
     }
@@ -60,7 +55,9 @@ def record(story_id: str, card: str, verify: list[list[str]]) -> str:
     return ""
 
 
-def decide(story_id: str, card: str, verify: list[list[str]], tree: str) -> tuple[bool, str]:
+def decide(
+    story_id: str, card: str, raw: str, verify: list[list[str]], tree: str
+) -> tuple[bool, str]:
     destination = path(story_id)
     try:
         receipt = json.loads(destination.read_text())
@@ -78,7 +75,7 @@ def decide(story_id: str, card: str, verify: list[list[str]], tree: str) -> tupl
     ):
         return False, "ran: Verify receipt unreadable"
     declaration, specs = reads(card)
-    if receipt["raw"] != verify_line(card) or receipt["verify"] != verify:
+    if receipt["raw"] != raw or receipt["verify"] != verify:
         return False, "ran: Verify commands changed"
     if receipt["reads"] != declaration:
         return False, "ran: Verify reads declaration changed"
@@ -93,8 +90,21 @@ def decide(story_id: str, card: str, verify: list[list[str]], tree: str) -> tupl
     changed = git(
         "-c", "core.quotepath=off", "diff", "--cached", "--no-renames", "--name-only", "HEAD"
     ).stdout.splitlines()
-    matched = subprocess.run(["git", "diff", "--cached", "--quiet", "HEAD", "--", *specs])
-    if matched.returncode != 0:
-        return False, "ran: trunk merge changed declared Verify reads"
+    matched = git(
+        "-c",
+        "core.quotepath=off",
+        "diff",
+        "--cached",
+        "--no-renames",
+        "--name-only",
+        "HEAD",
+        "--",
+        *specs,
+        check=False,
+    )
+    if matched.returncode:
+        return False, f"ran: git could not match Verify reads: {matched.stderr.strip()}"
+    if hits := matched.stdout.splitlines():
+        return False, f"ran: trunk merge changed declared Verify reads: {', '.join(hits)}"
     listed = ", ".join(changed) or "(none)"
     return True, f"skipped on declared inputs ({declaration.strip()}); merge changed: {listed}"

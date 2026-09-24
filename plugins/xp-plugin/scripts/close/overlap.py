@@ -281,25 +281,19 @@ def gates(
             legs = staged_legs
         if refusal := tier_refusal(tier, tier_key):
             return refusal, None
-        if prior_receipt is _NO_RECEIPT:
-            if story_verify is not None:
-                written = git("write-tree", check=False)
-                if written.returncode:
-                    return (
-                        f"refused: Git could not write tree for Verify: {written.stderr.strip()}",
-                        None,
-                    )
-                skip, reason = story_verify(written.stdout.strip())
-                print(f"Verify {reason}")
-                return run_checks([] if skip else verify, tier, where, tier_key, measured_red), None
+        if prior_receipt is _NO_RECEIPT and story_verify is None:
             return run_checks(verify, tier, where, tier_key, measured_red), None
         written = git("write-tree", check=False)
         if written.returncode:
             return (
-                f"refused: Git could not write tree for the full tier: {written.stderr.strip()}",
+                f"refused: Git could not write tree for the gates: {written.stderr.strip()}",
                 None,
             )
         tree = written.stdout.strip()
+        if prior_receipt is _NO_RECEIPT:
+            skip, reason = story_verify(tree)
+            print(f"Verify {reason}")
+            return run_checks([] if skip else verify, tier, where, tier_key, measured_red), None
         if legs is not None:
             from tier_legs import run
 
