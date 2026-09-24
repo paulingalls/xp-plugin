@@ -85,6 +85,15 @@ def test_untagged_trunk_release_refuses_unmerged_leg_before_overlap(tmp_path):
     assert not gh_calls(tmp_path)
 
 
+def test_leg_ahead_of_untagged_trunk_is_sent_to_tag_not_back(tmp_path):
+    repo, env, g = reviewed(tmp_path)
+    advance_trunk(repo, g, branch_name(g))
+    write_manifest(repo, g, "0.2.2")
+    landed = free(repo, env, "fix-typo", "land")
+    assert landed.returncode == 2
+    assert "Tag the trunk release" in landed.stderr
+
+
 def test_tagged_trunk_release_refuses_behind_leg_on_version_wall(tmp_path):
     repo, env, g = reviewed(tmp_path)
     advance_trunk(repo, g, branch_name(g), tag=True)
@@ -114,16 +123,15 @@ def test_second_shared_file_is_the_only_overlap(tmp_path):
     assert "plugin.json" not in landed.stderr
 
 
-def test_recorded_base_still_blocks_dependency_edits(tmp_path):
+@pytest.mark.parametrize("dependency_side", ["trunk", "leg"])
+def test_recorded_base_requires_version_only_on_each_side(tmp_path, dependency_side):
     repo, env, g = reviewed(tmp_path)
-    advance_trunk(repo, g, branch_name(g), tag=True, dependency="trunk")
-    assert g("merge", "--no-edit", "main").returncode == 1
-    (repo / "plugin.json").write_text(
-        json.dumps({"version": "0.2.1", "dependencies": {"left": "trunk"}}) + "\n"
-    )
-    g("add", "plugin.json")
-    assert g("commit", "-qm", "resolve manifest merge").returncode == 0
-    write_manifest(repo, g, "0.2.2", dependencies={"left": "leg"})
+    on_trunk = dependency_side == "trunk"
+    advance_trunk(repo, g, branch_name(g), tag=True, dependency="trunk" if on_trunk else None)
+    assert g("merge", "--no-edit", "main").returncode == (1 if on_trunk else 0)
+    if on_trunk:
+        write_manifest(repo, g, "0.2.1", dependencies={"left": "trunk"})
+    write_manifest(repo, g, "0.2.2", dependencies={"left": "trunk" if on_trunk else "leg"})
     landed = free(repo, env, "fix-typo", "land")
     assert landed.returncode == 2
     assert "trunk moved after the recorded round" in landed.stderr
@@ -255,7 +263,7 @@ def test_carded_story_keeps_manifest_overlap(tmp_path):
     repo, env, g = make_repo(tmp_path, files="src/thing.py, plugin.json")
     g("checkout", "-q", "main")
     config = repo / ".xp/config.yml"
-    config.write_text("release: story\n" + config.read_text())
+    config.write_text("release: story\nversion_files: plugin.json\n" + config.read_text())
     g("add", ".xp/config.yml")
     assert g("commit", "-qm", "use story release mode").returncode == 0
     write_manifest(repo, g, "0.2.0")
