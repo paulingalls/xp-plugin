@@ -410,7 +410,7 @@ def cmd_spawn(story_id: str, override: str, dry_run: bool, resuming: bool = Fals
         outcome = "terminal-stop" if rc == 0 else "harness-death"
         executor_log = data_root() / "logs" / f"{story_id}-executor.log"
         err = unclean_teammate_result(
-            tree, handed_over, story_id, resuming or attempt > 0, outcome, executor_log
+            tree, handed_over, story_id, resuming, outcome, executor_log, attempt > 0
         )
         if err or rc:
             why = err or f"the teammate left a clean commit in {tree} before its harness failed"
@@ -426,9 +426,10 @@ def cmd_spawn(story_id: str, override: str, dry_run: bool, resuming: bool = Fals
             mark_stage(data_root(), story_id, "story-tier", "ran")
             break
         mark_stage(data_root(), story_id, "story-tier", "failed")
-        if attempt:
+        if attempt or tier_state == "unrunnable":
             return stop(
-                f"story tier red: {tier_command!r} in {tree}. Output tail:\n{tier_output}\n"
+                f"story tier {tier_state}: {tier_command!r} in {tree}."
+                f" Output tail:\n{tier_output}\n"
                 f"Repair in that tree with `spawn.py resume {story_id}`",
                 0,
             )

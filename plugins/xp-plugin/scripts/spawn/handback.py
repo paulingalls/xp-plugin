@@ -25,7 +25,9 @@ def story_tier(tree: Path) -> tuple[str, str, str]:
         command, shell=True, cwd=tree, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True
     )
     output = done.stdout.strip()[-TIER_OUTPUT_TAIL:]
-    return ("passed" if done.returncode == 0 else "red"), command, output
+    # 127 is the shell's "not found": the tier could not RUN, as land reads it.
+    state = {0: "passed", 127: "unrunnable"}.get(done.returncode, "red")
+    return state, command, output
 
 
 def tree_state(tree: Path) -> tuple[str, str]:
@@ -50,6 +52,7 @@ def unclean_teammate_result(
     resumed: bool = False,
     outcome: str = "terminal-stop",
     executor_log: Path | str = "the teammate's log under XP_DATA/logs",
+    retried: bool = False,
 ) -> str:
     """ "" when the teammate left a clean, committed story behind; otherwise the
     refusal, naming both recoveries.
@@ -76,7 +79,7 @@ def unclean_teammate_result(
         f" putting {story_id}'s heading back to [ready] in {plan_path()}, and re-spawning."
         + (f" {problem}." if problem else "")
     )
-    if resumed:
+    if resumed or retried:
         import resume
 
         recovery = resume.handback_recovery(tree, story_id)
@@ -88,7 +91,9 @@ def unclean_teammate_result(
         return "refused: the teammate left work uncommitted in {}:\n{}\n{}".format(
             tree, "\n".join(left), recovery
         )
-    if resumed and dirty:
+    # A retry's handed-over dirt is spawn's own (bootstrap, tier run), never a
+    # predecessor's work to take over.
+    if resumed and not retried and dirty:
         return "refused: inherited takeover work remains uncommitted in {}:\n{}\n{}".format(
             tree, dirty, recovery
         )

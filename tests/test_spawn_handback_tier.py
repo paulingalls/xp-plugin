@@ -6,7 +6,7 @@ import pytest
 from spawn_helpers import make_repo, spawn
 
 
-def fixture(tmp_path, outcomes=(0,), tier="configured", commit_second=True):
+def fixture(tmp_path, outcomes=(0,), tier="configured", commit_second=True, litter=False):
     repo, env, git = make_repo(tmp_path)
     events = tmp_path / "events.jsonl"
     tier_script = tmp_path / "tier.py"
@@ -18,6 +18,7 @@ def fixture(tmp_path, outcomes=(0,), tier="configured", commit_second=True):
         "runs = sum(event['kind'] == 'tier' for event in events)\n"
         "with path.open('a') as out:\n"
         " out.write(json.dumps({'kind': 'tier', 'cwd': os.getcwd()}) + '\\n')\n"
+        f"if {litter!r}: open('tier-report.xml', 'w').write('untracked')\n"
         f"print('TIER-RED-' + str(runs + 1))\n"
         f"sys.exit(({tuple(outcomes)!r})[min(runs, {len(outcomes) - 1})])\n"
     )
@@ -53,7 +54,7 @@ def fixture(tmp_path, outcomes=(0,), tier="configured", commit_second=True):
         f" if attempt != 2 or {commit_second!r}:\n"
         "  os.makedirs('src', exist_ok=True)\n"
         "  open('src/thing.py', 'a').write('\\nDONE = True\\n')\n"
-        "  subprocess.run(['git', 'add', '-A'], check=True)\n"
+        "  subprocess.run(['git', 'add', 'src', '.xp'], check=True)\n"
         "  subprocess.run(['git', 'commit', '-qm', 'executor work'], check=True)\n"
         "elif role == 'reviewer':\n"
         " p = re.search(r'^REPORT_PATH: (.+)$', prompt, re.M); assert p\n"
@@ -103,6 +104,21 @@ def test_retry_requires_its_own_commit(tmp_path):
     assert [e["kind"] for e in read_events(path)] == ["teammate", "tier", "teammate"]
     assert "no commits of its own" in result.stderr
     assert "git worktree remove" not in result.stderr
+
+
+def test_retry_tolerates_what_the_tier_run_left_untracked(tmp_path):
+    repo, env, path, _command = fixture(tmp_path, outcomes=(1, 0), litter=True)
+    result = spawn(repo, env, "story-042")
+    assert result.returncode == 0, result.stderr
+    assert [e["kind"] for e in read_events(path)][-1] == "reviewer"
+
+
+def test_unrunnable_tier_stops_without_a_second_executor(tmp_path):
+    repo, env, path, command = fixture(tmp_path, outcomes=(127,))
+    result = spawn(repo, env, "story-042")
+    assert result.returncode == 2
+    assert [e["kind"] for e in read_events(path)] == ["teammate", "tier"]
+    assert "story tier unrunnable" in result.stderr and command in result.stderr
 
 
 @pytest.mark.parametrize("last,expected", [(0, 0), (1, 2)])
