@@ -61,6 +61,7 @@ def build_bundle(
         ("Sprint capacity", f"sprint_cap: {sprint_cap}\ndebt_budget: {debt_budget}"),
         ("VALUES", _read_shipped(PLUGIN_ROOT / "VALUES.md")),
         ("JUDGMENT", _read_shipped(PLUGIN_ROOT / "JUDGMENT.md")),
+        ("Shipped card template", _read_shipped(PLUGIN_ROOT / "templates/plan.md")),
         ("Constraints", _read(Path(".xp/constraints.md"))),
         ("System context", _read(Path(".xp/system.md"))),
     ]

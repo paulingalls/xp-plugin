@@ -12,6 +12,7 @@ import lifecycle as lc
 import overlap
 import ready
 import review
+import verify_receipt
 import work
 from release import (
     VERSIONING_OFF_TEXT,
@@ -165,6 +166,7 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
         print(ready.card_diff(change["card"], after))
     try:
         raw, verify = close.verify_commands(story_id, card)
+        verify_receipt.reads(card)
     except ValueError as e:
         return close.fail(str(e))
     tier_key = "story"
@@ -252,7 +254,14 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
         return f"{red} — fix it, commit, then run `close.py {noun} repair`"
 
     try:
-        red, _receipt = overlap.gates(ref, verify, tier_key, pending, measured_red=record_red)
+        red, _receipt = overlap.gates(
+            ref,
+            verify,
+            tier_key,
+            pending,
+            measured_red=record_red,
+            story_verify=lambda tree: verify_receipt.decide(story_id, card, verify, tree),
+        )
     except BaseException:
         span.finish("interrupted")
         raise

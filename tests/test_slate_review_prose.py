@@ -62,6 +62,8 @@ def test_runner_builds_the_complete_bundle_and_returns_absolute_findings(tmp_pat
     assert "debt_budget: 0.2" in prompt
     assert "# XP Values" in prompt and "# Judgment" in prompt
     assert "CONSTRAINT-SENTINEL" in prompt and "Worktree bootstrap" in prompt
+    assert "Verify reads:" in prompt
+    assert "Verify reads:" not in (Path(env["XP_DATA"]) / "plan.md").read_text()
     assert "AUTHOR-CONCLUSIONS-SENTINEL" not in prompt
     findings = next(
         Path(line.removeprefix("FINDINGS_PATH: "))

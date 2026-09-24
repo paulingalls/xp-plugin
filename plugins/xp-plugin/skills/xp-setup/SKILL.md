@@ -15,6 +15,8 @@ The plan is NOT in the repo — it is per clone, in the state root.
    - `.xp/constraints.md`, seeded from the plugin template
    - `tests.fast/story/full` in `.xp/config.yml` — the wall reads these at run
      time, so this is the only place tiers live
+   - `full_legs:` in `.xp/config.yml` — split the full tier into named legs so a
+     failed sprint land reruns only legs not green on that tree
    - `.xp/system.md`, especially **Surfaces & acceptance**: every surface the
      product presents (HTTP / Browser / CLI / SDK / Automation / Message-event)
      needs a harness that drives it at its boundary; a surface without one is

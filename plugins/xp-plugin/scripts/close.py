@@ -255,9 +255,10 @@ def _preflight(story_id: str, action: str, dry_run: bool = False) -> tuple[str, 
 
 def verify_on_reviewed_tree(story_id: str, card: str) -> str:
     """Run Verify on the reviewed diff; land separately protects the merged tree."""
-    import overlap  # a cycle at module level: it imports close
+    import verify_receipt
 
-    red = overlap.run_checks(verify_commands(story_id, card)[1], None, " on the reviewed tree")
+    _raw, commands = verify_commands(story_id, card)
+    red = verify_receipt.record(story_id, card, commands)
     return red.removeprefix("refused: ")
 
 
