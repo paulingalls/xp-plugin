@@ -4,6 +4,21 @@ Release notes started at v0.6.0; earlier entries are summarized from their
 tag and merge messages. Full detail lives in the merge history and the
 per-sprint review reports.
 
+## v0.29.1 — a slate reviewer that dies after its verdict has spent its round
+
+No action needed on upgrade: the hook commands are unchanged.
+
+THE SLATE-REVIEW CAP CAN NO LONGER BE EXCEEDED BY A REVIEWER THAT ERRORS LATE (#130). A round
+whose reviewer exited with an error was archived as `round-N.failed-K.md` and not counted, even
+when its findings were complete, so the lead could act on them and still get a third run under a
+cap of two. Now a round whose findings carry a `## <id> — RED|GREEN` heading for every card on the
+slate plus `## Slate — RED|GREEN` counts even though the reviewer errored: it is kept as
+`round-N.md`, and the error is still reported along with where the verdict is and that it spent
+the round. A dead round with no verdict, or with any card's heading missing, is still archived and
+not counted, so dead reviewers still cannot lock a slate out. A reviewer that changed the
+repository or the slate is still refused whatever it wrote. Plan review and card refresh are
+unchanged.
+
 ## v0.29.0 — a release costs one review, and a card that only grew never refuses a land
 
 No action needed on upgrade: the hook commands are unchanged.

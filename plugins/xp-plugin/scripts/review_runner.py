@@ -70,7 +70,9 @@ def review_findings_path(identifier: str, kind: str) -> Path:
 
 def _incomplete_round(identifier: str, kind: str, rounds: list[tuple[int, Path]]) -> Path | None:
     state = _marker_state(identifier, kind)
-    if state.get("disposition") == "blocked":
+    if state.get("disposition") == "blocked" or (
+        kind == "slate" and state.get("disposition") == "slate-verdict"
+    ):
         return None
     findings = state.get("findings")
     if not isinstance(findings, str):
@@ -248,6 +250,8 @@ def _wait(
     state = _marker_state(identifier, kind)
     if marker.exists():
         if refusal := state.get("refusal"):
+            if kind == "slate" and state.get("disposition") == "slate-verdict":
+                marker.unlink(missing_ok=True)
             return fail(refusal)
         try:
             tail = log_tail(Path(state.get("log", "")), LOG_TAIL).strip()

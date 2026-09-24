@@ -4,6 +4,7 @@
 import argparse
 import json
 import os
+import re
 import shlex
 import sys
 from pathlib import Path
@@ -89,6 +90,14 @@ def _inputs(sprint_id: str) -> tuple[str, str, str, str]:
     )
 
 
+def _complete_verdict(cards: str, findings: str) -> bool:
+    card_ids = re.findall(r"^#### ([^\s]+) — ", cards, re.M)
+    if not card_ids:
+        return False
+    headings = re.findall(r"^## ([^\n]+) — (?:RED|GREEN)$", findings, re.M)
+    return all(headings.count(identifier) == 1 for identifier in [*card_ids, "Slate"])
+
+
 def _run_review(sprint_id: str, out: Path, dry_run: bool) -> int:
     import review
     from spawn import tree_state
@@ -107,9 +116,8 @@ def _run_review(sprint_id: str, out: Path, dry_run: bool) -> int:
     if dry_run:
         return fail("refused: " + error) if error else 0
 
-    # A refused round is not a round: left in place it spends one of the two the cap
-    # allows, and two dead reviewers would lock the slate out of every review it has
-    # yet to get, under a refusal telling the lead to judge findings nobody wrote.
+    # A dead reviewer spends a round only if it left a complete verdict to judge; any
+    # other dead round counted would let two of them lock the slate out of its review.
     def refused(message: str) -> int:
         return fail(message + archive_failed_findings(out))
 
@@ -118,16 +126,29 @@ def _run_review(sprint_id: str, out: Path, dry_run: bool) -> int:
             "refused: the slate reviewer changed the repository or the slate — restore it"
             " and review again. The plan lives outside the repo, so no diff shows it"
         )
-    if error:
-        return refused(error)
     try:
-        findings = out.read_text().strip()
+        findings = out.read_text()
     except OSError:
         findings = ""
-    if not findings:
+    if error:
+        if _complete_verdict(cards, findings):
+            error += (
+                f"\nits complete verdict at {out.resolve()} spent this round — judge those"
+                " findings before reviewing again"
+            )
+            marker = review_marker(sprint_id, "slate")
+            marker.write_text(
+                json.dumps(
+                    _marker_state(sprint_id, "slate")
+                    | {"disposition": "slate-verdict", "refusal": error}
+                )
+            )
+            return fail(error)
+        return refused(error)
+    if not findings.strip():
         return refused(f"refused: the slate reviewer wrote no findings at {out.resolve()}")
     review_marker(sprint_id, "slate").unlink(missing_ok=True)
-    print(findings)
+    print(findings.strip())
     return 0
 
 
