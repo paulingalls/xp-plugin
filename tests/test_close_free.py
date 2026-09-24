@@ -392,6 +392,8 @@ class TestSharedLandGuards:
         gate.write_text('#!/bin/sh\ntest ! -e "$0.ran" || exit 1\ntouch "$0.ran"\n')
         gate.chmod(0o755)
         repo, env, _g = reviewed(tmp_path, tiers=(str(gate), str(gate)))
+        # spawn's handback already ran tests.story once; the gate under test is land's
+        gate.with_name("one-shot.ran").unlink()
         preview = free(repo, env, "fix-typo", "land", "--dry-run")
         assert f"would run: {gate}" in preview.stdout
         landed = free(repo, env, "fix-typo", "land")
