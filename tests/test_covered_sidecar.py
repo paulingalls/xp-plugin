@@ -202,3 +202,15 @@ def test_failed_pr_create_leaves_covered_sidecar_queued(tmp_path):
     assert refused.returncode != 0 and "pr create" in refused.stderr
     assert "set aside" not in refused.stdout
     assert sidecar.read_bytes() == evidence
+
+
+def test_free_dry_run_previews_without_moving(tmp_path):
+    repo, env, sidecar = free_superseded(tmp_path)
+    evidence = sidecar.read_bytes()
+    archived = tmp_path / "data/reports" / sidecar.name.replace(".round-", ".COVERED-round-")
+
+    preview = free(repo, env, "fix-typo", "land", "--dry-run")
+
+    assert preview.returncode == 0, preview.stderr
+    assert f"would set aside {sidecar} -> {archived}" in preview.stdout
+    assert sidecar.read_bytes() == evidence and not archived.exists()

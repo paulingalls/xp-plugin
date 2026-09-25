@@ -13,8 +13,8 @@ and a later review then recorded a round, land refused on the first round's set-
 marker and told the lead to delete it by hand. Land now moves such a marker, only when it carries a
 Verify red AND the recorded round's shown tree contains the tree it redded on, to
 `reports/<id>.COVERED-round-<n>.launch`, prints what it moved and the covering round, and proceeds.
-The move happens after the merge; a failed move is reported for the lead to finish, never a lost
-close. A dry run prints `would set aside` and moves nothing. An uncovered red round, a killed
+The move happens after the merge (for a free patch, after its PR opens); a failed move is reported
+for the lead to finish, never a lost close. A dry run prints `would set aside` and moves nothing. An uncovered red round, a killed
 review's marker and the canonical launch marker still refuse as before. Markers left by stories
 that already landed are not touched.
 
