@@ -110,7 +110,7 @@ class FreeCardCases:
         _branch, key = checkout_free(g)
         commit_on_free(repo, g)
         add_free_card(env, key, str(gate))
-        tree = spawn_free(repo, env, g, tmp_path, key, expected=3)
+        tree = spawn_free(repo, env, g, tmp_path, key, expected=2)
 
         refused = free(tree, env, "fix-typo", "review")
 

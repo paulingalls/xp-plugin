@@ -163,14 +163,8 @@ def cmd_start(sprint_id: str, dry_run: bool = False) -> int:
             "refused: the working tree is dirty before the close batch — commit or"
             f" remove these files first:\n  {dirty}"
         )
-    raw, commands, error = pf.prepare(config_flat("preflight"))
-    if error or (error := pf.run(raw, commands)):
+    if error := pf.check(config_flat("preflight")):
         return fail(error)
-    if dirty := git("status", "--porcelain").stdout.strip():
-        return fail(
-            "refused: preflight left the working tree dirty — commit or discard these"
-            " changes, then run start again; falsifiers must judge HEAD:\n  " + dirty
-        )
     root = data_root()
     standalone, deferred, records, source, coverage_error = grouped_batch(root)
     if coverage_error:

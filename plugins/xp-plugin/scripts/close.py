@@ -357,8 +357,11 @@ def cmd_review(story_id: str, dry_run: bool = False) -> int:
     base, refusal = fork_point(trunk)
     if refusal:
         return fail(refusal)
+    from review_launch import check_preflight, prepare
+
+    if refusal := check_preflight(dry_run):
+        return fail(refusal)
     marker = marker_path(story_id)
-    from review_launch import prepare
 
     state, path, launch = prepare(story_id, dry_run, marker, leg(story_id)[0])
     head = git("rev-parse", "HEAD").stdout.strip()
