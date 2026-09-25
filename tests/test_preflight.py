@@ -29,6 +29,15 @@ def test_runner_refuses_red_without_recording(tmp_path, capfd, monkeypatch):
     assert "nothing was recorded" in red
 
 
+def test_runner_refuses_when_later_chained_command_fails(capfd):
+    import preflight
+
+    raw, commands, error = preflight.prepare(f"true && {sys.executable} -c 'exit(7)'")
+    assert not error
+    assert "exit code 7" in preflight.run(raw, commands)
+    assert "preflight:" not in capfd.readouterr().out
+
+
 def test_runner_validates_chains_and_warns_only_above_60(monkeypatch, capfd):
     import preflight
 
@@ -72,6 +81,48 @@ def _script(repo, g, exit_code):
     script.chmod(0o755)
     assert g("add", "check-env").returncode == 0
     assert g("commit", "-qm", "add environment check").returncode == 0
+
+
+def _mutating_script(repo, g, tracked):
+    script = repo / "check-env"
+    script.write_text(f"#!/bin/sh\nprintf 'preflight edit\\n' >> {tracked}\n")
+    script.chmod(0o755)
+    assert g("add", "check-env").returncode == 0
+    assert g("commit", "-qm", "add mutating environment check").returncode == 0
+
+
+def test_story_land_refuses_preflight_tree_change_before_gates(tmp_path):
+    repo, env, g = story_repo(tmp_path, files="src/thing.py, .xp/config.yml")
+    _mutating_script(repo, g, "src/thing.py")
+    _set_preflight(repo, g, "./check-env")
+    _sentinel_gate(repo, g, "story", tmp_path / "gate-ran")
+    stub_reviewer(tmp_path)
+    assert close(repo, env, "review").returncode == 0
+    marker = marker_file(tmp_path)
+    before = marker.read_bytes()
+    result = close(repo, env, "land")
+    assert result.returncode == 2, result.stdout + result.stderr
+    assert "preflight" in result.stderr and "dirty" in result.stderr
+    assert "src/thing.py" in g("status", "--short").stdout
+    assert marker.read_bytes() == before
+    assert not (tmp_path / "data/markers/story-042.land-red.json").exists()
+    assert not (tmp_path / "gate-ran").exists()
+
+
+def test_sprint_land_refuses_preflight_tree_change_before_gates(tmp_path):
+    repo, env, g = sprint_repo(tmp_path)
+    _mutating_script(repo, g, "src.py")
+    _set_preflight(repo, g, "./check-env")
+    _sentinel_gate(repo, g, "full", tmp_path / "gate-ran")
+    record_reviews(tmp_path, repo, env)
+    marker = marker_path(tmp_path)
+    before = marker.read_bytes()
+    result = sprint(repo, env, "land")
+    assert result.returncode == 2, result.stdout + result.stderr
+    assert "preflight" in result.stderr and "dirty" in result.stderr
+    assert "src.py" in g("status", "--short").stdout
+    assert marker.read_bytes() == before
+    assert not (tmp_path / "gate-ran").exists()
 
 
 @pytest.mark.parametrize("dry_run", [False, True])
