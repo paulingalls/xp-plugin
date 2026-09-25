@@ -11,16 +11,12 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 sys.path.insert(0, str(Path(__file__).parent / "close"))
-from bookkeep import render_prior_rounds
+from bookkeep import fork_point, render_prior_rounds
 from diff_range import render as render_diff_range
 from env import sprint_branch
 from lifecycle import declared_commands as verify_commands
 from review_artifacts import (
     advance_story_checkpoints,
-    rotate_story,
-)
-from review_artifacts import (
-    notice as artifact_notice,
 )
 from review_depth import render as render_review_depth
 from work import (
@@ -36,6 +32,7 @@ FREE_ID = re.compile(r"free-(\d{4}-\d\d-\d\d-(.+))")
 
 
 def fail(msg: str) -> "int":
+    sys.stdout.flush()
     print(msg, file=sys.stderr)
     return 2
 
@@ -357,16 +354,14 @@ def cmd_review(story_id: str, dry_run: bool = False) -> int:
     card, trunk, err = _preflight(story_id, "review", dry_run)
     if err:
         return fail(err)
+    base, refusal = fork_point(trunk)
+    if refusal:
+        return fail(refusal)
     marker = marker_path(story_id)
-    state = json.loads(marker.read_text()) if marker.exists() else {}
-    path = review.report_path(story_id, len(state.get("rounds", [])) + 1)
-    launch = review.launch_marker(story_id)
-    if not dry_run:
-        moves = rotate_story(path, review.patch_path(path), launch)
-        if left := artifact_notice(moves, f"close.py {leg(story_id)[0]} salvage"):
-            print("warning: " + left, file=sys.stderr)
+    from review_launch import prepare
+
+    state, path, launch = prepare(story_id, dry_run, marker, leg(story_id)[0])
     head = git("rev-parse", "HEAD").stdout.strip()
-    base = git("merge-base", f"refs/heads/{trunk}", "HEAD").stdout.strip()
     at = {
         "head": head,
         "digest": review.marker_digest(marker),

@@ -153,13 +153,56 @@ class TestMotionIsBoundedByAMechanism:
     def _plan_rewriting_stub(self, tmp_path, old, new):
         committing_stub(
             tmp_path,
+            "import tempfile, time\n"
             "p = os.environ['XP_DATA'] + '/plan.md'\n"
-            # read BEFORE opening for write: `open(p,'w')` truncates as its own
-            # expression, so the one-liner spelling wipes the plan and every arm
-            # refuses, red and green alike
             "t = open(p).read()\n"
-            f"open(p, 'w').write(t.replace({old!r}, {new!r}))\n",
+            "fd, staged = tempfile.mkstemp(dir=os.path.dirname(p))\n"
+            "try:\n"
+            "    with os.fdopen(fd, 'w') as out: out.write(t.replace("
+            + repr(old)
+            + ", "
+            + repr(new)
+            + "))\n"
+            "    time.sleep(float(os.environ.get('XP_PLAN_WRITE_PAUSE', '0')))\n"
+            "    os.replace(staged, p)\n"
+            "finally:\n"
+            "    if os.path.exists(staged): os.unlink(staged)\n",
         )
+
+    def test_concurrent_plan_writers_expose_only_complete_versions(self, tmp_path):
+        import os
+        import subprocess
+        import time
+
+        _repo, env, _g = make_repo(tmp_path)
+        plan = tmp_path / "data" / "plan.md"
+        old = plan.read_text()
+        new = old.replace("story-099 — not this sprint", "story-099 — MOVED")
+        self._plan_rewriting_stub(tmp_path, "story-099 — not this sprint", "story-099 — MOVED")
+        command = [str(tmp_path / "bin" / "claude")]
+        run_env = {**os.environ, **env, "XP_PLAN_WRITE_PAUSE": "0.15"}
+        writers = [
+            subprocess.Popen(
+                command,
+                env=run_env,
+                stdin=subprocess.PIPE,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+            for _ in range(2)
+        ]
+        for writer in writers:
+            writer.stdin.write("REPORT_PATH: " + str(tmp_path / "report.json") + "\n")
+            writer.stdin.close()
+        observed = []
+        while any(writer.poll() is None for writer in writers):
+            observed.append(plan.read_text())
+            time.sleep(0.001)
+        for writer in writers:
+            assert writer.wait() == 0, writer.stderr.read()
+        assert observed and all(text in (old, new) for text in observed)
+        assert plan.read_text() == new
 
     def test_a_reviewer_that_rewrites_a_card_of_THIS_sprint_is_refused(self, tmp_path):
         """story-019 took the plan out of the repo, so the tree stays clean and

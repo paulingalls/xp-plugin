@@ -145,22 +145,52 @@ def delete_story_branch(branch: str) -> list[str]:
     return []
 
 
+def trunk_checkout(trunk: str) -> str:
+    path = ""
+    for line in git("worktree", "list", "--porcelain").stdout.splitlines():
+        if line.startswith("worktree "):
+            path = line[9:]
+        elif line == f"branch refs/heads/{trunk}":
+            return path
+    return ""
+
+
+def fork_point(trunk: str) -> tuple[str, str]:
+    local = f"refs/heads/{trunk}"
+    remote = f"refs/remotes/origin/{trunk}"
+    local_tip = git("rev-parse", "--verify", "-q", local)
+    remote_tip = git("rev-parse", "--verify", "-q", remote)
+    if (
+        local_tip.returncode == 0
+        and remote_tip.returncode == 0
+        and local_tip.stdout.strip() != remote_tip.stdout.strip()
+        and git("merge-base", "--is-ancestor", local, remote).returncode == 0
+    ):
+        tree = trunk_checkout(trunk)
+        command = (
+            f"git -C {shlex.quote(tree)} merge --ff-only origin/{trunk}"
+            if tree
+            else f"git fetch origin {trunk}:{trunk}"
+        )
+        location = f"checkout {tree}" if tree else "no checkout holds it"
+        return "", (
+            f"refused: local {trunk} is behind origin/{trunk} ({location}) —"
+            f" run `{command}` before review or land"
+        )
+    return git("merge-base", local, "HEAD", check=True).stdout.strip(), ""
+
+
 def held_trunk_tree(trunk: str) -> tuple[str, str]:
     """Find another trunk worktree before spending the test tier."""
-    path = ""
-    for ln in git("worktree", "list", "--porcelain").stdout.splitlines():
-        if ln.startswith("worktree "):
-            path = ln[9:]
-        elif ln == f"branch refs/heads/{trunk}":
-            if Path(path).resolve() == Path.cwd().resolve():
-                return "", ""
-            if git("-C", path, "status", "--porcelain").stdout.strip():
-                return "", (
-                    f"refused: {trunk} is checked out at {path}, which is dirty —"
-                    " the merge lands there, so clean it first"
-                )
-            return path, ""
-    return "", ""
+    path = trunk_checkout(trunk)
+    if not path or Path(path).resolve() == Path.cwd().resolve():
+        return "", ""
+    if git("-C", path, "status", "--porcelain").stdout.strip():
+        return "", (
+            f"refused: {trunk} is checked out at {path}, which is dirty —"
+            " the merge lands there, so clean it first"
+        )
+    return path, ""
 
 
 def story_worktree(target: Path) -> tuple[str, str, list[str]]:
