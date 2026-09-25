@@ -398,6 +398,7 @@ class TestTheCardEndsUpSayingDone:
         )
         repo, env, g = make_repo(tmp_path, verify=f"python3 -c {shlex.quote(code)}")
         assert close(repo, env, "review").returncode == 0
+        (tmp_path / "data" / "markers" / "story-042.verify.json").unlink()
         r = close(repo, env, "land")
         assert "Review round" in g("log", "main", "-1", "--format=%B").stdout, "the merge is the"
         assert r.returncode == 3, r.stdout + r.stderr

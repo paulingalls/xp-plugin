@@ -112,7 +112,7 @@ class TestVerifyGate:
         assert second.exists() and not first.exists()
         second.unlink()
         assert close(repo, env, "land").returncode == 0
-        assert second.exists() and not first.exists()
+        assert not second.exists() and not first.exists()
 
 
 class TestIncompletePlanReviewReachesTheLead:

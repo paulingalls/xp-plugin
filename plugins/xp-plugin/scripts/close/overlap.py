@@ -45,7 +45,7 @@ def unresolved_blocking(state: dict) -> list:
     ]
 
 
-def land_refusal(state: dict, key: str, base: str) -> str:
+def land_refusal(state: dict, key: str, base: str, exempt: set[str] | None = None) -> str:
     """Whether the recorded round describes the tree in front of us — the whole
     question every land leg asks, in ONE implementation. `key` is the leg's own
     spelling of its review command, which is all that legitimately differs."""
@@ -63,7 +63,8 @@ def land_refusal(state: dict, key: str, base: str) -> str:
         # Forward-only, and files not SHAs: trunk motion that touched nothing the
         # story wrote cannot change the diff the reviewer judged, while refusing on
         # the SHAs alone charged a round for every parallel story that merged first.
-        if hit := sorted(_files(f"{recorded}..{base}") & _files(f"{base}..HEAD")):
+        shared = _files(f"{recorded}..{base}") & _files(f"{base}..HEAD")
+        if hit := sorted(shared - (exempt or set())):
             listed = "\n  ".join(hit)
             return (
                 "refused: trunk moved after the recorded round and changed files the"
@@ -107,9 +108,9 @@ def unmerged(ref: str) -> bool:
     return git("merge-base", "--is-ancestor", ref, "HEAD", check=False).returncode != 0
 
 
-def overlapping(ref: str, base: str) -> list[str]:
+def overlapping(ref: str, base: str, exempt: set[str] | None = None) -> list[str]:
     """Compare from the fork point; a since-review window misses trunk motion."""
-    return sorted(_files(f"{base}..{ref}") & _files(f"{base}..HEAD"))
+    return sorted((_files(f"{base}..{ref}") & _files(f"{base}..HEAD")) - (exempt or set()))
 
 
 def collision(ref: str, files: list[str]) -> str:
@@ -159,13 +160,24 @@ def tier_refusal(tier: str | None, tier_key: str) -> str:
 
 
 def run_checks(
-    verify: list[list[str]], tier: str | None, where: str = "", tier_key: str = "story"
+    verify: list[list[str]],
+    tier: str | None,
+    where: str = "",
+    tier_key: str = "story",
+    measured_red: Callable[[str, str], str] | None = None,
 ) -> str:
     if refusal := tier_refusal(tier, tier_key):
         return refusal
-    for label, commands in (("Verify", verify), ("test tier", [tier] if tier else [])):
+    for label, commands in (("test tier", [tier] if tier else []), ("Verify", verify)):
         for cmd in commands:
-            if red := run_one(label, cmd, where):
+            if measured_red is None:
+                if red := run_one(label, cmd, where):
+                    return red
+                continue
+            rc = _returncode(cmd)
+            if red := _red(label, cmd, rc, where):
+                if 0 < rc != 127:
+                    return measured_red(label, red) or red
                 return red
     return ""
 
@@ -237,6 +249,8 @@ def gates(
     record_attempt: Callable[[dict, dict | None], str] | None = None,
     history: list[dict] | None = None,
     legs: list[tuple[str, str]] | None = None,
+    measured_red: Callable[[str, str], str] | None = None,
+    story_verify: Callable[[str], tuple[bool, str]] | None = None,
 ) -> tuple[str, dict | None]:
     """Verify and the tier, run on the tree that will EXIST. Merging INTO the story
     branch rather than in the tree holding trunk: same merged content either way,
@@ -267,15 +281,19 @@ def gates(
             legs = staged_legs
         if refusal := tier_refusal(tier, tier_key):
             return refusal, None
-        if prior_receipt is _NO_RECEIPT:
-            return run_checks(verify, tier, where, tier_key), None
+        if prior_receipt is _NO_RECEIPT and story_verify is None:
+            return run_checks(verify, tier, where, tier_key, measured_red), None
         written = git("write-tree", check=False)
         if written.returncode:
             return (
-                f"refused: Git could not write tree for the full tier: {written.stderr.strip()}",
+                f"refused: Git could not write tree for the gates: {written.stderr.strip()}",
                 None,
             )
         tree = written.stdout.strip()
+        if prior_receipt is _NO_RECEIPT:
+            skip, reason = story_verify(tree)
+            print(f"Verify {reason}")
+            return run_checks([] if skip else verify, tier, where, tier_key, measured_red), None
         if legs is not None:
             from tier_legs import run
 

@@ -15,5 +15,6 @@ Files: path/to/file.py, path/to/new.py (new)
 AC:
 - Given <precondition>, When <action>, Then <observable result>
 Verify: EDIT-ME
+<!-- Optional `Verify reads: src/app/, assets/logo.png` names repo pathspecs Verify depends on. -->
 Executor: (default)
 Close review: standard

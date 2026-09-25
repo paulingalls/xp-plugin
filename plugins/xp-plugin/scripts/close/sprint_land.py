@@ -4,6 +4,7 @@ import json
 import subprocess
 import tempfile
 
+import bookkeep
 import overlap
 import tier_legs
 from env import data_root
@@ -455,7 +456,7 @@ def cmd_land(sprint_id: str, dry_run: bool) -> int:
         for c in cmds:
             r = subprocess.run(c, capture_output=True, text=True)
             if r.returncode != 0:
-                return fail(f"{c[0]} failed: {r.stderr.strip()}")
+                return bookkeep.refuse_command(c, r)
     print(f"release PR open. After it MERGES: close.py sprint {sprint_id} post-merge")
     if not versioned:
         print(VERSIONING_OFF_TEXT)

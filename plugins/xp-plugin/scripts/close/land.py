@@ -12,15 +12,19 @@ import lifecycle as lc
 import overlap
 import ready
 import review
+import verify_receipt
 import work
 from release import (
     VERSIONING_OFF_TEXT,
     next_version,
     refuse_unbumpable,
+    trunk_version_refusal,
     version_files,
+    version_only_paths,
     version_refusal,
     versioning_mode,
 )
+from repair import land_red_path
 from review_artifacts import story_sidecars
 from review_scope import declared_files
 from timing import Span
@@ -94,11 +98,46 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
         )
     head = close.git("rev-parse", "HEAD").stdout.strip()
     base = close.git("merge-base", f"refs/heads/{trunk}", "HEAD").stdout.strip()
-    if err := overlap.land_refusal(state, noun, base):
-        return close.fail(err)
-    rounds = state["rounds"]
     ref = overlap.merge_source(trunk, merge_mode)
-    files = overlap.overlapping(ref, base)
+    versioned = False
+    version = ""
+    names = []
+    refusal = ""
+    if free:
+        versioned, refusal = versioning_mode()
+        if versioned:
+            version = next_version("patch", ref)
+            names = version_files()
+    candidates = set(names) - {"none"} if free and versioned else set()
+    recorded = state.get("review_base")
+    prior_exempt = set()
+    if candidates and isinstance(recorded, str) and recorded != base:
+        prior_exempt = version_only_paths(recorded, base, candidates) & version_only_paths(
+            base, head, candidates
+        )
+    if err := overlap.land_refusal(state, noun, base, prior_exempt):
+        return close.fail(err)
+    if refusal:
+        return close.fail(refusal)
+    if free and versioned and not version:
+        return refuse_unbumpable(ref)
+    rounds = state["rounds"]
+    if (
+        free
+        and versioned
+        and names
+        and names != ["none"]
+        and (
+            refusal := trunk_version_refusal(ref, version, names) or version_refusal(version, names)
+        )
+    ):
+        return close.fail(refusal)
+    fork_exempt = (
+        version_only_paths(base, ref, candidates) & version_only_paths(base, head, candidates)
+        if candidates
+        else set()
+    )
+    files = overlap.overlapping(ref, base, fork_exempt)
     gate_hits = [f for f in files if f in overlap.GATE_FILES]
     blocked = files if trunk == close.default_branch() else gate_hits
     if blocked:
@@ -127,21 +166,12 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
         print(ready.card_diff(change["card"], after))
     try:
         raw, verify = close.verify_commands(story_id, card)
+        verify_receipt.reads(card)
     except ValueError as e:
         return close.fail(str(e))
     tier_key = "story"
     tier = work.config_block_value("tests", tier_key)
     branch = close.git("rev-parse", "--abbrev-ref", "HEAD").stdout.strip()
-    versioned = True
-    version = ""
-    if free:
-        versioned, refusal = versioning_mode()
-        if refusal:
-            return close.fail(refusal)
-        if versioned:
-            version = next_version("patch", ref)
-            if not version:
-                return refuse_unbumpable(ref)
     changed = set(
         close.git(
             "-c", "core.quotepath=off", "diff", "--no-renames", "--name-only", f"{base}..HEAD"
@@ -151,7 +181,7 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
         declared = declared_files(card)
     except ValueError as e:
         return close.fail(str(e))
-    exempt = set(version_files()) if free and versioned else set()
+    exempt = set(names) if free and versioned else set()
     exempt.discard("none")
     beyond_map = sorted(changed - declared - exempt)
     protected = [path for path in beyond_map if path.startswith(".xp/")]
@@ -181,16 +211,11 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
     ]
     pr_bookkeep = [["git", "push", "origin", trunk]]
     pr_steps = (pr_cmds, pr_sync, pr_bookkeep)
-    unbumped = ""
-    if free and versioned and (names := version_files()) and names != ["none"]:
-        unbumped = version_refusal(version, names)
     if dry_run:
         # A preview of a land that refuses is the refusal: listing steps it will
         # never take is the same lie in the other direction.
         if refusal := overlap.tier_refusal(tier, tier_key):
             return close.fail(refusal)
-        if unbumped:
-            return close.fail(unbumped)
         if files_beyond_map:
             print("beyond the card's Files map — the merge body will name:")
             print("".join(f"  {path}\n" for path in files_beyond_map), end="")
@@ -207,11 +232,36 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
             end="",
         )
         return 0
-    if unbumped:
-        return close.fail(unbumped)
     span = Span(work.data_root(), "story-land-gates", f"{story_id}: trial merge, Verify and tier")
+    land_red = land_red_path(story_id)
+
+    def record_red(kind: str, red: str) -> str:
+        try:
+            land_red.write_text(
+                json.dumps(
+                    {
+                        "head": head,
+                        "kind": kind,
+                        "red": red,
+                        "round_index": len(rounds),
+                        "digest": review.marker_digest(marker),
+                        "card": card,
+                    }
+                )
+            )
+        except OSError as exc:
+            return f"refused: could not record land red at {land_red}: {exc} — run land again"
+        return f"{red} — fix it, commit, then run `close.py {noun} repair`"
+
     try:
-        red, _receipt = overlap.gates(ref, verify, tier_key, pending)
+        red, _receipt = overlap.gates(
+            ref,
+            verify,
+            tier_key,
+            pending,
+            measured_red=record_red,
+            story_verify=lambda tree: verify_receipt.decide(story_id, card, raw, verify, tree),
+        )
     except BaseException:
         span.finish("interrupted")
         raise
@@ -230,7 +280,8 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
         for command in pr_cmds:
             result = subprocess.run(command, capture_output=True, text=True)
             if result.returncode:
-                return close.fail(f"{command[0]} failed: {result.stderr.strip()}")
+                return bookkeep.refuse_command(command, result)
+        land_red.unlink(missing_ok=True)
         print(bookkeep.render_noted(rounds), end="")
         target = f" for {version}" if version else ""
         print(f"PR open against {trunk}{target}. After it merges: `close.py {noun} post-merge`")
@@ -247,7 +298,7 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
         for c in pr_cmds:
             r = subprocess.run(c, capture_output=True, text=True)
             if r.returncode != 0:
-                return close.fail(f"{c[0]} failed: {r.stderr.strip()}")
+                return bookkeep.refuse_command(c, r)
         if held:
             os.chdir(held)
     else:
@@ -258,6 +309,7 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
                 f"cannot check out {trunk} to merge into: {left.stderr.strip()}"
                 " — clear that, then run land again"
             )
+        before_merge = close.git("rev-parse", "HEAD").stdout.strip()
         merged = close.git("merge", "--no-ff", branch, "-m", message, check=False)
         if merged.returncode != 0:
             unmerged = close.git("diff", "--name-only", "--diff-filter=U", check=False)
@@ -278,6 +330,8 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
 
     print(bookkeep.render_noted(rounds), end="")
     failed = []
+    dependencies = []
+    retry = ""
     if files:
         overlap.report_merge(story_id, files)
     if merge_mode == "pr":
@@ -297,6 +351,17 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
             if pushed.returncode != 0:
                 why = (pushed.stderr or pushed.stdout).strip().replace("\n", " ")
                 failed.append(f"git push origin {trunk} — {why[-300:]}")
+                changed_by_merge = close.git(
+                    "-c",
+                    "core.quotepath=off",
+                    "diff",
+                    "--no-renames",
+                    "--name-only",
+                    before_merge,
+                    "HEAD",
+                ).stdout.splitlines()
+                dependencies = bookkeep.dependency_paths(changed_by_merge)
+                retry = f"git push origin {trunk}"
     else:
         for c in pr_bookkeep:
             if subprocess.run(c, capture_output=True, text=True).returncode != 0:
@@ -307,7 +372,9 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
     bookkeep.delete_story_markers(story_id)
     bookkeep.log_close(story_id, card, rounds, merge_sha, files_beyond_map)
     marker.unlink()
-    if bookkeep.report_incomplete(failed):
+    land_red.unlink(missing_ok=True)
+    verify_receipt.path(story_id).unlink(missing_ok=True)
+    if bookkeep.report_incomplete(failed, dependencies, str(Path.cwd()), retry):
         return 3
     print(
         f"{story_id} closed. REPLACE the session digest (you are its sole writer);"

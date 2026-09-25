@@ -67,6 +67,11 @@ def add_free_card(env, key, verify="true"):
 def commit_on_free(repo, g, text="B = 1\n", path="src/free.py", msg="free work"):
     (repo / path).parent.mkdir(parents=True, exist_ok=True)
     (repo / path).write_text(text)
+    manifest = repo / "plugin.json"
+    if manifest.exists():
+        data = json.loads(manifest.read_text())
+        data["version"] = "0.2.1"
+        manifest.write_text(json.dumps(data) + "\n")
     g("add", "-A")
     g("commit", "-qm", msg)
 

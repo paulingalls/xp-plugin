@@ -24,6 +24,9 @@ never apply a card's change: building it, even in a copy, is the story's work.
    that the card does not name. Citations do not bound scope.
 5. **Stop states** — a card naming a stop, escalation or refusal branch states what
    `Verify:` means AT that branch, or says the branch closes no story.
+6. **Optional fields** — use the shipped card template in this bundle as the
+   authority. For each card, name any optional field that would pay on that card
+   as a NOTED candidate; absence never makes the card RED.
 
 ## Output
 

@@ -160,6 +160,7 @@ def assert_bundle_schema(bundle, out):
         "## Sprint capacity\n\nsprint_cap: 6\ndebt_budget: 0.2\n\n"
         "## VALUES\n\nSHIPPED:VALUES.md\n\n"
         "## JUDGMENT\n\nSHIPPED:JUDGMENT.md\n\n"
+        "## Shipped card template\n\nSHIPPED:plan.md\n\n"
         "## Constraints\n\nLOCAL:constraints.md\n\n"
         "## System context\n\nLOCAL:system.md\n\n"
     )
@@ -176,10 +177,12 @@ def assert_charter_contract(charter):
         # sprint-015 retro promotion: story-089's first teammate stopped and escalated,
         # and its Verify said nothing about whether the escalation was correct.
         "Stop states",
+        "Optional fields",
     }
     assert all(word in checks["Slate"] for word in ("order", "funding", "collisions", "capacity"))
     assert "execute" in checks["Premises"] and "reachable" in checks["Premises"]
     assert "search" in checks["Omitted pins"] and "card does not name" in checks["Omitted pins"]
+    assert all(word in checks["Optional fields"] for word in ("each card", "NOTED", "never", "RED"))
     # Sprint-24 retro, Paul: a slate reader that builds the change in a disposable copy
     # bought what reading and the card's own Verify already find, at 29 minutes a round.
     assert "never apply a card's change" in charter

@@ -110,6 +110,8 @@ def test_free_land_does_not_emit_a_story_event(tmp_path):
     plan.write_text(plan.read_text().replace("Files: src/free.py", "Files: free.py"))
     tree = spawn_free(repo, env, g, tmp_path, key)
     (tree / "free.py").write_text("FREE = 1\n")
+    manifest = tree / "plugin.json"
+    manifest.write_text(json.dumps(json.loads(manifest.read_text()) | {"version": "0.2.1"}) + "\n")
     subprocess.run(["git", "add", "-A"], cwd=tree, env=env, check=True)
     subprocess.run(["git", "commit", "-qm", "free change"], cwd=tree, env=env, check=True)
     assert free(tree, env, "fix-typo", "review").returncode == 0

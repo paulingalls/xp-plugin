@@ -392,6 +392,8 @@ class TestSharedLandGuards:
         gate.write_text('#!/bin/sh\ntest ! -e "$0.ran" || exit 1\ntouch "$0.ran"\n')
         gate.chmod(0o755)
         repo, env, _g = reviewed(tmp_path, tiers=(str(gate), str(gate)))
+        # spawn's handback already ran tests.story once; the gate under test is land's
+        gate.with_name("one-shot.ran").unlink()
         preview = free(repo, env, "fix-typo", "land", "--dry-run")
         assert f"would run: {gate}" in preview.stdout
         landed = free(repo, env, "fix-typo", "land")
@@ -422,7 +424,9 @@ class TestSharedLandGuards:
         repo, env, g = reviewed(tmp_path)
         branch, _key = free_identity(g)
         g("checkout", "-q", "main")
-        commit_on_free(repo, g, "B = 2\n", "src/free.py", "trunk touched it too")
+        (repo / "src/free.py").write_text("B = 2\n")
+        g("add", "src/free.py")
+        g("commit", "-qm", "trunk touched it too")
         g("push", "-q", "origin", "main")
         g("checkout", "-q", branch)
         r = free(repo, env, "fix-typo", "land")

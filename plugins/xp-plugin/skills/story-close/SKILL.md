@@ -28,8 +28,11 @@ yourself doing by hand is a defect in the pipeline — file it.
    before land. Exception: when a completed review's Verify redded without blocking
    findings, fix only reviewed or card Files paths, commit, then run
    `close.py story <id> repair`; a bounded repair passing Verify owes no confirming
-   round. What ends
-   the rounds is the finding bar — silent or corrupting earns another, loud does
+   round. If land measures a Verify or tier red after a recorded round with no blocking
+   finding, fix only reviewed or card Files paths, commit, run
+   `close.py story <id> repair`, then `close.py story <id> land` again. This bounded
+   land-time repair also owes no confirming round. Other lead fixes still do.
+   The finding bar ends the rounds — silent or corrupting earns another, loud does
    not — never a count.
 4. **`close.py story <id> land`** — deterministic, and it never spawns. Run it from
    the story worktree: it merges in whichever tree holds the integration branch, so

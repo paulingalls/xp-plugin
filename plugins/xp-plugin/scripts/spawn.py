@@ -19,7 +19,7 @@ import handoff as handoff_io
 import story_stages as stages
 from bookkeep import bootstrap_command
 from close import config_flat, config_has, fail, git, integration_target, leg, story_card
-from handback import tree_state, unclean_teammate_result
+from handback import story_tier, tree_state, unclean_teammate_result
 from handoff import draft_path, handoff_state, inheritance, mark_handoff, mark_stage, report_handoff
 from harness import HARNESS_INSTALL, agent_argv, missing_harness, resolve_codex_sandbox
 from prompt import _read as _read
@@ -224,6 +224,12 @@ def cmd_spawn(story_id: str, override: str, dry_run: bool, resuming: bool = Fals
     except ValueError as error:
         repair = ready().AMEND.format(story_id)
         return fail(f"refused: {error}. Repair the Files line in {plan_path()}. {repair}")
+    if (
+        not resuming
+        and not leg(story_id)[1]
+        and (problem := ready().check_refresh(story_id, card, require_digest=False))
+    ):
+        return fail(problem)
     harness, model, effort = resolve_role("executor", card, override)
     sandbox, problem = resolve_codex_sandbox(harness, config_flat("codex_sandbox"))
     if problem:
@@ -399,33 +405,41 @@ def cmd_spawn(story_id: str, override: str, dry_run: bool, resuming: bool = Fals
         prompt = build_prompt(
             teammate_sections(card, story_id, handoff, PLUGIN_ROOT, multifile=multifile)
         )
-    rc = run_teammate(argv, tree, prompt, story_id, data_root(), harness)
-    outcome = "terminal-stop" if rc == 0 else "harness-death"
-    executor_log = data_root() / "logs" / f"{story_id}-executor.log"
-    err = unclean_teammate_result(tree, handed_over, story_id, resuming, outcome, executor_log)
-    if err or rc:
-        why = err or f"the teammate left a clean commit in {tree} before its harness failed"
-        return stop(why, rc)
-    mark_stage(data_root(), story_id, "executor", "ran")
-    rc, state, refusal = stages.review_story(tree, story_id)
-    if rc:
-        cause = refusal or "the diff review produced no readable refusal; inspect its log"
-        return stop(f"the diff review leg refused (rc {rc}): {cause}", rc)
-    mark_stage(data_root(), story_id, "reviewer", "ran")
-    from overlap import unresolved_blocking  # land's own reading, never a second one
-
-    if unresolved_blocking(state):
-        why = "diff review recorded blocking findings; resume with a fresh executor to fix them"
-        return stop(why, 0)
-    free_slug = leg(story_id)[1]
-    instruction = "run `/free-close` from that worktree" if free_slug else "run `/story-close`"
-    print(stage_line())
-    print(
-        f"{story_id} produced commit {tree_state(tree)[0]} at {tree}. Read it, then {instruction}."
-    )
-    mark_handoff(data_root(), story_id, True)
-    held.close()
-    return rc
+    for attempt in range(2):
+        rc = run_teammate(argv, tree, prompt, story_id, data_root(), harness)
+        outcome = "terminal-stop" if rc == 0 else "harness-death"
+        executor_log = data_root() / "logs" / f"{story_id}-executor.log"
+        err = unclean_teammate_result(
+            tree, handed_over, story_id, resuming, outcome, executor_log, attempt > 0
+        )
+        if err or rc:
+            why = err or f"the teammate left a clean commit in {tree} before its harness failed"
+            return stop(why, rc)
+        mark_stage(data_root(), story_id, "executor", "ran")
+        tier_state, tier_command, tier_output = story_tier(tree)
+        if tier_state == "unavailable":
+            reason = "unset" if not tier_command else "EDIT-ME"
+            print(f"no story tier ran in {tree}: tests.story is {reason}")
+            mark_stage(data_root(), story_id, "story-tier", "skipped")
+            break
+        if tier_state == "passed":
+            mark_stage(data_root(), story_id, "story-tier", "ran")
+            break
+        mark_stage(data_root(), story_id, "story-tier", "failed")
+        if attempt or tier_state == "unrunnable":
+            return stop(
+                f"story tier {tier_state}: {tier_command!r} in {tree}."
+                f" Output tail:\n{tier_output}\n"
+                f"Repair in that tree with `spawn.py resume {story_id}`",
+                0,
+            )
+        handed_over = tree_state(tree)
+        prompt += (
+            "\n## Story tier failure\n\n"
+            f"The configured story tier `{tier_command}` failed in {tree}."
+            f" Fix it and commit before handing back. Output tail:\n{tier_output}\n"
+        )
+    return stages.finish_story(tree, story_id, stop, stage_line, held)
 
 
 def ready():

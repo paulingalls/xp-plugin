@@ -265,6 +265,7 @@ class TestFixingReviewer:
         sentinel = tmp_path / "verify-ran"
         _repo, env, _g, tree, _b = self._worktree_land_setup(tmp_path, verify=f"touch {sentinel}")
         sentinel.unlink()  # or story-036's review leg greens this for land's reason
+        next((tmp_path / "data" / "markers").glob("*.verify.json")).unlink()
         assert close(tree, env, "land", "--merge-mode", "local").returncode == 0
         assert sentinel.exists()
 

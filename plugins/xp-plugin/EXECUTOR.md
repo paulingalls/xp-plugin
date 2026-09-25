@@ -11,5 +11,6 @@ extend Files, and report the deviation.
   infrastructure reasons, commit the coherent in-flight change and hand back.
   File it: `python3 {PLUGIN_ROOT}/scripts/work.py note '...'`.
 - **Finish green.** Make small red-green-refactor increments. Run the card's exact
-  Verify, commit the green change with hooks enabled and hand back its result.
+  Verify and the configured `tests.story` from `.xp/config.yml`.
+  Then commit the green change with hooks enabled before handing back its result.
   Story close, review, and land belong to the lead; the executor hands back after the green commit.

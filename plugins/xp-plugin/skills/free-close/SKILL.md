@@ -16,5 +16,9 @@ The scripts own the mechanics. You own the judgment.
    Verify redded without blocking findings, fix only reviewed or card Files paths,
    commit, then run `close.py free <slug> repair`; a bounded repair passing Verify
    owes no confirming round. Apply the finding bar in JUDGMENT.md.
+   If land measures a Verify or tier red after a recorded round with no blocking
+   finding, fix only reviewed or card Files paths, commit, run
+   `close.py free <slug> repair`, then `close.py free <slug> land` again. This bounded
+   land-time repair also owes no confirming round. Other lead fixes still do.
 3. **Land**: `close.py free <slug> land` opens the release PR.
 4. **After merge**: `close.py free <slug> post-merge`.

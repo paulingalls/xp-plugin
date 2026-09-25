@@ -4,6 +4,7 @@
 import json
 import os
 import re
+import shlex
 import signal
 import subprocess
 import sys
@@ -45,6 +46,8 @@ def _render_rounds(rounds: list[dict], story_id: str = "") -> str:
             if story_id:
                 items = review.cap_display(items, Path(f"reports/{story_id}.round-{i}.json"))
             out += [f"  {k}: {item}" for item in items]
+        repairs = ([r["repair"]] if "repair" in r else []) + r.get("repairs", [])
+        out += [f"  repair: {item['range']}" for item in repairs]
     return "\n".join(out)
 
 
@@ -77,7 +80,7 @@ def render_sprint_prior(rounds: list[dict]) -> str:
 def render_land_preview(
     verify: str, tier: str, merge_mode: str, branch: str, trunk: str, pr_steps: tuple, pending: bool
 ) -> str:
-    out = [f"would run: {verify}", f"would run: {tier}"]
+    out = [f"would run: {tier}", f"would run: {verify}"]
     if pending:
         out.append(f"...on a trial merge with {trunk} — staged, then aborted either way")
     if merge_mode == "pr":
@@ -181,12 +184,68 @@ def remove_story_checkout(tree: str, branch: str, timeout_value: str = "") -> li
     return failed + (delete_story_branch(branch) if branch else [])
 
 
-def report_incomplete(failed: list[str]) -> bool:
+def refuse_command(argv: list[str], result: subprocess.CompletedProcess) -> int:
+    sys.stdout.flush()
+    for line in result.stderr.splitlines()[-12:]:
+        print(line, file=sys.stderr)
+    shown = [
+        "<body omitted>" if i and argv[i - 1] == "--body" else arg for i, arg in enumerate(argv)
+    ]
+    command = shlex.join(shown)
+    print(f"refused: {command} failed (exit {result.returncode})", file=sys.stderr)
+    return 2
+
+
+DEPENDENCY_NAMES = {
+    "package.json",
+    "package-lock.json",
+    "npm-shrinkwrap.json",
+    "pnpm-lock.yaml",
+    "pnpm-workspace.yaml",
+    "yarn.lock",
+    "bun.lock",
+    "bun.lockb",
+    "pyproject.toml",
+    "poetry.lock",
+    "uv.lock",
+    "Pipfile",
+    "Pipfile.lock",
+    "requirements.txt",
+    "Cargo.toml",
+    "Cargo.lock",
+    "Gemfile",
+    "Gemfile.lock",
+    "composer.json",
+    "composer.lock",
+    "pom.xml",
+    "build.gradle",
+    "build.gradle.kts",
+    "go.mod",
+    "go.sum",
+}
+
+
+def dependency_paths(paths: list[str]) -> list[str]:
+    return sorted(
+        path
+        for path in paths
+        if Path(path).name in DEPENDENCY_NAMES or "patches" in Path(path).parts[:-1]
+    )
+
+
+def report_incomplete(
+    failed: list[str], dependencies: list[str] | None = None, checkout: str = "", retry: str = ""
+) -> bool:
     if not failed:
         return False
     print("\nincomplete — the merge landed. Re-run or resolve them:", file=sys.stderr)
     for command in failed:
         print(f"  {command}", file=sys.stderr)
+    if dependencies:
+        print(f"  dependency files changed in {checkout}:", file=sys.stderr)
+        for path in dependencies:
+            print(f"    {path}", file=sys.stderr)
+        print(f"  Refresh dependencies there, then re-run `{retry}`.", file=sys.stderr)
     return True
 
 

@@ -171,6 +171,10 @@ class TestFreeLand:
         tree = spawn_free(repo, env, g, tmp_path, key)
         assert g("worktree", "remove", "--force", str(tree)).returncode == 0
         assert g("checkout", "-q", branch).returncode == 0
+        manifest = repo / "plugin.json"
+        manifest.write_text('{"version": "0.2.1"}\n')
+        g("add", "plugin.json")
+        g("commit", "-qm", "bump free release")
         stub_reviewer(tmp_path, patch=NEW_FILE_PATCH)
         assert free(repo, env, "fix-typo", "review").returncode == 0
         r = free(repo, env, "fix-typo", "land")

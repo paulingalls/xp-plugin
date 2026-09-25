@@ -9,6 +9,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from close import fail, git, leg, story_card, verify_commands
 from handoff import marker_path as handoff_marker_path
 from review_scope import FIELD_START, declared_files
+from verify_receipt import reads as verify_reads
 from work import (
     card_digest,
     card_lines,
@@ -29,10 +30,25 @@ DOC = "The plan-review credential: minted from [planned], amended only with a re
 def refresh_instruction(story_id: str) -> str:
     script = str(Path(__file__).parent.parent / "slate_review.py")
     command = shlex.join(["python3", script, story_id, "--refresh"])
-    return (
-        f"Finish all card edits. Refresh once: Run `{command}`. Then run"
-        f" `spawn.py ready {story_id}`."
+    return f"Finish all card edits. Refresh once: Run `{command}`. Then {refresh_next(story_id)}"
+
+
+def refresh_next(story_id: str, changed: bool | None = None) -> str:
+    try:
+        _card, status = story_card(plan_path().read_text(), story_id)
+    except (KeyError, OSError):
+        status = "planned"
+    if status != "ready":
+        return f"run `spawn.py ready {story_id}`."
+    spawn = f"run `spawn.py {story_id}`"
+    amend = (
+        f"run `spawn.py amend {story_id} --reason '<why this declaration changed>'`, then {spawn}"
     )
+    if changed is True:
+        return amend + "."
+    if changed is False:
+        return spawn + "."
+    return f"if the card is unchanged, {spawn}; if it changed, {amend}."
 
 
 def spawned(story_id: str) -> bool:
@@ -165,6 +181,7 @@ def amend(story_id: str, reason: str) -> int:
         return fail(f"refused: {story_id} is [{status}], amend requires [ready] or [in-progress]")
     try:
         verify_commands(story_id, card)
+        verify_reads(card)
     except ValueError as e:
         return fail(str(e))
     # Once the story has progressed its Files line records what was BUILT: no refresher
@@ -330,6 +347,7 @@ def mint(story_id: str, require_refresh: bool) -> int:
         return fail(f"refused: {story_id} was already spawned. {AMEND.format(story_id)}")
     try:
         verify_commands(story_id, card)
+        verify_reads(card)
     except ValueError as e:
         return fail(str(e) + " — fix it before the review, not after the story")
     if require_refresh and (problem := check_refresh(story_id, card)):
