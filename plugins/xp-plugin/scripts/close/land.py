@@ -26,7 +26,7 @@ from release import (
     versioning_mode,
 )
 from repair import land_red_path
-from review_artifacts import story_sidecars
+from review_artifacts import archive_covered, covered_destination, story_sidecars
 from review_scope import declared_files
 from timing import Span
 
@@ -36,6 +36,7 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
         return close.fail("refused: working tree is dirty — Verify must judge the tree that merges")
     marker = close.marker_path(story_id)
     launch_paths = [review.launch_marker(story_id), *story_sidecars(story_id)]
+    covered_sidecars = []
     for launch in (path for path in launch_paths if path.exists()):
         # Distinct states stay distinct: salvage refuses when this file is
         # unreadable, and land reading the same file may not answer it with
@@ -62,6 +63,12 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
                     ).returncode
                 )
             if covered:
+                if not state.get("rounds") or state["rounds"][-1].get("shown_sha") != shown_sha:
+                    return close.fail(
+                        "refused: shown tree does not identify the latest review round,"
+                        f" so no round can be named as covering {launch} — review again"
+                    )
+                covered_sidecars.append((launch, len(state["rounds"])))
                 continue
             verified = str(unrecorded.get("verify_head", unrecorded.get("head", "")))[:8]
             next_action = (
@@ -76,7 +83,8 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
             )
     # launch_paths, not the sidecars alone: the CANONICAL marker is what a review
     # that never recorded leaves behind, and salvage reads it first.
-    if queued := [path for path in launch_paths if path.exists()]:
+    covered_paths = {path for path, _round in covered_sidecars}
+    if queued := [path for path in launch_paths if path.exists() and path not in covered_paths]:
         noun = close.leg(story_id)[0]
         return close.fail(
             f"refused: {len(queued)} unrecorded review round(s) are set aside at"
@@ -86,6 +94,24 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
             " explicitly accept that the round cannot enter the ledger, remove only"
             f" the named launch marker(s), then retry `close.py {noun} land`"
         )
+    for sidecar, _round in covered_sidecars:
+        destination = covered_destination(sidecar)
+        if destination.exists():
+            return close.fail(
+                f"refused: covered review archive already exists: {destination} — inspect"
+                " it and move it elsewhere, then run land again"
+            )
+
+    def set_aside(preview: bool = False) -> str:
+        for sidecar, round_n in covered_sidecars:
+            try:
+                destination = covered_destination(sidecar) if preview else archive_covered(sidecar)
+            except OSError as exc:
+                return f"move {sidecar} to {covered_destination(sidecar)} — set aside failed: {exc}"
+            verb = "would set aside" if preview else "set aside"
+            print(f"{verb} {sidecar} -> {destination}; covered by round {round_n}")
+        return ""
+
     if not marker.exists():
         return close.fail(f"refused: no close in progress for {story_id} — run review first")
     state = json.loads(marker.read_text())
@@ -234,6 +260,7 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
             print(f"(then `close.py {noun} post-merge`)")
             if not versioned:
                 print(VERSIONING_OFF_TEXT)
+            set_aside(preview=True)
             return 0
         print(
             bookkeep.render_land_preview(
@@ -241,6 +268,7 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
             ),
             end="",
         )
+        set_aside(preview=True)
         return 0
     if error := pf.check(close.config_flat("preflight")):
         return close.fail(error)
@@ -293,6 +321,8 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
             result = subprocess.run(command, capture_output=True, text=True)
             if result.returncode:
                 return bookkeep.refuse_command(command, result)
+        if error := set_aside():
+            return close.fail(f"refused: the PR is open, but {error}")
         land_red.unlink(missing_ok=True)
         print(bookkeep.render_noted(rounds), end="")
         target = f" for {version}" if version else ""
@@ -340,8 +370,9 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
                 " this tree"
             )
 
+    # After the merge, a failed move is bookkeeping the lead finishes, not a refusal.
+    failed = [error] if (error := set_aside()) else []
     print(bookkeep.render_noted(rounds), end="")
-    failed = []
     dependencies = []
     retry = ""
     if files:

@@ -52,7 +52,6 @@ class TestCompletedVerifyState:
         assert "close.py story story-042 repair" in refused.stderr
 
     def test_a_re_review_clears_the_verify_red_refusal(self, tmp_path):
-        """Re-review clears verify-red; the superseded attempt still needs disposition."""
         repo, env, _g = make_repo(tmp_path, verify="false")
         assert close(repo, env, "review").returncode == 2
         assert close(repo, env, "land").returncode == 2
@@ -61,11 +60,13 @@ class TestCompletedVerifyState:
         mint_ready(repo, env)
 
         assert close(repo, env, "review").returncode == 0
-        refused = close(repo, env, "land")
-        assert refused.returncode == 2 and "salvage" in refused.stderr
-        assert close(repo, env, "salvage").returncode == 2
-        (tmp_path / "data/markers/story-042.round-2.launch").unlink()
-        assert close(repo, env, "land").returncode == 0
+        sidecar = tmp_path / "data/markers/story-042.round-2.launch"
+        evidence = sidecar.read_bytes()
+        landed = close(repo, env, "land")
+        archived = tmp_path / "data/reports/story-042.COVERED-round-2.launch"
+        assert landed.returncode == 0, landed.stderr
+        assert f"set aside {sidecar} -> {archived}; covered by round 1" in landed.stdout
+        assert not sidecar.exists() and archived.read_bytes() == evidence
 
     def test_a_relaunch_that_refuses_before_launch_does_not_clear_the_verify_red_gate(
         self, tmp_path

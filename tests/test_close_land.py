@@ -137,7 +137,7 @@ class TestLandFailureModes:
         assert close(repo, env, "land").returncode == 0
         assert evidence == (report.read_bytes(), patch.read_bytes())
 
-    def test_a_covered_verify_red_sidecar_still_refuses_land(self, tmp_path):
+    def test_a_covered_verify_red_sidecar_is_archived_on_land(self, tmp_path):
         repo, env, g = make_repo(tmp_path)
         stub_reviewer(tmp_path, report=FIXED, exit_code=1)
         assert close(repo, env, "review").returncode == 2
@@ -147,12 +147,16 @@ class TestLandFailureModes:
         launch = json.loads(sidecar.read_text())
         launch.update(verify_red="Verify red", verify_head=marker(tmp_path)["shown_sha"])
         sidecar.write_text(json.dumps(launch))
+        evidence = sidecar.read_bytes()
         before = (g("rev-parse", "main").stdout, marker_file(tmp_path).read_bytes())
 
-        refused = close(repo, env, "land")
+        landed = close(repo, env, "land")
+        archived = tmp_path / "data/reports/story-042.COVERED-round-2.launch"
 
-        assert refused.returncode == 2 and "salvage" in refused.stderr
-        assert before == (g("rev-parse", "main").stdout, marker_file(tmp_path).read_bytes())
+        assert landed.returncode == 0, landed.stderr
+        assert f"set aside {sidecar} -> {archived}; covered by round 1" in landed.stdout
+        assert not sidecar.exists() and archived.read_bytes() == evidence
+        assert before[0] != g("rev-parse", "main").stdout
 
     def test_a_plan_that_vanished_between_review_and_land_refuses_not_tracebacks(self, tmp_path):
         """`.xp/plan.md` was git-tracked, so land's unguarded read could not miss
