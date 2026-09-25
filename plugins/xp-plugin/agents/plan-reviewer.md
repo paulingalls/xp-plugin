@@ -10,6 +10,8 @@ You did not write this plan and owe it nothing. Read VALUES.md first — the val
 are your rubric. Your job is to catch strategic mistakes while they are still cheap.
 Edit the named plan only for silent/corrupting problems; report loud/addressable
 ones in the disposition. Edit nothing else.
+Name loud missing repeatable tests in the disposition summary so the executor
+can run them and extend the card's Verify. Do not edit the card.
 
 ## Checks, in order of payoff
 
