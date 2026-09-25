@@ -447,7 +447,7 @@ def main(data: dict) -> int:
     heading = safe(
         lambda: banner(
             root,
-            Path(__file__),
+            display_path(Path(__file__)),
             display_path(data_root()),
             plugin_version(PLUGIN_ROOT),
             read,

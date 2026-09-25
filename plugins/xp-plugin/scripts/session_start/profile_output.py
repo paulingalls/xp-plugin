@@ -13,13 +13,10 @@ ENVIRONMENT_NOTICE_CAP = 170
 ENVIRONMENT_NOTICE_CUT = "\n[environment notice shortened]\n"
 
 
-def banner(root: Path, script: Path, data: str, version: str, read) -> str:
+def banner(root: Path, script: str, data: str, version: str, read) -> str:
     hooks = "lefthook" if (root / "lefthook.yml").exists() else ""
     hooks = hooks or (".githooks" if (root / ".githooks").is_dir() else "none detected")
-    recover = str(script)
-    home = str(Path.home()) + "/"
-    recover = "~/" + recover[len(home) :] if recover.startswith(home) else recover
-    recover = f"~/{shlex.quote(recover[2:])}" if recover.startswith("~/") else shlex.quote(recover)
+    recover = f"~/{shlex.quote(script[2:])}" if script.startswith("~/") else shlex.quote(script)
     return (
         f"xp-plugin {version} · git hooks: {hooks} · constraints.md: "
         f"{len(read(root / '.xp' / 'constraints.md').splitlines())}"

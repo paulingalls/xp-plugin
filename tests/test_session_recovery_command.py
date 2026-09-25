@@ -108,6 +108,7 @@ def test_missing_pinned_root_uses_installed_sibling(tmp_path):
     installed = installs / "0.31.2"
     shutil.copytree(HOOK.parent.parent, installed)
     old = installs / "0.31.1"
+    (data / "env.json").write_text(json.dumps({"plugin_root": str(old)}))
     launcher = json.loads(HOOKS_JSON.read_text())["hooks"]["SessionStart"][0]["hooks"][0]["command"]
     launcher = launcher.replace("${CLAUDE_PLUGIN_ROOT}", str(old))
     env = {"PATH": f"{Path(sys.executable).parent}:/usr/bin:/bin", "HOME": str(tmp_path)}
@@ -120,6 +121,7 @@ def test_missing_pinned_root_uses_installed_sibling(tmp_path):
         text=True,
     )
     assert start.returncode == 0 and f"running {installed}" in start.stderr
+    assert "plugin root moved from" in start.stdout
     assert "0.31.2/scripts/session_start.py" in printed_command(start.stdout)
     assert_command_runs(start.stdout, repo, env, data)
 
