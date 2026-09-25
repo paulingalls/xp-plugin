@@ -191,3 +191,18 @@ def test_salvage_preserves_preexisting_dirty_tree_diagnosis(tmp_path):
     assert result.returncode == 2, result.stdout + result.stderr
     assert "preflight left the working tree dirty" not in result.stderr
     assert "dead reviewer's uninspected work" in result.stderr
+
+
+def test_salvage_dry_run_validates_and_previews_without_running(tmp_path):
+    repo, env, g = make_repo(tmp_path)
+    configure(repo, g)
+    preview = close(repo, env, "salvage", "--dry-run")
+    assert preview.returncode == 0, preview.stdout + preview.stderr
+    assert "would run preflight: ./check-env" in preview.stdout
+    assert "missing NEEDED_FOR_VERIFY" not in preview.stdout
+    config = repo / ".xp/config.yml"
+    config.write_text(config.read_text().replace("./check-env", "echo nope | cat", 1))
+    assert g("commit", "-qam", "malformed preflight").returncode == 0
+    refused = close(repo, env, "salvage", "--dry-run")
+    assert refused.returncode == 2, refused.stdout + refused.stderr
+    assert refused.stderr.splitlines()[-1].startswith("refused: preflight")

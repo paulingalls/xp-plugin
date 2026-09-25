@@ -3,8 +3,8 @@
 import json
 import sys
 
-import preflight
 from review_artifacts import restore_story_queue, story_sidecar
+from review_launch import check_preflight
 
 
 def cmd_salvage(story_id: str, dry_run: bool = False) -> int:
@@ -14,14 +14,7 @@ def cmd_salvage(story_id: str, dry_run: bool = False) -> int:
     _card, _trunk, err = close._leg_checks(story_id, "salvage")
     if err:
         return close.fail(err)
-    raw = close.config_flat("preflight")
-    if dry_run:
-        _raw, _commands, error = preflight.prepare(raw)
-        if error:
-            return close.fail(error)
-        if raw:
-            print(preflight.preview(raw))
-    elif error := preflight.check(raw):
+    if error := check_preflight(dry_run):
         return close.fail(error)
     marker = close.marker_path(story_id)
     state = json.loads(marker.read_text()) if marker.exists() else {}
