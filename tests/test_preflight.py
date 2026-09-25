@@ -77,7 +77,10 @@ def _steps(result):
 
 def _script(repo, g, exit_code):
     script = repo / "check-env"
-    script.write_text(f"#!/bin/sh\necho preflight-output\nexit {exit_code}\n")
+    script.write_text(
+        f'#!/bin/sh\necho preflight-output\n[ "${{XP_TEST_PREPARE:-}}" = 1 ] && exit 0\n'
+        f"exit {exit_code}\n"
+    )
     script.chmod(0o755)
     assert g("add", "check-env").returncode == 0
     assert g("commit", "-qm", "add environment check").returncode == 0
@@ -85,7 +88,10 @@ def _script(repo, g, exit_code):
 
 def _mutating_script(repo, g, tracked):
     script = repo / "check-env"
-    script.write_text(f"#!/bin/sh\nprintf 'preflight edit\\n' >> {tracked}\n")
+    script.write_text(
+        '#!/bin/sh\n[ "${XP_TEST_PREPARE:-}" = 1 ] && exit 0\n'
+        f"printf 'preflight edit\\n' >> {tracked}\n"
+    )
     script.chmod(0o755)
     assert g("add", "check-env").returncode == 0
     assert g("commit", "-qm", "add mutating environment check").returncode == 0
@@ -97,7 +103,7 @@ def test_story_land_refuses_preflight_tree_change_before_gates(tmp_path):
     _set_preflight(repo, g, "./check-env")
     _sentinel_gate(repo, g, "story", tmp_path / "gate-ran")
     stub_reviewer(tmp_path)
-    assert close(repo, env, "review").returncode == 0
+    assert close(repo, env | {"XP_TEST_PREPARE": "1"}, "review").returncode == 0
     marker = marker_file(tmp_path)
     before = marker.read_bytes()
     result = close(repo, env, "land")
@@ -132,7 +138,7 @@ def test_story_land_red_or_preview_keeps_records(tmp_path, dry_run):
     _set_preflight(repo, g, "./check-env")
     _sentinel_gate(repo, g, "story", tmp_path / "gate-ran")
     stub_reviewer(tmp_path)
-    assert close(repo, env, "review").returncode == 0
+    assert close(repo, env | {"XP_TEST_PREPARE": "1"}, "review").returncode == 0
     marker = marker_file(tmp_path)
     before = marker.read_bytes()
     plan = tmp_path / "data/plan.md"
@@ -284,10 +290,12 @@ def test_free_land_runs_preflight_before_gates(tmp_path):
     branch, key = checkout_free(g)
     commit_on_free(repo, g)
     add_free_card(env, key)
+    env["XP_TEST_PREPARE"] = "1"
     tree = spawn_free(repo, env, g, tmp_path, key)
     assert g("worktree", "remove", "--force", str(tree)).returncode == 0
     assert g("checkout", "-q", branch).returncode == 0
     assert free(repo, env, "fix-typo", "review").returncode == 0
+    env.pop("XP_TEST_PREPARE")
     (tmp_path / "gate-ran").unlink(missing_ok=True)
     preview = free(repo, env, "fix-typo", "land", "--dry-run")
     assert preview.returncode == 0, preview.stderr
@@ -301,14 +309,13 @@ def test_free_land_runs_preflight_before_gates(tmp_path):
 
 
 @pytest.mark.parametrize("dry_run", [False, True])
-def test_malformed_land_refuses_dry_and_real(tmp_path, dry_run):
+def test_malformed_review_and_sprint_land_refuse_dry_and_real(tmp_path, dry_run):
     flag = ["--dry-run"] if dry_run else []
     repo, env, g = story_repo(tmp_path / "story", files="src/thing.py, .xp/config.yml")
-    _set_preflight(repo, g, "echo nope | cat")
     _sentinel_gate(repo, g, "story", tmp_path / "gate-ran")
     stub_reviewer(tmp_path / "story")
-    assert close(repo, env, "review").returncode == 0
-    story = close(repo, env, "land", *flag)
+    _set_preflight(repo, g, "echo nope | cat")
+    story = close(repo, env, "review", *flag)
     repo, env, g = sprint_repo(tmp_path / "sprint")
     _set_preflight(repo, g, "echo nope | cat")
     _sentinel_gate(repo, g, "full", tmp_path / "gate-ran")

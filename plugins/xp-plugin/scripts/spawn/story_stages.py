@@ -158,7 +158,7 @@ def finish_story(tree: Path, story_id: str, stop, stage_line, held) -> int:
     rc, state, refusal = review_story(tree, story_id)
     if rc:
         cause = refusal or "the diff review produced no readable refusal; inspect its log"
-        return stop(f"the diff review leg refused (rc {rc}): {cause}", rc)
+        return stop(f"the diff review leg refused (rc {rc}): {cause}", 0)
     mark_stage(data_root(), story_id, "reviewer", "ran")
     if unresolved_blocking(state):
         why = "diff review recorded blocking findings; resume with a fresh executor to fix them"
