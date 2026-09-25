@@ -7,6 +7,23 @@ from handoff import draft_path
 from work import data_root
 
 
+def executor_prompt(
+    card: str,
+    story_id: str,
+    handoff: str,
+    plugin_root: Path,
+    shipped_root: Path,
+    multifile: bool,
+    findings: Path | None = None,
+) -> str:
+    sections = teammate_sections(
+        card, story_id, handoff, plugin_root, shipped_root, multifile=multifile
+    )
+    if findings:
+        sections.insert(-2, ("Current plan review", f"Plan-review findings: {findings}"))
+    return build_prompt(sections)
+
+
 def build_prompt(sections: list[tuple[str, str]]) -> str:
     return "\n".join(f"## {title}\n\n{body}\n" for title, body in sections)
 
@@ -39,9 +56,9 @@ def teammate_sections(
         # arrive literal. A teammate hitting "command not found" guesses instead.
         (
             "How you work",
-            brief.replace("{PLUGIN_ROOT}", str(plugin_root)).replace(
-                "{PLAN_PATH}", str(draft_path(data_root(), story_id))
-            ),
+            brief.replace("{PLUGIN_ROOT}", str(plugin_root))
+            .replace("{PLAN_PATH}", str(draft_path(data_root(), story_id)))
+            .replace("{CARD_PATH}", str(data_root() / "plan.md")),
         ),
         ("Your story card", card),
         ("Constraints", _read(Path(".xp/constraints.md"))),

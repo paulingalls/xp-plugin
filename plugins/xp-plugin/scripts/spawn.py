@@ -24,7 +24,10 @@ from handoff import draft_path, handoff_state, inheritance, mark_handoff, mark_s
 from harness import HARNESS_INSTALL, agent_argv, missing_harness, resolve_codex_sandbox
 from prompt import _read as _read
 from prompt import _read_shipped as _read_shipped
-from prompt import build_prompt
+from prompt import (
+    build_prompt,  # noqa: F401
+    executor_prompt,
+)
 from prompt import teammate_sections as _teammate_sections
 from review_scope import declared_files
 from role_config import card_role, config_role
@@ -245,14 +248,12 @@ def cmd_spawn(story_id: str, override: str, dry_run: bool, resuming: bool = Fals
     handoff = inheritance(data_root(), story_id, multifile=multifile)
     if resuming and tree.is_dir():
         handoff += resume().inherited_evidence(tree, trunk)
-    prompt = build_prompt(
-        teammate_sections(card, story_id, handoff, PLUGIN_ROOT, multifile=multifile)
-    )
-    report, warning = profile_report(card, prompt, handoff)
-    print(report)
-    if warning:
-        print(warning, file=sys.stderr)
+    prompt = executor_prompt(card, story_id, handoff, PLUGIN_ROOT, PLUGIN_ROOT, multifile)
     if dry_run:
+        report, warning = profile_report(card, prompt, handoff)
+        print(report)
+        if warning:
+            print(warning, file=sys.stderr)
         print(" ".join(argv))
         print(prompt)
         return 0
@@ -402,9 +403,14 @@ def cmd_spawn(story_id: str, override: str, dry_run: bool, resuming: bool = Fals
         handoff = inheritance(data_root(), story_id, inherited_state, multifile=multifile)
         if resuming and tree.is_dir():
             handoff += resume().inherited_evidence(tree, trunk)
-        prompt = build_prompt(
-            teammate_sections(card, story_id, handoff, PLUGIN_ROOT, multifile=multifile)
-        )
+    findings, problem = handoff_io.current_findings(data_root(), story_id, multifile)
+    if problem:
+        return stop(problem, 0)
+    prompt = executor_prompt(card, story_id, handoff, PLUGIN_ROOT, PLUGIN_ROOT, multifile, findings)
+    report, warning = profile_report(card, prompt, handoff)
+    print(report)
+    if warning:
+        print(warning, file=sys.stderr)
     for attempt in range(2):
         rc = run_teammate(argv, tree, prompt, story_id, data_root(), harness)
         outcome = "terminal-stop" if rc == 0 else "harness-death"

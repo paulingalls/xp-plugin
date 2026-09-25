@@ -1,7 +1,12 @@
 """A reviewed card may grow its Files and Verify obligations."""
 
+import re
+import subprocess
+import sys
+
 import pytest
 from close_helpers import close, launches, make_repo, ready_marker, record_round
+from spawn_helpers import SPAWN
 from test_spawn_resume import finished_story, resume
 
 
@@ -56,6 +61,90 @@ def test_both_fields_can_grow_together(tmp_path):
     assert reviewed.returncode == 0, reviewed.stderr
     assert reviewed.stdout.count("card grew") == 1
     assert "src/other.py" in reviewed.stdout and "Verify: true" in reviewed.stdout
+
+
+def test_locked_growth_runs_appended_verify_at_review_and_lands(tmp_path):
+    repo, env, _g = make_repo(tmp_path)
+    credential = ready_marker(tmp_path).read_bytes()
+    work = SPAWN.parent / "work.py"
+    candidate = tmp_path / "candidate.md"
+    snapshot = subprocess.run(
+        [sys.executable, str(work), "card-snapshot", "story-042", str(candidate)],
+        cwd=repo,
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+    assert snapshot.returncode == 0, snapshot.stderr
+    digest = re.search(r"^digest: ([0-9a-f]{16})$", snapshot.stdout, re.M).group(1)
+    checked = tmp_path / "verify-ran"
+    candidate.write_text(
+        candidate.read_text()
+        .replace("Files: src/thing.py", "Files: src/thing.py, src/other.py")
+        .replace("Verify: true", f"Verify: true && touch {checked}")
+    )
+    edited = subprocess.run(
+        [
+            sys.executable,
+            str(work),
+            "edit-card",
+            "story-042",
+            "--digest",
+            digest,
+            "--status",
+            "in-progress",
+            str(candidate),
+        ],
+        cwd=repo,
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+    assert edited.returncode == 0, edited.stderr
+    reviewed = close(repo, env, "review")
+    assert reviewed.returncode == 0, reviewed.stderr
+    assert checked.exists()
+    landed = close(repo, env, "land")
+    assert landed.returncode == 0, landed.stderr
+    assert ready_marker(tmp_path).read_bytes() == credential
+
+
+def test_locked_route_does_not_authorize_ac_change_at_review(tmp_path):
+    repo, env, _g = make_repo(tmp_path)
+    work = SPAWN.parent / "work.py"
+    candidate = tmp_path / "candidate.md"
+    snapshot = subprocess.run(
+        [sys.executable, str(work), "card-snapshot", "story-042", str(candidate)],
+        cwd=repo,
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+    assert snapshot.returncode == 0, snapshot.stderr
+    digest = re.search(r"^digest: ([0-9a-f]{16})$", snapshot.stdout, re.M).group(1)
+    candidate.write_text(candidate.read_text().replace("Then Z", "Then NEW SCOPE"))
+    edited = subprocess.run(
+        [
+            sys.executable,
+            str(work),
+            "edit-card",
+            "story-042",
+            "--digest",
+            digest,
+            "--status",
+            "in-progress",
+            str(candidate),
+        ],
+        cwd=repo,
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+    assert edited.returncode == 0, edited.stderr
+    reviewed = close(repo, env, "review")
+    assert reviewed.returncode == 2
+    assert "was edited after its plan review" in reviewed.stderr
+    assert launches(tmp_path) == []
 
 
 @pytest.mark.parametrize(

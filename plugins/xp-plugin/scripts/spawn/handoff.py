@@ -105,6 +105,9 @@ def mark_plan_reviewed(root: Path, story_id: str, card_digest: str) -> None:
     state = handoff_state(root, story_id) or {}
     state.setdefault("stages", {})["plan-reviewer"] = "ran"
     state["plan_reviewed_card"] = card_digest
+    rounds = _findings(root, story_id) if (root / "plans").is_dir() else []
+    if rounds:
+        state["plan_review_findings"] = str(rounds[-1][1].resolve())
     _write(root, story_id, state)
 
 
@@ -123,6 +126,32 @@ def _findings(root: Path, story_id: str) -> list[tuple[int, Path, bool]]:
     if legacy.is_file() and not any(round_n == 1 for round_n, _path, _legacy in rounds):
         rounds.append((1, legacy, True))
     return sorted(rounds)
+
+
+def current_findings(root: Path, story_id: str, multifile: bool = True) -> tuple[Path | None, str]:
+    state = handoff_state(root, story_id) or {}
+    if not multifile or state.get("stages", {}).get("plan-reviewer") != "ran":
+        return None, ""
+    rounds = _findings(root, story_id) if (root / "plans").is_dir() else []
+    recorded = state.get("plan_review_findings")
+    path = (
+        Path(recorded)
+        if isinstance(recorded, str)
+        else (
+            rounds[-1][1].resolve()
+            if rounds
+            else (root / "plans" / f"{story_id}.round-1.md").resolve()
+        )
+    )
+    try:
+        if not path.read_text().strip():
+            raise ValueError("empty findings")
+    except (OSError, UnicodeError, ValueError) as error:
+        return None, (
+            f"refused: cannot read current plan-review findings at {path}: {error}."
+            " Inspect and repair the plan-review artifacts, then resume the story"
+        )
+    return path, ""
 
 
 def inheritance(

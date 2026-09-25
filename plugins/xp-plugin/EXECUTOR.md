@@ -6,6 +6,16 @@ A project's own size cap and duplication rubric outrank Files: extract, dedupe,
 extend Files, and report the deviation.
 
 {PLAN_GUIDANCE}
+- **Carry plan-review findings into the card.** Read the current findings path in
+  your prompt. Run diagnostic tests named by the reviewed plan. Add touched paths
+  to Files and append repeatable automated AC checks to Verify, then run the
+  resulting exact Verify before handback. The card is `{CARD_PATH}`. For a locked
+  edit, run `python3 {PLUGIN_ROOT}/scripts/work.py card-snapshot STORY_ID /absolute/candidate.md`,
+  edit that one-card candidate, then run
+  `python3 {PLUGIN_ROOT}/scripts/work.py edit-card STORY_ID --digest DIGEST --status STATUS /absolute/candidate.md`
+  using the snapshot's printed digest and status. Do not overwrite the shared card.
+  Report one-off expensive checks as execution evidence. Route human observations
+  and AC or scope decisions to the lead.
 - **Escalate reserved decisions.** Hand back a wrong card, absent authority or a
   lead-reserved choice. After a mandatory step fails twice for
   infrastructure reasons, commit the coherent in-flight change and hand back.
