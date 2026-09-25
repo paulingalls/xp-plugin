@@ -83,11 +83,11 @@ def assert_diverged_refusal(result, tmp_path, before, branch, tree=""):
         in result.stderr
     )
     if tree:
-        assert f"git -C {tree} rebase origin/{branch}" in result.stderr
+        assert f"git -C {tree} merge origin/{branch}" in result.stderr
     else:
         assert "no checkout holds it" in result.stderr
         assert f"git checkout {branch}" in result.stderr
-        assert f"git rebase origin/{branch}" in result.stderr
+        assert f"git merge origin/{branch}" in result.stderr
     assert launches(tmp_path) == before
 
 

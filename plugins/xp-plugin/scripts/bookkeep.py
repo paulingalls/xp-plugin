@@ -172,9 +172,9 @@ def fork_point(trunk: str) -> tuple[str, str]:
             location = f"checkout {tree}" if tree else "no checkout holds it"
             if local_only:
                 command = (
-                    f"git -C {shlex.quote(tree)} rebase origin/{trunk}"
+                    f"git -C {shlex.quote(tree)} merge origin/{trunk}"
                     if tree
-                    else f"git checkout {trunk} && git rebase origin/{trunk}"
+                    else f"git checkout {trunk} && git merge origin/{trunk}"
                 )
                 return "", (
                     f"refused: local {trunk} has {local_only} local-only commit"
