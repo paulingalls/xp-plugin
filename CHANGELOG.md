@@ -15,7 +15,8 @@ runs every time, with no receipt, before the first gate of story land, free land
 attempt, even when every leg's receipt is reused) and `close.py sprint <id> start` (only when the
 falsifier batch runs). A red one shows its output and refuses naming the command and exit code; it
 files no record, writes no land-red file and no receipt. Land prints its wall time and warns, never
-fails, above 60s. It parses like a Verify line: unquoted `&&` chains, no other shell syntax, and a
+fails, above 60s. A green preflight that changes a tracked file is refused before any gate, so
+gates and falsifiers judge the committed tree. It parses like a Verify line: unquoted `&&` chains, no other shell syntax, and a
 malformed one refuses in every dry run and entry point, naming the key. Dry runs list it first and
 run nothing. Absent or empty, nothing runs. `/xp-setup` offers it. The plugin's own pre-review
 checks, formerly called "Preflight" in story-close, are renamed "Pre-check".
