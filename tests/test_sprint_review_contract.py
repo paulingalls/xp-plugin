@@ -153,20 +153,16 @@ class TestMotionIsBoundedByAMechanism:
     def _plan_rewriting_stub(self, tmp_path, old, new):
         committing_stub(
             tmp_path,
-            "import tempfile, time\n"
+            "import time\n"
             "p = os.environ['XP_DATA'] + '/plan.md'\n"
             "t = open(p).read()\n"
-            "fd, staged = tempfile.mkstemp(dir=os.path.dirname(p))\n"
-            "try:\n"
-            "    with os.fdopen(fd, 'w') as out: out.write(t.replace("
-            + repr(old)
-            + ", "
-            + repr(new)
-            + "))\n"
+            # the pause holds the write target open and EMPTY: staged, nobody sees it;
+            # `staged = p` is the in-place writer, and the concurrency test must red on it
+            "staged = f'{p}.{os.getpid()}'\n"
+            "with open(staged, 'w') as out:\n"
             "    time.sleep(float(os.environ.get('XP_PLAN_WRITE_PAUSE', '0')))\n"
-            "    os.replace(staged, p)\n"
-            "finally:\n"
-            "    if os.path.exists(staged): os.unlink(staged)\n",
+            f"    out.write(t.replace({old!r}, {new!r}))\n"
+            "os.replace(staged, p)\n",
         )
 
     def test_concurrent_plan_writers_expose_only_complete_versions(self, tmp_path):

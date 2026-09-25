@@ -177,7 +177,12 @@ def fork_point(trunk: str) -> tuple[str, str]:
             f"refused: local {trunk} is behind origin/{trunk} ({location}) —"
             f" run `{command}` before review or land"
         )
-    return git("merge-base", local, "HEAD", check=True).stdout.strip(), ""
+    if (base := git("merge-base", local, "HEAD")).returncode:
+        return "", (
+            f"refused: {local} has no merge base with HEAD — create it, e.g."
+            f" `git fetch origin {trunk}:{trunk}`, before review or land"
+        )
+    return base.stdout.strip(), ""
 
 
 def held_trunk_tree(trunk: str) -> tuple[str, str]:

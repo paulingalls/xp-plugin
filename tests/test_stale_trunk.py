@@ -18,8 +18,6 @@ def advance_origin(tmp_path, repo, env, g, *, add_remote=False):
         subprocess.run(["git", "init", "-q", "--bare", str(origin)], check=True)
         assert g("remote", "add", "origin", str(origin)).returncode == 0
         assert g("push", "-q", "origin", "main").returncode == 0
-    else:
-        origin = tmp_path / "origin.git"
     peer = tmp_path / "peer"
     subprocess.run(["git", "clone", "-q", str(origin), str(peer)], check=True)
     (peer / "remote-only.txt").write_text("remote advance\n")
@@ -78,7 +76,6 @@ def test_sprint_review_refuses_stale_trunk(tmp_path):
 
 
 def test_fail_keeps_refusal_after_buffered_stdout(tmp_path):
-    script = CLOSE
     output = tmp_path / "combined.txt"
     with output.open("w") as stream:
         result = subprocess.run(
@@ -87,7 +84,7 @@ def test_fail_keeps_refusal_after_buffered_stdout(tmp_path):
                 "-c",
                 "import sys; sys.path.insert(0, sys.argv[1]); "
                 "from close import fail; print('before'); sys.exit(fail('refused: after'))",
-                str(script.parent),
+                str(CLOSE.parent),
             ],
             stdout=stream,
             stderr=stream,
@@ -151,3 +148,14 @@ def test_review_records_fresh_fork_point_after_fast_forward(tmp_path):
         ]
         == g("merge-base", remote, "HEAD").stdout.strip()
     )
+
+
+def test_missing_local_trunk_is_refused_with_its_fetch(tmp_path):
+    repo, env, g = make_repo(tmp_path)
+    origin = tmp_path / "origin.git"
+    subprocess.run(["git", "init", "-q", "--bare", str(origin)], check=True)
+    assert g("remote", "add", "origin", str(origin)).returncode == 0
+    assert g("push", "-q", "origin", "main").returncode == 0
+    assert g("remote", "set-head", "origin", "main").returncode == 0
+    assert g("branch", "-D", "main").returncode == 0
+    assert_stale(close(repo, env, "review"), repo, [])
