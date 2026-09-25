@@ -3,7 +3,7 @@
 import json
 
 from close_free_card_cases import free_identity
-from close_helpers import CLEAN, close, free, make_repo, marker, stub_reviewer
+from close_helpers import CLEAN, close, close_bare, free, make_repo, marker, stub_reviewer
 from test_close_free import reviewed
 
 
@@ -86,6 +86,32 @@ def test_dirty_tree_refuses_before_disposition(tmp_path):
     assert sidecar.read_bytes() == evidence
 
 
+def test_refusal_after_the_gates_leaves_the_sidecar_queued(tmp_path):
+    repo, env, _g, sidecar = superseded(tmp_path)
+    evidence = sidecar.read_bytes()
+    (tmp_path / "bin/gh").write_text("#!/bin/sh\nexit 0\n")
+    (tmp_path / "bin/gh").chmod(0o755)
+
+    refused = close_bare(repo, env, "land", "--merge-mode", "pr")
+
+    assert refused.returncode == 2 and "git push -u origin" in refused.stderr
+    assert "set aside" not in refused.stdout
+    assert sidecar.read_bytes() == evidence
+
+
+def test_a_failed_move_after_the_merge_still_finishes_the_close(tmp_path):
+    repo, env, _g, sidecar = superseded(tmp_path)
+    reports = tmp_path / "data/reports"
+    reports.chmod(0o555)
+    try:
+        landed = close(repo, env, "land")
+    finally:
+        reports.chmod(0o755)
+
+    assert landed.returncode == 3 and f"move {sidecar} to {reports}" in landed.stderr
+    assert sidecar.exists() and not (tmp_path / "data/markers/story-042.close.json").exists()
+
+
 def test_missing_plan_refuses_after_scan_without_disposition(tmp_path):
     repo, env, _g, sidecar = superseded(tmp_path)
     evidence = sidecar.read_bytes()
@@ -99,14 +125,16 @@ def test_missing_plan_refuses_after_scan_without_disposition(tmp_path):
 
 
 def test_existing_archive_is_never_overwritten(tmp_path):
-    repo, env, _g, sidecar = superseded(tmp_path)
+    repo, env, g, sidecar = superseded(tmp_path)
     archived = tmp_path / "data/reports/story-042.COVERED-round-2.launch"
     archived.write_bytes(b"earlier evidence")
     evidence = sidecar.read_bytes()
+    trunk = g("rev-parse", "main").stdout
 
     refused = close(repo, env, "land")
 
     assert refused.returncode == 2 and "already exists" in refused.stderr
+    assert g("rev-parse", "main").stdout == trunk
     assert sidecar.read_bytes() == evidence and archived.read_bytes() == b"earlier evidence"
 
 

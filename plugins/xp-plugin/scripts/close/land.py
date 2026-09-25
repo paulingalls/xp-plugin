@@ -65,7 +65,8 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
             if covered:
                 if not state.get("rounds") or state["rounds"][-1].get("shown_sha") != shown_sha:
                     return close.fail(
-                        "refused: shown tree does not identify the latest review round"
+                        "refused: shown tree does not identify the latest review round,"
+                        f" so no round can be named as covering {launch} — review again"
                     )
                 covered_sidecars.append((launch, len(state["rounds"])))
                 continue
@@ -96,14 +97,17 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
     for sidecar, _round in covered_sidecars:
         destination = covered_destination(sidecar)
         if destination.exists():
-            return close.fail(f"refused: covered review archive already exists: {destination}")
+            return close.fail(
+                f"refused: covered review archive already exists: {destination} — inspect"
+                " it and move it elsewhere, then run land again"
+            )
 
     def set_aside(preview: bool = False) -> str:
         for sidecar, round_n in covered_sidecars:
             try:
                 destination = covered_destination(sidecar) if preview else archive_covered(sidecar)
             except OSError as exc:
-                return f"could not set aside {sidecar}: {exc} — land partly completed; inspect it"
+                return f"move {sidecar} to {covered_destination(sidecar)} — set aside failed: {exc}"
             verb = "would set aside" if preview else "set aside"
             print(f"{verb} {sidecar} -> {destination}; covered by round {round_n}")
         return ""
@@ -324,7 +328,7 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
             if result.returncode:
                 return bookkeep.refuse_command(command, result)
         if error := set_aside():
-            return close.fail(error)
+            return close.fail(f"refused: the PR is open, but {error}")
         land_red.unlink(missing_ok=True)
         print(bookkeep.render_noted(rounds), end="")
         target = f" for {version}" if version else ""
@@ -372,10 +376,9 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
                 " this tree"
             )
 
-    if error := set_aside():
-        return close.fail(error)
+    # After the merge, a failed move is bookkeeping the lead finishes, not a refusal.
+    failed = [error] if (error := set_aside()) else []
     print(bookkeep.render_noted(rounds), end="")
-    failed = []
     dependencies = []
     retry = ""
     if files:
