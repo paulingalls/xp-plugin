@@ -348,14 +348,8 @@ def cmd_land(sprint_id: str, dry_run: bool) -> int:
             "refused: the working tree is dirty — the tier must judge the tree"
             " that ships, and these files are not in it:\n  " + dirty
         )
-    preflight_raw, commands, error = pf.prepare(config_flat("preflight"))
-    if error or (error := pf.run(preflight_raw, commands)):
+    if error := pf.check(config_flat("preflight")):
         return fail(error)
-    if dirty := git("status", "--porcelain").stdout.strip():
-        return fail(
-            "refused: preflight left the working tree dirty — commit or discard these"
-            " changes, then run land again; gates must judge the tree that ships:\n  " + dirty
-        )
     prior = state.get("full_tier", overlap.MISSING_RECEIPT)
     declared_names = tuple(name for name, _ in legs) if legs is not None else ()
     history, history_error = read_tier_history(state, declared_names)

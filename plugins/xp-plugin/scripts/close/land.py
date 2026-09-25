@@ -242,14 +242,8 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
             end="",
         )
         return 0
-    preflight_raw, commands, error = pf.prepare(close.config_flat("preflight"))
-    if error or (error := pf.run(preflight_raw, commands)):
+    if error := pf.check(close.config_flat("preflight")):
         return close.fail(error)
-    if dirty := close.git("status", "--porcelain").stdout.strip():
-        return close.fail(
-            "refused: preflight left the working tree dirty — commit or discard these"
-            " changes, then run land again; gates must judge the tree that merges:\n  " + dirty
-        )
     span = Span(work.data_root(), "story-land-gates", f"{story_id}: trial merge, Verify and tier")
     land_red = land_red_path(story_id)
 

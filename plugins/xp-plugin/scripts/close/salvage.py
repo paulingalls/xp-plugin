@@ -4,6 +4,7 @@ import json
 import sys
 
 from review_artifacts import restore_story_queue, story_sidecar
+from review_launch import check_preflight
 
 
 def cmd_salvage(story_id: str, dry_run: bool = False) -> int:
@@ -13,6 +14,8 @@ def cmd_salvage(story_id: str, dry_run: bool = False) -> int:
     _card, _trunk, err = close._leg_checks(story_id, "salvage")
     if err:
         return close.fail(err)
+    if error := check_preflight(dry_run):
+        return close.fail(error)
     marker = close.marker_path(story_id)
     state = json.loads(marker.read_text()) if marker.exists() else {}
     round_n = len(state.get("rounds", [])) + 1

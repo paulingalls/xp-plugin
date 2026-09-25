@@ -42,3 +42,21 @@ def run(raw: str, commands: list[list[str]]) -> str:
     if elapsed > 60:
         print("warning: preflight exceeded 60s", flush=True)
     return ""
+
+
+def check(raw: str) -> str:
+    if not raw:
+        return ""
+    raw, commands, error = prepare(raw)
+    if error:
+        return error
+    before = subprocess.run(["git", "status", "--porcelain"], capture_output=True, text=True).stdout
+    if error := run(raw, commands):
+        return error
+    after = subprocess.run(["git", "status", "--porcelain"], capture_output=True, text=True).stdout
+    if after != before:
+        return (
+            "refused: preflight left the working tree dirty — commit or discard these"
+            " changes, then retry; checks must judge the intended tree:\n  " + after.strip()
+        )
+    return ""

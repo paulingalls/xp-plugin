@@ -4,6 +4,7 @@ import json
 
 import close
 import overlap
+import preflight
 import review
 from review_artifacts import story_sidecars
 from review_scope import declared_files
@@ -103,6 +104,8 @@ def cmd_repair(story_id: str) -> int:
             f"refused: repair changed out-of-bound or gate paths: {listed} — run {rereview}"
         )
     verify = close.verify_commands(story_id, card)[1]
+    if error := preflight.check(close.config_flat("preflight")):
+        return close.fail(error)
     if red := overlap.run_checks(verify, None):
         return close.fail(f"{red} — fix it, then run {retry} again")
     if not paths:
