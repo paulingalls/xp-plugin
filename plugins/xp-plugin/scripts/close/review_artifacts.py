@@ -90,6 +90,19 @@ def archive_cancelled(report: Path, patch: Path, log: Path) -> list[Path]:
     return saved
 
 
+def covered_destination(sidecar: Path) -> Path:
+    story, round_name = sidecar.name.split(".round-", 1)
+    return data_root() / "reports" / f"{story}.COVERED-round-{round_name}"
+
+
+def archive_covered(sidecar: Path) -> Path:
+    destination = covered_destination(sidecar)
+    if destination.exists():
+        raise FileExistsError(f"covered review archive already exists: {destination}")
+    sidecar.rename(destination)
+    return destination
+
+
 def notice(moves: list[tuple[Path, Path]], salvage: str) -> str:
     if not moves:
         return ""
