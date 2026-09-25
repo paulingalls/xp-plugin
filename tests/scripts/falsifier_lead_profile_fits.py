@@ -10,20 +10,22 @@ import os
 import re
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 repo = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(repo / "plugins/xp-plugin/scripts"))
 from session_start import OUTPUT_CAP  # noqa: E402
 
-out = subprocess.run(
-    [sys.executable, str(repo / "plugins/xp-plugin/scripts/session_start.py")],
-    input=json.dumps({"hook_event_name": "SessionStart", "cwd": str(repo)}),
-    capture_output=True,
-    text=True,
-    cwd=repo,
-    env=dict(os.environ) | {"XP_ROLE": "lead"},
-).stdout
+with tempfile.TemporaryDirectory(prefix="xp-profile-") as isolated_data:
+    out = subprocess.run(
+        [sys.executable, str(repo / "plugins/xp-plugin/scripts/session_start.py")],
+        input=json.dumps({"hook_event_name": "SessionStart", "cwd": str(repo)}),
+        capture_output=True,
+        text=True,
+        cwd=repo,
+        env=dict(os.environ) | {"XP_ROLE": "lead", "XP_DATA": isolated_data},
+    ).stdout
 assert "teammate session" not in out, "the role gate ate the profile; this asserts nothing"
 # advisory hook: a raise exits 0 with stdout empty, and every check below then
 # reads as satisfied or dies on `.index`. Measured in Sprint 8 (AUDIT.md §10).
@@ -40,3 +42,4 @@ process = (repo / "plugins/xp-plugin/PROCESS.md").read_text()[:60]
 assert out.index(values) < out.index(process) < out.index("BEGIN project content"), (
     "VALUES sets the stage and PROCESS is the loop; they lead the profile"
 )
+print(f"lead profile: {len(out.encode())} bytes; {len(headings)} constraints delivered")

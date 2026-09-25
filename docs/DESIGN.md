@@ -199,6 +199,7 @@ Mid-sprint durable learnings go to work.md notes as they happen; sprint close pr
 ## 6. Process flows
 
 **Session start** (hook, not a skill): inject VALUES + JUDGMENT + one-page PROCESS + constraints.md. The next action, digest, recovery block and sprint slice are read through the separately capped `session_start.py recover` command printed in the banner and named at PROCESS's head. Target injection: **≤9,500 bytes**, below Codex's measured 10,000-byte SessionStart retention.
+The banner prints a complete shell command under normal roots, moved roots, and a missing pinned root resolved to an installed sibling. A move notice names the previous root; the command names the current root. The notice is capped at 170 bytes: the 110-character installed path, 70-character data path, worst-case previous path and 4,500-character constraints fixture measured 9,295 bytes, leaving 205 under the cap without losing a rule. The data-root field and full `--- END project content ---` fence remain in the bounded output.
 
 **Review-name migration (2026-09-02, Sprint 17).** Before this sprint, `card review` named the sprint-slate step and `execution plan` named the per-clone roadmap. Existing records keep those meanings. The old `card-review-incomplete` marker and `card-reviews/` findings directory are not migrated; an upgrade during an active old review must finish on the old version. PROCESS.md owns the current naming rule; this paragraph only dates the old bindings.
 

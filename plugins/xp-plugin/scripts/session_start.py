@@ -22,7 +22,9 @@ from env import (
 from profile_output import (
     BEGIN,
     END,
+    banner,
     bound_environment_notice,
+    compact_moved_banner,
     constraints_budget,
     constraints_warning,
     render,
@@ -398,19 +400,6 @@ def teammate_marker() -> str:
     )
 
 
-def banner(root: Path) -> str:
-    hooks = "lefthook" if (root / "lefthook.yml").exists() else ""
-    hooks = hooks or (".githooks" if (root / ".githooks").is_dir() else "none detected")
-    recover = display_path(Path(__file__))
-    recover = f"~/{shlex.quote(recover[2:])}" if recover.startswith("~/") else shlex.quote(recover)
-    return (
-        f"xp-plugin {plugin_version(PLUGIN_ROOT)} · git hooks: {hooks} · constraints.md: "
-        f"{len(read(root / '.xp' / 'constraints.md').splitlines())}"
-        f" lines · recover: python3 {recover} recover · scripts: spawn.py, close.py"
-        f" · data: {display_path(data_root())}"
-    )
-
-
 def safe(build, name: str = "") -> str:
     """One bad file degrades one region, never all of them. A NAMED region says
     WHICH nothing it has: its heading is always truthy, so render's `if text`
@@ -455,16 +444,17 @@ def main(data: dict) -> int:
         return 0
 
     rules = safe(lambda: read(root / ".xp" / "constraints.md"))
-    heading = safe(lambda: banner(root))
-    if refresh:  # trim only a root the rendered notice retained; failures and capped
-        # move notices keep the executable recovery path
-        delimiter = " · scripts: " if display_path(PLUGIN_ROOT) in environment else " · recover: "
-        _before, field, invocation = heading.partition(delimiter)
-        heading = heading.partition(" · ")[0] + field + invocation
-        if delimiter == " · scripts: ":
-            heading = heading.replace(
-                " · scripts: ", " · recover: session_start.py recover · scripts: ", 1
-            )
+    heading = safe(
+        lambda: banner(
+            root,
+            Path(__file__),
+            display_path(data_root()),
+            plugin_version(PLUGIN_ROOT),
+            read,
+        )
+    )
+    if refresh:
+        heading = compact_moved_banner(heading)
     regions = [
         ("banner", heading),
         ("config notice", safe(lambda: config_age(root))),

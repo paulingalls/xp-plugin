@@ -353,14 +353,12 @@ class TestTheRealProfileAgainstTheRealCap:
         assert "[truncated at" not in out, "a 110-character plugin path already cuts the profile"
         self.assert_all_constraints_delivered(out)
 
-    # MEASURED byte boundaries, and BOTH move with the manifest version string's
-    # LENGTH, which the plugin root carries: v0.24.0 is one byte shorter than
-    # v0.23.18 and both boundaries rose by exactly one (489 -> 490, 248 -> 249).
-    # Re-measure by bisecting assert_all_constraints_delivered on a version change;
-    # nudging until green hides whether the profile or the path moved.
+    # Re-measure these byte boundaries by bisecting the delivered constraints.
+    # The shorter move notice and removal of the scripts field moved them to
+    # 521 and 400 at v0.31.2; the next byte must lose a numbered rule.
     @pytest.mark.parametrize(
         ("last_good", "recorded_root"),
-        [(490, None), (249, Path("/" + "p" * 4_999))],
+        [(521, None), (400, Path("/" + "p" * 4_999))],
         ids=["ordinary", "moved-install"],
     )
     def test_published_plugin_root_boundaries_are_constructed(self, last_good, recorded_root):
