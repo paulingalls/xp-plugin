@@ -4,6 +4,20 @@ Release notes started at v0.6.0; earlier entries are summarized from their
 tag and merge messages. Full detail lives in the merge history and the
 per-sprint review reports.
 
+## v0.31.1 — a broken environment refuses before the reviewer, not after Verify
+
+No action needed on upgrade: the hook commands are unchanged.
+
+PREFLIGHT NOW GUARDS REVIEW, SALVAGE AND REPAIR (#148). A Verify that needs the developer's
+environment (exported variables, a running service) could red before any test ran, leaving the
+review round unrecorded; repair then refused the green rerun as a flake and demanded a whole new
+review. `preflight:` now also runs when story or free review starts (before the reviewer launches,
+so spawn's review stage is covered), before `salvage` re-records a round, and before `repair`
+reruns Verify. A red one refuses and writes no launch marker, round or receipt; make it name what
+is missing (e.g. a check that each required variable is set). A refused review stage no longer
+makes spawn report "DIED (harness rc 2)". Every preflight site now refuses when a green preflight
+changes the working tree.
+
 ## v0.31.0 — a project checks its environment before the expensive gates
 
 No action needed on upgrade: the hook commands are unchanged. One new option is yours to adopt
