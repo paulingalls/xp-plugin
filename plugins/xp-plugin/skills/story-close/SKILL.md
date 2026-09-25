@@ -10,7 +10,7 @@ description: >-
 call on the reviewer's findings. Everything else is scripted, and a step you find
 yourself doing by hand is a defect in the pipeline — file it.
 
-1. **Preflight**: `git status` clean, and you are on the story branch.
+1. **Pre-check**: `git status` clean, and you are on the story branch.
 2. **Read the round `spawn` already recorded** — the reviewer was its fourth stage.
    Run `close.py story <id> review` only if the tree moved since; by reflex it spends
    a second full reviewer on a diff already reviewed. The leg spawns the

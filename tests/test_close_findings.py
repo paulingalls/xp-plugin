@@ -367,7 +367,7 @@ class TestTheCardEndsUpSayingDone:
     sprint close refuses to start while any member is not [done]. `flip_status`
     rewrites a TRAILING bracket and returns the text UNCHANGED when it matches
     nothing, and cmd_land neither checked the status first (as cmd_review's
-    _preflight always has) nor looked at what the flip did — so the merge landed,
+    _leg_checks always has) nor looked at what the flip did — so the merge landed,
     the close was logged, the branch was deleted, and the card still said
     [in-progress]. Silent, and it corrupts the only record of what is done.
     """

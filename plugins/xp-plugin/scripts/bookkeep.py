@@ -78,9 +78,19 @@ def render_sprint_prior(rounds: list[dict]) -> str:
 
 
 def render_land_preview(
-    verify: str, tier: str, merge_mode: str, branch: str, trunk: str, pr_steps: tuple, pending: bool
+    verify: str,
+    tier: str,
+    merge_mode: str,
+    branch: str,
+    trunk: str,
+    pr_steps: tuple,
+    pending: bool,
+    preflight: str = "",
 ) -> str:
-    out = [f"would run: {tier}", f"would run: {verify}"]
+    out = ([preflight] if preflight else []) + [
+        f"would run: {tier}",
+        f"would run: {verify}",
+    ]
     if pending:
         out.append(f"...on a trial merge with {trunk} — staged, then aborted either way")
     if merge_mode == "pr":
