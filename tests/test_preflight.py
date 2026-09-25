@@ -223,6 +223,26 @@ def test_sprint_start_red_or_preview_keeps_records(tmp_path, dry_run):
     assert not marker_path(tmp_path).exists()
 
 
+def test_sprint_start_refuses_preflight_tree_change_before_batch(tmp_path):
+    repo, env, g = sprint_repo(tmp_path)
+    _mutating_script(repo, g, "src.py")
+    _set_preflight(repo, g, "./check-env")
+    sentinel = tmp_path / "falsifier-ran"
+    filed = work(
+        repo, env, "debt", "--claim", "c", "--falsifier", f"touch {sentinel}", "--files", "a.py"
+    )
+    assert filed.returncode == 0, filed.stderr
+    sentinel.unlink(missing_ok=True)
+    ledger = tmp_path / "data/work.md"
+    ledger_before = ledger.read_bytes()
+    result = sprint(repo, env, "start")
+    assert result.returncode == 2, result.stdout + result.stderr
+    assert "preflight left the working tree dirty" in result.stderr
+    assert "src.py" in g("status", "--short").stdout
+    assert ledger.read_bytes() == ledger_before
+    assert not sentinel.exists()
+
+
 @pytest.mark.parametrize("command", ["echo nope | cat", "definitely-not-on-path"])
 def test_malformed_start_refuses_dry_and_real(tmp_path, command):
     repo, env, g = sprint_repo(tmp_path)
