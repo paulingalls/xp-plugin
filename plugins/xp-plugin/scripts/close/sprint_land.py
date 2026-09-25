@@ -6,6 +6,7 @@ import tempfile
 
 import bookkeep
 import overlap
+import preflight as pf
 import tier_legs
 from env import data_root
 from falsifier_batch import ARCHIVED, batch_refusal, execute_batch, grouped_batch
@@ -22,6 +23,7 @@ from release import cmd_post_merge as release_post_merge
 from review import CLEARABLE_BY_FULL, covered_ranges, reviewer_strays, validate_clearable
 from sprint_close import (
     _shown_diff,
+    config_flat,
     default_branch,
     fail,
     git,
@@ -305,9 +307,14 @@ def cmd_land(sprint_id: str, dry_run: bool) -> int:
         return fail(legs_error)
     bound = state["rounds"][-1].get(CLEARABLE_BY_FULL) or []
     if dry_run:
+        preflight_raw, _commands, error = pf.prepare(config_flat("preflight"))
+        if error:
+            return fail(error)
         full = config_block_value("tests", "full")
         if refusal := overlap.tier_refusal(full, "full"):
             return fail(_clearance_failure(refusal, bound) if bound else refusal)
+        if preflight_raw:
+            print(pf.preview(preflight_raw))
         print(f"would run: {full}, unless a passed receipt matches the shipping tree and command")
         if legs is not None:
             for name, command in legs:
@@ -341,6 +348,9 @@ def cmd_land(sprint_id: str, dry_run: bool) -> int:
             "refused: the working tree is dirty — the tier must judge the tree"
             " that ships, and these files are not in it:\n  " + dirty
         )
+    preflight_raw, commands, error = pf.prepare(config_flat("preflight"))
+    if error or (error := pf.run(preflight_raw, commands)):
+        return fail(error)
     prior = state.get("full_tier", overlap.MISSING_RECEIPT)
     declared_names = tuple(name for name, _ in legs) if legs is not None else ()
     history, history_error = read_tier_history(state, declared_names)

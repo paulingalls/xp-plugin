@@ -10,6 +10,7 @@ import bookkeep
 import close
 import lifecycle as lc
 import overlap
+import preflight as pf
 import ready
 import review
 import verify_receipt
@@ -214,6 +215,9 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
     pr_bookkeep = [["git", "push", "origin", trunk]]
     pr_steps = (pr_cmds, pr_sync, pr_bookkeep)
     if dry_run:
+        preflight_raw, _commands, error = pf.prepare(close.config_flat("preflight"))
+        if error:
+            return close.fail(error)
         # A preview of a land that refuses is the refusal: listing steps it will
         # never take is the same lie in the other direction.
         if refusal := overlap.tier_refusal(tier, tier_key):
@@ -222,6 +226,8 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
             print("beyond the card's Files map — the merge body will name:")
             print("".join(f"  {path}\n" for path in files_beyond_map), end="")
         if free:
+            if preflight_raw:
+                print(pf.preview(preflight_raw))
             print(f"would run: {tier}")
             for command in pr_cmds:
                 print(" ".join(command))
@@ -230,10 +236,15 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
                 print(VERSIONING_OFF_TEXT)
             return 0
         print(
-            bookkeep.render_land_preview(raw, tier, merge_mode, branch, trunk, pr_steps, pending),
+            bookkeep.render_land_preview(
+                raw, tier, merge_mode, branch, trunk, pr_steps, pending, preflight_raw
+            ),
             end="",
         )
         return 0
+    preflight_raw, commands, error = pf.prepare(close.config_flat("preflight"))
+    if error or (error := pf.run(preflight_raw, commands)):
+        return close.fail(error)
     span = Span(work.data_root(), "story-land-gates", f"{story_id}: trial merge, Verify and tier")
     land_red = land_red_path(story_id)
 

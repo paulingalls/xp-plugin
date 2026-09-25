@@ -19,7 +19,7 @@ def cmd_repair(story_id: str) -> int:
     rereview = f"`close.py {noun} review`"
     if close.git("status", "--porcelain").stdout.strip():
         return close.fail(f"refused: working tree is dirty — fix it, then run {retry} again")
-    card, _trunk, err = close._preflight(story_id, "repair")
+    card, _trunk, err = close._leg_checks(story_id, "repair")
     if err:
         return close.fail(err)
     launch = review.launch_marker(story_id)
