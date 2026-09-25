@@ -97,7 +97,9 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
             " the PR to trunk happens at sprint close"
         )
     head = close.git("rev-parse", "HEAD").stdout.strip()
-    base = close.git("merge-base", f"refs/heads/{trunk}", "HEAD").stdout.strip()
+    base, stale = bookkeep.fork_point(trunk)
+    if stale:
+        return close.fail(stale)
     ref = overlap.merge_source(trunk, merge_mode)
     versioned = False
     version = ""

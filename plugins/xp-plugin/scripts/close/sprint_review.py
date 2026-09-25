@@ -55,6 +55,11 @@ def cmd_review(sprint_id: str, dry_run: bool) -> int:
         )
     if not (cards := sprint_cards(plan.read_text(), sprint_id)):
         return fail(f"refused: no `### Sprint {sprint_id}` section in {plan}")
+    from bookkeep import fork_point
+
+    base, stale = fork_point(trunk)
+    if stale:
+        return fail(stale)
     versioned, refusal = versioning_mode()
     if refusal:
         return fail(refusal)
@@ -86,7 +91,6 @@ def cmd_review(sprint_id: str, dry_run: bool) -> int:
     if err:
         return fail(err)
     authority = story_close.review_authority_sections()
-    base = git("merge-base", f"refs/heads/{trunk}", "HEAD").stdout.strip()
     digest_before = review.marker_digest(marker)
     diff_base = state["shown_sha"] if complete_n else ""
     if diff_base and (missing := _shown_diff(sprint_id, diff_base, head)[1]):
