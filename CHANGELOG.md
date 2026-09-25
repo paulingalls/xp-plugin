@@ -4,6 +4,20 @@ Release notes started at v0.6.0; earlier entries are summarized from their
 tag and merge messages. Full detail lives in the merge history and the
 per-sprint review reports.
 
+## v0.31.2 — a red review round a later round covers is set aside by land, not by hand
+
+No action needed on upgrade: the hook commands are unchanged.
+
+LAND SETS ASIDE A COVERED RED ROUND (#148). When a review's Verify redded with no blocking finding
+and a later review then recorded a round, land refused on the first round's set-aside launch
+marker and told the lead to delete it by hand. Land now moves such a marker, only when it carries a
+Verify red AND the recorded round's shown tree contains the tree it redded on, to
+`reports/<id>.COVERED-round-<n>.launch`, prints what it moved and the covering round, and proceeds.
+The move happens after the merge; a failed move is reported for the lead to finish, never a lost
+close. A dry run prints `would set aside` and moves nothing. An uncovered red round, a killed
+review's marker and the canonical launch marker still refuse as before. Markers left by stories
+that already landed are not touched.
+
 ## v0.31.1 — a broken environment refuses before the reviewer, not after Verify
 
 No action needed on upgrade: the hook commands are unchanged.
