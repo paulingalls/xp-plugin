@@ -13,13 +13,10 @@ from test_close_free import reviewed
 
 
 def advance_origin(tmp_path, repo, env, g, *, add_remote=False, branch="main", diverged=False):
-    origin = tmp_path / "origin.git"
     if add_remote:
-        subprocess.run(["git", "init", "-q", "--bare", str(origin)], check=True)
-        assert g("remote", "add", "origin", str(origin)).returncode == 0
-        assert g("push", "-q", "origin", branch).returncode == 0
+        publish_trunk(tmp_path, g, branch)
     peer = tmp_path / "peer"
-    subprocess.run(["git", "clone", "-q", str(origin), str(peer)], check=True)
+    subprocess.run(["git", "clone", "-q", str(tmp_path / "origin.git"), str(peer)], check=True)
     if branch != "main":
         subprocess.run(["git", "-C", str(peer), "checkout", "-q", branch], check=True)
     (peer / "remote-only.txt").write_text("remote advance\n")
@@ -225,10 +222,7 @@ def test_sprint_story_refuses_diverged_trunk(tmp_path, leg):
 
 def test_sprint_close_review_refuses_diverged_main(tmp_path):
     repo, env, g = sprint_repo(tmp_path)
-    origin = tmp_path / "origin.git"
-    subprocess.run(["git", "init", "-q", "--bare", str(origin)], check=True)
-    assert g("remote", "add", "origin", str(origin)).returncode == 0
-    assert g("push", "-q", "origin", "main").returncode == 0
+    publish_trunk(tmp_path, g)
     local_advance(repo, g, "main")
     advance_origin(tmp_path, repo, env, g, diverged=True)
     assert_diverged(g, "main")
@@ -270,16 +264,9 @@ def test_sprint_story_trunk_topology(tmp_path, state):
 def test_review_keeps_non_stale_trunks_working(tmp_path, state):
     repo, env, g = make_repo(tmp_path)
     if state != "no-remote":
-        origin = tmp_path / "origin.git"
-        subprocess.run(["git", "init", "-q", "--bare", str(origin)], check=True)
-        assert g("remote", "add", "origin", str(origin)).returncode == 0
-        assert g("push", "-q", "origin", "main").returncode == 0
+        publish_trunk(tmp_path, g)
     if state == "ahead":
-        assert g("checkout", "-q", "main").returncode == 0
-        (repo / "local-only.txt").write_text("unpushed\n")
-        assert g("add", "-A").returncode == 0
-        assert g("commit", "-qm", "local advance").returncode == 0
-        assert g("checkout", "-q", "story-042-branch").returncode == 0
+        local_advance(repo, g, "main")
     result = close(repo, env, "review")
     assert result.returncode == 0, result.stderr
     assert len(launches(tmp_path)) == 1
