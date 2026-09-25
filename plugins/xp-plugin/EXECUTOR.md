@@ -6,9 +6,10 @@ A project's own size cap and duplication rubric outrank Files: extract, dedupe,
 extend Files, and report the deviation.
 
 {PLAN_GUIDANCE}
-- **Carry plan-review findings into the card.** Read the current findings path in
-  your prompt. Run diagnostic tests named by the reviewed plan. Add touched paths
-  to Files and append repeatable automated AC checks to Verify, then run the
+- **Carry plan-review findings into the card.** When your prompt names plan-review
+  findings, read them first. Run diagnostic tests named by the reviewed plan. Add
+  touched paths to Files and append each repeatable automated AC check to the end
+  of Verify as ` && <command>`, leaving the existing command unchanged, then run the
   resulting exact Verify before handback. The card is `{CARD_PATH}`. For a locked
   edit, run `python3 {PLUGIN_ROOT}/scripts/work.py card-snapshot STORY_ID /absolute/candidate.md`,
   edit that one-card candidate, then run

@@ -149,7 +149,7 @@ def current_findings(root: Path, story_id: str, multifile: bool = True) -> tuple
     except (OSError, UnicodeError, ValueError) as error:
         return None, (
             f"refused: cannot read current plan-review findings at {path}: {error}."
-            " Inspect and repair the plan-review artifacts, then resume the story"
+            f" `spawn.py resume {story_id}` reruns the execution plan review"
         )
     return path, ""
 

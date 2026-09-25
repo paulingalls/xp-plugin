@@ -8,7 +8,7 @@ import sys
 from spawn_helpers import SPAWN, make_repo, spawn
 
 
-def staged_harness(tmp_path, fail_first=False):
+def staged_harness(tmp_path, fail_first=False, block_first=False):
     binary = tmp_path / "bin/claude"
     binary.parent.mkdir(exist_ok=True)
     seen = tmp_path / "seen.jsonl"
@@ -23,14 +23,18 @@ def staged_harness(tmp_path, fail_first=False):
         "event = {'role': role, 'prompt': prompt}\n"
         "if role == 'planner':\n"
         " p = re.search(r'^PLAN_PATH: (.+)$', prompt, re.M); assert p\n"
-        " open(p.group(1), 'w').write('# plan\\nrun diagnostic check\\n')\n"
+        " open(p.group(1), 'a').write('# plan\\nrun diagnostic check\\n')\n"
         "elif role == 'plan-reviewer':\n"
         " p = re.search(r'^FINDINGS_PATH: (.+)$', prompt, re.M); assert p\n"
         f" if {fail_first!r} and not os.path.exists({str(attempt)!r}):\n"
         f"  open({str(attempt)!r}, 'w').write('failed')\n"
         "  open(p.group(1), 'w').write('incomplete')\n"
         "  sys.exit(1)\n"
-        ' open(p.group(1), \'w\').write(\'```json\\n{"status":"clean","reasons":[],"summary":"LOUD: run diagnostic check"}\\n```\')\n'  # noqa: E501
+        f" if {block_first!r} and not os.path.exists({str(attempt)!r}):\n"
+        f"  open({str(attempt)!r}, 'w').write('blocked')\n"
+        '  open(p.group(1), \'w\').write(\'```json\\n{"status":"blocked","question":"STALE BLOCKED ROUND?"}\\n```\')\n'  # noqa: E501
+        " else:\n"
+        '  open(p.group(1), \'w\').write(\'```json\\n{"status":"clean","reasons":[],"summary":"LOUD: run diagnostic check"}\\n```\')\n'  # noqa: E501
         "elif role == 'teammate':\n"
         " p = re.search(r'^Plan-review findings: (.+)$', prompt, re.M)\n"
         " event['findings_path'] = p.group(1) if p else None\n"
@@ -71,14 +75,11 @@ def test_resume_uses_current_round_and_profiles_launched_prompt(tmp_path):
     seen = staged_harness(tmp_path, fail_first=True)
     failed = spawn(repo, env, "story-042")
     assert failed.returncode != 0
-    archived = tmp_path / "data/plans/story-042.superseded-1.round-99.md"
-    archived.write_text("STALE ARCHIVED FINDING")
     resumed = spawn(repo, env, "resume", "story-042")
     assert resumed.returncode == 0, resumed.stderr
     event = next(json.loads(line) for line in seen.read_text().splitlines() if '"teammate"' in line)
     assert event["findings_path"] == str(tmp_path / "data/plans/story-042.round-1.md")
     assert "LOUD: run diagnostic check" in event["findings"]
-    assert "STALE ARCHIVED FINDING" not in event["prompt"]
     shipped = SPAWN.parent.parent
     claude = (
         len((repo / "CLAUDE.md").read_text())
@@ -155,9 +156,23 @@ def test_missing_review_findings_refuses_before_executor_launch(tmp_path):
     )
     assert result.returncode != 0
     assert "cannot read current plan-review findings" in result.stderr
-    assert "resume the story" in result.stderr
+    assert "resume story-042` reruns the execution plan review" in result.stderr
     assert all(json.loads(line)["role"] != "teammate" for line in seen.read_text().splitlines())
     resumed = spawn(repo, env, "resume", "story-042")
-    assert resumed.returncode != 0
-    assert "cannot read current plan-review findings" in resumed.stderr
-    assert all(json.loads(line)["role"] != "teammate" for line in seen.read_text().splitlines())
+    assert resumed.returncode == 0, resumed.stderr
+    events = [json.loads(line) for line in seen.read_text().splitlines()]
+    assert [e["role"] for e in events].count("plan-reviewer") == 2
+    teammate = next(e for e in events if e["role"] == "teammate")
+    assert "LOUD: run diagnostic check" in teammate["findings"]
+
+
+def test_resume_after_blocked_round_hands_over_the_later_round(tmp_path):
+    repo, env, _ = make_repo(tmp_path, files="src/thing.py, src/other.py")
+    seen = staged_harness(tmp_path, block_first=True)
+    blocked = spawn(repo, env, "story-042")
+    assert blocked.returncode != 0 and "STALE BLOCKED ROUND?" in blocked.stderr
+    resumed = spawn(repo, env, "resume", "story-042")
+    assert resumed.returncode == 0, resumed.stderr
+    event = next(json.loads(line) for line in seen.read_text().splitlines() if '"teammate"' in line)
+    assert event["findings_path"] == str(tmp_path / "data/plans/story-042.round-2.md")
+    assert "LOUD: run diagnostic check" in event["findings"]

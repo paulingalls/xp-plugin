@@ -20,7 +20,7 @@ def executor_prompt(
         card, story_id, handoff, plugin_root, shipped_root, multifile=multifile
     )
     if findings:
-        sections.insert(-2, ("Current plan review", f"Plan-review findings: {findings}"))
+        sections.insert(3, ("Current plan review", f"Plan-review findings: {findings}"))
     return build_prompt(sections)
 
 

@@ -24,10 +24,8 @@ from handoff import draft_path, handoff_state, inheritance, mark_handoff, mark_s
 from harness import HARNESS_INSTALL, agent_argv, missing_harness, resolve_codex_sandbox
 from prompt import _read as _read
 from prompt import _read_shipped as _read_shipped
-from prompt import (
-    build_prompt,  # noqa: F401
-    executor_prompt,
-)
+from prompt import build_prompt as build_prompt
+from prompt import executor_prompt
 from prompt import teammate_sections as _teammate_sections
 from review_scope import declared_files
 from role_config import card_role, config_role
@@ -248,8 +246,8 @@ def cmd_spawn(story_id: str, override: str, dry_run: bool, resuming: bool = Fals
     handoff = inheritance(data_root(), story_id, multifile=multifile)
     if resuming and tree.is_dir():
         handoff += resume().inherited_evidence(tree, trunk)
-    prompt = executor_prompt(card, story_id, handoff, PLUGIN_ROOT, PLUGIN_ROOT, multifile)
     if dry_run:
+        prompt = executor_prompt(card, story_id, handoff, PLUGIN_ROOT, PLUGIN_ROOT, multifile)
         report, warning = profile_report(card, prompt, handoff)
         print(report)
         if warning:
@@ -396,7 +394,7 @@ def cmd_spawn(story_id: str, override: str, dry_run: bool, resuming: bool = Fals
         handoff_io.mark_plan_reviewed(data_root(), story_id, reviewed_card)
     elif not multifile:
         mark_stage(data_root(), story_id, "plan-reviewer", "skipped")
-    # The prompt built above names the round files archive_review_rounds has since
+    # The handoff composed above names the round files archive_review_rounds has since
     # renamed away, so a replan must rebuild it — from the state CAPTURED before
     # mark_handoff, since re-reading now would label this very run the predecessor.
     if replan:
@@ -405,6 +403,7 @@ def cmd_spawn(story_id: str, override: str, dry_run: bool, resuming: bool = Fals
             handoff += resume().inherited_evidence(tree, trunk)
     findings, problem = handoff_io.current_findings(data_root(), story_id, multifile)
     if problem:
+        mark_stage(data_root(), story_id, "plan-reviewer", "failed")
         return stop(problem, 0)
     prompt = executor_prompt(card, story_id, handoff, PLUGIN_ROOT, PLUGIN_ROOT, multifile, findings)
     report, warning = profile_report(card, prompt, handoff)
