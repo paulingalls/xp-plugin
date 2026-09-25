@@ -68,20 +68,18 @@ def configure_release(repo, g, mode):
     assert g("rebase", "main").returncode == 0
 
 
-def assert_diverged(g, branch):
+def assert_diverged(g, branch, local="1"):
     counts = g(
         "rev-list", "--left-right", "--count", f"refs/heads/{branch}...refs/remotes/origin/{branch}"
     )
     assert counts.returncode == 0
-    assert counts.stdout.split() == ["1", "1"]
+    assert counts.stdout.split() == [local, "1"]
 
 
-def assert_diverged_refusal(result, tmp_path, before, branch, tree=""):
+def assert_diverged_refusal(result, tmp_path, before, branch, tree="", local="1 local-only commit"):
     assert result.returncode == 2, result.stderr + result.stdout
-    assert (
-        f"local {branch} has 1 local-only commit and origin/{branch} has 1 origin-only commit"
-        in result.stderr
-    )
+    counts = f"local {branch} has {local} and origin/{branch} has 1 origin-only commit"
+    assert counts in result.stderr
     if tree:
         assert f"git -C {tree} merge origin/{branch}" in result.stderr
     else:
@@ -235,12 +233,14 @@ def test_diverged_refusal_names_held_trunk_checkout(tmp_path):
     publish_trunk(tmp_path, g)
     tree = tmp_path / "trunk"
     assert g("worktree", "add", "-q", str(tree), "main").returncode == 0
-    (tree / "local-only.txt").write_text("local advance\n")
-    assert g("-C", str(tree), "add", "-A").returncode == 0
-    assert g("-C", str(tree), "commit", "-qm", "local advance").returncode == 0
+    for n in range(2):
+        (tree / f"local-only-{n}.txt").write_text("local advance\n")
+        assert g("-C", str(tree), "add", "-A").returncode == 0
+        assert g("-C", str(tree), "commit", "-qm", "local advance").returncode == 0
     advance_origin(tmp_path, repo, env, g, diverged=True)
-    assert_diverged(g, "main")
-    assert_diverged_refusal(close(repo, env, "review"), tmp_path, [], "main", str(tree))
+    assert_diverged(g, "main", "2")
+    result = close(repo, env, "review")
+    assert_diverged_refusal(result, tmp_path, [], "main", str(tree), "2 local-only commits")
 
 
 @pytest.mark.parametrize("state", ["ahead", "behind"])
@@ -304,10 +304,7 @@ def test_review_records_fresh_fork_point_after_fast_forward(tmp_path):
 
 def test_missing_local_trunk_is_refused_with_its_fetch(tmp_path):
     repo, env, g = make_repo(tmp_path)
-    origin = tmp_path / "origin.git"
-    subprocess.run(["git", "init", "-q", "--bare", str(origin)], check=True)
-    assert g("remote", "add", "origin", str(origin)).returncode == 0
-    assert g("push", "-q", "origin", "main").returncode == 0
+    publish_trunk(tmp_path, g)
     assert g("remote", "set-head", "origin", "main").returncode == 0
     assert g("branch", "-D", "main").returncode == 0
     assert_stale(close(repo, env, "review"), repo, [])
