@@ -46,7 +46,8 @@ class EnvRefreshCases:
         shown_old = (
             "~/recorded-plugin" if isinstance(old, str) and old.startswith(str(tmp_path)) else old
         )
-        assert f"plugin root moved from {str(shown_old)!r} to {str(self.PLUGIN)!r}" in result.stdout
+        assert f"plugin root moved from {str(shown_old)!r}" in result.stdout
+        assert str(self.PLUGIN) in result.stdout.splitlines()[0]
 
     def test_the_refresh_leaves_non_plugin_keys_alone(self, tmp_path):
         repo, _g = xp_repo(tmp_path)
