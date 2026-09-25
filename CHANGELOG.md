@@ -4,6 +4,23 @@ Release notes started at v0.6.0; earlier entries are summarized from their
 tag and merge messages. Full detail lives in the merge history and the
 per-sprint review reports.
 
+## v0.30.1 — a stale local trunk is refused, never compared
+
+No action needed on upgrade: the hook commands are unchanged.
+
+A STALE LOCAL TRUNK NO LONGER MAKES EVERY TRUNK FILE A COLLISION (#145). Review and land took the
+fork point from the local trunk branch while pr-mode land merged and compared `origin/<trunk>`. With
+the local branch behind origin, every file trunk had changed looked like an overlap, merging and
+reviewing again could not clear it, and a later pull still asked for one more round. Story and free
+review and land, and sprint review, now refuse when the local trunk is strictly behind
+`origin/<trunk>`, naming the fast-forward to run: in the checkout that holds trunk, or
+`git fetch origin <trunk>:<trunk>` when none does. No round records a stale fork point. A local
+trunk ahead of origin, such as an unpushed sprint branch, is not refused. A missing local trunk is
+refused with the same fetch instead of a traceback.
+
+EVERY REFUSAL IS THE LAST LINE. `close.py` refusals flush stdout before writing, so with output
+redirected to a file, the refusal no longer prints above lines written before it.
+
 ## v0.30.0 — a land-time red costs the gate that failed, not another review
 
 No action needed on upgrade: the hook commands are unchanged. Three new options are yours to adopt
