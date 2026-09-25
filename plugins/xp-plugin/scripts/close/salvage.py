@@ -10,7 +10,7 @@ def cmd_salvage(story_id: str, dry_run: bool = False) -> int:
     import close
     import review
 
-    _card, _trunk, err = close._preflight(story_id, "salvage")
+    _card, _trunk, err = close._leg_checks(story_id, "salvage")
     if err:
         return close.fail(err)
     marker = close.marker_path(story_id)

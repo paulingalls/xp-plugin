@@ -213,7 +213,7 @@ def build_bundle(card: str, base: str, report: Path, prior: str = "", notice: st
     return "".join(f"## {title}\n\n{body}\n\n" for title, body in sections)
 
 
-def _preflight(story_id: str, action: str, dry_run: bool = False) -> tuple[str, str, str]:
+def _leg_checks(story_id: str, action: str, dry_run: bool = False) -> tuple[str, str, str]:
     if action != "salvage" and git("status", "--porcelain").stdout.strip():
         return "", "", "refused: working tree is dirty — commit or stash first"
     _noun, free_slug = leg(story_id)
@@ -351,7 +351,7 @@ def _record_round(
 def cmd_review(story_id: str, dry_run: bool = False) -> int:
     import review
 
-    card, trunk, err = _preflight(story_id, "review", dry_run)
+    card, trunk, err = _leg_checks(story_id, "review", dry_run)
     if err:
         return fail(err)
     base, refusal = fork_point(trunk)

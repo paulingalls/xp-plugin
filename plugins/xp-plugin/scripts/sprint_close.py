@@ -13,6 +13,7 @@ sys.path.insert(0, str(Path(__file__).parent / "close"))
 import close as story_close
 import lifecycle as lc
 import milestone
+import preflight as pf
 from close import config_flat, default_branch, fail, git, story_card
 from env import record_sprint_branch, refuse_direct_invocation, sprint_branch, sprint_branch_name
 from falsifier_batch import (
@@ -128,8 +129,14 @@ def cmd_start(sprint_id: str, dry_run: bool = False) -> int:
     if first_open and (running := _running_slate_refusal(sprint_id)):
         return fail(running)
     if dry_run:
+        raw, _commands, error = pf.prepare(config_flat("preflight"))
+        if error:
+            return fail(error)
         does = "opens" if first_open else "re-runs the close checks for"
         print(f"dry run: {branch} {does} sprint {sprint_id}; nothing ran, nothing recorded")
+        if raw:
+            print(pf.preview(raw))
+        print("would run: falsifier batch, when all stories are done")
         return 0
     if first_open and (red := lc.run(config_flat(lc.KEY), "sprint-open", sprint_id)):
         return fail(red)
@@ -155,6 +162,14 @@ def cmd_start(sprint_id: str, dry_run: bool = False) -> int:
         return fail(
             "refused: the working tree is dirty before the close batch — commit or"
             f" remove these files first:\n  {dirty}"
+        )
+    raw, commands, error = pf.prepare(config_flat("preflight"))
+    if error or (error := pf.run(raw, commands)):
+        return fail(error)
+    if dirty := git("status", "--porcelain").stdout.strip():
+        return fail(
+            "refused: preflight left the working tree dirty — commit or discard these"
+            " changes, then run start again; falsifiers must judge HEAD:\n  " + dirty
         )
     root = data_root()
     standalone, deferred, records, source, coverage_error = grouped_batch(root)

@@ -78,9 +78,19 @@ def render_sprint_prior(rounds: list[dict]) -> str:
 
 
 def render_land_preview(
-    verify: str, tier: str, merge_mode: str, branch: str, trunk: str, pr_steps: tuple, pending: bool
+    verify: str,
+    tier: str,
+    merge_mode: str,
+    branch: str,
+    trunk: str,
+    pr_steps: tuple,
+    pending: bool,
+    preflight: str = "",
 ) -> str:
-    out = [f"would run: {tier}", f"would run: {verify}"]
+    out = ([preflight] if preflight else []) + [
+        f"would run: {tier}",
+        f"would run: {verify}",
+    ]
     if pending:
         out.append(f"...on a trial merge with {trunk} — staged, then aborted either way")
     if merge_mode == "pr":
@@ -161,22 +171,36 @@ def fork_point(trunk: str) -> tuple[str, str]:
     local_tip = git("rev-parse", "--verify", "-q", local)
     remote_tip = git("rev-parse", "--verify", "-q", remote)
     if (
-        local_tip.returncode == 0
-        and remote_tip.returncode == 0
+        local_tip.returncode == remote_tip.returncode == 0
         and local_tip.stdout.strip() != remote_tip.stdout.strip()
-        and git("merge-base", "--is-ancestor", local, remote).returncode == 0
     ):
-        tree = trunk_checkout(trunk)
-        command = (
-            f"git -C {shlex.quote(tree)} merge --ff-only origin/{trunk}"
-            if tree
-            else f"git fetch origin {trunk}:{trunk}"
+        local_only, origin_only = map(
+            int, git("rev-list", "--left-right", "--count", f"{local}...{remote}").stdout.split()
         )
-        location = f"checkout {tree}" if tree else "no checkout holds it"
-        return "", (
-            f"refused: local {trunk} is behind origin/{trunk} ({location}) —"
-            f" run `{command}` before review or land"
-        )
+        if origin_only:
+            tree = trunk_checkout(trunk)
+            location = f"checkout {tree}" if tree else "no checkout holds it"
+            if local_only:
+                command = (
+                    f"git -C {shlex.quote(tree)} merge origin/{trunk}"
+                    if tree
+                    else f"git checkout {trunk} && git merge origin/{trunk}"
+                )
+                return "", (
+                    f"refused: local {trunk} has {local_only} local-only commit"
+                    f"{'s' if local_only != 1 else ''} and origin/{trunk} has"
+                    f" {origin_only} origin-only commit{'s' if origin_only != 1 else ''}"
+                    f" ({location}) — reconcile with `{command}` before review or land"
+                )
+            command = (
+                f"git -C {shlex.quote(tree)} merge --ff-only origin/{trunk}"
+                if tree
+                else f"git fetch origin {trunk}:{trunk}"
+            )
+            return "", (
+                f"refused: local {trunk} is behind origin/{trunk} ({location}) —"
+                f" run `{command}` before review or land"
+            )
     if (base := git("merge-base", local, "HEAD")).returncode:
         return "", (
             f"refused: {local} has no merge base with HEAD — create it, e.g."

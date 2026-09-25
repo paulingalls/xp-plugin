@@ -4,6 +4,30 @@ Release notes started at v0.6.0; earlier entries are summarized from their
 tag and merge messages. Full detail lives in the merge history and the
 per-sprint review reports.
 
+## v0.31.0 — a project checks its environment before the expensive gates
+
+No action needed on upgrade: the hook commands are unchanged. One new option is yours to adopt
+(`preflight:`), and one refusal widened (a diverged trunk).
+
+A PROJECT'S PREFLIGHT RUNS BEFORE EVERY EXPENSIVE GATE (#143). Set `preflight: <command>` in
+`.xp/config.yml` to a seconds-scale environment check (dependencies installed, a service up). It
+runs every time, with no receipt, before the first gate of story land, free land, sprint land (every
+attempt, even when every leg's receipt is reused) and `close.py sprint <id> start` (only when the
+falsifier batch runs). A red one shows its output and refuses naming the command and exit code; it
+files no record, writes no land-red file and no receipt. Land prints its wall time and warns, never
+fails, above 60s. A green preflight that leaves the working tree dirty (a changed or untracked
+file) is refused before any gate, so gates and falsifiers judge the committed tree. It parses like
+a Verify line: unquoted `&&` chains, no other shell syntax, and a malformed one refuses in every
+dry run and entry point, naming the key. Dry runs list it first and run nothing. Absent or empty, nothing runs. `/xp-setup` offers it. The plugin's own pre-review
+checks, formerly called "Preflight" in story-close, are renamed "Pre-check".
+
+A DIVERGED LOCAL TRUNK IS REFUSED LIKE ONE THAT FELL BEHIND. v0.30.1 refused a local trunk strictly
+behind `origin/<trunk>`; one with commits on BOTH sides passed and took a stale fork point, so pr-mode
+land saw every file origin changed as an overlap, and a diverged sprint branch landed only to have
+its push rejected after the ledger was written. Review and land now refuse unless the local trunk
+equals origin or is ahead of it, naming both counts and `git -C <tree> merge origin/<trunk>` (a merge,
+not a rebase: a rebase drops land's story merges and orphans the commits `closes.jsonl` records).
+
 ## v0.30.1 — a stale local trunk is refused, never compared
 
 No action needed on upgrade: the hook commands are unchanged.
