@@ -11,7 +11,7 @@ from close_free_card_cases import add_free_card, checkout_free, commit_on_free, 
 from close_helpers import close, free, free_repo, marker_file, stub_reviewer
 from close_helpers import make_repo as story_repo
 from sprint_helpers import make_repo as sprint_repo
-from sprint_helpers import marker_path, record_reviews, sprint
+from sprint_helpers import marker_path, record_reviews, sprint, work
 
 
 def test_runner_refuses_red_without_recording(tmp_path, capfd, monkeypatch):
@@ -43,6 +43,8 @@ def test_runner_validates_chains_and_warns_only_above_60(monkeypatch, capfd):
     for bad in ("echo nope | cat", "definitely-not-on-path"):
         assert "preflight" in preflight.prepare(bad)[2]
     assert preflight.prepare("") == ("", [], "")
+    assert preflight.run("", []) == ""
+    assert capfd.readouterr().out == ""
 
 
 def _set_preflight(repo, g, command):
@@ -50,6 +52,18 @@ def _set_preflight(repo, g, command):
     config.write_text(f"preflight: {command}\n" + config.read_text())
     assert g("add", ".xp/config.yml").returncode == 0
     assert g("commit", "-qm", "configure preflight").returncode == 0
+
+
+def _sentinel_gate(repo, g, tier, sentinel):
+    config = repo / ".xp/config.yml"
+    text = config.read_text()
+    assert f"  {tier}: true\n" in text
+    config.write_text(text.replace(f"  {tier}: true\n", f"  {tier}: touch {sentinel}\n", 1))
+    assert g("commit", "-qam", "gate writes a sentinel").returncode == 0
+
+
+def _steps(result):
+    return [line for line in result.stdout.splitlines() if line.startswith("would run")]
 
 
 def _script(repo, g, exit_code):
@@ -65,6 +79,7 @@ def test_story_land_red_or_preview_keeps_records(tmp_path, dry_run):
     repo, env, g = story_repo(tmp_path, files="src/thing.py, .xp/config.yml")
     _script(repo, g, 7)
     _set_preflight(repo, g, "./check-env")
+    _sentinel_gate(repo, g, "story", tmp_path / "gate-ran")
     stub_reviewer(tmp_path)
     assert close(repo, env, "review").returncode == 0
     marker = marker_file(tmp_path)
@@ -74,7 +89,7 @@ def test_story_land_red_or_preview_keeps_records(tmp_path, dry_run):
     result = close(repo, env, "land", *(["--dry-run"] if dry_run else []))
     if dry_run:
         assert result.returncode == 0, result.stderr
-        assert "would run preflight: ./check-env" in result.stdout
+        assert _steps(result)[0] == "would run preflight: ./check-env"
         assert "preflight-output" not in result.stdout
     else:
         assert result.returncode == 2, result.stderr
@@ -84,12 +99,14 @@ def test_story_land_red_or_preview_keeps_records(tmp_path, dry_run):
     assert marker.read_bytes() == before
     assert plan.read_bytes() == plan_before
     assert not (tmp_path / "data/markers/story-042.land-red.json").exists()
+    assert not (tmp_path / "gate-ran").exists()
 
 
 def test_sprint_land_red_keeps_receipt(tmp_path):
     repo, env, g = sprint_repo(tmp_path)
     _script(repo, g, 7)
     _set_preflight(repo, g, "./check-env")
+    _sentinel_gate(repo, g, "full", tmp_path / "gate-ran")
     record_reviews(tmp_path, repo, env)
     marker = marker_path(tmp_path)
     before = marker.read_bytes()
@@ -101,6 +118,7 @@ def test_sprint_land_red_keeps_receipt(tmp_path):
     assert "nothing was recorded" in result.stderr.splitlines()[-1]
     assert marker.read_bytes() == before
     assert plan.read_bytes() == plan_before
+    assert not (tmp_path / "gate-ran").exists()
 
 
 def test_sprint_land_rechecks_preflight_with_a_green_receipt(tmp_path):
@@ -130,19 +148,27 @@ def test_sprint_start_red_or_preview_keeps_records(tmp_path, dry_run):
     repo, env, g = sprint_repo(tmp_path)
     _script(repo, g, 7)
     _set_preflight(repo, g, "./check-env")
-    plan = tmp_path / "data/plan.md"
-    before = plan.read_bytes()
+    sentinel = tmp_path / "falsifier-ran"
+    filed = work(
+        repo, env, "debt", "--claim", "c", "--falsifier", f"touch {sentinel}", "--files", "a.py"
+    )
+    assert filed.returncode == 0, filed.stderr
+    sentinel.unlink(missing_ok=True)
+    plan, ledger = tmp_path / "data/plan.md", tmp_path / "data/work.md"
+    before, ledger_before = plan.read_bytes(), ledger.read_bytes()
     result = sprint(repo, env, "start", *(["--dry-run"] if dry_run else []))
     if dry_run:
         assert result.returncode == 0, result.stderr
         assert result.stdout.splitlines()[0].startswith("dry run:")
-        assert "would run preflight: ./check-env" in result.stdout
+        assert _steps(result)[0] == "would run preflight: ./check-env"
         assert "preflight-output" not in result.stdout
     else:
         assert result.returncode == 2, result.stderr
         assert "preflight-output" in result.stdout
         assert "nothing was recorded" in result.stderr.splitlines()[-1]
     assert plan.read_bytes() == before
+    assert ledger.read_bytes() == ledger_before
+    assert not sentinel.exists()
     assert not marker_path(tmp_path).exists()
 
 
@@ -181,6 +207,7 @@ def test_free_land_runs_preflight_before_gates(tmp_path):
     repo, env, g = free_repo(tmp_path)
     _script(repo, g, 7)
     _set_preflight(repo, g, "./check-env")
+    _sentinel_gate(repo, g, "story", tmp_path / "gate-ran")
     assert g("push", "-q", "origin", "main").returncode == 0
     assert free(repo, env, "fix-typo", "start").returncode == 0
     branch, key = checkout_free(g)
@@ -190,7 +217,32 @@ def test_free_land_runs_preflight_before_gates(tmp_path):
     assert g("worktree", "remove", "--force", str(tree)).returncode == 0
     assert g("checkout", "-q", branch).returncode == 0
     assert free(repo, env, "fix-typo", "review").returncode == 0
+    (tmp_path / "gate-ran").unlink(missing_ok=True)
+    preview = free(repo, env, "fix-typo", "land", "--dry-run")
+    assert preview.returncode == 0, preview.stderr
+    assert _steps(preview)[0] == "would run preflight: ./check-env"
+    assert "preflight-output" not in preview.stdout
     result = free(repo, env, "fix-typo", "land")
     assert result.returncode == 2, result.stderr
     assert "preflight-output" in result.stdout
     assert "nothing was recorded" in result.stderr.splitlines()[-1]
+    assert not (tmp_path / "gate-ran").exists()
+
+
+@pytest.mark.parametrize("dry_run", [False, True])
+def test_malformed_land_refuses_dry_and_real(tmp_path, dry_run):
+    flag = ["--dry-run"] if dry_run else []
+    repo, env, g = story_repo(tmp_path / "story", files="src/thing.py, .xp/config.yml")
+    _set_preflight(repo, g, "echo nope | cat")
+    _sentinel_gate(repo, g, "story", tmp_path / "gate-ran")
+    stub_reviewer(tmp_path / "story")
+    assert close(repo, env, "review").returncode == 0
+    story = close(repo, env, "land", *flag)
+    repo, env, g = sprint_repo(tmp_path / "sprint")
+    _set_preflight(repo, g, "echo nope | cat")
+    _sentinel_gate(repo, g, "full", tmp_path / "gate-ran")
+    record_reviews(tmp_path / "sprint", repo, env)
+    for result in (story, sprint(repo, env, "land", *flag)):
+        assert result.returncode == 2, result.stdout
+        assert result.stderr.splitlines()[-1].startswith("refused: preflight")
+    assert not (tmp_path / "gate-ran").exists()

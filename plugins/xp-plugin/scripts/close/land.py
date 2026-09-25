@@ -237,7 +237,7 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
             return 0
         print(
             bookkeep.render_land_preview(
-                raw, tier, merge_mode, branch, trunk, pr_steps, pending, preflight_raw
+                raw, tier, merge_mode, branch, trunk, pr_steps, pending, pf.preview(preflight_raw)
             ),
             end="",
         )

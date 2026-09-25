@@ -87,7 +87,7 @@ def render_land_preview(
     pending: bool,
     preflight: str = "",
 ) -> str:
-    out = ([f"would run preflight: {preflight}"] if preflight else []) + [
+    out = ([preflight] if preflight else []) + [
         f"would run: {tier}",
         f"would run: {verify}",
     ]
