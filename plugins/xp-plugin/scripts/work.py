@@ -281,7 +281,11 @@ def card_snapshot_command(args: argparse.Namespace) -> int:
         return 2
     try:
         card, status = story_card(plan_path().read_text(), args.story_id)
-        args.candidate.write_text(card)
+        with args.candidate.open("x") as candidate:
+            candidate.write(card)
+    except FileExistsError:
+        print("refused: candidate already exists; choose a new absolute path", file=sys.stderr)
+        return 2
     except (OSError, KeyError) as error:
         print(f"refused: cannot snapshot {args.story_id}: {error}", file=sys.stderr)
         return 2

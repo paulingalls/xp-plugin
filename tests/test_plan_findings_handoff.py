@@ -129,6 +129,22 @@ def test_card_snapshot_route_is_locked_and_rejects_stale_candidate(tmp_path):
     assert "Verify: true && true" in plan.read_text()
 
 
+def test_card_snapshot_refuses_to_overwrite_shared_plan(tmp_path):
+    repo, env, _ = make_repo(tmp_path)
+    plan = tmp_path / "data/plan.md"
+    before = plan.read_bytes()
+    result = subprocess.run(
+        [sys.executable, str(SPAWN.parent / "work.py"), "card-snapshot", "story-042", str(plan)],
+        cwd=repo,
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 2
+    assert "candidate already exists" in result.stderr
+    assert plan.read_bytes() == before
+
+
 def test_missing_review_findings_refuses_before_executor_launch(tmp_path):
     repo, env, _ = make_repo(tmp_path, files="src/thing.py, src/other.py")
     seen = staged_harness(tmp_path)

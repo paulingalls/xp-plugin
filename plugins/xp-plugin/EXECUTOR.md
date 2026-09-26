@@ -11,7 +11,8 @@ extend Files, and report the deviation.
   touched paths to Files and append each repeatable automated AC check to the end
   of Verify as ` && <command>`, leaving the existing command unchanged, then run the
   resulting exact Verify before handback. The card is `{CARD_PATH}`. For a locked
-  edit, run `python3 {PLUGIN_ROOT}/scripts/work.py card-snapshot STORY_ID /absolute/candidate.md`,
+  edit, choose a new candidate path and run
+  `python3 {PLUGIN_ROOT}/scripts/work.py card-snapshot STORY_ID /absolute/candidate.md`,
   edit that one-card candidate, then run
   `python3 {PLUGIN_ROOT}/scripts/work.py edit-card STORY_ID --digest DIGEST --status STATUS /absolute/candidate.md`
   using the snapshot's printed digest and status. Do not overwrite the shared card.
