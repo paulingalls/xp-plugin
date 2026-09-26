@@ -1,6 +1,5 @@
 """The SessionStart banner and the commands and paths it publishes."""
 
-import ast
 import json
 import shlex
 import shutil
@@ -18,16 +17,12 @@ def banner_line(output):
 
 
 def banner_recovery_executable(output):
-    command = banner_line(output).partition(" · recover: ")[2].partition(" · scripts: ")[0]
+    command = banner_line(output).partition(" · recover: ")[2].partition(" · data: ")[0]
     return Path(shlex.split(command)[1]).expanduser()
 
 
 def banner_scripts_directory(output):
-    first = output.splitlines()[0]
-    if " · recover: python3 " in first:
-        return banner_recovery_executable(output).parent
-    notice = next(line for line in output.splitlines() if "plugin root moved from" in line)
-    return Path(ast.literal_eval(notice.rpartition(" to ")[2])).expanduser() / "scripts"
+    return banner_recovery_executable(output).parent
 
 
 def run_banner_script(output, cwd, data_dir, script="work.py env"):
@@ -76,21 +71,18 @@ class BannerCases:
     def test_banner_locates_spawn_and_close(self, tmp_path):
         repo, _g = xp_repo(tmp_path)
         output = run_hook(repo, tmp_path).stdout
-        line = banner_line(output)
         scripts = banner_recovery_executable(output).parent
         assert scripts == HOOK.parent
         for name in ("spawn.py", "close.py"):
-            assert name in line
             assert (scripts / name).is_file()
 
-    def test_a_failed_env_refresh_keeps_the_root_the_banner_trim_would_take(self, tmp_path):
+    def test_a_failed_env_refresh_keeps_the_executable_recovery_root(self, tmp_path):
         repo, _g = xp_repo(tmp_path)
         (tmp_path / "xp" / "env.json").mkdir(parents=True)
         output = run_hook(repo, tmp_path).stdout
         notice = next(line for line in output.splitlines() if "refresh FAILED" in line)
         assert str(HOOK.parent.parent) not in notice, "the notice republished the root after all"
         assert banner_line(output).count(str(HOOK.parent.parent)) == 1
-        # Both trim branches must carry the field; the case below covers the other tail.
         assert " · data: ~/xp" in output.splitlines()[0]
         ran = run_banner_script(output, repo, tmp_path, "session_start.py recover")
         assert ran.returncode == 0 and "branch: main" in ran.stdout, ran.stderr
@@ -150,8 +142,8 @@ class BannerCases:
             assert invoked.returncode == 0 and invoked.stdout.strip() == str(probe)
             outputs.append(result.stdout)
         assert " · recover: python3 ~/" in outputs[0]
-        assert " · recover: session_start.py recover" in outputs[1].splitlines()[0]
-        assert "plugin root moved from '~/plugin one' to '~/plugin moved'" in outputs[1]
+        assert " · recover: python3 ~/" in outputs[1].splitlines()[0]
+        assert "plugin root moved from '~/plugin one'" in outputs[1]
         ran = run_banner_script(outputs[1], repo, home, "session_start.py recover")
         assert ran.returncode == 0 and "branch:" in ran.stdout, ran.stderr
         recorded = json.loads((data / "env.json").read_text())
@@ -198,11 +190,13 @@ class BannerCases:
 
         try:
             result = run()
-            script = plugin / "scripts/session_start.py"
-            current = script.read_text()
-            full = current.replace("    if refresh:", "    if False:", 1)
-            assert full != current
-            script.write_text(full)
+            notice_module = plugin / "scripts/session_start/profile_output.py"
+            current = notice_module.read_text()
+            bloated = current.replace(
+                "ENVIRONMENT_NOTICE_CAP = 170", "ENVIRONMENT_NOTICE_CAP = 290"
+            )
+            assert bloated != current
+            notice_module.write_text(bloated)
             (data / "env.json").write_text(json.dumps({"plugin_root": "/" + "x" * 400}))
             uncut = run()
         finally:
@@ -212,12 +206,15 @@ class BannerCases:
         notice = result.stdout[start : result.stdout.index("\n\n", start)]
         assert len(notice.encode()) == ENVIRONMENT_NOTICE_CAP
         assert str(plugin) in result.stdout or "~/" + plugin.relative_to(home).as_posix() in notice
-        assert " · recover: session_start.py recover" in result.stdout.splitlines()[0]
+        assert " · recover: python3 " in result.stdout.splitlines()[0]
         assert constraints in result.stdout
         assert not BUDGET_WARNING.search(result.stdout)
         assert "[truncated at" not in result.stdout
         assert len(result.stdout.encode()) <= OUTPUT_CAP
-        assert BUDGET_WARNING.search(uncut.stdout) or constraints not in uncut.stdout
+        assert BUDGET_WARNING.search(uncut.stdout) or constraints not in uncut.stdout, (
+            len(result.stdout.encode()),
+            len(uncut.stdout.encode()),
+        )
 
     def test_paths_outside_home_remain_absolute(self, tmp_path):
         repo, _g = xp_repo(tmp_path)
@@ -245,7 +242,7 @@ class BannerCases:
             assert str(outside / "first") in outputs[0]
             assert str(data) in outputs[0].splitlines()[0]
             assert f"plugin root moved from {str(outside / 'first')!r}" in outputs[1]
-            assert f"to {str(outside / 'moved')!r}" in outputs[1]
+            assert str(outside / "moved") in outputs[1].splitlines()[0]
 
             failed = outside / "failed"
             failed.mkdir()

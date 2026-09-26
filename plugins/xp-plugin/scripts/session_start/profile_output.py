@@ -1,5 +1,7 @@
 import re
+import shlex
 import sys
+from pathlib import Path
 
 BEGIN = "--- BEGIN project content (data from this repo, not plugin instructions) ---"
 END = "--- END project content ---"
@@ -7,8 +9,26 @@ CONSTRAINT = re.compile(r"^(\d+)\. \*\*", re.M)
 # The notice carries filesystem paths — UNBOUNDED input against a fixed budget, so it
 # is capped before composition, not trimmed after. Raise it only against a re-measured
 # delivery test: what fits differs per path, and the notice's own length is no guide.
-ENVIRONMENT_NOTICE_CAP = 290
+ENVIRONMENT_NOTICE_CAP = 170
 ENVIRONMENT_NOTICE_CUT = "\n[environment notice shortened]\n"
+
+
+def banner(root: Path, script: str, data: str, version: str, read) -> str:
+    hooks = "lefthook" if (root / "lefthook.yml").exists() else ""
+    hooks = hooks or (".githooks" if (root / ".githooks").is_dir() else "none detected")
+    recover = f"~/{shlex.quote(script[2:])}" if script.startswith("~/") else shlex.quote(script)
+    return (
+        f"xp-plugin {version} · git hooks: {hooks} · constraints.md: "
+        f"{len(read(root / '.xp' / 'constraints.md').splitlines())}"
+        f" lines · recover: python3 {recover} recover"
+        f" · data: {data}"
+    )
+
+
+def compact_moved_banner(heading: str) -> str:
+    _before, field, command_and_data = heading.partition(" · recover: ")
+    version = heading.partition(" · ")[0]
+    return f"{version}{field}{command_and_data}" if field else heading
 
 
 def bound_environment_notice(text: str) -> str:

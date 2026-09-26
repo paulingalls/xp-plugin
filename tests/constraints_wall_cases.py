@@ -192,7 +192,7 @@ class ConstraintsWallCases:
         # bought back the banner's duplicate root. A longer path buys the gap instead.
         match = BUDGET_WARNING.search(
             self._run_ascii_profile(
-                tmp_path, constraints, plugin_path_budget=self.PLUGIN_PATH_BUDGET + 260
+                tmp_path, constraints, plugin_path_budget=self.PLUGIN_PATH_BUDGET + 500
             )
         )
         assert match, "the constructed profile did not report its SessionStart byte budget"

@@ -77,7 +77,7 @@ class TestWhatTheProfileLeadsWith:
         ).stdout
         assert "exact `recover:` command" in PROCESS
         line = next(ln for ln in profile.splitlines() if " · recover: " in ln)
-        command = line.split(" · recover: ", 1)[1].split(" · scripts: ", 1)[0]
+        command = line.split(" · recover: ", 1)[1].split(" · data: ", 1)[0]
         recovered = subprocess.run(
             ["/bin/sh", "-c", command],
             cwd=repo,

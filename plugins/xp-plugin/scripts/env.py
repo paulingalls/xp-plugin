@@ -162,7 +162,7 @@ def refresh_env(root: Path, version: str) -> str:
     except Exception as exc:
         return f"plugin root refresh FAILED for {display_path(env_path())!r}: {exc!r}"
     if previous and previous != str(root):
-        return f"plugin root moved from {display_path(previous)!r} to {display_path(root)!r}"
+        return f"plugin root moved from {display_path(previous)!r}"
     return ""
 
 

@@ -4,6 +4,24 @@ Release notes started at v0.6.0; earlier entries are summarized from their
 tag and merge messages. Full detail lives in the merge history and the
 per-sprint review reports.
 
+## v0.32.0 — reviewed plans reach execution; recovery works after a plugin move
+
+No setup change is needed on upgrade. The plugin's hook commands are unchanged.
+
+PLAN REVIEW FINDINGS REACH THE FIRST EXECUTOR. After a multi-file story's plan review,
+the executor receives the current findings and the card path. It can run repeatable
+tests the review found, add touched paths to `Files:`, append those checks to
+`Verify:`, and use the locked `card-snapshot` / `edit-card` route. Scope and AC
+changes still go to the lead. This removes the extra executor restart when the
+review discovers an omitted test or file.
+
+SESSIONSTART PRINTS AN EXECUTABLE RECOVERY COMMAND AFTER A PLUGIN MOVE. The
+banner retains `python3 <installed script> recover` even when the installed root
+changes. Less useful banner text and a repeated root in the move notice were
+trimmed to stay inside the 9,500-byte output budget. The explicit project-data
+BEGIN/END fence remains. The lead-profile check now isolates its data root, so
+running it from a worktree cannot rewrite the consuming project's `env.json`.
+
 ## v0.31.2 — a red review round a later round covers is set aside by land, not by hand
 
 No action needed on upgrade: the hook commands are unchanged.

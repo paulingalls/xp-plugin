@@ -273,6 +273,26 @@ def edit_card_command(args: argparse.Namespace) -> int:
     return 0
 
 
+def card_snapshot_command(args: argparse.Namespace) -> int:
+    from close import story_card
+
+    if not args.candidate.is_absolute():
+        print("refused: candidate path must be absolute", file=sys.stderr)
+        return 2
+    try:
+        card, status = story_card(plan_path().read_text(), args.story_id)
+        with args.candidate.open("x") as candidate:
+            candidate.write(card)
+    except FileExistsError:
+        print("refused: candidate already exists; choose a new absolute path", file=sys.stderr)
+        return 2
+    except (OSError, KeyError) as error:
+        print(f"refused: cannot snapshot {args.story_id}: {error}", file=sys.stderr)
+        return 2
+    print(f"digest: {card_digest(card)}\nstatus: {status}\ncandidate: {args.candidate}")
+    return 0
+
+
 def _record(root: Path, ref: str) -> str | None:
     matches = [text for eid, text in entries(root) if eid == ref]
     if len(matches) != 1:
@@ -320,10 +340,15 @@ def main() -> int:
     e.add_argument("--digest", required=True)
     e.add_argument("--status", required=True)
     e.add_argument("candidate", type=Path)
+    s = sub.add_parser("card-snapshot", help="copy one card and print its edit preconditions")
+    s.add_argument("story_id")
+    s.add_argument("candidate", type=Path)
     args = parser.parse_args()
 
     if args.kind == "edit-card":
         return edit_card_command(args)
+    if args.kind == "card-snapshot":
+        return card_snapshot_command(args)
     if args.kind == "env":
         print(plugin_root())
         return 0
