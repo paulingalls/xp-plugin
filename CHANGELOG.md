@@ -4,6 +4,23 @@ Release notes started at v0.6.0; earlier entries are summarized from their
 tag and merge messages. Full detail lives in the merge history and the
 per-sprint review reports.
 
+## v0.32.1 — a trunk backmerge after a sprint review costs no round where it touched nothing the sprint wrote
+
+No setup change is needed on upgrade. Rounds recorded before this release carry no
+base, so they keep the old behaviour until the next round is recorded.
+
+A DISJOINT TRUNK BACKMERGE NO LONGER COSTS A SPRINT REVIEW ROUND (#154). Each
+completed sprint round now records the trunk merge base it reviewed. At `sprint
+land`, paths that changed on released trunk since that base are exempt from
+the post-review delta when the sprint changed them neither at HEAD nor in the
+reviewed round. HEAD then holds trunk's own content for them. Land prints
+them with the trunk range on their own line. Gate files, lead commits, shared
+files and conflict resolutions that drop reviewed sprint work still refuse. A
+refusal now names why no exemption applied: missing base, unresolvable base, or
+a base that is not an ancestor. A confirming round that is still owed reads
+the delta without those trunk-only paths, and names the range it left out.
+Round 1 and the full-tier trial merge are unchanged.
+
 ## v0.32.0 — reviewed plans reach execution; recovery works after a plugin move
 
 No setup change is needed on upgrade. The plugin's hook commands are unchanged.
