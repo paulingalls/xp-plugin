@@ -51,6 +51,7 @@ def land_refusal(state: dict, key: str, base: str, exempt: set[str] | None = Non
     spelling of its review command, which is all that legitimately differs."""
     rerun = f"Run `close.py {key} review`"
     recorded = state.get("review_base")
+    shown = state.get("shown_sha", git("rev-parse", "HEAD").stdout.strip())
     if recorded != base:
         if (
             not isinstance(recorded, str)
@@ -63,14 +64,16 @@ def land_refusal(state: dict, key: str, base: str, exempt: set[str] | None = Non
         # Forward-only, and files not SHAs: trunk motion that touched nothing the
         # story wrote cannot change the diff the reviewer judged, while refusing on
         # the SHAs alone charged a round for every parallel story that merged first.
-        shared = _files(f"{recorded}..{base}") & _files(f"{base}..HEAD")
+        # A take-theirs resolution drops a reviewed file from base..HEAD, so a file
+        # the round reviewed that changed again since counts as shared too.
+        reviewed = _files(f"{recorded}..{shown}") & _files(f"{shown}..HEAD")
+        shared = _files(f"{recorded}..{base}") & (_files(f"{base}..HEAD") | reviewed)
         if hit := sorted(shared - (exempt or set())):
             listed = "\n  ".join(hit)
             return (
                 "refused: trunk moved after the recorded round and changed files the"
                 f" story also changed:\n  {listed}\n{rerun}"
             )
-    shown = state.get("shown_sha", git("rev-parse", "HEAD").stdout.strip())
     if git("merge-base", "--is-ancestor", shown, "HEAD", check=False).returncode:
         return (
             f"refused: HEAD does not contain {shown[:8]}, the tree you were shown —"

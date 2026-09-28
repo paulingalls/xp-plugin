@@ -21,6 +21,11 @@ a base that is not an ancestor. A confirming round that is still owed reads
 the delta without those trunk-only paths, and names the range it left out.
 Round 1 and the full-tier trial merge are unchanged.
 
+STORY LAND NO LONGER ACCEPTS A TAKE-THEIRS BACKMERGE OVER REVIEWED WORK. A story
+whose reviewed change was discarded by resolving a trunk conflict to trunk's side
+used to land with nothing refused. The file is now counted as shared, so land
+refuses and names it.
+
 ## v0.32.0 — reviewed plans reach execution; recovery works after a plugin move
 
 No setup change is needed on upgrade. The plugin's hook commands are unchanged.

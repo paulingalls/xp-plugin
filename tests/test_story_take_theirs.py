@@ -1,4 +1,4 @@
-"""Explicit falsifier for reviewed story work lost in a trunk resolution."""
+"""Reviewed story work lost in a trunk conflict resolution is not trunk motion."""
 
 from close_helpers import CLEAN, close, make_repo, stub_reviewer
 
