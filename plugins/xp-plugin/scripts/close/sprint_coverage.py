@@ -115,6 +115,7 @@ def coverage_refusal(
         return (
             f"refused: the review did not cover HEAD — {', '.join(code)}"
             f" changed since {shown[:8]}. {rerun}"
+            + (f"\nNo trunk-only exemption: {state_reason}" if state_reason else "")
         )
     retro = sorted(set(paths) - bumps)
     kinds = [f".xp/ prose: {', '.join(retro)}"] if retro else []

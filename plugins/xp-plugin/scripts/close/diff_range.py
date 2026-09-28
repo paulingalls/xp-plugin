@@ -14,7 +14,7 @@ def render(base: str, head: str, excluded: set[str] | None = None, trunk_range: 
     diff_range = f"{full_base}..{full_head}"
     prefix = f"Base: {full_base}\nHead: {full_head}\nRange: {diff_range}\n"
     pathspec = (
-        ["--", ".", *(f":(exclude){path}" for path in sorted(excluded or set()))]
+        ["--", ".", *(f":(exclude,literal){path}" for path in sorted(excluded or set()))]
         if excluded
         else []
     )

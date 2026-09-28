@@ -127,6 +127,7 @@ def test_missing_round_base_keeps_old_refusal(tmp_path):
     peer_merge(repo, g, "peer.py", "PEER = 1\n")
     result = sprint(repo, env, "land", "--dry-run")
     assert result.returncode == 2 and "peer.py" in result.stderr
+    assert "exemption: missing recorded base" in result.stderr
 
 
 def test_unrelated_recorded_base_keeps_old_refusal(tmp_path):
@@ -144,6 +145,7 @@ def test_unrelated_recorded_base_keeps_old_refusal(tmp_path):
     peer_merge(repo, g, "peer.py", "PEER = 1\n")
     result = sprint(repo, env, "land", "--dry-run")
     assert result.returncode == 2 and "peer.py" in result.stderr
+    assert "exemption: recorded base is not an ancestor" in result.stderr
 
 
 def test_unresolvable_recorded_base_refuses_without_traceback(tmp_path):
@@ -155,6 +157,7 @@ def test_unresolvable_recorded_base_refuses_without_traceback(tmp_path):
     peer_merge(repo, g, "peer.py", "PEER = 1\n")
     result = sprint(repo, env, "land", "--dry-run")
     assert result.returncode == 2 and "peer.py" in result.stderr
+    assert "exemption: unresolvable recorded base" in result.stderr
     assert "Traceback" not in result.stderr
 
 
@@ -203,6 +206,25 @@ def test_confirming_bundle_excludes_disjoint_trunk_paths(tmp_path):
     assert excluded_diff.returncode == 0 and not excluded_diff.stdout
     latest = json.loads(marker_path(tmp_path).read_text())["rounds"][-1]
     assert latest["review_base"] == today
+
+
+def test_excluded_path_is_not_a_glob_over_sprint_paths(tmp_path, monkeypatch):
+    repo, env, g = make_repo(tmp_path)
+    base = head(repo, env)
+    for path in ("app/[id]/page.py", "app/i/page.py"):
+        (repo / path).parent.mkdir(parents=True, exist_ok=True)
+        (repo / path).write_text("X = 1\n")
+    g("add", "-A")
+    g("commit", "-qm", "trunk dynamic route and sprint route")
+    monkeypatch.chdir(repo)
+    monkeypatch.syspath_prepend(str(PLUGIN / "scripts" / "close"))
+    from diff_range import render
+
+    bundle = render(base, "HEAD", {"app/[id]/page.py"}, "trunk")
+    assert "app/i/page.py" in bundle.split("Per-file changes (added, deleted, full path):\n")[1]
+    command = next(line for line in bundle.splitlines() if line.startswith("git diff "))
+    diff = subprocess.run(shlex.split(command), cwd=repo, capture_output=True, text=True)
+    assert "app/i/page.py" in diff.stdout and "app/[id]/page.py" not in diff.stdout
 
 
 def test_first_completed_round_records_launch_base(tmp_path):

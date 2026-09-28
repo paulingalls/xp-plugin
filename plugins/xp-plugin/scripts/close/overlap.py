@@ -121,8 +121,6 @@ def trunk_only_paths(
     today = git("merge-base", ref, head, check=False).stdout.strip()
     if not today or git("merge-base", "--is-ancestor", recorded, today, check=False).returncode:
         return set(), "", "recorded base is not an ancestor of released trunk base"
-    if recorded == today:
-        return set(), "", "unchanged base"
     rng = f"{recorded}..{today}"
     eligible = (
         _files(rng) - _files(f"{today}..{head}") - _files(f"{recorded}..{shown}") - set(GATE_FILES)
