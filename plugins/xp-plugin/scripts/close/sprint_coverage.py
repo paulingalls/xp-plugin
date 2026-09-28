@@ -102,8 +102,6 @@ def coverage_refusal(
     eligible, trunk_range, state_reason = overlap.trunk_only_paths(
         round_.get("review_base"), shown, head, default_branch()
     )
-    if state_reason.startswith("refused:"):
-        return state_reason
     exempt = sorted(set(paths) & eligible)
     if exempt and (reported is None or trunk_range not in reported):
         print(f"trunk-only paths from {trunk_range}: {', '.join(exempt)}")
@@ -115,7 +113,11 @@ def coverage_refusal(
         return (
             f"refused: the review did not cover HEAD — {', '.join(code)}"
             f" changed since {shown[:8]}. {rerun}"
-            + (f"\nNo trunk-only exemption: {state_reason}" if state_reason else "")
+            + (
+                f"\nNo trunk-only exemption: {state_reason.removeprefix('refused: ')}"
+                if state_reason
+                else ""
+            )
         )
     retro = sorted(set(paths) - bumps)
     kinds = [f".xp/ prose: {', '.join(retro)}"] if retro else []

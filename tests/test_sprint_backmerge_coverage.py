@@ -250,6 +250,25 @@ def test_stale_local_trunk_refuses_before_exemption(tmp_path):
     assert result.returncode == 2 and "behind origin/main" in result.stderr
 
 
+def test_stale_local_trunk_does_not_refuse_a_prose_only_delta(tmp_path):
+    repo, env, g, _base, _shown = prepared(tmp_path)
+    origin = tmp_path / "origin.git"
+    assert g("init", "-q", "--bare", str(origin)).returncode == 0
+    assert g("remote", "add", "origin", str(origin)).returncode == 0
+    g("checkout", "-q", "main")
+    (repo / "peer.py").write_text("PEER = 1\n")
+    g("add", "-A")
+    g("commit", "-qm", "peer free patch")
+    assert g("push", "-q", "origin", "main").returncode == 0
+    assert g("reset", "-q", "--hard", "HEAD~1").returncode == 0
+    g("checkout", "-q", "sprint-002")
+    (repo / ".xp" / "retro.md").write_text("# retro\n")
+    g("add", "-A")
+    g("commit", "-qm", "retro prose")
+    result = sprint(repo, env, "land", "--dry-run")
+    assert result.returncode == 0, result.stderr
+
+
 def test_diverged_local_trunk_refuses_before_exemption(tmp_path):
     repo, env, g, _base, _shown = prepared(tmp_path)
     origin = tmp_path / "origin.git"
