@@ -104,6 +104,32 @@ def _files(rng: str) -> set[str]:
     return set(git("diff", "--no-renames", "--name-only", rng).stdout.splitlines())
 
 
+def trunk_only_paths(
+    recorded: object, shown: str, head: str, trunk: str
+) -> tuple[set[str], str, str]:
+    """Paths introduced by released trunk that never carried reviewed sprint work."""
+    if not isinstance(recorded, str) or not recorded:
+        return set(), "", "missing recorded base"
+    if git("rev-parse", "--verify", "-q", f"{recorded}^{{commit}}", check=False).returncode:
+        return set(), "", "unresolvable recorded base"
+    from bookkeep import fork_point
+
+    _local_base, stale = fork_point(trunk)
+    if stale:
+        return set(), "", stale
+    ref = merge_source(trunk, "pr")
+    today = git("merge-base", ref, head, check=False).stdout.strip()
+    if not today or git("merge-base", "--is-ancestor", recorded, today, check=False).returncode:
+        return set(), "", "recorded base is not an ancestor of released trunk base"
+    if recorded == today:
+        return set(), "", "unchanged base"
+    rng = f"{recorded}..{today}"
+    eligible = (
+        _files(rng) - _files(f"{today}..{head}") - _files(f"{recorded}..{shown}") - set(GATE_FILES)
+    )
+    return eligible, rng, ""
+
+
 def unmerged(ref: str) -> bool:
     return git("merge-base", "--is-ancestor", ref, "HEAD", check=False).returncode != 0
 

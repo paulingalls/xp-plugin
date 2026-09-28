@@ -217,6 +217,7 @@ def stop(
     state,
     review,
     edit,
+    base,
 ):
     reused = prefix.reused if prefix else None
     recorded = f"Round {number} IS recorded, incomplete."
@@ -231,7 +232,7 @@ def stop(
             review.REPORT_KEYS,
             reused,
             ran,
-        )
+        ) | {"review_base": base}
 
     if resume:
         if dry_run:
@@ -251,6 +252,7 @@ def stop(
         edit=edit,
         reviewed_head=round_["reviewed_head"],
         shown_sha=round_["shown_sha"],
+        review_base=base,
     )
     return error, f"round {number} recorded incomplete after {', '.join(round_['stages'])}"
 
@@ -264,8 +266,9 @@ def complete(
     prefix: Prefix,
     ran: list[str],
     edit,
+    base,
 ) -> None:
-    coverage = {"reviewed_head": reviewed, "shown_sha": shown}
+    coverage = {"reviewed_head": reviewed, "shown_sha": shown, "review_base": base}
 
     def finish(current: dict) -> None:
         current["rounds"][number - 1] = round_ | coverage | {"reused": prefix.reused, "ran": ran}
@@ -274,10 +277,16 @@ def complete(
     edit(marker, finish)
 
 
-def finish(resume, marker, state, number, round_, reviewed, shown, prefix, ran, review, edit):
+def finish(resume, marker, state, number, round_, reviewed, shown, prefix, ran, review, edit, base):
     if resume:
-        complete(marker, number, round_, reviewed, shown, prefix, ran, edit)
+        complete(marker, number, round_, reviewed, shown, prefix, ran, edit, base)
     else:
         review.write_round(
-            marker, state, round_, edit=edit, reviewed_head=reviewed, shown_sha=shown
+            marker,
+            state,
+            round_,
+            edit=edit,
+            reviewed_head=reviewed,
+            shown_sha=shown,
+            review_base=base,
         )
