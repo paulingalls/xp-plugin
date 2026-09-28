@@ -75,7 +75,18 @@ def _sprint_records(root: Path, since_epoch: int) -> tuple[str, str]:
     return "\n".join(out) or "none", "\n".join(kept).strip() or "none"
 
 
-def build(sprint_id, cards, base, report, charter, extra, authority, diff_base="") -> str:
+def build(
+    sprint_id,
+    cards,
+    base,
+    report,
+    charter,
+    extra,
+    authority,
+    diff_base="",
+    excluded=None,
+    trunk_range="",
+) -> str:
     """Build at launch so the closer sees the fixer's tree — but the RUBRIC is the
     caller's snapshot, read once before the first launch. Re-read here it would exit
     from a later stage's bundle, past leg()'s error return and the incomplete round
@@ -88,7 +99,7 @@ def build(sprint_id, cards, base, report, charter, extra, authority, diff_base="
         ("Your report", f"REPORT_PATH: {report}"),
         *extra,
         (f"The stories in sprint {sprint_id}", cards),
-        (title, render_diff_range(diff_base or base, "HEAD")),
+        (title, render_diff_range(diff_base or base, "HEAD", excluded, trunk_range)),
         ("Resolutions filed during the sprint", resolutions),
         ("work.md entries filed during the sprint", work_md),
         *authority,

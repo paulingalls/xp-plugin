@@ -75,6 +75,7 @@ def test_valid_report_prefix_is_reused_in_the_same_round(tmp_path):
     assert len(rounds) == 1
     assert rounds[0]["reused"] == READ_ONLY
     assert rounds[0]["ran"] == ["fix", "close"]
+    assert rounds[0]["review_base"] == _g("merge-base", "main", "HEAD").stdout.strip()
 
 
 def test_a_missing_finder_report_runs_it_and_every_later_stage(tmp_path):

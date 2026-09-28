@@ -51,6 +51,13 @@ def land_refusal(state: dict, key: str, base: str, exempt: set[str] | None = Non
     spelling of its review command, which is all that legitimately differs."""
     rerun = f"Run `close.py {key} review`"
     recorded = state.get("review_base")
+    shown = state.get("shown_sha", git("rev-parse", "HEAD").stdout.strip())
+    if git("merge-base", "--is-ancestor", shown, "HEAD", check=False).returncode:
+        return (
+            f"refused: HEAD does not contain {shown[:8]}, the tree you were shown —"
+            " the reviewer's commits are not in what would merge, so the recorded"
+            f" round describes no tree. {rerun}"
+        )
     if recorded != base:
         if (
             not isinstance(recorded, str)
@@ -63,20 +70,16 @@ def land_refusal(state: dict, key: str, base: str, exempt: set[str] | None = Non
         # Forward-only, and files not SHAs: trunk motion that touched nothing the
         # story wrote cannot change the diff the reviewer judged, while refusing on
         # the SHAs alone charged a round for every parallel story that merged first.
-        shared = _files(f"{recorded}..{base}") & _files(f"{base}..HEAD")
+        # A take-theirs resolution drops a reviewed file from base..HEAD, so a file
+        # the round reviewed that changed again since counts as shared too.
+        reviewed = _files(f"{recorded}..{shown}") & _files(f"{shown}..HEAD")
+        shared = _files(f"{recorded}..{base}") & (_files(f"{base}..HEAD") | reviewed)
         if hit := sorted(shared - (exempt or set())):
             listed = "\n  ".join(hit)
             return (
                 "refused: trunk moved after the recorded round and changed files the"
                 f" story also changed:\n  {listed}\n{rerun}"
             )
-    shown = state.get("shown_sha", git("rev-parse", "HEAD").stdout.strip())
-    if git("merge-base", "--is-ancestor", shown, "HEAD", check=False).returncode:
-        return (
-            f"refused: HEAD does not contain {shown[:8]}, the tree you were shown —"
-            " the reviewer's commits are not in what would merge, so the recorded"
-            f" round describes no tree. {rerun}"
-        )
     if blocking := unresolved_blocking(state):
         return (
             "refused: the last review round left blocking findings:\n  "
@@ -102,6 +105,30 @@ def merge_source(trunk: str, merge_mode: str) -> str:
 
 def _files(rng: str) -> set[str]:
     return set(git("diff", "--no-renames", "--name-only", rng).stdout.splitlines())
+
+
+def trunk_only_paths(
+    recorded: object, shown: str, head: str, trunk: str
+) -> tuple[set[str], str, str]:
+    """Paths introduced by released trunk that never carried reviewed sprint work."""
+    if not isinstance(recorded, str) or not recorded:
+        return set(), "", "missing recorded base"
+    if git("rev-parse", "--verify", "-q", f"{recorded}^{{commit}}", check=False).returncode:
+        return set(), "", "unresolvable recorded base"
+    from bookkeep import fork_point
+
+    _local_base, stale = fork_point(trunk)
+    if stale:
+        return set(), "", stale
+    ref = merge_source(trunk, "pr")
+    today = git("merge-base", ref, head, check=False).stdout.strip()
+    if not today or git("merge-base", "--is-ancestor", recorded, today, check=False).returncode:
+        return set(), "", "recorded base is not an ancestor of released trunk base"
+    rng = f"{recorded}..{today}"
+    eligible = (
+        _files(rng) - _files(f"{today}..{head}") - _files(f"{recorded}..{shown}") - set(GATE_FILES)
+    )
+    return eligible, rng, ""
 
 
 def unmerged(ref: str) -> bool:

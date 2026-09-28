@@ -9,6 +9,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 sys.path.insert(0, str(Path(__file__).parent))
 import close as story_close
+import overlap
 import stages
 from close import default_branch, fail, git
 from release import next_version, refuse_unbumpable, version_files, version_refusal, versioning_mode
@@ -78,6 +79,7 @@ def cmd_review(sprint_id: str, dry_run: bool) -> int:
             f" them — then `close.py sprint {sprint_id} review` for a fresh fanout"
         )
     resume = resume_round is not None
+    review_base = resume_round.get("review_base", base) if resume else base
     discarded = next((r for r in reversed(rounds) if r.get("incomplete")), None)
     if not resume and discarded:
         names = ", ".join(discarded.get("stages", [])) or "no recorded stages"
@@ -126,6 +128,7 @@ def cmd_review(sprint_id: str, dry_run: bool) -> int:
             state,
             review,
             write_sprint_state,
+            review_base,
         )
         if notice:
             print(notice)
@@ -144,8 +147,28 @@ def cmd_review(sprint_id: str, dry_run: bool) -> int:
             print("warning: " + artifact_notice(aside, salvage_cmd), file=sys.stderr)
         if stage == "fixer":
             extra = [("Your patch", f"PATCH_PATH: {review.patch_path(path)}"), *extra]
+        excluded, trunk_range = set(), ""
+        if diff_base:
+            prior = next((r for r in reversed(rounds) if not r.get("incomplete")), {})
+            eligible, trunk_range, _reason = overlap.trunk_only_paths(
+                prior.get("review_base"),
+                diff_base,
+                git("rev-parse", "HEAD").stdout.strip(),
+                trunk,
+            )
+            moved = overlap._files(f"{diff_base}..HEAD")
+            excluded = eligible & moved
         bundle = build(
-            sprint_id, cards, base, path, charter or charters[stage], extra, authority, diff_base
+            sprint_id,
+            cards,
+            base,
+            path,
+            charter or charters[stage],
+            extra,
+            authority,
+            diff_base,
+            excluded,
+            trunk_range,
         )
         stage_head = batch_head or git("rev-parse", "HEAD").stdout.strip()
         role = stage if not complete_n else ""
@@ -315,6 +338,7 @@ def cmd_review(sprint_id: str, dry_run: bool) -> int:
         ran,
         review,
         write_sprint_state,
+        review_base,
     )
     print(
         f"round {round_n} recorded at {shown_sha[:8]}:"
