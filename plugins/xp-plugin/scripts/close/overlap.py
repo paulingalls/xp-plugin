@@ -52,6 +52,12 @@ def land_refusal(state: dict, key: str, base: str, exempt: set[str] | None = Non
     rerun = f"Run `close.py {key} review`"
     recorded = state.get("review_base")
     shown = state.get("shown_sha", git("rev-parse", "HEAD").stdout.strip())
+    if git("merge-base", "--is-ancestor", shown, "HEAD", check=False).returncode:
+        return (
+            f"refused: HEAD does not contain {shown[:8]}, the tree you were shown —"
+            " the reviewer's commits are not in what would merge, so the recorded"
+            f" round describes no tree. {rerun}"
+        )
     if recorded != base:
         if (
             not isinstance(recorded, str)
@@ -74,12 +80,6 @@ def land_refusal(state: dict, key: str, base: str, exempt: set[str] | None = Non
                 "refused: trunk moved after the recorded round and changed files the"
                 f" story also changed:\n  {listed}\n{rerun}"
             )
-    if git("merge-base", "--is-ancestor", shown, "HEAD", check=False).returncode:
-        return (
-            f"refused: HEAD does not contain {shown[:8]}, the tree you were shown —"
-            " the reviewer's commits are not in what would merge, so the recorded"
-            f" round describes no tree. {rerun}"
-        )
     if blocking := unresolved_blocking(state):
         return (
             "refused: the last review round left blocking findings:\n  "
