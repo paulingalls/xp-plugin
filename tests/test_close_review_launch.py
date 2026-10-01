@@ -53,7 +53,10 @@ class TestReviewLeg:
     def test_a_blocking_report_is_recorded_when_verify_is_red(self, tmp_path):
         repo, env, _g = make_repo(tmp_path, verify="false")
         finding = "the retry flag is inverted"
-        stub_reviewer(tmp_path, report={"fixed": [], "blocking": [finding], "noted": []})
+        stub_reviewer(
+            tmp_path,
+            report={"fixed": [], "blocking": [finding], "schema": 2, "dropped": [], "debt": []},
+        )
         assert close(repo, env, "review").returncode == 2
         assert marker(tmp_path)["rounds"][-1]["blocking"] == [finding]
         land = close(repo, env, "land")

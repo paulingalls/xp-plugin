@@ -4,11 +4,16 @@ import shlex
 import subprocess
 from pathlib import Path
 
+from review_report import aggregate, normalize_report
+
 
 def resumable(rounds: list[dict]) -> dict | None:
     if len(rounds) != 1:
         return None
     round_ = rounds[0]
+    parsed, error = normalize_report(round_)
+    if error or "legacy_untriaged" in parsed:
+        return None
     return round_ if round_.get("incomplete") and round_.get("stages") else None
 
 
@@ -162,11 +167,7 @@ class Prefix:
 
 
 def record(reports, keys, error, reviewed, shown, report_keys, reused=None, ran=None) -> dict:
-    seen = {
-        key: dict.fromkeys(item for report in reports for item in report[key])
-        for key in report_keys
-    }
-    result = {key: list(value) for key, value in seen.items()}
+    result = aggregate(reports, blockers=False)
     result.update(incomplete=error, stages=keys, reviewed_head=reviewed, shown_sha=shown)
     if reused is not None:
         result.update(reused=reused, ran=ran)

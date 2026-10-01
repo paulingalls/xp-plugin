@@ -27,7 +27,9 @@ def prepared(tmp_path):
                     {
                         "fixed": [],
                         "blocking": [],
-                        "noted": [],
+                        "schema": 2,
+                        "dropped": [],
+                        "debt": [],
                         "reviewed_head": shown,
                         "shown_sha": shown,
                         "review_base": base,

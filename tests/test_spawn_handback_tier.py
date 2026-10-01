@@ -58,7 +58,7 @@ def fixture(tmp_path, outcomes=(0,), tier="configured", commit_second=True, litt
         "  subprocess.run(['git', 'commit', '-qm', 'executor work'], check=True)\n"
         "elif role == 'reviewer':\n"
         " p = re.search(r'^REPORT_PATH: (.+)$', prompt, re.M); assert p\n"
-        " report = {'fixed': [], 'blocking': [], 'noted': []}\n"
+        " report = {'schema': 2, 'fixed': [], 'blocking': [], 'dropped': [], 'debt': []}\n"
         " open(p.group(1).strip(), 'w').write(json.dumps(report))\n"
         "print(json.dumps({'type':'result','subtype':'success','result':'done'}))\n"
     )

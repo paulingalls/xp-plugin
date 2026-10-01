@@ -253,9 +253,9 @@ class TestFullTierReceipt:
         staged_stub(
             tmp_path,
             patches=[("fix", "src.py", "C = 2")],
-            find={"fixed": [], "blocking": ["FIXED"], "noted": []},
-            verify={"fixed": [], "blocking": ["FIXED"], "noted": []},
-            fix={"fixed": ["FIXED"], "blocking": [], "noted": []},
+            find={"fixed": [], "blocking": ["FIXED"], "schema": 2, "dropped": [], "debt": []},
+            verify={"fixed": [], "blocking": ["FIXED"], "schema": 2, "dropped": [], "debt": []},
+            fix={"fixed": ["FIXED"], "blocking": [], "schema": 2, "dropped": [], "debt": []},
         )
         assert sprint(repo, env, "start").returncode == 0
         assert run_count(events) == 0

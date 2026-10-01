@@ -86,3 +86,10 @@ artifact starts at `<story-id>.round-1.md`. The legacy logical round one spellin
 `<data-root>/plans/<story-id>.md`; it is never allocated for a new review. Never
 a relative `plans/` under the repo, which it would dirty. That file is this
 disposition, not another negotiation. No praise.
+
+Judge findings within your existing authority and native output contract: fix
+an authorized correction, write a one-line drop with its reason in the existing
+summary/Markdown, or retain exceptional debt with a real record reference and
+both JUDGMENT bars. Escalate human, scope and design choices to the lead. Do not
+extend card ACs or impose the diff-review JSON schema here. Notes are discoveries
+and value tradeoffs, never leftover findings.

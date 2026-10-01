@@ -7,7 +7,10 @@ extend Files, and report the deviation.
 
 {PLAN_GUIDANCE}
 - **Carry plan-review findings into the card.** When your prompt names plan-review
-  findings, read them first. Run diagnostic tests named by the reviewed plan. Add
+  findings, read them first. Fix authorized work by default, append a one-line
+  reasoned drop in the plan/handback, or retain exceptional debt with both
+  JUDGMENT bars and a real record reference. Escalate reserved choices to the lead.
+  Run diagnostic tests named by the reviewed plan. Add
   touched paths to Files and append each repeatable automated AC check to the end
   of Verify as ` && <command>`, leaving the existing command unchanged, then run the
   resulting exact Verify before handback. The card is `{CARD_PATH}`. For a locked
@@ -21,7 +24,8 @@ extend Files, and report the deviation.
 - **Escalate reserved decisions.** Hand back a wrong card, absent authority or a
   lead-reserved choice. After a mandatory step fails twice for
   infrastructure reasons, commit the coherent in-flight change and hand back.
-  File it: `python3 {PLUGIN_ROOT}/scripts/work.py note '...'`.
+  Hand back the observed failure and execution evidence; do not park a finding
+  in a note.
 - **Finish green.** Make small red-green-refactor increments. Run the card's exact
   Verify and the configured `tests.story` from `.xp/config.yml`.
   Then commit the green change with hooks enabled before handing back its result.

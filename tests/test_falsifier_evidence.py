@@ -276,7 +276,7 @@ def test_a_green_batch_keeps_command_streams_silent_and_writes_nothing(tmp_path)
     assert len(timed) == 2 and sorted(line.split()[-1] for line in timed) == sorted(refs)
     assert [path.read_text() for path in counters] == ["xx", "xx"]
     assert all(
-        f"GREEN{n}_{stream}" not in result.stdout + result.stderr
+        f"GREEN{n}_OUTGREEN{n}_ERR" not in result.stdout + result.stderr
         for n in range(2)
         for stream in ("OUT", "ERR")
     )

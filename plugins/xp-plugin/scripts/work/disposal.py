@@ -87,6 +87,17 @@ def resolve(root: Path, args: argparse.Namespace) -> int:
 
 def archive(root: Path, args: argparse.Namespace) -> int:
     """Record a disposition; `compact` later moves its record's durable prose."""
+    if (
+        not isinstance(args.disposition, str)
+        or not args.disposition.strip()
+        or len(args.disposition.splitlines()) != 1
+    ):
+        print(
+            "refused: --disposition requires a non-empty single-line reason —"
+            " name why it is dropped or promoted",
+            file=sys.stderr,
+        )
+        return 2
     if (kind := _kind_of(root, args.ref)) is None:
         return 2
     if kind == "bug" and _archived(root, args.ref):
@@ -114,9 +125,11 @@ def archive(root: Path, args: argparse.Namespace) -> int:
                 file=sys.stderr,
             )
             return 2
-    elif kind not in ("debt", "note") and not (kind == "bug" and _resolved(root, args.ref)):
+    elif kind not in ("debt", "note", "judgment") and not (
+        kind == "bug" and _resolved(root, args.ref)
+    ):
         print(
-            f"refused: {args.ref} is a {kind} — only a debt, a note, an already"
+            f"refused: {args.ref} is a {kind} — only a debt, a note, a judgment, an already"
             " RESOLVED bug, or a bug archived `misfiled: <why>` is archivable."
             " Archiving an unresolved bug hides its red falsifier: fix it, then"
             " resolve it, then archive it. A resolved or archived record is already"
@@ -131,3 +144,31 @@ def archive(root: Path, args: argparse.Namespace) -> int:
         )
     )
     return 0
+
+
+def keep(root: Path, args: argparse.Namespace) -> int:
+    from work import debt_reference_error
+
+    if error := debt_reference_error(root, args.ref):
+        print(f"refused: {error}", file=sys.stderr)
+        return 2
+    if not all(
+        _single_line(getattr(args, key), key.replace("_", "-"))
+        for key in ("too_big", "too_important")
+    ):
+        return 2
+    print(
+        append(
+            root,
+            f"## retained {stamp()}\nKeeps: {args.ref}\n"
+            f"Too big: {neutralize(args.too_big)}\n"
+            f"Too important: {neutralize(args.too_important)}\n\n",
+        )
+    )
+    return 0
+
+
+def judge(root: Path, args: argparse.Namespace) -> int:
+    from finding_judgment import judge as record_judgment
+
+    return record_judgment(root, args)

@@ -8,7 +8,12 @@ from sprint_helpers import make_repo, marker_path, sprint, staged_stub
 class TestCloserOnlySchema:
     def write(self, tmp_path, **extra):
         path = tmp_path / "report.json"
-        path.write_text(json.dumps({"fixed": [], "blocking": ["A", "B"], "noted": []} | extra))
+        path.write_text(
+            json.dumps(
+                {"fixed": [], "blocking": ["A", "B"], "schema": 2, "dropped": [], "debt": []}
+                | extra
+            )
+        )
         return path
 
     def test_closer_binding_is_validated_before_projection(self, tmp_path):
@@ -18,7 +23,9 @@ class TestCloserOnlySchema:
         assert report == {
             "fixed": [],
             "blocking": ["A", "B"],
-            "noted": [],
+            "schema": 2,
+            "dropped": [],
+            "debt": [],
             "clearable_by_full": ["B"],
         }
 
@@ -46,7 +53,11 @@ class TestCloserOnlySchema:
                 {
                     "fixed": [],
                     "blocking": blocking,
-                    "noted": ["noted-only"],
+                    "schema": 2,
+                    "dropped": [
+                        {"finding": item, "reason": "fixture reason"} for item in ["noted-only"]
+                    ],
+                    "debt": [],
                     "clearable_by_full": binding,
                 }
             )
@@ -70,10 +81,16 @@ class TestCloserOnlySchema:
         path = self.write(tmp_path, clearable_by_full=["A"], unrelated="ignored")
         report, error = read_report(path)
         assert not error
-        assert report == {"fixed": [], "blocking": ["A", "B"], "noted": []}
+        assert report == {
+            "fixed": [],
+            "blocking": ["A", "B"],
+            "schema": 2,
+            "dropped": [],
+            "debt": [],
+        }
 
 
-FINDING = {"fixed": [], "blocking": ["F"], "noted": []}
+FINDING = {"fixed": [], "blocking": ["F"], "schema": 2, "dropped": [], "debt": []}
 
 
 class TestRoundProvenance:
@@ -83,11 +100,13 @@ class TestRoundProvenance:
             tmp_path,
             find=FINDING,
             verify=FINDING,
-            fix={"fixed": ["F"], "blocking": ["SAME"], "noted": []},
+            fix={"fixed": ["F"], "blocking": ["SAME"], "schema": 2, "dropped": [], "debt": []},
             close={
                 "fixed": [],
                 "blocking": ["SAME"],
-                "noted": [],
+                "schema": 2,
+                "dropped": [],
+                "debt": [],
                 "clearable_by_full": ["SAME"],
             },
         )
@@ -103,11 +122,13 @@ class TestRoundProvenance:
             tmp_path,
             find=FINDING,
             verify=FINDING,
-            fix={"fixed": ["F"], "blocking": ["SAME"], "noted": []},
+            fix={"fixed": ["F"], "blocking": ["SAME"], "schema": 2, "dropped": [], "debt": []},
             close={
                 "fixed": [],
                 "blocking": [],
-                "noted": [],
+                "schema": 2,
+                "dropped": [],
+                "debt": [],
                 "clearable_by_full": ["SAME"],
             },
         )
@@ -128,7 +149,9 @@ class TestRoundProvenance:
             fix={
                 "fixed": ["F"],
                 "blocking": [],
-                "noted": [],
+                "schema": 2,
+                "dropped": [],
+                "debt": [],
                 "clearable_by_full": [],
             },
         )

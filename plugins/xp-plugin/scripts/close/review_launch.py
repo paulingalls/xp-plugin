@@ -29,3 +29,13 @@ def prepare(story_id, dry_run, marker, noun):
         if left := notice(moves, f"close.py {noun} salvage"):
             print("warning: " + left, file=sys.stderr)
     return state, path, launch
+
+
+def verify_on_reviewed_tree(story_id: str, card: str) -> str:
+    """Run Verify on the reviewed diff; land separately protects the merged tree."""
+    import close
+    import verify_receipt
+
+    raw, commands = close.verify_commands(story_id, card)
+    red = verify_receipt.record(story_id, card, raw, commands)
+    return red.removeprefix("refused: ")

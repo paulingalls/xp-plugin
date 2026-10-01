@@ -62,7 +62,7 @@ class HarnessInstallCases:
         stub_codex(
             tmp_path,
             commit=False,
-            report={"fixed": [], "blocking": [], "noted": []},
+            report={"fixed": [], "blocking": [], "schema": 2, "dropped": [], "debt": []},
             sandbox="danger-full-access",
         )
         claude = plugin_list(tmp_path, "claude", [installed("claude")])

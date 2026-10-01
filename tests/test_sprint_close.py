@@ -68,7 +68,17 @@ def wait_for(path, process):
 def salvage_round(tmp_path, repo, env, number, note):
     report = tmp_path / "data" / "reports" / "sprint" / f"{SPRINT_ID}.find-x.round-{number}.json"
     report.parent.mkdir(parents=True, exist_ok=True)
-    report.write_text(json.dumps({"fixed": [], "blocking": [], "noted": [note]}))
+    report.write_text(
+        json.dumps(
+            {
+                "fixed": [],
+                "blocking": [],
+                "schema": 2,
+                "dropped": [{"finding": item, "reason": "fixture reason"} for item in [note]],
+                "debt": [],
+            }
+        )
+    )
     result = sprint(repo, env, "salvage")
     assert result.returncode == 0, result.stderr
 
@@ -162,7 +172,7 @@ class TestFullTier:
             stdout + stderr
         )
         marker = json.loads(marker_path(tmp_path).read_text())
-        assert marker["rounds"][-1]["noted"] == ["concurrent land round"]
+        assert marker["rounds"][-1]["dropped"][0]["finding"] == "concurrent land round"
         assert marker["full_tier"]["ran_by"] == "land"
 
     def test_sprint_marker_updates_serialize_on_the_shared_lock(self, tmp_path):
@@ -251,7 +261,7 @@ class TestKilledReviewRecovery:
         rescued = sprint(repo, env, "salvage")
         assert rescued.returncode == 0, rescued.stderr
         state = json.loads(marker_path(tmp_path).read_text())
-        assert state["rounds"][-1]["noted"] == ["survived host kill"]
+        assert state["rounds"][-1]["legacy_untriaged"] == ["survived host kill"]
         assert "clearable_by_full" not in state["rounds"][-1]
         assert state["rounds"][-1]["incomplete"] and state["rounds"][-1]["stages"]
         land = sprint(repo, env, "land", "--dry-run")
@@ -262,7 +272,15 @@ class TestKilledReviewRecovery:
         root = tmp_path / "data" / "reports" / "sprint"
         report = root / f"{SPRINT_ID}.find-a.round-1.json"
         report.parent.mkdir(parents=True, exist_ok=True)
-        body = json.dumps({"fixed": [], "blocking": [], "noted": ["survived"]})
+        body = json.dumps(
+            {
+                "fixed": [],
+                "blocking": [],
+                "schema": 2,
+                "dropped": [{"finding": item, "reason": "fixture reason"} for item in ["survived"]],
+                "debt": [],
+            }
+        )
         report.write_text(body)
         dirt = repo / "uninspected.txt"
         dirt.write_text("dead reviewer work\n")

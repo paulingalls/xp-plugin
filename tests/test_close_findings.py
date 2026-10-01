@@ -129,9 +129,24 @@ class TestStoryReviewFindings012a:
         # byte-identical string and passed. The fixture must construct truncation.
         record = {
             "rounds": [
-                {"fixed": [f"round {i} " + "x" * 90], "blocking": [], "noted": []} for i in range(6)
+                {
+                    "fixed": [f"round {i} " + "x" * 90],
+                    "blocking": [],
+                    "schema": 2,
+                    "dropped": [],
+                    "debt": [],
+                }
+                for i in range(6)
             ]
-            + [{"fixed": [], "blocking": ["R7-THE-BLOCKER-THAT-GATED-THE-MERGE"], "noted": []}]
+            + [
+                {
+                    "fixed": [],
+                    "blocking": ["R7-THE-BLOCKER-THAT-GATED-THE-MERGE"],
+                    "schema": 2,
+                    "dropped": [],
+                    "debt": [],
+                }
+            ]
         }
         detail = session_start._close_detail(record)
         assert "R7-THE-BLOCKER-THAT-GATED-THE-MERGE" in detail, "the newest round was dropped"
@@ -244,7 +259,7 @@ class TestRoundThreeFindings:
         bin_dir = tmp_path / "bin"
         (bin_dir / "claude").write_text(
             CLAUDE_SH + "p=$(sed -n 's/^REPORT_PATH: //p')\n"
-            'printf \'{"fixed": [], "blocking": [], "noted": []}\' > "$p"\n'
+            'printf \'{"schema":2,"fixed":[],"blocking":[],"dropped":[],"debt":[]}\' > "$p"\n'
             "NEW=$(git commit-tree HEAD^{tree} -p main -m 'teammate landed mid-review')\n"
             "git update-ref refs/heads/main $NEW\n"
             'printf \'{"type": "result", "result": "clean"}\'\n'
@@ -264,7 +279,8 @@ class TestRoundThreeFindings:
         reports.mkdir(parents=True)
         planted = reports / "story-042.round-1.json"
         planted.write_text(
-            '{"fixed": ["findings from a refused round"], "blocking": [], "noted": []}'
+            '{"fixed": ["findings from a refused round"], '
+            '"blocking": [], "schema":2,"dropped":[],"debt":[]}'
         )
         assert close(repo, env, "review", "--dry-run").returncode == 0
         assert planted.exists(), "a pure preview deleted real findings"
@@ -283,14 +299,34 @@ class TestRoundThreeNoted:
         would clobber each earlier round and passed the whole suite."""
         repo, env, _g = make_repo(tmp_path)
         for i in (1, 2):
-            stub_reviewer(tmp_path, report={"fixed": [f"round {i}"], "blocking": [], "noted": []})
+            stub_reviewer(
+                tmp_path,
+                report={
+                    "fixed": [f"round {i}"],
+                    "blocking": [],
+                    "schema": 2,
+                    "dropped": [],
+                    "debt": [],
+                },
+            )
             assert close(repo, env, "review").returncode == 0
         written = sorted(p.name for p in (tmp_path / "data" / "reports").glob("*.json"))
         assert written == ["story-042.round-1.json", "story-042.round-2.json"]
 
     def test_a_red_verify_does_not_ask_the_lead_to_file_records(self, tmp_path):
         repo, env, _g = make_repo(tmp_path, verify="false")
-        stub_reviewer(tmp_path, report={"fixed": [], "blocking": [], "noted": ["N1: punted"]})
+        stub_reviewer(
+            tmp_path,
+            report={
+                "fixed": [],
+                "blocking": [],
+                "schema": 2,
+                "dropped": [
+                    {"finding": item, "reason": "fixture reason"} for item in ["N1: punted"]
+                ],
+                "debt": [],
+            },
+        )
         close(repo, env, "review")
         r = close(repo, env, "land")
         assert r.returncode != 0

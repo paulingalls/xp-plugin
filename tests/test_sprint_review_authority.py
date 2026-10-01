@@ -17,7 +17,7 @@ from sprint_helpers import (
     staged_stub,
 )
 
-CLEAN = {"fixed": [], "blocking": [], "noted": []}
+CLEAN = {"fixed": [], "blocking": [], "schema": 2, "dropped": [], "debt": []}
 DELTA = "The delta since the last recorded round"
 
 
@@ -62,7 +62,13 @@ class TestReviewAuthority:
         card = "#### story-042 — done thing   [done]"
         declaring = PLAN.replace(card, f"{card}\nFiles: .xp/system.md")
         repo, env, _g = make_repo(tmp_path, plan=declaring)
-        blocking = {"fixed": [], "blocking": ["a silent one"], "noted": []}
+        blocking = {
+            "fixed": [],
+            "blocking": ["a silent one"],
+            "schema": 2,
+            "dropped": [],
+            "debt": [],
+        }
         staged_stub(tmp_path, find=blocking, verify=blocking)
         deletion = (
             "diff --git a/.xp/system.md b/.xp/system.md\n"

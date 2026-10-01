@@ -35,7 +35,7 @@ CONFIG = "roles:\n  reviewer: claude/opus\ntests:\n  story: true\n"
 
 REVIEWER_NAME = "xp story-reviewer"
 REVIEWER_EMAIL = "story-reviewer@xp.local"
-CLEAN = {"fixed": [], "blocking": [], "noted": []}
+CLEAN = {"fixed": [], "blocking": [], "schema": 2, "dropped": [], "debt": []}
 CLAUDE_SH = (
     '#!/bin/sh\nif [ "$1" = plugin ]; then echo '
     '\'[{"id":"xp-plugin","version":"v","scope":"user"}]\'; exit; fi\n'
@@ -121,7 +121,7 @@ def stub_reviewer(tmp_path, result="findings above", exit_code=0, raw=None, repo
     prose-only reviewer, which the pipeline must refuse).
     """
     if report is ...:
-        report = {"fixed": [], "blocking": [], "noted": []}
+        report = {"fixed": [], "blocking": [], "schema": 2, "dropped": [], "debt": []}
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir(exist_ok=True)
     rec = tmp_path / "launches.jsonl"
@@ -269,7 +269,7 @@ def record_round(repo, env, tmp_path, story_id="story-042"):
     marker_file(tmp_path, story_id).write_text(
         json.dumps(
             {
-                "rounds": [{"fixed": [], "blocking": [], "noted": []}],
+                "rounds": [{"fixed": [], "blocking": [], "schema": 2, "dropped": [], "debt": []}],
                 "reviewed_head": head,
                 "shown_sha": head,
                 "review_base": g("merge-base", "refs/heads/main", "HEAD"),

@@ -115,7 +115,7 @@ def cmd_repair(story_id: str) -> int:
         )
     position = at.get("round_index")
     path = review.report_path(story_id, position + 1)
-    report, err = review.read_report(path)
+    report, err = review.read_report(path, fresh=False)
     if err or report.get("blocking"):
         return close.fail(
             f"refused: review report {path} is unusable or blocking:"
@@ -198,7 +198,7 @@ def repair_land_red(story_id: str, card: str, land_red, noun: str, rereview: str
     round_file = round_.get("round_file", position)
     if not isinstance(round_file, int) or isinstance(round_file, bool) or round_file < 1:
         return close.fail(f"refused: latest review round is unusable — run {rereview}")
-    report, err = review.read_report(review.report_path(story_id, round_file))
+    report, err = review.read_report(review.report_path(story_id, round_file), fresh=False)
     if err or report.get("blocking"):
         return close.fail(f"refused: review report is unusable or blocking — run {rereview}")
     red_head = at.get("head")

@@ -20,6 +20,7 @@ from review_artifacts import (
     rotate as rotate_artifacts,
 )
 from review_artifacts import sprint_paths
+from review_report import aggregate, empty_report, normalize_report
 from sprint_bundle import build
 
 # `sprint_cards` and `_shown_diff` are imported FROM sprint_close, never the reverse:
@@ -39,6 +40,13 @@ def cmd_review(sprint_id: str, dry_run: bool) -> int:
     marker = sprint_marker(sprint_id)
     state = json.loads(marker.read_text()) if marker.exists() else {}
     rounds = state.get("rounds", [])
+    if not isinstance(rounds, list):
+        return fail(f"refused: unreadable rounds in {marker} — repair the marker before review")
+    for number, raw in enumerate(rounds, 1):
+        if error := normalize_report(raw)[1]:
+            return fail(
+                f"refused: unreadable round {number} in {marker}: {error} — repair it before review"
+            )
     head = git("rev-parse", "HEAD").stdout.strip()
     dirty = git("status", "--porcelain").stdout.strip()
     if dirty and (why := sprint_review_resume.dirty_fixer(rounds, head, sprint_id, review)):
@@ -85,7 +93,7 @@ def cmd_review(sprint_id: str, dry_run: bool) -> int:
         names = ", ".join(discarded.get("stages", [])) or "no recorded stages"
         reason = why or "the recorded round is not resumable"
         print(
-            f"warning: {reason} — opening a fresh round and discarding completed stages: {names}",
+            f"warning: {reason} — opening a fresh round without reusing completed stages: {names}",
             file=sys.stderr,
         )
     round_n = len(rounds) if resume else len(rounds) + 1
@@ -183,14 +191,14 @@ def cmd_review(sprint_id: str, dry_run: bool) -> int:
             noun=f"sprint {sprint_id}",
         )
         if dry_run:  # an EMPTY report, not a shapeless one: a preview walks
-            empty = {k: [] for k in review.REPORT_KEYS}
+            empty = empty_report()
             return empty, review.abort_text(head, err) if err else ""
         report, report_err = review.read_report(path, stage=stage)
         if not report_err and not batch_head:
             ran.append(key)
             reports.append(report)
         if err:  # stage_head, not head: an undo from the ROUND's start spans an applied fix
-            empty = {k: [] for k in review.REPORT_KEYS}
+            empty = empty_report()
             return report if batch_head else empty, review.abort_text(stage_head, err)
         print(
             f"--- {key} ---\n{result}" if batch_head else result
@@ -198,7 +206,7 @@ def cmd_review(sprint_id: str, dry_run: bool) -> int:
         if not batch_head and (
             motion := review.check_reviewer_motion(stage_head, marker, digest_before, cards)
         ):
-            return {k: [] for k in review.REPORT_KEYS}, motion
+            return empty_report(), motion
         if batch_head:
             return report, review.abort_text(stage_head, report_err) if report_err else ""
         if not report_err and stage == "fixer":
@@ -260,16 +268,16 @@ def cmd_review(sprint_id: str, dry_run: bool) -> int:
         motion = review.check_reviewer_motion(batch_head, marker, digest_before, cards)
         return results, motion or (errors[0] if errors else "")
 
-    prior = [("Findings from earlier rounds", render_sprint_prior(rounds if complete_n else []))]
+    prior = [("Findings from earlier rounds", render_sprint_prior(rounds))]
     if complete_n:
         fixed, err = leg("fixer", "fix", [("Sprint altitude", altitude), *prior], review.charter())
         if err:
             return stop(err)
         if dry_run:
             return 0
-        closing = {k: [] for k in review.REPORT_KEYS}
+        closing = empty_report()
     else:
-        fixed = {k: [] for k in review.REPORT_KEYS}
+        fixed = empty_report()
         candidates = []
         jobs = [(f"find-{slug}", [("Your angle", prose), *prior]) for slug, prose in found]
         finder_reports, err = batch("finder", jobs)
@@ -315,8 +323,8 @@ def cmd_review(sprint_id: str, dry_run: bool) -> int:
     if sprint_cards(plan.read_text(), sprint_id) != cards:
         changed = f"sprint {sprint_id}'s cards changed during the review"
         return stop(review.abort_text(shown_sha, changed))
-    round_ = {k: fixed[k] for k in review.REPORT_KEYS}
-    round_["blocking"] += closing["blocking"]
+    round_ = aggregate(reports)
+    round_["blocking"] = [*fixed["blocking"], *closing["blocking"]]
     if clearable := closing.get(review.CLEARABLE_BY_FULL):
         round_[review.CLEARABLE_BY_FULL] = clearable
     fix_report = review.sprint_report_path(sprint_id, "fix", round_n)

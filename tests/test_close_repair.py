@@ -182,7 +182,9 @@ class TestRepairRefusals:
             if fault == "report":
                 report.unlink()
             elif fault == "blocking":
-                report.write_text('{"fixed": [], "blocking": ["x"], "noted": []}')
+                report.write_text(
+                    '{"fixed": [], "blocking": ["x"], "schema":2,"dropped":[],"debt":[]}'
+                )
             else:
                 at = json.loads(before)
                 at["head"] = "missing-sha"

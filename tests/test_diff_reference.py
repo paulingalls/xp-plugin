@@ -112,9 +112,9 @@ def test_story_free_and_every_sprint_stage_name_bounded_pinned_ranges(tmp_path):
     staged_stub(
         sprint_root,
         patches=[("fix", "src.py", "FIXER-SENTINEL = 1")],
-        find={"fixed": [], "blocking": ["candidate"], "noted": []},
-        verify={"fixed": [], "blocking": ["candidate"], "noted": []},
-        fix={"fixed": ["candidate"], "blocking": [], "noted": []},
+        find={"fixed": [], "blocking": ["candidate"], "schema": 2, "dropped": [], "debt": []},
+        verify={"fixed": [], "blocking": ["candidate"], "schema": 2, "dropped": [], "debt": []},
+        fix={"fixed": ["candidate"], "blocking": [], "schema": 2, "dropped": [], "debt": []},
     )
     sprint_base = git_stdout(sprint_repo, sprint_env, "merge-base", "main", "HEAD").strip()
     assert sprint(sprint_repo, sprint_env, "review").returncode == 0
@@ -205,9 +205,9 @@ def test_fixer_keeps_its_launch_range_and_closer_names_the_fix(tmp_path):
     staged_stub(
         tmp_path,
         patches=[("fix", "src.py", "FIXER-SENTINEL = 1")],
-        find={"fixed": [], "blocking": ["candidate"], "noted": []},
-        verify={"fixed": [], "blocking": ["candidate"], "noted": []},
-        fix={"fixed": ["candidate"], "blocking": [], "noted": []},
+        find={"fixed": [], "blocking": ["candidate"], "schema": 2, "dropped": [], "debt": []},
+        verify={"fixed": [], "blocking": ["candidate"], "schema": 2, "dropped": [], "debt": []},
+        fix={"fixed": ["candidate"], "blocking": [], "schema": 2, "dropped": [], "debt": []},
     )
     assert sprint(repo, env, "review").returncode == 0
     fix_bundle = next(b for b in bundles(tmp_path) if stage_key(b) == "fix")

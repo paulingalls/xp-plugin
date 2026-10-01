@@ -38,7 +38,9 @@ def killed_review(tmp_path, g, head=None):
     (data / "markers" / "story-042.review-launch").write_text(json.dumps(at))
     report = data / "reports" / "story-042.round-1.json"
     report.parent.mkdir(parents=True, exist_ok=True)
-    report.write_text(json.dumps({"fixed": [], "blocking": [], "noted": []}))
+    report.write_text(
+        json.dumps({"fixed": [], "blocking": [], "schema": 2, "dropped": [], "debt": []})
+    )
 
 
 class TestShippedProseMatchesTheMechanism:
@@ -107,7 +109,9 @@ class TestShippedProseMatchesTheMechanism:
             (reports / "story-042.round-1.json").read_text()
         )
         marker_file(tmp_path).write_text(
-            json.dumps({"rounds": [{"fixed": [], "blocking": [], "noted": []}]})
+            json.dumps(
+                {"rounds": [{"fixed": [], "blocking": [], "schema": 2, "dropped": [], "debt": []}]}
+            )
         )
         dirt = repo / "uninspected.txt"
         dirt.write_text("dead reviewer work\n")
@@ -165,21 +169,21 @@ class TestShippedProseMatchesTheMechanism:
         assert PLUGIN / "templates" / "constraints.md" in corpus
         rules = {
             "comment rubric": (
-                "restates the code → delete",
-                "explains WHAT → rename",
-                "a checkable claim → write the test",
-                "narrates history → delete",
-                "Keep only the why",
+                "restatement/history → delete",
+                "WHAT → rename",
+                "claim → test",
+                "restatement/history → delete",
+                "Keep why",
             ),
             "record shapes and polarity": (
                 "**bug** — claim + red falsifier",
                 "**debt** — claim + green falsifier",
-                "**resolve** — substitutes a green falsifier",
+                "**resolve** — substitute green falsifier",
                 "**coverage** — optional",
-                "**note** — value tradeoff or discovery",
+                "**note** — tradeoff/discovery",
                 "**Polarity**",
             ),
-            "hook and red contract": ("Hooks are the wall", "Never bypass", "fake a red"),
+            "hook and red contract": ("never fake it", "Never bypass hooks"),
             "finding bar": (
                 "silent or corrupting",
                 "false green, corrupted record, unreviewed merge",
@@ -222,7 +226,7 @@ class TestShippedProseMatchesTheMechanism:
     def test_a_mandatory_step_failing_twice_routes_to_escalation(self):
         teammate = " ".join(prose(PLUGIN / "EXECUTOR.md").lower().split())
         assert "mandatory step fails twice for infrastructure reasons" in teammate
-        assert "scripts/work.py note" in teammate
+        assert "observed failure and execution evidence" in teammate
         assert "commit the coherent in-flight change and hand back" in teammate
 
     def test_the_story_bundle_carries_JUDGMENT_but_not_PROCESS(self, tmp_path):
@@ -267,9 +271,9 @@ class TestShippedProseMatchesTheMechanism:
         raw = (PLUGIN / "PROCESS.md").read_text()
         process = " ".join(raw.split())
         story = process.split("2. **Story", 1)[1].split("3. **Story close", 1)[0]
-        assert "free work" in story and "worktree" in story
-        assert "never in the lead's checkout" in story
-        assert "practice, not a wall" in story and "data root proves spawn" in story
+        assert "Carded/free work" in story and "worktree" in story
+        assert "in its worktree" in story
+        assert "data root proves spawn, not authorship" in story
         assert process.count("worktree") == 1
 
     def test_the_walk_fixture_names_no_cut_and_no_control(self):

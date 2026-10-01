@@ -17,9 +17,9 @@ from sprint_helpers import (
     staged_stub,
 )
 
-CLEAN = {"fixed": [], "blocking": [], "noted": []}
+CLEAN = {"fixed": [], "blocking": [], "schema": 2, "dropped": [], "debt": []}
 DELTA = "The delta since the last recorded round"
-SURVIVES = {"fixed": [], "blocking": ["silent defect"], "noted": []}
+SURVIVES = {"fixed": [], "blocking": ["silent defect"], "schema": 2, "dropped": [], "debt": []}
 
 
 def model(launch):
@@ -192,7 +192,12 @@ class TestConfirmingRound:
         report = {
             "fixed": ["src.py no longer loses the marker"],
             "blocking": ["src.py still corrupts another marker"],
-            "noted": ["src.py naming could be clearer"],
+            "schema": 2,
+            "dropped": [
+                {"finding": item, "reason": "fixture reason"}
+                for item in ["src.py naming could be clearer"]
+            ],
+            "debt": [],
         }
         staged_stub(tmp_path, patches=[("fix", "src.py", "REVIEW_FIX = 1")], fix=report)
 

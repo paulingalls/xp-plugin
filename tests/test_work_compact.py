@@ -15,6 +15,8 @@ import work  # noqa: E402
 
 
 def run(root, *args, story=""):
+    if args and args[0] == "debt":
+        args = (*args, "--too-big", "separate design", "--too-important", "silent corruption")
     env = {"XP_DATA": str(root), "PATH": "/usr/bin:/bin"}
     return subprocess.run(
         [sys.executable, str(WORK), *args],

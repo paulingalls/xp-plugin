@@ -30,11 +30,18 @@ never apply a card's change: building it, even in a copy, is the story's work.
 
 ## Output
 
+Write this Markdown to FINDINGS_PATH; that findings file is your only write.
+
 Report every card under one `## <story-id> — RED|GREEN` heading. RED names the
 falsified premise and checked evidence; GREEN means only that none was falsified.
 List assumptions separately.
 
 End with `## Slate — RED|GREEN` for cross-card checks, then `## Unresolved`.
-Findings are candidates: the lead checks them, corrects cards only, and records
-accepted and rejected conclusions in work.md. Edit nothing; findings stay outside
-cards.
+Findings are candidates: the lead checks every one, corrects cards only, and
+records a fix, one-line reasoned drop or exceptional debt reference with both
+JUDGMENT bars in the slate judgment. Edit nothing except FINDINGS_PATH; findings
+stay outside cards.
+
+Propose corrections within your read-only authority; the lead owns fixes and
+judgment. Escalate human, scope and design choices. Keep this native Markdown
+contract; notes hold discoveries and value tradeoffs, never leftover findings.

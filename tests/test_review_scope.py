@@ -19,9 +19,15 @@ from sprint_helpers import (
     staged_stub,
 )
 
-CANDIDATES = {"fixed": [], "blocking": ["a silent one"], "noted": ["a loud one"]}
+CANDIDATES = {
+    "fixed": [],
+    "blocking": ["a silent one"],
+    "schema": 2,
+    "dropped": [{"finding": item, "reason": "fixture reason"} for item in ["a loud one"]],
+    "debt": [],
+}
 
-SURVIVES = {"fixed": [], "blocking": ["a silent one"], "noted": []}
+SURVIVES = {"fixed": [], "blocking": ["a silent one"], "schema": 2, "dropped": [], "debt": []}
 
 DECLARED = "#### story-042 — done thing   [done]"
 

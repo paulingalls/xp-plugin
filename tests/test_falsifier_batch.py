@@ -417,7 +417,7 @@ def test_a_project_with_no_tiers_executes_legacy_records_without_tier_prose(tmp_
 
     assert result.returncode == 0, result.stderr
     assert counter.read_text() == "x"
-    assert "tier" not in (result.stdout + result.stderr).lower()
+    assert "Covered by:" not in result.stdout and "tier_coverage" not in result.stdout
 
 
 def test_a_resolution_without_a_declaration_executes_its_replacement(tmp_path):

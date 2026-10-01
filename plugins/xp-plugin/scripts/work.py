@@ -33,7 +33,7 @@ FALSIFIER_STREAM_CAP = 4000
 
 STRUCTURAL = re.compile(
     r"^(## |# Record |Claim:|Falsifier:|Covered by:|Resolves:|Archives:|"
-    r"Id:|Disposition:|Files:|Story:)",
+    r"Id:|Disposition:|Files:|Story:|Keeps:|Too big:|Too important:|Source:|Digest:|Judgment:)",
     re.M,
 )
 
@@ -230,8 +230,15 @@ def entry(kind: str, args: argparse.Namespace, coverage: str) -> str:
         f"Claim: {neutralize(args.claim)}\n"
         f"Falsifier: `{neutralize(args.falsifier)}`\n"
         f"{coverage}"
+        f"{exception_metadata(args)}"
         f"Files: {neutralize(args.files)}\n\n"
     )
+
+
+def exception_metadata(args: argparse.Namespace) -> str:
+    if args.kind != "debt":
+        return ""
+    return f"Too big: {neutralize(args.too_big)}\nToo important: {neutralize(args.too_important)}\n"
 
 
 def _single_line(value: str, field: str) -> bool:
@@ -305,6 +312,21 @@ def _record(root: Path, ref: str) -> str | None:
     return matches[0]
 
 
+def debt_reference_error(root: Path, ref: str) -> str:
+    matches = [text for eid, text in entries(root) if eid == ref]
+    if len(matches) != 1:
+        return f"debt ref {ref!r} matches {len(matches)} records — use one exact record id"
+    text = matches[0]
+    if not text.startswith("## debt ") or not re.search(r"^Falsifier: `.+`$", text, re.M):
+        return f"debt ref {ref!r} is not a usable debt record — create an exceptional debt"
+    if any(not re.search(rf"^{field}: \S.*$", text, re.M) for field in ("Claim", "Files")):
+        return f"debt ref {ref!r} lacks claim/files — repair the record"
+    disposal = _disposal()
+    if disposal._archived(root, ref) or disposal._resolved(root, ref):
+        return f"debt ref {ref!r} is disposed — choose an open debt"
+    return ""
+
+
 def _disposal():
     """Imported LATE, not at module load: disposal imports work for its shared
     helpers, so a top-level import here is a cycle."""
@@ -323,6 +345,24 @@ def main() -> int:
         p.add_argument("--falsifier", required=True, help="shell command; red = exit nonzero")
         p.add_argument("--files", required=True, help="comma-separated paths")
         p.add_argument("--covered-by", metavar="TIER", help="a configured tier that runs it")
+        if kind == "debt":
+            p.add_argument(
+                "--too-big",
+                required=True,
+                help="why fixing doubles/crosses the card or needs design",
+            )
+            p.add_argument(
+                "--too-important", required=True, help="silent/corrupting, privacy or user harm"
+            )
+    k = sub.add_parser("keep", help="restate both exceptional-debt bars for an open record")
+    k.add_argument("--ref", required=True)
+    k.add_argument("--too-big", required=True)
+    k.add_argument("--too-important", required=True)
+    j = sub.add_parser(
+        "judge", help="record a disposition linked to legacy/unresolved review history"
+    )
+    j.add_argument("--source", required=True, help="marker path or closes.jsonl:LINE")
+    j.add_argument("--report", type=Path, required=True, help="fresh schema-2 disposition report")
     sub.add_parser("note").add_argument("text")
     sub.add_parser("list")
     sub.add_parser("show").add_argument("ref")
@@ -367,6 +407,10 @@ def main() -> int:
             return 2
         print(text, end="" if text.endswith("\n") else "\n")
         return 0
+    if args.kind == "judge":
+        return _disposal().judge(root, args)
+    if args.kind == "keep":
+        return _disposal().keep(root, args)
     if args.kind == "archive":
         return _disposal().archive(root, args)
     if args.kind == "resolve":
@@ -383,6 +427,11 @@ def main() -> int:
     if (coverage := checked_coverage(args)) is None:
         return 2
     if not _single_line(args.falsifier, "falsifier"):
+        return 2
+    if args.kind == "debt" and not all(
+        _single_line(getattr(args, field), field.replace("_", "-"))
+        for field in ("too_big", "too_important")
+    ):
         return 2
     green = falsifier_is_green(args.falsifier)  # outside the lock: may be slow
     if args.kind == "bug" and green:

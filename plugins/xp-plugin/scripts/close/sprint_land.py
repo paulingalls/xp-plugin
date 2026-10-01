@@ -20,6 +20,7 @@ from release import (
 )
 from release import cmd_post_merge as release_post_merge
 from review import CLEARABLE_BY_FULL
+from review_report import normalize_report
 from sprint_close import (
     config_flat,
     default_branch,
@@ -92,18 +93,14 @@ def _release_body(sprint_id: str, state: dict, marker) -> tuple[str, str]:
     rounds = state.get("rounds")
     if not isinstance(rounds, list) or not rounds:
         return "", f"refused: missing review rounds in sprint marker {marker} — {rerun}"
-    rendered_rounds = []
     for number, round_ in enumerate(rounds, 1):
-        if not isinstance(round_, dict) or not all(
-            isinstance(round_.get(key), list) for key in ("fixed", "blocking", "noted")
-        ):
+        _report, error = normalize_report(round_)
+        if error:
             return "", (
-                f"refused: unreadable review round {number} in sprint marker {marker} — {rerun}"
+                f"refused: unreadable review round {number} in sprint marker {marker}:"
+                f" {error} — {rerun}"
             )
-        rendered_rounds.append(
-            f"- Round {number}: {len(round_['fixed'])} fixed · "
-            f"{len(round_['blocking'])} blocking · {len(round_['noted'])} noted"
-        )
+    rendered_rounds = [bookkeep._render_rounds(rounds, f"sprint/{sprint_id}")]
     latest = rounds[-1]
     reviewed = latest.get("reviewed_head", state.get("reviewed_head"))
     shown = latest.get("shown_sha", state.get("shown_sha"))

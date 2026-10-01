@@ -40,7 +40,7 @@ def run_review(repo, tracked, monkeypatch, during_review):
         captured["sha"] = git(repo, "rev-parse", "stash@{0}").stdout.strip()
         during_review(tracked, captured["sha"])
         close.marker_path(story_id).write_text(
-            json.dumps({"fixed": [], "blocking": [], "noted": []})
+            json.dumps({"fixed": [], "blocking": [], "schema": 2, "dropped": [], "debt": []})
         )
         return 0
 
@@ -53,7 +53,11 @@ class TestDirtyReviewStash:
         repo, tracked, human = dirty_review_repo
         result, review = run_review(repo, tracked, monkeypatch, lambda *_: None)
 
-        assert result == (0, {"fixed": [], "blocking": [], "noted": []}, "")
+        assert result == (
+            0,
+            {"fixed": [], "blocking": [], "schema": 2, "dropped": [], "debt": []},
+            "",
+        )
         assert tracked.read_text() == "review dirt\n"
         assert stash_shas(repo) == {human}
         assert review not in stash_shas(repo)
@@ -72,7 +76,11 @@ class TestDirtyReviewStash:
 
         result, review = run_review(repo, tracked, monkeypatch, regenerate)
 
-        assert result == (0, {"fixed": [], "blocking": [], "noted": []}, "")
+        assert result == (
+            0,
+            {"fixed": [], "blocking": [], "schema": 2, "dropped": [], "debt": []},
+            "",
+        )
         assert tracked.read_text() == "review dirt\n"
         assert stash_shas(repo) == {human}
         assert review not in stash_shas(repo)
@@ -117,7 +125,11 @@ class TestDirtyReviewStash:
 
         result, review = run_review(repo, tracked, monkeypatch, lambda *_: lock.touch())
 
-        assert result == (0, {"fixed": [], "blocking": [], "noted": []}, "")
+        assert result == (
+            0,
+            {"fixed": [], "blocking": [], "schema": 2, "dropped": [], "debt": []},
+            "",
+        )
         assert tracked.read_text() == "review dirt\n"
         assert stash_shas(repo) == {human, review}
         assert review in capsys.readouterr().err
