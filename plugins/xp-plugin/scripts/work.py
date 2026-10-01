@@ -317,7 +317,8 @@ def debt_reference_error(root: Path, ref: str) -> str:
     if len(matches) != 1:
         return f"debt ref {ref!r} matches {len(matches)} records — use one exact record id"
     text = matches[0]
-    if not text.startswith("## debt ") or not re.search(r"^Falsifier: `.+`$", text, re.M):
+    falsifier = re.search(r"^Falsifier: `([^`\n]+)`$", text, re.M)
+    if not text.startswith("## debt ") or not falsifier or not falsifier[1].strip():
         return f"debt ref {ref!r} is not a usable debt record — create an exceptional debt"
     if any(not re.search(rf"^{field}: \S.*$", text, re.M) for field in ("Claim", "Files")):
         return f"debt ref {ref!r} lacks claim/files — repair the record"

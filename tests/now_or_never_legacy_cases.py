@@ -8,6 +8,25 @@ from review_report import read_report
 
 
 class TestLegacyState:
+    @pytest.mark.parametrize("key", ["fixed", "blocking", "noted"])
+    @pytest.mark.parametrize("item", ["", "old\nfinding"])
+    def test_old_string_shapes_survive_normalization_without_certifying_new_rounds(
+        self, tmp_path, key, item
+    ):
+        from review_report import normalize_report, validate_clearable
+
+        old = {"fixed": [], "blocking": [], "noted": [], key: [item]}
+        if key == "blocking":
+            old["clearable_by_full"] = [item]
+        parsed, error = read_report(write_report(tmp_path, old), fresh=False)
+        assert not error, error
+        assert parsed["legacy_untriaged" if key == "noted" else key] == [item]
+        assert normalize_report(parsed) == (parsed, "")
+        assert read_report(write_report(tmp_path, parsed))[1]
+        if key == "blocking":
+            assert validate_clearable(old, stage="closer") == ([item], [], "")
+            assert validate_clearable(parsed, stage="closer") == ([item], [], "")
+
     @pytest.mark.parametrize("shape", [None, 7, {"fixed": [], "blocking": [], "noted": "bad"}])
     def test_missing_malformed_and_legacy_are_distinct(self, tmp_path, shape):
         path = tmp_path / "report.json"
@@ -21,12 +40,13 @@ class TestLegacyState:
         assert "legacy_untriaged" in shown and "unjudged finding" in shown
         assert "dropped:" not in shown
 
-    def test_completed_legacy_story_state_still_lands(self, tmp_path):
+    @pytest.mark.parametrize("finding", ["old finding", "old\nfinding", ""])
+    def test_completed_legacy_story_state_still_lands(self, tmp_path, finding):
         from close_helpers import marker_file
 
         repo, env, g = make_repo(tmp_path)
         head = g("rev-parse", "HEAD").stdout.strip()
-        old = {"fixed": [], "blocking": [], "noted": ["old finding"]}
+        old = {"fixed": [], "blocking": [], "noted": [finding]}
         marker_file(tmp_path).write_text(
             json.dumps(
                 {
@@ -39,7 +59,7 @@ class TestLegacyState:
         )
         result = close(repo, env, "land")
         assert result.returncode == 0, result.stderr
-        assert "legacy/untriaged" in result.stdout and "old finding" in result.stdout
+        assert "legacy/untriaged" in result.stdout and finding in result.stdout
         assert json.loads((tmp_path / "data" / "closes.jsonl").read_text())["rounds"] == [old]
 
     @pytest.mark.parametrize("kind", ["free", "sprint"])

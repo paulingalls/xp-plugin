@@ -26,6 +26,7 @@ def normalize_report(data, *, fresh=False, stage="") -> tuple[dict, str]:
         return {}, "the reviewer's report is JSON but not an object"
     version = data.get("schema")
     legacy = "schema" not in data
+    historical_legacy = legacy or (not fresh and "legacy_untriaged" in data)
     keys = ("fixed", "blocking", "noted") if legacy else NEW_KEYS
     if legacy and any(key in data for key in ("dropped", "debt", "legacy_untriaged")):
         return {}, "unversioned report has disposition fields — restore its schema"
@@ -53,13 +54,16 @@ def normalize_report(data, *, fresh=False, stage="") -> tuple[dict, str]:
 
                     if error := debt_reference_error(data_root(), item["ref"]):
                         return {}, error
-        elif not all(_line(item) for item in data[key]):
-            return {}, f"{key} must contain non-empty single-line strings"
+        elif not all(
+            isinstance(item, str) and (historical_legacy or _line(item)) for item in data[key]
+        ):
+            shape = "strings" if historical_legacy else "non-empty single-line strings"
+            return {}, f"{key} must contain {shape}"
     if legacy and fresh:
         return {}, "legacy/untriaged report cannot certify a new round — judge and write schema 2"
     if "legacy_untriaged" in data:
         items = data["legacy_untriaged"]
-        if fresh or not isinstance(items, list) or not all(_line(item) for item in items):
+        if fresh or not isinstance(items, list) or not all(isinstance(item, str) for item in items):
             return {}, "legacy_untriaged is historical evidence only — judge it in a new report"
     _, _, error = validate_clearable(data, stage)
     if error:
@@ -82,7 +86,10 @@ def validate_clearable(data: dict, stage: str = "") -> tuple[list[str], list[str
     if stage != "closer":
         return [], [], f"the {stage} report may not contain {CLEARABLE_BY_FULL}"
     bound = data[CLEARABLE_BY_FULL]
-    if not isinstance(bound, list) or not all(_line(item) for item in bound):
+    legacy = "schema" not in data or "legacy_untriaged" in data
+    if not isinstance(bound, list) or not all(
+        isinstance(item, str) and (legacy or _line(item)) for item in bound
+    ):
         return [], [], f"the closer report's {CLEARABLE_BY_FULL} must be a list of strings"
     remaining = list(data["blocking"])
     for item in bound:

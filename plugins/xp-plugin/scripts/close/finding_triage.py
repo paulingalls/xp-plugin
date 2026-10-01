@@ -2,6 +2,7 @@
 
 import json
 
+from overlap import unresolved_blocking
 from review_report import history_digest, normalize_report
 from work import _disposal, debt_reference_error, entries
 
@@ -70,25 +71,21 @@ def render_triage(root) -> str:
         if not isinstance(rounds, list):
             out.append(f"Unreadable rounds at {source} — repair before judging")
             continue
-        pending = {}
+        pending, readable = {}, []
         for number, raw in enumerate(rounds, 1):
             parsed, error = normalize_report(raw)
             if error:
                 out.append(f"Unreadable round {number} at {source}: {error}")
                 continue
+            readable.append(raw)
             for key in ("fixed", "dropped", "debt"):
                 for item in parsed[key]:
                     pending.pop(item if isinstance(item, str) else item["finding"], None)
             for item in parsed.get("legacy_untriaged", []):
                 pending[item] = f"legacy/untriaged: {item}"
-            if not raw.get("salvaged"):
-                pending = {
-                    item: shown
-                    for item, shown in pending.items()
-                    if not shown.startswith("blocking:")
-                }
-            for item in parsed["blocking"]:
-                pending[item] = f"blocking: {item}"
+        pending.update(
+            (item, f"blocking: {item}") for item in unresolved_blocking({"rounds": readable})
+        )
         out.extend(
             f"Unresolved finding ({source}): {shown}"
             for finding, shown in pending.items()

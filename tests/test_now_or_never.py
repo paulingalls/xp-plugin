@@ -87,7 +87,7 @@ class TestDebtAcceptance:
         assert read_report(path)[1]
         assert read_report(path, fresh=False)[0]["debt"] == [item]
 
-    @pytest.mark.parametrize("field", ["Claim", "Files"])
+    @pytest.mark.parametrize("field", ["Claim", "Files", "Falsifier"])
     def test_debt_reference_requires_usable_record_fields(self, tmp_path, monkeypatch, field):
         root = tmp_path / "data"
         ref = debt(root)
@@ -105,6 +105,8 @@ class TestDebtAcceptance:
             line for line in record.read_text().splitlines() if not line.startswith(field + ":")
         ]
         lines.insert(1, "Id: " + ref)
+        if field == "Falsifier":
+            lines.append("Falsifier: ` `")
         record.write_text("\n".join(lines) + "\n")
         assert read_report(path)[1]
 
@@ -174,6 +176,35 @@ class TestDispositionWalk:
 
 
 class TestSprintTriage:
+    def test_salvaged_blocker_stays_visible_until_a_later_launch_reviews_it(self, tmp_path):
+        from close_helpers import marker_file
+
+        repo, env, _ = make_repo(tmp_path)
+        stub_reviewer(tmp_path, report=report())
+        assert close(repo, env, "review").returncode == 0
+        source = marker_file(tmp_path)
+        state = json.loads(source.read_text())
+        state["rounds"].insert(
+            0, report(blocking=["salvaged silent loss"]) | {"salvaged": True, "round_file": 8}
+        )
+        source.write_text(json.dumps(state))
+        refused = close(repo, env, "land")
+        assert refused.returncode == 2 and "salvaged silent loss" in refused.stderr
+        sprint_case = tmp_path / "sprint"
+        sprint_case.mkdir()
+        sprint_tree, sprint_env, _ = sprint_repo(sprint_case)
+        source = sprint_case / "data/markers/story-042.json"
+        source.parent.mkdir(exist_ok=True)
+        source.write_text(json.dumps(state))
+        shown = sprint(sprint_tree, sprint_env, "start")
+        assert shown.returncode == 0, shown.stderr
+        assert "blocking: salvaged silent loss" in shown.stdout
+        state["rounds"].append(report() | {"round_file": 9})
+        source.write_text(json.dumps(state))
+        cleared = sprint(sprint_tree, sprint_env, "start")
+        assert cleared.returncode == 0, cleared.stderr
+        assert "blocking: salvaged silent loss" not in cleared.stdout
+
     def test_keep_restates_both_bars_and_drop_keeps_reason(self, tmp_path):
         ref = debt(tmp_path)
         result = run(
