@@ -16,9 +16,9 @@ normal, correct result. Report what you can trace to a caller, never a category.
   committed, issued with no expiry and no clearer, or compared with `==`.
 - **Authorization checked on one path and not its sibling**, or enforced by the
   caller only, so a second caller inherits nothing.
-- **Trust boundaries the change moved**: data that used to be validated at the
-  edge and is now consumed further in; a limit that moved from the server to the
-  client; an identity taken from something the requester controls.
+- **Trust boundaries the change moved**: a reachable caller depending on raw
+  internals instead of the validation contract; validation moved further in;
+  a server limit moved to the client; identity supplied by the requester.
 
 For each: the entry point, the path it travels, and what an actor gains at the
 end of it.

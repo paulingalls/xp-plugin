@@ -51,10 +51,10 @@ who assigned it: `deep` spends most effort on checks 1–2 at full depth; `stand
    satisfied in letter but not spirit, "done" that quietly narrowed, stated counts
    the code contradicts. Force the honest sentence into the record.
 4. **Constraint drift**: changed code vs constraints.md, quote the line.
-5. **Simplicity & reuse**: duplicated logic (grep for it), premature abstraction,
-   dead paths, misleading names. And prose in code, which no test can catch and which
-   goes stale silently when the code it describes moves — hold it to the comment
-   rubric in your bundle's JUDGMENT section.
+5. **Implemented design**: apply JUDGMENT's design lenses to the changed code
+   and actual callers; refute each claimed cost/failure against current control
+   flow or contracts before proposing reuse or refactoring. Check dead paths and
+   misleading names. Hold code prose to JUDGMENT's comment rubric.
 
 ## Output
 
