@@ -64,8 +64,19 @@ def _walk_command(command):
     # spawn.py accepts a story id at the top level, so an unknown subcommand
     # can exit zero unless the requested spelling is present in its usage.
     usage = result.stdout.split("\n\n", 1)[0]
-    named = [word for word in words[1:] if not word.startswith("<")]
-    assert all(word in usage for word in named), f"{command} answered as `{usage}`"
+    vocabulary = set(re.findall(r"[\w-]+", usage))
+    arguments = iter(words[1:])
+    for word in arguments:
+        if word.startswith("<"):
+            continue
+        option, separator, _value = word.partition("=")
+        assert option in vocabulary, f"{command} answered as `{usage}`"
+        if (
+            option.startswith("-")
+            and not separator
+            and re.search(re.escape(option) + r"\s+(?:[A-Z][A-Z0-9_]*|\{)", usage)
+        ):
+            next(arguments, None)
 
 
 def _walk_step_routes(process):
@@ -158,6 +169,31 @@ def test_each_loop_step_names_its_command_or_skill():
         _walk_step_routes(process.replace("spawn.py ready", "spawn.py redy"))
     with pytest.raises(AssertionError, match="step 2 names no"):
         _walk_step_routes(process.replace("`spawn.py <story-id>`", "spawn.py"))
+
+
+def test_command_walk_distinguishes_option_values_from_command_vocabulary():
+    _walk_command("work.py keep --ref ID --too-big 'separate design' --too-important 'user harm'")
+    _walk_command("work.py archive --ref=ID --disposition='dropped with reason'")
+    _walk_command("spawn.py <story-id> --dry-run")
+    for command in (
+        "work.py keep --reff ID --too-big '...' --too-important '...'",
+        "work.py keep --re ID --too-big '...' --too-important '...'",
+        "work.py keep --re <id> --too-big <reason> --too-important <reason>",
+        "work.py archive --ref=ID --dispositon=reason",
+        "work.py keep --ref --reff --too-big '...' --too-important '...'",
+        "work.py keep --ref",
+        "work.py keap --ref ID",
+        "spawn.py redy <story-id>",
+        "spawn.py <story-id> --dry-run --dry-rnu",
+        "spawn.py <story-id> --dry-run=yes",
+        "close.py story <id> reveiw",
+    ):
+        with pytest.raises(AssertionError):
+            _walk_command(command)
+    with pytest.raises(AssertionError, match="does not resolve"):
+        _walk_command("missing.py --ref ID")
+    with pytest.raises(AssertionError, match="not executable"):
+        _walk_command("./scripts/work.py keep --ref ID")
 
 
 def test_the_template_owns_the_card_field_list():
