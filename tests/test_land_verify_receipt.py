@@ -357,3 +357,38 @@ def write_text(self,*a,**k):
     return original_write(self,*a,**k)
 Path.write_text=write_text
 """
+
+
+def test_stream_failure_stops_blocked_child(tmp_path):
+    import os
+    from contextlib import suppress
+
+    from test_verify_evidence import locator, record_process
+
+    repo, env, _g = make_repo(tmp_path)
+    pid_file = tmp_path / "child-pid"
+    reached = tmp_path / "injected-boundary"
+    source = (
+        "import os,time; from pathlib import Path; "
+        f"Path({str(pid_file)!r}).write_text(str(os.getpid())); "
+        "os.write(1,b'blocked-out'); os.write(2,b'blocked-err'); time.sleep(300)"
+    )
+    process = record_process(
+        repo, env, [[sys.executable, "-c", source]], evidence_fault("write-stdout", reached)
+    )
+    try:
+        _out, err = process.communicate(timeout=30)
+        assert process.returncode == 2 and reached.exists(), err
+        run = json.loads((locator(err.decode()) / "run.json").read_text())
+        assert run["status"] == "evidence_error"
+        assert run["commands"][0]["pid"] == int(pid_file.read_text())
+        with pytest.raises(ProcessLookupError):
+            os.kill(int(pid_file.read_text()), 0)
+        assert not (tmp_path / "data/markers/story-042.verify.json").exists()
+    finally:
+        if process.poll() is None:
+            process.kill()
+        if pid_file.exists():
+            with suppress(ProcessLookupError):
+                os.killpg(int(pid_file.read_text()), signal.SIGKILL)
+        process.communicate()
