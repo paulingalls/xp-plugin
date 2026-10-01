@@ -11,6 +11,14 @@ WORK = Path(__file__).parent.parent / "plugins" / "xp-plugin" / "scripts" / "wor
 
 
 def run(args, data_dir, check=False, story=""):
+    if args and args[0] == "debt":
+        args = [
+            *args,
+            "--too-big",
+            "requires a separate design",
+            "--too-important",
+            "silent corruption",
+        ]
     env = {"XP_DATA": str(data_dir), "PATH": "/usr/bin:/bin"}
     return subprocess.run(
         [sys.executable, str(WORK), *args],

@@ -57,6 +57,11 @@ def build_bundle(
     sections = [
         ("Your charter", charter),
         ("Your findings file", f"FINDINGS_PATH: {out.resolve()}"),
+        (
+            "Record lookup",
+            "Append the cited ID; XP_DATA is already set.\nRECORD_LOOKUP: "
+            + shlex.join([sys.executable, str(PLUGIN_ROOT / "scripts/work.py"), "show"]),
+        ),
         ("Full proposed slate", cards),
         ("Sprint capacity", f"sprint_cap: {sprint_cap}\ndebt_budget: {debt_budget}"),
         ("VALUES", _read_shipped(PLUGIN_ROOT / "VALUES.md")),

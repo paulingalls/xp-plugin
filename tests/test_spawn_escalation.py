@@ -53,7 +53,7 @@ def stub_escalating(
         "os.environ.get('XP_ROLE') == 'reviewer')",
         "if spawn_review:",
         "    match = re.search(r'^REPORT_PATH: (.+)$', stdin, re.M); assert match",
-        "    report = {'fixed': [], 'blocking': [], 'noted': []}",
+        "    report = {'schema': 2, 'fixed': [], 'blocking': [], 'dropped': [], 'debt': []}",
         "    open(match.group(1).strip(), 'w').write(json.dumps(report))",
         "    print(json.dumps({'type': 'result', 'result': json.dumps(report)})); sys.exit()",
         f"json.dump({{'env': dict(os.environ), 'stdin': stdin}}, open({str(rec)!r}, 'w'))",

@@ -54,12 +54,12 @@ def test_a_legacy_round_is_migrated_before_new_coverage_overwrites_it(tmp_path):
     import review
 
     marker = tmp_path / "marker.json"
-    legacy = {"fixed": [], "blocking": [], "noted": []}
+    legacy = {"fixed": [], "blocking": [], "schema": 2, "dropped": [], "debt": []}
     state = {"rounds": [legacy], "reviewed_head": "round-1-start", "shown_sha": "round-1-end"}
     review.write_round(
         marker,
         state,
-        {"fixed": [], "blocking": [], "noted": []},
+        {"fixed": [], "blocking": [], "schema": 2, "dropped": [], "debt": []},
         reviewed_head="round-2-start",
         shown_sha="round-2-end",
     )
@@ -78,7 +78,14 @@ def test_a_round_that_recorded_no_coverage_still_holds_its_ROUND_NUMBER(tmp_path
     a round — a review killed mid-flight — so this needs no legacy state to reach."""
     import review
 
-    killed = {"fixed": [], "blocking": [], "noted": [], "incomplete": "host killed it"}
+    killed = {
+        "fixed": [],
+        "blocking": [],
+        "schema": 2,
+        "dropped": [],
+        "debt": [],
+        "incomplete": "host killed it",
+    }
     done = {"reviewed_head": "r2-start", "shown_sha": "r2-end"}
     state = {"rounds": [killed, done], "reviewed_head": "r2-start", "shown_sha": "r2-end"}
     assert review.covered_ranges(state, "head") == [("head", "head"), ("r2-start", "r2-end")]
@@ -104,7 +111,7 @@ def test_a_killed_round_is_not_stamped_with_the_PRIOR_rounds_coverage(tmp_path):
     import review
 
     marker = tmp_path / "marker.json"
-    covered = {"fixed": [], "blocking": [], "noted": []}
+    covered = {"fixed": [], "blocking": [], "schema": 2, "dropped": [], "debt": []}
     state = {"rounds": [covered | {"reviewed_head": "r1s", "shown_sha": "r1e"}]}
     state |= {"reviewed_head": "r1s", "shown_sha": "r1e"}
     review.write_round(marker, state, covered | {"incomplete": "the host killed it"})

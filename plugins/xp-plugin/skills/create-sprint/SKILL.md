@@ -13,7 +13,7 @@ Before writing:
 - Carry every open card named by session recovery unchanged into the new sprint,
   before slate review.
 - Budget story slots against `sprint_cap`; `debt_budget` bounds the share spent
-  on scheduled debt.
+  on scheduled debt; it is a ceiling, never an obligation to fill it.
 - Put prerequisites first in merge order. Find file collisions between cards;
   order or split them before execution.
 - Write each `Verify:` as argv executed from the repo root: unquoted `&&` may
@@ -25,8 +25,10 @@ Before writing:
 When the slate is complete, `slate_review.py <id>` gives a fresh `slate-reviewer`
 the full proposed slate, `sprint_cap`, VALUES, JUDGMENT, constraints and system
 context; do not give it the author's conclusions. Check EVERY returned per-card
-and slate result, record accepted and rejected conclusions with `work.py note`,
-leaving corrected cards only. Then `git switch -c sprint-<id>`, the id stripped of
+and slate result. Fix authorized corrections, record a one-line reasoned drop in
+the slate judgment, or retain exceptional debt with a real record reference and
+both JUDGMENT bars. Escalate human/scope choices; do not extend ACs automatically.
+Keep discoveries and value tradeoffs in notes, leaving corrected cards only. Then `git switch -c sprint-<id>`, the id stripped of
 leading zeros and zero-padded to three characters (`sprint-007`, `sprint-2b-11`), and
 `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/open_sprint.py <id>`; unfinished output says close
 checks wait.

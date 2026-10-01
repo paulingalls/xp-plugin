@@ -64,17 +64,24 @@ scenario, cheapest fix. Then the three you tried hardest to refute and could not
 
 Then write your patch and **write your report** — the pipeline records nothing else and refuses to record a
 round without one, so a review that skips this step is a review that never happened.
-The bundle carries `REPORT_PATH: <path>` and `PATCH_PATH: <path>`. Three buckets, ordered by
-the priority:
+The bundle carries `REPORT_PATH: <path>` and `PATCH_PATH: <path>`.
 
-- **`fixed`** — your patch changes it. Default here. Anything you can fix, fix.
-- **`blocking`** — you could NOT fix it, AND it clears the finding bar stated in your
-  bundle's JUDGMENT section. Land refuses while this is non-empty, so it is the most
-  expensive thing you can write: it stops a merge and costs the lead a round. A
-  finding you merely dislike is not one of these.
-- **`noted`** — everything else you are handing back deliberately.
+- **`fixed`** — what your patch fixes; default for authorized work.
+- **`blocking`** — unresolved release blockers and unmet ACs; land still refuses.
+- **`dropped`** — objects with `finding` and an explicit `reason`. A too-big loud
+  finding announces itself and is dropped. Escalate reserved choices to the lead.
+- **`debt`** — exceptional objects with `finding`, a usable open debt record `ref`,
+  `too_big` and `too_important`, restating BOTH JUDGMENT bars. The lead owns record
+  creation; if you lack a usable reference, hand the decision back as blocking.
 
-    {"fixed": ["..."], "blocking": [], "noted": ["..."]}
+    {"schema": 2, "fixed": ["..."], "blocking": [], "dropped": [{"finding": "...", "reason": "..."}], "debt": []}
 
-One sentence per item, no newlines: they ride into the merge body and the next
-session's context, and they are capped at the write.
+Empty lists mean no findings; never invent a finding or disposition placeholder.
+Every string is a non-empty single line. Reports preserve full text; only display
+is bounded. No `noted` bucket in new reports. Historical noted findings remain
+legacy/untriaged until judged. No disposition waives an unmet AC or release blocker.
+
+Every finding belongs in the report, including findings raised in prose.
+Already-retained findings belong in `debt` with ref/bars; never omit as already
+retained or use `dropped`. The reference must cover this finding; the lead checks
+meaning. Reserved choices remain blocking until the lead resolves them.

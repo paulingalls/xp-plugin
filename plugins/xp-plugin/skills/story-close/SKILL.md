@@ -6,9 +6,9 @@ description: >-
 
 # Story Close
 
-`close.py` runs the mechanical steps. You own exactly one thing: the fix-or-ask
+`close.py` runs the mechanical steps. You own exactly one thing: the now-or-never
 call on the reviewer's findings. Everything else is scripted, and a step you find
-yourself doing by hand is a defect in the pipeline — file it.
+yourself doing by hand is a finding to judge under JUDGMENT.
 
 1. **Pre-check**: `git status` clean, and you are on the story branch.
 2. **Read the round `spawn` already recorded** — the reviewer was its fourth stage.
@@ -19,8 +19,11 @@ yourself doing by hand is a defect in the pipeline — file it.
    DOES NOT EXIST, so do not go looking: a delta review, a flag by which you supply
    a finding yourself, a round recorded without the reviewer's own report, a refusal
    because trunk moved (only files trunk and your story BOTH changed cost a round).
-3. **Judgment point** (yours, and the only one): fix blocking findings; file noted
-   ones per JUDGMENT.md; ask the human only where you and the reviewer disagree.
+3. **Judgment point** (yours, and the only one): judge every finding under JUDGMENT:
+   fix by default, explicitly drop with a reason, or exceptionally retain debt by
+   record reference with both bars. Judge legacy/untriaged findings the same way.
+   Unmet ACs and release blockers still require a fix; escalate reserved choices
+   and disagreement to the human.
    Stopping rule: the REVIEWER's fixes cost no confirming round — inside the round
    that found them, and your read of its diff is the judgment. YOUR fixes move HEAD
    past what the review covered and still cost one confirming round — land REPORTS

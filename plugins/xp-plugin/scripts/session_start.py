@@ -11,6 +11,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 sys.path.insert(0, str(Path(__file__).parent / "session_start"))
+sys.path.insert(0, str(Path(__file__).parent / "close"))
 from env import (
     display_path,
     display_text,
@@ -29,6 +30,7 @@ from profile_output import (
     constraints_warning,
     render,
 )
+from session_detail import CLOSE_CAP, ROUND_CAP, _close_detail, _fit  # noqa: F401
 from sprint import release_state, select_sprint, slate_review_state, sprint_sections
 from work import data_root, entries, plan_path, record_summary, strip_comment
 
@@ -146,42 +148,6 @@ def digest_with_staleness(text: str) -> str:
     if distance != "0":
         return f"STALE — HEAD has moved {distance} commit(s) since this digest:\n{text}"
     return text
-
-
-CLOSE_CAP = 400  # the whole close detail; see _close_detail
-ROUND_CAP = 100  # per round within it
-
-
-def _close_detail(record: dict) -> str:
-    """Bound rounds so more of them never means fewer constraints reach the lead."""
-    rounds = record.get("rounds")
-    if rounds is None:  # a record older than rounds[] is MISSING them, not unreadable
-        return "(no rounds in this record)"
-    if not isinstance(rounds, list):
-        return "(unreadable close record)"
-    shown = []
-    for i, r in enumerate(rounds, 1):
-        items = ", ".join([*r.get("fixed", []), *r.get("blocking", []), *r.get("noted", [])])
-        if len(items) > ROUND_CAP:
-            items = items[:ROUND_CAP] + "…"
-        shown.append(f"round {i}: {items or 'clean'}")
-    return _fit(shown)
-
-
-def _fit(parts: list) -> str:
-    """Joined and bounded — dropping the OLDEST parts, never the newest.
-
-    A head-truncating cap loses the last round, and the round that gated the merge
-    is at the end unless salvage recorded one out of order (overlap.py owns which).
-    """
-    kept, dropped = list(parts), 0
-    while len(" · ".join(kept)) > CLOSE_CAP and len(kept) > 1:
-        kept.pop(0)
-        dropped += 1
-    detail = " · ".join(kept)
-    if len(detail) > CLOSE_CAP:
-        detail = detail[:CLOSE_CAP] + "…"
-    return f"(+{dropped} earlier elided) {detail}" if dropped else detail
 
 
 def last_close() -> str:

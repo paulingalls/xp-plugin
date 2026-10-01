@@ -262,7 +262,8 @@ def test_a_green_batch_keeps_command_streams_silent_and_writes_nothing(tmp_path)
             repo,
             env,
             f"green {n}",
-            f"printf GREEN{n}_OUT; printf GREEN{n}_ERR >&2; printf x >> {counter}",
+            f"printf GREEN{n}_; printf OUT; printf GREEN{n}_ >&2; "
+            f"printf ERR >&2; printf x >> {counter}",
         )
         for n, counter in enumerate(counters)
     ]

@@ -65,17 +65,6 @@ class TestNote:
         assert run(["note", text], tmp_path).returncode == 0
         assert text in (tmp_path / "work.md").read_text()
 
-    def test_the_shipped_escalation_command_preserves_backticks_through_a_shell(self, tmp_path):
-        teammate = (WORK.parent.parent / "EXECUTOR.md").read_text()
-        (line,) = [ln.strip() for ln in teammate.splitlines() if "scripts/work.py note" in ln]
-        text = "the load-bearing `code quotation` stays"
-        command = line.removeprefix("File it: `").removesuffix("`.")
-        command = command.replace("python3 ", f"{sys.executable} ", 1)
-        command = command.replace("{PLUGIN_ROOT}", str(WORK.parent.parent)).replace("...", text)
-        result = subprocess.run(command, shell=True, env={"XP_DATA": str(tmp_path)})
-        assert result.returncode == 0
-        assert text in (tmp_path / "work.md").read_text()
-
     def test_a_story_stamped_record_lists_its_claim_and_not_its_stamp(self, tmp_path):
         """`list` is where the escalation refusal sends the lead, and it summarises
         a record by its SECOND line — exactly where the story stamp lands."""

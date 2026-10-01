@@ -6,7 +6,10 @@ description: >-
 
 # Free Close
 
-The scripts own the mechanics. You own the judgment.
+The scripts own the mechanics. You own the judgment: fix every finding by
+default, explicitly drop with a reason, or retain exceptional debt by real record
+reference with both JUDGMENT bars. Judge legacy/untriaged findings too. Unmet ACs
+and release blockers cannot be waived; escalate reserved choices.
 
 1. **Release boundary**: Your release artifacts are yours; cut them before review.
 2. **Review**: Read the round `spawn` recorded and the reviewer's diff; re-run

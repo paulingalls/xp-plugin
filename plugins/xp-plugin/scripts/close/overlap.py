@@ -10,6 +10,7 @@ from typing import Callable
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from close import git, origin_trunk_sha
+from review_report import normalize_report
 
 # config.yml holds the tier land runs; constraints.md is the rubric the reviewer
 # applied; system.md's worktree lifecycle lines are shell-executed by spawn/close.
@@ -50,6 +51,12 @@ def land_refusal(state: dict, key: str, base: str, exempt: set[str] | None = Non
     question every land leg asks, in ONE implementation. `key` is the leg's own
     spelling of its review command, which is all that legitimately differs."""
     rerun = f"Run `close.py {key} review`"
+    for number, raw in enumerate(state.get("rounds", []), 1):
+        _, error = normalize_report(raw)
+        if error:
+            return f"refused: unreadable review round {number}: {error}. {rerun}"
+    if state.get("rounds", [{}])[-1].get("incomplete"):
+        return f"refused: incomplete review round — {rerun}"
     recorded = state.get("review_base")
     shown = state.get("shown_sha", git("rev-parse", "HEAD").stdout.strip())
     if git("merge-base", "--is-ancestor", shown, "HEAD", check=False).returncode:

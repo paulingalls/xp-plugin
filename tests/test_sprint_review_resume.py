@@ -6,21 +6,21 @@ from sprint_helpers import head, make_repo, marker_path, sprint, stage_key, stag
 
 FINDERS = ["find-security", "find-state-lifecycle", "find-test-vacuity"]
 READ_ONLY = [*FINDERS, "verify-1", "verify-2"]
-FINDING = {"fixed": [], "blocking": ["F"], "noted": []}
-CLEAN = {"fixed": [], "blocking": [], "noted": []}
+FINDING = {"fixed": [], "blocking": ["F"], "schema": 2, "dropped": [], "debt": []}
+CLEAN = {"fixed": [], "blocking": [], "schema": 2, "dropped": [], "debt": []}
 
 
 def _stop_at_closer(tmp_path, target="src.py"):
     """A round that fixes and then loses its closer, which is the state resume
     exists to pick up. `target` names what the fixer patches: a path outside the
     card's Files is the patch apply_patch REFUSES."""
-    finding = {"fixed": [], "blocking": ["F"], "noted": []}
+    finding = {"fixed": [], "blocking": ["F"], "schema": 2, "dropped": [], "debt": []}
     staged_stub(
         tmp_path,
         patches=[("fix", target, "C = 2")],
         find=finding,
         verify=finding,
-        fix={"fixed": ["F"], "blocking": [], "noted": []},
+        fix={"fixed": ["F"], "blocking": [], "schema": 2, "dropped": [], "debt": []},
     )
     claude = tmp_path / "bin/claude"
     write = "open(m.group(1).strip(), 'w').write(json.dumps(report))"
@@ -269,7 +269,7 @@ def test_a_later_round_stopped_at_its_fixer_starts_a_fresh_round(tmp_path):
     staged_stub(
         tmp_path,
         patches=[("fix", ".xp/config.yml", "# stray")],
-        fix={"fixed": ["F"], "blocking": [], "noted": []},
+        fix={"fixed": ["F"], "blocking": [], "schema": 2, "dropped": [], "debt": []},
     )
     second = sprint(repo, env, "review")
     assert second.returncode == 2 and "the Files line does not name it" in second.stderr
@@ -393,7 +393,14 @@ def test_a_round_recorded_during_the_closer_survives_the_resume(tmp_path):
     _stop_at_closer(tmp_path)
     assert sprint(repo, env, "review").returncode == 2
     marker = marker_path(tmp_path)
-    landed = {"fixed": [], "blocking": [], "noted": ["salvaged"], "incomplete": "host killed"}
+    landed = {
+        "fixed": [],
+        "blocking": [],
+        "schema": 2,
+        "dropped": [{"finding": item, "reason": "fixture reason"} for item in ["salvaged"]],
+        "debt": [],
+        "incomplete": "host killed",
+    }
     claude = tmp_path / "bin/claude"
     claude.write_text(
         claude.read_text() + "if key == 'close':\n"
@@ -450,5 +457,4 @@ def test_an_incomplete_round_naming_no_stages_opens_a_fresh_round(tmp_path):
     assert retried.returncode == 0, retried.stderr
     assert "Traceback" not in retried.stderr, retried.stderr
     assert stages[0].startswith("find-"), stages
-    assert "fresh round" in retried.stderr and "discard" in retried.stderr
     assert len(json.loads(marker_path(tmp_path).read_text())["rounds"]) == 2

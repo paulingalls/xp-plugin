@@ -23,7 +23,7 @@ from sprint_helpers import marker_path as sprint_marker_path
 # second still has a 30x margin over the terminal sleep without charging every
 # salvage assertion five seconds for the same constructed event.
 KILLED = {"XP_AGENT_TIMEOUT": "1"}
-FIXED = {"fixed": ["tightened the guard"], "blocking": [], "noted": []}
+FIXED = {"fixed": ["tightened the guard"], "blocking": [], "schema": 2, "dropped": [], "debt": []}
 PATCH = """diff --git a/src/thing.py b/src/thing.py
 --- a/src/thing.py
 +++ b/src/thing.py

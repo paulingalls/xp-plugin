@@ -75,7 +75,7 @@ class TestShippedProseMatchesTheMechanism:
         is the fix, and it also puts the retro diff under the review DESIGN §6
         already says it deserves."""
         skill = prose(PLUGIN / "skills" / "sprint-close" / "SKILL.md")
-        assert skill.index("Note triage") < skill.index("close.py sprint <id> review")
+        assert skill.index("Triage, then the retro") < skill.index("close.py sprint <id> review")
         assert "BEFORE the review" in skill
 
     def test_release_artifacts_are_project_owned_and_timed_without_enumeration(self):
@@ -197,12 +197,12 @@ class TestShippedProseMatchesTheMechanism:
 
 
 class TestCharterBar:
-    def test_the_charter_states_the_three_buckets(self):
+    def test_the_charter_states_the_dispositions(self):
         charter = (PLUGIN / "agents" / "story-reviewer.md").read_text().lower()
         # the bucket NAMES as the charter writes them: "fix it" matched the
         # blocking bullet's "could NOT fix it", so the `fixed` bucket the whole
         # story turns on was the one token this loop never actually required.
-        for token in ("`fixed`", "`blocking`", "`noted`"):
+        for token in ("`fixed`", "`blocking`", "`dropped`", "`debt`"):
             assert token in charter
         assert "heredoc" not in charter, "Write is allowed now; the heredoc route is stale"
 
@@ -215,11 +215,11 @@ class TestCharterBar:
             assert "JUDGMENT" in charter, f"{name} dropped the copy without pointing"
             assert "PROCESS" not in charter, f"{name} kept a stale pointer"
         pointers = {
-            PLUGIN / "skills" / "story-close" / "SKILL.md": "file noted ones per JUDGMENT.md",
+            PLUGIN / "skills" / "story-close" / "SKILL.md": "judge every finding under JUDGMENT",
             PLUGIN / "skills" / "sprint-close" / "SKILL.md": (
                 "JUDGMENT.md carries the polarity contract"
             ),
-            PLUGIN / "scripts" / "bookkeep.py": "file these per JUDGMENT.md",
+            PLUGIN / "scripts" / "bookkeep.py": "legacy/untriaged findings",
         }
         for path, pointer in pointers.items():
             assert pointer in prose(path), f"stale rule pointer in {path}"

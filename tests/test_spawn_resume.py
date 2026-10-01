@@ -66,7 +66,8 @@ def stub_takeover(tmp_path, adopted=(), nested=False):
     body = [
         "#!/usr/bin/env python3",
         "import json, os, subprocess, sys",
-        "REPORT = json.dumps({'fixed': [], 'blocking': [], 'noted': []})",
+        "REPORT = json.dumps({'schema': 2, 'fixed': [], "
+        "'blocking': [], 'dropped': [], 'debt': []})",
         "if sys.argv[1:] == ['plugin', 'list', '--json']: print("
         '\'[{"id":"xp-plugin@xp-plugin","version":"fixture",'
         '"scope":"user"}]\'); sys.exit()',

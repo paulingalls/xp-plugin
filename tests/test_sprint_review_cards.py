@@ -9,9 +9,9 @@ def test_changed_cards_offer_no_undo_spanning_the_applied_fix(tmp_path):
     staged_stub(
         tmp_path,
         patches=[("fix", "src.py", "C = 2")],
-        find={"fixed": [], "blocking": ["F"], "noted": []},
-        verify={"fixed": [], "blocking": ["F"], "noted": []},
-        fix={"fixed": ["F"], "blocking": [], "noted": []},
+        find={"fixed": [], "blocking": ["F"], "schema": 2, "dropped": [], "debt": []},
+        verify={"fixed": [], "blocking": ["F"], "schema": 2, "dropped": [], "debt": []},
+        fix={"fixed": ["F"], "blocking": [], "schema": 2, "dropped": [], "debt": []},
     )
     claude = tmp_path / "bin" / "claude"
     claude.write_text(

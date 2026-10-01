@@ -314,7 +314,12 @@ def test_route_isolation_guard_reds_when_shipped_instructions_are_removed():
     opening = section(create_skill, "## Open", "## Done")
     with pytest.raises((AssertionError, IndexError, ValueError)):
         assert_open_route(create_skill.replace(opening, ""), close_skill, process)
-    for fragment in ("slate-reviewer", "slate_review.py", "author's conclusions", "work.py note"):
+    for fragment in (
+        "slate-reviewer",
+        "slate_review.py",
+        "author's conclusions",
+        "one-line reasoned drop",
+    ):
         line = next(line for line in create_skill.splitlines() if fragment in line)
         with pytest.raises((AssertionError, IndexError, ValueError)):
             assert_open_route(create_skill.replace(line + "\n", ""), close_skill, process)

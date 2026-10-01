@@ -14,6 +14,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 import review
 from env import refuse_direct_invocation
+from review_report import REPORT_KEYS, cap_dispositions, normalize_report, render_item
 from work import card_title, data_root
 
 # test_dogfood pins this to the template's commented default.
@@ -35,18 +36,32 @@ def _render_rounds(rounds: list[dict], story_id: str = "") -> str:
     report for the rest; prompts pass none, where a notice in place of six
     findings is a later round told to validate what it was never shown."""
     out = []
-    for i, r in enumerate(rounds, 1):
-        counts = " · ".join(f"{len(r[k])} {k}" for k in ("fixed", "blocking", "noted"))
+    for i, raw in enumerate(rounds, 1):
+        r, error = normalize_report(raw)
+        if error:
+            raise ValueError(f"unreadable review round {i}: {error}")
+        counts = " · ".join(f"{len(r.get(k, []))} {k}" for k in REPORT_KEYS if k in r)
         stopped = (
-            f" — INCOMPLETE after {', '.join(r.get('stages', []))}" if r.get("incomplete") else ""
+            f" — INCOMPLETE after {', '.join(raw.get('stages', []))}"
+            if raw.get("incomplete")
+            else ""
         )
         out.append(f"Review round {i}: {counts}{stopped}")
-        for k in ("fixed", "blocking", "noted"):
-            items = r[k]
+        for k in REPORT_KEYS:
+            items = [render_item(k, item) for item in r.get(k, [])]
             if story_id:
-                items = review.cap_display(items, Path(f"reports/{story_id}.round-{i}.json"))
+                path = (
+                    Path(f"markers/{story_id}.json")
+                    if story_id.startswith("sprint/")
+                    else Path(f"reports/{story_id}.round-{raw.get('round_file', i)}.json")
+                )
+                items = (
+                    cap_dispositions(k, r.get(k, []), path)
+                    if k in ("dropped", "debt")
+                    else review.cap_display(items, path)
+                )
             out += [f"  {k}: {item}" for item in items]
-        repairs = ([r["repair"]] if "repair" in r else []) + r.get("repairs", [])
+        repairs = ([raw["repair"]] if "repair" in raw else []) + raw.get("repairs", [])
         out += [f"  repair: {item['range']}" for item in repairs]
     return "\n".join(out)
 
@@ -113,12 +128,14 @@ def render_land_preview(
 
 
 def render_noted(rounds: list[dict]) -> str:
-    """Keep deliberate punts from every round visible to the lead."""
-    noted = [n for r in rounds for n in r["noted"]]
-    if not noted:
+    """Expose historical findings without inventing a decision for them."""
+    findings = [
+        item for raw in rounds for item in normalize_report(raw)[0].get("legacy_untriaged", [])
+    ]
+    if not findings:
         return ""
-    return "noted by the reviewer, not fixed — file these per JUDGMENT.md:\n" + "".join(
-        f"  {n}\n" for n in noted
+    return "legacy/untriaged findings — judge fix, reasoned drop or exceptional debt:\n" + "".join(
+        f"  {item}\n" for item in findings
     )
 
 
