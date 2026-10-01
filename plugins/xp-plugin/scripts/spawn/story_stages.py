@@ -19,7 +19,7 @@ class BoundedTee:
         parts = (self.line + text).split("\n")
         for line in parts:
             if line.startswith(LOCATOR):
-                self.locator = line.split(" — ")[0]
+                self.locator = line
         self.line = parts[-1][-REVIEW_REFUSAL_TAIL:]
         return len(text)
 

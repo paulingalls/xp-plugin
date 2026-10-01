@@ -32,7 +32,7 @@ def evidence(root):
 def locator(refusal):
     for line in refusal.splitlines():
         if line.startswith("Verify evidence: "):
-            return Path(line.removeprefix("Verify evidence: ").split(" — ")[0])
+            return Path(line.removeprefix("Verify evidence: "))
     raise AssertionError(f"no reachable Verify evidence in refusal: {refusal[-3000:]}")
 
 
@@ -432,3 +432,55 @@ def test_display_budget_does_not_bound_storage(tmp_path):
     assert manifest["commands"][0]["argv"] == argv
     assert env["SECRET_SENTINEL"] not in json.dumps(manifest)
     assert len(err.decode().split("refused:")[-1]) < 2500
+
+
+@pytest.mark.parametrize("exit_result", [0, 7])
+def test_exited_command_does_not_wait_for_descendant_pipes(tmp_path, exit_result):
+    repo, env, _g = make_repo(tmp_path)
+    ready = tmp_path / "descendant-ready"
+    later = tmp_path / "later"
+    descendant = (
+        "import os,time; from pathlib import Path; "
+        "os.write(1,b'descendant-out'); os.write(2,b'descendant-err'); "
+        f"Path({str(ready)!r}).touch(); time.sleep(300)"
+    )
+    source = (
+        "import subprocess,time; from pathlib import Path; "
+        f"subprocess.Popen([{sys.executable!r},'-c',{descendant!r}]); "
+        f"ready=Path({str(ready)!r})\n"
+        "while not ready.exists(): time.sleep(.01)\n"
+        f"raise SystemExit({exit_result})"
+    )
+    commands = [
+        [sys.executable, "-c", source],
+        [sys.executable, "-c", f"from pathlib import Path; Path({str(later)!r}).touch()"],
+    ]
+    process = record_process(repo, env, commands)
+    try:
+        _out, err = process.communicate(timeout=30)
+        manifest_path = evidence(tmp_path)[0]
+        manifest = json.loads(manifest_path.read_text())
+        assert process.returncode == (2 if exit_result else 0), err
+        assert manifest["status"] == ("failed" if exit_result else "passed")
+        entry = manifest["commands"][0]
+        assert entry["exit_result"] == exit_result
+        assert (manifest_path.parent / entry["stdout"]).read_bytes() == b"descendant-out"
+        assert (manifest_path.parent / entry["stderr"]).read_bytes() == b"descendant-err"
+        assert later.exists() == (exit_result == 0)
+        if exit_result:
+            assert locator(err.decode()) == manifest_path.parent
+    finally:
+        for path in evidence(tmp_path):
+            for entry in json.loads(path.read_text())["commands"]:
+                if "pid" in entry:
+                    with suppress(ProcessLookupError):
+                        os.killpg(entry["pid"], signal.SIGKILL)
+        if process.poll() is None:
+            process.kill()
+        process.communicate(timeout=30)
+
+
+def test_spawn_locator_preserves_punctuation_in_data_path(tmp_path):
+    root = tmp_path / "consumer — evidence"
+    root.mkdir()
+    spawn_capture(root, "suffix" * 1000)

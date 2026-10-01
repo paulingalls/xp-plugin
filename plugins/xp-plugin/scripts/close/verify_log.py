@@ -148,11 +148,13 @@ def execute(directory, entry, persist):
                     if errors:
                         raise OSError(str(errors[0]))
                     time.sleep(0.01)
+                rc = child.returncode
+                stop(child)
+                child = None
                 for thread in threads:
                     thread.join()
                 if errors:
                     raise OSError(str(errors[0]))
-                rc = child.returncode
                 if rc < 0:
                     entry.update(status="interrupted", signal=-rc)
                 else:
