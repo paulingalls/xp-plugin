@@ -42,7 +42,8 @@ _DATA_ENV = "XP_TEST_DATA_ROOT"
 _SLOW = Path(__file__).parent / "slow_tests.json"
 
 
-def pytest_collection_modifyitems(items):
+@pytest.hookimpl(tryfirst=True)
+def pytest_collection_modifyitems(session, config, items):
     """Mark by MEASURED duration, because hand-marking drifted. The 31 hand marks
     named tests someone found annoying — salvage, teardown, concurrency — while
     the suite's real cost is a PLATEAU: 969 tests, mean 1024ms, median 730ms,
@@ -54,6 +55,34 @@ def pytest_collection_modifyitems(items):
     for item in items:
         if item.nodeid in ids:
             item.add_marker(slow)
+
+    if _full_suite_selected(config):
+        _validate_slow_registry(session, ids, {item.nodeid for item in items})
+
+
+def _full_suite_selected(config):
+    if any(config.getoption(option) for option in ("ignore", "ignore_glob", "pyargs", "lf")):
+        return False
+    tests = Path(__file__).parent.resolve()
+    for arg in config.args:
+        if "::" in str(arg):
+            continue
+        path = (Path(config.invocation_params.dir) / arg).resolve()
+        if path.is_dir() and (path == tests or path in tests.parents):
+            return True
+    return False
+
+
+def _validate_slow_registry(session, ids, collected):
+    if missing := sorted(ids - collected):
+        message = (
+            "Unmatched slow_tests.json ids:\n"
+            + "\n".join(missing)
+            + "\nRepair slow_tests.json against collected replacements."
+        )
+        # xdist forwards session failure state, but drops worker UsageError text.
+        session.shouldfail = message
+        raise pytest.UsageError(message)
 
 
 def pytest_configure(config):
