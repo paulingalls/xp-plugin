@@ -300,3 +300,147 @@ class TestFreeRepair:
         assert free(tree, env, "fix-typo", "review").returncode == 2
         refused = free(tree, env, "fix-typo", "repair")
         assert refused.returncode == 2 and "free fix-typo repair" in refused.stderr
+
+
+@pytest.mark.parametrize("harness", ["claude", "codex"])
+@pytest.mark.parametrize("scope", ["story", "free"])
+def test_installed_consumer_evidence_walk(tmp_path, harness, scope):
+    import shutil
+    import subprocess
+    import sys
+
+    from close_free_card_cases import add_free_card, checkout_free, commit_on_free
+    from close_helpers import PLUGIN, free, free_repo
+    from spawn_helpers import make_repo as spawn_repo
+    from spawn_helpers import seed_refresh_receipt
+    from test_spawn_stages import stub_stages
+    from test_verify_evidence import locator
+
+    installed = tmp_path / "installed"
+    import os
+
+    shutil.copytree(os.environ.get("XP_VERIFY_TEST_PLUGIN", str(PLUGIN)), installed)
+    gate = tmp_path / "gate"
+    gate.write_text("#!/bin/sh\nprintf out-evidence\nprintf err-evidence >&2\nexit 7\n")
+    gate.chmod(0o755)
+    if scope == "story":
+        repo, env, g = spawn_repo(tmp_path, status="planned", files="src/thing.py, src/other.py")
+        identity = "story-042"
+        args = ["story", identity]
+        plan = tmp_path / "data" / "plan.md"
+        plan.write_text(plan.read_text().replace("Verify: true", f"Verify: {gate}"))
+    else:
+        repo, env, g = free_repo(tmp_path)
+        assert free(repo, env, "evidence", "start").returncode == 0
+        branch, identity = checkout_free(g)
+        commit_on_free(repo, g)
+        add_free_card(env, identity, str(gate))
+        plan = tmp_path / "data" / "plan.md"
+        plan.write_text(
+            plan.read_text().replace("Files: src/free.py", "Files: src/free.py, src/thing.py")
+        )
+        g("checkout", "-q", "main")
+        args = ["free", "evidence"]
+    stub_stages(tmp_path)
+    if harness == "codex":
+        binary = tmp_path / "bin" / "claude"
+        text = (
+            binary.read_text()
+            .replace(
+                'print(\'[{"id":"xp-plugin@xp-plugin","version":"fixture","scope":"user"}]\')',
+                'print(\'{"installed":[{"pluginId":"xp-plugin@xp-plugin","version":"fixture"}]}\')',
+            )
+            .replace(
+                "print(json.dumps({'type':'result','subtype':'success','result':'done'}))",
+                "print(json.dumps({'type':'thread.started','thread_id':'scratch'})); "
+                "print(json.dumps({'type':'item.completed','item':{'type':'agent_message','text':'done'}}))",
+            )
+        )
+        (tmp_path / "bin" / "codex").write_text(text)
+        (tmp_path / "bin" / "codex").chmod(0o755)
+    config = repo / ".xp" / "config.yml"
+    config.write_text(
+        f"roles:\n  planner: {harness}/model\n  plan-reviewer: {harness}/model\n"
+        f"  executor: {harness}/model\n  reviewer: {harness}/model\n"
+        "codex_sandbox: danger-full-access\ntests:\n  story: true\n"
+    )
+    g("add", "-A")
+    g("commit", "-qm", "scratch harness config")
+    if scope == "free":
+        g("checkout", "-q", branch)
+        g("merge", "-q", "main")
+        g("checkout", "-q", "main")
+    seed_refresh_receipt(repo, env, identity)
+
+    def invoke(script, argv, cwd=repo):
+        return subprocess.run(
+            [sys.executable, str(installed / "scripts" / script), *argv],
+            cwd=cwd,
+            env=env,
+            capture_output=True,
+            text=True,
+        )
+
+    assert invoke("spawn.py", ["ready", identity]).returncode == 0
+    red = invoke("spawn.py", [identity])
+    assert red.returncode == 2, red.stderr + red.stdout
+    original = locator(red.stderr)
+    saved = {p.name: p.read_bytes() for p in original.iterdir()}
+    assert saved["1.stdout"] == b"out-evidence" and saved["1.stderr"] == b"err-evidence"
+    tree = tmp_path / "data" / "worktrees" / identity
+    gate.write_text("#!/bin/sh\nprintf green-evidence\n")
+    options = ["--merge-mode", "local"] if scope == "story" else []
+    repair = invoke("close.py", [*args, "repair", *options], tree)
+    assert repair.returncode == 2 and "green rerun" in repair.stderr
+    assert invoke("close.py", [*args, "review", *options], tree).returncode == 0
+    (tree / "src" / "thing.py").write_text("later = True\n")
+    subprocess.run(["git", "commit", "-qam", "later run"], cwd=tree, env=env, check=True)
+    later = invoke("close.py", [*args, "review", *options], tree)
+    assert later.returncode == 0, later.stderr
+    assert {p.name: p.read_bytes() for p in original.iterdir()} == saved
+    assert len(list((tmp_path / "data/logs/verify").glob("*/run.json"))) == 4
+
+
+@pytest.mark.parametrize("unlink_fault", [False, True])
+def test_repair_invalidates_prior_green_receipt(tmp_path, unlink_fault):
+    import sys
+
+    from test_verify_evidence import TEST_CLOSE
+
+    gate = tmp_path / "gate"
+    gate.write_text("#!/bin/sh\nexit 0\n")
+    gate.chmod(0o755)
+    repo, env, _g = make_repo(tmp_path, verify=str(gate))
+    assert close(repo, env, "review").returncode == 0
+    receipt = tmp_path / "data/markers/story-042.verify.json"
+    prior = receipt.read_bytes()
+    gate.write_text("#!/bin/sh\nexit 7\n")
+    assert close(repo, env, "review").returncode == 2
+    receipt.write_bytes(prior)
+    injection = (
+        (
+            "from pathlib import Path\noriginal=Path.unlink\n"
+            "def unlink(self,*a,**k):\n"
+            "    if self.name.endswith('.verify.json'): raise OSError('unlink fault')\n"
+            "    return original(self,*a,**k)\nPath.unlink=unlink\n"
+        )
+        if unlink_fault
+        else ""
+    )
+    script = (
+        f"import sys; sys.path.insert(0,{str(TEST_CLOSE.parent)!r}); import close\n"
+        + injection
+        + "sys.argv=['close.py','story','story-042','repair','--merge-mode','local']\n"
+        + "sys.exit(close.main())\n"
+    )
+    before = list((tmp_path / "data/logs/verify").iterdir())
+    result = subprocess.run(
+        [sys.executable, "-c", script], cwd=repo, env=env, capture_output=True, text=True
+    )
+    assert result.returncode == 2
+    if unlink_fault:
+        assert "unlink fault" in result.stderr
+        assert receipt.exists() and list((tmp_path / "data/logs/verify").iterdir()) == before
+    else:
+        assert not receipt.exists()
+        assert len(list((tmp_path / "data/logs/verify").iterdir())) == len(before) + 1

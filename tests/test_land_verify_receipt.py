@@ -207,3 +207,153 @@ def test_slate_bundle_uses_shipped_card_template(tmp_path):
     prompt = json.loads(launch.read_text())["prompt"]
     assert "## Shipped card template" in prompt
     assert "Verify reads:" in prompt
+
+
+def test_no_commands_and_child_signal_cannot_mint_verify_receipt(tmp_path):
+    from test_verify_evidence import locator, record_process
+
+    repo, env, _g = make_repo(tmp_path)
+    for commands, expected in (
+        ([], "empty"),
+        (
+            [[sys.executable, "-c", "import os,signal; os.kill(os.getpid(),signal.SIGTERM)"]],
+            "interrupted",
+        ),
+    ):
+        process = record_process(repo, env, commands)
+        _out, err = process.communicate(timeout=30)
+        assert process.returncode == 2, err
+        run = json.loads((locator(err.decode()) / "run.json").read_text())
+        assert run["status"] == expected
+        assert not (tmp_path / "data" / "markers" / "story-042.verify.json").exists()
+
+
+@pytest.mark.parametrize("position", [1, 2])
+def test_command_success_is_not_a_finalized_run(tmp_path, position):
+    import os
+    from contextlib import suppress
+
+    from test_verify_evidence import evidence, observed, record_process
+
+    repo, env, _g = make_repo(tmp_path)
+    sentinel = tmp_path / "later"
+    injection = f"""
+import verify_log, time
+original=verify_log.save
+def save(directory,manifest):
+    original(directory,manifest)
+    entries=manifest['commands']
+    if len(entries)=={position} and entries[-1]['status']=='passed' and 'ended_at' not in manifest:
+        print('pause-out',flush=True)
+        print('pause-err',file=sys.stderr,flush=True)
+        time.sleep(300)
+verify_log.save=save
+"""
+    commands = [[sys.executable, "-c", "exit(0)"], [sys.executable, "-c", "exit(0)"]]
+    if position == 1:
+        commands[1] = [
+            sys.executable,
+            "-c",
+            f"from pathlib import Path; Path({str(sentinel)!r}).touch()",
+        ]
+    process = record_process(repo, env, commands, injection, start_new_session=True)
+    try:
+        observed(process)
+        run = evidence(tmp_path)[0].parent
+        saved = {p.name: p.read_bytes() for p in run.iterdir()}
+        manifest = json.loads(saved["run.json"])
+        assert manifest["commands"][-1]["exit_result"] == 0
+        assert manifest["status"] == "running" and "ended_at" not in manifest
+        process.kill()
+        process.communicate(timeout=30)
+        rerun = record_process(repo, env, [[sys.executable, "-c", "exit(0)"]])
+        _out, err = rerun.communicate(timeout=30)
+        assert rerun.returncode == 0 and b"unfinished Verify (running)" in err
+        assert str(run).encode() in err and not sentinel.exists()
+        assert {p.name: p.read_bytes() for p in run.iterdir()} == saved
+    finally:
+        with suppress(ProcessLookupError):
+            os.killpg(process.pid, signal.SIGKILL)
+        process.communicate()
+
+
+def evidence_fault(boundary, reached):
+    return f"""
+import verify_log
+from pathlib import Path
+boundary={boundary!r}
+reached=Path({str(reached)!r})
+def fault(message,kind=OSError):
+    reached.touch()
+    raise kind(message)
+original_save=verify_log.save
+def save(directory,manifest):
+    state=manifest['status']
+    entries=manifest['commands']
+    if boundary=='all-metadata': fault('metadata fault')
+    if boundary=='finalization' and 'ended_at' in manifest: fault('finalization fault')
+    if boundary=='started' and entries and entries[-1]['status']=='running':
+        fault('started fault')
+    if (boundary=='command-terminal' and entries and entries[-1]['status']=='passed'
+            and 'ended_at' not in manifest):
+        fault('command-terminal fault')
+    if boundary== 'initial' and state=='prepared': fault('initial fault')
+    if boundary== 'running' and state=='running': fault('running fault')
+    if boundary=='terminal' and state=='passed' and 'ended_at' in manifest:
+        fault('terminal fault')
+    return original_save(directory,manifest)
+verify_log.save=save
+if boundary=='root':
+    original_mkdir=Path.mkdir
+    def mkdir(self,*a,**k):
+        if self.name=='verify': fault('root fault')
+        return original_mkdir(self,*a,**k)
+    Path.mkdir=mkdir
+if boundary=='thread-start':
+    original_start=verify_log.threading.Thread.start
+    def start(self,*a,**k):
+        if self._target is verify_log.drain: fault('thread fault',RuntimeError)
+        return original_start(self,*a,**k)
+    verify_log.threading.Thread.start=start
+if boundary=='directory':
+    def mkdir(*a,**k): fault('directory fault')
+    verify_log.tempfile.mkdtemp=mkdir
+original_open=Path.open
+class Output:
+    def __init__(self,output): self.output=output
+    def __enter__(self): return self
+    def __exit__(self,*a):
+        self.output.close()
+        if boundary=='close': fault('close fault')
+    def write(self,chunk):
+        if boundary=='short-write':
+            reached.touch()
+            return self.output.write(chunk[:1])
+        result=self.output.write(chunk)
+        if boundary=='write-'+self.output.name.rsplit('.',1)[-1]:
+            fault('write fault')
+        return result
+    def flush(self):
+        if boundary=='flush': fault('flush fault')
+        self.output.flush()
+def open_file(self,mode='r',*a,**k):
+    stream=self.suffix.removeprefix('.')
+    if mode=='wb' and stream in ('stdout','stderr'):
+        if boundary=='open-'+stream: fault('open fault')
+        return Output(original_open(self,mode,*a,**k))
+    return original_open(self,mode,*a,**k)
+Path.open=open_file
+original_git=verify_log.git
+def git(*args,**kwargs):
+    if boundary in ('head','tree') and args[0]==('rev-parse' if boundary=='head' else 'write-tree'):
+        import subprocess
+        reached.touch()
+        return subprocess.CompletedProcess(args,1,'','measurement fault')
+    return original_git(*args,**kwargs)
+verify_log.git=git
+original_write=Path.write_text
+def write_text(self,*a,**k):
+    if boundary=='receipt' and self.name.endswith('.verify.json'): fault('receipt fault')
+    return original_write(self,*a,**k)
+Path.write_text=write_text
+"""
