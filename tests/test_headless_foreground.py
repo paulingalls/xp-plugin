@@ -235,7 +235,12 @@ def test_review_run_preserves_its_decision_while_reporting_exit_kill(
     import review
     import spawn
 
+    caller = tmp_path / "caller"
+    (caller / ".xp").mkdir(parents=True)
+    (caller / ".xp/config.yml").write_text("roles:\n  reviewer: codex/gpt-6.1-sol/medium\n")
+    monkeypatch.chdir(caller)
     repo, env, _git = make_repo(tmp_path)
+    monkeypatch.chdir(repo)
     for key, value in env.items():
         monkeypatch.setenv(key, value)
     events = [
