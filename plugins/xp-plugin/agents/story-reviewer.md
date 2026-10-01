@@ -52,9 +52,9 @@ who assigned it: `deep` spends most effort on checks 1–2 at full depth; `stand
    the code contradicts. Force the honest sentence into the record.
 4. **Constraint drift**: changed code vs constraints.md, quote the line.
 5. **Implemented design**: apply JUDGMENT's design lenses to the changed code
-   and actual callers; trace suspected duplicate knowledge before proposing reuse.
-   Check dead paths and misleading names. Hold code prose to JUDGMENT's comment
-   rubric.
+   and actual callers; refute each claimed cost/failure against current control
+   flow or contracts before proposing reuse or refactoring. Check dead paths and
+   misleading names. Hold code prose to JUDGMENT's comment rubric.
 
 ## Output
 
