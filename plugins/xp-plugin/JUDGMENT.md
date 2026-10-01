@@ -1,29 +1,15 @@
 # Judgment
-
-- Watch red first; never fake it. No-red commits say why. Never bypass hooks.
-- **Comments** — restatement/history → delete · WHAT → rename · claim → test.
-  Keep why, external constraints or rejected designs.
-- **Review** — Generalization, uncovered behavior or resolved conflict owes a
-  round when silent or corrupting (false green, corrupted record, unreviewed merge);
-  loud does not.
-- **New information** — restate what work is FOR before choosing; no goal drift.
-
-Fix by default; explicitly drop with a reason or keep debt under BOTH bars.
-Too-big loud findings announce themselves: drop. Escalate reserved choices.
-ACs/blockers cannot be waived. LLMs judge; hooks validate structure.
-
+- See red; never fake it. No-red commit: why. Never bypass hooks.
+- **Comments** — restatement/history → delete · WHAT → rename · claim → test. Keep why/external constraints/rejected designs.
+- **Review** — responsibilities/boundaries: co-change, interference, exposed internals; contracts/authoritative knowledge: caller promises, rule owners, copies; necessary complexity: required behavior/callers/repeated change. Findings: code, cost/failure now, XP value, cheapest sufficient fix. Principles ≠ proof. Like lines need not duplicate knowledge; no imagined use/mandatory split. Red → green → refactor; prep only if safer/simpler here, behavior preserved: named existing checks unchanged, green before/after. Generalization/uncovered behavior/resolved conflict: round if silent or corrupting (false green, corrupted record, unreviewed merge); loud does not.
+- **New information** — restate purpose; no drift.
+Fix; reasoned drop or debt under BOTH bars. Drop too-big loud.
+Escalate reserved choices; ACs/blockers unwaivable. LLMs judge; hooks validate.
 ## Records (`work.py` only)
-
 - **bug** — claim + red falsifier + files; fix now. No red: judge.
-- **debt** — claim + green falsifier + files; BOTH too big (doubles the card,
-  crosses its concern, or needs separate design) AND too important
-  (silent/corrupting, privacy or user harm). `debt` and renewed `keep --ref ID`
-  restate reasons via `--too-big` and `--too-important`.
-- **resolve** — substitute green falsifier; lead only, at close, on landed tree.
-- **coverage** — optional TIER for bug/debt; resolve: required TIER|none. Selection
-  stays UNCHECKED; only tier pins are.
-- **note** — tradeoff/discovery, never deferred findings; promote/archive at close;
-  next-story directives on card.
-- **Polarity** — debt: green = still OK; red = materialised; green from flaw = inverted.
-
-Telemetry: re-measure, never record.
+- **debt** — claim + green falsifier + files; BOTH too big (doubles card/crosses concern/separate design) AND too important (silent/corrupting/privacy/user harm). `debt`/renewed `keep --ref ID`: restate reasons via `--too-big`/`--too-important`.
+- **resolve** — substitute green falsifier; lead only, close, landed tree.
+- **coverage** — optional TIER: bug/debt; resolve: TIER|none required. Selection UNCHECKED; only tier pins checked.
+- **note** — tradeoff/discovery, never deferred findings; promote/archive at close; next-story: card.
+- **Polarity** — debt: green=still OK; red=materialised; green from flaw=inverted.
+Telemetry: remeasure; never record.

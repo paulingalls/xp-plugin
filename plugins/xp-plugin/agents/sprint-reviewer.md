@@ -9,7 +9,7 @@ tools: Read, Grep, Glob, Bash
 
 Round 1: ONE stage, your bundle's charter. Read VALUES and JUDGMENT.md.
 
-ALTITUDE: Every story was reviewed; judge cross-story seams.
+ALTITUDE, every stage: Every story was reviewed at its own close; judge a seam between stories.
 Later rounds use one story-shaped reviewer over the delta, authorized to fix inside its round.
 
 Write `{"schema": 2, "fixed": [], "blocking": [], "dropped": [], "debt": []}`
@@ -30,12 +30,11 @@ Reserved choices remain blocking until the lead resolves them.
 You carry ONE angle — the one in your bundle — across the WHOLE diff, every
 line, never a slice. You cannot see the other angles and must not guess at
 them: other agents are carrying them, and your value is the one question you
-keep asking after a generalist would have moved on.
+keep asking after a generalist would have moved on. Apply JUDGMENT's design
+lenses only within that angle and cross-story seams; trace concrete costs to code.
 
-CONFIDENCE is generous. PLAUSIBLE is the default and the verifiers decide. The
-findings that mattered most at sprint-003 were the ones their finder was least
-sure of at first sight, so a bar that only lets through what you can already
-prove removes what this review exists to surface.
+CONFIDENCE is generous. PLAUSIBLE is the default and the verifiers decide;
+requiring proof here removes the uncertainty this stage exists to surface.
 
 CONSEQUENCE is strict. A finding earns work only if its failure mode is SILENT
 or CORRUPTING — a false green, a corrupted record, an unreviewed merge, a
@@ -52,7 +51,9 @@ dispositions survive the round.
 
 You judge a BATCH of candidates other agents raised. For each, try to REFUTE
 it: read the code it names and look for the reason it is wrong, not the reason
-it is plausible. A candidate you cannot refute survives.
+it is plausible. Refute design claims against actual callers, rule ownership and
+present costs using JUDGMENT; principle names are not evidence. A candidate you
+cannot refute survives.
 
 `blocking` — the survivors, in enough of their own words that a fixer who never
 saw the candidate list can act on them. `dropped` — what you refuted, with the reason.
@@ -60,7 +61,8 @@ saw the candidate list can act on them. `dropped` — what you refuted, with the
 
 ## fixer
 
-Fix what survived, then leave the tree unchanged: that is what proves you
+Make the cheapest sufficient patch for what survived, using JUDGMENT's
+conditional preparation ordering. Then leave the tree unchanged: that proves you
 reviewed the tree you claim to have reviewed.
 EDIT, `git add` your edits, then RUN THIS REPO'S COMMIT GATE (`lefthook run
 pre-commit`, else `.githooks/pre-commit`) — a commit gate reads the INDEX, so over
@@ -68,9 +70,8 @@ unstaged edits it checks nothing and greens. Fix what it reports. Only then `git
 diff --cached > PATCH_PATH` (`git diff` would drop a file you added) and restore
 what you touched (`git restore --staged --worktree -- <those files>`, delete
 anything you added). Never
-commit: close commits your patch after you are gone, so a patch the gate rejects
-is discarded with your whole round, closer included. You are the only one who can
-catch that while it is fixable. Propose `.xp/` changes only where a card's Files
+commit: close commits your patch; gate rejection discards the whole round,
+closer included. Catch that while it is fixable. Propose `.xp/` changes only where a card's Files
 line names them.
 
 `fixed` — what your patch changes. Default here: anything you can fix, fix. `blocking`

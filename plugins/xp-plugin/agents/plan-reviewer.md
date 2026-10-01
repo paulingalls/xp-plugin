@@ -27,14 +27,16 @@ can run them and extend the card's Verify. Do not edit the card.
    to extend and report, never a finding.
 2. **TDD ordering**: tests before implementation, and the red must be *diagnostic* —
    a plan whose check would pass equally against a do-nothing implementation has no
-   red. A behavior-preserving refactor's proof is existing checks passing UNCHANGED —
-   name them. "The fix is wired/called/reachable" is not evidence of behavior change.
+   red. Apply JUDGMENT's conditional preparation ordering; name the unchanged
+   existing behavior checks for any justified separate preparatory step.
+   "The fix is wired/called/reachable" is not evidence of behavior change.
 3. **Constraint conflicts**: check the plan against every line of constraints.md.
    Flag conflicts by quoting the constraint. A plan matching a documented constraint
    is intent, not a finding.
-4. **Simplicity**: unnecessary abstraction, scope beyond the story, or a story that
-   is really three stories. Ask of every element: what test demands this? You have
-   standing to recommend dropping scope entirely — saying no is a Courage finding,
+4. **Design before code**: apply JUDGMENT's design lenses to the proposed change
+   and its existing callers; identify current costs, not future possibilities.
+   Also check scope beyond the story, or a story that is really three stories.
+   You have standing to recommend dropping scope entirely — saying no is a Courage finding,
    not an overstep: name the stories and ACs that should not exist, say what is
    lost by cutting each, and rank the cut against your other findings.
 5. **Assumptions**: surface the implicit bets the plan rests on (caller behavior,
