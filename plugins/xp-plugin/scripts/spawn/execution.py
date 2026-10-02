@@ -40,27 +40,97 @@ def run(
         and prior_stages.get("plan-reviewer") == "blocked"
         and prior_handoff.get("plan_reviewed_card") == api.ready().current_digest(story_id)
     )
-    if planned and ((replan and not review_only) or prior_stages.get("planner") != "ran"):
+    confirmed = False
+    reviewed_now = False
+    if planned and replan:
+        import plan_confirmation
+
+        with api.contextlib.chdir(tree):
+            mode, context, problem = plan_confirmation.eligibility(
+                story_id, prior_handoff, api.draft_path(api.data_root(), story_id)
+            )
+            if problem:
+                print(problem, file=api.sys.stderr)
+            if mode == "refuse":
+                return stop(problem, 0)
+            if mode == "fallback":
+                review_only = False
+            if mode == "confirm":
+                try:
+                    result = plan_confirmation.run(
+                        story_id, api.draft_path(api.data_root(), story_id), context
+                    )
+                except (OSError, ValueError) as error:
+                    return stop(
+                        f"cannot preserve/confirm predecessor: {error}; restore and resume", 0
+                    )
+                rc, outcome = result
+                api.mark_stage(
+                    api.data_root(),
+                    story_id,
+                    "plan-confirmation",
+                    "ran" if outcome == "replan" else outcome,
+                )
+                accepted = getattr(result, "acceptance", None)
+                if accepted:
+                    api.handoff_io.mark_plan_reviewed(
+                        api.data_root(), story_id, api.ready().current_digest(story_id), accepted
+                    )
+                if rc:
+                    api.mark_stage(api.data_root(), story_id, "plan-reviewer", outcome)
+                    why = (
+                        api.handoff_io.blocked_problem(api.data_root(), story_id)
+                        if outcome == "blocked"
+                        else f"plan confirmation {outcome}; inspect its disposition and resume"
+                    )
+                    return stop(why, 0)
+                confirmed = outcome != "replan"
+                if confirmed:
+                    replan = False
+                else:
+                    review_only = False
+            elif (
+                mode == "unchanged"
+                and accepted
+                and ".confirmation-" in accepted["findings"]
+                and prior_stages.get("plan-reviewer") == "blocked"
+            ):
+                return stop(api.handoff_io.blocked_problem(api.data_root(), story_id), 0)
+    if (
+        planned
+        and not confirmed
+        and ((replan and not review_only) or prior_stages.get("planner") != "ran")
+    ):
+        if replan:
+            import plan_confirmation
+
+            try:
+                with api.contextlib.chdir(tree):
+                    plan_confirmation.preserve(story_id, api.draft_path(api.data_root(), story_id))
+            except (OSError, ValueError) as error:
+                return stop(
+                    f"cannot preserve predecessor before planner: {error}; restore and resume", 0
+                )
+        if problem := api.handoff_io.archive_replanned_rounds(story_id, prior_handoff):
+            return stop(f"{problem}; repair preserved rounds before resuming", 0)
+        current_state = api.handoff_state(api.data_root(), story_id) or {}
+        inherited = prior_handoff | {"predecessors": current_state.get("predecessors", [])}
+        handoff = api.inheritance(api.data_root(), story_id, inherited, multifile=True)
         rc, why = api.stages.run_planner(story_id, card, tree, handoff)
         # 0, because stop's code is the HARNESS rc: a stage that refused or blocked
         # for the human did not DIE, and saying so sends the lead to the wrong log.
         if rc:
             return stop(why, 0)
-        if problem := api.handoff_io.archive_replanned_rounds(story_id, prior_handoff):
-            return stop(
-                f"{problem}; preserve the replacement draft and repair the plan-review"
-                " artifacts before resuming",
-                0,
-            )
         api.mark_stage(api.data_root(), story_id, "planner", "ran")
     elif not planned:
         api.mark_stage(api.data_root(), story_id, "planner", "skipped")
-    if planned and (replan or prior_stages.get("plan-reviewer") != "ran"):
+    if planned and not confirmed and (replan or prior_stages.get("plan-reviewer") != "ran"):
         import plan_review
 
         with api.contextlib.chdir(tree):
             result = plan_review.run_foreground(story_id, api.draft_path(api.data_root(), story_id))
         rc, outcome = result
+        reviewed_now = True
         accepted = getattr(result, "acceptance", None) or latest(story_id)
         if rc:
             if outcome == "capped":
@@ -135,6 +205,24 @@ def run(
     if warning:
         print(warning, file=api.sys.stderr)
     for attempt in range(2):
+        if accepted:
+            try:
+                if problem := artifact_problem(accepted):
+                    return stop(problem, 0)
+                current, _ = api.story_card(api.plan_path().read_text(), story_id)
+                if problem := api.ready().drift(story_id, current):
+                    return stop(problem, 0)
+                if accepted["digest"] != api.ready().current_digest(story_id):
+                    return stop("card moved before executor; amend and resume", 0)
+                if not attempt and (confirmed or reviewed_now):
+                    from plan_confirmation import execution_problem
+
+                    with api.contextlib.chdir(tree):
+                        if problem := execution_problem(accepted):
+                            api.mark_stage(api.data_root(), story_id, "plan-reviewer", "failed")
+                            return stop(problem, 0)
+            except (OSError, ValueError, KeyError) as error:
+                return stop(f"cannot read accepted launch evidence: {error}; restore and resume", 0)
         rc = api.run_teammate(argv, tree, prompt, story_id, api.data_root(), harness)
         outcome = "terminal-stop" if rc == 0 else "harness-death"
         executor_log = api.data_root() / "logs" / f"{story_id}-executor.log"

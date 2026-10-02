@@ -17,8 +17,8 @@ CHANGES = {
 }
 
 
-def edited_stages(tmp_path, changes, question=None):
-    events = stub_stages(tmp_path)
+def edited_stages(tmp_path, changes, question=None, blocking_diff=False):
+    events = stub_stages(tmp_path, blocking_diff=blocking_diff)
     binary = tmp_path / "bin/claude"
     source = binary.read_text()
     action = (

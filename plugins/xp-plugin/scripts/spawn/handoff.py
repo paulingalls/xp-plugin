@@ -20,7 +20,7 @@ def _is_authored(text: str, story_id: str) -> bool:
 
 
 READ_THEM = " Read each with `work.py show <id>`, then fix the card or take the work over."
-STAGES = ("planner", "plan-reviewer", "executor", "story-tier", "reviewer")
+STAGES = ("planner", "plan-reviewer", "plan-confirmation", "executor", "story-tier", "reviewer")
 # Shared so a new result cannot pass the writer and red the reader: mark_stage
 # and resume.validate spelled ("ran", "skipped") separately until story-102.
 RESULTS = ("ran", "skipped", "blocked", "failed")
@@ -113,6 +113,12 @@ def mark_plan_reviewed(
     if accepted:
         state["plan_review_findings"] = accepted["findings"]
         state["plan_review_identity"] = accepted["findings_identity"]
+        from plan_acceptance import identity
+        from plan_confirmation import evidence_path
+
+        evidence = evidence_path(accepted["findings"])
+        if evidence.exists():
+            state["plan_review_evidence_identity"] = identity(evidence)
         _write(root, story_id, state)
         return
     rounds = _findings(root, story_id) if (root / "plans").is_dir() else []
@@ -166,7 +172,9 @@ def current_findings(root: Path, story_id: str, multifile: bool = True) -> tuple
 
 
 def blocked_problem(root: Path, story_id: str) -> str:
-    return current_disposition(_findings(root, story_id)[-1][1])[1]
+    state = handoff_state(root, story_id) or {}
+    recorded = state.get("plan_review_findings")
+    return current_disposition(Path(recorded) if recorded else _findings(root, story_id)[-1][1])[1]
 
 
 def archive_replanned_rounds(story_id: str, prior_handoff: dict) -> str:
@@ -227,6 +235,11 @@ def inheritance(
     for round_number, path, legacy in _findings(root, story_id) if multifile else []:
         label = f"Plan-review findings round {round_number}{' (legacy)' if legacy else ''}"
         parts.append((label, f"Read {path.resolve()}"))
+    for path in sorted((root / "plans").glob(f"{story_id}.confirmation-*.md")):
+        if path.stem.rsplit("-", 1)[-1].isdecimal():
+            parts.append(("Confirmation findings", f"Read {path.resolve()}"))
+    for manifest in state.get("predecessors", []):
+        parts.append(("Immutable predecessor artifacts", f"Read {manifest}"))
     records = state.get("records", [])
     if records:
         parts.append(("Predecessor escalation records", f"{', '.join(records)}.{READ_THEM}"))

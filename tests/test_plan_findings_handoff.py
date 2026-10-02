@@ -35,6 +35,10 @@ def staged_harness(tmp_path, fail_first=False, block_first=False):
         '  open(p.group(1), \'w\').write(\'```json\\n{"status":"blocked","reasons":[],"human_question":"STALE BLOCKED ROUND?"}\\n```\')\n'  # noqa: E501
         " else:\n"
         '  open(p.group(1), \'w\').write(\'```json\\n{"status":"clean","human_question":null,"reasons":[],"summary":"LOUD: run diagnostic check"}\\n```\')\n'  # noqa: E501
+        " if '.confirmation-' in p.group(1):\n"
+        "  raw = open(p.group(1)).read().replace('```json', '').replace('```', '').strip()\n"
+        "  verdict = json.loads(raw); verdict['decision'] = 'confirm'\n"
+        "  open(p.group(1), 'w').write(json.dumps(verdict))\n"
         "elif role == 'teammate':\n"
         " p = re.search(r'^Plan-review findings: (.+)$', prompt, re.M)\n"
         " event['findings_path'] = p.group(1) if p else None\n"
@@ -205,5 +209,5 @@ def test_resume_after_blocked_round_hands_over_the_later_round(tmp_path):
     resumed = spawn(repo, env, "resume", "story-042")
     assert resumed.returncode == 0, resumed.stderr
     event = next(json.loads(line) for line in seen.read_text().splitlines() if '"teammate"' in line)
-    assert event["findings_path"] == str(tmp_path / "data/plans/story-042.round-1.md")
+    assert event["findings_path"] == str(tmp_path / "data/plans/story-042.confirmation-1.md")
     assert "LOUD: run diagnostic check" in event["findings"]
