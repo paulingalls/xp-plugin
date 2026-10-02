@@ -471,3 +471,16 @@ def test_live_findings_refusal_retains_review_failure(tmp_path):
     assert refused.returncode != 0 and "disposition" in refused.stderr
     state = json.loads(findings.with_name("story-042.handoff.json").read_text())
     assert state["stages"]["plan-reviewer"] == "failed"
+
+
+@pytest.mark.parametrize("mutant", [False, True])
+def test_resume_preview_and_live_refuse_stale_identity(tmp_path, mutant):
+    from resume_preview_support import stale_identity_check
+
+    stale_identity_check(tmp_path, mutant)
+
+
+def test_preview_snapshot_ignores_read_only_code_mutation(tmp_path):
+    from resume_preview_support import read_only_preview_check
+
+    read_only_preview_check(tmp_path)

@@ -236,6 +236,8 @@ def run(
 def prepare(api, story_id, card, handoff, state=None, override=""):
     from plan_acceptance import artifact_problem, latest
 
+    if state is None:
+        state = api.handoff_state(api.data_root(), story_id) or {}
     accepted = latest(story_id)
     if accepted and accepted["digest"] != api.ready().current_digest(story_id):
         raise ValueError(f"declaration amended after review; run `spawn.py resume {story_id}`")

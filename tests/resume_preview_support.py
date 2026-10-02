@@ -24,6 +24,7 @@ def preview_fixture(tmp_path, **kwargs):
     from plan_review_install import installed_launch
 
     repo, env, seen = consumer(tmp_path, initial_question=None, **kwargs)
+    env = env | {"PYTHONDONTWRITEBYTECODE": "1"}
     binary = tmp_path / "bin" / kwargs.get("harness", "claude")
     binary.write_text(
         binary.read_text().replace(
@@ -97,3 +98,45 @@ def assert_refusal(preview, live, seen, before):
     reason = preview.stderr.strip()
     assert reason in live.stderr, (reason, live.stderr)
     assert events(seen) == before
+
+
+def stale_identity_check(tmp_path, mutant):
+    import pytest
+    from plan_confirmation_support import events
+
+    repo, env, seen, launch = preview_fixture(tmp_path)
+    marker = tmp_path / "data/plans/story-042.handoff.json"
+    state = json.loads(marker.read_text())
+    state["plan_review_identity"] = "stale"
+    marker.write_text(json.dumps(state))
+    incomplete = tmp_path / "data/markers/story-042.plan-review-incomplete"
+    incomplete.write_text(json.dumps({"findings": str(marker.with_name("story-042.round-2.md"))}))
+    if mutant:
+        target = tmp_path / "cache/xp-plugin/fixture/scripts/spawn/execution.py"
+        source = target.read_text()
+        old = "state = api.handoff_state(api.data_root(), story_id) or {}"
+        assert old in source
+        target.write_text(source.replace(old, "state = None"))
+    before_events, before_state = events(seen), snapshot(tmp_path)
+    preview = launch(repo, env, "resume", "story-042", "--dry-run")
+    assert snapshot(tmp_path) == before_state
+    live = launch(repo, env, "resume", "story-042")
+    if mutant:
+        assert preview.returncode != 0 and live.returncode == 0, (preview.stderr, live.stderr)
+        with pytest.raises(AssertionError):
+            assert_refusal(preview, live, seen, before_events)
+    else:
+        assert_refusal(preview, live, seen, before_events)
+
+
+def read_only_preview_check(tmp_path):
+    repo, env, _seen, launch = preview_fixture(tmp_path)
+    target = tmp_path / "cache/xp-plugin/fixture/scripts/spawn/execution.py"
+    source = target.read_text()
+    old = "    try:\n        prior = api.handoff_io.effective_review"
+    assert old in source
+    target.write_text(source.replace(old, "    pass\n" + old))
+    before = snapshot(tmp_path)
+    preview = launch(repo, env, "resume", "story-042", "--dry-run")
+    assert preview.returncode == 0, preview.stderr
+    assert snapshot(tmp_path) == before
