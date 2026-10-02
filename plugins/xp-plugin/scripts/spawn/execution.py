@@ -19,6 +19,8 @@ def run(
     held,
     override="",
 ):
+    from pathlib import Path
+
     from plan_acceptance import artifact_problem, latest
 
     accepted = latest(story_id)
@@ -172,6 +174,9 @@ def run(
         return stop(f"declaration amended after review; run `spawn.py resume {story_id}`", 0)
     if accepted:
         try:
+            from plan_confirmation import prior_binding
+
+            prior_binding(accepted, Path(accepted["plan"]))
             if problem := artifact_problem(accepted):
                 return stop(problem, 0)
         except (OSError, ValueError, KeyError) as error:
@@ -197,6 +202,30 @@ def run(
         if problem:
             api.mark_stage(api.data_root(), story_id, "plan-reviewer", outcome)
             return stop(problem, 0)
+    from completion import capture, measure, reuse, save
+    from plan_confirmation import pending_amendment
+
+    if pending_amendment(story_id):
+        return stop("amendment moved before execution/reuse; resume for fresh confirmation", 0)
+    if resuming:
+        from ready import credential
+        from work import ready_marker_path
+
+        launch_credential = credential(ready_marker_path(story_id))
+        current_state = api.handoff_state(api.data_root(), story_id) or {}
+        try:
+            with api.contextlib.chdir(tree):
+                reusable, limit = reuse(story_id, current_state, accepted, card)
+        except (OSError, ValueError) as error:
+            return stop(f"completed implementation reuse stopped: {error}; inspect and resume", 0)
+        if reusable:
+            print(
+                "executor: reused bound completed implementation; independent diff review follows"
+            )
+            expected = (current_state, accepted, card, launch_credential)
+            return api.stages.finish_story(tree, story_id, stop, stage_line, held, expected)
+        print(f"executor required: {limit}", file=api.sys.stderr)
+    save(story_id)
     prompt = api.executor_prompt(
         card, story_id, handoff, api.PLUGIN_ROOT, api.PLUGIN_ROOT, reviewed, findings
     )
@@ -223,6 +252,7 @@ def run(
                             return stop(problem, 0)
             except (OSError, ValueError, KeyError) as error:
                 return stop(f"cannot read accepted launch evidence: {error}; restore and resume", 0)
+        executor_start = api.tree_state(tree)[0]
         rc = api.run_teammate(argv, tree, prompt, story_id, api.data_root(), harness)
         outcome = "terminal-stop" if rc == 0 else "harness-death"
         executor_log = api.data_root() / "logs" / f"{story_id}-executor.log"
@@ -233,6 +263,11 @@ def run(
             why = err or f"the teammate left a clean commit in {tree} before its harness failed"
             return stop(why, rc)
         api.mark_stage(api.data_root(), story_id, "executor", "ran")
+        try:
+            with api.contextlib.chdir(tree):
+                executed = measure(api.draft_path(api.data_root(), story_id)) if accepted else None
+        except (OSError, ValueError) as error:
+            return stop(f"cannot measure completed executor: {error}; inspect and resume", 0)
         tier_state, tier_command, tier_output = api.story_tier(tree)
         if tier_state == "unavailable":
             reason = "unset" if not tier_command else "EDIT-ME"
@@ -241,6 +276,19 @@ def run(
             break
         if tier_state == "passed":
             api.mark_stage(api.data_root(), story_id, "story-tier", "ran")
+            try:
+                with api.contextlib.chdir(tree):
+                    capture(
+                        story_id,
+                        executor_start,
+                        accepted,
+                        (tier_state, tier_command, tier_output),
+                        executed,
+                    )
+            except (OSError, ValueError, KeyError, TypeError) as error:
+                return stop(
+                    f"cannot publish completed executor evidence: {error}; inspect and resume", 0
+                )
             break
         api.mark_stage(api.data_root(), story_id, "story-tier", "failed")
         if attempt or tier_state == "unrunnable":

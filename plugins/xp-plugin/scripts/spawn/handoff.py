@@ -86,10 +86,10 @@ def record_handoff(
     )
 
 
-def mark_handoff(root: Path, story_id: str, finished: bool = False) -> None:
+def mark_handoff(root: Path, story_id: str, finished: bool = False, why: str = "") -> None:
     state = handoff_state(root, story_id) or {}
     kind = "FINISHED" if finished else "RUNNING"
-    state.update(state=kind, why=f"the teammate is {kind.lower()}")
+    state.update(state=kind, why=why or f"the teammate is {kind.lower()}")
     _write(root, story_id, state)
 
 

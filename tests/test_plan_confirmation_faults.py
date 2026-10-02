@@ -262,7 +262,7 @@ def probe(tmp_path, fault, launch=spawn):
     result = launch(repo, env, "resume", "story-042")
     observed = events(seen)
     if fault in ("handoff", "chain", "head", "hidden", "evidence", "evidence-hash"):
-        assert result.returncode == 0, result.stderr
+        assert result.returncode == (2 if fault == "hidden" else 0), result.stderr
         assert all(e.get("kind") != "confirmation" for e in observed)
     elif fault == "replan-review":
         assert result.returncode == 0, result.stderr

@@ -103,7 +103,10 @@ def validate(root: Path, story_id: str, tree: Path, branch: str) -> str:
         if status.returncode:
             return f"refused: FINISHED handback {tree} is unmeasurable: {status.stderr.strip()}"
         if dirt := status.stdout.strip():
-            return f"refused: FINISHED handback {tree} became dirty:\n{dirt}"
+            print(
+                f"FINISHED completion invalidated by dirty takeover work in {tree}:\n{dirt}",
+                file=sys.stderr,
+            )
     return ""
 
 
