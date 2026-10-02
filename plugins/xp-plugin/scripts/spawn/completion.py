@@ -165,6 +165,11 @@ def validate(story_id, prior, accepted):
             or value["version"] != 1
         ):
             raise ValueError("completion shape/version is invalid")
+        stages = prior.get("stages", {})
+        if not isinstance(stages, dict) or any(
+            stages.get(stage) != "ran" for stage in ("executor", "story-tier")
+        ):
+            raise ValueError("completion lacks successful executor/story-tier stages")
         original = value["acceptance"]
         prior_binding(original, Path(original["plan"]))
         if value["story_id"] != story_id or original["story_id"] != story_id:
@@ -186,6 +191,8 @@ def validate(story_id, prior, accepted):
             check=True,
             capture_output=True,
         )
+        if not isinstance(value["card"], str):
+            raise ValueError("completion implemented card is invalid")
         if card_digest(value["card"]) != value["card_digest"] or (
             card_digest(value["card"]) != original["digest"]
             and not card_growth(original["after"], value["card"])

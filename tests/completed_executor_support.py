@@ -82,6 +82,18 @@ def replacement(tmp_path):
 
 
 def damage(tmp_path, kind):
+    if kind in ("executor-failed", "tier-failed", "tier-skipped", "executor-absent"):
+        stage = "executor" if kind.startswith("executor-") else "story-tier"
+        result = kind.split("-", 1)[1]
+        rewrite_state(
+            tmp_path,
+            lambda value: (
+                value["stages"].pop(stage)
+                if result == "absent"
+                else value["stages"].update({stage: result})
+            ),
+        )
+        return
     if kind == "missing-close-marker":
         (tmp_path / "data/markers/story-042.close.json").unlink()
         return
@@ -139,6 +151,8 @@ def damage(tmp_path, kind):
             value["completion"] = []
         elif kind == "version":
             completion["version"] = True
+        elif kind == "card-shape":
+            completion["card"] = None
         elif kind == "card":
             completion["card"] = completion["card"].replace("Context: demo.", "Context: unrelated.")
         elif kind in (

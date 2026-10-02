@@ -110,6 +110,10 @@ def test_missing_or_invalid_implementation_never_reuses(tmp_path, implementation
 @pytest.mark.parametrize(
     "kind",
     [
+        "executor-failed",
+        "tier-failed",
+        "tier-skipped",
+        "executor-absent",
         "missing-close-marker",
         "dirty",
         "staged",
@@ -128,6 +132,7 @@ def test_missing_or_invalid_implementation_never_reuses(tmp_path, implementation
         "tree",
         "start_head",
         "card",
+        "card-shape",
         "plan",
         "findings",
         "fingerprint",
@@ -370,6 +375,8 @@ def test_reuse_failures_keep_diagnostic_evidence(tmp_path, failure):
 
 
 FAULTS = [
+    "executor-failed",
+    "tier-failed",
     "story_id",
     "repository",
     "card",
