@@ -159,6 +159,19 @@ def blocked_problem(root: Path, story_id: str) -> str:
     return current_disposition(_findings(root, story_id)[-1][1])[1]
 
 
+def archive_replanned_rounds(story_id: str, prior_handoff: dict) -> str:
+    from ready import plan_needs_replan
+    from review_runner import archive_review_rounds
+
+    # Compare card credentials without treating the block itself as an amendment.
+    reviewed = prior_handoff | {"stages": {"plan-reviewer": "ran"}}
+    if prior_handoff.get("stages", {}).get("plan-reviewer") != "blocked" or plan_needs_replan(
+        story_id, reviewed
+    ):
+        return archive_review_rounds(story_id, "plan")
+    return ""
+
+
 def current_disposition(path: Path) -> tuple[str, str]:
     from plan_review import durable_disposition
 

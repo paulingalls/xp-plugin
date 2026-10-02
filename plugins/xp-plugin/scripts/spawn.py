@@ -349,20 +349,13 @@ def cmd_spawn(story_id: str, override: str, dry_run: bool, resuming: bool = Fals
     prior_handoff = inherited_state or {}
     prior_stages = prior_handoff.get("stages", {})
     replan = ready().plan_needs_replan(story_id, prior_handoff)
-    reviewed_digest = ready().current_digest(story_id)
     if multifile and (replan or prior_stages.get("planner") != "ran"):
         rc, why = stages.run_planner(story_id, card, tree, handoff)
         # 0, because stop's code is the HARNESS rc: a stage that refused or blocked
         # for the human did not DIE, and saying so sends the lead to the wrong log.
         if rc:
             return stop(why, 0)
-        from review_runner import archive_review_rounds
-
-        # A block retains its rounds; only a card amendment resets the cap.
-        if (
-            prior_stages.get("plan-reviewer") != "blocked"
-            or prior_handoff.get("plan_reviewed_card", reviewed_digest) != reviewed_digest
-        ) and (problem := archive_review_rounds(story_id, "plan")):
+        if problem := handoff_io.archive_replanned_rounds(story_id, prior_handoff):
             return stop(
                 f"{problem}; preserve the replacement draft and repair the plan-review"
                 " artifacts before resuming",

@@ -15,7 +15,7 @@ from plan_human_question_support import (
     parser_probe,
     report,
 )
-from plan_review import evaluate_disposition
+from plan_review import durable_disposition, evaluate_disposition
 from spawn_helpers import make_repo, spawn
 from test_plan_review import PLUGIN
 from test_spawn_stages import event_roles, stub_stages
@@ -107,6 +107,8 @@ def test_charter_examples_execute_parser():
 def test_invalid_disposition_refuses_with_action(tmp_path, name, text, before, after):
     outcome, problem = evaluate_disposition(text, before, after)
     assert outcome == "failed", (name, problem)
+    if name.startswith("duplicate-question"):
+        assert durable_disposition(text)[0] == "failed"
     assert "repair" in problem or "write" in problem
     status = "edited" if before != after else "clean"
     repo, env, seen = consumer(tmp_path, status)
@@ -220,6 +222,33 @@ def test_answered_resume_after_unanswered_cap_uses_current_findings(tmp_path):
     repo, env, seen = consumer(tmp_path, "blocked")
     capped_stop(tmp_path, repo, env, seen)
     answered_resume(tmp_path, repo, env, seen)
+
+
+@pytest.mark.parametrize("fault", [False, True], ids=["answered", "cap-reset-fault"])
+def test_answered_legacy_cap_uses_current_findings(tmp_path, fault):
+    repo, env, seen = consumer(tmp_path, "blocked")
+    assert spawn(repo, env, "story-042").returncode != 0
+    plans = tmp_path / "data/plans"
+    old = json.dumps({"status": "blocked", "question": QUESTION})
+    for number in (1, 2):
+        (plans / f"story-042.round-{number}.md").write_text(old)
+    marker = plans / "story-042.handoff.json"
+    state = json.loads(marker.read_text())
+    state.pop("plan_reviewed_card")
+    marker.write_text(json.dumps(state))
+    if fault:
+        launch = installed_launch(
+            tmp_path,
+            ("or plan_needs_replan(\n        story_id, reviewed\n    )", "or False"),
+            relative="scripts/spawn/handoff.py",
+        )
+        with pytest.raises(AssertionError):
+            answered_resume(tmp_path, repo, env, seen, launch)
+        assert "teammate" not in event_roles(seen)
+        return
+    answered_resume(tmp_path, repo, env, seen)
+    assert (plans / "story-042.superseded-1.round-1.md").read_text() == old
+    assert (plans / "story-042.superseded-1.round-2.md").read_text() == old
 
 
 def installed_launch(tmp_path, mutation=None, relative="scripts/plan_review.py"):
@@ -411,10 +440,10 @@ def test_recovery_guards_detect_their_fault(tmp_path, guard):
         launch = installed_launch(
             tmp_path,
             (
-                'prior_handoff.get("plan_reviewed_card", reviewed_digest) != reviewed_digest',
-                "False",
+                "or plan_needs_replan(\n        story_id, reviewed\n    )",
+                "or False",
             ),
-            relative="scripts/spawn.py",
+            relative="scripts/spawn/handoff.py",
         )
         with pytest.raises(AssertionError):
             answered_resume(tmp_path, repo, env, seen, launch)

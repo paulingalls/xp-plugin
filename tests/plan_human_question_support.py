@@ -31,6 +31,13 @@ def invalid_cases():
             BEFORE,
         )
     )
+    duplicate = report("clean", QUESTION)[:-1] + ', "human_question": null}'
+    for name, text in [
+        ("duplicate-question", duplicate),
+        ("duplicate-question-fenced", f"```json\n{duplicate}\n```"),
+        ("duplicate-question-prose", f"Review findings:\n{duplicate}\nEnd of review."),
+    ]:
+        cases.append((name, text, BEFORE, BEFORE))
     for field in ["status", "reasons"]:
         cases.append(
             (
@@ -114,7 +121,9 @@ def guard_faults():
     }
     faults = []
     for name, text, before, after in invalid_cases():
-        if name.startswith("question-"):
+        if name.startswith("duplicate-question"):
+            mutation = ("if key in report:", "if False:")
+        elif name.startswith("question-"):
             mutation = (
                 'return "", None, "human_question must be null or a non-empty string"',
                 'report["human_question"] = question = None',

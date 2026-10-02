@@ -113,8 +113,18 @@ def normalized_words(text: str) -> str:
     return " ".join(re.findall(r"\w+", text))
 
 
+def _unique_fields(pairs: list[tuple[str, object]]) -> dict:
+    report = {}
+    for key, value in pairs:
+        if key in report:
+            raise ValueError(f"duplicate disposition field: {key}")
+        report[key] = value
+    return report
+
+
 def _bare_objects(text: str) -> tuple[list[dict], bool]:
-    decoder, objects, end, failed = json.JSONDecoder(), [], 0, False
+    decoder = json.JSONDecoder(object_pairs_hook=_unique_fields)
+    objects, end, failed = [], 0, False
     for start in (i for i, char in enumerate(text) if char == "{"):
         if start < end:
             continue
@@ -130,7 +140,7 @@ def _bare_objects(text: str) -> tuple[list[dict], bool]:
 
 def disposition_object(text: str) -> tuple[dict | None, str]:
     try:
-        report = json.loads(text)
+        report = json.loads(text, object_pairs_hook=_unique_fields)
     except ValueError:
         values, failed, masked = [], False, list(text)
         fences = list(re.finditer(r"```([^\n]*)\n(.*?)```", text, flags=re.S))
@@ -142,7 +152,7 @@ def disposition_object(text: str) -> tuple[dict | None, str]:
             for index in range(fence.start(), fence.end()):
                 masked[index] = " "
             try:
-                values.append(json.loads(body))
+                values.append(json.loads(body, object_pairs_hook=_unique_fields))
             except ValueError:
                 objects, malformed = _bare_objects(body)
                 values.extend(objects)
