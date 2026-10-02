@@ -51,11 +51,7 @@ def repoint_env() -> bool:
 
 
 def red_verify_in_play(session: str) -> str | None:
-    """A red marker whose verify still belongs to an in-progress story.
-
-    A story flipped to done/deferred in plan.md releases its red honestly —
-    that IS the deferral path the block message names.
-    """
+    """A red marker whose Verify still belongs to an in-progress story."""
     live = {story_id for story_id, _verify in in_progress_stories()}
     for path in (data_root() / "markers").glob(f"{session}.*.test-status"):
         try:
@@ -76,8 +72,9 @@ def main(data: dict) -> int:
     session = str(data.get("session_id", "unknown"))[:64]
     if red := red_verify_in_play(session):
         reason = (
-            f"story Verify last ran red: {red} — fix it, or mark its story"
-            " done/deferred in the plan if the red is accepted"
+            f"story Verify last ran red: {red} — fix it and re-run Verify;"
+            " escalate reserved scope or AC choices to the lead."
+            " A disposition cannot waive an unmet AC"
         )
         print(json.dumps({"decision": "block", "reason": reason}))
     return 0

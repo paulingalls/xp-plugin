@@ -18,6 +18,7 @@ from close_helpers import (
     stub_reviewer,
     worktree_land_setup,
 )
+from close_land_findings_cases import TestFullReviewFindings  # noqa: F401
 from test_close_salvage import FIXED, KILLED, dying_reviewer, salvage
 
 
@@ -72,7 +73,13 @@ class TestLandFailureModes:
 
     def test_unrecorded_sidecar_refuses_and_keeps_salvage_reachable(self, tmp_path):
         repo, env, g = make_repo(tmp_path)
-        finding = {"fixed": ["queued finding"], "blocking": [], "noted": []}
+        finding = {
+            "fixed": ["queued finding"],
+            "blocking": [],
+            "schema": 2,
+            "dropped": [],
+            "debt": [],
+        }
         stub_reviewer(tmp_path, report=finding, exit_code=1)
         assert close(repo, env, "review").returncode == 2
         stub_reviewer(tmp_path)
@@ -448,30 +455,3 @@ class TestLandFailureModes:
         assert preview.stdout == "", "a land that refuses previewed steps it will not take"
         landed = close(repo, env, "land")
         assert landed.returncode == 2 and "Set tests.story" in landed.stderr
-
-
-class TestFullReviewFindings:
-    """story-008 close review, round 5 — the first review over the whole story."""
-
-    def test_a_full_re_review_appends_rather_than_erasing_prior_rounds(self, tmp_path):
-        """R5F1: the non-delta path reset verdicts while the delta path appended
-        — the same rule fixed in one of its two implementations. The merge body
-        then labelled the survivor 'round 1', asserting round 1 found what round
-        2 found. This is the exact workflow the full_sha bug prescribes."""
-        repo, env, g = make_repo(tmp_path)
-        stub_reviewer(
-            tmp_path, report={"fixed": [], "blocking": ["round one blocker"], "noted": []}
-        )
-        close(repo, env, "review")
-        (repo / "src" / "thing.py").write_text("A = 7\n")
-        g("add", "-A")
-        g("commit", "-qm", "lead fixes the findings")
-        stub_reviewer(tmp_path, report={"fixed": [], "blocking": [], "noted": ["round two note"]})
-        close(repo, env, "review")
-        rounds = marker(tmp_path)["rounds"]
-        assert [r["blocking"] for r in rounds] == [["round one blocker"], []]
-        assert close(repo, env, "land").returncode == 0
-        body = g("log", "-1", "--format=%B", "main").stdout
-        assert "Review round 1: 0 fixed · 1 blocking · 0 noted" in body
-        assert "blocking: round one blocker" in body
-        assert "Review round 2: 0 fixed · 0 blocking · 1 noted" in body

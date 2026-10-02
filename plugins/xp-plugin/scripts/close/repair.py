@@ -6,6 +6,7 @@ import close
 import overlap
 import preflight
 import review
+import verify_receipt
 from review_artifacts import story_sidecars
 from review_scope import declared_files
 
@@ -106,7 +107,9 @@ def cmd_repair(story_id: str) -> int:
     verify = close.verify_commands(story_id, card)[1]
     if error := preflight.check(close.config_flat("preflight")):
         return close.fail(error)
-    if red := overlap.run_checks(verify, None):
+    if error := verify_receipt.invalidate(story_id):
+        return close.fail(error)
+    if red := overlap.run_checks(verify, None, evidence=(story_id, "repair")):
         return close.fail(f"{red} — fix it, then run {retry} again")
     if not paths:
         return close.fail(
@@ -115,11 +118,15 @@ def cmd_repair(story_id: str) -> int:
         )
     position = at.get("round_index")
     path = review.report_path(story_id, position + 1)
-    report, err = review.read_report(path)
+    report, err = review.read_report(path, fresh=False)
     if err or report.get("blocking"):
         return close.fail(
             f"refused: review report {path} is unusable or blocking:"
             f" {err or report['blocking']} — run {rereview}"
+        )
+    if report.get("legacy_untriaged") is not None:
+        report["incomplete"] = (
+            "legacy/untriaged repaired report — rerun review before certifying a new round"
         )
     reviewed = at.get("head", "")
     if (
@@ -153,6 +160,8 @@ def cmd_repair(story_id: str) -> int:
     raw["repaired"] = repair["range"]
     path.write_text(json.dumps(raw, indent=2))
     launch.unlink()
+    if report.get("incomplete"):
+        return close.fail(f"refused: {report['incomplete']} — run {rereview}")
     print(
         f"recorded round {review.round_number(path)}; land prints the repair"
         f" {verified[:8]}..{head[:8]} as unreviewed — next: `close.py {noun} land`"
@@ -198,7 +207,7 @@ def repair_land_red(story_id: str, card: str, land_red, noun: str, rereview: str
     round_file = round_.get("round_file", position)
     if not isinstance(round_file, int) or isinstance(round_file, bool) or round_file < 1:
         return close.fail(f"refused: latest review round is unusable — run {rereview}")
-    report, err = review.read_report(review.report_path(story_id, round_file))
+    report, err = review.read_report(review.report_path(story_id, round_file), fresh=False)
     if err or report.get("blocking"):
         return close.fail(f"refused: review report is unusable or blocking — run {rereview}")
     red_head = at.get("head")

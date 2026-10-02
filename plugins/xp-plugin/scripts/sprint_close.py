@@ -28,6 +28,7 @@ from review_artifacts import (
     restore_sprint_queue,
     sprint_paths,
 )
+from review_report import aggregate
 from review_runner import (
     archive_failed_findings,
     completed_review_rounds,
@@ -77,7 +78,7 @@ def cmd_salvage(sprint_id: str, dry_run: bool = False) -> int:
         paths = sorted(root.glob(f"{glob.escape(sprint_id)}.*.round-{round_n}.json"))
     recovered, unreadable, prefix, suffix = [], [], f"{sprint_id}.", f".round-{round_n}.json"
     for path in paths:
-        report, err = review.read_report(path)
+        report, err = review.read_report(path, fresh=False)
         if err:
             unreadable.append(f"{path}: {err}")
         else:
@@ -96,14 +97,10 @@ def cmd_salvage(sprint_id: str, dry_run: bool = False) -> int:
         )
     if dirty := story_close.salvage_dirty_refusal():
         return fail(f"refused: {dirty}")
-    seen = {
-        key: dict.fromkeys(item for _stage, report in recovered for item in report[key])
-        for key in review.REPORT_KEYS
-    }
     why = f"the sprint review process ended before round {round_n} could be recorded"
     if unreadable:
         why += "; unreadable artifacts: " + "; ".join(unreadable)
-    round_ = {key: list(items) for key, items in seen.items()}
+    round_ = aggregate([report for _stage, report in recovered], blockers=False)
     round_.update(incomplete=why, stages=[stage for stage, _report in recovered])
     if dry_run:
         print(f"dry run: would record round {round_n} incomplete: {why}")
@@ -197,6 +194,9 @@ def cmd_start(sprint_id: str, dry_run: bool = False) -> int:
         print(f"\n{completion.heading.rstrip()}")
         print(f"close.py sprint {sprint_id} milestone-done")
 
+    from finding_triage import render_triage
+
+    print("\n" + render_triage(root))
     notes = triage_notes(source)
     print("\n" + resolved_offers(records, results))
     print(f"\n{len(members)} stories, {len(notes)} notes to triage. Each note: promote to")

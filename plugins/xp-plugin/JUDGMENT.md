@@ -1,28 +1,15 @@
 # Judgment
-
-- Red first; watch it fail. Never fake a red; no-red commits say why. Hooks are the
-  wall: your commit and push hooks run the tiers you configured. Never bypass
-  them.
-- **Comments** — restates the code → delete · explains WHAT → rename it ·
-  a checkable claim → write the test · narrates history → delete, git holds it.
-  Keep only the why, external constraints or rejected designs.
-- **Review** — Generalization, uncovered behavior or resolved conflict is a
-  deviation, owed a round when silent or corrupting (false green, corrupted
-  record, unreviewed merge); loud does not.
-- **New information** — step back before the next step: restate what the work is
-  FOR, then choose. Continuing from what survives a finding is how work drifts off
-  the goal that filed it.
-
+- See red; never fake it. No-red commit: why. Never bypass hooks.
+- **Comments** — restatement/history → delete · WHAT → rename · claim → test. Keep why/external constraints/rejected designs.
+- **Review** — responsibilities/boundaries: co-change, interference, exposed internals; contracts/authoritative knowledge: caller promises, rule owners, copies; necessary complexity: required behavior/callers/repeated change. Findings: code, cost/failure now, XP value, cheapest sufficient fix. Principles ≠ proof. Like lines need not duplicate knowledge; no imagined use/mandatory split. Red → green → refactor; prep only if safer/simpler here, behavior preserved: named existing checks unchanged, green before/after. Generalization/uncovered behavior/resolved conflict: round if silent or corrupting (false green, corrupted record, unreviewed merge); loud does not.
+- **New information** — restate purpose; no drift.
+Fix; reasoned drop or debt under BOTH bars. Drop too-big loud.
+Escalate reserved choices; ACs/blockers unwaivable. LLMs judge; hooks validate.
 ## Records (`work.py` only)
-
-- **bug** — claim + red falsifier + files; fix now. No red=debt/note.
-- **debt** — claim + green falsifier + files; planning schedules/archives.
-- **resolve** — substitutes a green falsifier; lead only, at close, on landed tree.
-- **coverage** — optional TIER for bug/debt; resolve: required TIER|none. The
-  selection claim stays UNCHECKED; only tier pins are.
-- **note** — value tradeoff or discovery; close promotes/archives; next-story
-  directives go on card.
-- **Polarity** — debt: green = still OK; red = materialised; green from the flaw =
-  inverted.
-
-Telemetry: re-measure, never record.
+- **bug** — claim + red falsifier + files; fix now. No red: judge.
+- **debt** — claim + green falsifier + files; BOTH too big (doubles card/crosses concern/separate design) AND too important (silent/corrupting/privacy/user harm). `debt`/renewed `keep --ref ID`: restate reasons via `--too-big`/`--too-important`.
+- **resolve** — substitute green falsifier; lead only, close, landed tree.
+- **coverage** — optional TIER: bug/debt; resolve: TIER|none required. Selection UNCHECKED; only tier pins checked.
+- **note** — tradeoff/discovery, never deferred findings; promote/archive at close; next-story: card.
+- **Polarity** — debt: green=still OK; red=materialised; green from flaw=inverted.
+Telemetry: remeasure; never record.

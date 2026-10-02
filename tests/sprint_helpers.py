@@ -112,7 +112,7 @@ def record_reviews(tmp_path, repo, env, blocking=(), shown=None):
     against a marker rather than against the absence of one."""
     path = marker_path(tmp_path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    round_ = {"fixed": [], "blocking": list(blocking), "noted": []}
+    round_ = {"fixed": [], "blocking": list(blocking), "schema": 2, "dropped": [], "debt": []}
     state = json.loads(path.read_text()) if path.exists() else {}
     state.update(rounds=[round_], shown_sha=shown or head(repo, env))
     path.write_text(json.dumps(state))
@@ -157,7 +157,7 @@ def staged_stub(tmp_path, patches=(), **stages):
         "assert m, 'the bundle named no REPORT_PATH'\n"
         "key = os.path.basename(m.group(1).strip()).split('.')[1]\n"
         f"table = {json.dumps(table)}\n"
-        "clean = {'fixed': [], 'blocking': [], 'noted': []}\n"
+        "clean = {'schema': 2, 'fixed': [], 'blocking': [], 'dropped': [], 'debt': []}\n"
         "hit = [v for k, v in table.items() if key == k or key.startswith(k + '-')]\n"
         "report = hit[0] if hit else clean\n"
         "open(m.group(1).strip(), 'w').write(json.dumps(report))\n"
@@ -183,6 +183,14 @@ def commit_as_reviewer(g, message):
 
 
 def work(repo, env, *args):
+    if args and args[0] == "debt":
+        args = [
+            *args,
+            "--too-big",
+            "requires a separate design",
+            "--too-important",
+            "silent corruption",
+        ]
     return subprocess.run(
         [sys.executable, str(WORK), *args], cwd=repo, env=env, capture_output=True, text=True
     )

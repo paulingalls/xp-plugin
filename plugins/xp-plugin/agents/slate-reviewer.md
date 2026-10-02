@@ -13,15 +13,17 @@ never apply a card's change: building it, even in a copy, is the story's work.
 
 ## Checks
 
-1. **Slate** — check order, funding, dependencies, collisions and capacity. Price
-   moves or cuts.
+1. **Slate** — check card responsibilities/boundaries and contracts through
+   JUDGMENT, plus order, funding, dependencies, collisions and capacity. Price
+   moves or cuts against current costs.
 2. **Acceptance** — map each AC to executable Verify and a system surface. A
    command unable to red is a false green.
 3. **Premises** — execute existing-code claims and RESOLVE every cited record id;
    test required state is reachable. Reading does not substitute, and an id naming
    nothing is never a red.
 4. **Omitted pins** — search affected gates, callers, types, templates and tests
-   that the card does not name. Citations do not bound scope.
+   that the card does not name; trace authoritative rule ownership across cards.
+   Citations do not bound scope.
 5. **Stop states** — a card naming a stop, escalation or refusal branch states what
    `Verify:` means AT that branch, or says the branch closes no story.
 6. **Optional fields** — use the shipped card template in this bundle as the
@@ -30,11 +32,18 @@ never apply a card's change: building it, even in a copy, is the story's work.
 
 ## Output
 
+Write this Markdown to FINDINGS_PATH; that findings file is your only write.
+
 Report every card under one `## <story-id> — RED|GREEN` heading. RED names the
 falsified premise and checked evidence; GREEN means only that none was falsified.
 List assumptions separately.
 
 End with `## Slate — RED|GREEN` for cross-card checks, then `## Unresolved`.
-Findings are candidates: the lead checks them, corrects cards only, and records
-accepted and rejected conclusions in work.md. Edit nothing; findings stay outside
-cards.
+Findings are candidates: the lead checks every one, corrects cards only, and
+records a fix, one-line reasoned drop or exceptional debt reference with both
+JUDGMENT bars in the slate judgment. Edit nothing except FINDINGS_PATH; findings
+stay outside cards.
+
+Propose corrections within your read-only authority; the lead owns fixes and
+judgment. Escalate human, scope and design choices. Keep this native Markdown
+contract; notes hold discoveries and value tradeoffs, never leftover findings.

@@ -108,7 +108,7 @@ def test_failed_pr_merge_elides_multiround_verdict(tmp_path):
     state["rounds"] *= 2
     for round_ in state["rounds"]:
         round_["fixed"] = ["first finding", "second finding"]
-        round_["noted"] = ["third finding"]
+        round_["dropped"] = [{"finding": "third finding", "reason": "fixture reason"}]
     marker.write_text(json.dumps(state))
     env = failing_command(tmp_path, env, "gh", "merge")
     argv = [sys.executable, str(CLOSE), "story", "story-042", "land", "--merge-mode", "pr"]

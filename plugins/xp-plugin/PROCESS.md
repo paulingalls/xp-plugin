@@ -1,29 +1,11 @@
 # Process
-
-## Start here
-
-`/xp-setup` once; run the exact `recover:` command. Its first region is the next action.
-Artifacts win.
-
-## The loop
-
+`/xp-setup` once; exact `recover:` command; first region next; artifacts win.
 Every review is named for the artifact it reads:
 **slate review** → **card refresh** → **execution plan review** → **diff review**.
-
 Background long legs. No timeout.
-
-1. **Slate review** — `/create-sprint` authors and opens with a fresh reader over
-   `sprint_cap`. Mid-sprint: record, never schedule; `[sprint-direct]` keeps work on
-   the sprint branch in sprint review; free work can ship now.
-   `spawn.py ready <story-id>` follows the corrected slate and refuses until
-   `slate_review.py --refresh` has run; the lead owns that non-review. Multi-file spawn stages a planner, then **execution plan
-   review** (`plan_review.py`); the planner writes the plan. Human-only questions stop.
-2. **Story** — `spawn.py <story-id>`; red → green → refactor, small commits. Carded or free work stays
-   in its worktree, never in the lead's checkout; practice, not a wall: data root
-   proves spawn, not authorship. Done means ACs at the surface.
-3. **Story close** — `/story-close`. One full review always.
-4. **Sprint close** — `/sprint-close`. With the human, schedule debt under budget or
-   drop it. Nothing carries.
-5. **Free** — `close.py free <slug> start`, then `/free-close`; slotless, ships now.
-
-At story/sprint close replace, never append, the ≤30-line session digest.
+1. **Slate review** — `/create-sprint` opens; fresh reader: `sprint_cap`. Mid-sprint: record, never schedule; `[sprint-direct]`: sprint branch, sprint review; free: ship now. Lead non-review `slate_review.py --refresh`; then `spawn.py ready <story-id>`: corrected slate. Multi-file: the planner writes the plan; then `plan_review.py`. Human-only questions stop.
+2. **Story** — `spawn.py <story-id>`; red → green → refactor; small commits. Carded/free work stays in its worktree; data root proves spawn, not authorship. Done: surface ACs.
+3. **Story close** — `/story-close`; one full review.
+4. **Sprint close** — `/sprint-close`: with human, judge all debt/findings per JUDGMENT; debt ceiling.
+5. **Free** — `close.py free <slug> start`, then `/free-close`: slotless; ship now.
+Close replaces ≤30-line session digest.

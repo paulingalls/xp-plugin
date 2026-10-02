@@ -21,7 +21,9 @@ n = review.LIST_CAP + 5
 findings = [f"finding number {i} in some/file.py" for i in range(n)]
 with tempfile.TemporaryDirectory() as tmp:
     path = Path(tmp) / "r.json"
-    path.write_text(json.dumps({"fixed": [], "blocking": findings, "noted": []}))
+    path.write_text(
+        json.dumps({"fixed": [], "blocking": findings, "schema": 2, "dropped": [], "debt": []})
+    )
     got, err = review.read_report(path)
     assert not err, err
     reached = got["blocking"]

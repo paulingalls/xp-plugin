@@ -76,8 +76,20 @@ def test_failed_finder_keeps_completed_siblings_and_reruns_the_post_gap_report(t
     repo, env, _git = make_repo(tmp_path)
     staged_stub(
         tmp_path,
-        find_security={"fixed": [], "blocking": ["security issue"], "noted": []},
-        find_test_vacuity={"fixed": [], "blocking": ["test issue"], "noted": []},
+        find_security={
+            "fixed": [],
+            "blocking": ["security issue"],
+            "schema": 2,
+            "dropped": [],
+            "debt": [],
+        },
+        find_test_vacuity={
+            "fixed": [],
+            "blocking": ["test issue"],
+            "schema": 2,
+            "dropped": [],
+            "debt": [],
+        },
     )
     stub = tmp_path / "bin" / "claude"
     failure = "if key == 'find-state-lifecycle': sys.exit(1)\n"
@@ -130,7 +142,10 @@ def test_a_finder_commit_is_refused_after_its_concurrent_batch(tmp_path):
 def test_verifiers_start_after_finders_and_closer_waits_for_both(tmp_path):
     config = CONFIG + "review:\n  verify_batches: 2\n"
     repo, env, _git = make_repo(tmp_path, config=config)
-    staged_stub(tmp_path, find={"fixed": [], "blocking": ["one", "two"], "noted": []})
+    staged_stub(
+        tmp_path,
+        find={"fixed": [], "blocking": ["one", "two"], "schema": 2, "dropped": [], "debt": []},
+    )
     stub = tmp_path / "bin" / "claude"
     stub.write_text(
         stub.read_text().replace(

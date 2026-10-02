@@ -20,6 +20,7 @@ from review_report import (
     REPORT_KEYS,  # noqa: F401
     cap_display,  # noqa: F401
     cap_items,  # noqa: F401
+    parse_report_json,
     read_report,  # noqa: F401
     validate_clearable,  # noqa: F401
 )
@@ -123,7 +124,7 @@ def stamp(path: Path, why: str) -> str:
     and read_report already distinguishes unreadable from absent.
     """
     try:
-        report = json.loads(path.read_text())
+        report = parse_report_json(path.read_text())
     except (OSError, ValueError):
         return why
     if not isinstance(report, dict):

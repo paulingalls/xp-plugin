@@ -7,7 +7,7 @@ import sys
 from spawn_helpers import SPAWN, make_repo, seed_refresh_receipt, spawn
 from spawn_stash_cases import TestDirtyReviewStash, dirty_review_repo  # noqa: F401
 
-CLEAN = {"fixed": [], "blocking": [], "noted": []}
+CLEAN = {"fixed": [], "blocking": [], "schema": 2, "dropped": [], "debt": []}
 
 
 def stub_stages(
@@ -23,10 +23,14 @@ def stub_stages(
     if unreadable_plan:
         findings = '```json\n{"status":\n```'  # a verdict the harness cannot READ
     elif blocking_plan:
-        findings = json.dumps({"status": "blocked", "question": "choose"})
+        findings = json.dumps({"status": "blocked", "reasons": [], "human_question": "choose"})
     else:
-        findings = json.dumps({"status": "clean", "reasons": []})
-    report = {"fixed": [], "blocking": ["cannot land"], "noted": []} if blocking_diff else CLEAN
+        findings = json.dumps({"status": "clean", "human_question": None, "reasons": []})
+    report = (
+        {"fixed": [], "blocking": ["cannot land"], "schema": 2, "dropped": [], "debt": []}
+        if blocking_diff
+        else CLEAN
+    )
     repair = tmp_path / "review-repaired"
     repair_action = shlex.join(
         [sys.executable, "-c", f"from pathlib import Path; Path({str(repair)!r}).touch()"]

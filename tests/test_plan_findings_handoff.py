@@ -32,9 +32,9 @@ def staged_harness(tmp_path, fail_first=False, block_first=False):
         "  sys.exit(1)\n"
         f" if {block_first!r} and not os.path.exists({str(attempt)!r}):\n"
         f"  open({str(attempt)!r}, 'w').write('blocked')\n"
-        '  open(p.group(1), \'w\').write(\'```json\\n{"status":"blocked","question":"STALE BLOCKED ROUND?"}\\n```\')\n'  # noqa: E501
+        '  open(p.group(1), \'w\').write(\'```json\\n{"status":"blocked","reasons":[],"human_question":"STALE BLOCKED ROUND?"}\\n```\')\n'  # noqa: E501
         " else:\n"
-        '  open(p.group(1), \'w\').write(\'```json\\n{"status":"clean","reasons":[],"summary":"LOUD: run diagnostic check"}\\n```\')\n'  # noqa: E501
+        '  open(p.group(1), \'w\').write(\'```json\\n{"status":"clean","human_question":null,"reasons":[],"summary":"LOUD: run diagnostic check"}\\n```\')\n'  # noqa: E501
         "elif role == 'teammate':\n"
         " p = re.search(r'^Plan-review findings: (.+)$', prompt, re.M)\n"
         " event['findings_path'] = p.group(1) if p else None\n"
@@ -45,7 +45,8 @@ def staged_harness(tmp_path, fail_first=False, block_first=False):
         " subprocess.run(['git', 'commit', '-qm', 'executor work'], check=True)\n"
         "elif role == 'reviewer':\n"
         " p = re.search(r'^REPORT_PATH: (.+)$', prompt, re.M); assert p\n"
-        ' open(p.group(1), \'w\').write(\'{"fixed":[],"blocking":[],"noted":[]}\')\n'
+        ' open(p.group(1), \'w\').write(\'{"schema":2,"fixed":[],'
+        '"blocking":[],"dropped":[],"debt":[]}\')\n'
         "with open(seen, 'a') as f: f.write(json.dumps(event) + '\\n')\n"
         "print(json.dumps({'type':'result','subtype':'success','result':'done'}))\n"
     )

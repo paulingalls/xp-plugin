@@ -129,7 +129,13 @@ class TestMotionIsBoundedByAMechanism:
         import bookkeep
 
         repo, env, _g = make_repo(tmp_path)
-        candidates = {"fixed": [], "blocking": ["a silent one"], "noted": []}
+        candidates = {
+            "fixed": [],
+            "blocking": ["a silent one"],
+            "schema": 2,
+            "dropped": [],
+            "debt": [],
+        }
         committing_stub(tmp_path, "open('src.py','a').write('# edited\\n')\n", report=candidates)
         assert sprint(repo, env, "review").returncode == 2
         rounds = json.loads(marker_path(tmp_path).read_text())["rounds"]
@@ -239,7 +245,7 @@ class TestSprintCharter:
         assert "story-shaped reviewer" in shared and "fix inside its round" in shared
         # the report SHAPE as the stage must write it, not the bucket names in
         # prose: `noted` reads fine in a sentence that never states the JSON
-        for token in ('"fixed"', '"blocking"', '"noted"'):
+        for token in ('"schema"', '"fixed"', '"blocking"', '"dropped"', '"debt"'):
             assert token in shared, f"the charter never names {token}"
         closer = text.split("\n## closer\n", 1)[1]
         assert '"clearable_by_full"' in closer and "tests.full" in closer

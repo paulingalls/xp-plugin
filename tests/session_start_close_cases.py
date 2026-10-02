@@ -22,7 +22,9 @@ class LastCloseCases:
         return {
             "story": story,
             "title": title,
-            "rounds": [{"fixed": [finding], "blocking": [], "noted": []}],
+            "rounds": [
+                {"fixed": [finding], "blocking": [], "schema": 2, "dropped": [], "debt": []}
+            ],
             "merge_sha": "abc1234",
             "closed_at": "2026-08-20T06:00:00Z",
         }
@@ -71,7 +73,16 @@ class LastCloseCases:
                 "story": "story-042",
                 "title": "many rounds",
                 "rounds": [
-                    {"fixed": ["x" * 500], "blocking": [], "noted": ["y" * 500]} for _ in range(8)
+                    {
+                        "fixed": ["x" * 500],
+                        "blocking": [],
+                        "schema": 2,
+                        "dropped": [
+                            {"finding": item, "reason": "fixture reason"} for item in ["y" * 500]
+                        ],
+                        "debt": [],
+                    }
+                    for _ in range(8)
                 ],
                 "merge_sha": "abc1234",
                 "closed_at": "2026-08-20T19:00:00Z",

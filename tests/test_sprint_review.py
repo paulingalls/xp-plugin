@@ -23,7 +23,7 @@ from sprint_helpers import (
 from test_close_salvage import FIXED
 from test_sprint_review_resume import _stop_at_closer
 
-CLEAN = {"fixed": [], "blocking": [], "noted": []}
+CLEAN = {"fixed": [], "blocking": [], "schema": 2, "dropped": [], "debt": []}
 DELTA = "The delta since the last recorded round"
 
 
@@ -35,12 +35,12 @@ class TestReviewLeg:
         for root in (tmp_path / "first", tmp_path / "second"):
             root.mkdir()
             repo, env, _g = make_repo(root)
-            report = {"fixed": ["FIXED"], "blocking": [], "noted": []}
+            report = {"fixed": ["FIXED"], "blocking": [], "schema": 2, "dropped": [], "debt": []}
             staged_stub(
                 root,
                 patches=[("fix", "src.py", "C = 2")],
-                find={"fixed": [], "blocking": ["FIXED"], "noted": []},
-                verify={"fixed": [], "blocking": ["FIXED"], "noted": []},
+                find={"fixed": [], "blocking": ["FIXED"], "schema": 2, "dropped": [], "debt": []},
+                verify={"fixed": [], "blocking": ["FIXED"], "schema": 2, "dropped": [], "debt": []},
                 fix=report,
             )
             result = sprint(repo, env, "review")
@@ -62,9 +62,9 @@ class TestReviewLeg:
         staged_stub(
             tmp_path,
             patches=[("fix", "src.py", "C = 2")],
-            find={"fixed": [], "blocking": ["FIXED"], "noted": []},
-            verify={"fixed": [], "blocking": ["FIXED"], "noted": []},
-            fix={"fixed": ["FIXED"], "blocking": [], "noted": []},
+            find={"fixed": [], "blocking": ["FIXED"], "schema": 2, "dropped": [], "debt": []},
+            verify={"fixed": [], "blocking": ["FIXED"], "schema": 2, "dropped": [], "debt": []},
+            fix={"fixed": ["FIXED"], "blocking": [], "schema": 2, "dropped": [], "debt": []},
         )
         diff = tmp_path / "data" / "reports" / "sprint" / "2.fix.round-1.diff"
         claude = tmp_path / "bin" / "claude"
@@ -92,9 +92,9 @@ class TestReviewLeg:
         staged_stub(
             tmp_path,
             patches=[("fix", "src.py", "C = 2")],
-            find={"fixed": [], "blocking": ["F"], "noted": []},
-            verify={"fixed": [], "blocking": ["F"], "noted": []},
-            fix={"fixed": ["F"], "blocking": [], "noted": []},
+            find={"fixed": [], "blocking": ["F"], "schema": 2, "dropped": [], "debt": []},
+            verify={"fixed": [], "blocking": ["F"], "schema": 2, "dropped": [], "debt": []},
+            fix={"fixed": ["F"], "blocking": [], "schema": 2, "dropped": [], "debt": []},
         )
         claude = tmp_path / "bin" / "claude"
         claude.write_text(claude.read_text() + "sys.exit(1 if key == 'close' else 0)\n")
@@ -264,7 +264,9 @@ class TestUnrecordedArtifactPreservation:
         reports = tmp_path / "data" / "reports" / "sprint"
         reports.mkdir(parents=True, exist_ok=True)
         report = reports / f"{SPRINT_ID}.find-security.round-1.json"
-        body = json.dumps({"fixed": ["prior finding"], "blocking": [], "noted": []}).encode()
+        body = json.dumps(
+            {"fixed": ["prior finding"], "blocking": [], "schema": 2, "dropped": [], "debt": []}
+        ).encode()
         report.write_bytes(body)
         report.with_suffix(".patch").write_bytes(b"prior patch")
         staged_stub(tmp_path)
@@ -344,7 +346,9 @@ class TestUnrecordedArtifactPreservation:
         _stop_at_closer(tmp_path)
         assert sprint(repo, env, "review").returncode == 2
         stale = tmp_path / "data" / "reports" / "sprint" / f"{SPRINT_ID}.close.round-1.json"
-        stale.write_text(json.dumps({"fixed": [], "blocking": ["GHOST"], "noted": []}))
+        stale.write_text(
+            json.dumps({"fixed": [], "blocking": ["GHOST"], "schema": 2, "dropped": [], "debt": []})
+        )
 
         _stop_at_closer(tmp_path)
         resumed = sprint(repo, env, "review")

@@ -38,7 +38,8 @@ class TestFixingReviewer:
             CLAUDE_SH + "input=$(cat)\n"
             "p=$(printf '%s' \"$input\" | sed -n 's/^REPORT_PATH: //p')\n"
             "q=$(printf '%s' \"$input\" | sed -n 's/^PATCH_PATH: //p')\n"
-            'printf \'{"fixed": ["tightened the guard"], "blocking": [], "noted": []}\' > "$p"\n'
+            'printf \'{"fixed": ["tightened the guard"], '
+            '"blocking": [], "schema":2,"dropped":[],"debt":[]}\' > "$p"\n'
             f"printf '%s' '{patch}' > \"$q\"\n"
             f"{extra}"
             'printf \'{"type": "result", "result": "fixed one thing"}\'\n'
@@ -101,7 +102,8 @@ class TestFixingReviewer:
             CLAUDE_SH + "input=$(cat)\n"
             "p=$(printf '%s' \"$input\" | sed -n 's/^REPORT_PATH: //p')\n"
             "q=$(printf '%s' \"$input\" | sed -n 's/^PATCH_PATH: //p')\n"
-            'printf \'{"fixed": ["f"], "blocking": [], "noted": []}\' > "$p"\n'
+            'printf \'{"fixed": ["f"], '
+            '"blocking": [], "schema":2,"dropped":[],"debt":[]}\' > "$p"\n'
             f"printf '%s' '{FIX_PATCH}' > \"$q\"\n"
             'printf \'{"type": "result", "result": "fixed"}\'\n'
         )
@@ -148,13 +150,16 @@ class TestFixingReviewer:
         """AC 6: the marker gates the merge, lives OUTSIDE the repo, and no diff
         shows it — the reviewer's Bash can empty its own blocking[]."""
         repo, env, _g = make_repo(tmp_path)
-        stub_reviewer(tmp_path, report={"fixed": [], "blocking": ["B1: real"], "noted": []})
+        stub_reviewer(
+            tmp_path,
+            report={"fixed": [], "blocking": ["B1: real"], "schema": 2, "dropped": [], "debt": []},
+        )
         assert close(repo, env, "review").returncode == 0
         mf = marker_file(tmp_path)
         bin_dir = tmp_path / "bin"
         (bin_dir / "claude").write_text(
             CLAUDE_SH + "p=$(sed -n 's/^REPORT_PATH: //p')\n"
-            'printf \'{"fixed": [], "blocking": [], "noted": []}\' > "$p"\n'
+            'printf \'{"schema":2,"fixed":[],"blocking":[],"dropped":[],"debt":[]}\' > "$p"\n'
             f"python3 -c \"import json;f='{mf}';d=json.load(open(f));"
             "d['rounds'][0]['blocking']=[];json.dump(d,open(f,'w'))\"\n"
             'printf \'{"type": "result", "result": "clean"}\'\n'
@@ -455,7 +460,12 @@ class TestFixingReviewer:
             report={
                 "fixed": ["renamed the flag"],
                 "blocking": [],
-                "noted": ["N1: punted on purpose"],
+                "schema": 2,
+                "dropped": [
+                    {"finding": item, "reason": "fixture reason"}
+                    for item in ["N1: punted on purpose"]
+                ],
+                "debt": [],
             },
         )
         assert close(repo, env, "review").returncode == 0

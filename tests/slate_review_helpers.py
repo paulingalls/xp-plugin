@@ -4,6 +4,7 @@ feature grows that file's collected tests."""
 
 import ast
 import re
+import shlex
 import subprocess
 import sys
 from pathlib import Path
@@ -59,7 +60,7 @@ def assert_open_route(create_skill, close_skill, process):
     assert opening.index("slate_review.py") < opening.index("open_sprint.py <id>")
     assert "full proposed slate" in opening and "`sprint_cap`" in opening
     assert "author's conclusions" in opening and "do not give" in opening
-    assert "corrected cards" in opening and "work.py note" in opening
+    assert "corrected cards" in opening and "one-line reasoned drop" in opening
     assert "`/create-sprint`" in card_step and "`/sprint-close`" not in card_step
     assert "corrected slate" in card_step
     assert card_step.index("`/create-sprint`") < card_step.index("spawn.py ready")
@@ -156,6 +157,9 @@ def assert_bundle_schema(bundle, out):
     expected = (
         "## Your charter\n\nCHARTER\n\n"
         f"## Your findings file\n\nFINDINGS_PATH: {out.resolve()}\n\n"
+        "## Record lookup\n\nAppend the cited ID; XP_DATA is already set.\nRECORD_LOOKUP: "
+        + shlex.join([sys.executable, str(PLUGIN / "scripts/work.py"), "show"])
+        + "\n\n"
         "## Full proposed slate\n\nCARDS\n\n"
         "## Sprint capacity\n\nsprint_cap: 6\ndebt_budget: 0.2\n\n"
         "## VALUES\n\nSHIPPED:VALUES.md\n\n"

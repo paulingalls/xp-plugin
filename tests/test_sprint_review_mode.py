@@ -13,7 +13,7 @@ from sprint_helpers import (
     sprint,
 )
 
-CLEAN = {"fixed": [], "blocking": [], "noted": []}
+CLEAN = {"fixed": [], "blocking": [], "schema": 2, "dropped": [], "debt": []}
 DELTA = "The delta since the last recorded round"
 
 
@@ -40,7 +40,16 @@ class TestModeSwitch:
             json.dumps(
                 {
                     "rounds": [
-                        {"fixed": [], "blocking": ["ROUND-1-BLOCKER"], "noted": ["ROUND-1-NOTE"]}
+                        {
+                            "fixed": [],
+                            "blocking": ["ROUND-1-BLOCKER"],
+                            "schema": 2,
+                            "dropped": [
+                                {"finding": item, "reason": "fixture reason"}
+                                for item in ["ROUND-1-NOTE"]
+                            ],
+                            "debt": [],
+                        }
                     ],
                     "shown_sha": head(repo, env),
                 }
@@ -60,7 +69,12 @@ class TestModeSwitch:
         prior = {
             "fixed": [f"prior-fixed-{i:02}" for i in range(25)],
             "blocking": ["prior-blocking-0", "prior-blocking-1"],
-            "noted": ["prior-noted-0", "prior-noted-1"],
+            "schema": 2,
+            "dropped": [
+                {"finding": item, "reason": "fixture reason"}
+                for item in ["prior-noted-0", "prior-noted-1"]
+            ],
+            "debt": [],
         }
         path = marker_path(tmp_path)
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -74,7 +88,11 @@ class TestModeSwitch:
             "Findings from earlier rounds",
             f"The stories in sprint {SPRINT_ID}",
         )
-        items = [item for status_items in prior.values() for item in status_items]
+        items = (
+            prior["fixed"]
+            + prior["blocking"]
+            + [item["finding"] for key in ("dropped", "debt") for item in prior[key]]
+        )
         for item in items:
             assert carried.count(item) == 1, item
         assert "more, in full" not in carried

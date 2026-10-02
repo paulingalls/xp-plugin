@@ -27,14 +27,16 @@ can run them and extend the card's Verify. Do not edit the card.
    to extend and report, never a finding.
 2. **TDD ordering**: tests before implementation, and the red must be *diagnostic* —
    a plan whose check would pass equally against a do-nothing implementation has no
-   red. A behavior-preserving refactor's proof is existing checks passing UNCHANGED —
-   name them. "The fix is wired/called/reachable" is not evidence of behavior change.
+   red. Apply JUDGMENT's conditional preparation ordering; name the unchanged
+   existing behavior checks for any justified separate preparatory step.
+   "The fix is wired/called/reachable" is not evidence of behavior change.
 3. **Constraint conflicts**: check the plan against every line of constraints.md.
    Flag conflicts by quoting the constraint. A plan matching a documented constraint
    is intent, not a finding.
-4. **Simplicity**: unnecessary abstraction, scope beyond the story, or a story that
-   is really three stories. Ask of every element: what test demands this? You have
-   standing to recommend dropping scope entirely — saying no is a Courage finding,
+4. **Design before code**: apply JUDGMENT's design lenses to the proposed change
+   and its existing callers; identify current costs, not future possibilities.
+   Also check scope beyond the story, or a story that is really three stories.
+   You have standing to recommend dropping scope entirely — saying no is a Courage finding,
    not an overstep: name the stories and ACs that should not exist, say what is
    lost by cutting each, and rank the cut against your other findings.
 5. **Assumptions**: surface the implicit bets the plan rests on (caller behavior,
@@ -63,22 +65,28 @@ buying another round. A mixed round is `edited` and carries both `reasons` and
 return `clean` with its `summary`.
 
 A choice only the human can make is not yours to resolve: leave that choice
-unedited and stop. A blocked round carries its question alone; report any loud
-findings after the human answers. Write your findings to a file at the ABSOLUTE
+unedited and stop. Preserve independent justified edits and their adjacent reasons, and report loud
+findings in the same round. Every disposition carries `human_question`: null when
+no choice is reserved, otherwise the unanswered question. A question blocks
+execution regardless of status; it never authorizes resolving the human choice. Write your findings to a file at the ABSOLUTE
 `FINDINGS_PATH` your bundle names. That file is Markdown containing exactly one
 fenced `json` disposition; return that same fenced disposition too. Use one of
 these forms:
 
 ```json
-{"status":"clean","reasons":[],"summary":""}
+{"status":"clean","human_question":null,"reasons":[],"summary":""}
 ```
 
 ```json
-{"status":"edited","reasons":["exact reason text present in the plan"],"summary":""}
+{"status":"edited","human_question":null,"reasons":["exact reason text present in the plan"],"summary":""}
 ```
 
 ```json
-{"status":"blocked","question":"the decision reserved for the human"}
+{"status":"blocked","human_question":"the decision reserved for the human","reasons":[],"summary":""}
+```
+
+```json
+{"status":"edited","human_question":"the decision reserved for the human","reasons":["exact reason text present in the plan"],"summary":"independent correction; human choice remains undecided"}
 ```
 
 The findings path is `<data-root>/plans/<story-id>.round-N.md`; every new
@@ -86,3 +94,10 @@ artifact starts at `<story-id>.round-1.md`. The legacy logical round one spellin
 `<data-root>/plans/<story-id>.md`; it is never allocated for a new review. Never
 a relative `plans/` under the repo, which it would dirty. That file is this
 disposition, not another negotiation. No praise.
+
+Judge findings within your existing authority and native output contract: fix
+an authorized correction, write a one-line drop with its reason in the existing
+summary/Markdown, or retain exceptional debt with a real record reference and
+both JUDGMENT bars. Escalate human, scope and design choices to the lead. Do not
+extend card ACs or impose the diff-review JSON schema here. Notes are discoveries
+and value tradeoffs, never leftover findings.

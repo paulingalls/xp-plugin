@@ -197,7 +197,8 @@ def test_round_recorded_during_the_falsifier_batch_gates_land(tmp_path):
         f"if not pathlib.Path({str(flag)!r}).exists():\n"
         "    raise SystemExit(0)\n"
         "state = json.loads(marker.read_text())\n"
-        "state['rounds'].append({'incomplete': 'concurrent round', 'blocking': []})\n"
+        "state['rounds'].append({'schema': 2, 'fixed': [], 'dropped': [], 'debt': [], "
+        "'incomplete': 'concurrent round', 'blocking': []})\n"
         "marker.write_text(json.dumps(state))\n"
     )
     full = f"printf x >> {tmp_path / 'full'}"

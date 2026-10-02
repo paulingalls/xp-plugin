@@ -84,7 +84,9 @@ class TestLandBookkeeping:
         rec = json.loads(lines[0])
         assert rec["story"] == "story-042" and rec["title"] == "demo story"
         (round_,) = rec["rounds"]
-        assert round_ | {"fixed": [], "blocking": [], "noted": []} == round_, round_
+        assert (
+            round_ | {"fixed": [], "blocking": [], "schema": 2, "dropped": [], "debt": []} == round_
+        ), round_
         assert round_["reviewed_head"] and round_["shown_sha"]
         assert rec["merge_sha"] == g("rev-parse", "main").stdout.strip()
         assert g("cat-file", "-t", rec["merge_sha"]).stdout.strip() == "commit"

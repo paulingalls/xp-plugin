@@ -8,9 +8,10 @@ answers disagree:
   recorded before the step that makes it true is a lie the next reader believes.
 - **Who READS it**, and does the reader trust it more than the writer earned?
 - **Who CLEARS it**, and what happens on the day nothing does?
-- **Can writer and reader DRIFT?** A gate that advances its own state. Two
-  copies of one value where only one is updated. A snapshot written back over
-  something merged since. A default that means both "unset" and "empty".
+- **Can writer and reader DRIFT?** Who owns the authoritative value or rule?
+  Independently maintained copies that disagree; a caller bypassing the update
+  contract; unrelated work mutating trusted state; a snapshot overwriting merged
+  truth; a default meaning both "unset" and "empty".
 
 Follow each value across the whole diff, not within one file: the write and the
 read that contradict it are usually in different files, which is why nobody

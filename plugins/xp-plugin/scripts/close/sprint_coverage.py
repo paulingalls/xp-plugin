@@ -3,6 +3,7 @@
 import overlap
 from release import release_bump_paths
 from review import CLEARABLE_BY_FULL, covered_ranges, reviewer_strays, validate_clearable
+from review_report import normalize_report
 from sprint_close import _shown_diff, default_branch, git, read_sprint_state
 
 
@@ -41,6 +42,10 @@ def coverage_refusal(
     rerun = f"run `close.py sprint {sprint_id} review`"
     if not (rounds := state.get("rounds") or []):
         return f"refused: no recorded review for sprint {sprint_id} — {rerun}"
+    for number, raw in enumerate(state.get("rounds", []), 1):
+        _, error = normalize_report(raw)
+        if error:
+            return f"refused: unreadable review round {number}: {error}. {rerun}"
     if incomplete := rounds[-1].get("incomplete"):
         detail = incomplete.replace("\n", "\n  ")
         return (

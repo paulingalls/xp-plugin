@@ -361,7 +361,7 @@ class TestTheReviewersOwnFixIsUnderTheGateItPasses:
         commit the undo would destroy is close.py's own patch-apply, and it is the sha
         that round names: no reset may be offered for it."""
         repo, env, g = make_repo(tmp_path, verify=self.VERIFY)
-        report = {"fixed": [], "blocking": ["B"], "noted": []}
+        report = {"fixed": [], "blocking": ["B"], "schema": 2, "dropped": [], "debt": []}
         stub_reviewer(tmp_path, patch=self.BREAKS_VERIFY, report=report)
         launched = g("rev-parse", "HEAD").stdout.strip()
 
@@ -378,7 +378,10 @@ class TestTheReviewersOwnFixIsUnderTheGateItPasses:
         undo sentence the short path drops. Exit 2 over a silently recorded round
         sends the lead to re-review a story that already has one."""
         repo, env, _g = make_repo(tmp_path, verify="false")
-        stub_reviewer(tmp_path, report={"fixed": [], "blocking": ["B"], "noted": []})
+        stub_reviewer(
+            tmp_path,
+            report={"fixed": [], "blocking": ["B"], "schema": 2, "dropped": [], "debt": []},
+        )
 
         r = close(repo, env, "review")
         assert r.returncode != 0 and "git reset --hard" not in r.stderr, r.stderr

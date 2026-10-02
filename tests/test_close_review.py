@@ -200,7 +200,7 @@ class TestUnrecordedArtifactPreservation:
         for finding in ("newer", "older"):
             stub_reviewer(
                 tmp_path,
-                report={"fixed": [finding], "blocking": [], "noted": []},
+                report={"fixed": [finding], "blocking": [], "schema": 2, "dropped": [], "debt": []},
                 exit_code=1,
             )
             assert close(repo, env, "review").returncode == 2
@@ -222,7 +222,13 @@ class TestUnrecordedArtifactPreservation:
         repo, env, _g = make_repo(tmp_path)
         stub_reviewer(tmp_path, report=FIXED, exit_code=1)
         assert close(repo, env, "review").returncode == 2
-        blocker = {"fixed": [], "blocking": ["LIVE-BLOCKER"], "noted": []}
+        blocker = {
+            "fixed": [],
+            "blocking": ["LIVE-BLOCKER"],
+            "schema": 2,
+            "dropped": [],
+            "debt": [],
+        }
         stub_reviewer(tmp_path, report=blocker)
         assert close(repo, env, "review").returncode == 0
 
@@ -251,7 +257,13 @@ class TestUnrecordedArtifactPreservation:
         repo, env, _g = make_repo(tmp_path)
         stub_reviewer(tmp_path, report=None, patch=FIX_PATCH, exit_code=1)
         assert close(repo, env, "review").returncode == 2
-        second = {"fixed": ["second attempt"], "blocking": [], "noted": []}
+        second = {
+            "fixed": ["second attempt"],
+            "blocking": [],
+            "schema": 2,
+            "dropped": [],
+            "debt": [],
+        }
         stub_reviewer(tmp_path, report=second, patch=None, exit_code=1)
         assert close(repo, env, "review").returncode == 2
         stub_reviewer(tmp_path)
@@ -301,7 +313,7 @@ class TestUnrecordedArtifactPreservation:
         for finding in ("first", "second"):
             stub_reviewer(
                 tmp_path,
-                report={"fixed": [finding], "blocking": [], "noted": []},
+                report={"fixed": [finding], "blocking": [], "schema": 2, "dropped": [], "debt": []},
                 exit_code=1,
             )
             assert close(repo, env, "review").returncode == 2

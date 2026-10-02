@@ -22,7 +22,11 @@ def disposition_result(text, before, after):
 
 class TestPlanEditsInPlace:
     EDITED = json.dumps(
-        {"status": "edited", "reasons": ["the guard needs an executable acceptance check"]}
+        {
+            "status": "edited",
+            "human_question": None,
+            "reasons": ["the guard needs an executable acceptance check"],
+        }
     )
 
     def repo(self, tmp_path, tracked=False):
@@ -46,7 +50,7 @@ class TestPlanEditsInPlace:
 
     def test_a_reason_split_by_hard_wrapping_is_present(self):
         reason = "the guard needs an executable acceptance check"
-        report = json.dumps({"status": "edited", "reasons": [reason]})
+        report = json.dumps({"status": "edited", "human_question": None, "reasons": [reason]})
         plan = b"Reason: the guard needs an executable\nacceptance check.\n"
         assert disposition_result(report, b"before", plan) == ""
 
@@ -65,7 +69,9 @@ class TestPlanEditsInPlace:
         )
         assert len(prefix) == 97
         reason = prefix + '"" on unparseable input (ContactNormalizer.swift:47, :71), so'
-        report = json.dumps({"status": "edited", "reasons": [control, reason]})
+        report = json.dumps(
+            {"status": "edited", "human_question": None, "reasons": [control, reason]}
+        )
         plan = (
             f"# plan\n\nReason: {control}\n\nReason: Honesty and constraint 4 — this is "
             'the plan\'s one silent-data-loss path. Both\nnormalizers return `""` on '
@@ -75,7 +81,7 @@ class TestPlanEditsInPlace:
 
     def test_reason_content_survives_markdown_punctuation_inside_the_sentence(self):
         reason = "the guard compares meaningful content words"
-        report = json.dumps({"status": "edited", "reasons": [reason]})
+        report = json.dumps({"status": "edited", "human_question": None, "reasons": [reason]})
         plan = b"Reason: the guard compares meaningful **content** words.\n"
         assert disposition_result(report, b"before", plan) == ""
 
@@ -87,12 +93,14 @@ class TestPlanEditsInPlace:
         marker has to survive a wrap to model the defect at all.
         """
         reason = "Reason: Simplicity - one copy drifts from the other."
-        report = json.dumps({"status": "edited", "reasons": [reason]})
+        report = json.dumps({"status": "edited", "human_question": None, "reasons": [reason]})
         plan = b"# plan\n\n> Reason: Simplicity - one copy\n> drifts from the other.\n"
         assert disposition_result(report, b"# plan\n", plan) == ""
 
     def test_a_reason_genuinely_absent_from_the_plan_refuses(self):
-        report = json.dumps({"status": "edited", "reasons": ["a missing reason"]})
+        report = json.dumps(
+            {"status": "edited", "human_question": None, "reasons": ["a missing reason"]}
+        )
         problem = disposition_result(report, b"before", b"changed plan with unrelated prose\n")
         assert "every plan edit" in problem
 
@@ -118,7 +126,7 @@ class TestPlanEditsInPlace:
 
     def test_a_reason_with_different_words_refuses(self):
         reason = "the guard compares meaningful content words"
-        report = json.dumps({"status": "edited", "reasons": [reason]})
+        report = json.dumps({"status": "edited", "human_question": None, "reasons": [reason]})
         plan = b"Reason: the guard compares misleading **content** words.\n"
         problem = disposition_result(report, b"before", plan)
         assert "every plan edit" in problem
@@ -127,7 +135,7 @@ class TestPlanEditsInPlace:
         """Drop the word boundaries around the comparison and this greens: "act now"
         is a substring of "contract nowhere", so a reason the plan never carries
         reports as present."""
-        report = json.dumps({"status": "edited", "reasons": ["act now"]})
+        report = json.dumps({"status": "edited", "human_question": None, "reasons": ["act now"]})
         problem = disposition_result(report, b"before", b"Reason: we contract nowhere else.\n")
         assert "every plan edit" in problem
 
@@ -135,13 +143,15 @@ class TestPlanEditsInPlace:
         """Adjacency, not the vocabulary a reason draws on, is what makes it present.
         Every word below is in the plan, so relaxing the comparison to
         `all(w in plan_words ...)` greens on a reason the plan never states."""
-        report = json.dumps({"status": "edited", "reasons": ["the guard needs a test"]})
+        report = json.dumps(
+            {"status": "edited", "human_question": None, "reasons": ["the guard needs a test"]}
+        )
         plan = b"Simplicity: a guard the plan needs is\nnot a test it already needs.\n"
         problem = disposition_result(report, b"before", plan)
         assert "every plan edit" in problem
 
     def test_a_reason_with_no_content_words_refuses(self):
-        report = json.dumps({"status": "edited", "reasons": ["***"]})
+        report = json.dumps({"status": "edited", "human_question": None, "reasons": ["***"]})
         problem = disposition_result(report, b"before", b"---\n")
         assert "every plan edit" in problem
 
@@ -205,11 +215,23 @@ class TestPlanEditsInPlace:
         [
             (CLEAN, "", ""),
             (EDITED, "edit", ""),
-            ('{"status":"blocked","question":"human?"}', "", "blocked for the human"),
-            ('{"status":"blocked","question":"human?"}', "edit", "human-only"),
+            (
+                '{"status":"blocked","reasons":[],"human_question":"human?"}',
+                "",
+                "blocked for the human",
+            ),
+            (
+                '{"status":"blocked","reasons":[],"human_question":"human?"}',
+                "edit-no-reason",
+                "every plan edit",
+            ),
             (CLEAN, "edit", "clean review changed"),
             (EDITED, "", "edited disposition left"),
-            ('{"status":"edited","reasons":[]}', "edit-no-reason", "every plan edit"),
+            (
+                '{"status":"edited","human_question":null,"reasons":[]}',
+                "edit-no-reason",
+                "every plan edit",
+            ),
             ("[]", "", "json object"),
             ("human question in prose", "", "structured disposition"),
             (f"{CLEAN}\n{CLEAN}", "", "ambiguous"),

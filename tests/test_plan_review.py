@@ -2,7 +2,6 @@
 Verify: pytest -q tests/test_plan_review.py"""
 
 import json
-import re
 import shutil
 import subprocess
 import sys
@@ -17,7 +16,7 @@ PLUGIN = Path(__file__).parent.parent / "plugins" / "xp-plugin"
 PLAN_REVIEW = PLUGIN / "scripts" / "plan_review.py"
 # A charter-body phrase, so a bundle with an empty charter cannot pass for a real one.
 CHARTER_MARK = "Checks, in order of payoff"
-CLEAN = '{"status":"clean","reasons":[]}'
+CLEAN = '{"status":"clean","human_question":null,"reasons":[]}'
 
 CONFIG = """release: sprint
 roles:
@@ -28,31 +27,6 @@ roles:
 tests:
   story: true
 """
-
-
-def test_the_charter_disposition_examples_are_accepted_by_the_parser():
-    from plan_review import evaluate_disposition
-
-    charter = (PLUGIN / "agents" / "plan-reviewer.md").read_text()
-    output = charter.split("## Output", 1)[1]
-    examples = re.findall(r"(```json\n(.*?)```)", output, flags=re.S)
-    assert len(examples) == 3
-    assert [json.loads(body)["status"] for _fence, body in examples] == [
-        "clean",
-        "edited",
-        "blocked",
-    ]
-    changed = b"# plan\n\nReason: exact reason text present in the plan\n"
-    evaluations = [
-        evaluate_disposition(examples[0][0], b"# plan\n", b"# plan\n"),
-        evaluate_disposition(examples[1][0], b"# plan\n", changed),
-        evaluate_disposition(examples[2][0], b"# plan\n", b"# plan\n"),
-    ]
-    assert [outcome for outcome, _problem in evaluations] == ["ran", "ran", "blocked"]
-    outside_fences = re.sub(r"```json\n.*?```", "", output, flags=re.S)
-    assert not re.search(r'\{[^{}]*"status"', outside_fences)
-    assert ".round-1.md" in charter
-    assert "legacy logical round one" in charter
 
 
 def stub_planner(tmp_path, findings=CLEAN, write_findings=True, motion=""):

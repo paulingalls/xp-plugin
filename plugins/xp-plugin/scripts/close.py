@@ -19,6 +19,7 @@ from review_artifacts import (
     advance_story_checkpoints,
 )
 from review_depth import render as render_review_depth
+from review_launch import verify_on_reviewed_tree
 from work import (
     chdir_repo_root,
     data_root,
@@ -250,15 +251,6 @@ def _leg_checks(story_id: str, action: str, dry_run: bool = False) -> tuple[str,
     return card, trunk, ""
 
 
-def verify_on_reviewed_tree(story_id: str, card: str) -> str:
-    """Run Verify on the reviewed diff; land separately protects the merged tree."""
-    import verify_receipt
-
-    raw, commands = verify_commands(story_id, card)
-    red = verify_receipt.record(story_id, card, raw, commands)
-    return red.removeprefix("refused: ")
-
-
 def _record_round(
     story_id: str,
     card: str,
@@ -273,7 +265,7 @@ def _record_round(
     import review
 
     head = at["head"]
-    report, err = review.read_report(path) if salvage else ({}, "")
+    report, err = review.read_report(path, fresh=False) if salvage else ({}, "")
     if err:
         return fail(review.stamp(path, review.abort_text(head, err, salvage=salvage)))
     checkpoint_digest = at.get("checkpoint_digest", at["digest"])
@@ -293,6 +285,10 @@ def _record_round(
         report, err = review.read_report(path)
         if err:
             return fail(review.stamp(path, review.abort_text(head, err)))
+    if salvage and report.get("legacy_untriaged") is not None:
+        report["incomplete"] = (
+            "legacy/untriaged salvaged report — rerun review before certifying a new round"
+        )
     if err := review.apply_patch(path, card):
         return fail(review.stamp(path, review.abort_text(head, err, salvage=salvage)))
     applied_head = git("rev-parse", "HEAD").stdout.strip()
