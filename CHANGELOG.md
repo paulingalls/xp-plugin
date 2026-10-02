@@ -4,6 +4,42 @@ Release notes started at v0.6.0; earlier entries are summarized from their
 tag and merge messages. Full detail lives in the merge history and the
 per-sprint review reports.
 
+## v0.33.0 — findings decided, designs justified, reds preserved
+
+No hook setup change is required. Historical review reports remain readable;
+new diff reports carry an explicit disposition for every finding.
+
+FINDINGS GET A DECISION. Close reports distinguish fixed, blocking, dropped with
+a reason, and exceptional debt with a record reference and both retention bars.
+Legacy reports remain visible for judgment without being rewritten. Sprint close
+surfaces open debt and unresolved findings alongside genuine process notes.
+Lead fixes still require their confirming review.
+
+DESIGN REVIEW USES PRESENT COSTS. Shared guidance asks about responsibilities and
+boundaries, contracts and authoritative knowledge, and necessary complexity.
+A design finding names affected code, a current cost or failure, the XP value,
+and the cheapest sufficient improvement. Preparatory refactoring is conditional
+on making the required change safer or simpler, with unchanged behavior checks.
+
+HUMAN QUESTIONS STOP EXECUTION. Plan review carries an explicit nullable question;
+an unanswered choice stops execution even when the reviewer also makes justified
+plan edits. Malformed or contradictory dispositions refuse. Answered amendments
+can resume through fresh review and hand current findings to the executor;
+unanswered capped rounds remain stopped. Historical blocked reports remain
+recoverable without certifying a legacy nominal success that contains a question.
+
+VERIFY EVIDENCE SURVIVES A RED. Each post-review or repair invocation keeps
+separate stdout/stderr bytes and a manifest naming the command, tested head/tree,
+phase and outcome under the consuming project's data root. Output remains live;
+bounded refusals retain a reachable locator. A rerun creates a new record and
+preserves earlier evidence. Old green receipts are invalidated before execution,
+and logging failures refuse rather than certifying success. Exited commands do
+not hang on descendants retaining their pipes. The existing same-tree flake and
+confirming-review rules remain.
+
+The repository's slow-test registry now refuses stale entries during whole-suite
+collection while preserving partial selections.
+
 ## v0.32.1 — a trunk backmerge after a sprint review costs no round where it touched nothing the sprint wrote
 
 No setup change is needed on upgrade. Rounds recorded before this release carry no
