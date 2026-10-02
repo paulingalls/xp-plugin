@@ -1,6 +1,12 @@
 """Coordinate reviewed-plan and executor stages in the story worktree."""
 
 
+class FindingsRefusal(ValueError):
+    def __init__(self, message, result="failed"):
+        super().__init__(message)
+        self.result = result
+
+
 def run(
     api,
     story_id,
@@ -19,8 +25,6 @@ def run(
     held,
     override="",
 ):
-    from pathlib import Path
-
     from plan_acceptance import artifact_problem, latest
 
     accepted = latest(story_id)
@@ -35,12 +39,8 @@ def run(
             prior_handoff = api.handoff_state(api.data_root(), story_id) or {}
     except (OSError, ValueError, CardEditRefusal) as error:
         return stop(f"cannot restore accepted plan review: {error}", 0)
-    prior_stages = prior_handoff.get("stages", {})
-    replan = api.ready().plan_needs_replan(story_id, prior_handoff)
-    review_only = (
-        bool(accepted)
-        and prior_stages.get("plan-reviewer") == "blocked"
-        and prior_handoff.get("plan_reviewed_card") == api.ready().current_digest(story_id)
+    prior_stages, replan, review_only, mode, context, problem = select(
+        api, story_id, tree, prior_handoff, planned
     )
     confirmed = False
     reviewed_now = False
@@ -48,9 +48,6 @@ def run(
         import plan_confirmation
 
         with api.contextlib.chdir(tree):
-            mode, context, problem = plan_confirmation.eligibility(
-                story_id, prior_handoff, api.draft_path(api.data_root(), story_id)
-            )
             if problem:
                 print(problem, file=api.sys.stderr)
             if mode == "refuse":
@@ -98,11 +95,7 @@ def run(
                 and prior_stages.get("plan-reviewer") == "blocked"
             ):
                 return stop(api.handoff_io.blocked_problem(api.data_root(), story_id), 0)
-    if (
-        planned
-        and not confirmed
-        and ((replan and not review_only) or prior_stages.get("planner") != "ran")
-    ):
+    if not confirmed and next_stage(planned, replan, review_only, prior_stages) == "planner":
         if replan:
             import plan_confirmation
 
@@ -170,38 +163,17 @@ def run(
     card, _status = api.story_card(api.plan_path().read_text(), story_id)
     if problem := api.ready().drift(story_id, card):
         return stop(problem, 0)
-    if accepted and accepted["digest"] != api.ready().current_digest(story_id):
-        return stop(f"declaration amended after review; run `spawn.py resume {story_id}`", 0)
-    if accepted:
-        try:
-            from plan_confirmation import prior_binding
-
-            prior_binding(accepted, Path(accepted["plan"]))
-            if problem := artifact_problem(accepted):
-                return stop(problem, 0)
-        except (OSError, ValueError, KeyError) as error:
-            return stop(f"cannot read this round's accepted artifacts: {error}", 0)
-    multifile = len(api.declared_files(card)) > 1
-    reviewed = bool(accepted) or multifile
-    harness, model, effort = api.resolve_role("executor", card, override)
-    sandbox, problem = api.resolve_codex_sandbox(harness, api.config_flat("codex_sandbox"))
-    if problem or (problem := api.missing_harness(harness)):
-        return stop(problem, 0)
-    argv = api.agent_argv(harness, model, effort, "stream-json", sandbox)
-    # Use the predecessor state; mark_handoff now describes this run.
     if replan:
-        handoff = api.inheritance(api.data_root(), story_id, inherited_state, multifile=reviewed)
+        handoff = api.inheritance(api.data_root(), story_id, inherited_state, multifile=True)
         if resuming and tree.is_dir():
             handoff += api.resume().inherited_evidence(tree, trunk)
-    findings, problem = api.handoff_io.current_findings(api.data_root(), story_id, reviewed)
-    if problem:
-        api.mark_stage(api.data_root(), story_id, "plan-reviewer", "failed")
-        return stop(problem, 0)
-    if findings:
-        outcome, problem = api.handoff_io.current_disposition(findings)
-        if problem:
-            api.mark_stage(api.data_root(), story_id, "plan-reviewer", outcome)
-            return stop(problem, 0)
+    try:
+        harness, argv, prompt = prepare(api, story_id, card, handoff, override=override)
+    except FindingsRefusal as error:
+        api.mark_stage(api.data_root(), story_id, "plan-reviewer", error.result)
+        return stop(str(error), 0)
+    except (OSError, ValueError, KeyError) as error:
+        return stop(str(error), 0)
     from completion import capture, measure, reuse, save
     from plan_confirmation import pending_amendment
 
@@ -226,9 +198,6 @@ def run(
             return api.stages.finish_story(tree, story_id, stop, stage_line, held, expected)
         print(f"executor required: {limit}", file=api.sys.stderr)
     save(story_id)
-    prompt = api.executor_prompt(
-        card, story_id, handoff, api.PLUGIN_ROOT, api.PLUGIN_ROOT, reviewed, findings
-    )
     report, warning = api.profile_report(card, prompt, handoff)
     print(report)
     if warning:
@@ -305,3 +274,148 @@ def run(
             f" Fix it and commit before handing back. Output tail:\n{tier_output}\n"
         )
     return api.stages.finish_story(tree, story_id, stop, stage_line, held)
+
+
+def prepare(api, story_id, card, handoff, state=None, override=""):
+    from plan_acceptance import artifact_problem, latest
+
+    if state is None:
+        state = api.handoff_state(api.data_root(), story_id) or {}
+    accepted = latest(story_id)
+    if accepted and accepted["digest"] != api.ready().current_digest(story_id):
+        raise ValueError(f"declaration amended after review; run `spawn.py resume {story_id}`")
+    if accepted:
+        try:
+            from pathlib import Path
+
+            from plan_confirmation import prior_binding
+
+            prior_binding(accepted, Path(accepted["plan"]))
+            problem = artifact_problem(accepted)
+        except (OSError, ValueError, KeyError) as error:
+            raise ValueError(f"cannot read this round's accepted artifacts: {error}") from error
+        if problem:
+            raise ValueError(problem)
+    multifile = len(api.declared_files(card)) > 1
+    reviewed = bool(accepted) or multifile
+    harness, model, effort = api.resolve_role("executor", card, override)
+    sandbox, problem = api.resolve_codex_sandbox(harness, api.config_flat("codex_sandbox"))
+    if problem or (problem := api.missing_harness(harness)):
+        raise ValueError(problem)
+    argv = api.agent_argv(harness, model, effort, "stream-json", sandbox)
+    findings, problem = api.handoff_io.current_findings(api.data_root(), story_id, reviewed, state)
+    if problem:
+        raise FindingsRefusal(problem)
+    if (
+        findings
+        and accepted
+        and (
+            str(findings.resolve()) != accepted["findings"]
+            or (
+                state is not None
+                and state.get("plan_review_identity") != accepted["findings_identity"]
+            )
+        )
+    ):
+        raise ValueError(
+            f"refused: current findings do not match accepted plan review; "
+            f"restore {accepted['findings']} or amend and resume {story_id}"
+        )
+    if findings:
+        outcome, problem = api.handoff_io.current_disposition(findings)
+        if problem:
+            raise FindingsRefusal(problem, outcome)
+    prompt = api.executor_prompt(
+        card, story_id, handoff, api.PLUGIN_ROOT, api.PLUGIN_ROOT, reviewed, findings
+    )
+    return harness, argv, prompt
+
+
+def select(api, story_id, tree, prior, planned):
+    stages = prior.get("stages", {})
+    replan = api.ready().plan_needs_replan(story_id, prior)
+    from plan_acceptance import latest
+
+    review_only = (
+        bool(latest(story_id))
+        and stages.get("plan-reviewer") == "blocked"
+        and prior.get("plan_reviewed_card") == api.ready().current_digest(story_id)
+    )
+    mode, context, problem = "unchanged", None, ""
+    if planned and replan:
+        import plan_confirmation
+
+        with api.contextlib.chdir(tree):
+            mode, context, problem = plan_confirmation.eligibility(
+                story_id, prior, api.draft_path(api.data_root(), story_id)
+            )
+        if mode == "fallback":
+            review_only = False
+    return stages, replan, review_only, mode, context, problem
+
+
+def preview(api, story_id, card, tree, handoff, prior, multifile, resuming, override):
+    from plan_acceptance import latest
+    from plan_writer import CardEditRefusal
+
+    if resuming and (
+        problem := api.resume().validate(
+            api.data_root(), story_id, tree, api.story_branch(card, story_id)
+        )
+    ):
+        return api.fail(problem)
+    try:
+        prior = api.handoff_io.effective_review(api.data_root(), story_id, prior or {})
+    except (OSError, ValueError, CardEditRefusal) as error:
+        return api.fail(f"cannot restore accepted plan review: {error}")
+    try:
+        planned = resuming and (multifile or bool(latest(story_id)))
+        stages, replan, review_only, mode, _context, problem = select(
+            api, story_id, tree, prior, planned
+        )
+        if mode == "refuse":
+            return api.fail(problem)
+        if mode == "confirm":
+            print("Next stage: plan-confirmation (confirm/replan/block awaits verdict).")
+        elif next_stage(planned, replan, review_only, stages) == "planner":
+            print("Next stages: planner, plan-reviewer.")
+        elif next_stage(planned, replan, review_only, stages) == "plan-reviewer":
+            print("Next stage: plan-reviewer (retained draft).")
+        else:
+            _harness, argv, prompt = prepare(api, story_id, card, handoff, prior, override)
+            from completion import reuse
+
+            if resuming:
+                with api.contextlib.chdir(tree):
+                    reusable, pending = reuse(story_id, prior, latest(story_id), card, preview=True)
+            else:
+                reusable, pending = False, ""
+            if reusable:
+                print("executor: reuse bound completion; independent diff review follows.")
+                if pending:
+                    print(f"Before reuse: {pending} must pass; executor inputs await gate results.")
+                print("Post-review Verify follows independent diff review.")
+                return 0
+            report, warning = api.profile_report(card, prompt, handoff)
+            print(report)
+            if warning:
+                print(warning, file=api.sys.stderr)
+            from teammate_tee import launch_argv
+
+            print(" ".join(launch_argv(argv, tree, widen_git=True)))
+            print(prompt)
+            return 0
+        if problem:
+            print(problem)
+        print("Future plan-review findings and executor inputs are not yet available.")
+        return 0
+    except (OSError, ValueError, KeyError) as error:
+        return api.fail(str(error))
+
+
+def next_stage(planned, replan, review_only, stages):
+    if planned and ((replan and not review_only) or stages.get("planner") != "ran"):
+        return "planner"
+    if planned and (replan or stages.get("plan-reviewer") != "ran"):
+        return "plan-reviewer"
+    return "executor"

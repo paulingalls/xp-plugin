@@ -28,7 +28,7 @@ from harness import HARNESS_INSTALL, agent_argv, missing_harness, resolve_codex_
 from prompt import _read as _read
 from prompt import _read_shipped as _read_shipped
 from prompt import build_prompt as build_prompt
-from prompt import executor_prompt
+from prompt import executor_prompt as executor_prompt
 from prompt import teammate_sections as _teammate_sections
 from review_scope import declared_files
 from role_config import card_role, config_role
@@ -209,6 +209,8 @@ def story_branch(card: str, story_id: str) -> str:
 
 
 def cmd_spawn(story_id: str, override: str, dry_run: bool, resuming: bool = False) -> int:
+    if dry_run:
+        os.environ["GIT_OPTIONAL_LOCKS"] = "0"
     if not plan_path().exists():
         return fail("refused: " + missing_plan_refusal())
     try:
@@ -251,14 +253,19 @@ def cmd_spawn(story_id: str, override: str, dry_run: bool, resuming: bool = Fals
     if resuming and tree.is_dir():
         handoff += resume().inherited_evidence(tree, trunk)
     if dry_run:
-        prompt = executor_prompt(card, story_id, handoff, PLUGIN_ROOT, PLUGIN_ROOT, multifile)
-        report, warning = profile_report(card, prompt, handoff)
-        print(report)
-        if warning:
-            print(warning, file=sys.stderr)
-        print(" ".join(argv))
-        print(prompt)
-        return 0
+        import execution
+
+        return execution.preview(
+            sys.modules[__name__],
+            story_id,
+            card,
+            tree,
+            handoff,
+            inherited_state,
+            multifile,
+            resuming,
+            override,
+        )
     # Parse bootstrap before creating a tree that a bad command would strand.
     system = Path(".xp/system.md")
     if not resuming and not system.parent.exists():

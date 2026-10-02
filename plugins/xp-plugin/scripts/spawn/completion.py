@@ -314,7 +314,7 @@ def review_limit(story_id):
     return ""
 
 
-def reuse(story_id, prior, accepted, card):
+def reuse(story_id, prior, accepted, card, *, preview=False):
     from plan_review import card_for
     from ready import credential
     from work import card_digest, ready_marker_path
@@ -333,21 +333,28 @@ def reuse(story_id, prior, accepted, card):
     if limit := review_limit(story_id):
         return False, limit
     current = gates(card)
-    if current != value["gates"]:
+    changed_tier = (current["tier"], current["config"]) != (
+        value["gates"]["tier"],
+        value["gates"]["config"],
+    )
+    changed_verify = current["verify"] != value["gates"]["verify"]
+    if preview:
+        pending = []
+        if changed_tier:
+            pending.append("changed story tier")
+        if changed_verify:
+            pending.append("changed Verify")
+        return True, ", ".join(pending)
+    if changed_tier or changed_verify:
         from handback import story_tier
         from review_launch import verify_on_reviewed_tree
 
-        if (current["tier"], current["config"]) != (
-            value["gates"]["tier"],
-            value["gates"]["config"],
-        ):
+        if changed_tier:
             tier = story_tier(Path.cwd())
             if tier[0] != "passed":
                 save(story_id)
                 raise ValueError(f"changed story tier {tier[0]}: {tier[1]!r}\n{tier[2]}")
-        if current["verify"] != value["gates"]["verify"] and (
-            problem := verify_on_reviewed_tree(story_id, card)
-        ):
+        if changed_verify and (problem := verify_on_reviewed_tree(story_id, card)):
             save(story_id)
             raise ValueError(f"changed Verify failed: {problem}")
     from handoff import handoff_state

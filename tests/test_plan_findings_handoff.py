@@ -5,6 +5,15 @@ import re
 import subprocess
 import sys
 
+import pytest
+from resume_preview_support import (
+    assert_refusal,
+    compare_prompt,
+    damage_findings,
+    preview_fixture,
+    restorable,
+    snapshot,
+)
 from spawn_helpers import SPAWN, make_repo, spawn
 
 
@@ -211,3 +220,267 @@ def test_resume_after_blocked_round_hands_over_the_later_round(tmp_path):
     event = next(json.loads(line) for line in seen.read_text().splitlines() if '"teammate"' in line)
     assert event["findings_path"] == str(tmp_path / "data/plans/story-042.confirmation-1.md")
     assert "LOUD: run diagnostic check" in event["findings"]
+
+
+@pytest.mark.parametrize("harness", ["claude", "codex"])
+@pytest.mark.parametrize("restore", [False, True])
+def test_resume_preview_matches_live_executor_inputs(tmp_path, harness, restore):
+    repo, env, seen, launch = preview_fixture(tmp_path, harness=harness)
+    if restore:
+        restorable(tmp_path)
+    compare_prompt(repo, env, seen, launch)
+
+
+@pytest.mark.parametrize(
+    "damage", ["missing", "unreadable", "empty", "non-utf8", "changed", "plan", "stale"]
+)
+def test_resume_preview_and_live_refuse_current_findings(tmp_path, damage):
+    from plan_confirmation_support import amend, events
+
+    repo, env, seen, launch = preview_fixture(tmp_path)
+    if damage == "stale":
+        amend(tmp_path, repo, env, launch)
+        (tmp_path / "executor-stop").touch()
+        assert launch(repo, env, "resume", "story-042").returncode != 0
+        (tmp_path / "executor-stop").unlink()
+    files = {
+        p: (p.read_bytes(), p.stat().st_mode)
+        for p in (tmp_path / "data/plans").iterdir()
+        if p.is_file()
+    }
+    before = events(seen)
+    if damage == "stale":
+        marker = tmp_path / "data/plans/story-042.handoff.json"
+        state = json.loads(marker.read_text())
+        state["plan_review_findings"] = str(marker.with_name("story-042.round-1.md"))
+        marker.write_text(json.dumps(state))
+    else:
+        damage_findings(tmp_path, damage)
+    preview = launch(repo, env, "resume", "story-042", "--dry-run")
+    live = launch(repo, env, "resume", "story-042")
+    try:
+        assert_refusal(preview, live, seen, before)
+    finally:
+        for p, (contents, mode) in files.items():
+            if p.exists():
+                p.chmod(mode)
+            p.write_bytes(contents)
+            p.chmod(mode)
+    recovered = launch(repo, env, "resume", "story-042")
+    assert recovered.returncode == 0, recovered.stderr
+
+
+@pytest.mark.parametrize("route", ["confirmation", "fallback", "review", "planner"])
+def test_resume_preview_reports_pending_plan_stages(tmp_path, route):
+    from plan_confirmation_support import amend, events
+
+    repo, env, seen, launch = preview_fixture(tmp_path)
+    if route in ("confirmation", "fallback"):
+        amend(tmp_path, repo, env, launch)
+        if route == "fallback":
+            next((tmp_path / "data/plans").glob("*.evidence.json")).unlink()
+    else:
+        marker = tmp_path / "data/plans/story-042.handoff.json"
+        state = json.loads(marker.read_text())
+        state["stages"]["plan-reviewer"] = "failed"
+        if route == "planner":
+            from plan_review_install import legacy_credential
+
+            legacy_credential(tmp_path)
+            (tmp_path / "data/plans/story-042.plan.md").unlink()
+            state["stages"]["planner"] = "failed"
+        marker.write_text(json.dumps(state))
+    before = events(seen)
+    preview = launch(repo, env, "resume", "story-042", "--dry-run")
+    assert preview.returncode == 0, preview.stderr
+    assert events(seen) == before
+    expected = (
+        "plan-confirmation"
+        if route == "confirmation"
+        else ("planner, plan-reviewer" if route in ("planner", "fallback") else "plan-reviewer")
+    )
+    assert expected in preview.stdout
+    assert "executor inputs are not yet available" in preview.stdout
+    assert "## Current plan review" not in preview.stdout
+    live = launch(repo, env, "resume", "story-042")
+    assert live.returncode == 0, live.stderr
+    roles = [e["role"] for e in events(seen)[len(before) :]]
+    assert roles[0] == ("planner" if route in ("planner", "fallback") else "plan-reviewer")
+    if route == "confirmation":
+        assert events(seen)[len(before)]["kind"] == "confirmation"
+
+
+@pytest.mark.parametrize(
+    "route", ["executable", "restorable", "confirmation", "fallback", "refusal"]
+)
+def test_resume_preview_preserves_state(tmp_path, route):
+    from plan_confirmation_support import amend
+
+    repo, env, _seen, launch = preview_fixture(tmp_path)
+    if route == "restorable":
+        restorable(tmp_path)
+    elif route in ("confirmation", "fallback"):
+        amend(tmp_path, repo, env, launch)
+        if route == "fallback":
+            next((tmp_path / "data/plans").glob("*.evidence.json")).unlink()
+    elif route == "refusal":
+        damage_findings(tmp_path, "stale")
+    import os
+
+    tracked = tmp_path / "data/worktrees/story-042/.xp/system.md"
+    measured = tracked.stat()
+    os.utime(tracked, ns=(measured.st_atime_ns, measured.st_mtime_ns + 1_000_000_000))
+    before = snapshot(tmp_path)
+    launch(repo, env, "resume", "story-042", "--dry-run")
+    assert snapshot(tmp_path) == before
+
+
+@pytest.mark.parametrize(
+    "defect", ["divergent", "restore", "binding", "selection", "fallback-selection", "writer"]
+)
+def test_preview_guard_fault_injections(tmp_path, defect):
+    from plan_confirmation_support import amend, events
+
+    repo, env, seen, launch = preview_fixture(tmp_path)
+    scripts = tmp_path / "cache/xp-plugin/fixture/scripts"
+    target = scripts / "spawn/execution.py"
+    source = target.read_text()
+    if defect == "divergent":
+        old = "            report, warning = api.profile_report(card, prompt, handoff)"
+        new = (
+            '            prompt = prompt.replace("## Current plan review", "## Obsolete review")\n'
+            + old
+        )
+    elif defect == "restore":
+        restorable(tmp_path)
+        old = "prior = api.handoff_io.effective_review(api.data_root(), story_id, prior or {})"
+        new = "prior = prior or {}"
+    elif defect == "binding":
+        damage_findings(tmp_path, "stale")
+        old = "        findings\n        and accepted"
+        new = "        False\n        and accepted"
+    elif defect in ("selection", "fallback-selection"):
+        amend(tmp_path, repo, env, launch)
+        if defect == "fallback-selection":
+            next((tmp_path / "data/plans").glob("*.evidence.json")).unlink()
+        old = '        if mode == "refuse":\n            return api.fail(problem)'
+        new = '        mode, planned = "unchanged", False\n' + old
+    else:
+        old = "    try:\n        prior = api.handoff_io.effective_review"
+        new = '    api.mark_stage(api.data_root(), story_id, "executor", "ran")\n' + old
+    assert old in source
+    target.write_text(source.replace(old, new))
+    if defect in ("divergent", "restore"):
+        with pytest.raises(AssertionError, match="Current plan review"):
+            compare_prompt(repo, env, seen, launch)
+    elif defect == "binding":
+        before = events(seen)
+        preview = launch(repo, env, "resume", "story-042", "--dry-run")
+        live = launch(repo, env, "resume", "story-042")
+        assert preview.returncode == 0 and live.returncode == 0, (preview.stderr, live.stderr)
+        with pytest.raises(AssertionError):
+            assert_refusal(preview, live, seen, before)
+    elif defect in ("selection", "fallback-selection"):
+        preview = launch(repo, env, "resume", "story-042", "--dry-run")
+        assert "declaration amended after review" in preview.stderr, preview.stderr
+        with pytest.raises(AssertionError):
+            assert preview.returncode == 0
+        live = launch(repo, env, "resume", "story-042")
+        assert live.returncode == 0, live.stderr
+        assert (
+            any(e.get("kind") == "confirmation" for e in events(seen))
+            if defect == "selection"
+            else any(e["role"] == "planner" for e in events(seen))
+        )
+    else:
+        before = snapshot(tmp_path)
+        preview = launch(repo, env, "resume", "story-042", "--dry-run")
+        assert preview.returncode == 0, preview.stderr
+        with pytest.raises(AssertionError):
+            assert snapshot(tmp_path) == before
+
+
+@pytest.mark.parametrize("guard", ["readability", "disposition"])
+def test_preview_findings_validation_faults(tmp_path, guard):
+    from plan_review_install import legacy_credential
+
+    repo, env, _seen, launch = preview_fixture(tmp_path)
+    target = tmp_path / "cache/xp-plugin/fixture/scripts/spawn/execution.py"
+    source = target.read_text()
+    findings = tmp_path / "data/plans/story-042.round-1.md"
+    contents = findings.read_bytes()
+    if guard == "readability":
+        anchor = "\n    findings, problem = api.handoff_io.current_findings"
+        injection = "\n    __import__('pathlib').Path(accepted['findings']).unlink()"
+        assert anchor in source
+        source = source.replace(anchor, injection + anchor)
+        old = "api.handoff_io.current_findings(api.data_root(), story_id, reviewed, state)"
+        new = '(None, "")'
+        reason = "cannot read current plan-review findings"
+    else:
+        legacy_credential(tmp_path)
+        findings.write_text("readable but no verdict")
+        old = "api.handoff_io.current_disposition(findings)"
+        new = '("ran", "")'
+        reason = "disposition"
+    target.write_text(source)
+    control = launch(repo, env, "resume", "story-042", "--dry-run")
+    assert control.returncode != 0 and reason in control.stderr, control.stderr
+    if guard == "readability":
+        findings.write_bytes(contents)
+    assert old in source
+    target.write_text(source.replace(old, new))
+    mutant = launch(repo, env, "resume", "story-042", "--dry-run")
+    assert mutant.returncode == 0, mutant.stderr
+    with pytest.raises(AssertionError):
+        assert mutant.returncode != 0 and reason in mutant.stderr
+
+
+def test_resume_preview_and_live_refuse_restoration(tmp_path):
+    from plan_confirmation_support import events
+
+    repo, env, seen, launch = preview_fixture(tmp_path)
+    restorable(tmp_path)
+    scripts = tmp_path / "cache/xp-plugin/fixture/scripts"
+    target = scripts / "spawn.py"
+    source = target.read_text()
+    anchor = "    inherited_state = handoff_state(data_root(), story_id)"
+    injection = (
+        "    draft = draft_path(data_root(), story_id)\n"
+        '    draft.write_text(draft.read_text() + "late motion")\n'
+    )
+    assert anchor in source
+    target.write_text(source.replace(anchor, injection + anchor))
+    draft = tmp_path / "data/plans/story-042.plan.md"
+    before_bytes, before_events = draft.read_bytes(), events(seen)
+    preview = launch(repo, env, "resume", "story-042", "--dry-run")
+    draft.write_bytes(before_bytes)
+    live = launch(repo, env, "resume", "story-042")
+    assert "Traceback" not in preview.stderr, preview.stderr
+    assert_refusal(preview, live, seen, before_events)
+
+
+def test_live_findings_refusal_retains_review_failure(tmp_path):
+    from plan_review_install import legacy_credential
+
+    repo, env, _seen, launch = preview_fixture(tmp_path)
+    legacy_credential(tmp_path)
+    findings = tmp_path / "data/plans/story-042.round-1.md"
+    findings.write_text("readable but no verdict")
+    refused = launch(repo, env, "resume", "story-042")
+    assert refused.returncode != 0 and "disposition" in refused.stderr
+    state = json.loads(findings.with_name("story-042.handoff.json").read_text())
+    assert state["stages"]["plan-reviewer"] == "failed"
+
+
+@pytest.mark.parametrize("mutant", [False, True])
+def test_resume_preview_and_live_refuse_stale_identity(tmp_path, mutant):
+    from resume_preview_support import stale_identity_check
+
+    stale_identity_check(tmp_path, mutant)
+
+
+def test_preview_snapshot_ignores_read_only_code_mutation(tmp_path):
+    from resume_preview_support import read_only_preview_check
+
+    read_only_preview_check(tmp_path)

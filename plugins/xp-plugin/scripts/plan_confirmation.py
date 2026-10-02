@@ -45,7 +45,9 @@ def repository_fingerprint(plan_file):
     paths = [".", f":(exclude,literal){relative}"] if relative else ["."]
 
     def git(*args):
-        result = subprocess.run(["git", *args], capture_output=True)
+        result = subprocess.run(
+            ["git", "-c", "diff.autoRefreshIndex=false", *args], capture_output=True
+        )
         if result.returncode:
             raise OSError(result.stderr.decode(errors="replace"))
         return result.stdout
