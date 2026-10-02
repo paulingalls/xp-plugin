@@ -144,7 +144,8 @@ def current_findings(root: Path, story_id: str, multifile: bool = True) -> tuple
         )
     )
     try:
-        if not path.read_text().strip():
+        text = path.read_text().strip()
+        if not text:
             raise ValueError("empty findings")
     except (OSError, UnicodeError, ValueError) as error:
         return None, (
@@ -152,6 +153,25 @@ def current_findings(root: Path, story_id: str, multifile: bool = True) -> tuple
             f" `spawn.py resume {story_id}` reruns the execution plan review"
         )
     return path, ""
+
+
+def blocked_problem(root: Path, story_id: str) -> str:
+    return current_disposition(_findings(root, story_id)[-1][1])[1]
+
+
+def current_disposition(path: Path) -> tuple[str, str]:
+    from plan_review import durable_disposition
+
+    outcome, problem = durable_disposition(path.read_text())
+    if problem:
+        problem = (
+            f"refused: current plan-review findings at {path}: {problem}."
+            " Read the findings, answer reserved choices in the card or repair malformed"
+            " findings, then run `spawn.py amend "
+            + path.name.split(".")[0]
+            + " --reason '<correction>'` and resume"
+        )
+    return outcome, problem
 
 
 def inheritance(

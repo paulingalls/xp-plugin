@@ -128,8 +128,7 @@ def _bare_objects(text: str) -> tuple[list[dict], bool]:
     return objects, failed
 
 
-def evaluate_disposition(text: str, before: bytes | None, after: bytes | None) -> tuple[str, str]:
-    changed = before != after
+def disposition_object(text: str) -> tuple[dict | None, str]:
     try:
         report = json.loads(text)
     except ValueError:
@@ -160,45 +159,91 @@ def evaluate_disposition(text: str, before: bytes | None, after: bytes | None) -
         # so a fenced `[]` refuses by TYPE. Narrowing either discards a completed round.
         values = [v for v in values if isinstance(v, dict)] or values
         if len(values) > 1:
-            return "failed", (
+            return None, (
                 "the plan review wrote an ambiguous disposition — write exactly one JSON object"
             )
         if failed:
-            return "failed", (
+            return None, (
                 "the plan review wrote a structured disposition the harness could not read"
                 " — write exactly one fenced json object"
             )
         if len(values) == 1:
             report = values[0]
         else:
-            return "failed", "the plan review wrote no structured disposition"
+            return None, "the plan review wrote no structured disposition"
     if not isinstance(report, dict):
-        return "failed", "the plan disposition must be a JSON object"
+        return None, "the plan disposition must be a JSON object"
+    return report, ""
+
+
+def disposition_fields(report: dict) -> tuple[str, str | None, str]:
     status = report.get("status")
-    if status == "blocked":
-        question = report.get("question", "")
-        if changed:
-            return "failed", "a human-only question changed the plan instead of stopping"
-        problem = f"blocked for the human: {question}" if question else "blocked without a question"
-        return "blocked", problem
-    if status == "clean":
-        return ("ran", "") if not changed else ("failed", "a clean review changed the plan")
-    if status != "edited":
-        return "failed", "plan disposition status must be clean, edited, or blocked"
-    reasons = report.get("reasons", [])
+    if not isinstance(status, str) or status not in {"clean", "edited", "blocked"}:
+        return "", None, "plan disposition status must be clean, edited, or blocked"
+    if "question" in report:
+        return "", None, f"legacy question is not valid new output: {report['question']}"
+    if "human_question" not in report:
+        return "", None, "plan disposition must carry explicit human_question"
+    question = report["human_question"]
+    if question is not None and (not isinstance(question, str) or not question.strip()):
+        return "", None, "human_question must be null or a non-empty string"
+    if status == "blocked" and question is None:
+        return "", None, "blocked disposition requires a human_question"
+    reasons = report.get("reasons")
     if not isinstance(reasons, list):
-        return "failed", "edited plan reasons must be a JSON list"
-    plan = (after or b"").decode(errors="replace")
-    if not changed:
-        return "failed", "an edited disposition left the plan unchanged"
-    normalized_plan = f" {normalized_words(plan)} "
-    if not reasons or not all(
-        isinstance(reason, str)
-        and (reason_words := normalized_words(reason))
-        and f" {reason_words} " in normalized_plan
-        for reason in reasons
-    ):
-        return "failed", "every plan edit must carry its reason in the plan file"
+        return "", None, "plan reasons must be a JSON list"
+    if any(not isinstance(r, str) or not normalized_words(r) for r in reasons):
+        return "", None, "every plan edit must carry its reason in the plan file"
+    return status, question, ""
+
+
+def evaluate_disposition(text: str, before: bytes | None, after: bytes | None) -> tuple[str, str]:
+    report, problem = disposition_object(text)
+    if not problem:
+        status, question, problem = disposition_fields(report)
+    repair = " — repair the disposition and plan, then rerun the plan review"
+    if problem:
+        return "failed", problem + repair
+    changed = before != after
+    reasons = report["reasons"]
+    if status == "clean" and changed:
+        problem = "a clean review changed the plan"
+    elif status == "edited" and not changed:
+        problem = "an edited disposition left the plan unchanged"
+    elif not changed and reasons:
+        problem = "edit reasons reported but the plan is unchanged"
+    elif changed:
+        plan = f" {normalized_words((after or b'').decode(errors='replace'))} "
+        if not reasons or not all(f" {normalized_words(r)} " in plan for r in reasons):
+            problem = "every plan edit must carry its reason in the plan file"
+    if problem:
+        return "failed", problem + repair
+    if question is not None:
+        return (
+            "blocked",
+            f"blocked for the human: {question} — answer in the card, amend, then resume",
+        )
+    return "ran", ""
+
+
+def durable_disposition(text: str) -> tuple[str, str]:
+    report, problem = disposition_object(text)
+    if problem:
+        return "failed", problem
+    if "human_question" not in report:
+        status = report.get("status")
+        if status == "blocked":
+            question = report.get("question")
+            if isinstance(question, str) and question.strip():
+                return "blocked", f"blocked for the human: {question}"
+            return "failed", "legacy blocked disposition requires a question"
+        if status in ("clean", "edited") and "question" not in report:
+            report = report | {"human_question": None, "reasons": report.get("reasons", [])}
+    status, question, problem = disposition_fields(report)
+    if problem:
+        return "failed", problem
+    if question is not None:
+        return "blocked", f"blocked for the human: {question}"
     return "ran", ""
 
 

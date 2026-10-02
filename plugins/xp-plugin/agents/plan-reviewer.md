@@ -65,22 +65,28 @@ buying another round. A mixed round is `edited` and carries both `reasons` and
 return `clean` with its `summary`.
 
 A choice only the human can make is not yours to resolve: leave that choice
-unedited and stop. A blocked round carries its question alone; report any loud
-findings after the human answers. Write your findings to a file at the ABSOLUTE
+unedited and stop. Preserve independent justified edits and their adjacent reasons, and report loud
+findings in the same round. Every disposition carries `human_question`: null when
+no choice is reserved, otherwise the unanswered question. A question blocks
+execution regardless of status; it never authorizes resolving the human choice. Write your findings to a file at the ABSOLUTE
 `FINDINGS_PATH` your bundle names. That file is Markdown containing exactly one
 fenced `json` disposition; return that same fenced disposition too. Use one of
 these forms:
 
 ```json
-{"status":"clean","reasons":[],"summary":""}
+{"status":"clean","human_question":null,"reasons":[],"summary":""}
 ```
 
 ```json
-{"status":"edited","reasons":["exact reason text present in the plan"],"summary":""}
+{"status":"edited","human_question":null,"reasons":["exact reason text present in the plan"],"summary":""}
 ```
 
 ```json
-{"status":"blocked","question":"the decision reserved for the human"}
+{"status":"blocked","human_question":"the decision reserved for the human","reasons":[],"summary":""}
+```
+
+```json
+{"status":"edited","human_question":"the decision reserved for the human","reasons":["exact reason text present in the plan"],"summary":"independent correction; human choice remains undecided"}
 ```
 
 The findings path is `<data-root>/plans/<story-id>.round-N.md`; every new
