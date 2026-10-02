@@ -103,9 +103,18 @@ def validate_clearable(data: dict, stage: str = "") -> tuple[list[str], list[str
     return bound, remaining, ""
 
 
+def _unique_fields(pairs):
+    report = {}
+    for key, value in pairs:
+        if key in report:
+            raise ValueError(f"duplicate report field: {key}")
+        report[key] = value
+    return report
+
+
 def read_report(path: Path, stage: str = "", *, fresh=True) -> tuple[dict, str]:
     try:
-        data = json.loads(path.read_text())
+        data = json.loads(path.read_text(), object_pairs_hook=_unique_fields if fresh else None)
     except FileNotFoundError:
         return (
             {},

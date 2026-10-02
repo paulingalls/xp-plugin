@@ -12,6 +12,13 @@ review found lost historical compatibility, hidden salvaged blockers, and leak c
 that failed to distinguish stdout from stderr. Fresh reports now state fixed, blocking,
 reasoned drops and exceptional debt separately, while old reports stay preserved.
 
+The budget transport fixture supplies its own verdict; it does not prove policy adoption.
+Actual slate judgments in `/tmp/story-166-evidence/walk-codex/data-budget/slate-reviews/`
+accepted zero debt in `sprint-0.round-1.md` and rejected over-ceiling debt in
+`sprint-2.round-1.md`. `/tmp/story-166-evidence/walk-claude/evidence.md` records
+zero-debt acceptance and over-ceiling rejection too. Both walked create-sprint files
+match this release's shipped skill; these observations supply the policy evidence.
+
 Design delivery checks caught omitted guidance and startup byte-budget failures.
 Equivalent JUDGMENT/PROCESS compaction preserved the existing boundaries. The real
 walks retained 28 initial plan/diff cases and 14 final diff cases across both harnesses;

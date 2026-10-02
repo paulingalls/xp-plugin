@@ -266,7 +266,8 @@ class TestSprintTriage:
         assert f"Unusable debt {ref}:" in result.stdout
         assert str(marker) in result.stdout and "Unreadable" in result.stdout
 
-    def test_debt_budget_remains_ceiling(self, tmp_path):
+    def test_slate_transports_budget_and_stub_verdict(self, tmp_path):
+        """The stub supplies judgment; this checks budget/slate delivery and transport."""
         import subprocess
 
         from slate_review_helpers import SLATE_REVIEW, slate_repo, stub_slate_reviewer

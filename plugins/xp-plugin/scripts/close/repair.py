@@ -124,6 +124,10 @@ def cmd_repair(story_id: str) -> int:
             f"refused: review report {path} is unusable or blocking:"
             f" {err or report['blocking']} — run {rereview}"
         )
+    if report.get("legacy_untriaged") is not None:
+        report["incomplete"] = (
+            "legacy/untriaged repaired report — rerun review before certifying a new round"
+        )
     reviewed = at.get("head", "")
     if (
         not reviewed
@@ -156,6 +160,8 @@ def cmd_repair(story_id: str) -> int:
     raw["repaired"] = repair["range"]
     path.write_text(json.dumps(raw, indent=2))
     launch.unlink()
+    if report.get("incomplete"):
+        return close.fail(f"refused: {report['incomplete']} — run {rereview}")
     print(
         f"recorded round {review.round_number(path)}; land prints the repair"
         f" {verified[:8]}..{head[:8]} as unreviewed — next: `close.py {noun} land`"
