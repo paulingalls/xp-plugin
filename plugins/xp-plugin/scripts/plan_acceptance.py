@@ -294,28 +294,17 @@ def interrupted_problem(story_id: str, card: str, minted: dict) -> str:
 
 
 def restore_handoff(root: Path, story_id: str, prior: dict) -> bool:
-    from handoff import mark_plan_reviewed, mark_stage
-    from plan_review import durable_disposition, incomplete_marker
-    from ready import current_digest
+    from handoff import effective_review, mark_plan_reviewed, mark_stage
+    from plan_review import incomplete_marker
 
-    record = latest(story_id)
-    if not record or record["digest"] != current_digest(story_id):
+    effective = effective_review(root, story_id, prior)
+    if effective == prior:
         return False
-    if prior.get("plan_review_identity") == record["findings_identity"]:
-        return False
-    marker = incomplete_marker(story_id)
-    if marker.exists():
-        state = json.loads(marker.read_text())
-        if state.get("findings") != record["findings"]:
-            return False
-    for kind in ("plan", "findings"):
-        if identity(Path(record[kind])) != record[kind + "_identity"]:
-            raise CardEditRefusal(f"accepted {kind} changed; restore its recorded bytes")
-    outcome, _ = durable_disposition(Path(record["findings"]).read_text())
-    mark_plan_reviewed(root, story_id, record["digest"])
+    mark_plan_reviewed(root, story_id, effective["plan_reviewed_card"])
+    outcome = effective["stages"]["plan-reviewer"]
     mark_stage(root, story_id, "plan-reviewer", outcome)
     if outcome == "ran":
-        marker.unlink(missing_ok=True)
+        incomplete_marker(story_id).unlink(missing_ok=True)
     return True
 
 

@@ -144,8 +144,10 @@ def _findings(root: Path, story_id: str) -> list[tuple[int, Path, bool]]:
     return sorted(rounds)
 
 
-def current_findings(root: Path, story_id: str, multifile: bool = True) -> tuple[Path | None, str]:
-    state = handoff_state(root, story_id) or {}
+def current_findings(
+    root: Path, story_id: str, multifile: bool = True, state=None
+) -> tuple[Path | None, str]:
+    state = (handoff_state(root, story_id) or {}) if state is None else state
     if state.get("stages", {}).get("plan-reviewer") != "ran":
         return None, ""
     rounds = _findings(root, story_id) if (root / "plans").is_dir() else []
@@ -250,3 +252,29 @@ def report_handoff(root: Path, story_id: str, before: set[str], why: str, rc: in
     result, message = record_handoff(root, story_id, before, why, rc)
     print(message, file=sys.stderr)
     return result
+
+
+def effective_review(root: Path, story_id: str, prior: dict) -> dict:
+    from plan_acceptance import identity, latest
+    from plan_review import durable_disposition, incomplete_marker
+    from plan_writer import CardEditRefusal
+    from ready import current_digest
+
+    record = latest(story_id)
+    if not record or record["digest"] != current_digest(story_id):
+        return prior
+    if prior.get("plan_review_identity") == record["findings_identity"]:
+        return prior
+    marker = incomplete_marker(story_id)
+    if marker.exists() and json.loads(marker.read_text()).get("findings") != record["findings"]:
+        return prior
+    for kind in ("plan", "findings"):
+        if identity(Path(record[kind])) != record[kind + "_identity"]:
+            raise CardEditRefusal(f"accepted {kind} changed; restore its recorded bytes")
+    outcome, _ = durable_disposition(Path(record["findings"]).read_text())
+    return prior | {
+        "stages": prior.get("stages", {}) | {"plan-reviewer": outcome},
+        "plan_reviewed_card": record["digest"],
+        "plan_review_findings": record["findings"],
+        "plan_review_identity": record["findings_identity"],
+    }

@@ -282,6 +282,16 @@ class ReviewCancelled(Exception):
         self.log = log
 
 
+def launch_argv(argv, cwd, widen_git=False):
+    if widen_git and argv[:2] == ["codex", "exec"]:
+        from spawn import common_dir_widening  # spawn imports us; local breaks the cycle
+
+        if widen := common_dir_widening(cwd):
+            # Codex requires its stdin marker to remain last.
+            argv = [*argv[:-1], *widen, argv[-1]]
+    return argv
+
+
 def run_stream(
     argv: list[str],
     cwd: Path,
@@ -308,14 +318,7 @@ def run_stream(
     span = Span(data_root, "agent", log_id)
     parse = STREAMS[harness]
     tasks = _ClaudeTasks() if harness == "claude" else None
-    if widen_git and argv[:2] == ["codex", "exec"]:
-        # HERE, not at one caller: while the widening lived in run_agent alone the
-        # teammate leg launched without it, and the codex teammate that could not
-        # commit was this story's own author.
-        from spawn import common_dir_widening  # spawn imports us; local breaks the cycle
-
-        if widen := common_dir_widening(cwd):
-            argv = [*argv[:-1], *widen, argv[-1]]  # before the trailing stdin `-`
+    argv = launch_argv(argv, cwd, widen_git)
     # After the widening and BEFORE the launch: a lead must read the posture even
     # if what follows then hangs. Here rather than at one caller, so the reviewer
     # legs report it too.
