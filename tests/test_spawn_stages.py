@@ -23,9 +23,9 @@ def stub_stages(
     if unreadable_plan:
         findings = '```json\n{"status":\n```'  # a verdict the harness cannot READ
     elif blocking_plan:
-        findings = json.dumps({"status": "blocked", "question": "choose"})
+        findings = json.dumps({"status": "blocked", "reasons": [], "human_question": "choose"})
     else:
-        findings = json.dumps({"status": "clean", "reasons": []})
+        findings = json.dumps({"status": "clean", "human_question": None, "reasons": []})
     report = (
         {"fixed": [], "blocking": ["cannot land"], "schema": 2, "dropped": [], "debt": []}
         if blocking_diff

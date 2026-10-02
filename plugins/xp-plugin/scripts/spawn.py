@@ -355,15 +355,7 @@ def cmd_spawn(story_id: str, override: str, dry_run: bool, resuming: bool = Fals
         # for the human did not DIE, and saying so sends the lead to the wrong log.
         if rc:
             return stop(why, 0)
-        from review_runner import archive_review_rounds
-
-        # Only a CARD amendment starts the count over. A reviewer's own block also
-        # replans, and archiving there would hand every block a fresh pair of rounds:
-        # measured, four blocks ran four planner+reviewer pairs, all numbered round 1
-        # and none carrying the last one's findings.
-        if prior_stages.get("plan-reviewer") != "blocked" and (
-            problem := archive_review_rounds(story_id, "plan")
-        ):
+        if problem := handoff_io.archive_replanned_rounds(story_id, prior_handoff):
             return stop(
                 f"{problem}; preserve the replacement draft and repair the plan-review"
                 " artifacts before resuming",
@@ -386,17 +378,17 @@ def cmd_spawn(story_id: str, override: str, dry_run: bool, resuming: bool = Fals
                     f" dispositions, then run `spawn.py resume {story_id}`",
                     0,
                 )
+            if outcome == "blocked":
+                handoff_io.mark_plan_reviewed(data_root(), story_id, reviewed_card)
             mark_stage(data_root(), story_id, "plan-reviewer", outcome)
-            # NAMED, because inheritance() hands the successor this sentence and never
-            # `stages`: a rejected plan and a verdict nothing could read read alike there.
             why = f"execution plan review {outcome}; read its disposition before resuming"
+            if outcome == "blocked":
+                why = handoff_io.blocked_problem(data_root(), story_id)
             return stop(why, 0)
         handoff_io.mark_plan_reviewed(data_root(), story_id, reviewed_card)
     elif not multifile:
         mark_stage(data_root(), story_id, "plan-reviewer", "skipped")
-    # The handoff composed above names the round files archive_review_rounds has since
-    # renamed away, so a replan must rebuild it — from the state CAPTURED before
-    # mark_handoff, since re-reading now would label this very run the predecessor.
+    # Use the predecessor state; mark_handoff now describes this run.
     if replan:
         handoff = inheritance(data_root(), story_id, inherited_state, multifile=multifile)
         if resuming and tree.is_dir():
@@ -405,6 +397,11 @@ def cmd_spawn(story_id: str, override: str, dry_run: bool, resuming: bool = Fals
     if problem:
         mark_stage(data_root(), story_id, "plan-reviewer", "failed")
         return stop(problem, 0)
+    if findings:
+        outcome, problem = handoff_io.current_disposition(findings)
+        if problem:
+            mark_stage(data_root(), story_id, "plan-reviewer", outcome)
+            return stop(problem, 0)
     prompt = executor_prompt(card, story_id, handoff, PLUGIN_ROOT, PLUGIN_ROOT, multifile, findings)
     report, warning = profile_report(card, prompt, handoff)
     print(report)

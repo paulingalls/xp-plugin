@@ -337,7 +337,7 @@ class TestDecisionSites:
             "Dropped: oversized loud addition because announces itself. "
             f"Debt {ref}: separate design; silent loss. Reserved: ask lead."
         )
-        native = {"status": "clean", "reasons": [], "summary": summary}
+        native = {"status": "clean", "human_question": None, "reasons": [], "summary": summary}
         stub_planner(tmp_path, findings="```json\n" + json.dumps(native) + "\n```")
         draft = tmp_path / "draft.md"
         draft.write_text("# plan\n")

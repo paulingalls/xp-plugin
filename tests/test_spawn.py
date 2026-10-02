@@ -6,6 +6,9 @@ import subprocess
 from pathlib import Path
 
 import pytest
+from plan_human_question_support import (
+    test_a_capped_foreground_plan_review_is_recorded_apart_from_a_dead_reviewer,  # noqa: F401
+)
 from spawn_helpers import (  # noqa: F401
     CARD,
     CONFIG,
@@ -456,26 +459,6 @@ def test_the_brief_states_the_commit_the_handback_guard_requires(tmp_path, monke
     broken = profile.replace("commit the green change with hooks enabled", "hand back; later")
     with pytest.raises(AssertionError):
         assert_commit_precedes_handback(broken)
-
-
-def test_a_capped_foreground_plan_review_is_recorded_apart_from_a_dead_reviewer(tmp_path):
-    repo, env, _g = make_repo(tmp_path, files="src/thing.py, src/other.py")
-    events = stub_stages(tmp_path, blocking_plan=True)
-    assert spawn(repo, env, "story-042").returncode != 0
-    plans = Path(env["XP_DATA"]) / "plans"
-    (plans / "story-042.round-2.md").write_text("second completed disposition")
-    marker = plans / "story-042.handoff.json"
-    state = json.loads(marker.read_text())
-    state["state"], state["stages"]["plan-reviewer"] = "STOPPED", "failed"
-    marker.write_text(json.dumps(state))
-    seen = len(event_roles(events))
-    stub_stages(tmp_path)
-    capped = spawn(repo, env, "resume", "story-042")
-    assert capped.returncode == 2 and event_roles(events)[seen:] == []
-    state = json.loads(marker.read_text())
-    assert state["stages"]["plan-reviewer"] == "ran" and "cap" in state["why"]
-    assert spawn(repo, env, "resume", "story-042").returncode == 0
-    assert event_roles(events)[seen:] == ["teammate", "reviewer"]
 
 
 def test_an_amended_card_restarts_review_rounds_for_its_replacement_plan(tmp_path):

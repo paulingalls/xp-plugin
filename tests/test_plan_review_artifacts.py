@@ -29,14 +29,15 @@ class TestPlanReviewArtifacts:
         """One name for a file written once per round destroys the earlier round
         on write, and plan review does run in rounds."""
         repo, env, draft = self.repo(tmp_path)
-        first_report = '{"status":"clean","reasons":[],"summary":"round one"}'
+        first_report = '{"status":"clean","human_question":null,"reasons":[],"summary":"round one"}'
         rec = stub_planner(tmp_path, findings=first_report)
         first_run = plan_review(repo, env, "story-042", str(draft))
         assert first_run.returncode == 0
         first = findings_of(rec)
         assert first.is_absolute() and first.name == "story-042.round-1.md"
         rec = stub_planner(
-            tmp_path, findings='{"status":"clean","reasons":[],"summary":"round two"}'
+            tmp_path,
+            findings='{"status":"clean","human_question":null,"reasons":[],"summary":"round two"}',
         )
         second_run = plan_review(repo, env, "story-042", str(draft))
         second = findings_of(rec)
