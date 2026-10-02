@@ -88,7 +88,11 @@ class TestModeSwitch:
             "Findings from earlier rounds",
             f"The stories in sprint {SPRINT_ID}",
         )
-        items = [item for status_items in prior.values() for item in status_items]
+        items = (
+            prior["fixed"]
+            + prior["blocking"]
+            + [item["finding"] for key in ("dropped", "debt") for item in prior[key]]
+        )
         for item in items:
             assert carried.count(item) == 1, item
         assert "more, in full" not in carried
