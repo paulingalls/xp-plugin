@@ -4,6 +4,35 @@ from pathlib import Path
 REVIEW_REFUSAL_TAIL = 2000
 
 
+class BoundedTee:
+    def __init__(self, stream):
+        self.stream = stream
+        self.tail = ""
+        self.locator = ""
+        self.line = ""
+
+    def write(self, text):
+        from verify_log import LOCATOR
+
+        self.stream.write(text)
+        self.tail = (self.tail + text)[-REVIEW_REFUSAL_TAIL:]
+        parts = (self.line + text).split("\n")
+        for line in parts:
+            if line.startswith(LOCATOR):
+                self.locator = line
+        self.line = parts[-1][-REVIEW_REFUSAL_TAIL:]
+        return len(text)
+
+    def flush(self):
+        self.stream.flush()
+
+    def getvalue(self):
+        if self.locator and self.locator not in self.tail:
+            budget = max(0, REVIEW_REFUSAL_TAIL - len(self.locator) - 1)
+            return self.tail[-budget:] + "\n" + self.locator if budget else self.locator
+        return self.tail
+
+
 def _review_stash(git, story_id: str) -> str:
     listed = git("stash", "list", "--format=%H%x00%gs", check=False)
     if listed.returncode:
@@ -76,7 +105,6 @@ def run_planner(story_id: str, card: str, tree: Path, handoff: str) -> tuple[int
 
 def review_story(tree: Path, story_id: str) -> tuple[int, dict, str]:
     import contextlib
-    import io
     import json
     import sys
 
@@ -85,12 +113,7 @@ def review_story(tree: Path, story_id: str) -> tuple[int, dict, str]:
 
     stderr = sys.stderr
 
-    class Tee(io.StringIO):
-        def write(self, text):
-            stderr.write(text)
-            return super().write(text)
-
-    refusal = Tee()
+    refusal = BoundedTee(stderr)
     with contextlib.chdir(tree):
         # By SHA: refs/stash is one stack per clone, so a pop takes whoever pushed last.
         dirty = bool(git("status", "--porcelain").stdout.strip())

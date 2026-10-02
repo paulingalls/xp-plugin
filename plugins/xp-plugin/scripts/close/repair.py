@@ -6,6 +6,7 @@ import close
 import overlap
 import preflight
 import review
+import verify_receipt
 from review_artifacts import story_sidecars
 from review_scope import declared_files
 
@@ -106,7 +107,9 @@ def cmd_repair(story_id: str) -> int:
     verify = close.verify_commands(story_id, card)[1]
     if error := preflight.check(close.config_flat("preflight")):
         return close.fail(error)
-    if red := overlap.run_checks(verify, None):
+    if error := verify_receipt.invalidate(story_id):
+        return close.fail(error)
+    if red := overlap.run_checks(verify, None, evidence=(story_id, "repair")):
         return close.fail(f"{red} — fix it, then run {retry} again")
     if not paths:
         return close.fail(

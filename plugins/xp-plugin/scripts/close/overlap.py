@@ -199,9 +199,16 @@ def run_checks(
     where: str = "",
     tier_key: str = "story",
     measured_red: Callable[[str, str], str] | None = None,
+    evidence: tuple[str, str] | None = None,
 ) -> str:
     if refusal := tier_refusal(tier, tier_key):
         return refusal
+    if evidence is not None:
+        from verify_log import run
+
+        if tier and (red := run_one("test tier", tier, where)):
+            return red
+        return run(*evidence, verify, where)
     for label, commands in (("test tier", [tier] if tier else []), ("Verify", verify)):
         for cmd in commands:
             if measured_red is None:

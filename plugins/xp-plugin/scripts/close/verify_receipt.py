@@ -27,16 +27,25 @@ def reads(card: str) -> tuple[str | None, list[str]]:
     return lines[0], specs
 
 
+def invalidate(story_id: str) -> str:
+    try:
+        path(story_id).unlink(missing_ok=True)
+    except OSError as exc:
+        return f"refused: Verify receipt could not be invalidated: {exc}"
+    return ""
+
+
 def record(story_id: str, card: str, raw: str, verify: list[list[str]]) -> str:
     from overlap import run_checks
 
     destination = path(story_id)
     try:
         declaration, _ = reads(card)
-        destination.unlink(missing_ok=True)
     except (OSError, ValueError) as exc:
         return f"refused: Verify receipt could not be prepared: {exc}"
-    if red := run_checks(verify, None, " on the reviewed tree"):
+    if error := invalidate(story_id):
+        return error
+    if red := run_checks(verify, None, " on the reviewed tree", evidence=(story_id, "review")):
         return red
     written = git("write-tree", check=False)
     if written.returncode:
