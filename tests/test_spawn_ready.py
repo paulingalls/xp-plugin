@@ -129,7 +129,11 @@ class TestReadyCredential:
         after = json.loads(marker.read_text())
         assert after["digest"] != before["digest"] and "tests/test_a.py" in after["card"]
         assert after["amendments"] == [
-            {"reason": "the implementation added its test", "card": before["card"]}
+            {
+                "reason": "the implementation added its test",
+                "card": before["card"],
+                "after": after["card"],
+            }
         ]
 
     def test_amend_without_a_reason_refuses_without_moving_either_artifact(self, tmp_path):
@@ -313,7 +317,11 @@ class TestReadyCredential:
         assert amended.returncode == 0, amended.stderr
         audit = json.loads(marker.read_text())["amendments"][-1]
         prior = broken or "(credential absent)"
-        assert audit == {"reason": "repair the spawned credential", "card": prior}
+        assert audit == {
+            "reason": "repair the spawned credential",
+            "card": prior,
+            "after": json.loads(marker.read_text())["card"],
+        }
         assert spawn(repo, env, "resume", "story-042").returncode == 0
 
     def test_a_planned_card_is_told_which_leg_clears_it(self, tmp_path):

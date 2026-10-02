@@ -1,8 +1,6 @@
 import json
 import re
-import shutil
 import subprocess
-import sys
 
 import pytest
 from plan_human_question_support import (
@@ -16,6 +14,7 @@ from plan_human_question_support import (
     report,
 )
 from plan_review import durable_disposition, evaluate_disposition
+from plan_review_install import installed_launch, legacy_credential
 from spawn_helpers import make_repo, spawn
 from test_plan_review import PLUGIN
 from test_spawn_stages import event_roles, stub_stages
@@ -60,6 +59,7 @@ def test_question_stops_real_spawn(tmp_path, status):
 def test_legacy_nominal_success_with_question_refuses(tmp_path, status):
     repo, env, seen = consumer(tmp_path, "blocked")
     assert spawn(repo, env, "story-042").returncode != 0
+    legacy_credential(tmp_path)
     marker = tmp_path / "data/plans/story-042.handoff.json"
     state = json.loads(marker.read_text())
     state["stages"]["plan-reviewer"] = "ran"
@@ -129,6 +129,7 @@ def test_invalid_disposition_refuses_with_action(tmp_path, name, text, before, a
 def test_legacy_question_survives_recovery(tmp_path, filename, state_kind):
     repo, env, seen = consumer(tmp_path, "blocked")
     assert spawn(repo, env, "story-042").returncode != 0
+    legacy_credential(tmp_path)
     plans = tmp_path / "data/plans"
     numbered = plans / "story-042.round-1.md"
     old = json.dumps({"status": "blocked", "question": QUESTION})
@@ -159,6 +160,7 @@ def capped_stop(tmp_path, repo, env, seen, launch=spawn):
         ("resume", "story-042"),
     ]:
         assert launch(repo, env, *args).returncode != 0
+        legacy_credential(tmp_path)
     assert event_roles(seen).count("plan-reviewer") == 2
     assert "teammate" not in event_roles(seen)
     assert not (tmp_path / "data/plans/story-042.round-3.md").exists()
@@ -228,6 +230,7 @@ def test_answered_resume_after_unanswered_cap_uses_current_findings(tmp_path):
 def test_answered_legacy_cap_uses_current_findings(tmp_path, fault):
     repo, env, seen = consumer(tmp_path, "blocked")
     assert spawn(repo, env, "story-042").returncode != 0
+    legacy_credential(tmp_path)
     plans = tmp_path / "data/plans"
     old = json.dumps({"status": "blocked", "question": QUESTION})
     for number in (1, 2):
@@ -249,28 +252,6 @@ def test_answered_legacy_cap_uses_current_findings(tmp_path, fault):
     answered_resume(tmp_path, repo, env, seen)
     assert (plans / "story-042.superseded-1.round-1.md").read_text() == old
     assert (plans / "story-042.superseded-1.round-2.md").read_text() == old
-
-
-def installed_launch(tmp_path, mutation=None, relative="scripts/plan_review.py"):
-    installed = tmp_path / "cache/xp-plugin/fixture"
-    shutil.copytree(PLUGIN, installed)
-    if mutation:
-        path = installed / relative
-        source = path.read_text()
-        old, new = mutation
-        assert old in source
-        path.write_text(source.replace(old, new))
-
-    def launch(repo, env, *args):
-        return subprocess.run(
-            [sys.executable, str(installed / "scripts/spawn.py"), *args],
-            cwd=repo,
-            env=dict(env, XP_SPAWN_TEST="1"),
-            capture_output=True,
-            text=True,
-        )
-
-    return launch
 
 
 @pytest.mark.parametrize("harness", ["claude", "codex"])
@@ -317,7 +298,7 @@ def test_installed_harness_stop_and_answered_resume(tmp_path, harness):
 )
 def test_each_disposition_guard_detects_its_fault(tmp_path, name, text, before, after, mutation):
     path = tmp_path / "parser.py"
-    source = (PLUGIN / "scripts/plan_review.py").read_text()
+    source = (PLUGIN / "scripts/plan_disposition.py").read_text()
     path.write_text(source)
     assert parser_probe(path, text, before, after).startswith("('failed',")
     old, new = mutation
@@ -339,6 +320,7 @@ def test_ignoring_question_detects_executor_launch(tmp_path):
 def test_legacy_compatibility_exclusion_detects_executor_launch(tmp_path, status):
     repo, env, seen = consumer(tmp_path, "blocked")
     assert spawn(repo, env, "story-042").returncode != 0
+    legacy_credential(tmp_path)
     marker = tmp_path / "data/plans/story-042.handoff.json"
     state = json.loads(marker.read_text())
     state["stages"]["plan-reviewer"] = "ran"
@@ -368,7 +350,7 @@ def test_artifact_lifecycle_detects_its_fault(tmp_path, kind):
         'archive_failed_findings(out) if outcome == "failed" else ""',
         '""' if kind == "failed-archive" else "archive_failed_findings(out)",
     )
-    launch = installed_launch(tmp_path, mutation)
+    launch = installed_launch(tmp_path, mutation, relative="scripts/plan_review.py")
     assert launch(repo, env, "story-042").returncode != 0
     plans = tmp_path / "data/plans"
     if kind == "failed-archive":
@@ -457,7 +439,10 @@ def test_old_current_round_selection_detects_its_fault(tmp_path):
     seen = staged_harness(tmp_path, block_first=True)
     launch = installed_launch(
         tmp_path,
-        ("rounds[-1][1].resolve()", "rounds[0][1].resolve()"),
+        (
+            'state["plan_review_findings"] = accepted["findings"]',
+            'state["plan_review_findings"] = str(_findings(root, story_id)[0][1].resolve())',
+        ),
         relative="scripts/spawn/handoff.py",
     )
     assert launch(repo, env, "story-042").returncode != 0

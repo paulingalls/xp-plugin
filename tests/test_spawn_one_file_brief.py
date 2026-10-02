@@ -1,4 +1,4 @@
-"""Executor authority follows the Files line of a real card."""
+"""Executor authority follows the current declaration and its accepted review."""
 
 import json
 import subprocess
@@ -86,7 +86,7 @@ raise SystemExit(spawn.main())
     assert "AMENDED" in prompt
     assert "Predecessor handback" in prompt
     assert "REBUILT AFTER STAGES" in prompt
-    assert_authority(prompt, not change_to_one, Path(env["XP_DATA"]))
+    assert_authority(prompt, True, Path(env["XP_DATA"]))
 
 
 def test_multi_file_respawn_without_replan_inherits_the_reviewed_plan(tmp_path):

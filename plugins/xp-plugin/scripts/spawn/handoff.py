@@ -101,10 +101,20 @@ def mark_stage(root: Path, story_id: str, stage: str, result: str) -> None:
     _write(root, story_id, state)
 
 
-def mark_plan_reviewed(root: Path, story_id: str, card_digest: str) -> None:
+def mark_plan_reviewed(
+    root: Path, story_id: str, card_digest: str, accepted: dict | None = None
+) -> None:
     state = handoff_state(root, story_id) or {}
     state.setdefault("stages", {})["plan-reviewer"] = "ran"
-    state["plan_reviewed_card"] = card_digest
+    from plan_acceptance import latest
+
+    accepted = accepted or latest(story_id)
+    state["plan_reviewed_card"] = accepted["digest"] if accepted else card_digest
+    if accepted:
+        state["plan_review_findings"] = accepted["findings"]
+        state["plan_review_identity"] = accepted["findings_identity"]
+        _write(root, story_id, state)
+        return
     rounds = _findings(root, story_id) if (root / "plans").is_dir() else []
     if rounds:
         state["plan_review_findings"] = str(rounds[-1][1].resolve())
@@ -130,7 +140,7 @@ def _findings(root: Path, story_id: str) -> list[tuple[int, Path, bool]]:
 
 def current_findings(root: Path, story_id: str, multifile: bool = True) -> tuple[Path | None, str]:
     state = handoff_state(root, story_id) or {}
-    if not multifile or state.get("stages", {}).get("plan-reviewer") != "ran":
+    if state.get("stages", {}).get("plan-reviewer") != "ran":
         return None, ""
     rounds = _findings(root, story_id) if (root / "plans").is_dir() else []
     recorded = state.get("plan_review_findings")
