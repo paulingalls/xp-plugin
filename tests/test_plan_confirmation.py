@@ -236,6 +236,15 @@ def test_confirmation_evidence_boundary(tmp_path, kind):
         assert result.returncode != 0 and "restore" in result.stderr
         assert all(e["role"] != "teammate" for e in observed)
         assert len(observed) == 2
+    elif kind in ("assume-unchanged", "skip-worktree"):
+        assert result.returncode != 0, result.stderr
+        assert [e["role"] for e in observed][2:] == ["planner", "plan-reviewer", "teammate"]
+        assert "completion" not in json.loads(
+            (tmp_path / "data/plans/story-042.handoff.json").read_text()
+        )
+        assert (
+            tmp_path / "data/worktrees/story-042/.xp/system.md"
+        ).read_text() == "changed bytes\n"
     else:
         assert result.returncode == 0, result.stderr
         assert "cannot reuse" in result.stderr

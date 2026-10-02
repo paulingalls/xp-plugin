@@ -177,15 +177,35 @@ def review_story(tree: Path, story_id: str) -> tuple[int, dict, str]:
     return rc, state, captured
 
 
-def finish_story(tree: Path, story_id: str, stop, stage_line, held) -> int:
+def finish_story(tree: Path, story_id: str, stop, stage_line, held, completed=None) -> int:
     from close import leg
     from handback import tree_state
     from handoff import mark_handoff, mark_stage
     from overlap import unresolved_blocking
     from work import data_root
 
+    if completed:
+        import contextlib
+
+        from completion import review_problem
+
+        with contextlib.chdir(tree):
+            if problem := review_problem(story_id, completed):
+                return stop(f"completed reuse refused: {problem}; inspect and resume", 0)
     rc, state, refusal = review_story(tree, story_id)
     if rc:
+        import json
+
+        import review
+        from completion import save
+
+        try:
+            launch = json.loads(review.launch_marker(story_id).read_text())
+            needs_fix = bool(launch.get("verify_red"))
+        except (OSError, ValueError, AttributeError):
+            needs_fix = True
+        if needs_fix:
+            save(story_id)
         cause = refusal or "the diff review produced no readable refusal; inspect its log"
         return stop(f"the diff review leg refused (rc {rc}): {cause}", 0)
     mark_stage(data_root(), story_id, "reviewer", "ran")
@@ -198,6 +218,7 @@ def finish_story(tree: Path, story_id: str, stop, stage_line, held) -> int:
     print(
         f"{story_id} produced commit {tree_state(tree)[0]} at {tree}. Read it, then {instruction}."
     )
-    mark_handoff(data_root(), story_id, True)
+    why = "completed executor reused; independent diff review and post-review Verify ran"
+    mark_handoff(data_root(), story_id, True, why if completed else "")
     held.close()
     return rc

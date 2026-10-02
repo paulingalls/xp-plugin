@@ -380,12 +380,9 @@ def test_land_separates_review_corrections_from_later_lead_amendment(tmp_path):
     )
     assert landed.returncode == 0, landed.stderr
     assert "card corrected by plan review" in landed.stdout
-    archived = next(
-        path
-        for path in (plan.parent / "plans").glob("story-042.superseded-*.md")
-        if path.read_bytes() == original_findings
-    )
-    assert str(archived) in landed.stdout
+    preserved = plan.parent / "plans/story-042.round-1.md"
+    assert preserved.read_bytes() == original_findings
+    assert str(preserved) in landed.stdout
     amendment = landed.stdout.split("card amended — reason: lead supplied measured correction", 1)[
         1
     ]

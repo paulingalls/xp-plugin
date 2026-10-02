@@ -395,8 +395,9 @@ class TestSpawnStages:
         assert spawn(repo, env, "amend", "story-042", "--reason", "an AC changed").returncode == 0
         stub_stages(tmp_path, unreadable_plan=True)
         seen = len(event_roles(events))
-        assert spawn(repo, env, "resume", "story-042").returncode != 0
-        assert event_roles(events)[seen:] == ["planner", "plan-reviewer"]
+        failed = spawn(repo, env, "resume", "story-042")
+        assert failed.returncode != 0
+        assert event_roles(events)[seen:] == ["planner", "plan-reviewer"], failed.stderr
         stub_stages(tmp_path, blocking_diff=True)
         seen = len(event_roles(events))
         assert spawn(repo, env, "resume", "story-042").returncode != 0

@@ -372,7 +372,7 @@ class TestResume(BootstrapLeftTreeCases):
 
         assert result.returncode == 2, result.stderr
         assert "FINISHED" in result.stderr and "after-finish.txt" in result.stderr
-        assert not rec.exists(), "resume inherited a changed clean-success tree"
+        assert rec.exists(), "dirty completed work must reach conservative takeover"
 
     def test_a_finished_successor_failure_names_its_own_remaining_work(self, tmp_path):
         repo, env, _g, _tree, _marker = finished_story(tmp_path)

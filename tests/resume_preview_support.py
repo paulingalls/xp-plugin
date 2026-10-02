@@ -114,9 +114,9 @@ def stale_identity_check(tmp_path, mutant):
     if mutant:
         target = tmp_path / "cache/xp-plugin/fixture/scripts/spawn/execution.py"
         source = target.read_text()
-        old = "state = api.handoff_state(api.data_root(), story_id) or {}"
+        old = "\n        state = api.handoff_state(api.data_root(), story_id) or {}"
         assert old in source
-        target.write_text(source.replace(old, "state = None"))
+        target.write_text(source.replace(old, "\n        state = None"))
     before_events, before_state = events(seen), snapshot(tmp_path)
     preview = launch(repo, env, "resume", "story-042", "--dry-run")
     assert snapshot(tmp_path) == before_state

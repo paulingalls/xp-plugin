@@ -67,7 +67,13 @@ structured disposition with an additional `decision`: `confirm` or `replan`.
 Choose `replan` when the existing plan cannot safely serve the amended card;
 explain why in `summary`. Local adjustments preserve the implementation strategy.
 If the amendment requires replacing that strategy or test surface, request the
-planner rather than writing a replacement plan as confirmation. A value answer still requires implementation.
+planner rather than writing a replacement plan as confirmation. When completed
+executor evidence is offered, additionally return `implementation`: `complete` or
+`requires-execution`, with a concrete explanation in `summary`. Judge actual code
+and tests against the final candidate, prior implemented card, amendment and current
+findings. Plan suitability does not prove implementation; a value answer may require
+execution even on an unchanged clean tree. Missing implementation judgment cannot
+authorize reuse.
 Preserve independent justified edits and reasons. New human-only choices block
 regardless of status or decision. Newly discovered silent/corrupting defects remain
 editable; judge unrelated loud findings under the existing fix/drop/debt policy.
