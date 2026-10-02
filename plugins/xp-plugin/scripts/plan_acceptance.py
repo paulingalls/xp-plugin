@@ -42,7 +42,14 @@ def receipt_path(out: Path) -> Path:
     return out.with_suffix(".acceptance.json").resolve()
 
 
-def prepare(story_id: str, before: str, candidate: Path, plan: Path, out: Path) -> dict:
+def prepare(
+    story_id: str,
+    before: str,
+    candidate: Path,
+    plan: Path,
+    out: Path,
+    repository_identity: str = "",
+) -> dict:
     from close import story_card
     from ready import credential
 
@@ -77,7 +84,10 @@ def prepare(story_id: str, before: str, candidate: Path, plan: Path, out: Path) 
         "findings": str(out.resolve()),
         "plan_identity": identity(plan),
         "findings_identity": identity(out),
+        "amendment_count": len(minted.get("amendments", [])),
     }
+    if repository_identity:
+        record["repository_identity"] = repository_identity
     atomic_json(receipt_path(out), record)
     return record
 
@@ -88,6 +98,10 @@ def publish(story_id: str, record: dict) -> None:
 
     if record["story_id"] != story_id:
         raise CardEditRefusal("the acceptance belongs to another story; use its recorded story id")
+    from plan_confirmation import publication_problem
+
+    if problem := publication_problem(record):
+        raise CardEditRefusal(problem)
     marker = ready_marker_path(story_id)
     minted = credential(marker)
     if minted is None or minted.get("digest") != record["prior_digest"]:
@@ -119,6 +133,8 @@ def publish(story_id: str, record: dict) -> None:
     )
 
     def bind(text):
+        if problem := publication_problem(record):
+            raise CardEditRefusal(problem)
         current, _ = story_card(text, story_id)
         if current != record["after"]:
             raise CardEditRefusal(
@@ -261,7 +277,7 @@ def interrupted_problem(story_id: str, card: str, minted: dict) -> str:
 
     from work import data_root
 
-    for path in (data_root() / "plans").glob(f"{story_id}.round-*.acceptance.json"):
+    for path in (data_root() / "plans").glob(f"{story_id}.*.acceptance.json"):
         try:
             record = json.loads(path.read_text())
             if record["after"] == card and record["prior_digest"] == minted["digest"]:
