@@ -266,9 +266,13 @@ def _run_review(
             accepted = record
         except (OSError, ValueError, KeyError, CardEditRefusal) as error:
             if not receipt_path(out).exists():
+                resume = shlex.join(
+                    [sys.executable, str(Path(__file__).with_name("spawn.py")), "resume", story_id]
+                )
                 return refused(
-                    f"refused: invalid review candidate: {error}; repair the candidate "
-                    f"and rerun plan review"
+                    f"refused: invalid review candidate: {error}; nothing was applied and the"
+                    f" next round rewrites {candidate} from the current card — run `{resume}`"
+                    " for a fresh plan review"
                 )
             retry = shlex.join(
                 [

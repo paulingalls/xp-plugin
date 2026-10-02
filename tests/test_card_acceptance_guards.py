@@ -376,3 +376,30 @@ def test_interrupted_handoff_does_not_adopt_another_source_round(tmp_path, monke
     marker.write_text(json.dumps({"findings": str(other)}))
     assert not acceptance.restore_handoff(tmp_path, "story-042", {})
     assert not marker_path(tmp_path, "story-042").exists()
+
+
+def test_invalid_review_candidate_names_the_resume_that_reruns_review(tmp_path):
+    import re
+    import shlex
+    import subprocess
+    from pathlib import Path
+
+    from spawn_helpers import make_repo, spawn
+    from test_card_update_contract import edited_stages
+    from test_spawn_stages import event_roles
+
+    repo, env, _g = make_repo(tmp_path, files="src/thing.py, src/other.py")
+    malformed = ("src/thing.py, src/other.py", "src/thing.py src/other.py")
+    events = edited_stages(tmp_path, [malformed])
+    plan = Path(env["XP_DATA"]) / "plan.md"
+    refused = spawn(repo, env, "story-042")
+    assert refused.returncode != 0 and malformed[1] not in plan.read_text()
+    command = re.search(r"invalid review candidate.*run `([^`]+)`", refused.stderr).group(1)
+    binary = tmp_path / "bin/claude"
+    binary.write_text(binary.read_text().replace("text = text.replace(old, new)", "pass"))
+    resumed = subprocess.run(
+        shlex.split(command), cwd=repo, env=env, capture_output=True, text=True
+    )
+    assert resumed.returncode == 0, resumed.stderr
+    assert event_roles(events).count("plan-reviewer") == 2
+    assert "teammate" in event_roles(events)
