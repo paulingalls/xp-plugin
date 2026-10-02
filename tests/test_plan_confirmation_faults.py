@@ -8,6 +8,31 @@ from plan_review_install import installed_launch
 from spawn_helpers import spawn
 from test_plan_confirmation import assert_confirmed, damage, stopped_amended
 
+
+@pytest.mark.parametrize("harness", ["claude", "codex"])
+def test_confirmation_measures_submodule_contents(tmp_path, harness):
+    from plan_confirmation_support import amend, submodule_consumer
+
+    def guarantee(root, mutation=None):
+        root.mkdir()
+        launch = installed_launch(root, mutation, "scripts/plan_confirmation.py")
+        repo, env, seen = submodule_consumer(root, harness)
+        stopped = launch(repo, env, "story-042")
+        assert "Which lease value" in stopped.stderr
+        amend(root, repo, env, launch)
+        tree = root / "data/worktrees/story-042"
+        (tree / "vendor/runtime.cfg").write_text("changed dependency behavior")
+        resumed = launch(repo, env, "resume", "story-042")
+        assert "Which lease value" in resumed.stderr
+        assert [e["role"] for e in events(seen)][2:4] == ["planner", "plan-reviewer"]
+
+    guarantee(tmp_path / "normal")
+    mutation = ("value = json.dumps(", 'value = b"unmeasured"; ignored = json.dumps(')
+    with pytest.raises(AssertionError):
+        guarantee(tmp_path / "fault", mutation)
+    assert any(e.get("kind") == "confirmation" for e in events(tmp_path / "fault/seen.jsonl"))
+
+
 FAULTS = {
     "receipt": (
         "scripts/plan_confirmation.py",

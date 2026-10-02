@@ -17,6 +17,27 @@ def evidence_path(out):
     return Path(out).with_suffix(".evidence.json")
 
 
+def content_identity(path):
+    mode = path.lstat().st_mode
+    if stat.S_ISLNK(mode):
+        value = os.fsencode(os.readlink(path))
+    elif stat.S_ISREG(mode):
+        value = path.read_bytes()
+    elif stat.S_ISDIR(mode):
+        # Git exposes a submodule or embedded repository as one directory entry.
+        # Its administrative .git file/directory is not reviewed source evidence.
+        value = json.dumps(
+            [
+                (os.fsencode(p.name).hex(), content_identity(p))
+                for p in sorted(path.iterdir())
+                if p.name != ".git"
+            ]
+        ).encode()
+    else:
+        raise OSError(f"cannot measure file kind at {path}; inspect before replanning")
+    return mode, hashlib.sha256(value).hexdigest()
+
+
 def repository_fingerprint(plan_file):
     root = Path.cwd().resolve()
     excluded = Path(plan_file).resolve()
@@ -43,17 +64,11 @@ def repository_fingerprint(plan_file):
     for name in sorted(set(tracked + untracked) - {b""}):
         path = root / os.fsdecode(name)
         try:
-            mode = path.lstat().st_mode
+            mode, digest = content_identity(path)
         except FileNotFoundError:
             contents.append([name.hex(), "absent"])
             continue
-        if stat.S_ISLNK(mode):
-            value = os.fsencode(os.readlink(path))
-        elif stat.S_ISREG(mode):
-            value = path.read_bytes()
-        else:
-            raise OSError(f"cannot measure file kind at {path}; inspect before replanning")
-        contents.append([name.hex(), mode, hashlib.sha256(value).hexdigest()])
+        contents.append([name.hex(), mode, digest])
     measured["contents"] = contents
     return {
         "repository": str(root),

@@ -134,6 +134,27 @@ def events(seen):
     return [json.loads(line) for line in seen.read_text().splitlines()]
 
 
+def submodule_consumer(tmp_path, harness):
+    repo, env, seen = consumer(tmp_path, harness=harness)
+    dependency = tmp_path / "dependency"
+    subprocess.run(["git", "clone", "-q", str(repo), str(dependency)], env=env, check=True)
+    subprocess.run(
+        ["git", "-c", "protocol.file.allow=always", "submodule", "add", str(dependency), "vendor"],
+        cwd=repo,
+        env=env,
+        check=True,
+        capture_output=True,
+    )
+    subprocess.run(["git", "commit", "-am", "add dependency"], cwd=repo, env=env, check=True)
+    set_system_md(
+        repo,
+        "- Worktree bootstrap: `git -c protocol.file.allow=always submodule update --init "
+        "&& printf baseline > vendor/runtime.cfg`",
+    )
+    subprocess.run(["git", "branch", "-f", "main", "HEAD"], cwd=repo, env=env, check=True)
+    return repo, env, seen
+
+
 def late_launch(tmp_path, target, mutation=None, publication=False):
     import sys
 
