@@ -112,9 +112,13 @@ def _unique_fields(pairs):
     return report
 
 
+def parse_report_json(text: str):
+    return json.loads(text, object_pairs_hook=_unique_fields)
+
+
 def read_report(path: Path, stage: str = "", *, fresh=True) -> tuple[dict, str]:
     try:
-        data = json.loads(path.read_text(), object_pairs_hook=_unique_fields if fresh else None)
+        data = parse_report_json(path.read_text())
     except FileNotFoundError:
         return (
             {},

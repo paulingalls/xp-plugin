@@ -19,11 +19,24 @@ DUPLICATES = [
 
 @pytest.mark.parametrize("raw", DUPLICATES)
 @pytest.mark.parametrize("stage", ["", "find-security", "fix", "closer"])
-def test_fresh_reports_refuse_duplicate_fields(tmp_path, raw, stage):
+@pytest.mark.parametrize("fresh", [True, False])
+def test_reports_refuse_duplicate_fields(tmp_path, raw, stage, fresh):
     path = tmp_path / "report.json"
     path.write_text(raw)
-    parsed, error = read_report(path, stage)
+    parsed, error = read_report(path, stage, fresh=fresh)
     assert not parsed and "duplicate" in error
+
+
+@pytest.mark.parametrize("raw", DUPLICATES)
+@pytest.mark.parametrize("why", ["refused: ambiguous evidence", ""])
+def test_stamping_does_not_destroy_duplicate_evidence(tmp_path, raw, why):
+    import review
+
+    path = tmp_path / "report.json"
+    path.write_text(raw)
+    before = path.read_bytes()
+    assert review.stamp(path, why) == why
+    assert path.read_bytes() == before
 
 
 @pytest.mark.parametrize("raw", DUPLICATES)
@@ -33,10 +46,30 @@ def test_duplicate_report_cannot_record_or_land(tmp_path, raw):
     before = g("rev-parse", "main").stdout
     result = close(repo, env, "review")
     assert result.returncode == 2 and "duplicate" in result.stderr
+    path = tmp_path / "data/reports/story-042.round-1.json"
+    assert path.read_text() == raw
+    rescued = close(repo, env, "salvage")
+    assert rescued.returncode == 2 and "duplicate" in rescued.stderr
+    assert path.read_text() == raw
     assert not marker_file(tmp_path).exists()
     assert close(repo, env, "land").returncode == 2
     assert g("rev-parse", "main").stdout == before
     assert not (tmp_path / "data/closes.jsonl").exists()
+
+
+@pytest.mark.parametrize("raw", DUPLICATES)
+def test_review_time_repair_refuses_duplicate_evidence(tmp_path, raw):
+    repo, env, g, launch = red_round(tmp_path)
+    path = tmp_path / "data/reports/story-042.round-1.json"
+    path.write_text(raw)
+    commit(g, repo, "src/thing.py", "A = 2\nbroken = True\n")
+    before = g("rev-parse", "main").stdout
+    repaired = close(repo, env, "repair")
+    assert repaired.returncode == 2 and "duplicate" in repaired.stderr
+    assert path.read_text() == raw and launch.exists()
+    assert not marker_file(tmp_path).exists()
+    assert close(repo, env, "land").returncode == 2
+    assert g("rev-parse", "main").stdout == before
 
 
 @pytest.mark.parametrize("noted", [[], ["silent storage finding"]])
