@@ -370,7 +370,9 @@ def cmd_review(story_id: str, dry_run: bool = False) -> int:
     }
     at["noun"] = leg(story_id)[0]
     prior = render_prior_rounds(state.get("rounds", []))
-    notices = [review.plan_review_notice(story_id)]
+    from plan_acceptance import provenance
+
+    notices = [review.plan_review_notice(story_id), provenance(story_id)]
     notice = "\n".join(n for n in notices if n)
     if notice:
         print("warning: " + notice, file=sys.stderr)

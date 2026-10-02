@@ -66,7 +66,9 @@ def test_first_executor_reads_current_plan_findings(tmp_path):
     assert not path.is_relative_to(tmp_path / "data/worktrees/story-042")
     assert str(tmp_path / "data/plan.md") in event["prompt"]
     assert f"python3 {SPAWN.parent / 'work.py'} card-snapshot" in event["prompt"]
-    assert "edit-card STORY_ID --digest DIGEST --status STATUS" in event["prompt"]
+    assert (
+        "edit-card STORY_ID --context executor --digest DIGEST --status STATUS" in event["prompt"]
+    )
 
 
 def test_resume_uses_current_round_and_profiles_launched_prompt(tmp_path):
@@ -157,7 +159,8 @@ def test_missing_review_findings_refuses_before_executor_launch(tmp_path):
         "def remove_findings(*args):\n"
         " result = original(*args)\n"
         " if result[0] == 0:\n"
-        "  plan_review.findings_path(args[0]).with_name(args[0] + '.round-1.md').unlink()\n"
+        "  path = plan_review.findings_path(args[0]).with_name(args[0] + '.round-1.md')\n"
+        "  path.with_suffix('.saved').write_bytes(path.read_bytes()); path.unlink()\n"
         " return result\n"
         "plan_review.run_foreground = remove_findings\n"
         "import spawn\n"
@@ -172,13 +175,15 @@ def test_missing_review_findings_refuses_before_executor_launch(tmp_path):
         text=True,
     )
     assert result.returncode != 0
-    assert "cannot read current plan-review findings" in result.stderr
-    assert "resume story-042` reruns the execution plan review" in result.stderr
+    assert "unreadable review acceptance" in result.stderr
+    assert "restore its recorded artifacts" in result.stderr
     assert all(json.loads(line)["role"] != "teammate" for line in seen.read_text().splitlines())
+    path = tmp_path / "data/plans/story-042.round-1.md"
+    path.write_bytes(path.with_suffix(".saved").read_bytes())
     resumed = spawn(repo, env, "resume", "story-042")
     assert resumed.returncode == 0, resumed.stderr
     events = [json.loads(line) for line in seen.read_text().splitlines()]
-    assert [e["role"] for e in events].count("plan-reviewer") == 2
+    assert [e["role"] for e in events].count("plan-reviewer") == 1
     teammate = next(e for e in events if e["role"] == "teammate")
     assert "LOUD: run diagnostic check" in teammate["findings"]
 
@@ -188,8 +193,17 @@ def test_resume_after_blocked_round_hands_over_the_later_round(tmp_path):
     seen = staged_harness(tmp_path, block_first=True)
     blocked = spawn(repo, env, "story-042")
     assert blocked.returncode != 0 and "STALE BLOCKED ROUND?" in blocked.stderr
+    card = tmp_path / "data/plan.md"
+    card.write_text(
+        card.read_text().replace(
+            "Context: demo.",
+            "Context: demo.\nDecision: test operator answered the reserved choice.",
+        )
+    )
+    answered = spawn(repo, env, "amend", "story-042", "--reason", "answer reserved choice")
+    assert answered.returncode == 0, answered.stderr
     resumed = spawn(repo, env, "resume", "story-042")
     assert resumed.returncode == 0, resumed.stderr
     event = next(json.loads(line) for line in seen.read_text().splitlines() if '"teammate"' in line)
-    assert event["findings_path"] == str(tmp_path / "data/plans/story-042.round-2.md")
+    assert event["findings_path"] == str(tmp_path / "data/plans/story-042.round-1.md")
     assert "LOUD: run diagnostic check" in event["findings"]

@@ -7,7 +7,6 @@ makes the shipped charter reachable there.
 
 import argparse
 import json
-import re
 import shlex
 import subprocess
 import sys
@@ -18,6 +17,11 @@ sys.path.insert(0, str(Path(__file__).parent / "spawn"))
 
 import review
 from close import fail, story_card
+from plan_disposition import disposition_fields as disposition_fields
+from plan_disposition import disposition_object as disposition_object
+from plan_disposition import durable_disposition as durable_disposition
+from plan_disposition import evaluate_disposition as evaluate_disposition
+from plan_disposition import normalized_words as normalized_words
 from review_runner import _running, archive_failed_findings, review_is_capped, review_prior
 from slate_review import review_findings_path, review_marker, run_detached
 from spawn import _read, _read_shipped, tree_state
@@ -25,6 +29,13 @@ from teammate_tee import agent_log_id, log_path
 from work import chdir_repo_root, data_root, plan_path
 
 PLUGIN_ROOT = Path(__file__).parent.parent
+
+
+class ReviewResult(tuple):
+    def __new__(cls, rc: int, outcome: str, acceptance: dict | None = None):
+        result = super().__new__(cls, (rc, outcome))
+        result.acceptance = acceptance
+        return result
 
 
 def findings_path(story_id: str) -> Path:
@@ -102,163 +113,8 @@ def plan_bytes(path: Path) -> bytes | None:
         return None
 
 
-def normalized_words(text: str) -> str:
-    """The word stream both artifacts share, so a reason compares by content.
-
-    Naming the markers to strip is the rejected design — it fixed the blockquote
-    and left the backtick. Dropping every non-word run ignores presentation as a
-    class; the words and their order must still match, so a reason absent from the
-    plan, or written there in other words, refuses.
-    """
-    return " ".join(re.findall(r"\w+", text))
-
-
-def _unique_fields(pairs: list[tuple[str, object]]) -> dict:
-    report = {}
-    for key, value in pairs:
-        if key in report:
-            raise ValueError(f"duplicate disposition field: {key}")
-        report[key] = value
-    return report
-
-
-def _bare_objects(text: str) -> tuple[list[dict], bool]:
-    decoder = json.JSONDecoder(object_pairs_hook=_unique_fields)
-    objects, end, failed = [], 0, False
-    for start in (i for i, char in enumerate(text) if char == "{"):
-        if start < end:
-            continue
-        try:
-            value, end = decoder.raw_decode(text, start)
-        except ValueError:
-            failed = True
-            continue
-        if isinstance(value, dict):
-            objects.append(value)
-    return objects, failed
-
-
-def disposition_object(text: str) -> tuple[dict | None, str]:
-    try:
-        report = json.loads(text, object_pairs_hook=_unique_fields)
-    except ValueError:
-        values, failed, masked = [], False, list(text)
-        fences = list(re.finditer(r"```([^\n]*)\n(.*?)```", text, flags=re.S))
-        for fence in fences:
-            language, body = fence.group(1).strip().lower(), fence.group(2)
-            candidate = language == "json" or body.lstrip().startswith(("{", "["))
-            if not candidate:
-                continue
-            for index in range(fence.start(), fence.end()):
-                masked[index] = " "
-            try:
-                values.append(json.loads(body, object_pairs_hook=_unique_fields))
-            except ValueError:
-                objects, malformed = _bare_objects(body)
-                values.extend(objects)
-                failed |= malformed or not objects
-                continue
-        objects, malformed = _bare_objects("".join(masked))
-        # BEFORE the extend, so `values` is still only what the FENCES gave: the charter
-        # mandates a fenced verdict, so a brace in the prose beside one is prose, not a
-        # rival the harness failed to read. Ungate this and `{'a': 1}` quoted in a finding
-        # loses a complete review — the class this gate exists to close.
-        failed |= malformed and not values
-        values.extend(objects)
-        # A non-object in a fence is no rival verdict — kept only when none is an object,
-        # so a fenced `[]` refuses by TYPE. Narrowing either discards a completed round.
-        values = [v for v in values if isinstance(v, dict)] or values
-        if len(values) > 1:
-            return None, (
-                "the plan review wrote an ambiguous disposition — write exactly one JSON object"
-            )
-        if failed:
-            return None, (
-                "the plan review wrote a structured disposition the harness could not read"
-                " — write exactly one fenced json object"
-            )
-        if len(values) == 1:
-            report = values[0]
-        else:
-            return None, "the plan review wrote no structured disposition"
-    if not isinstance(report, dict):
-        return None, "the plan disposition must be a JSON object"
-    return report, ""
-
-
-def disposition_fields(report: dict) -> tuple[str, str | None, str]:
-    status = report.get("status")
-    if not isinstance(status, str) or status not in {"clean", "edited", "blocked"}:
-        return "", None, "plan disposition status must be clean, edited, or blocked"
-    if "question" in report:
-        return "", None, f"legacy question is not valid new output: {report['question']}"
-    if "human_question" not in report:
-        return "", None, "plan disposition must carry explicit human_question"
-    question = report["human_question"]
-    if question is not None and (not isinstance(question, str) or not question.strip()):
-        return "", None, "human_question must be null or a non-empty string"
-    if status == "blocked" and question is None:
-        return "", None, "blocked disposition requires a human_question"
-    reasons = report.get("reasons")
-    if not isinstance(reasons, list):
-        return "", None, "plan reasons must be a JSON list"
-    if any(not isinstance(r, str) or not normalized_words(r) for r in reasons):
-        return "", None, "every plan edit must carry its reason in the plan file"
-    return status, question, ""
-
-
-def evaluate_disposition(text: str, before: bytes | None, after: bytes | None) -> tuple[str, str]:
-    report, problem = disposition_object(text)
-    if not problem:
-        status, question, problem = disposition_fields(report)
-    repair = " — repair the disposition and plan, then rerun the plan review"
-    if problem:
-        return "failed", problem + repair
-    changed = before != after
-    reasons = report["reasons"]
-    if status == "clean" and changed:
-        problem = "a clean review changed the plan"
-    elif status == "edited" and not changed:
-        problem = "an edited disposition left the plan unchanged"
-    elif not changed and reasons:
-        problem = "edit reasons reported but the plan is unchanged"
-    elif changed:
-        plan = f" {normalized_words((after or b'').decode(errors='replace'))} "
-        if not reasons or not all(f" {normalized_words(r)} " in plan for r in reasons):
-            problem = "every plan edit must carry its reason in the plan file"
-    if problem:
-        return "failed", problem + repair
-    if question is not None:
-        return (
-            "blocked",
-            f"blocked for the human: {question} — answer in the card, amend, then resume",
-        )
-    return "ran", ""
-
-
-def durable_disposition(text: str) -> tuple[str, str]:
-    report, problem = disposition_object(text)
-    if problem:
-        return "failed", problem
-    if "human_question" not in report:
-        status = report.get("status")
-        if status == "blocked":
-            question = report.get("question")
-            if isinstance(question, str) and question.strip():
-                return "blocked", f"blocked for the human: {question}"
-            return "failed", "legacy blocked disposition requires a question"
-        if status in ("clean", "edited") and "question" not in report:
-            report = report | {"human_question": None, "reasons": report.get("reasons", [])}
-    status, question, problem = disposition_fields(report)
-    if problem:
-        return "failed", problem
-    if question is not None:
-        return "blocked", f"blocked for the human: {question}"
-    return "ran", ""
-
-
 def _cmd_review(
-    story_id: str, plan_file: Path, dry_run: bool, detach: bool = True
+    story_id: str, plan_file: Path, dry_run: bool, detach: bool = True, review_card: bool = False
 ) -> tuple[int, str]:
     if not plan_file.is_file():
         return fail(f"refused: no plan at {plan_file} — draft it to a file first"), "failed"
@@ -313,7 +169,7 @@ def _cmd_review(
                 }
             )
         )
-        return _run_review(story_id, plan_file, charter, plan, card, out, False, prior)
+        return _run_review(story_id, plan_file, charter, plan, card, out, False, prior, review_card)
     rc = run_detached(
         story_id, "plan", out, [str(Path(__file__).resolve()), story_id, str(plan_file)]
     )
@@ -328,7 +184,7 @@ def run_foreground(story_id: str, plan_file: Path) -> tuple[int, str]:
     """spawn's own stage: no detached child, and cmd_review's guards all still run
     — an absent plan, an empty one, an empty charter and a missing card each end a
     round that would otherwise report a verdict nothing produced."""
-    return _cmd_review(story_id, plan_file, False, detach=False)
+    return _cmd_review(story_id, plan_file, False, detach=False, review_card=True)
 
 
 def _run_review(
@@ -340,20 +196,31 @@ def _run_review(
     out: Path,
     dry_run: bool,
     prior: str = "",
+    review_card: bool = False,
 ) -> tuple[int, str]:
     try:
         before = review_state(plan_file, story_id)
     except OSError as e:
         return fail(f"refused: cannot snapshot the repository before review: {e}"), "failed"
+    accepted = None
     before_plan = plan_bytes(plan_file)
+    from plan_acceptance import candidate_path, prepare, publish, receipt_path
+    from plan_writer import CardEditRefusal
+
+    candidate = candidate_path(out) if review_card and not dry_run else None
+    if candidate:
+        candidate.write_text(card)
     bundle = build_bundle(charter, plan, card, plan_file, out, prior)
+    if candidate:
+        bundle += f"## The locked card candidate\n\nCARD_CANDIDATE_PATH: {candidate}\n"
+
     result, err = review.run(bundle, Path.cwd(), dry_run, name="plan-reviewer", card=card)
     if dry_run:
         return (fail("refused: " + err), "failed") if err else (0, "ran")
 
     def refused(message: str, outcome: str = "failed") -> tuple[int, str]:
         archived = archive_failed_findings(out) if outcome == "failed" else ""
-        return fail(message + archived), outcome
+        return ReviewResult(fail(message + archived), outcome, accepted)
 
     try:
         changed = review_state(plan_file, story_id) != before
@@ -387,7 +254,35 @@ def _run_review(
             f"refused: cannot read the reviewed plan at {plan_file}; restore a readable plan"
             f" there, then rerun `{retry}`"
         )
-    outcome, problem = evaluate_disposition(findings, before_plan, after_plan)
+    try:
+        after_card = candidate.read_text() if candidate else card
+    except (OSError, UnicodeError) as error:
+        return refused(f"refused: cannot read review candidate: {error}; restore {candidate}")
+    outcome, problem = evaluate_disposition(findings, before_plan, after_plan, card, after_card)
+    if outcome in {"ran", "blocked"} and candidate:
+        try:
+            record = prepare(story_id, card, candidate, plan_file, out)
+            publish(story_id, record)
+            accepted = record
+        except (OSError, ValueError, KeyError, CardEditRefusal) as error:
+            if not receipt_path(out).exists():
+                return refused(
+                    f"refused: invalid review candidate: {error}; repair the candidate "
+                    f"and rerun plan review"
+                )
+            retry = shlex.join(
+                [
+                    sys.executable,
+                    str(Path(__file__).with_name("plan_acceptance.py")),
+                    story_id,
+                    str(out),
+                ]
+            )
+            return fail(
+                f"refused: review candidate cannot apply: {error}. Repair the "
+                f"recorded candidate/artifacts and re-apply this completed round with `{retry}`"
+            ), "failed"
+
     if problem:
         if outcome == "blocked":
             marker = incomplete_marker(story_id)
@@ -401,7 +296,7 @@ def _run_review(
         return refused(f"refused: {problem}", outcome)
     incomplete_marker(story_id).unlink(missing_ok=True)  # the child's own verdict
     print(findings)
-    return 0, outcome
+    return ReviewResult(0, outcome, accepted)
 
 
 def main() -> int:

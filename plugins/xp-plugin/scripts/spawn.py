@@ -2,7 +2,7 @@
 """Spawn or resume a fresh teammate in a story worktree."""
 
 import argparse
-import contextlib
+import contextlib as contextlib
 import os
 import subprocess
 import sys
@@ -15,12 +15,15 @@ sys.path.insert(0, str(Path(__file__).parent / "spawn"))
 # `card_profile`, never `profile`: this file puts scripts/spawn on sys.path, and a
 # module named for a stdlib one shadows it process-wide (cProfile imports `profile`).
 import card_profile as profile
-import handoff as handoff_io
-import story_stages as stages
+import handoff as handoff_io  # noqa: F401
+import story_stages as stages  # noqa: F401
 from bookkeep import bootstrap_command
 from close import config_flat, config_has, fail, git, integration_target, leg, story_card
-from handback import story_tier, tree_state, unclean_teammate_result
-from handoff import draft_path, handoff_state, inheritance, mark_handoff, mark_stage, report_handoff
+from handback import story_tier as story_tier
+from handback import tree_state
+from handback import unclean_teammate_result as unclean_teammate_result
+from handoff import draft_path, handoff_state, inheritance, mark_handoff, report_handoff
+from handoff import mark_stage as mark_stage
 from harness import HARNESS_INSTALL, agent_argv, missing_harness, resolve_codex_sandbox
 from prompt import _read as _read
 from prompt import _read_shipped as _read_shipped
@@ -29,7 +32,8 @@ from prompt import executor_prompt
 from prompt import teammate_sections as _teammate_sections
 from review_scope import declared_files
 from role_config import card_role, config_role
-from teammate_tee import AGENT_TIMEOUT_DEFAULT, run_stream, run_teammate
+from teammate_tee import AGENT_TIMEOUT_DEFAULT, run_stream
+from teammate_tee import run_teammate as run_teammate
 from work import (
     card_title,
     chdir_repo_root,
@@ -345,103 +349,26 @@ def cmd_spawn(story_id: str, override: str, dry_run: bool, resuming: bool = Fals
         held.close()
         return result
 
-    mark_handoff(data_root(), story_id)
-    prior_handoff = inherited_state or {}
-    prior_stages = prior_handoff.get("stages", {})
-    replan = ready().plan_needs_replan(story_id, prior_handoff)
-    if multifile and (replan or prior_stages.get("planner") != "ran"):
-        rc, why = stages.run_planner(story_id, card, tree, handoff)
-        # 0, because stop's code is the HARNESS rc: a stage that refused or blocked
-        # for the human did not DIE, and saying so sends the lead to the wrong log.
-        if rc:
-            return stop(why, 0)
-        if problem := handoff_io.archive_replanned_rounds(story_id, prior_handoff):
-            return stop(
-                f"{problem}; preserve the replacement draft and repair the plan-review"
-                " artifacts before resuming",
-                0,
-            )
-        mark_stage(data_root(), story_id, "planner", "ran")
-    elif not multifile:
-        mark_stage(data_root(), story_id, "planner", "skipped")
-    if multifile and (replan or prior_stages.get("plan-reviewer") != "ran"):
-        import plan_review
+    import execution
 
-        reviewed_card = ready().current_digest(story_id)
-        with contextlib.chdir(tree):
-            rc, outcome = plan_review.run_foreground(story_id, draft_path(data_root(), story_id))
-        if rc:
-            if outcome == "capped":
-                handoff_io.mark_plan_reviewed(data_root(), story_id, reviewed_card)
-                return stop(
-                    "execution plan review reached its two-round cap; read and apply both"
-                    f" dispositions, then run `spawn.py resume {story_id}`",
-                    0,
-                )
-            if outcome == "blocked":
-                handoff_io.mark_plan_reviewed(data_root(), story_id, reviewed_card)
-            mark_stage(data_root(), story_id, "plan-reviewer", outcome)
-            why = f"execution plan review {outcome}; read its disposition before resuming"
-            if outcome == "blocked":
-                why = handoff_io.blocked_problem(data_root(), story_id)
-            return stop(why, 0)
-        handoff_io.mark_plan_reviewed(data_root(), story_id, reviewed_card)
-    elif not multifile:
-        mark_stage(data_root(), story_id, "plan-reviewer", "skipped")
-    # Use the predecessor state; mark_handoff now describes this run.
-    if replan:
-        handoff = inheritance(data_root(), story_id, inherited_state, multifile=multifile)
-        if resuming and tree.is_dir():
-            handoff += resume().inherited_evidence(tree, trunk)
-    findings, problem = handoff_io.current_findings(data_root(), story_id, multifile)
-    if problem:
-        mark_stage(data_root(), story_id, "plan-reviewer", "failed")
-        return stop(problem, 0)
-    if findings:
-        outcome, problem = handoff_io.current_disposition(findings)
-        if problem:
-            mark_stage(data_root(), story_id, "plan-reviewer", outcome)
-            return stop(problem, 0)
-    prompt = executor_prompt(card, story_id, handoff, PLUGIN_ROOT, PLUGIN_ROOT, multifile, findings)
-    report, warning = profile_report(card, prompt, handoff)
-    print(report)
-    if warning:
-        print(warning, file=sys.stderr)
-    for attempt in range(2):
-        rc = run_teammate(argv, tree, prompt, story_id, data_root(), harness)
-        outcome = "terminal-stop" if rc == 0 else "harness-death"
-        executor_log = data_root() / "logs" / f"{story_id}-executor.log"
-        err = unclean_teammate_result(
-            tree, handed_over, story_id, resuming, outcome, executor_log, attempt > 0
-        )
-        if err or rc:
-            why = err or f"the teammate left a clean commit in {tree} before its harness failed"
-            return stop(why, rc)
-        mark_stage(data_root(), story_id, "executor", "ran")
-        tier_state, tier_command, tier_output = story_tier(tree)
-        if tier_state == "unavailable":
-            reason = "unset" if not tier_command else "EDIT-ME"
-            print(f"no story tier ran in {tree}: tests.story is {reason}")
-            mark_stage(data_root(), story_id, "story-tier", "skipped")
-            break
-        if tier_state == "passed":
-            mark_stage(data_root(), story_id, "story-tier", "ran")
-            break
-        mark_stage(data_root(), story_id, "story-tier", "failed")
-        if attempt or tier_state == "unrunnable":
-            return stop(
-                f"story tier {tier_state}: {tier_command!r} in {tree}."
-                f" Output tail:\n{tier_output}\n"
-                f"Repair in that tree with `spawn.py resume {story_id}`",
-                0,
-            )
-        handed_over = tree_state(tree)
-        prompt += (
-            "\n## Story tier failure\n\n"
-            f"The configured story tier `{tier_command}` failed in {tree}."
-            f" Fix it and commit before handing back. Output tail:\n{tier_output}\n"
-        )
-    return stages.finish_story(tree, story_id, stop, stage_line, held)
+    return execution.run(
+        sys.modules[__name__],
+        story_id,
+        card,
+        tree,
+        handoff,
+        inherited_state,
+        multifile,
+        resuming,
+        trunk,
+        handed_over,
+        harness,
+        argv,
+        stop,
+        stage_line,
+        held,
+        override,
+    )
 
 
 def ready():

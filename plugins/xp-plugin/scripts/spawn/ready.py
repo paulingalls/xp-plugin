@@ -24,7 +24,7 @@ from work import (
 AMEND = "Run `spawn.py amend {} --reason '<why this declaration changed>'`."
 UNPARSABLE = "refused: {}. Repair the Files line in {}, then refresh {}."
 REMINT = "Put the heading back to [planned] and run `spawn.py ready {}`."
-DOC = "The plan-review credential: minted from [planned], amended only with a recorded reason."
+DOC = "Credential: minted from [planned]; accepted review or reasoned amendment updates it."
 
 
 def refresh_instruction(story_id: str) -> str:
@@ -70,6 +70,9 @@ def credential(marker: Path) -> dict | None:
             isinstance(x, dict) and all(isinstance(x.get(k), str) for k in ("reason", "card"))
             for x in history
         )
+        from plan_acceptance import valid_records
+
+        valid &= valid_records(minted) if isinstance(minted, dict) else False
         return minted if valid else None
     except (OSError, ValueError, KeyError, TypeError):
         return None
@@ -160,11 +163,19 @@ def drift(sid: str, card: str) -> str:
     minted = credential(marker)
     if minted is None:
         return f"refused: {marker} is unreadable; nothing vouches for {sid}. {recovery}"
+    from plan_acceptance import binding_problem
+
+    if problem := binding_problem(sid):
+        return problem
     if minted.get("digest") == card_digest(card):
         return ""
     if growth := card_growth(minted["card"], card):
         print(f"{sid} card grew — {growth}")
         return ""
+    from plan_acceptance import interrupted_problem
+
+    if problem := interrupted_problem(sid, card, minted):
+        return problem
     diff = card_diff(minted["card"], card)
     return f"refused: {sid} was edited after its plan review:\n{diff}\n{AMEND.format(sid)}"
 
@@ -202,8 +213,9 @@ def amend(story_id: str, reason: str) -> int:
     if previous is None and marker.exists():
         prior = marker.read_text(errors="replace") or "(credential empty)"
     history = previous.get("amendments", []) if previous else []
-    history = [*history, {"reason": reason, "card": prior}]
-    payload = {"digest": card_digest(card), "card": card, "amendments": history}
+    history = [*history, {"reason": reason, "card": prior, "after": card}]
+    payload = (previous or {}) | {"digest": card_digest(card), "card": card, "amendments": history}
+    payload.setdefault("minted_card", prior)
     marker.write_text(json.dumps(payload, ensure_ascii=False))
     print(f"{story_id} amended — reason: {reason}\n{card_diff(prior, card)}")
     return 0

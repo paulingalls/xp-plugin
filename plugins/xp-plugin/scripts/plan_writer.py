@@ -86,21 +86,13 @@ def locked_json_edit(path: Path, lock: Path, mutate, noun: str) -> dict:
     return edited
 
 
-def apply_card(
-    story_id: str,
-    expected_digest: str,
-    expected_status: str,
-    candidate_path: Path,
-    story_card,
-    card_digest,
-    edit_plan,
-) -> bool:
+def validate_candidate(story_id, expected_status, candidate_path, story_card) -> str:
     if not candidate_path.is_absolute():
         raise CardEditRefusal("candidate path is not absolute")
     try:
         submitted = candidate_path.read_text()
         candidate, candidate_status = story_card(submitted, story_id)
-    except (OSError, KeyError) as error:
+    except (OSError, UnicodeError, KeyError) as error:
         detail = error.args[0] if error.args else str(error)
         raise CardEditRefusal(
             f"candidate is not one parseable {story_id} card: {detail}"
@@ -112,6 +104,32 @@ def apply_card(
             f"candidate changed lifecycle [{expected_status}] to [{candidate_status}]"
         )
 
+    from close import verify_commands
+    from review_scope import declared_files
+    from verify_receipt import reads
+
+    try:
+        declared_files(candidate)
+        verify_commands(story_id, candidate)
+        reads(candidate)
+    except ValueError as error:
+        raise CardEditRefusal(str(error)) from error
+
+    return candidate
+
+
+def apply_card(
+    story_id: str,
+    expected_digest: str,
+    expected_status: str,
+    candidate_path: Path,
+    story_card,
+    card_digest,
+    edit_plan,
+    expected_card: str | None = None,
+) -> bool:
+    candidate = validate_candidate(story_id, expected_status, candidate_path, story_card)
+
     def apply(current_plan: str) -> str:
         try:
             current, current_status = story_card(current_plan, story_id)
@@ -121,8 +139,10 @@ def apply_card(
             raise CardEditRefusal(
                 f"current lifecycle is [{current_status}], expected [{expected_status}]"
             )
-        if card_digest(current) != expected_digest:
-            raise CardEditRefusal("current card changed after the refresh read it")
+        if card_digest(current) != expected_digest or (
+            expected_card is not None and current != expected_card
+        ):
+            raise CardEditRefusal("current card changed after the candidate read it")
         return current_plan.replace(current, candidate, 1)
 
     return edit_plan(apply)

@@ -136,6 +136,7 @@ class TestCardRefreshGate:
         assert updated["amendments"][-1] == {
             "reason": "new implementation path",
             "card": before["card"],
+            "after": updated["card"],
         }
         assert self.receipt(tmp_path).read_bytes() == receipt
 

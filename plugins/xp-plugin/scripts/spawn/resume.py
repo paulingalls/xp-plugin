@@ -2,7 +2,6 @@
 
 import argparse
 import fcntl
-import json
 import shlex
 import subprocess
 import sys
@@ -71,10 +70,11 @@ def validate(root: Path, story_id: str, tree: Path, branch: str) -> str:
     if not tree.is_dir():
         return f"refused: {kind} worktree {tree} is missing — recover it before resuming"
     if kind in ("RUNNING", "NEVER SPAWNED"):
-        payload = json.dumps({"state": "STOPPED"})
         code = (
-            f"from pathlib import Path; p=Path({str(marker)!r});"
-            f" p.parent.mkdir(parents=True, exist_ok=True); p.write_text({payload!r})"
+            f"import json; from pathlib import Path; p=Path({str(marker)!r});"
+            " state=json.loads(p.read_text()) if p.exists() else {};"
+            " state['state']='STOPPED'; p.parent.mkdir(parents=True, exist_ok=True);"
+            " p.write_text(json.dumps(state))"
         )
         repair = shlex.join(
             [

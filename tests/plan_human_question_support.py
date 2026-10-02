@@ -173,6 +173,9 @@ def test_a_capped_foreground_plan_review_is_recorded_apart_from_a_dead_reviewer(
     repo, env, _g = make_repo(tmp_path, files="src/thing.py, src/other.py")
     events = stub_stages(tmp_path, blocking_plan=True)
     assert spawn(repo, env, "story-042").returncode != 0
+    from plan_review_install import legacy_credential
+
+    legacy_credential(tmp_path)
     plans = Path(env["XP_DATA"]) / "plans"
     (plans / "story-042.round-2.md").write_text(
         '{"status":"clean","human_question":null,"reasons":[]}'

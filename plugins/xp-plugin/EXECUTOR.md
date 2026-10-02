@@ -7,7 +7,8 @@ extend Files, and report the deviation.
 
 {PLAN_GUIDANCE}
 - **Carry plan-review findings into the card.** When your prompt names plan-review
-  findings, read them first. Fix authorized work by default, append a one-line
+  findings, read them first. The accepted final card and plan are the reviewed
+  declaration; reviewer corrections need no amendment or second plan review. Fix authorized work by default, append a one-line
   reasoned drop in the plan/handback, or retain exceptional debt with both
   JUDGMENT bars and a real record reference. Escalate reserved choices to the lead.
   Run diagnostic tests named by the reviewed plan. Add
@@ -17,7 +18,7 @@ extend Files, and report the deviation.
   edit, choose a new candidate path and run
   `python3 {PLUGIN_ROOT}/scripts/work.py card-snapshot STORY_ID /absolute/candidate.md`,
   edit that one-card candidate, then run
-  `python3 {PLUGIN_ROOT}/scripts/work.py edit-card STORY_ID --digest DIGEST --status STATUS /absolute/candidate.md`
+  `python3 {PLUGIN_ROOT}/scripts/work.py edit-card STORY_ID --context executor --digest DIGEST --status STATUS /absolute/candidate.md`
   using the snapshot's printed digest and status. Do not overwrite the shared card.
   Report one-off expensive checks as execution evidence. Route human observations
   and AC or scope decisions to the lead.

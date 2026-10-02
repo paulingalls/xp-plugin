@@ -314,6 +314,9 @@ class TestSpawnStages:
         assert spawn(repo, env, "story-042").returncode != 0
         marker = tmp_path / "data/plans/story-042.handoff.json"
         state = json.loads(marker.read_text())
+        from plan_review_install import legacy_credential
+
+        legacy_credential(tmp_path)
         state["stages"]["planner"] = "half"
         marker.write_text(json.dumps(state))
         result = spawn(repo, env, "resume", "story-042")
@@ -346,6 +349,9 @@ class TestSpawnStages:
             "a plan review that blocked is recorded the same way as one that never ran"
         )
         assert "blocked" in state["why"] and "failed" not in state["why"], state["why"]
+        from plan_review_install import legacy_credential
+
+        legacy_credential(tmp_path)
         handoff.write_text(json.dumps({**json.loads(handoff.read_text()), "state": "STOPPED"}))
         stub_stages(tmp_path)
         marker = tmp_path / "data/markers/story-042.plan-review-incomplete"
