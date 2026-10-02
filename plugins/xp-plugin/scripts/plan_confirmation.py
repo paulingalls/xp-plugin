@@ -207,8 +207,14 @@ def eligibility(story_id, prior, plan_file):
         if card_digest(card_for(story_id)) != minted["digest"]:
             raise ValueError("current card is not credentialed")
         fingerprint = repository_fingerprint(plan_file)
-        if fingerprint != evidence["repository"]:
-            raise ValueError("repository evidence changed")
+        from completion import review_limit, validate
+
+        completed, limit = validate(story_id, prior, record)
+        if completed and (limit := review_limit(story_id)):
+            completed = None
+        baseline = completed["fingerprint"] if completed else evidence["repository"]
+        if fingerprint != baseline:
+            raise ValueError(limit or "repository evidence changed")
         chain = minted.get("amendments", [])[evidence["amendment_count"] :]
         current = record["after"]
         if not chain:
@@ -222,6 +228,7 @@ def eligibility(story_id, prior, plan_file):
     except (OSError, UnicodeError, ValueError, KeyError, TypeError) as error:
         return "fallback", None, f"cannot reuse evidence: {error}; planner and full review required"
     bundle = {
+        "completion": completed,
         "record": record,
         "minted": minted,
         "fingerprint": fingerprint,
@@ -261,6 +268,11 @@ def recheck(story_id, plan_file, context):
 
     if card_for(story_id) != context["current_card"]:
         raise ValueError("card changed during confirmation; inspect amendment and resume")
+    if context.get("completion"):
+        from handoff import handoff_state
+
+        if (handoff_state(data_root(), story_id) or {}).get("completion") != context["completion"]:
+            raise ValueError("completion evidence changed during confirmation")
     record = context["record"]
     prior_binding(record, plan_file)
     if identity(Path(record["findings"])) != record["findings_identity"]:
@@ -313,7 +325,7 @@ def run(story_id, plan_file, context):
         return "```json\n" + json.dumps(report | {"decision": "confirm"}) + "\n```"
 
     charter = re.sub(r"```json\n(.*?)```", mode_example, charter, flags=re.S)
-    return plan_review._run_review(
+    result = plan_review._run_review(
         story_id,
         plan_file,
         charter,
@@ -325,6 +337,44 @@ def run(story_id, plan_file, context):
         True,
         confirmation=context,
     )
+
+    if context.get("completion") and result[0] == 0 and result[1] != "replan":
+        from completion import digest, save
+
+        report, problem = disposition_object(out.read_text())
+        implementation = report.get("implementation") if not problem else None
+        if "implementation" in report and implementation not in ("complete", "requires-execution"):
+            return plan_review.ReviewResult(
+                plan_review.fail("invalid implementation judgment; repair and resume"),
+                "failed",
+                result.acceptance,
+            )
+        if implementation == "complete":
+            if not isinstance(report.get("summary"), str) or not report["summary"].strip():
+                return plan_review.ReviewResult(
+                    plan_review.fail(
+                        "complete implementation judgment requires a summary; repair and resume"
+                    ),
+                    "failed",
+                    result.acceptance,
+                )
+            value = context["completion"]
+            if repository_fingerprint(plan_file) != context["fingerprint"]:
+                return plan_review.ReviewResult(
+                    plan_review.fail("completed tree moved after confirmation; inspect and resume"),
+                    "failed",
+                    result.acceptance,
+                )
+            from handoff import handoff_state
+
+            if (handoff_state(data_root(), story_id) or {}).get("completion") != value:
+                return plan_review.ReviewResult(
+                    plan_review.fail("completion moved after confirmation; inspect and resume"),
+                    "failed",
+                    result.acceptance,
+                )
+            save(story_id, value, {"completion": digest(value), "acceptance": result.acceptance})
+    return result
 
 
 def execution_problem(record):
