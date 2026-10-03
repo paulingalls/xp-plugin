@@ -106,3 +106,32 @@ def test_lead_corrected_delta_requires_explicit_integration_judgment(tmp_path):
     assert "current integration blocker" in bundle
     assert "settled fix" not in bundle and "settled drop" not in bundle
     assert "The delta since the last recorded round" in bundle
+
+
+@pytest.mark.parametrize("role", ["fixer", "closer"])
+def test_later_review_validates_all_roles_before_launch(tmp_path, role):
+    repo, env, g = make_repo(tmp_path)
+    staged_stub(tmp_path)
+    assert sprint(repo, env, "review").returncode == 0
+    config = repo / ".xp/config.yml"
+    config.write_text(
+        config.read_text().replace(
+            "reviewer: claude/opus", f"reviewer: claude/opus\n  {role}: invalid/model"
+        )
+    )
+    assert g("commit", "-qam", "lead changes role configuration").returncode == 0
+    before, count = head(repo, env), len(launches(tmp_path))
+    prior = marker_path(tmp_path).read_bytes()
+    staged_stub(
+        tmp_path,
+        solution={"actionable": ["missing C"], "blocking": []},
+        fix={"fixed": ["missing C"], "blocking": []},
+        patches=[("fix", "src.py", "C = 3")],
+    )
+
+    result = sprint(repo, env, "review")
+
+    assert result.returncode == 2, result.stdout + result.stderr
+    assert len(launches(tmp_path)) == count, "bad downstream role refused only after work ran"
+    assert head(repo, env) == before
+    assert marker_path(tmp_path).read_bytes() == prior

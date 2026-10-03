@@ -120,6 +120,16 @@ def finish(release_id, publish):
             release_id
         ):
             raise ValueError("release branch/owner changed — restore the intended release context")
+        owner_head = git(
+            "rev-parse", "--verify", "-q", f"{before['owner']}^{{commit}}", check=False
+        ).stdout.strip()
+        if (
+            owner_head
+            and git("merge-base", "--is-ancestor", owner_head, "HEAD", check=False).returncode
+        ):
+            raise ValueError(
+                "release branch carries unmerged commits — merge or drop them before retrying"
+            )
         if receipt["tree"] != before["tree"]:
             raise ValueError("validation measured another tree — retry post-merge")
 

@@ -390,3 +390,39 @@ raise SystemExit(close.main())
     assert not g("tag", "--list", "v0.3.0").stdout
     assert not (tmp_path / "data/releases/sprint-2.json").exists()
     assert (tmp_path / "data/sprint_branch").exists()
+
+
+@pytest.mark.parametrize("versioned", [True, False])
+def test_shipping_rechecks_release_branch_after_lifecycle(tmp_path, versioned):
+    import sys
+
+    from sprint_helpers import CONFIG, record_reviews
+
+    hook = tmp_path / "advance-branch.py"
+    hook.write_text(
+        "import subprocess\n"
+        "def git(*args):\n"
+        "    return subprocess.check_output(['git', *args], text=True).strip()\n"
+        "tree = git('rev-parse', 'sprint-002^{tree}')\n"
+        "parent = git('rev-parse', 'sprint-002')\n"
+        "commit = git('commit-tree', tree, '-p', parent, '-m', 'new sprint work')\n"
+        "git('update-ref', 'refs/heads/sprint-002', commit)\n"
+    )
+    config = CONFIG + f"lifecycle_command: {sys.executable} {hook}\n"
+    if not versioned:
+        config += "versioning: off\n"
+    repo, env, g = make_repo(tmp_path, config=config)
+    record_reviews(tmp_path, repo, env)
+    g("checkout", "-q", "main")
+    assert g("merge", "--no-ff", "sprint-002", "-m", "release").returncode == 0
+    before = head(repo, env)
+
+    result = sprint(repo, env, "post-merge")
+
+    assert g("merge-base", "--is-ancestor", "sprint-002", "HEAD").returncode != 0
+    assert head(repo, env) == before
+    assert result.returncode == 2, result.stdout + result.stderr
+    assert "branch" in result.stderr
+    assert not g("tag", "--list", "v0.3.0").stdout
+    assert not (tmp_path / "data/releases/sprint-2.json").exists()
+    assert (tmp_path / "data/sprint_branch").exists()

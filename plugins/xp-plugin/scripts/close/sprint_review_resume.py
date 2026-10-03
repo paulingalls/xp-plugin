@@ -82,6 +82,8 @@ def inputs(complete: int, cards: str, stages):
     if complete:
         altitude, error = stages.altitude()
         charters, charter_error = stages.charters()
+        if not (error or charter_error):
+            stages.check_roles(cards, ("reviewer", "fixer", "closer"))
         return [], 0, charters, altitude, error or charter_error
     found, error = stages.angles()
     if error:
