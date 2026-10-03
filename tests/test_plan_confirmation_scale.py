@@ -11,7 +11,7 @@ def repo_with_ignored(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()
     subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
-    (repo / ".gitignore").write_text("deps/\n")
+    (repo / ".gitignore").write_text("node_modules/\ndist/\n")
     (repo / "tracked.txt").write_text("tracked\n")
     subprocess.run(["git", "add", "."], cwd=repo, check=True)
     subprocess.run(
@@ -19,8 +19,8 @@ def repo_with_ignored(tmp_path):
         cwd=repo,
         check=True,
     )
-    (repo / "deps").mkdir()
-    ignored = repo / "deps/package.js"
+    (repo / "node_modules").mkdir()
+    ignored = repo / "node_modules/package.js"
     ignored.write_text("original\n")
     return repo, ignored
 
@@ -44,6 +44,20 @@ def test_ignored_rewrite_moves_the_fingerprint(tmp_path, monkeypatch):
     ignored.write_text("changed!\n")
     os.utime(ignored, ns=(stamp + 1_000_000_000, stamp + 1_000_000_000))
     assert repository_fingerprint(repo / "plan.md")["identity"] != before
+
+
+def test_rebuilt_ignored_output_with_same_bytes_keeps_the_fingerprint(tmp_path, monkeypatch):
+    repo, _ = repo_with_ignored(tmp_path)
+    (repo / "dist").mkdir()
+    built = repo / "dist/app.js"
+    built.write_text("compiled\n")
+    monkeypatch.chdir(repo)
+    before = repository_fingerprint(repo / "plan.md")["identity"]
+    built.unlink()
+    built.write_text("compiled\n")
+    stamp = built.stat().st_mtime_ns
+    os.utime(built, ns=(stamp + 1_000_000_000, stamp + 1_000_000_000))
+    assert repository_fingerprint(repo / "plan.md")["identity"] == before
 
 
 def test_confirmation_prompt_carries_fingerprint_identity_not_components(tmp_path, monkeypatch):

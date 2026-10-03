@@ -79,9 +79,12 @@ def repository_fingerprint(plan_file):
     for name in sorted(set(tracked + untracked) - {b""}):
         path = root / os.fsdecode(name)
         try:
-            # Ignored trees (node_modules) hold ~10^5 files; opening each costs minutes
-            # under endpoint scanning, so a rewrite is caught by its metadata instead.
-            mode, digest = (metadata_identity if name in ignored else content_identity)(path)
+            # An ignored dependency tree holds ~10^5 files; opening each costs minutes under
+            # endpoint scanning, so a rewrite there is caught by its metadata. Other ignored
+            # files keep content identity: a build rewrites dist/ with the same bytes and a
+            # new mtime, which must not read as motion.
+            dependency = name in ignored and "node_modules" in Path(os.fsdecode(name)).parts[:-1]
+            mode, digest = (metadata_identity if dependency else content_identity)(path)
         except FileNotFoundError:
             contents.append([name.hex(), "absent"])
             continue
