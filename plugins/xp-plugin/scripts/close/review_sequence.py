@@ -41,32 +41,6 @@ def landing_refusal(story_id, card, marker):
             f"refused: review sequence {sequence['status']}; lead owns "
             f"{sequence.get('problem', 'unfinished review or validation')}"
         )
-    current = measure(story_id, card, declaration_checked=True)
-    if card != sequence["card"] or current != sequence["output"]:
-        import verify_receipt
-
-        before, after = sequence["output"]["inputs"]["work"], current["inputs"]["work"]
-
-        def index(snapshot):
-            return {
-                entry.split(b"\t", 1)[1].hex(): entry.split(b"\t", 1)[0]
-                for entry in bytes.fromhex(snapshot["index"]).split(b"\0")
-                if entry
-            }
-
-        old, new = index(before), index(after)
-        committed = {name for name in old.keys() | new.keys() if old.get(name) != new.get(name)}
-
-        def runtime(snapshot):
-            return [entry for entry in snapshot["contents"] if entry[0] not in committed]
-
-        if runtime(before) != runtime(after):
-            if error := verify_receipt.invalidate(story_id):
-                return error
-            return (
-                "refused: reviewed runtime inputs moved; work and reports retained; lead must "
-                f"explicitly run `xp.py {close.leg(story_id)[0]} review`"
-            )
     return ""
 
 
@@ -232,7 +206,7 @@ def stage(story_id, card, sequence, name, correction=False):
     if name != "fixer" or correction:
         motion = review.check_reviewer_motion(before["head"], marker, digest, card, story_id)
         if after != before:
-            motion = motion or "read-only stage changed its source/index/runtime inputs"
+            motion = motion or "read-only stage changed its tracked source/index/HEAD inputs"
     else:
         motion = ""
         if close.git("status", "--porcelain").stdout.strip():

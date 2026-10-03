@@ -15,17 +15,11 @@ FAULTS = {
     ),
     "work": (
         "scripts/spawn/completion.py",
-        'if any(current[key] != baseline[key] for key in ("work", "review", "scope")):',
+        "if after_work != before_work or any(\n"
+        '        current[key] != baseline[key] for key in ("review", "scope")\n    ):',
         "if False:",
         "external",
         "hidden",
-    ),
-    "ignored": (
-        "scripts/spawn/completion.py",
-        'if any(current[key] != baseline[key] for key in ("work", "review", "scope")):',
-        "if False:",
-        "external",
-        "ignored",
     ),
     "state": (
         "scripts/spawn/completion.py",
@@ -105,13 +99,6 @@ FAULTS = {
         "external",
         "findings",
     ),
-    "submodule": (
-        "scripts/spawn/completion.py",
-        'if any(current[key] != baseline[key] for key in ("work", "review", "scope")):',
-        "if False:",
-        "submodule",
-        None,
-    ),
     "role": (
         "scripts/spawn/handoff.py",
         "Complete the card in this worktree. Use predecessor diagnostics as evidence. ",
@@ -177,8 +164,6 @@ def guarantee(root, scenario, parameter):
         resume.test_failed_acceptance_requires_execution_before_retry(root)
     elif scenario == "refusal":
         forward.test_refusal_preserves_work_without_success(root, parameter)
-    elif scenario == "submodule":
-        forward.test_submodule_runtime_motion_invalidates_executor(root)
     elif scenario in ("lock", "role"):
         import pytest
         import spawn_helpers

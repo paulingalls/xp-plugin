@@ -5,7 +5,7 @@ from pathlib import Path
 
 from handoff import _write, handoff_state
 from plan_acceptance import artifact_problem
-from plan_confirmation import prior_binding, repository_fingerprint
+from plan_confirmation import prior_binding
 from work import data_root, ready_marker_path
 
 ORDER = ("executor", "story-tier", "reviewer")
@@ -31,9 +31,16 @@ def inputs(story_id, card, *, declaration_checked=False):
     if not declaration_checked and (problem := drift(story_id, card)):
         raise ValueError(problem)
     plan = Path(accepted["plan"]) if accepted else data_root() / "plans" / f"{story_id}.plan.md"
-    fingerprint = repository_fingerprint(plan, tier_owned=True)
+    from git_source import tracked_state
+
+    root = Path.cwd().resolve()
+    excluded = (
+        [str(plan.resolve().relative_to(root))] if plan.resolve().is_relative_to(root) else []
+    )
+    work = tracked_state(excluded)
+    work["execution"] = tracked_state([*excluded, ".xp/config.yml"])
     return {
-        "work": fingerprint["components"],
+        "work": work,
         "review": {
             key: accepted[key]
             for key in ("plan", "plan_identity", "findings", "findings_identity", "digest")
@@ -109,7 +116,14 @@ def next_stage(story_id, prior, current):
         ),
         executor["output"],
     )
-    if any(current[key] != baseline[key] for key in ("work", "review", "scope")):
+    before_work, after_work = baseline["work"], current["work"]
+    if current["tier"] != baseline["tier"] and all(
+        before_work[key] == after_work[key] for key in ("index", "staged")
+    ):
+        before_work, after_work = before_work["execution"], after_work["execution"]
+    if after_work != before_work or any(
+        current[key] != baseline[key] for key in ("review", "scope")
+    ):
         return "executor"
     reviewed = results.get("reviewer", {})
     if reviewed.get("result") == "blocked" and current["verify"] == reviewed["input"]["verify"]:
@@ -198,10 +212,4 @@ def committed_contents():
 
 
 def same_inputs(before, after):
-    if any(before[key] != after[key] for key in before if key != "work"):
-        return False
-    old, new = before["work"], after["work"]
-    if any(old[key] != new[key] for key in old if key != "contents"):
-        return False
-    current = {entry[0]: entry[1:] for entry in new["contents"]}
-    return all(current.get(entry[0]) == entry[1:] for entry in old["contents"])
+    return before == after

@@ -159,8 +159,6 @@ def perturb(*args):
             from work import data_root
             path = data_root() / 'worktrees/story-042/.xp/system.md'
             path.write_text('late repository motion')
-        elif target == 'evidence':
-            Path(record['findings']).with_suffix('.evidence.json').unlink()
         elif target == 'card':
             from work import plan_path
             text = plan_path().read_text().replace('Context: demo.', 'Context: unreviewed scope.')

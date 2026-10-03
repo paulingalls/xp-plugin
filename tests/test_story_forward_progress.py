@@ -90,7 +90,6 @@ def test_unfinished_candidate_noop_is_not_certified(tmp_path):
         "moved",
         "empty-commit",
         "hidden",
-        "ignored",
         "untracked",
         "tier",
         "verify",
@@ -229,7 +228,6 @@ def test_amended_planning_survives_interrupted_plan_review(tmp_path, amend_again
     "guard",
     [
         "work",
-        "ignored",
         "state",
         "result",
         "publication",
@@ -242,7 +240,6 @@ def test_amended_planning_survives_interrupted_plan_review(tmp_path, amend_again
         "truncated",
         "checkout",
         "artifact",
-        "submodule",
         "role",
         "role-imperative",
         "role-legacy",
@@ -322,40 +319,3 @@ def test_refusal_preserves_work_without_success(tmp_path, damage):
     result = launch(repo, env, "resume", "story-042")
     assert result.returncode == 0, result.stderr
     assert (tree / "sentinel.txt").read_text() == "preserved dirty evidence"
-
-
-def test_submodule_runtime_motion_invalidates_executor(tmp_path):
-    import subprocess
-
-    from completed_executor_support import roles
-    from plan_confirmation_support import submodule_consumer
-    from spawn_helpers import set_system_md
-
-    repo, env, seen = submodule_consumer(tmp_path, "claude")
-    binary = tmp_path / "bin/claude"
-    binary.write_text(
-        binary.read_text().replace(
-            "human_question': 'Which lease value does the human authorize?'",
-            "human_question': None",
-        )
-    )
-    excludes = tmp_path / "runtime-excludes"
-    excludes.write_text("runtime.cfg\n")
-    set_system_md(
-        repo,
-        "- Worktree bootstrap: `git -c protocol.file.allow=always submodule update --init "
-        "&& printf baseline > vendor/runtime.cfg "
-        f"&& git -C vendor config core.excludesfile {excludes}`",
-    )
-    subprocess.run(["git", "branch", "-f", "main", "HEAD"], cwd=repo, env=env, check=True)
-    launch = installed_launch(tmp_path)
-    first = launch(repo, env, "story-042")
-    assert first.returncode == 0, first.stderr
-    tree = tmp_path / "data/worktrees/story-042"
-    (tree / "vendor/runtime.cfg").write_text("external runtime change")
-    count = len(events(seen))
-    preview = launch(repo, env, "resume", "story-042", "--dry-run")
-    assert preview.returncode == 0 and "Next stage: executor." in preview.stdout, preview.stderr
-    result = launch(repo, env, "resume", "story-042")
-    assert result.returncode == 0, result.stderr
-    assert roles(seen)[count:] == ["teammate", "reviewer"]

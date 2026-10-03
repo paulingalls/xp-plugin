@@ -119,12 +119,6 @@ def mark_plan_reviewed(
     if accepted:
         state["plan_review_findings"] = accepted["findings"]
         state["plan_review_identity"] = accepted["findings_identity"]
-        from plan_acceptance import identity
-        from plan_confirmation import evidence_path
-
-        evidence = evidence_path(accepted["findings"])
-        if evidence.exists():
-            state["plan_review_evidence_identity"] = identity(evidence)
         _write(root, story_id, state)
         return
     rounds = _findings(root, story_id) if (root / "plans").is_dir() else []
