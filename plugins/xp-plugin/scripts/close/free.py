@@ -82,7 +82,7 @@ def cmd_start(slug: str, dry_run: bool = False) -> int:
     key = new.split("/", 1)[1]
     card = "card in the plan" if card_in_plan(key) else "card required, add it"
     print(
-        f"{new} off {trunk} — {card}. Next run `spawn.py ready {key}`, then"
+        f"{new} off {trunk} — {card}. Next"
         f" `spawn.py {key}`. Cut release artifacts in `{spawn.worktree_path(key)}` while that"
         f" worktree exists; otherwise in the main repo after `git checkout {new}`. Then run"
         f" `close.py {leg(key)[0]} review` there"
@@ -118,7 +118,7 @@ def cmd_review(slug: str, dry_run: bool) -> int:
                 f"refused: {key} has an existing worktree at {tree} but no handoff — run"
                 f" `spawn.py resume {key}` to inspect and take it over, then review there"
             )
-        before_spawn = f"run `spawn.py ready {key}`, then " if status == "planned" else ""
+        before_spawn = ""
         if status == "in-progress":
             before_spawn = "put its heading back to [ready], then "
         return fail(

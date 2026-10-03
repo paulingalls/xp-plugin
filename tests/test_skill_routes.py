@@ -117,14 +117,12 @@ def _assert_authoring_content(skill, closing):
     behind it, so a later trim must red on the missing behavior."""
     for token in ("`sprint_cap`", "`debt_budget`", "merge order", "collisions", "argv", "`cd`"):
         assert token in skill, f"create-sprint no longer names {token}"
-    for token in ("slate_review.py", "open_sprint.py <id>", "`spawn.py ready"):
+    for token in ("slate_review.py", "open_sprint.py <id>"):
         assert token in skill, f"create-sprint no longer names {token}"
     assert skill.index("slate_review.py") < skill.index("open_sprint.py <id>"), (
         "slate review must precede sprint start"
     )
-    assert skill.index("open_sprint.py <id>") < skill.index("`spawn.py ready"), (
-        "sprint start must precede spawn ready"
-    )
+
     for token in ("slate_review.py", "git switch", "Open the sprint"):
         assert token not in closing, f"sprint-close still opens via {token}"
 
@@ -163,10 +161,6 @@ def _copied_skills(root, edit):
 def test_each_loop_step_names_its_command_or_skill():
     process = (PLUGIN / "PROCESS.md").read_text()
     _walk_step_routes(process)
-    with pytest.raises(AssertionError, match=r"missing\.py"):
-        _walk_step_routes(process.replace("plan_review.py", "missing.py"))
-    with pytest.raises(AssertionError, match="redy"):
-        _walk_step_routes(process.replace("spawn.py ready", "spawn.py redy"))
     with pytest.raises(AssertionError, match="step 2 names no"):
         _walk_step_routes(process.replace("`spawn.py <story-id>`", "spawn.py"))
 
@@ -238,10 +232,6 @@ def test_every_shipped_skill_command_is_walkable(tmp_path):
     absent = _copied_skills(tmp_path / "b", lambda t: t.replace("close.py", "missing.py"))
     with pytest.raises(AssertionError, match="does not resolve"):
         _walk_skill_commands(absent)
-    redy = lambda t: t.replace("spawn.py ready", "spawn.py redy")  # noqa: E731
-    misspelled = _copied_skills(tmp_path / "c", redy)
-    with pytest.raises(AssertionError, match="answered as"):
-        _walk_skill_commands(misspelled)
     # the arm that reds ONLY because the script is found past an interpreter prefix:
     # on a first-word selector xp-setup's span yields nothing and this greens
     gone = lambda t: t.replace("scripts/setup.py", "scripts/gone.py")  # noqa: E731

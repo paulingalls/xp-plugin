@@ -57,7 +57,6 @@ def test_runtime_names_use_only_their_owned_config_seats(tmp_path, monkeypatch, 
             "  reviewer: claude/reviewer-only\n"
             "  finder: claude/finder-only\n"
             "  slate-reviewer: claude/slate-only\n"
-            "  card-refresher: claude/card-only\n"
         ),
     )
     monkeypatch.chdir(repo)
@@ -74,8 +73,7 @@ def test_runtime_names_use_only_their_owned_config_seats(tmp_path, monkeypatch, 
         selected("sprint fix"),
         selected("sprint find", role="finder"),
         selected("slate-reviewer", card="Slate-reviewer: claude/card-owned"),
-        selected("card-refresher", card="Card-refresher: claude/card-owned"),
-    ] == ["reviewer-only", "reviewer-only", "finder-only", "slate-only", "card-only"]
+    ] == ["reviewer-only", "reviewer-only", "finder-only", "slate-only"]
 
 
 class TestTheFindersAreBlind:

@@ -6,9 +6,6 @@ import subprocess
 from pathlib import Path
 
 import pytest
-from plan_human_question_support import (
-    test_a_capped_foreground_plan_review_is_recorded_apart_from_a_dead_reviewer,  # noqa: F401
-)
 from spawn_helpers import (  # noqa: F401
     CARD,
     CONFIG,
@@ -17,7 +14,6 @@ from spawn_helpers import (  # noqa: F401
     block_commits,
     in_tree,
     make_repo,
-    seed_refresh_receipt,
     set_system_md,
     spawn,
     stub_claude,
@@ -136,7 +132,6 @@ class TestWorktree:
         plan2.write_text(
             (tmp_path / "data" / "plan.md").read_text().replace("[in-progress]", "[planned]")
         )
-        seed_refresh_receipt(other, env2)
         assert spawn(other, env2, "ready", "story-042").returncode == 0
         second_run = spawn(other, env2, "story-042")
         assert second_run.returncode == 0

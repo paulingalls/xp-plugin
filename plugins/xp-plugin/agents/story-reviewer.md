@@ -22,8 +22,9 @@ are the only one who can catch that while it is still fixable. You may propose `
 changes only when the card's Files line names them. Close applies the patch, runs
 the gates, and commits it after you return.
 
-The bundle's `Close-review depth` section, when present, states the effective depth and
-who assigned it: `deep` spends most effort on checks 1–2 at full depth; `standard` weights 1, 3–5.
+Read any current `Close review` instruction in the story card and the offered
+executor log when present. Implementation observations inform review; changes to
+approved behavior require a lead decision.
 
 ## Checks, in order of payoff
 

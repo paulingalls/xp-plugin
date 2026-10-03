@@ -29,7 +29,7 @@ class NextLoopActionCases:
 
     def test_a_released_open_card_routes_through_create_sprint_and_can_be_carried(self, tmp_path):
         from close import story_card
-        from spawn_helpers import SPAWN, make_repo, seed_refresh_receipt
+        from spawn_helpers import SPAWN, make_repo
 
         repo, env, _g = make_repo(tmp_path, status="planned")
         root = tmp_path / "data"
@@ -53,7 +53,6 @@ class NextLoopActionCases:
         command = next_line.split("`", 2)[1]
         argv = shlex.split(command)
         assert argv[:2] == ["spawn.py", "ready"] and argv[-1] == "story-042"
-        seed_refresh_receipt(repo, env, "story-042")
         argv[:1] = [sys.executable, str(SPAWN)]
         ready = subprocess.run(argv, cwd=repo, env=env, capture_output=True, text=True)
         assert ready.returncode == 0, ready.stderr

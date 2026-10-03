@@ -203,9 +203,7 @@ def hidden_handback(tmp_path):
     subprocess.run(["git", "add", "src/thing.py"], cwd=repo, env=env, check=True)
     subprocess.run(["git", "commit", "-qm", "tracked baseline"], cwd=repo, env=env, check=True)
     subprocess.run(["git", "branch", "-f", "main", "HEAD"], cwd=repo, env=env, check=True)
-    from spawn_helpers import seed_refresh_receipt
 
-    seed_refresh_receipt(repo, env)
     binary = tmp_path / "bin/claude"
     binary.write_text(
         binary.read_text().replace(

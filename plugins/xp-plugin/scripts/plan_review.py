@@ -21,8 +21,7 @@ from plan_disposition import disposition_fields as disposition_fields
 from plan_disposition import disposition_object as disposition_object
 from plan_disposition import durable_disposition as durable_disposition
 from plan_disposition import evaluate_disposition as evaluate_disposition
-from plan_disposition import normalized_words as normalized_words
-from review_runner import _running, archive_failed_findings, review_is_capped, review_prior
+from review_runner import archive_failed_findings, review_prior
 from slate_review import review_findings_path, review_marker, run_detached
 from spawn import _read, _read_shipped, tree_state
 from teammate_tee import agent_log_id, log_path
@@ -136,13 +135,6 @@ def _cmd_review(
     prior, problem = review_prior(story_id, "plan")
     if problem:
         return fail(problem), "failed"
-    # Detached, the findings file exists while the round still runs: counting alone would
-    # refuse the rejoin and strand the live round rather than wait for its verdict.
-    if review_is_capped(story_id, "plan") and not (detach and _running(story_id, "plan")):
-        return fail(
-            "refused: two execution-plan review rounds already exist — read and apply their"
-            " findings, then resume the story"
-        ), "capped"
     out = findings_path(story_id)
     if dry_run:
         return _run_review(story_id, plan_file, charter, plan, card, out, True, prior)

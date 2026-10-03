@@ -1,11 +1,4 @@
-"""Atomic plan writes and one-card candidate application.
-
-The refresher edits by shell and can hold no Python lock, so it is handed this
-locked helper instead of having `ready`/`land` refuse while a refresh marker is
-live. A refusal was rejected twice over: it serialises the parallel lanes the
-process depends on, and it still leaves the refresher's own write unlocked --
-it makes the collision loud without removing it.
-"""
+"""Atomic plan writes and one-card candidate application."""
 
 import fcntl
 import json

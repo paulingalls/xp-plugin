@@ -49,10 +49,11 @@ FAULTS = {
         'if prior.get("plan_review_evidence_identity") != identity(evidence_file):',
         "if False:",
     ),
-    "cap": (
+    "round-count-refusal": (
         "scripts/plan_confirmation.py",
         "manifest = preserve(story_id, plan_file)",
-        'if plan_review.review_is_capped(story_id, "plan"): return 2, "failed"\n'
+        "from review_runner import completed_review_rounds\n"
+        '    if len(completed_review_rounds(story_id, "plan")) >= 2: return 2, "failed"\n'
         "    manifest = preserve(story_id, plan_file)",
     ),
     "artifact": (
@@ -106,11 +107,6 @@ FAULTS = {
         "if question is not None:",
         'if question is not None and "decision" not in report:',
     ),
-    "reason": (
-        "scripts/plan_disposition.py",
-        'if not reasons or not all(f" {normalized_words(r)} " in plan for r in reasons):',
-        "if False:",
-    ),
     "motion": (
         "scripts/plan_confirmation.py",
         'if identity(Path(record["findings"])) != record["findings_identity"]:',
@@ -152,10 +148,10 @@ FAULTS = {
 
 
 def probe(tmp_path, fault, launch=spawn):
-    if fault == "cap":
-        from test_plan_confirmation import test_amended_confirmation_survives_full_review_cap
+    if fault == "round-count-refusal":
+        from test_plan_confirmation import test_amended_confirmation_preserves_prior_rounds
 
-        return test_amended_confirmation_survives_full_review_cap(tmp_path, launch=launch)
+        return test_amended_confirmation_preserves_prior_rounds(tmp_path, launch=launch)
     if fault in ("predecessor", "current-findings", "force-planner"):
         return assert_confirmed(tmp_path, launch)
     if fault == "retry":
@@ -244,18 +240,13 @@ def probe(tmp_path, fault, launch=spawn):
     elif fault == "decision-absent":
         binary = tmp_path / "bin/claude"
         binary.write_text(binary.read_text().replace(", 'decision': 'missing'", ""))
-    elif fault in ("reason", "explanation", "explanation-type"):
+    elif fault in ("explanation", "explanation-type"):
         binary = tmp_path / "bin/claude"
         text = binary.read_text()
-        if fault == "reason":
-            text = text.replace(
-                "'reasons': ['Courage applies the authorized lease value.']", "'reasons': []"
-            )
-        else:
-            text = text.replace(
-                "'summary': 'Old plan cannot serve amended behavior.'",
-                "'summary': []" if fault == "explanation-type" else "'summary': ''",
-            )
+        text = text.replace(
+            "'summary': 'Old plan cannot serve amended behavior.'",
+            "'summary': []" if fault == "explanation-type" else "'summary': ''",
+        )
         binary.write_text(text)
     if fault in ("explanation", "explanation-type", "replan-review"):
         (tmp_path / "replace").touch()

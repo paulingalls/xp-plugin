@@ -437,9 +437,8 @@ def run(
             "planner": ("planner", "executor"),
             "plan-reviewer": ("plan-reviewer", ""),
             "slate-reviewer": ("slate-reviewer", "reviewer"),
-            "card-refresher": ("card-refresher", "reviewer"),
         }.get(name, ("reviewer", ""))
-        seat_card = "" if name in ("slate-reviewer", "card-refresher") else card
+        seat_card = "" if name == "slate-reviewer" else card
         harness, model, effort = stage_role(seat, seat_card, fallback)
     sandbox, problem = resolve_codex_sandbox(harness, config_flat("codex_sandbox"))
     if problem:

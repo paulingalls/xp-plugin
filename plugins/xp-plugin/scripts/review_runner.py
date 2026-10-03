@@ -16,7 +16,7 @@ from work import data_root
 
 POLL_SECONDS = 3
 LOG_TAIL = 2000
-ACTIVITY_NOUN = {"slate": "slate review", "plan": "plan review", "refresh": "card refresh"}
+ACTIVITY_NOUN = {"slate": "slate review", "plan": "plan review"}
 REVIEW_ROUND_CAP = 2
 
 
@@ -28,13 +28,8 @@ def safe_story_id(identifier: str) -> str:
 
 def _round_location(identifier: str, kind: str) -> tuple[Path, str]:
     identifier = safe_story_id(identifier)
-    parent = data_root() / ("plans" if kind in ("plan", "refresh") else "slate-reviews")
-    if kind == "plan":
-        stem = identifier
-    elif kind == "refresh":
-        stem = f"{identifier}.refresh"
-    else:
-        stem = f"sprint-{identifier}"
+    parent = data_root() / ("plans" if kind == "plan" else "slate-reviews")
+    stem = identifier if kind == "plan" else f"sprint-{identifier}"
     return parent, stem
 
 
@@ -144,7 +139,7 @@ def review_marker(identifier: str, kind: str) -> Path:
     identifier = safe_story_id(identifier)
     suffix = "plan-review-incomplete"
     if kind != "plan":
-        suffix = f"{'card-refresh' if kind == 'refresh' else 'slate-review'}-incomplete"
+        suffix = "slate-review-incomplete"
     return data_root() / "markers" / f"{sprint_id_value(identifier)}.{suffix}"
 
 
@@ -263,10 +258,6 @@ def _wait(
             f"{tail}\n(the {ACTIVITY_NOUN[kind]} ended without a verdict; full output in"
             f" {log}; {action})"
         )
-    if kind == "refresh":
-        import slate_review
-
-        return slate_review._refresh_handoff(identifier, out)
     print(out.read_text().strip() if out.is_file() else "")
     handoff = (
         "read the disposition and re-read the reviewed plan before coding"

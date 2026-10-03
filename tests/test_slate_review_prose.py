@@ -318,15 +318,17 @@ def test_route_isolation_guard_reds_when_shipped_instructions_are_removed():
         line = next(line for line in create_skill.splitlines() if fragment in line)
         with pytest.raises((AssertionError, IndexError, ValueError)):
             assert_open_route(create_skill.replace(line + "\n", ""), close_skill, process)
-    for token in ("`/create-sprint`", "corrected slate"):
-        with pytest.raises(AssertionError):
+    for token in ("`/create-sprint`", "spawn.py <story-id>"):
+        with pytest.raises((AssertionError, ValueError)):
             assert_open_route(create_skill, close_skill, process.replace(token, "the lead", 1))
     # both tokens present in the wrong order: ready before authoring is the whole defect
     # the ordering assertion exists for, and no dropped token exercises it
     step = section(process, "1. **Slate review**", "2. **Story**")
-    flip = step.replace("`/create-sprint`", "\x00").replace("spawn.py ready", "`/create-sprint`", 1)
+    flip = step.replace("`/create-sprint`", "\x00").replace(
+        "spawn.py <story-id>", "`/create-sprint`", 1
+    )
     with pytest.raises(AssertionError):
-        flipped = flip.replace("\x00", "spawn.py ready", 1)
+        flipped = flip.replace("\x00", "spawn.py <story-id>", 1)
         assert_open_route(create_skill, close_skill, process.replace(step, flipped))
     with pytest.raises(AssertionError):
         assert_open_route(create_skill, close_skill + opening, process)
@@ -350,7 +352,6 @@ def test_review_vocabulary_has_one_shipped_owner_and_a_dated_migration():
         assert_review_vocabulary(mutated, design, template)
     for token in (
         "every review is named for the artifact it reads",
-        "card refresh",
         "execution plan review",
         "diff review",
     ):
