@@ -31,6 +31,13 @@ def handback_recovery(tree: Path, story_id: str) -> str:
     )
 
 
+_OWNED = {}
+
+
+def owns(handle, root, story_id):
+    return not handle.closed and _OWNED.get(handle) == (root.resolve(), story_id)
+
+
 def acquire(root: Path, story_id: str):
     path = root / "locks" / f"{story_id}.resume.lock"
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -43,6 +50,7 @@ def acquire(root: Path, story_id: str):
             f"refused: {story_id} already has a teammate launch in progress — wait for"
             " that handback"
         )
+    _OWNED[handle] = (root.resolve(), story_id)
     return handle, ""
 
 
@@ -118,3 +126,26 @@ def inherited_evidence(tree: Path, trunk: str) -> str:
         " path, verify it and say so; do not claim a red you did not observe. Commit every"
         " path you adopt or hand the rest back.\n"
     )
+
+
+def validation_only(root, story_id, held):
+    import contextlib
+
+    import close
+    import spawn
+    from handoff import mark_handoff
+    from work import plan_path
+
+    prior = handoff_state(root, story_id) or {}
+    sequence = prior.get("checkpoint", {}).get("review_sequence")
+    if not sequence or sequence["status"] == "completed":
+        return None
+    card, _ = close.story_card(plan_path().read_text(), story_id)
+    tree = spawn.worktree_path(story_id)
+    if error := validate(root, story_id, tree, spawn.story_branch(card, story_id)):
+        return close.fail(error)
+    with contextlib.chdir(tree):
+        rc = close.cmd_review(story_id, held=held, explicit=False)
+    if not rc:
+        mark_handoff(root, story_id, True, "retained review; interrupted validation completed")
+    return rc

@@ -24,59 +24,48 @@ def _line(value) -> bool:
 def normalize_report(data, *, fresh=False, stage="") -> tuple[dict, str]:
     if not isinstance(data, dict):
         return {}, "the reviewer's report is JSON but not an object"
-    version = data.get("schema")
-    legacy = "schema" not in data
-    historical_legacy = legacy or (not fresh and "legacy_untriaged" in data)
-    keys = ("fixed", "blocking", "noted") if legacy else NEW_KEYS
-    if legacy and any(key in data for key in ("dropped", "debt", "legacy_untriaged")):
-        return {}, "unversioned report has disposition fields — restore its schema"
-    if not legacy and (type(version) is not int or version != SCHEMA or "noted" in data):
-        return {}, "unknown or mixed report schema — write schema 2 without noted"
-    missing = [key for key in keys if not isinstance(data.get(key), list)]
+    if fresh and "legacy_untriaged" in data:
+        return {}, "legacy/untriaged report cannot certify a new round"
+    historical = not fresh and ("noted" in data or "legacy_untriaged" in data)
+    required = ("actionable", "blocking") if stage == "solution" else ("blocking",)
+    missing = [key for key in required if not isinstance(data.get(key), list)]
     if missing:
-        return {}, f"the reviewer's report is missing list keys: {', '.join(missing)}"
-    for key in keys:
-        if key in ("dropped", "debt"):
-            fields = (
-                ("finding", "reason")
-                if key == "dropped"
-                else ("finding", "ref", "too_big", "too_important")
-            )
-            for item in data[key]:
-                if (
-                    not isinstance(item, dict)
-                    or set(item) != set(fields)
-                    or not all(_line(item.get(field)) for field in fields)
+        return {}, f"the {stage or 'reviewer'} report is missing list keys: {', '.join(missing)}"
+    for key in required:
+        if not isinstance(data.get(key), list):
+            return {}, f"the {stage or 'reviewer'} report is missing list keys: {key}"
+        if not all(isinstance(item, str) and (historical or item.strip()) for item in data[key]):
+            return {}, f"{key} must contain non-empty finding text"
+    for key in ("fixed", "dropped", "debt", "actionable", "legacy_untriaged", "noted"):
+        if key in data and not isinstance(data[key], list):
+            return {}, f"{key} must be a list"
+    if "fixed" in data and not all(isinstance(item, str) for item in data["fixed"]):
+        return {}, "fixed must contain finding text"
+    for key, fields in (
+        ("dropped", ("finding", "reason")),
+        ("debt", ("finding", "ref", "too_big", "too_important")),
+    ):
+        for item in data.get(key, []):
+            if isinstance(item, dict):
+                if not all(
+                    isinstance(item.get(field), str) and item[field].strip() for field in fields
                 ):
-                    return {}, f"{key} requires non-empty single-line {', '.join(fields)}"
-                if key == "debt" and fresh:
+                    return {}, f"{key} needs nonempty {', '.join(fields)}"
+                if fresh and key == "debt":
                     from work import data_root, debt_reference_error
 
                     if error := debt_reference_error(data_root(), item["ref"]):
                         return {}, error
-        elif not all(
-            isinstance(item, str) and (historical_legacy or _line(item)) for item in data[key]
-        ):
-            shape = "strings" if historical_legacy else "non-empty single-line strings"
-            return {}, f"{key} must contain {shape}"
-    if legacy and fresh:
-        return {}, "legacy/untriaged report cannot certify a new round — judge and write schema 2"
-    if "legacy_untriaged" in data:
-        items = data["legacy_untriaged"]
-        if fresh or not isinstance(items, list) or not all(isinstance(item, str) for item in items):
-            return {}, "legacy_untriaged is historical evidence only — judge it in a new report"
-    _, _, error = validate_clearable(data, stage)
+            elif not isinstance(item, str) or not item.strip():
+                return {}, f"{key} requires finding text or an explained disposition"
+    report = dict(data)
+    if "noted" in report:
+        if fresh:
+            return {}, "legacy/untriaged report cannot certify a new round"
+        report["legacy_untriaged"] = report.pop("noted")
+    _, _, error = validate_clearable(report, stage)
     if error:
         return {}, error
-    if legacy:
-        report = empty_report() | {key: data[key] for key in ("fixed", "blocking")}
-        report["legacy_untriaged"] = data["noted"]
-    else:
-        report = {"schema": SCHEMA, **{key: data[key] for key in NEW_KEYS}}
-        if "legacy_untriaged" in data:
-            report["legacy_untriaged"] = data["legacy_untriaged"]
-    if stage == "closer" or (not fresh and CLEARABLE_BY_FULL in data):
-        report[CLEARABLE_BY_FULL] = data.get(CLEARABLE_BY_FULL, [])
     return report, ""
 
 
@@ -137,8 +126,10 @@ def identity(item) -> str:
 
 
 def aggregate(reports, *, blockers=True) -> dict:
-    result = empty_report()
+    result = {}
     for key in REPORT_KEYS:
+        if not any(key in report for report in reports):
+            continue
         items = [item for report in reports for item in report.get(key, [])]
         if key == "blocking" and blockers:
             result[key] = items
@@ -146,15 +137,15 @@ def aggregate(reports, *, blockers=True) -> dict:
             seen = {}
             for item in items:
                 seen.setdefault(identity(item), item)
-            if items or key in NEW_KEYS:
+            if items or any(key in report for report in reports):
                 result[key] = list(seen.values())
     return result
 
 
 def render_item(key: str, item) -> str:
-    if key == "dropped":
+    if key == "dropped" and isinstance(item, dict):
         return f"{item['finding']} — dropped: {item['reason']}"
-    if key == "debt":
+    if key == "debt" and isinstance(item, dict):
         return (
             f"{item['finding']} — debt {item['ref']}; too big: {item['too_big']}; "
             f"too important: {item['too_important']}"

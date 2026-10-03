@@ -25,15 +25,35 @@ from release import (
     version_refusal,
     versioning_mode,
 )
-from repair import land_red_path
 from review_artifacts import archive_covered, covered_destination, story_sidecars
 from review_scope import declared_files
 from timing import Span
 
 
+def land_red_path(story_id):
+    return close.marker_path(story_id).with_name(f"{story_id}.land-red.json")
+
+
 def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
     if close.git("status", "--porcelain").stdout.strip():
         return close.fail("refused: working tree is dirty — Verify must judge the tree that merges")
+    from review_sequence import check_reports, load
+
+    sequence = load(story_id)
+    if sequence:
+        try:
+            card, _ = close.story_card(close.plan_path().read_text(), story_id)
+        except KeyError as error:
+            return close.fail(f"refused: {error}")
+        try:
+            check_reports(sequence)
+        except (OSError, ValueError) as error:
+            return close.fail(f"refused: {error}")
+        if sequence["status"] != "completed":
+            return close.fail(
+                f"refused: review sequence {sequence['status']}; lead owns "
+                f"{sequence.get('problem', 'unfinished review or validation')}"
+            )
     marker = close.marker_path(story_id)
     launch_paths = [review.launch_marker(story_id), *story_sidecars(story_id)]
     covered_sidecars = []
@@ -72,9 +92,9 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
                 continue
             verified = str(unrecorded.get("verify_head", unrecorded.get("head", "")))[:8]
             next_action = (
-                f"fix it, then run `close.py {close.leg(story_id)[0]} repair`"
+                f"fix it, then run `close.py {close.leg(story_id)[0]} review`"
                 if launch == launch_paths[0]
-                else f"run `close.py {close.leg(story_id)[0]} salvage`, or review again"
+                else f"run `close.py {close.leg(story_id)[0]} review`"
             )
             return close.fail(
                 f"refused: the review completed on tree {verified}, but {verify_red}."
@@ -88,9 +108,7 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
         noun = close.leg(story_id)[0]
         return close.fail(
             f"refused: {len(queued)} unrecorded review round(s) are set aside at"
-            f" {', '.join(str(p) for p in queued)} — `close.py {noun} salvage` records"
-            " them. If salvage refuses because the"
-            " recorded tree or marker moved, inspect the saved report and patch,"
+            f" {', '.join(str(p) for p in queued)} — inspect the saved report and work,"
             " explicitly accept that the round cannot enter the ledger, remove only"
             f" the named launch marker(s), then retry `close.py {noun} land`"
         )
@@ -304,7 +322,7 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
             )
         except OSError as exc:
             return f"refused: could not record land red at {land_red}: {exc} — run land again"
-        return f"{red} — fix it, commit, then run `close.py {noun} repair`"
+        return f"{red} — fix it, commit, then run `close.py {noun} review`"
 
     try:
         red, _receipt = overlap.gates(

@@ -105,5 +105,6 @@ def test_failed_acceptance_requires_execution_before_retry(tmp_path):
     )
     count = len(events(seen))
     recovered = launch(repo, env, "resume", "story-042")
-    assert recovered.returncode == 0, recovered.stderr
-    assert roles(seen)[count:] == ["teammate", "reviewer"]
+    assert recovered.returncode == 2, recovered.stderr
+    assert roles(seen)[count:] == []
+    assert not (tmp_path / "data/worktrees/story-042/required.txt").exists()

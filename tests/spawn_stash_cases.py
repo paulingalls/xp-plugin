@@ -40,7 +40,16 @@ def run_review(repo, tracked, monkeypatch, during_review):
         captured["sha"] = git(repo, "rev-parse", "stash@{0}").stdout.strip()
         during_review(tracked, captured["sha"])
         close.marker_path(story_id).write_text(
-            json.dumps({"fixed": [], "blocking": [], "schema": 2, "dropped": [], "debt": []})
+            json.dumps(
+                {
+                    "actionable": [],
+                    "fixed": [],
+                    "blocking": [],
+                    "schema": 2,
+                    "dropped": [],
+                    "debt": [],
+                }
+            )
         )
         return 0
 
@@ -55,7 +64,7 @@ class TestDirtyReviewStash:
 
         assert result == (
             0,
-            {"fixed": [], "blocking": [], "schema": 2, "dropped": [], "debt": []},
+            {"actionable": [], "fixed": [], "blocking": [], "schema": 2, "dropped": [], "debt": []},
             "",
         )
         assert tracked.read_text() == "review dirt\n"
@@ -78,7 +87,7 @@ class TestDirtyReviewStash:
 
         assert result == (
             0,
-            {"fixed": [], "blocking": [], "schema": 2, "dropped": [], "debt": []},
+            {"actionable": [], "fixed": [], "blocking": [], "schema": 2, "dropped": [], "debt": []},
             "",
         )
         assert tracked.read_text() == "review dirt\n"
@@ -127,7 +136,7 @@ class TestDirtyReviewStash:
 
         assert result == (
             0,
-            {"fixed": [], "blocking": [], "schema": 2, "dropped": [], "debt": []},
+            {"actionable": [], "fixed": [], "blocking": [], "schema": 2, "dropped": [], "debt": []},
             "",
         )
         assert tracked.read_text() == "review dirt\n"

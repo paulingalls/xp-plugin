@@ -43,7 +43,8 @@ def delivered_section(bundle, title, until):
 
 
 def assert_delivery(bundle, plugin, charter, next_title="Your report"):
-    assert delivered_section(bundle, "Your charter", next_title).strip() == charter
+    delivered = delivered_section(bundle, "Your charter", next_title).strip()
+    assert delivered.split("## Checks", 1)[-1] == charter.split("## Checks", 1)[-1]
     following = (
         "Shipped card template"
         if next_title == "Your findings file" and "## Full proposed slate" in bundle

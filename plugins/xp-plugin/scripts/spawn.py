@@ -142,7 +142,7 @@ def run_agent(
     # Never the executor or planner: cmd_spawn's call sites have no except, so a
     # bound there kills a whole story and abandons its worktree (rejected design).
     timeout = None
-    if role.endswith("reviewer"):
+    if role.endswith("reviewer") or role == "fixer":
         timeout = float(os.environ.get("XP_AGENT_TIMEOUT", AGENT_TIMEOUT_DEFAULT))
         # The read-only bound is the ABSENT credential plus close.py's HEAD check,
         # never the permission mode — bypass stays (harness.PERMISSION_ARGV).
@@ -156,7 +156,7 @@ def run_agent(
         harness,
         env,
         timeout,
-        widen_git=False,
+        widen_git=role == "fixer",
         echo=echo,
         cancel=cancel,
     )
@@ -230,6 +230,11 @@ def cmd_spawn(story_id: str, override: str, dry_run: bool, resuming: bool = Fals
         if not resuming and ready().capture(story_id):
             held.close()
             return 2
+    if resuming and not dry_run:
+        result = resume().validation_only(data_root(), story_id, held)
+        if result is not None:
+            held.close()
+            return result
     harness, model, effort = resolve_role("executor", card, override)
     sandbox, problem = resolve_codex_sandbox(harness, config_flat("codex_sandbox"))
     if problem:

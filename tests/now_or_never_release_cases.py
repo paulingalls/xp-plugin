@@ -16,7 +16,7 @@ class TestReleaseBoundaries:
                 blocking=["unmet AC"], dropped=[{"finding": "unmet AC", "reason": "claims waiver"}]
             ),
         )
-        assert close(repo, env, "review").returncode == 0
+        assert close(repo, env, "review").returncode == 2
         before = g("rev-parse", "main").stdout
         result = close(repo, env, "land")
         assert result.returncode == 2 and "unmet AC" in result.stderr
@@ -28,21 +28,6 @@ class TestReleaseBoundaries:
         assert close(repo, env, "review").returncode == 2
         assert close(repo, env, "land").returncode == 2
         assert "[done]" not in (tmp_path / "data" / "plan.md").read_text()
-
-    @pytest.mark.parametrize("path", ["stray.py", ".xp/system.md"])
-    def test_repair_refuses_out_of_scope_fixes_after_verify_is_fixed(self, tmp_path, path):
-        from test_close_repair import red_round
-
-        repo, env, g, launch = red_round(tmp_path)
-        (repo / "src/thing.py").write_text("A = 2\n")
-        changed = repo / path
-        changed.write_text((changed.read_text() if changed.exists() else "") + "\nEXTRA = True\n")
-        assert g("add", "-A").returncode == 0
-        assert g("commit", "-qm", "fix Verify plus forbidden path").returncode == 0
-        result = close(repo, env, "repair")
-        assert result.returncode == 2 and path in result.stderr
-        assert "out-of-bound or gate paths" in result.stderr
-        assert launch.exists()
 
     def test_story_lead_motion_is_disclosed_but_gate_motion_refuses(self, tmp_path):
         for gate in (False, True):
@@ -62,7 +47,7 @@ class TestReleaseBoundaries:
 
 
 class TestRoundAcceptance:
-    @pytest.mark.parametrize("fault", ["reason", "disposition", "legacy"])
+    @pytest.mark.parametrize("fault", ["reason", "legacy"])
     def test_loss_refuses_before_a_new_round_is_recorded(self, tmp_path, fault):
         from close_helpers import marker_file
 

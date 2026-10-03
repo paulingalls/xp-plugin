@@ -84,6 +84,18 @@ def validate(story_id, prior):
 
 def next_stage(story_id, prior, current):
     results = validate(story_id, prior)
+    sequence = prior.get("checkpoint", {}).get("review_sequence")
+    if sequence:
+        from review_sequence import check_reports
+
+        check_reports(sequence)
+        if sequence["status"] in ("blocked", "incomplete"):
+            raise ValueError(
+                f"lead handoff: {sequence.get('problem', 'incomplete review')}; "
+                f"inspect work then explicitly run close.py review"
+            )
+        if sequence["status"] in ("validation", "validation-red", "awaiting-disposition"):
+            return "reviewer"
     executor = results.get("executor", {})
     if executor.get("result") != "ran" or prior.get("stages", {}).get("executor") != "ran":
         return "executor"
@@ -99,7 +111,7 @@ def next_stage(story_id, prior, current):
         return "executor"
     reviewed = results.get("reviewer", {})
     if reviewed.get("result") == "blocked" and current["verify"] == reviewed["input"]["verify"]:
-        return "executor"
+        raise ValueError("lead owns blocking review findings; explicitly review corrected work")
     tier = results.get("story-tier", {})
     if tier.get("result") in ("failed", "blocked"):
         return "executor"

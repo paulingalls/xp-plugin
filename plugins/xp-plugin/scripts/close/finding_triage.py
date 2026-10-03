@@ -79,7 +79,7 @@ def render_triage(root) -> str:
                 continue
             readable.append(raw)
             for key in ("fixed", "dropped", "debt"):
-                for item in parsed[key]:
+                for item in parsed.get(key, []):
                     pending.pop(item if isinstance(item, str) else item["finding"], None)
             for item in parsed.get("legacy_untriaged", []):
                 pending[item] = f"legacy/untriaged: {item}"

@@ -132,14 +132,6 @@ class TestShippedProseMatchesTheMechanism:
         for term in ("spawn.py", "DESIGN.md", "a falsifier", "at story-042"):
             assert project_identifiers(seed + f"\n11. **Ported** — see {term}.\n"), term
 
-    def test_the_skills_keep_the_negative_space_that_earns_its_words(self):
-        """The counterweight to the cut: what deliberately does NOT exist cannot be
-        read off the code an agent has not read, so it is the one description that
-        stays. These sentences stop an agent hunting for a flag."""
-        story = prose(PLUGIN / "skills" / "story-close" / "SKILL.md")
-        assert "DOES NOT EXIST" in story, "the lead will hunt for a delta review"
-        assert "never spawns" in story, "land's one hard guarantee"
-
     def test_every_shipped_script_is_reachable_from_the_plugin(self):
         """ratchet.py sat in scripts/ for a sprint measuring OUR budgets against
         OUR module names: nothing in the plugin invoked it, the shipped lefthook

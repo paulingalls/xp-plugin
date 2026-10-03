@@ -2,7 +2,6 @@
 """Story review records judgment; story land runs gates and moves refs without spawning."""
 
 import argparse
-import json
 import os
 import re
 import subprocess
@@ -11,14 +10,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 sys.path.insert(0, str(Path(__file__).parent / "close"))
-from bookkeep import fork_point, render_prior_rounds
 from diff_range import render as render_diff_range
 from env import sprint_branch
 from lifecycle import declared_commands as verify_commands
-from review_artifacts import (
-    advance_story_checkpoints,
-)
-from review_launch import verify_on_reviewed_tree
 from work import (
     chdir_repo_root,
     data_root,
@@ -201,7 +195,7 @@ def build_bundle(card: str, base: str, report: Path, prior: str = "", notice: st
     executor_log = data_root() / "logs" / f"{card.split()[1]}-executor.log"
     sections = [
         ("Your charter", review.charter()),
-        ("Your report", f"REPORT_PATH: {report}\nPATCH_PATH: {review.patch_path(report)}"),
+        ("Your report", f"REPORT_PATH: {report}"),
         ("Story card", card),
         (
             "Execution evidence",
@@ -253,166 +247,19 @@ def _leg_checks(story_id: str, action: str, dry_run: bool = False) -> tuple[str,
     return card, trunk, ""
 
 
-def _record_round(
-    story_id: str,
-    card: str,
-    path: Path,
-    marker: Path,
-    state: dict,
-    at: dict,
-    launch: Path,
-    salvage=False,
-) -> int:
-    """Share review and salvage guards; `at` is the tree the launch marker names."""
-    import review
+def cmd_review(story_id: str, dry_run: bool = False, held=None, explicit=True) -> int:
+    from review_launch import check_preflight
+    from review_sequence import locked, run
 
-    head = at["head"]
-    report, err = review.read_report(path, fresh=False) if salvage else ({}, "")
-    if err:
-        return fail(review.stamp(path, review.abort_text(head, err, salvage=salvage)))
-    checkpoint_digest = at.get("checkpoint_digest", at["digest"])
-    motion = review.check_reviewer_motion(
-        head,
-        marker,
-        checkpoint_digest,
-        card,
-        story_id,
-        at.get("moved", ""),
-        salvage=salvage,
-        preserve_motion=bool(at.get("close_authored_motion")),
-    )
-    if motion:
-        return fail(review.stamp(path, motion))
-    if not salvage:
-        report, err = review.read_report(path)
-        if err:
-            return fail(review.stamp(path, review.abort_text(head, err)))
-    if salvage and report.get("legacy_untriaged") is not None:
-        report["incomplete"] = (
-            "legacy/untriaged salvaged report — rerun review before certifying a new round"
-        )
-    if err := review.apply_patch(path, card):
-        return fail(review.stamp(path, review.abort_text(head, err, salvage=salvage)))
-    applied_head = git("rev-parse", "HEAD").stdout.strip()
-    if applied_head != head:
-        at["applied_head"] = applied_head
-        launch.write_text(json.dumps(at))
+    def action():
+        card, trunk, error = _leg_checks(story_id, "review", dry_run)
+        if error:
+            return fail(error)
+        if error := check_preflight(dry_run):
+            return fail(error)
+        return run(story_id, card, trunk, dry_run, explicit)
 
-    def abort_after_apply(why: str, recorded: str = "") -> str:
-        """abort_text's undo destroys whatever moved the tree; here that is OUR commit."""
-        if applied_head == head:
-            return (
-                review.abort_text(head, why, recorded, salvage=salvage)
-                if recorded
-                else review.abort_text(head, why, salvage=salvage)
-            )
-        # `recorded` warns against abort_text's reset; none is offered below.
-        note = " The round IS recorded, and it names this tree." if recorded else ""
-        return (
-            f"refused: {why}. {applied_head[:8]} is the patch commit close.py applied;"
-            f" keep and inspect it, repair the failure, then review again from this tree.{note}"
-        )
-
-    verify_err = verify_on_reviewed_tree(story_id, card)
-    if verify_err and not report["blocking"]:
-        at.update(verify_red=verify_err, verify_head=git("rev-parse", "HEAD").stdout.strip())
-        launch.write_text(json.dumps(at))
-        return fail(review.stamp(path, abort_after_apply(verify_err)))
-    kept = "The round IS recorded, and it names this tree — a reset here orphans it."
-    refusal = abort_after_apply(verify_err, kept) if verify_err else ""
-    review.stamp(path, refusal)
-    if err := review.write_reviewer_diff(path, head, at.get("noun", leg(story_id)[0])):
-        return fail(review.stamp(path, err))  # already a whole refusal, prefix and all
-    shown_sha = git("rev-parse", "HEAD").stdout.strip()
-    position = at.get("round_index") if salvage else None
-    if position is not None and (
-        not isinstance(position, int) or not 0 <= position <= len(state.get("rounds", []))
-    ):
-        why = "the queued review has an invalid round position"
-        return fail(review.stamp(path, abort_after_apply(why)))
-    review.write_round(
-        marker,
-        state,
-        report,
-        position=position,
-        round_file=review.round_number(path),
-        reviewed_head=head,
-        shown_sha=shown_sha,
-        review_base=at["base"],
-        branch=git("rev-parse", "--abbrev-ref", "HEAD").stdout.strip(),
-    )
-    advance_story_checkpoints(story_id, head, checkpoint_digest, review.marker_digest(marker))
-    launch.unlink(missing_ok=True)
-    return fail(refusal) if refusal else 0
-
-
-def cmd_review(story_id: str, dry_run: bool = False) -> int:
-    import review
-
-    card, trunk, err = _leg_checks(story_id, "review", dry_run)
-    if err:
-        return fail(err)
-    base, refusal = fork_point(trunk)
-    if refusal:
-        return fail(refusal)
-    from review_launch import check_preflight, prepare
-
-    if refusal := check_preflight(dry_run):
-        return fail(refusal)
-    marker = marker_path(story_id)
-
-    state, path, launch = prepare(story_id, dry_run, marker, leg(story_id)[0])
-    head = git("rev-parse", "HEAD").stdout.strip()
-    at = {
-        "head": head,
-        "digest": review.marker_digest(marker),
-        "base": base,
-        "card": card,
-        "round_index": len(state.get("rounds", [])),
-    }
-    at["noun"] = leg(story_id)[0]
-    prior = render_prior_rounds(state.get("rounds", []))
-    from plan_acceptance import provenance
-
-    notices = [review.plan_review_notice(story_id), provenance(story_id)]
-    notice = "\n".join(n for n in notices if n)
-    if notice:
-        print("warning: " + notice, file=sys.stderr)
-    bundle = build_bundle(card, base, path, prior, notice)
-    if not dry_run:
-        launch.write_text(json.dumps(at))
-    from review_cancel import cancelled, card_changed
-    from teammate_tee import ReviewCancelled
-
-    try:
-        result, err = review.run(
-            bundle,
-            Path.cwd(),
-            dry_run,
-            card=card,
-            noun=at["noun"],
-            cancel=None if dry_run else card_changed(story_id, card),
-        )
-    except ReviewCancelled as stopped:
-        return cancelled(story_id, head, at["digest"], path, launch, stopped.log)
-    if dry_run:
-        return fail("refused: " + err) if err else 0
-    if err:  # crash, timeout, absent binary — it may still have committed first
-        return fail(review.stamp(path, review.abort_text(head, err)))
-    print(result)
-    return _record_round(story_id, card, path, marker, state, at, launch)
-
-
-def cmd_salvage(story_id: str, dry_run: bool = False) -> int:
-    import salvage
-
-    return salvage.cmd_salvage(story_id, dry_run)
-
-
-def cmd_repair(story_id: str) -> int:
-    import repair
-
-    return repair.cmd_repair(story_id)
+    return locked(story_id, action, held)
 
 
 def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
@@ -433,14 +280,18 @@ def main() -> int:
     sp.add_argument("--dry-run", action="store_true")
     f = sub.add_parser("free")
     f.add_argument("slug")
-    f.add_argument("action", choices=["start", "review", "repair", "salvage", "land", "post-merge"])
+    f.add_argument(
+        "action", choices=["start", "review", "acknowledge-validation", "land", "post-merge"]
+    )
     f.add_argument("--dry-run", action="store_true")
+    f.add_argument("--reason", default="")
     s = sub.add_parser("story")
     s.add_argument("story_id")
-    s.add_argument("action", choices=["review", "repair", "salvage", "land"])
+    s.add_argument("action", choices=["review", "acknowledge-validation", "land"])
     # Derived: PR mode cannot integrate into a recorded sprint branch.
     s.add_argument("--merge-mode", choices=["pr", "local"], default=None)
     s.add_argument("--dry-run", action="store_true")
+    s.add_argument("--reason", default="")
     a = p.parse_args()
     # Unknown roles fail safe; this bounds the injected close path, not forged env.
     role = os.environ.get("XP_ROLE", "lead")
@@ -451,8 +302,6 @@ def main() -> int:
         )
     if not chdir_repo_root():
         return fail("refused: not inside a git repository")
-    if a.kind in ("story", "free") and a.action == "repair" and a.dry_run:
-        return fail("refused: repair has no dry run — rerun without --dry-run")
     if a.kind == "free":
         import free
 
@@ -460,10 +309,11 @@ def main() -> int:
             return free.cmd_start(a.slug, a.dry_run)
         if a.action == "review":
             return free.cmd_review(a.slug, a.dry_run)
-        if a.action == "salvage":
-            return free.cmd_salvage(a.slug, a.dry_run)
-        if a.action == "repair":
-            return free.cmd_repair(a.slug)
+        if a.action == "acknowledge-validation":
+            from review_validation import acknowledge
+
+            key, _, error = free.current_free(a.slug)
+            return fail(error) if error else acknowledge(key, a.reason)
         if a.action == "land":
             return free.cmd_land(a.slug, a.dry_run)
         return free.cmd_post_merge(a.slug, a.dry_run)
@@ -485,10 +335,10 @@ def main() -> int:
         return sprint_close.cmd_post_merge(a.sprint_id, a.dry_run)
     if a.action == "review":
         return cmd_review(a.story_id, a.dry_run)
-    if a.action == "salvage":
-        return cmd_salvage(a.story_id, a.dry_run)
-    if a.action == "repair":
-        return cmd_repair(a.story_id)
+    if a.action == "acknowledge-validation":
+        from review_validation import acknowledge
+
+        return acknowledge(a.story_id, a.reason)
     mode = a.merge_mode or ("local" if integration_target() != default_branch() else "pr")
     return cmd_land(a.story_id, mode, a.dry_run)
 

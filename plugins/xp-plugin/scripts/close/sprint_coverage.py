@@ -2,7 +2,7 @@
 
 import overlap
 from release import release_bump_paths
-from review import CLEARABLE_BY_FULL, covered_ranges, reviewer_strays, validate_clearable
+from review import CLEARABLE_BY_FULL, covered_ranges, validate_clearable
 from review_report import normalize_report
 from sprint_close import _shown_diff, default_branch, git, read_sprint_state
 
@@ -99,10 +99,6 @@ def coverage_refusal(
             f"refused: HEAD does not contain {shown[:8]}, the tree the round covered"
             f" — the recorded round describes no tree that exists. {rerun}"
         )
-    strays = reviewer_strays(shown, head)
-    if not strays and not any(f in overlap.GATE_FILES for f in moved.stdout.splitlines()):
-        print(f"the delta since {shown[:8]} is the reviewer's own fixes")
-        return ""
     paths = git("diff", "--no-renames", "--name-only", shown, head).stdout.splitlines()
     eligible, trunk_range, state_reason = overlap.trunk_only_paths(
         round_.get("review_base"), shown, head, default_branch()

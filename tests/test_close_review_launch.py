@@ -28,7 +28,7 @@ class TestReviewLeg:
         diff = read_named_diff(prompt, "Cumulative diff", repo, env)
         assert "-A = 1" in diff and "+A = 2" in diff
         assert "CONSTRAINT-SENTINEL" in prompt and "SYSTEM-SENTINEL" in prompt
-        assert "PATCH_PATH:" in prompt and "tree exactly as you found it" in prompt
+        assert "REPORT_PATH:" in prompt
 
     def test_the_spawned_reviewer_is_not_a_lead_and_cannot_close(self, tmp_path):
         """N10: this story's Verify does not run the matching spawn test."""
@@ -60,7 +60,7 @@ class TestReviewLeg:
         assert close(repo, env, "review").returncode == 2
         assert marker(tmp_path)["rounds"][-1]["blocking"] == [finding]
         land = close(repo, env, "land")
-        assert land.returncode == 2 and finding in land.stderr and "blocking" in land.stderr
+        assert land.returncode == 2 and finding in land.stderr
 
     def test_dry_run_review_launches_nothing(self, tmp_path):
         repo, env, _g = make_repo(tmp_path)

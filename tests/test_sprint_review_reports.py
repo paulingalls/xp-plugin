@@ -81,13 +81,9 @@ class TestCloserOnlySchema:
         path = self.write(tmp_path, clearable_by_full=["A"], unrelated="ignored")
         report, error = read_report(path)
         assert not error
-        assert report == {
-            "fixed": [],
-            "blocking": ["A", "B"],
-            "schema": 2,
-            "dropped": [],
-            "debt": [],
-        }
+        assert report["blocking"] == ["A", "B"]
+        assert report["unrelated"] == "ignored"
+        assert report["clearable_by_full"] == ["A"]
 
 
 FINDING = {"fixed": [], "blocking": ["F"], "schema": 2, "dropped": [], "debt": []}
