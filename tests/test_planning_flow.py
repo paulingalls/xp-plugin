@@ -6,6 +6,34 @@ from spawn_stages_support import stub_stages
 from test_card_update_contract import CHANGES, REASON, edited_stages
 
 
+def test_failed_planned_launch_can_amend_captured_card(tmp_path):
+    repo, env, _ = make_repo(tmp_path, status="planned", files="src/thing.py, src/other.py")
+    first = spawn(repo, env, "story-042")
+    assert first.returncode == 2 and "not on PATH" in first.stderr
+    marker = tmp_path / "data/markers/story-042.ready.json"
+    before = marker.read_bytes()
+    card = tmp_path / "data/plan.md"
+    assert "[planned]" in card.read_text()
+    card.write_text(card.read_text().replace("Context: demo.", "Context: corrected premise."))
+    events = stub_stages(tmp_path)
+    refused = spawn(repo, env, "story-042")
+    assert refused.returncode == 2 and "amend" in refused.stderr
+    assert marker.read_bytes() == before
+    amended = spawn(repo, env, "amend", "story-042", "--reason", "lead corrects premise")
+    assert amended.returncode == 0, amended.stderr
+    assert "[planned]" in card.read_text()
+    launched = spawn(repo, env, "story-042")
+    assert launched.returncode == 0, launched.stdout + launched.stderr
+    stages = [json.loads(line) for line in events.read_text().splitlines()]
+    assert [stage["role"] for stage in stages] == [
+        "planner",
+        "plan-reviewer",
+        "teammate",
+        "reviewer",
+    ]
+    assert "Context: corrected premise." in stages[0]["prompt"]
+
+
 def test_planned_multifile_launch_uses_current_source(tmp_path):
     repo, env, git = make_repo(tmp_path, status="planned", files="src/thing.py, src/other.py")
     (repo / "src").mkdir()

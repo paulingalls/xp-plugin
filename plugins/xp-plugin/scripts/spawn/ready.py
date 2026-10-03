@@ -192,8 +192,10 @@ def _amend_locked(story_id: str, reason: str, text: str) -> int:
     except (KeyError, OSError) as e:
         why = missing_plan_refusal() if isinstance(e, OSError) else e.args[0]
         return fail(f"refused: {why}")
-    if status not in {"ready", "in-progress"}:
-        return fail(f"refused: {story_id} is [{status}], amend requires [ready] or [in-progress]")
+    if status not in {"planned", "ready", "in-progress"}:
+        return fail(
+            f"refused: {story_id} is [{status}], amend requires [planned], [ready] or [in-progress]"
+        )
     try:
         verify_commands(story_id, card)
         verify_reads(card)

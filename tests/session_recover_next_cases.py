@@ -29,7 +29,7 @@ class NextLoopActionCases:
 
     def test_a_released_open_card_routes_through_create_sprint_and_can_be_carried(self, tmp_path):
         from close import story_card
-        from spawn_helpers import SPAWN, make_repo
+        from spawn_helpers import SPAWN, make_repo, stub_claude
 
         repo, env, _g = make_repo(tmp_path, status="planned")
         root = tmp_path / "data"
@@ -52,16 +52,18 @@ class NextLoopActionCases:
         next_line = next_lines(run_recovery(repo, tmp_path, data_dir=root).stdout)[0]
         command = next_line.split("`", 2)[1]
         argv = shlex.split(command)
-        assert argv[:2] == ["spawn.py", "ready"] and argv[-1] == "story-042"
+        assert argv == ["spawn.py", "story-042"]
+        stub_claude(tmp_path)
         argv[:1] = [sys.executable, str(SPAWN)]
-        ready = subprocess.run(argv, cwd=repo, env=env, capture_output=True, text=True)
-        assert ready.returncode == 0, ready.stderr
+        launched = subprocess.run(argv, cwd=repo, env=env, capture_output=True, text=True)
+        assert launched.returncode == 0, launched.stderr
+        assert (root / "worktrees/story-042").is_dir()
 
     @pytest.mark.parametrize(
         ("status", "handoff", "expected"),
         [
             ("done", "ABSENT", "NEXT: no open card in Sprint 1 — run `/sprint-close`"),
-            ("planned", "ABSENT", "NEXT: story-042 is [planned] — run `spawn.py ready story-042`"),
+            ("planned", "ABSENT", "NEXT: story-042 is [planned] — run `spawn.py story-042`"),
             ("ready", "ABSENT", "NEXT: story-042 is [ready] — run `spawn.py story-042`"),
             (
                 "in-progress",
@@ -113,7 +115,7 @@ class NextLoopActionCases:
         unreviewed = next_lines(run_recovery(repo, tmp_path).stdout)
 
         assert incomplete == ["NEXT: Sprint 1 slate review incomplete — run `slate_review.py 1`"]
-        assert unreviewed == ["NEXT: story-042 is [planned] — run `spawn.py ready story-042`"]
+        assert unreviewed == ["NEXT: story-042 is [planned] — run `spawn.py story-042`"]
 
     def test_a_padded_sprint_names_a_slate_review_command_that_resolves(
         self, tmp_path, monkeypatch
