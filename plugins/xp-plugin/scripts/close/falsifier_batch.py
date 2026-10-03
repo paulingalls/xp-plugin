@@ -7,7 +7,6 @@ from sprint_bundle import ARCHIVES, COVERED_BY, FALSIFIER, RESOLVES, source_file
 from work import (
     FalsifierResult,
     append,
-    config_block_value,
     entries,
     falsifier_result,
     neutralize,
@@ -68,7 +67,7 @@ def corpus(
     return [
         (record.eid, record.head, record.falsifier, record.covered)
         for record in (ledger(root) if records is None else records)
-        if record.state != ARCHIVED
+        if record.state == OPEN
     ]
 
 
@@ -82,110 +81,12 @@ def execute_batch(grouped: dict[str, list[tuple[str, str, str]]]) -> dict[str, F
     return results
 
 
-def validated_coverage(tiers: dict[str, str]) -> tuple[dict[str, list[str]], str]:
-    declared = config_block_value("tier_coverage")
-    graph = {
-        name: [target.strip() for target in targets.split(",") if target.strip()]
-        for name, targets in declared.items()
-    }
-    if not graph:
-        return {}, ""
-    participants = set(graph)
-    participants.update(target for targets in graph.values() for target in targets)
-    if absent := sorted(participants - tiers.keys()):
-        return {}, f"tier_coverage names absent tier(s): {', '.join(absent)} in .xp/config.yml"
-    unavailable = sorted(
-        name for name in participants if not tiers[name] or tiers[name] == "EDIT-ME"
-    )
-    if unavailable:
-        return {}, f"tier_coverage names unavailable tier(s): {', '.join(unavailable)}"
-    pins = config_block_value("tier_coverage_pins")
-    if missing := sorted(participants - pins.keys()):
-        return {}, f"tier_coverage_pins missing tier(s): {', '.join(missing)} in .xp/config.yml"
-    for name in sorted(participants):
-        if pins[name] != tiers[name]:
-            return (
-                {},
-                f"stale tier_coverage_pins for {name} in .xp/config.yml:"
-                f" pinned {pins[name]!r}; current {tiers[name]!r}",
-            )
-    done, active = set(), []
-
-    def visit(name: str) -> str:
-        if name in active:
-            cycle = [*active[active.index(name) :], name]
-            return "tier_coverage cycle in .xp/config.yml: " + " -> ".join(cycle)
-        if name in done:
-            return ""
-        active.append(name)
-        for target in graph.get(name, []):
-            if error := visit(target):
-                return error
-        active.pop()
-        done.add(name)
-        return ""
-
-    for name in graph:
-        if error := visit(name):
-            return {}, error
-    return graph, ""
-
-
-def tier_covers(
-    tagged: str, running: str, tiers: dict[str, str], graph: dict[str, list[str]]
-) -> bool:
-    if tagged not in tiers or not tiers[tagged] or tiers[tagged] == "EDIT-ME":
-        return False
-    if tagged == running or tiers[tagged] == tiers.get(running, ""):
-        return True
-    seen, pending = set(), list(graph.get(tagged, []))
-    while pending:
-        current = pending.pop()
-        if current == running:
-            return True
-        if current not in seen:
-            seen.add(current)
-            pending.extend(graph.get(current, []))
-    return False
-
-
-def unavailable_coverage(records: list[LedgerRecord], tiers: dict[str, str]) -> list[str]:
-    lines = []
-    for record in records:
-        if record.state == ARCHIVED or not record.covered or record.covered == "none":
-            continue
-        value = tiers.get(record.covered)
-        if record.covered not in tiers:
-            reason = "absent"
-        elif not value:
-            reason = "empty"
-        elif value == "EDIT-ME":
-            reason = "EDIT-ME"
-        else:
-            continue
-        lines.append(f"coverage unavailable for {record.eid}: tier {record.covered} is {reason}")
-    return lines
-
-
-def grouped_batch(root: Path) -> tuple[dict, dict, list[LedgerRecord], list, str]:
+def grouped_batch(root: Path) -> tuple[dict, list]:
     source = entries(root)
-    records = ledger(root, source)
-    tiers = config_block_value("tests")
-    graph, error = validated_coverage(tiers)
-    if error:
-        return {}, {}, records, source, error
     grouped = {}
-    for eid, head, falsifier, covered in corpus(root, records):
+    for eid, head, falsifier, covered in corpus(root, ledger(root, source)):
         grouped.setdefault(falsifier, []).append((eid, head, covered))
-    deferred = {
-        command: sources
-        for command, sources in grouped.items()
-        if all(tier_covers(covered, "full", tiers, graph) for _eid, _head, covered in sources)
-    }
-    standalone = {
-        command: sources for command, sources in grouped.items() if command not in deferred
-    }
-    return standalone, deferred, records, source, ""
+    return grouped, source
 
 
 def triage_notes(source: list[tuple[str, str]]) -> list[str]:
@@ -259,44 +160,3 @@ def batch_refusal(
     if unrun or len(red) != 1:
         decision += " Triage the commands, then use `work.py bug` if a product bug is confirmed."
     return f"refused: {evidence}\n{decision} Fix it, then run {retry} again"
-
-
-def resolved_offers(
-    records: list[LedgerRecord], results: dict[str, FalsifierResult], limit: int = 5
-) -> str:
-    candidates = [record for record in records if record.state == RESOLVED]
-    if not candidates:
-        return "0 resolved records to consider archiving."
-    measured = {record.falsifier for record in candidates if record.falsifier in results}
-    total = sum(results[command].elapsed for command in measured)
-    ranked = sorted(
-        candidates,
-        key=lambda record: (
-            -(results[record.falsifier].elapsed if record.falsifier in results else 0.0),
-            record.eid,
-        ),
-    )
-    lines = [
-        f"{len(candidates)} resolved records to consider archiving;"
-        f" total distinct measured cost: {total:.3f}s"
-    ]
-    for record in ranked[:limit]:
-        cost = (
-            f"{results[record.falsifier].elapsed:.3f}s this close"
-            if record.falsifier in results
-            else "deferred; standalone duration not measured"
-        )
-        coverage = (
-            "coverage not recorded (legacy)"
-            if not record.covered
-            else "no tier runs this"
-            if record.covered == "none"
-            else f"covered by tier {record.covered}"
-        )
-        lines.append(
-            f"  {record.eid} — {cost}; {coverage}; archiving forfeits its replacement"
-            " falsifier's recurring guarantee"
-        )
-    if len(candidates) > limit:
-        lines.append(f"  ... {len(candidates) - limit} more")
-    return "\n".join(lines)

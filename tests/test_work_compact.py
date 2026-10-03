@@ -55,13 +55,18 @@ def seed(root):
         debt,
         "--falsifier",
         "printf resolved >/dev/null",
-        "--covered-by",
-        "none",
     )
     run(root, "archive", "--ref", debt, "--disposition", "accepted risk", story="story-042")
     run(root, "bug", "--claim", "resolved bug claim", "--falsifier", "false", "--files", "b.py")
     bug = last_id(root)
-    run(root, "resolve", "--ref", bug, "--falsifier", "true", "--covered-by", "none")
+    run(
+        root,
+        "resolve",
+        "--ref",
+        bug,
+        "--falsifier",
+        "true",
+    )
     return active, (note, debt, bug)
 
 
@@ -182,18 +187,17 @@ def test_compaction_keeps_coverage_with_the_replacement_falsifier(tmp_path, repl
         "false",
         "--files",
         "a",
-        "--covered-by",
-        "full",
     )
     counter = tmp_path / "replacement"
     args = ["resolve", "--ref", filed.stdout.strip(), "--falsifier", f"printf x >> {counter}"]
-    args += ["--covered-by", replacement_tier]
     assert project_work(repo, env, *args).returncode == 0
+    ledger = tmp_path / "data/work.md"
+    with ledger.open("a") as stream:
+        stream.write(f"Covered by: {replacement_tier}\n")
     assert project_work(repo, env, "compact").returncode == 0
     compacted = (tmp_path / "data" / "work.md").read_text()
     assert f"Covered by: {replacement_tier}" in compacted
 
     before = counter.read_text()
     assert sprint(repo, env, "start").returncode == 0
-    expected = before if replacement_tier == "full" else before + "x"
-    assert counter.read_text() == expected
+    assert counter.read_text() == before

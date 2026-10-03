@@ -1,4 +1,4 @@
-"""Live work records own every standalone falsifier script."""
+"""Actionable open falsifiers distinguish defect red from commands that cannot run."""
 
 import importlib.util
 import subprocess
@@ -7,7 +7,6 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
-from test_data_root_guard import real_data_root
 from work import entry_id
 
 pytestmark = pytest.mark.meta
@@ -65,29 +64,7 @@ def run_in(repo, command):
     )
 
 
-def test_live_falsifier_lines_and_directory_scripts_must_correspond(tmp_path, capsys):
-    directory = scripts(
-        tmp_path,
-        {
-            "falsifier_live.py": "raise SystemExit(0)\n",
-            "falsifier_orphan.py": "raise SystemExit(0)\n",
-        },
-    )
-    live = records(tmp_path / "data", record("python3 tests/scripts/falsifier_live.py"))
-
-    assert checks(tmp_path / "data", live, directory, execute=False) == 1
-    error = capsys.readouterr().err
-    assert "falsifier_orphan.py" in error
-    assert "falsifier_live.py" not in error
-    cli = subprocess.run(
-        [sys.executable, CHECKER_PATH, "--scripts-dir", directory, tmp_path / "data"],
-        capture_output=True,
-        text=True,
-    )
-    assert cli.returncode == 1 and "falsifier_orphan.py" in cli.stderr
-
-
-def test_a_files_line_does_not_own_a_resolution_script(tmp_path, capsys):
+def test_resolved_records_do_not_schedule_script_audits(tmp_path, capsys):
     directory = scripts(tmp_path, {"falsifier_old.py": "raise SystemExit(0)\n"})
     original = record("python3 tests/scripts/falsifier_old.py", "tests/scripts/falsifier_old.py")
     replacement = (
@@ -101,12 +78,12 @@ def test_a_files_line_does_not_own_a_resolution_script(tmp_path, capsys):
             directory,
             execute=False,
         )
-        == 1
+        == 0
     )
-    assert "falsifier_old.py" in capsys.readouterr().err
+    assert not capsys.readouterr().err
 
 
-def test_archiving_a_record_names_the_orphan_without_removing_it(tmp_path, capsys):
+def test_archived_records_do_not_schedule_script_audits(tmp_path, capsys):
     body = "raise SystemExit(0)\n"
     directory = scripts(tmp_path, {"falsifier_retired.py": body})
     original = record("python3 tests/scripts/falsifier_retired.py")
@@ -118,8 +95,8 @@ def test_archiving_a_record_names_the_orphan_without_removing_it(tmp_path, capsy
         "Disposition: removed after archive\n\n"
     )
 
-    assert checks(root, records(root, original + archived), directory, execute=False) == 1
-    assert "falsifier_retired.py" in capsys.readouterr().err
+    assert checks(root, records(root, original + archived), directory, execute=False) == 0
+    assert not capsys.readouterr().err
     assert (directory / "falsifier_retired.py").read_text() == body
 
 
@@ -226,7 +203,7 @@ def test_the_audit_runs_a_live_falsifier_from_any_working_directory(tmp_path, mo
     """The DEFAULT runner is the shipped path and the least-walked one: a Falsifier line
     is repo-relative, so an ambient cwd decided whether the command ran at all."""
     monkeypatch.chdir(tmp_path)
-    command = "cat tests/scripts/falsifier_dup_story_id.py"
+    command = "cat tests/scripts/falsifier_hookspath_bypass.py"
 
     assert checker.audit_scripts(records(tmp_path / "data", record(command))) == 0
     assert Path.cwd().resolve() == tmp_path.resolve()
@@ -251,25 +228,6 @@ def test_duplicate_records_run_one_complete_command_once(tmp_path):
         == 0
     )
     assert calls == [command]
-
-
-def test_this_repositories_scripts_equal_the_live_record_scripts():
-    root = real_data_root()
-    work = root / "work.md"
-    if not work.is_file():
-        pytest.skip(f"live work records absent: {work}")
-    live = list(checker.corpus(root))
-    owned = set(checker.script_owners(live))
-    present = {
-        f"tests/scripts/{path.name}" for path in (ROOT / "tests" / "scripts").glob("falsifier_*.py")
-    }
-    assert present == owned
-
-
-def test_live_script_check_reports_missing_work(tmp_path, monkeypatch):
-    monkeypatch.setattr("test_falsifier_scripts.real_data_root", lambda: tmp_path)
-    with pytest.raises(pytest.skip.Exception, match=r"live work records absent: .*work.md"):
-        test_this_repositories_scripts_equal_the_live_record_scripts()
 
 
 def test_hookspath_falsifier_constructs_or_explicitly_declines(tmp_path, capsys):

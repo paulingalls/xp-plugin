@@ -47,8 +47,6 @@ class TestResolutionsAreCarried:
                     ref,
                     "--falsifier",
                     f"true # {attempt}",
-                    "--covered-by",
-                    "none",
                 ).returncode
                 == 0
             )
@@ -83,8 +81,6 @@ class TestResolutionsAreCarried:
             ref,
             "--falsifier",
             "true # THE-REPLACEMENT",
-            "--covered-by",
-            "none",
         )
         work(repo, env, "note", "A-PLAIN-NOTE")
         assert sprint(repo, env, "review").returncode == 0

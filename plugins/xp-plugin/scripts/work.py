@@ -191,46 +191,11 @@ def falsifier_is_green(command: str) -> bool:
     return falsifier_result(command).returncode == 0
 
 
-def checked_coverage(args: argparse.Namespace, required: bool = False) -> str | None:
-    tier = args.covered_by
-    if not tier:
-        if required:
-            tiers = config_block_value("tests")
-            states = (
-                ", ".join(
-                    f"{name} ({'available' if value and value != 'EDIT-ME' else 'unavailable'})"
-                    for name, value in tiers.items()
-                )
-                or "none configured"
-            )
-            print(
-                "refused: resolve requires an explicit coverage answer; configured tiers: "
-                f"{states}. Retry with --covered-by TIER or --covered-by none",
-                file=sys.stderr,
-            )
-            return None
-        return ""
-    if tier == "none":
-        return "Covered by: none\n"
-    tiers = config_block_value("tests")
-    if tier in tiers and tiers[tier] and tiers[tier] != "EDIT-ME":
-        return f"Covered by: {tier}\n"
-    names = ", ".join(tiers) or "none configured"
-    state = "unavailable" if tier in tiers else "absent"
-    print(
-        f"refused: --covered-by {tier!r} is {state}; configured tiers: {names}."
-        " Use --covered-by none when no tier runs this",
-        file=sys.stderr,
-    )
-    return None
-
-
-def entry(kind: str, args: argparse.Namespace, coverage: str) -> str:
+def entry(kind: str, args: argparse.Namespace) -> str:
     return (
         f"## {kind} {stamp()}\n"
         f"Claim: {neutralize(args.claim)}\n"
         f"Falsifier: `{neutralize(args.falsifier)}`\n"
-        f"{coverage}"
         f"{exception_metadata(args)}"
         f"Files: {neutralize(args.files)}\n\n"
     )
@@ -355,7 +320,6 @@ def main() -> int:
         p.add_argument("--claim", required=True)
         p.add_argument("--falsifier", required=True, help="shell command; red = exit nonzero")
         p.add_argument("--files", required=True, help="comma-separated paths")
-        p.add_argument("--covered-by", metavar="TIER", help="a configured tier that runs it")
         if kind == "debt":
             p.add_argument(
                 "--too-big",
@@ -385,7 +349,6 @@ def main() -> int:
     r = sub.add_parser("resolve")
     r.add_argument("--ref", required=True, help="record id from `list`")
     r.add_argument("--falsifier", required=True, help="replacement; must be GREEN now")
-    r.add_argument("--covered-by", metavar="TIER", help="REQUIRED: a configured tier, or `none`")
     e = sub.add_parser(
         "edit-card", help="validate and apply one card candidate under the plan lock"
     )
@@ -438,8 +401,6 @@ def main() -> int:
         print(append(root, f"## note {stamp()}\n{neutralize(text)}\n\n"))
         return 0
 
-    if (coverage := checked_coverage(args)) is None:
-        return 2
     if not _single_line(args.falsifier, "falsifier"):
         return 2
     if args.kind == "debt" and not all(
@@ -461,7 +422,7 @@ def main() -> int:
             file=sys.stderr,
         )
         return 2
-    print(append(root, entry(args.kind, args, coverage)))
+    print(append(root, entry(args.kind, args)))
     return 0
 
 

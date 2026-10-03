@@ -114,8 +114,7 @@ class TestShippedProseMatchesTheMechanism:
             "record shapes and polarity": (
                 "**bug** — claim + red falsifier",
                 "**debt** — claim + green falsifier",
-                "**resolve** — substitute green falsifier",
-                "**coverage** — optional",
+                "**resolve** — green replacement evidence",
                 "**note** — tradeoff/discovery",
                 "**Polarity**",
             ),

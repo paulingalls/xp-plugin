@@ -32,11 +32,3 @@ full_legs:
   fast: pytest -q -n 6 -m "not slow and not meta"
   slow: pytest -q -n 6 -m "slow and not meta"
   meta: pytest -q -n 6 -m meta
-
-tier_coverage:
-  fast: story
-  story: full
-tier_coverage_pins:
-  fast: pytest -q -n 4 -m "not slow and not meta"
-  story: pytest -q -n 4 -m "not slow and not meta"
-  full: pytest -q -n 6 -m "not slow and not meta" && pytest -q -n 6 -m "slow and not meta" && pytest -q -n 6 -m meta

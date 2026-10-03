@@ -389,7 +389,14 @@ class TestRecordPolarity:
         assert run(["bug", *args], tmp_path).returncode == 0
         assert (
             run(
-                ["resolve", "--ref", ref, "--falsifier", command, "--covered-by", "none"], tmp_path
+                [
+                    "resolve",
+                    "--ref",
+                    ref,
+                    "--falsifier",
+                    command,
+                ],
+                tmp_path,
             ).returncode
             == 2
         )

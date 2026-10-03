@@ -28,6 +28,7 @@ roles:               # harness/model[/effort]; the lead overrides per story in p
   reviewer: claude/opus
   slate-reviewer: claude/opus  # falls back to `reviewer` when absent in an older config
   plan-reviewer: claude/opus   # spawn's own stage; no agent ever starts a review
+
   finder: claude/opus     # the four round-1 stages of `close.py sprint <id> review`;
   verifier: claude/opus   # each falls back to `reviewer` when its key is absent, so
   fixer: claude/opus      # an older config keeps working untouched
@@ -36,12 +37,9 @@ roles:               # harness/model[/effort]; the lead overrides per story in p
 tests:
   fast: EDIT-ME      # pre-commit: seconds, not minutes
   story: EDIT-ME     # pre-push + story close: the suite you trust before a merge
-  full: EDIT-ME      # sprint close: everything incl. e2e; records may declare `--covered-by full`
+  full: EDIT-ME      # sprint close: everything incl. e2e
 
 # full_legs:          # optional ordered name: command lines; tests.full must join commands with ` && `
 #   unit: ./run-unit-suite
 #   integration: ./run-integration-suite
 #                    # legs share no shell state; whitespace followed by # starts a comment
-
-tier_coverage:       # e.g. covered: covering
-tier_coverage_pins:  # e.g. tier: exact configured command
