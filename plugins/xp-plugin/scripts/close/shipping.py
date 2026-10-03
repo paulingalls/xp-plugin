@@ -48,6 +48,32 @@ def review_refusal(state):
     return ""
 
 
+def coverage_refusal(release_id, state):
+    from release import recorded_release_head
+    from sprint_coverage import coverage_refusal as coverage
+
+    shown, error = recorded_release_head(state)
+    if error or not shown:
+        return error or "missing reviewed release head — restore integration evidence"
+    tip = git(
+        "rev-parse", "--verify", "-q", f"{sprint_branch()}^{{commit}}", check=False
+    ).stdout.strip()
+    parents = git("log", "--first-parent", "--merges", "--format=%P", "HEAD").stdout
+    for line in parents.splitlines():
+        trunk, *merged = line.split()
+        if not git("merge-base", "--is-ancestor", tip or shown, trunk, check=False).returncode:
+            continue
+        for parent in merged:
+            if not git("merge-base", "--is-ancestor", tip or shown, parent, check=False).returncode:
+                return coverage(release_id, tip or parent, state, released_ref=trunk)
+    if not tip:
+        return (
+            "missing sprint ref and no identifiable merge tip — restore the actual "
+            "merged sprint ref, then retry post-merge"
+        )
+    return coverage(release_id, tip, state, released_ref=state.get("review_base", shown))
+
+
 def validation_refusal(state, receipt, before):
     names = tuple(name for name, _ in before["legs"] or [])
     history, error = sprint_state.read_tier_history(state, names)
@@ -64,7 +90,7 @@ def validation_refusal(state, receipt, before):
 
 def finish(release_id, publish):
     marker, state, error = sprint_state.read_sprint_state(release_id)
-    if error or (error := review_refusal(state)):
+    if error or (error := review_refusal(state)) or (error := coverage_refusal(release_id, state)):
         return error
     if git("status", "--porcelain").stdout.strip():
         return "dirty merged shipping tree — commit or restore it before post-merge"
@@ -120,6 +146,8 @@ def finish(release_id, publish):
             release_id
         ):
             raise ValueError("release branch/owner changed — restore the intended release context")
+        if error := coverage_refusal(release_id, accepted):
+            raise ValueError(error)
         owner_head = git(
             "rev-parse", "--verify", "-q", f"{before['owner']}^{{commit}}", check=False
         ).stdout.strip()

@@ -119,6 +119,21 @@ FAULTS = {
         "role",
         None,
     ),
+    "role-imperative": (
+        "scripts/spawn/handoff.py",
+        "Complete the card in this worktree. Use predecessor diagnostics as evidence. ",
+        "Run spawn.py resume story-042, then xp.py story story-042 review. ",
+        "role",
+        None,
+    ),
+    "role-legacy": (
+        "scripts/spawn/handoff.py",
+        "    if multifile:\n        draft = draft_path(root, story_id)",
+        '    parts = [(f"Predecessor handback — {label}", why)]\n'
+        "    if multifile:\n        draft = draft_path(root, story_id)",
+        "role",
+        None,
+    ),
     "lock": (
         "scripts/spawn/resume.py",
         "fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)",

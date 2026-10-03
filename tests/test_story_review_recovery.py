@@ -281,7 +281,7 @@ def test_recovery_guard_detects_its_fault(tmp_path, monkeypatch, guard):
             "if False:",
         )
     elif guard == "land":
-        path = installed / "scripts/close/land.py"
+        path = installed / "scripts/close/review_sequence.py"
         text = path.read_text().replace('if sequence["status"] != "completed":', "if False:")
     elif guard == "publication":
         path = installed / "scripts/close/review_validation.py"

@@ -39,23 +39,6 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
         return close.fail("refused: working tree is dirty — Verify must judge the tree that merges")
     if not work.plan_path().exists():
         return close.fail(f"refused: {work.missing_plan_refusal()}")
-    from review_sequence import check_reports, load
-
-    sequence = load(story_id)
-    if sequence:
-        try:
-            card, _ = close.story_card(close.plan_path().read_text(), story_id)
-        except KeyError as error:
-            return close.fail(f"refused: {error}")
-        try:
-            check_reports(sequence)
-        except (OSError, ValueError) as error:
-            return close.fail(f"refused: {error}")
-        if sequence["status"] != "completed":
-            return close.fail(
-                f"refused: review sequence {sequence['status']}; lead owns "
-                f"{sequence.get('problem', 'unfinished review or validation')}"
-            )
     marker = close.marker_path(story_id, create=False)
     launch_paths = [review.launch_marker(story_id, create=False), *story_sidecars(story_id)]
     covered_sidecars = []
@@ -135,6 +118,14 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
     if not marker.exists():
         return close.fail(f"refused: no close in progress for {story_id} — run review first")
     state = json.loads(marker.read_text())
+    from review_sequence import landing_refusal
+
+    try:
+        card, _ = close.story_card(close.plan_path().read_text(), story_id)
+        if error := landing_refusal(story_id, card, state):
+            return close.fail(error)
+    except (OSError, ValueError, KeyError) as error:
+        return close.fail(f"refused: review evidence: {error}; preserve work and ask the lead")
     noun, free_slug = close.leg(story_id)
     free = bool(free_slug)
     trunk = close.default_branch() if free else close.integration_target()

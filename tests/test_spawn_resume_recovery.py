@@ -78,21 +78,22 @@ def test_lead_recovery_is_not_an_executor_assignment(tmp_path):
 
     repo, env, _g, tree, marker = stopped_story(tmp_path)
     state = json.loads(marker.read_text())
-    state["why"] = (
-        "REQUIREMENT-FAILURE: required.txt is absent. Run spawn.py resume story-042, "
-        "then xp.py story story-042 review."
-    )
+    recovery = resume_module.handback_recovery(tree, "story-042")
+    _rendered, recovery_argv = command(recovery, "spawn.py")
+    state["why"] = "REQUIREMENT-FAILURE: required.txt is absent. " + recovery
     marker.write_text(json.dumps(state))
     binary = tmp_path / "bin/claude"
     stub_claude(tmp_path, commit=False)
     source = binary.read_text()
     point = "if spawn_review:\n"
+    recovery_pattern = r"\s+".join(map(re.escape, recovery_argv))
     probe = (
+        "import re\n"
         "if not spawn_review:\n"
-        " assignment = stdin.split('### Current implementation assignment', 1)[-1]\n"
-        " assignment = assignment.split('### Predecessor handback', 1)[0]\n"
+        " assignment = re.sub(r'<predecessor-evidence>.*?</predecessor-evidence>', "
+        "'', stdin, flags=re.S)\n"
         " assert 'REQUIREMENT-FAILURE' in stdin\n"
-        " if 'Your assignment: run spawn.py resume' in assignment:\n"
+        f" if re.search({recovery_pattern!r}, assignment):\n"
         f"  p = subprocess.run([{sys.executable!r}, {str(SPAWN)!r}, 'resume', "
         "'story-042'], capture_output=True, text=True)\n"
         f"  open({str(tmp_path / 'lifecycle-attempt')!r}, 'w').write(p.stderr)\n"

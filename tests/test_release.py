@@ -235,6 +235,11 @@ def test_squash_and_rebase_refuse_with_a_walkable_branch_recovery(tmp_path, meth
     merged = git("rev-parse", "HEAD").stdout.strip()
     git("branch", "-f", "sprint-011", merged)
     completed = close()
+    if method == "rebase":
+        assert completed.returncode == 2 and "review" in completed.stderr
+        assert marker.read_bytes() == before
+        assert not (data / "releases" / "sprint-11.json").exists()
+        return
     assert completed.returncode == 0, completed.stderr
 
 

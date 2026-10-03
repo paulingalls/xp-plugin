@@ -375,3 +375,106 @@ class TestReviewMemory:
         assert close(repo, env, "land").returncode == 0
         body = g("log", "-1", "--format=%B", "main").stdout.split("\n\n", 1)[1].strip()
         assert body == round1 + "\nReview round 2: 0 fixed · 0 blocking · 0 dropped · 0 debt"
+
+
+@pytest.mark.parametrize("damage", ["handoff", "checkpoint", "sequence"])
+def test_land_requires_sequence_authority_after_red_retry(tmp_path, damage):
+    from pathlib import Path
+
+    from story_review_helpers import checkpoint, invoke
+    from test_story_review_recovery import pending_disposition
+
+    repo, env, git, key, events, _hooks = pending_disposition(tmp_path)
+    sequence = checkpoint(env, key)
+    report = Path(sequence["stages"]["solution"]["path"])
+    original = report.read_bytes()
+    handoff = Path(env["XP_DATA"]) / "plans" / f"{key}.handoff.json"
+    saved = handoff.read_bytes()
+    if damage == "handoff":
+        handoff.unlink()
+    else:
+        state = json.loads(handoff.read_text())
+        if damage == "checkpoint":
+            state.pop("checkpoint")
+        else:
+            state["checkpoint"].pop("review_sequence")
+        handoff.write_text(json.dumps(state))
+    before = git("rev-parse", "main").stdout
+    count = events.read_bytes()
+    result = invoke(repo, env, key, "land", "--merge-mode", "local")
+    assert result.returncode == 2, result.stdout + result.stderr
+    assert "sequence" in result.stderr and "restore" in result.stderr
+    assert git("rev-parse", "main").stdout == before
+    assert report.read_bytes() == original and events.read_bytes() == count
+    handoff.write_bytes(saved)
+    acknowledged = invoke(repo, env, key, "acknowledge-validation", "--reason", "service recovered")
+    assert acknowledged.returncode == 0, acknowledged.stderr
+    assert invoke(repo, env, key, "land", "--merge-mode", "local").returncode == 0
+
+
+@pytest.mark.parametrize("declaration", [False, True])
+def test_land_refuses_ignored_runtime_drift_and_recovers(tmp_path, declaration):
+    from pathlib import Path
+
+    from story_review_helpers import checkpoint, flow_repo, invoke
+
+    gate = tmp_path / "gate"
+    gate.write_text("#!/bin/sh\ngrep -qx good runtime.cfg\n")
+    gate.chmod(0o755)
+    repo, env, git, key, _events, _hooks = flow_repo(tmp_path, verify=str(gate))
+    (repo / ".git/info/exclude").write_text("runtime.cfg\n")
+    runtime = repo / "runtime.cfg"
+    runtime.write_text("good\n")
+    if declaration:
+        plan = Path(env["XP_DATA"]) / "plan.md"
+        plan.write_text(plan.read_text().replace("Verify:", "Verify reads: src/thing.py\nVerify:"))
+        from close_helpers import mint_ready
+
+        mint_ready(repo, env, key)
+    assert invoke(repo, env, key).returncode == 0
+    sequence = checkpoint(env, key)
+    report = Path(sequence["stages"]["solution"]["path"])
+    original = report.read_bytes()
+    runtime.write_text("bad\n")
+    assert not git("status", "--porcelain").stdout
+    before = git("rev-parse", "main").stdout
+    result = invoke(repo, env, key, "land", "--merge-mode", "local")
+    assert result.returncode == 2, result.stdout + result.stderr
+    assert "inputs moved" in result.stderr and "review" in result.stderr
+    assert git("rev-parse", "main").stdout == before and report.read_bytes() == original
+    assert not (Path(env["XP_DATA"]) / "markers" / f"{key}.verify.json").exists()
+    runtime.write_text("good\n")
+    assert invoke(repo, env, key).returncode == 0
+    assert invoke(repo, env, key, "land", "--merge-mode", "local").returncode == 0
+
+
+@pytest.mark.meta
+@pytest.mark.parametrize("guard", ["authority", "runtime"])
+def test_land_input_guard_detects_its_fault(tmp_path, monkeypatch, guard):
+    import shutil
+
+    from close_helpers import PLUGIN
+
+    def guarantee(root):
+        root.mkdir()
+        if guard == "authority":
+            test_land_requires_sequence_authority_after_red_retry(root, "handoff")
+        else:
+            test_land_refuses_ignored_runtime_drift_and_recovers(root, True)
+
+    guarantee(tmp_path / "control")
+    installed = tmp_path / "installed"
+    shutil.copytree(PLUGIN, installed)
+    target = installed / "scripts/close/review_sequence.py"
+    text = target.read_text()
+    old = (
+        'if "sequence_round" in latest and ('
+        if guard == "authority"
+        else "if runtime(before) != runtime(after):"
+    )
+    new = "if False and (" if guard == "authority" else "if False:"
+    assert old in text
+    target.write_text(text.replace(old, new))
+    monkeypatch.setenv("XP_FLOW_TEST_CLOSE", str(installed / "scripts/close.py"))
+    with pytest.raises(AssertionError):
+        guarantee(tmp_path / "mutant")

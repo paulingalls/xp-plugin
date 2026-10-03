@@ -2,6 +2,7 @@
 
 import json
 
+import pytest
 from sprint_helpers import (
     CONFIG,
     commit_as_reviewer,
@@ -145,3 +146,95 @@ class TestLandCoverage:
         result = sprint(repo, env, "land", "--dry-run")
         assert result.returncode == 2 and "did not cover" in result.stderr
         assert ".xp/retro.md" in result.stderr and ".xp/unreviewed.py" in result.stderr
+
+
+@pytest.mark.parametrize("missing_ref", [False, True])
+@pytest.mark.parametrize("later_merge", [False, True])
+def test_post_merge_refuses_unreviewed_sprint_tip(tmp_path, missing_ref, later_merge):
+    repo, env, g = make_repo(tmp_path)
+    base = g("rev-parse", "main").stdout.strip()
+    record_reviews(tmp_path, repo, env)
+    path = marker_path(tmp_path)
+    state = json.loads(path.read_text())
+    state["review_base"] = base
+    state["prepared_pr"] = {"head": head(repo, env)}
+    path.write_text(json.dumps(state))
+    (repo / "new.py").write_text("UNREVIEWED_SPRINT_WORK = 1\n")
+    g("add", "new.py")
+    g("commit", "-qm", "work after PR preparation")
+    g("checkout", "-q", "main")
+    g("merge", "--no-ff", "sprint-002", "-m", "release merge")
+    if missing_ref:
+        g("branch", "-D", "sprint-002")
+    if later_merge:
+        g("checkout", "-qb", "later-trunk-work")
+        (repo / "trunk.py").write_text("LATER_TRUNK_WORK = 1\n")
+        g("add", "trunk.py")
+        g("commit", "-qm", "later trunk work")
+        g("checkout", "-q", "main")
+        g("merge", "--no-ff", "later-trunk-work", "-m", "later trunk merge")
+    before = path.read_bytes()
+    result = sprint(repo, env, "post-merge")
+    assert result.returncode == 2, result.stdout + result.stderr
+    assert "did not cover" in result.stderr and "new.py" in result.stderr
+    assert path.read_bytes() == before
+    assert not g("tag", "--list", "v0.3.0").stdout
+    assert not (tmp_path / "data/releases/sprint-2.json").exists()
+    assert (tmp_path / "data/sprint_branch").exists()
+
+
+@pytest.mark.meta
+def test_post_merge_coverage_guard_detects_its_fault(tmp_path, monkeypatch):
+    import shutil
+
+    import sprint_helpers
+
+    control = tmp_path / "control"
+    control.mkdir()
+    test_post_merge_refuses_unreviewed_sprint_tip(control, True, True)
+    installed = tmp_path / "installed"
+    shutil.copytree(sprint_helpers.CLOSE.parent.parent, installed)
+    path = installed / "scripts/close/shipping.py"
+    source = path.read_text()
+    target = "def coverage_refusal(release_id, state):"
+    assert target in source
+    path.write_text(source.replace(target, target + '\n    return ""'))
+    from functools import partial
+
+    monkeypatch.setitem(globals(), "sprint", partial(sprint, close=installed / "scripts/close.py"))
+    mutant = tmp_path / "mutant"
+    mutant.mkdir()
+    with pytest.raises(AssertionError):
+        test_post_merge_refuses_unreviewed_sprint_tip(mutant, True, True)
+
+
+@pytest.mark.parametrize("delta", ["trunk-only", "release-declaration"])
+@pytest.mark.parametrize("missing_ref", [False, True])
+def test_post_merge_preserves_reviewed_delta_exceptions(tmp_path, delta, missing_ref):
+    repo, env, g = make_repo(tmp_path)
+    base = g("rev-parse", "main").stdout.strip()
+    if delta == "release-declaration":
+        (repo / "manifest.json").write_text('{"version": "0.2.0"}\n')
+        g("commit", "-qam", "before release declaration")
+    record_reviews(tmp_path, repo, env)
+    path = marker_path(tmp_path)
+    state = json.loads(path.read_text())
+    state["review_base"] = base
+    path.write_text(json.dumps(state))
+    if delta == "trunk-only":
+        g("checkout", "-q", "main")
+        (repo / "trunk.py").write_text("TRUNK_ONLY = 1\n")
+        g("add", "trunk.py")
+        g("commit", "-qm", "trunk work")
+        g("checkout", "-q", "sprint-002")
+        g("merge", "--no-ff", "main", "-m", "backmerge")
+    else:
+        (repo / "manifest.json").write_text('{"version": "0.3.0"}\n')
+        g("commit", "-qam", "release declaration")
+    g("checkout", "-q", "main")
+    g("merge", "--no-ff", "sprint-002", "-m", "release merge")
+    if missing_ref:
+        g("branch", "-D", "sprint-002")
+    result = sprint(repo, env, "post-merge")
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert g("tag", "--list", "v0.3.0").stdout.strip() == "v0.3.0"

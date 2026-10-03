@@ -115,7 +115,7 @@ def _files(rng: str) -> set[str]:
 
 
 def trunk_only_paths(
-    recorded: object, shown: str, head: str, trunk: str
+    recorded: object, shown: str, head: str, trunk: str, released_ref: str = ""
 ) -> tuple[set[str], str, str]:
     """Paths introduced by released trunk that never carried reviewed sprint work."""
     if not isinstance(recorded, str) or not recorded:
@@ -124,10 +124,11 @@ def trunk_only_paths(
         return set(), "", "unresolvable recorded base"
     from bookkeep import fork_point
 
-    _local_base, stale = fork_point(trunk)
-    if stale:
-        return set(), "", stale
-    ref = merge_source(trunk, "pr")
+    if not released_ref:
+        _local_base, stale = fork_point(trunk)
+        if stale:
+            return set(), "", stale
+    ref = released_ref or merge_source(trunk, "pr")
     today = git("merge-base", ref, head, check=False).stdout.strip()
     if not today or git("merge-base", "--is-ancestor", recorded, today, check=False).returncode:
         return set(), "", "recorded base is not an ancestor of released trunk base"

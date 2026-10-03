@@ -22,6 +22,54 @@ def load(story_id):
     return (state or {}).get("checkpoint", {}).get("review_sequence")
 
 
+def landing_refusal(story_id, card, marker):
+    sequence = load(story_id)
+    latest = marker.get("rounds", [{}])[-1]
+    if "sequence_round" in latest and (
+        not sequence or sequence.get("round") != latest["sequence_round"]
+    ):
+        return (
+            "refused: current review sequence missing or mismatched; preserve work and "
+            "reports, restore the authoritative handoff/checkpoint before landing; "
+            f"lead: inspect then run `xp.py {close.leg(story_id)[0]} review`"
+        )
+    if not sequence:
+        return ""
+    check_reports(sequence)
+    if sequence["status"] != "completed":
+        return (
+            f"refused: review sequence {sequence['status']}; lead owns "
+            f"{sequence.get('problem', 'unfinished review or validation')}"
+        )
+    current = measure(story_id, card)
+    if card != sequence["card"] or current != sequence["output"]:
+        import verify_receipt
+
+        before, after = sequence["output"]["inputs"]["work"], current["inputs"]["work"]
+
+        def index(snapshot):
+            return {
+                entry.split(b"\t", 1)[1].hex(): entry.split(b"\t", 1)[0]
+                for entry in bytes.fromhex(snapshot["index"]).split(b"\0")
+                if entry
+            }
+
+        old, new = index(before), index(after)
+        committed = {name for name in old.keys() | new.keys() if old.get(name) != new.get(name)}
+
+        def runtime(snapshot):
+            return [entry for entry in snapshot["contents"] if entry[0] not in committed]
+
+        if runtime(before) != runtime(after):
+            if error := verify_receipt.invalidate(story_id):
+                return error
+            return (
+                "refused: reviewed runtime inputs moved; work and reports retained; lead must "
+                f"explicitly run `xp.py {close.leg(story_id)[0]} review`"
+            )
+    return ""
+
+
 def save(story_id, sequence):
     state = handoff_state(data_root(), story_id)
     if state is None:

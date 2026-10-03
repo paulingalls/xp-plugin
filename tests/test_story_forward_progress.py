@@ -244,6 +244,8 @@ def test_amended_planning_survives_interrupted_plan_review(tmp_path, amend_again
         "artifact",
         "submodule",
         "role",
+        "role-imperative",
+        "role-legacy",
         "lock",
         "planner-scope",
     ],

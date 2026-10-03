@@ -29,7 +29,11 @@ def _covered_gate_files(state: dict, head: str) -> list[str]:
 
 
 def coverage_refusal(
-    sprint_id: str, head: str, state: dict | None = None, reported: set[str] | None = None
+    sprint_id: str,
+    head: str,
+    state: dict | None = None,
+    reported: set[str] | None = None,
+    released_ref: str = "",
 ) -> str:
     if state is None:
         _marker, state, marker_error = read_sprint_state(sprint_id)
@@ -94,14 +98,20 @@ def coverage_refusal(
     if missing:
         return missing
     # BEFORE the authorship branch: an empty range reads there as "no strays"
-    if git("merge-base", "--is-ancestor", shown, head, check=False).returncode:
+    if git("merge-base", "--is-ancestor", shown, head, check=False).returncode and not (
+        released_ref and not git("diff", "--quiet", shown, head, check=False).returncode
+    ):
         return (
             f"refused: HEAD does not contain {shown[:8]}, the tree the round covered"
             f" — the recorded round describes no tree that exists. {rerun}"
         )
     paths = git("diff", "--no-renames", "--name-only", shown, head).stdout.splitlines()
     eligible, trunk_range, state_reason = overlap.trunk_only_paths(
-        round_.get("review_base"), shown, head, default_branch()
+        round_.get("review_base", state.get("review_base")),
+        shown,
+        head,
+        default_branch(),
+        released_ref,
     )
     exempt = sorted(set(paths) & eligible)
     if exempt and (reported is None or trunk_range not in reported):
