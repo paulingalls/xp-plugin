@@ -37,6 +37,8 @@ def land_red_path(story_id):
 def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
     if close.git("status", "--porcelain").stdout.strip():
         return close.fail("refused: working tree is dirty — Verify must judge the tree that merges")
+    if not work.plan_path().exists():
+        return close.fail(f"refused: {work.missing_plan_refusal()}")
     from review_sequence import check_reports, load
 
     sequence = load(story_id)
@@ -196,8 +198,6 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
         held, err = bookkeep.held_trunk_tree(trunk)
         if err:
             return close.fail(err)
-    if not work.plan_path().exists():
-        return close.fail(f"refused: {work.missing_plan_refusal()}")
     try:
         card, status = close.story_card(work.plan_path().read_text(), story_id)
     except KeyError as e:

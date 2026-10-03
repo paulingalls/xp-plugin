@@ -223,7 +223,9 @@ def test_shared_judgment_reaches_every_sprint_stage(tmp_path, fault):
             if stage == "finder":
                 own = angles[key.removeprefix("find-")]
                 assert (
-                    delivered_section(bundle, "Your angle", "Findings from earlier rounds").strip()
+                    delivered_section(
+                        bundle, "Your angle", "Current integration obligations"
+                    ).strip()
                     == own
                 )
                 assert all(value not in bundle for value in angles.values() if value != own)
@@ -264,7 +266,9 @@ def test_shared_judgment_reaches_confirmation(tmp_path, surface, fault):
             p for p in body(plugin, "sprint-reviewer").split("\n\n") if p.startswith("ALTITUDE")
         )
         assert (
-            section(captured[0]["stdin"], "Sprint altitude", "Findings from earlier rounds").strip()
+            section(
+                captured[0]["stdin"], "Sprint altitude", "Current integration obligations"
+            ).strip()
             == altitude
         )
     check_or_red(

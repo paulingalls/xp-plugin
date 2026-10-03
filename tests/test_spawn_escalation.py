@@ -1,17 +1,4 @@
-"""A teammate that STOPS deliberately hands back an escalation, not a failure.
-
-Verify: pytest -q -n auto tests/test_spawn_escalation.py
-
-EXECUTOR.md tells a blocked teammate to say so, file a note, and stop. spawn then
-refused that exact handback — "the teammate made no commits of its own" — and
-stranded the worktree. Field-measured (Legacy): four runs, ~$38, three with zero
-commits, two of them correct escalations; one carried a plan three review rounds
-deep and was reported as having done nothing.
-
-The record filed during the run is what separates the two, because it is what
-EXECUTOR.md already tells the teammate to leave. Forging it is not a hole: a
-teammate that files a note and stops has claimed exactly what stopping claims.
-"""
+"""Preserve authored escalations, failed harness evidence and resumable work."""
 
 import json
 import subprocess
@@ -30,7 +17,7 @@ ESCALATION = "the card's AC3 cannot be built: the API it names returns no such f
 def stub_escalating(
     tmp_path,
     commit=False,
-    write_file=False,
+    write_file=True,
     note=True,
     crash=False,
     wait_for=None,
@@ -53,7 +40,8 @@ def stub_escalating(
         "os.environ.get('XP_ROLE') == 'reviewer')",
         "if spawn_review:",
         "    match = re.search(r'^REPORT_PATH: (.+)$', stdin, re.M); assert match",
-        "    report = {'schema': 2, 'fixed': [], 'blocking': [], 'dropped': [], 'debt': []}",
+        "    report = {'schema': 2, 'actionable': [], 'fixed': [],"
+        " 'blocking': [], 'dropped': [], 'debt': []}",
         "    open(match.group(1).strip(), 'w').write(json.dumps(report))",
         "    print(json.dumps({'type': 'result', 'result': json.dumps(report)})); sys.exit()",
         f"json.dump({{'env': dict(os.environ), 'stdin': stdin}}, open({str(rec)!r}, 'w'))",
@@ -119,11 +107,14 @@ class TestDeliberateStop:
             root = tmp_path / name
             root.mkdir()
             repo, env, _g = make_repo(root)
-            stub_escalating(root, note=False, crash=crash)
+            stub_escalating(root, note=not crash, commit=crash, crash=crash)
             stopped = spawn(repo, env, "story-042")
             marker = root / "data/plans/story-042.handoff.json"
             state = json.loads(marker.read_text())
             assert stopped.returncode != 0 and state["state"] == "STOPPED"
+            if not crash:
+                assert "escalat" in stopped.stderr.lower()
+                assert state["records"]
             # Every path in the refusal carries this case's own root, so the raw
             # strings differ even when both states collapse to one message.
             states[name] = state["why"].replace(str(root), "ROOT")
@@ -131,7 +122,7 @@ class TestDeliberateStop:
             resumed = spawn(repo, env, "resume", "story-042")
             assert resumed.returncode == 0, resumed.stderr
         assert states["human"] != states["dead"]
-        assert "final response" in states["human"].lower()
+        assert "uncommitted" in states["human"].lower()
         assert "log" in states["dead"].lower() and "resume" in states["dead"].lower()
 
     def test_a_dead_teammate_with_a_clean_commit_is_not_reported_as_finished(self, tmp_path):
@@ -161,9 +152,6 @@ class TestDeliberateStop:
         assert filed in r.stderr, f"record {filed} not named:\n{r.stderr}"
 
     def test_uncommitted_work_does_not_hide_the_escalation(self, tmp_path):
-        """The dirty-tree guard fires BEFORE the no-commits one, so a teammate that
-        stopped mid-edit hits a different refusal than the one reported from the
-        field. Both must resolve to the same escalation."""
         repo, env, _g = make_repo(tmp_path)
         stub_escalating(tmp_path, write_file=True)
         r = spawn(repo, env, "story-042")
@@ -187,9 +175,6 @@ class TestDeliberateStop:
         assert "work.py show <id>" in r.stderr, r.stderr
 
     def test_a_death_that_filed_nothing_is_still_reported_as_a_death(self, tmp_path):
-        """rc discriminates before any record does. The seam reads the two halves
-        independently, so the half with no record must not fall through to the
-        plain no-commits refusal and lose the fact that the harness died."""
         repo, env, _g = make_repo(tmp_path)
         stub_escalating(tmp_path, note=False, crash=True)
         r = spawn(repo, env, "story-042")
@@ -221,7 +206,7 @@ class TestDeliberateStop:
         stub_escalating(tmp_path, note=False)
         r = spawn(repo, env, "story-042")
         assert r.returncode == 2, f"rc={r.returncode}\n{r.stderr}"
-        assert "no commits" in r.stderr.lower(), r.stderr
+        assert "uncommitted" in r.stderr.lower(), r.stderr
         assert "escalat" not in r.stderr.lower(), r.stderr
 
     def test_a_record_filed_before_the_run_is_not_this_runs_escalation(self, tmp_path):
@@ -234,7 +219,7 @@ class TestDeliberateStop:
         file_note(repo, env, "a decision filed by an earlier story, long before this run")
         r = spawn(repo, env, "story-042")
         assert r.returncode == 2, f"rc={r.returncode}\n{r.stderr}"
-        assert "no commits" in r.stderr.lower(), r.stderr
+        assert "uncommitted" in r.stderr.lower(), r.stderr
         assert "escalat" not in r.stderr.lower(), r.stderr
 
     def test_a_concurrent_lead_record_does_not_turn_a_yield_into_an_escalation(self, tmp_path):

@@ -279,100 +279,21 @@ def git_repo(tmp_path, monkeypatch):
     return repo, head
 
 
-@pytest.mark.parametrize("mixed", [False, True])
-def test_dirty_review_refusal_saves_one_applicable_combined_patch(tmp_path, monkeypatch, mixed):
-    import review
-
-    repo, head = git_repo(tmp_path, monkeypatch)
-    (repo / "a.txt").write_text("a1\n")
-    subprocess.run(["git", "add", "a.txt"], cwd=repo, check=True)
-    if mixed:
-        (repo / "b.txt").write_text("b1\n")
-    text = review.abort_text(head, "dirty")
-    patches = list((tmp_path / "data" / "reports").glob("review-refusal-*.patch"))
-    assert len(patches) == 1 and patches[0].stat().st_size
-    assert text.index(str(patches[0])) < text.index("git reset --hard")
-    subprocess.run(["git", "reset", "--hard", head], cwd=repo, check=True, capture_output=True)
-    subprocess.run(["git", "apply", str(patches[0])], cwd=repo, check=True)
-    assert (repo / "a.txt").read_text() == "a1\n"
-    assert (repo / "b.txt").read_text() == ("b1\n" if mixed else "b0\n")
-
-
 @pytest.mark.parametrize("before, after", [(b"a\r\nb\r\n", b"a\r\nB\r\n"), (b"\xe9\n", b"\xe9!\n")])
-def test_saved_patch_applies_crlf_and_non_utf8_lines(tmp_path, monkeypatch, before, after):
+def test_refusal_preserves_staged_and_unstaged_bytes(tmp_path, monkeypatch, before, after):
     import review
 
-    repo, _head = git_repo(tmp_path, monkeypatch)
+    repo, head = git_repo(tmp_path, monkeypatch)
     (repo / "a.txt").write_bytes(before)
-    subprocess.run(["git", "commit", "-qam", "bytes"], cwd=repo, check=True)
-    head = subprocess.run(
-        ["git", "rev-parse", "HEAD"], cwd=repo, check=True, capture_output=True, text=True
-    ).stdout.strip()
+    subprocess.run(["git", "add", "a.txt"], cwd=repo, check=True)
     (repo / "a.txt").write_bytes(after)
-    subprocess.run(["git", "add", "a.txt"], cwd=repo, check=True)
-    review.abort_text(head, "dirty")
-    (patch,) = (tmp_path / "data" / "reports").glob("review-refusal-*.patch")
-    subprocess.run(["git", "reset", "--hard", head], cwd=repo, check=True, capture_output=True)
-    subprocess.run(["git", "apply", str(patch)], cwd=repo, check=True)
+    (repo / "new.txt").write_bytes(after)
+    text = review.abort_text(head, "dirty")
+    staged = subprocess.run(
+        ["git", "show", ":a.txt"], cwd=repo, check=True, capture_output=True
+    ).stdout
+    assert staged == before
     assert (repo / "a.txt").read_bytes() == after
-
-
-def test_untracked_only_refusal_names_no_patch(tmp_path, monkeypatch):
-    import review
-
-    repo, head = git_repo(tmp_path, monkeypatch)
-    (repo / "new.txt").write_text("untracked\n")
-    text = review.abort_text(head, "dirty")
-    assert "git apply" not in text and f"git reset --hard {head[:8]}" in text
-    assert not (tmp_path / "data" / "reports").exists()
-
-
-def test_each_dirty_refusal_allocates_a_new_patch(tmp_path, monkeypatch):
-    import review
-
-    repo, head = git_repo(tmp_path, monkeypatch)
-    (repo / "a.txt").write_text("changed\n")
-    subprocess.run(["git", "add", "a.txt"], cwd=repo, check=True)
-    review.abort_text(head, "first")
-    review.abort_text(head, "second")
-    patches = list((tmp_path / "data" / "reports").glob("review-refusal-*.patch"))
-    assert len(patches) == 2 and patches[0] != patches[1]
-    subprocess.run(["git", "reset", "--hard", head], cwd=repo, check=True, capture_output=True)
-    for patch in patches:
-        subprocess.run(["git", "apply", "--check", str(patch)], cwd=repo, check=True)
-
-
-def test_unwritable_reports_path_keeps_the_index_and_omits_reset(tmp_path, monkeypatch):
-    import review
-
-    repo, head = git_repo(tmp_path, monkeypatch)
-    reports = tmp_path / "data" / "reports"
-    reports.parent.mkdir(parents=True)
-    reports.write_text("blocked")
-    (repo / "a.txt").write_text("only copy\n")
-    subprocess.run(["git", "add", "a.txt"], cwd=repo, check=True)
-    before = subprocess.run(
-        ["git", "diff", "--cached"], cwd=repo, capture_output=True, text=True
-    ).stdout
-    text = review.abort_text(head, "dirty")
-    after = subprocess.run(
-        ["git", "diff", "--cached"], cwd=repo, capture_output=True, text=True
-    ).stdout
-    assert "could not save" in text and "reset --hard" not in text
-    assert before == after and reports.is_file()
-
-
-def test_clean_review_refusal_text_and_reports_are_unchanged(tmp_path, monkeypatch):
-    import review
-
-    repo, head = git_repo(tmp_path, monkeypatch)
-    assert review.abort_text(head, "why") == "refused: why"
-    (repo / "a.txt").write_text("a1\n")
-    subprocess.run(["git", "commit", "-qam", "move"], cwd=repo, check=True)
-    expected = (
-        f"refused: why\n\n a.txt | 2 +-\n 1 file changed, 1 insertion(+), 1 deletion(-)\n\n"
-        f"No round was recorded. The reviewer's work is in your tree — yours to keep or undo:"
-        f" git reset --hard {head[:8]}"
-    )
-    assert review.abort_text(head, "why") == expected
+    assert (repo / "new.txt").read_bytes() == after
+    assert "reset --hard" not in text
     assert not (tmp_path / "data" / "reports").exists()

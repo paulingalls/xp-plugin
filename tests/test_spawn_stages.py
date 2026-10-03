@@ -1,5 +1,4 @@
 import json
-import re
 import shlex
 import subprocess
 import sys
@@ -56,27 +55,22 @@ raise SystemExit(spawn.main())
 class TestSpawnStages:
     def test_a_diff_review_refusal_is_durable_after_stdout_is_lost(self, tmp_path):
         repo, env, _g = make_repo(tmp_path)
-        stub_stages(tmp_path, review_failure=True)
+        events = stub_stages(tmp_path, review_failure=True)
         stopped = spawn(repo, env, "story-042")
         marker = tmp_path / "data/plans/story-042.handoff.json"
         state = json.loads(marker.read_text())
         assert stopped.returncode != 0 and state["state"] == "STOPPED"
         assert state["stages"].get("reviewer") != "ran"
         why = state["why"]
-        assert "generated reviewer cause" in why
-        # Both halves, over a reviewer log that alone overruns the tail budget: one
-        # budget for the pair spends it on log noise and drops close.py's own refusal.
-        assert str(tmp_path / "data/logs/story-042-reviewer.log") in why, why
-        commands = re.findall(r"`([^`]+)`", why)
-        assert len(commands) == 1
-        repaired = subprocess.run(
-            shlex.split(commands[0]), cwd=repo, env=env, capture_output=True, text=True
-        )
-        assert repaired.returncode == 0
+        log = tmp_path / "data/logs/story-042.round-1.log"
+        assert str(log) in why
+        assert "generated reviewer cause" in log.read_text()
+        assert "close.py story story-042 review" in why
+        launched = event_roles(events)
         resumed = spawn(repo, env, "resume", "story-042")
-        assert resumed.returncode == 0, resumed.stderr
-        finished = json.loads(marker.read_text())
-        assert finished["state"] == "FINISHED" and finished["stages"]["reviewer"] == "ran"
+        assert resumed.returncode != 0 and "lead handoff" in resumed.stderr
+        assert event_roles(events) == launched
+        assert json.loads(marker.read_text())["state"] == "STOPPED"
 
     def test_each_story_launch_uses_its_own_configured_model(self, tmp_path):
         repo, env, g = make_repo(tmp_path, files="src/thing.py, src/other.py")
@@ -115,7 +109,7 @@ class TestSpawnStages:
             "story-042-planner.log",
             "story-042-plan-reviewer.log",
             "story-042-executor.log",
-            "story-042-reviewer.log",
+            "story-042.round-1.log",
         }
         handoff = json.loads((tmp_path / "data/plans/story-042.handoff.json").read_text())
         assert handoff["stages"] == {
@@ -227,14 +221,9 @@ class TestSpawnStages:
         # and it is what sends the lead to the harness log instead of the question.
         assert "DIED" not in result.stderr, result.stderr
         assert "blocked for the human: choose" in result.stderr, result.stderr
-        # Was "planner=ran and no plan-reviewer entry: the stage that stopped is the
-        # one the line OMITS". That made absence carry the meaning, which is
-        # constraint 15 and the release blocker this now fixes: a plan review that
-        # blocked read identically to one that never ran, and resume therefore
-        # skipped replanning and re-reviewed the same draft forever.
         assert "stages: planner=ran · plan-reviewer=blocked" in result.stdout, result.stdout
 
-    def test_a_stop_before_any_stage_says_none_reached_rather_than_nothing(self, tmp_path):
+    def test_a_planner_without_a_draft_is_reported_as_failed(self, tmp_path):
         """Constraint 15 the other way: no stages line at all is how "the executor
         never got a reviewed plan" reads exactly like "the run was fine"."""
         repo, env, _g = make_repo(tmp_path, files="src/thing.py, src/other.py")
@@ -243,7 +232,7 @@ class TestSpawnStages:
         binary.write_text(binary.read_text().replace("if role == 'planner':", "if False:"))
         result = spawn(repo, env, "story-042")
         assert result.returncode != 0
-        assert "stages: none reached" in result.stdout, result.stdout
+        assert "stages: planner=failed" in result.stdout, result.stdout
 
     def test_resume_refuses_a_marker_whose_stage_state_is_not_ran_or_skipped(self, tmp_path):
         repo, env, _g = make_repo(tmp_path, files="src/thing.py, src/other.py")
@@ -267,15 +256,9 @@ class TestSpawnStages:
         assert result.returncode != 0
         assert event_roles(events) == ["teammate", "reviewer"]
         state = json.loads((tmp_path / "data/plans/story-042.handoff.json").read_text())
-        assert state["state"] == "STOPPED" and state["stages"]["reviewer"] == "ran"
+        assert state["state"] == "STOPPED" and state["stages"]["reviewer"] == "blocked"
 
-    def test_a_blocked_plan_review_replans_on_resume_instead_of_re_reviewing(self, tmp_path):
-        """Release blocker found by story-102's round-2 reviewer. `planner` is marked
-        "ran" BEFORE the plan review runs, so a block leaves it set and every resume
-        skips replanning and re-reviews the IDENTICAL draft — blocking again, forever.
-        Resume is driven through the incomplete marker's OWN `next` command, so the
-        recovery that marker names is itself under test; with the stub no longer
-        blocking, a second planner event is the only way it can reach a clean round."""
+    def test_a_blocked_plan_review_recovers_without_replaying_the_planner(self, tmp_path):
         repo, env, _g = make_repo(tmp_path, files="src/thing.py, src/other.py")
         events = stub_stages(tmp_path, blocking_plan=True)
         stopped = spawn(repo, env, "story-042")
@@ -305,12 +288,13 @@ class TestSpawnStages:
             text=True,
         )
         assert recovered.returncode == 0, recovered.stdout + recovered.stderr
-        assert event_roles(events).count("planner") == 2, (
-            "resume re-reviewed the same draft instead of replanning: " + str(event_roles(events))
-        )
-        assert event_roles(events).count("plan-reviewer") == 2, (
-            "resume skipped review after replanning: " + str(event_roles(events))
-        )
+        assert event_roles(events) == [
+            "planner",
+            "plan-reviewer",
+            "plan-reviewer",
+            "teammate",
+            "reviewer",
+        ]
 
     def test_an_unreadable_plan_review_reuses_the_draft_on_resume(self, tmp_path):
         repo, env, _g = make_repo(tmp_path, files="src/thing.py, src/other.py")
@@ -337,7 +321,7 @@ class TestSpawnStages:
 
     def test_amendments_replan_the_current_card_once_before_the_executor(self, tmp_path):
         repo, env, _g = make_repo(tmp_path, files="src/thing.py, src/other.py")
-        events = stub_stages(tmp_path, blocking_diff=True)
+        events = stub_stages(tmp_path, executor_failure=True)
         assert spawn(repo, env, "story-042").returncode != 0
 
         handoff = tmp_path / "data/plans/story-042.handoff.json"
@@ -346,7 +330,7 @@ class TestSpawnStages:
         handoff.write_text(json.dumps(legacy))
         seen = len(event_roles(events))
         assert spawn(repo, env, "resume", "story-042").returncode != 0
-        assert event_roles(events)[seen:] == ["teammate", "reviewer"]
+        assert event_roles(events)[seen:] == ["teammate"]
 
         plan = tmp_path / "data/plan.md"
         plan.write_text(plan.read_text().replace("Then Z", "Then FIRST-AMENDMENT"))
@@ -361,13 +345,12 @@ class TestSpawnStages:
             "planner",
             "plan-reviewer",
             "teammate",
-            "reviewer",
         ]
         assert "Then FINAL-AMENDMENT" in resumed[1]["prompt"]
 
         seen += len(resumed)
         assert spawn(repo, env, "resume", "story-042").returncode != 0
-        assert event_roles(events)[seen:] == ["teammate", "reviewer"]
+        assert event_roles(events)[seen:] == ["teammate"]
         assert event_roles(events).count("planner") == 2
         assert event_roles(events).count("plan-reviewer") == 2
 
@@ -375,19 +358,19 @@ class TestSpawnStages:
         assert spawn(repo, env, "amend", "story-042", "--reason", "later change").returncode == 0
         seen = len(event_roles(events))
         assert spawn(repo, env, "resume", "story-042").returncode != 0
-        assert event_roles(events)[seen:] == ["planner", "plan-reviewer", "teammate", "reviewer"]
+        assert event_roles(events)[seen:] == ["planner", "plan-reviewer", "teammate"]
 
     def test_a_bound_late_amendment_confirms_on_resume(self, tmp_path):
         repo, env, _g = make_repo(tmp_path, files="src/thing.py, src/other.py")
-        events = stub_stages(tmp_path, blocking_diff=True)
+        events = stub_stages(tmp_path, executor_failure=True)
         assert spawn_amending_after_plan_review(repo, env).returncode != 0
         seen = len(event_roles(events))
         assert spawn(repo, env, "resume", "story-042").returncode != 0
-        assert event_roles(events)[seen:][:2] == ["plan-reviewer", "teammate"]
+        assert event_roles(events)[seen:] == ["planner", "plan-reviewer", "teammate"]
 
     def test_an_unreadable_review_of_a_replan_reuses_that_draft_on_resume(self, tmp_path):
         repo, env, _g = make_repo(tmp_path, files="src/thing.py, src/other.py")
-        events = stub_stages(tmp_path, blocking_diff=True)
+        events = stub_stages(tmp_path, executor_failure=True)
         assert spawn(repo, env, "story-042").returncode != 0
         plan = tmp_path / "data/plan.md"
         plan.write_text(plan.read_text().replace("Then Z", "Then AMENDED"))
@@ -397,14 +380,14 @@ class TestSpawnStages:
         failed = spawn(repo, env, "resume", "story-042")
         assert failed.returncode != 0
         assert event_roles(events)[seen:] == ["planner", "plan-reviewer"], failed.stderr
-        stub_stages(tmp_path, blocking_diff=True)
+        stub_stages(tmp_path, executor_failure=True)
         seen = len(event_roles(events))
         assert spawn(repo, env, "resume", "story-042").returncode != 0
-        assert event_roles(events)[seen:] == ["plan-reviewer", "teammate", "reviewer"]
+        assert event_roles(events)[seen:] == ["plan-reviewer", "teammate"]
 
-    def test_an_amended_single_file_resume_keeps_both_plan_stages_skipped(self, tmp_path):
+    def test_an_amended_single_file_resume_reviews_the_changed_declaration(self, tmp_path):
         repo, env, _g = make_repo(tmp_path)
-        events = stub_stages(tmp_path, blocking_diff=True)
+        events = stub_stages(tmp_path, executor_failure=True)
         assert spawn(repo, env, "story-042").returncode != 0
         plan = tmp_path / "data/plan.md"
         plan.write_text(plan.read_text().replace("Then Z", "Then AMENDED"))
@@ -412,10 +395,10 @@ class TestSpawnStages:
         assert amended.returncode == 0
         seen = len(event_roles(events))
         assert spawn(repo, env, "resume", "story-042").returncode != 0
-        assert event_roles(events)[seen:] == ["teammate", "reviewer"]
+        assert event_roles(events)[seen:] == ["planner", "plan-reviewer", "teammate"]
         state = json.loads((tmp_path / "data/plans/story-042.handoff.json").read_text())
-        assert state["stages"]["planner"] == "skipped"
-        assert state["stages"]["plan-reviewer"] == "skipped"
+        assert state["stages"]["planner"] == "ran"
+        assert state["stages"]["plan-reviewer"] == "ran"
 
     def test_an_amendment_before_the_first_spawn_plans_once(self, tmp_path):
         repo, env, _g = make_repo(tmp_path, files="src/thing.py, src/other.py")

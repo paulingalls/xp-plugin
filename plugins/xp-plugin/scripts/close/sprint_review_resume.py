@@ -1,4 +1,4 @@
-"""Resume an incomplete first sprint-review round from validated reports."""
+"""Resume the latest incomplete sprint-review round from validated reports."""
 
 import shlex
 from pathlib import Path
@@ -7,9 +7,9 @@ from review_report import aggregate, normalize_report
 
 
 def resumable(rounds: list[dict]) -> dict | None:
-    if len(rounds) != 1:
+    if not rounds:
         return None
-    round_ = rounds[0]
+    round_ = rounds[-1]
     parsed, error = normalize_report(round_)
     if error or "legacy_untriaged" in parsed:
         return None
@@ -24,13 +24,13 @@ def reviewed_head(round_: dict, head: str, patch: Path, git, reviewer_name: str)
             "",
             "incomplete historical round has no measured reviewed HEAD; explicitly review again",
         )
+    if git("merge-base", "--is-ancestor", reviewed, head, check=False).returncode:
+        return "", "HEAD rewrote the reviewed ancestry"
     if head != shown:
         return (
             "",
             f"HEAD moved after incomplete round {shown[:8]}; explicitly review again",
         )
-    if git("merge-base", "--is-ancestor", reviewed, head, check=False).returncode:
-        return "", "HEAD rewrote the reviewed ancestry"
     return reviewed, ""
 
 
@@ -53,17 +53,13 @@ def state(rounds: list[dict], head: str, sprint_id: str, review, git):
     complete = max(
         (n for n, round_ in enumerate(rounds, 1) if not round_.get("incomplete")), default=0
     )
-    if complete or not (stopped := resumable(rounds)):
+    if not (stopped := resumable(rounds)):
         return complete, head, None, "", ""
-    saved = review.sprint_report_path(sprint_id, "fix", 1)
+    saved = review.sprint_report_path(sprint_id, "fix", len(rounds))
     reviewed, why = reviewed_head(stopped, head, review.patch_path(saved), git, "")
     if not why:
         return complete, reviewed, stopped, "", ""
-    hard = (
-        bool(stopped.get("reviewed_head"))
-        and stopped.get("stages", [])[-1:] == ["fix"]
-        and head != stopped.get("shown_sha")
-    )
+    hard = why == "HEAD rewrote the reviewed ancestry"
     return complete, head, None, "" if hard else why, why if hard else ""
 
 
@@ -73,10 +69,10 @@ def dirty_fixer(rounds: list[dict], head: str, sprint_id: str, review) -> str:
         return ""
     if round_.get("reviewed_head") != head or round_.get("shown_sha") != head:
         return ""
-    report = review.sprint_report_path(sprint_id, "fix", 1)
+    report = review.sprint_report_path(sprint_id, "fix", len(rounds))
     patch = review.patch_path(report)
     return (
-        "the staged fixer work from incomplete round 1 still needs the lead."
+        f"the staged fixer work from incomplete round {len(rounds)} still needs the lead."
         " Repair the commit gate and finish/commit that staged work, or discard it before"
         f" rerunning the fixer. The saved report is {report}; the patch is {patch}"
     )
@@ -142,6 +138,14 @@ class Prefix:
 
 def record(reports, keys, error, reviewed, shown, report_keys, reused=None, ran=None) -> dict:
     result = aggregate(reports, blockers=False)
+    settled = {
+        item if isinstance(item, str) else item["finding"]
+        for key in ("fixed", "dropped", "debt")
+        for item in result.get(key, [])
+    }
+    result.setdefault("blocking", []).extend(
+        item for report in reports for item in report.get("actionable", []) if item not in settled
+    )
     result.update(incomplete=error, stages=keys, reviewed_head=reviewed, shown_sha=shown)
     if reused is not None:
         result.update(reused=reused, ran=ran)

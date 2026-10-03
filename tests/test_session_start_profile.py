@@ -359,7 +359,7 @@ class TestTheRealProfileAgainstTheRealCap:
     # hides whether the profile or the path moved.
     @pytest.mark.parametrize(
         ("last_good", "recorded_root"),
-        [(521, None), (400, Path("/" + "p" * 4_999))],
+        [(606, None), (485, Path("/" + "p" * 4_999))],
         ids=["ordinary", "moved-install"],
     )
     def test_published_plugin_root_boundaries_are_constructed(self, last_good, recorded_root):

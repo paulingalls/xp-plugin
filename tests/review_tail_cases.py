@@ -1,5 +1,4 @@
 import json
-import re
 from pathlib import Path
 
 from close_helpers import LEAD_CREDS
@@ -42,44 +41,44 @@ class TestTheCommitGateRefusalIsActionable:
         assert r.returncode == 2, r.stdout + r.stderr
         round_ = json.loads(marker_path(tmp_path).read_text())["rounds"][-1]
         assert round_["fixed"] == ["a fix the gate rejects"] and round_["stages"][-1] == "fix"
-        assert round_["blocking"] == ["a silent one"], "one finding, once per stage that saw it"
+        assert round_["blocking"] and set(round_["blocking"]) == {"a silent one"}
         land = sprint(repo, env, "land", "--dry-run")
         assert land.returncode == 2 and "incomplete" in land.stderr
         return repo, env, _g, r.stdout + r.stderr
 
-    def test_the_refusal_names_the_gate_and_the_humans_next_action(self, tmp_path):
-        *_context, out = self.refusal(tmp_path, LEFTHOOK)
-        assert "commit gate refused" in out, out
-        assert "commit the staged tree yourself" in out, "no next action for the human"
-        assert "would be reformatted" in out, "the cause the gate named is not in the refusal"
-        assert "\x1b[" not in out, "ANSI escapes survived into the refusal"
+    def test_the_refusal_names_the_log_with_the_gate_cause(self, tmp_path):
+        repo, env, _g, out = self.refusal(tmp_path, LEFTHOOK)
+        log = Path(env["XP_DATA"]) / "logs/story-042-fixer.log"
+        assert str(log) in out
+        assert "would be reformatted" in log.read_text()
+        assert "FIX" in (repo / "src.py").read_text()
 
-    def test_the_patch_survives_the_undo_offered_directly_below_the_refusal(self, tmp_path):
-        """abort_text appends `git reset --hard`, which discards the staged patch
-        the sentence above it says to commit. The two read as opposite orders
-        unless the refusal names a copy of the patch that the reset cannot reach."""
-        *_context, out = self.refusal(tmp_path, LEFTHOOK)
-        m = re.search(r"the patch is also at (\S+?),", out)
-        assert m, f"the refusal offers an undo but names no surviving patch:\n{out}"
-        assert "FIX" in Path(m.group(1)).read_text(), "the named patch is not the fixer's"
+    def test_refused_commit_preserves_the_staged_work_without_an_undo(self, tmp_path):
+        repo, _env, g, out = self.refusal(tmp_path, LEFTHOOK)
+        assert "git reset --hard" not in out
+        assert "FIX" in (repo / "src.py").read_text()
+        assert "FIX" in g("diff", "--cached").stdout
 
-    def test_a_truncated_transcript_says_it_was_truncated(self, tmp_path):
-        """A bounded tail can cut the cause off the top — the same "reason twelve
-        lines up" this refusal exists to end, re-created inside it. Say the count."""
+    def test_long_gate_output_preserves_its_cause_in_the_named_log(self, tmp_path):
         gate = ["CAUSE-ABOVE-THE-CUT"] + [f"noise {n}" for n in range(14)]
-        *_context, out = self.refusal(tmp_path, gate)
-        assert "CAUSE-ABOVE-THE-CUT" not in out, "the fixture no longer truncates"
-        assert "last 12 of 15 lines" in out, f"the refusal hid its own truncation:\n{out}"
+        _repo, env, _g, out = self.refusal(tmp_path, gate)
+        log = Path(env["XP_DATA"]) / "logs/story-042-fixer.log"
+        assert str(log) in out
+        text = log.read_text()
+        assert all(line in text for line in gate)
 
-    def test_the_humans_commit_completes_the_incomplete_round(self, tmp_path):
+    def test_the_humans_commit_gets_explicit_integration_judgment(self, tmp_path):
         repo, env, g, _out = self.refusal(tmp_path, LEFTHOOK)
         (repo / ".git" / "hooks" / "pre-commit").unlink()
-        assert g("commit", "-qm", "human accepts fixer patch").returncode == 0
+        assert g("commit", "-qm", "human accepts fixer work").returncode == 0
+        before = g("rev-parse", "HEAD").stdout
         staged_stub(tmp_path)
         assert sprint(repo, env, "review").returncode == 0
         rounds = json.loads(marker_path(tmp_path).read_text())["rounds"]
-        assert len(rounds) == 1 and "incomplete" not in rounds[0]
-        assert rounds[0]["reused"][-1] == "fix" and rounds[0]["ran"] == ["close"]
+        assert len(rounds) == 2 and rounds[0]["incomplete"]
+        assert "incomplete" not in rounds[1]
+        assert bundles(tmp_path, "close") == []
+        assert g("rev-parse", "HEAD").stdout == before
         assert (tmp_path / "data/reports/sprint/2.fix.round-1.json").exists()
 
 
@@ -120,7 +119,7 @@ class TestTheClosingPass:
                 "debt": [],
             },
         )
-        assert sprint(repo, env, "review").returncode == 0
+        assert sprint(repo, env, "review").returncode == 2
         land = sprint(repo, env, "land", "--dry-run")
         assert land.returncode == 2 and "THE-FIX-BROKE-IT" in land.stderr
 
@@ -128,8 +127,9 @@ class TestTheClosingPass:
         """The green twin: without it, an always-blocking closer passes the test
         above and nothing ever releases."""
         repo, env, _g = make_repo(tmp_path)
-        staged_stub(tmp_path)
+        staged_stub(tmp_path, find=CANDIDATES, verify=SURVIVES)
         assert sprint(repo, env, "review").returncode == 0
+        assert len(bundles(tmp_path, "close")) == 1
         assert json.loads(marker_path(tmp_path).read_text())["rounds"][-1]["blocking"] == []
         assert sprint(repo, env, "land", "--dry-run").returncode == 0
 
@@ -147,11 +147,11 @@ class TestTheClosingPass:
         bundle = bundles(tmp_path, "close")[0]
         assert "THE_FIXERS_LINE" in read_named_diff(bundle, "Cumulative sprint diff", repo, env)
 
-    def test_the_closing_pass_runs_even_when_nothing_was_fixed(self, tmp_path):
+    def test_clean_integration_skips_the_closing_pass(self, tmp_path):
         repo, env, _g = make_repo(tmp_path)
         staged_stub(tmp_path)
         assert sprint(repo, env, "review").returncode == 0
-        assert len(bundles(tmp_path, "close")) == 1
+        assert bundles(tmp_path, "close") == []
 
 
 class TestTheAnglesAreShippedProse:

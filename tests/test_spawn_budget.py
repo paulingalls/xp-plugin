@@ -4,6 +4,7 @@ codex leg's tee ACs — the card's Verify names test_spawn_run.py."""
 
 import re
 import shutil
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -13,13 +14,21 @@ from spawn_helpers import _total, make_repo, spawn, stub_claude
 def set_card(repo, env, text):
     plan = Path(env["XP_DATA"]) / "plan.md"
     changed = plan.read_text().replace("Context: demo.", f"Context: {text}")
-    plan.write_text(changed.replace("[ready]", "[planned]"))
+    plan.write_text(changed)
+    assert (
+        spawn(repo, env, "amend", "story-042", "--reason", "profile input changed").returncode == 0
+    )
     assert spawn(repo, env, "ready", "story-042").returncode == 0
 
 
 def set_target(repo, value):
     config = repo / ".xp" / "config.yml"
     config.write_text(config.read_text() + f"profile_target: {value}\n")
+
+
+def commit_target(repo):
+    subprocess.run(["git", "add", ".xp/config.yml"], cwd=repo, check=True)
+    subprocess.run(["git", "commit", "-qm", "configure profile"], cwd=repo, check=True)
 
 
 class TestProfile:
@@ -102,15 +111,13 @@ class TestProfile:
         stub_claude(tmp_path)
         before = spawn(repo, env, "story-042", "--dry-run").stdout
         plan = tmp_path / "data" / "plan.md"
-        # the lead's whole sequence after changing a cleared card: edit, back to
-        # [planned], re-review, re-mint — an edit alone now refuses the spawn
-        plan.write_text(
-            plan.read_text()
-            .replace("Context: demo.", "Context: " + "x" * 4000)
-            .replace("[ready]", "[planned]")
+        plan.write_text(plan.read_text().replace("Context: demo.", "Context: " + "x" * 4000))
+        assert (
+            spawn(repo, env, "amend", "story-042", "--reason", "profile input changed").returncode
+            == 0
         )
         assert spawn(repo, env, "ready", "story-042").returncode == 0
-        after = spawn(repo, env, "story-042", "--dry-run").stdout
+        after = spawn(repo, env, "story-042").stdout
         assert _total(before) != _total(after)
         assert _total(after) > _total(before)
 
@@ -123,9 +130,11 @@ class TestProfile:
         set_card(high, high_env, "evidence " * 600)
         set_target(low, 100)
         set_target(high, 2000)
+        commit_target(low)
+        commit_target(high)
 
-        loud = spawn(low, low_env, "story-042", "--dry-run")
-        quiet = spawn(high, high_env, "story-042", "--dry-run")
+        loud = spawn(low, low_env, "story-042")
+        quiet = spawn(high, high_env, "story-042")
         assert loud.returncode == quiet.returncode == 0
         assert "100 story-card token allowance" in loud.stderr
         assert "profile_target" not in quiet.stderr
@@ -138,7 +147,7 @@ class TestProfile:
         stub_claude(tmp_path / "loud")
         stub_claude(tmp_path / "quiet")
         set_card(repo, env, "evidence " * 450)
-        result = spawn(repo, env, "story-042", "--dry-run")
+        result = spawn(repo, env, "story-042")
         quiet = spawn(quiet_repo, quiet_env, "story-042", "--dry-run")
         scaffold = next(
             line
@@ -218,7 +227,8 @@ class TestProfile:
         stub_claude(tmp_path)
         set_card(repo, env, "checked evidence " * 800)
         set_target(repo, 100)
-        result = spawn(repo, env, "story-042", "--dry-run")
+        commit_target(repo)
+        result = spawn(repo, env, "story-042")
         note = result.stderr.lower()
         assert result.returncode == 0
         assert "story card" in note and "allowance" in note

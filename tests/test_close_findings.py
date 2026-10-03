@@ -259,7 +259,8 @@ class TestRoundThreeFindings:
         bin_dir = tmp_path / "bin"
         (bin_dir / "claude").write_text(
             CLAUDE_SH + "p=$(sed -n 's/^REPORT_PATH: //p')\n"
-            'printf \'{"schema":2,"fixed":[],"blocking":[],"dropped":[],"debt":[]}\' > "$p"\n'
+            'printf \'{"schema":2,"actionable":[],"fixed":[],"blocking":[],'
+            '"dropped":[],"debt":[]}\' > "$p"\n'
             "NEW=$(git commit-tree HEAD^{tree} -p main -m 'teammate landed mid-review')\n"
             "git update-ref refs/heads/main $NEW\n"
             'printf \'{"type": "result", "result": "clean"}\'\n'

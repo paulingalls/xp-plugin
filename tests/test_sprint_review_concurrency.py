@@ -29,13 +29,13 @@ def test_every_finder_starts_before_any_finishes_and_records_declared_order(tmp_
     stub.write_text(
         stub.read_text().replace(
             "open(m.group(1).strip(), 'w').write(json.dumps(report))\n",
-            "if key == 'close': sys.exit(1)\n"
             "if key.startswith('find-'):\n"
             "    open(os.path.join(os.environ['HOME'], key + '.started'), 'w').close()\n"
             "    import time\n"
             "    while not os.path.exists(os.path.join(os.environ['HOME'], key + '.release')):\n"
             "        time.sleep(.02)\n"
-            "open(m.group(1).strip(), 'w').write(json.dumps(report))\n",
+            "open(m.group(1).strip(), 'w').write(json.dumps(report))\n"
+            "if key == 'find-security': sys.exit(1)\n",
         )
     )
     proc = subprocess.Popen(
@@ -62,7 +62,7 @@ def test_every_finder_starts_before_any_finishes_and_records_declared_order(tmp_
         assert proc.returncode == 2 and "reviewer exited 1" in err, out + err
         record = json.loads(marker_path(tmp_path).read_text())["rounds"][0]
         assert record["stages"] == list(finders)
-        assert len(launches(tmp_path)) == 4
+        assert len(launches(tmp_path)) == 3
         assert record["reviewed_head"] == head(repo, env)
     finally:
         for name in finders:
@@ -145,6 +145,7 @@ def test_verifiers_start_after_finders_and_closer_waits_for_both(tmp_path):
     staged_stub(
         tmp_path,
         find={"fixed": [], "blocking": ["one", "two"], "schema": 2, "dropped": [], "debt": []},
+        verify={"actionable": ["authorized integration correction"], "blocking": []},
     )
     stub = tmp_path / "bin" / "claude"
     stub.write_text(
@@ -294,7 +295,7 @@ def test_concurrent_legs_stream_to_their_own_logs_and_label_their_results(tmp_pa
     result = sprint(repo, env, "review")
 
     assert result.returncode == 0, result.stderr
-    assert result.stdout.count("[system] init") == 1  # the closer, which runs alone
+    assert "[system] init" not in result.stdout
     for name in ("find-security", "find-state-lifecycle", "find-test-vacuity"):
         assert f"--- {name} ---\nfindings above" in result.stdout
         log = tmp_path / "data" / "logs" / f"sprint-{name}-review.log"

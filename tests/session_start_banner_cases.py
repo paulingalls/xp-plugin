@@ -193,7 +193,7 @@ class BannerCases:
             notice_module = plugin / "scripts/session_start/profile_output.py"
             current = notice_module.read_text()
             bloated = current.replace(
-                "ENVIRONMENT_NOTICE_CAP = 170", "ENVIRONMENT_NOTICE_CAP = 290"
+                "ENVIRONMENT_NOTICE_CAP = 170", "ENVIRONMENT_NOTICE_CAP = 10_000"
             )
             assert bloated != current
             notice_module.write_text(bloated)

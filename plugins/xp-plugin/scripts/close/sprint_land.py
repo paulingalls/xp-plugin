@@ -30,7 +30,7 @@ from sprint_close import (
 )
 from sprint_coverage import _covered_gate_files
 from sprint_coverage import coverage_refusal as _coverage_refusal
-from sprint_state import append_tier_evidence, read_tier_history
+from sprint_state import append_tier_evidence, read_tier_history, write_sprint_state
 from work import config_block_value, plan_path
 
 # GitHub's own ceiling on a pull request body; gh rejects a longer --body-file.
@@ -344,6 +344,11 @@ def cmd_land(sprint_id: str, dry_run: bool) -> int:
     with tempfile.NamedTemporaryFile("w", encoding="utf-8") as body_file:
         body_file.write(body)
         body_file.flush()
+        prepared = {
+            "branch": branch,
+            "head": head,
+            "tree": git("rev-parse", "HEAD^{tree}").stdout.strip(),
+        }
         cmds = [
             ["git", "push", "-u", "origin", branch],
             [
@@ -360,6 +365,13 @@ def cmd_land(sprint_id: str, dry_run: bool) -> int:
             r = subprocess.run(c, capture_output=True, text=True)
             if r.returncode != 0:
                 return bookkeep.refuse_command(c, r)
+        try:
+            write_sprint_state(marker, {"prepared_pr": prepared | {"url": r.stdout.strip()}})
+        except (OSError, ValueError) as exc:
+            return fail(
+                f"release PR prepared at {r.stdout.strip()}, but its locator could not be saved: "
+                f"{exc} — preserve that URL and repair the marker before post-merge"
+            )
     print(f"release PR open. After it MERGES: close.py sprint {sprint_id} post-merge")
     if not versioned:
         print(VERSIONING_OFF_TEXT)

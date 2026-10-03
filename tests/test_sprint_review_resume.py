@@ -247,22 +247,22 @@ def test_head_moved_after_a_pre_fix_stop_opens_a_fresh_round(tmp_path):
     assert "fresh round" in retried.stderr and all(stage in retried.stderr for stage in recorded)
 
 
-def test_unaccounted_head_motion_after_an_incomplete_round_refuses(tmp_path):
+def test_explicit_review_after_lead_head_motion_preserves_the_incomplete_round(tmp_path):
     repo, env, g = make_repo(tmp_path)
     _stop_at_closer(tmp_path)
     assert sprint(repo, env, "review").returncode == 2
+    prior = json.loads(marker_path(tmp_path).read_text())["rounds"][0]
     (repo / "other.py").write_text("D = 4\n")
     g("add", "other.py")
-    g("commit", "-qm", "the lead keeps working")
-    before = len(launches(tmp_path))
-
-    retried = sprint(repo, env, "review")
-
-    assert retried.returncode == 2 and "HEAD moved" in retried.stderr
-    # `review` is the only command that runs one, so the refusal must name a file the
-    # lead can actually move; "discard this round" with no mechanism is a dead end.
-    assert str(marker_path(tmp_path)) in retried.stderr, retried.stderr
-    assert len(launches(tmp_path)) == before
+    assert g("commit", "-qm", "the lead corrects integration").returncode == 0
+    before = head(repo, env)
+    retried, stages = _fresh_stages(tmp_path, repo, env, len(launches(tmp_path)))
+    assert retried.returncode == 0, retried.stderr
+    assert stages[0].startswith("find-")
+    rounds = json.loads(marker_path(tmp_path).read_text())["rounds"]
+    assert len(rounds) == 2 and rounds[0] == prior
+    assert "incomplete" not in rounds[1]
+    assert head(repo, env) == before
 
 
 def test_a_non_descendant_head_is_not_treated_as_discarded_fixer_work(tmp_path):
@@ -278,7 +278,7 @@ def test_a_non_descendant_head_is_not_treated_as_discarded_fixer_work(tmp_path):
 
     refused = sprint(repo, env, "review")
 
-    assert refused.returncode == 2 and "HEAD moved" in refused.stderr
+    assert refused.returncode == 2 and "ancestry" in refused.stderr
     assert str(marker_path(tmp_path)) in refused.stderr, refused.stderr
     assert len(launches(tmp_path)) == before
 

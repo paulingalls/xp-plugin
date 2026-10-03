@@ -68,3 +68,34 @@ def test_an_archived_record_reads_its_own_files_line_not_its_resolutions(tmp_pat
     assert paths == ["plugins/xp-plugin/scripts/close.py"]
     assert missing == []
     assert error == ""
+
+
+def test_disposed_records_leave_obligations_and_keep_compacted_resolution_provenance(tmp_path):
+    from work import entry_id, record_summary
+    from work_compact import compact
+
+    original = (
+        "## bug 2026-09-01T00:00:00Z\nClaim: resolved integration defect\n"
+        "Falsifier: `old-check`\nFiles: app.py\n\n"
+    )
+    ref = entry_id(original)
+    resolution = (
+        f"## resolved 2026-09-02T00:00:00Z\nResolves: {ref}\n"
+        "Falsifier: `new-check`\nCovered by: none\n\n"
+    )
+    note = "## note 2026-09-03T00:00:00Z\nDiscovery already judged\n\n"
+    archive = f"## archived 2026-09-04T00:00:00Z\nArchives: {entry_id(note)}\npromoted\n\n"
+    (tmp_path / "work.md").write_text(original + resolution + note + archive)
+    from datetime import datetime, timezone
+
+    epoch = int(datetime(2026, 9, 1, tzinfo=timezone.utc).timestamp())
+    with patch.dict("os.environ", XP_DATA=str(tmp_path)):
+        before = SPRINT_BUNDLE._sprint_records(tmp_path, epoch)
+        assert "resolved integration defect" not in before[1]
+        assert "Discovery already judged" not in before[1]
+        assert compact(tmp_path, entry_id, record_summary) == 0
+        after = SPRINT_BUNDLE._sprint_records(tmp_path, epoch)
+
+    assert after == before
+    assert "old-check" in after[0] and "new-check" in after[0]
+    assert "resolved integration defect" in after[0]

@@ -226,7 +226,7 @@ def test_an_empty_range_says_it_holds_no_changes_without_a_command(tmp_path, mon
     repo, env, _g = make_repo(tmp_path)
     monkeypatch.chdir(repo)
     same = head(repo, env)
-    story = build_bundle("card", same, tmp_path / "story-report")
+    story = build_bundle("#### story-042 — test", same, tmp_path / "story-report")
     sprint_bundle = build_sprint_bundle(
         "2", "cards", same, tmp_path / "sprint-report", "charter", [], [], ""
     )

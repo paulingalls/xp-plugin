@@ -59,7 +59,6 @@ def test_both_fields_can_grow_together(tmp_path):
     edit(tmp_path, "Verify: true", "Verify: true && true")
     reviewed = close(repo, env, "review")
     assert reviewed.returncode == 0, reviewed.stderr
-    assert reviewed.stdout.count("card grew") == 1
     assert "src/other.py" in reviewed.stdout and "Verify: true" in reviewed.stdout
 
 

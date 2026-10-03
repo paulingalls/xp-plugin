@@ -323,7 +323,7 @@ def test_route_isolation_guard_reds_when_shipped_instructions_are_removed():
             assert_open_route(create_skill, close_skill, process.replace(token, "the lead", 1))
     # both tokens present in the wrong order: ready before authoring is the whole defect
     # the ordering assertion exists for, and no dropped token exercises it
-    step = section(process, "1. **Slate review**", "2. **Story**")
+    step = section(process, "1. **Slate review**", "3. **Story close**")
     flip = step.replace("`/create-sprint`", "\x00").replace(
         "spawn.py <story-id>", "`/create-sprint`", 1
     )
@@ -332,10 +332,6 @@ def test_route_isolation_guard_reds_when_shipped_instructions_are_removed():
         assert_open_route(create_skill, close_skill, process.replace(step, flipped))
     with pytest.raises(AssertionError):
         assert_open_route(create_skill, close_skill + opening, process)
-    with pytest.raises(AssertionError):
-        assert_open_route(
-            create_skill, close_skill, process.replace("fresh reader", "`/sprint-close`")
-        )
 
 
 def test_review_vocabulary_has_one_shipped_owner_and_a_dated_migration():

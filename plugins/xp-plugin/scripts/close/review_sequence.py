@@ -101,8 +101,15 @@ def stage(story_id, card, sequence, name, correction=False):
         marker_state = json.loads(marker.read_text()) if marker.exists() else {}
         from bookkeep import render_prior_rounds
 
+        notice = review.plan_review_notice(story_id)
+        if notice:
+            print(notice, file=sys.stderr)
         prompt = close.build_bundle(
-            card, sequence["base"], path, render_prior_rounds(marker_state.get("rounds", []))
+            card,
+            sequence["base"],
+            path,
+            render_prior_rounds(marker_state.get("rounds", [])),
+            notice,
         )
     else:
         charter = (

@@ -13,6 +13,7 @@ def stub_stages(
     blocking_diff=False,
     unreadable_plan=False,
     review_failure=False,
+    executor_failure=False,
 ):
     binary = tmp_path / "bin" / "claude"
     binary.parent.mkdir(exist_ok=True)
@@ -24,7 +25,14 @@ def stub_stages(
     else:
         findings = json.dumps({"status": "clean", "human_question": None, "reasons": []})
     report = (
-        {"fixed": [], "blocking": ["cannot land"], "schema": 2, "dropped": [], "debt": []}
+        {
+            "actionable": [],
+            "fixed": [],
+            "blocking": ["cannot land"],
+            "schema": 2,
+            "dropped": [],
+            "debt": [],
+        }
         if blocking_diff
         else CLEAN
     )
@@ -56,6 +64,7 @@ def stub_stages(
         " open('src/thing.py', 'a').write('\\nDONE = True\\n')\n"
         " subprocess.run(['git', 'add', '-A'], check=True)\n"
         " subprocess.run(['git', 'commit', '-qm', 'executor work'], check=True)\n"
+        f" if {executor_failure!r}: sys.exit(9)\n"
         "elif role == 'reviewer':\n"
         f" if {review_failure!r} and not os.path.exists({str(repair)!r}):\n"
         f"  action = {repair_action!r}\n"

@@ -118,7 +118,17 @@ def stub_claude(
         # tests that drive this stub bare red. RECORDING still follows the test
         # flag: the reviewer launch must not clobber the teammate's record inside a
         # spawn run, while the close-review leg's own tests read that same record.
+        "planner = os.environ.get('XP_ROLE') in ('planner', 'plan-reviewer')",
         "spawn_review = os.environ.get('XP_ROLE') == 'reviewer' and 'REPORT_PATH: ' in stdin",
+        "if os.environ.get('XP_ROLE') == 'planner':\n"
+        " import re\n"
+        " match = re.search(r'^PLAN_PATH: (.+)$', stdin, re.M); assert match\n"
+        " open(match.group(1).strip(), 'w').write('# execution plan\\nred then green\\n')",
+        "if os.environ.get('XP_ROLE') == 'plan-reviewer':\n"
+        " import re\n"
+        " match = re.search(r'^FINDINGS_PATH: (.+)$', stdin, re.M); assert match\n"
+        " open(match.group(1).strip(), 'w').write(json.dumps(\n"
+        " {'status': 'clean', 'reasons': [], 'human_question': None}))",
         "keep_record = not (os.environ.get('XP_SPAWN_TEST') and spawn_review)",
         f"record = {{'argv': argv, 'env': dict(os.environ), 'stdin': stdin}}; path = {str(rec)!r}",
         "json.dump(record, open(path, 'w')) if keep_record else None",
@@ -146,10 +156,12 @@ def stub_claude(
         # — except with add_all=False, which is the teammate that stages only
         # its own files and leaves a pre-existing leftover where it found it
         if add_all:
-            body.append("subprocess.run(['git', 'add', '-A']) if not spawn_review else None")
+            body.append(
+                "subprocess.run(['git', 'add', '-A']) if not (spawn_review or planner) else None"
+            )
         body.append(
             "subprocess.run(['git', 'commit', '--allow-empty', '-qm', 'teammate work'])"
-            " if not spawn_review else None"
+            " if not (spawn_review or planner) else None"
         )
     if break_git:
         body.append("open('.git', 'w').write('not a gitdir pointer')")

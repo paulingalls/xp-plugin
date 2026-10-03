@@ -2,6 +2,7 @@
 
 import json
 
+import pytest
 from sprint_helpers import (
     bundles,
     head,
@@ -138,6 +139,95 @@ def test_post_merge_validates_actual_shipping_tree(tmp_path):
     assert (tmp_path / "data/releases/sprint-2.json").is_file()
 
 
+def test_prepared_pr_is_not_a_released_sprint(tmp_path):
+    from test_sprint_tier_receipt import add_origin
+
+    repo, env, g = make_repo(tmp_path)
+    add_origin(tmp_path, repo, env, g)
+    (tmp_path / "data/closes.jsonl").write_text("")
+    staged_stub(tmp_path)
+    assert sprint(repo, env, "review").returncode == 0
+    gh = tmp_path / "bin/gh"
+    event = tmp_path / "pr-created"
+    gh.write_text(f"#!/bin/sh\necho pr > '{event}'\necho https://example.test/pr/1\n")
+    gh.chmod(0o755)
+    prepared = sprint(repo, env, "land")
+    assert prepared.returncode == 0, prepared.stdout + prepared.stderr
+
+    assert event.exists()
+    locator = json.loads(marker_path(tmp_path).read_text())["prepared_pr"]
+    assert locator["url"] == "https://example.test/pr/1"
+    assert locator["head"] == head(repo, env)
+    assert locator["tree"] == g("rev-parse", "HEAD^{tree}").stdout.strip()
+    assert not (tmp_path / "data/releases/sprint-2.json").exists()
+    assert (tmp_path / "data/sprint_branch").exists()
+    assert not g("tag", "--list", "v0.3.0").stdout
+    g("checkout", "-q", "main")
+    before = marker_path(tmp_path).read_bytes()
+    refused = sprint(repo, env, "post-merge")
+    assert refused.returncode == 2 and "merged" in refused.stderr
+    assert marker_path(tmp_path).read_bytes() == before
+    assert not g("tag", "--list", "v0.3.0").stdout
+    assert g("merge", "--no-ff", "sprint-002", "-m", "actual merge").returncode == 0
+    assert sprint(repo, env, "post-merge").returncode == 0
+    assert (tmp_path / "data/releases/sprint-2.json").exists()
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        "equal-tree",
+        "changed-tree",
+        "changed-command",
+        "changed-legs",
+        "missing",
+        "unreadable",
+        "latest-failure",
+    ],
+)
+def test_shipping_receipt_reuse_requires_matching_tree_and_commands(tmp_path, change):
+    from sprint_helpers import CONFIG, record_reviews
+
+    events = tmp_path / "tier-events"
+    command = f"git rev-parse HEAD^{{tree}} >> '{events}'"
+    repo, env, g = make_repo(tmp_path, config=CONFIG.replace("full: true", f"full: {command}"))
+    record_reviews(tmp_path, repo, env)
+    assert sprint(repo, env, "land").returncode == 2
+    assert events.is_file()
+    state = json.loads(marker_path(tmp_path).read_text())
+    measured_head = state["full_tier"]["head"]
+    if change == "missing":
+        state.pop("full_tier")
+    elif change == "unreadable":
+        state["full_tier"] = "corrupt receipt"
+    elif change == "latest-failure":
+        state["full_tier_history"].append(dict(state["full_tier_history"][-1], outcome="failed"))
+    marker_path(tmp_path).write_text(json.dumps(state))
+    g("checkout", "-q", "main")
+    assert g("merge", "--no-ff", "sprint-002", "-m", "merged release").returncode == 0
+    assert head(repo, env) != measured_head
+    if change == "changed-tree":
+        (repo / "src.py").write_text("CHANGED_SHIPPING_TREE = 1\n")
+        assert g("commit", "-qam", "trunk correction").returncode == 0
+    elif change in ("changed-command", "changed-legs"):
+        config = repo / ".xp/config.yml"
+        config.write_text(config.read_text().replace(command, command + " && true"))
+        if change == "changed-legs":
+            config.write_text(
+                config.read_text() + f"full_legs:\n  checks: {command}\n  final: true\n"
+            )
+        assert g("commit", "-qam", "new shipping command").returncode == 0
+
+    result = sprint(repo, env, "post-merge")
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert len(events.read_text().splitlines()) == (1 if change == "equal-tree" else 2)
+    assert events.read_text().splitlines()[-1] == g("rev-parse", "HEAD^{tree}").stdout.strip()
+    assert json.loads(marker_path(tmp_path).read_text())["full_tier"]["reused"] == (
+        change == "equal-tree"
+    )
+
+
 def _concurrent_publication(tmp_path, close=None):
     import subprocess
     import sys
@@ -227,3 +317,76 @@ def test_guard_rejects_target_defect(tmp_path):
         ["git", "tag", "--list", "v0.3.0"], cwd=tmp_path / "repo", text=True
     )
     assert tag.strip() == "v0.3.0"
+
+
+@pytest.mark.parametrize("fault", ["red", "interrupt", "dirty", "head", "owner", "history"])
+def test_shipping_refusals_preserve_release_state(tmp_path, fault):
+    from sprint_helpers import CONFIG, record_reviews
+
+    root = tmp_path / "data"
+    action = {
+        "red": "false",
+        "interrupt": "kill -TERM $$",
+        "dirty": "echo dirty >> src.py",
+        "head": "echo changed >> src.py && git commit -qam moved",
+        "owner": f"echo sprint-999 > '{root / 'sprint_branch'}'",
+        "history": "true",
+    }[fault]
+    repo, env, g = make_repo(tmp_path, config=CONFIG.replace("full: true", f"full: {action}"))
+    record_reviews(tmp_path, repo, env)
+    if fault == "history":
+        state = json.loads(marker_path(tmp_path).read_text())
+        state["full_tier_history"] = "unreadable history"
+        marker_path(tmp_path).write_text(json.dumps(state))
+    g("checkout", "-q", "main")
+    assert g("merge", "--no-ff", "sprint-002", "-m", "release").returncode == 0
+
+    result = sprint(repo, env, "post-merge")
+
+    assert result.returncode == 2, result.stdout + result.stderr
+    assert not g("tag", "--list", "v0.3.0").stdout
+    assert not (root / "releases/sprint-2.json").exists()
+    assert (root / "sprint_branch").exists()
+    assert marker_path(tmp_path).exists()
+    if fault == "history":
+        assert json.loads(marker_path(tmp_path).read_text())["full_tier_history"] == (
+            "unreadable history"
+        )
+    elif fault == "dirty":
+        assert "dirty" in (repo / "src.py").read_text()
+    elif fault == "owner":
+        assert (root / "sprint_branch").read_text().strip() == "sprint-999"
+
+
+def test_shipping_validation_persistence_refusal_prevents_publication(tmp_path):
+    import subprocess
+    import sys
+
+    from sprint_helpers import CLOSE, CONFIG, record_reviews
+
+    events = tmp_path / "checks-ran"
+    command = f"echo checked >> '{events}'"
+    repo, env, g = make_repo(tmp_path, config=CONFIG.replace("full: true", f"full: {command}"))
+    record_reviews(tmp_path, repo, env)
+    g("checkout", "-q", "main")
+    assert g("merge", "--no-ff", "sprint-002", "-m", "release").returncode == 0
+    before = marker_path(tmp_path).read_bytes()
+    program = f"""
+import sys
+sys.path[:0] = [{str(CLOSE.parent)!r}, {str(CLOSE.parent / "close")!r}]
+import close, sprint_state
+def refuse(*args, **kwargs):
+    raise OSError('constructed persistence failure')
+sprint_state.append_tier_evidence = refuse
+sys.argv = ['close.py', 'sprint', '2', 'post-merge']
+raise SystemExit(close.main())
+"""
+    result = subprocess.run(
+        [sys.executable, "-c", program], cwd=repo, env=env, capture_output=True, text=True
+    )
+    assert result.returncode == 2 and "constructed persistence failure" in result.stderr
+    assert events.read_text().splitlines() == ["checked"]
+    assert marker_path(tmp_path).read_bytes() == before
+    assert not g("tag", "--list", "v0.3.0").stdout
+    assert not (tmp_path / "data/releases/sprint-2.json").exists()
+    assert (tmp_path / "data/sprint_branch").exists()

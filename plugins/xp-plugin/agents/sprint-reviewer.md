@@ -15,8 +15,9 @@ Later rounds independently judge the changed integration; settled story reviews 
 Write JSON to REPORT_PATH with a required `blocking` list of nonempty finding text.
 Verifier also requires `actionable`: authorized survivors go there; reserved choices
 and unmet ACs stay blocking. All readers preserve HEAD, index, work, cards and markers.
-Optional fixed, dropped and debt fields retain explanations. Judge drops and debt
-under JUDGMENT; reserved choices and unwaivable blockers remain blocking.
+Optional `fixed` is a string list; `dropped` entries contain `finding` and `reason`.
+`debt` entries contain `finding`, `ref`, `too_big` and `too_important`; judge them
+under JUDGMENT. Reserved choices and unwaivable blockers remain blocking.
 Only closer may add `clearable_by_full`. Include findings raised in prose.
 
 ## finder

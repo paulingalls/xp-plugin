@@ -77,6 +77,12 @@ def cmd_review(sprint_id: str, dry_run: bool) -> int:
         )
     if not (cards := sprint_cards(plan.read_text(), sprint_id)):
         return fail(f"refused: no `### Sprint {sprint_id}` section in {plan}")
+    from review_scope import declared_files
+
+    try:
+        declared = declared_files(cards)
+    except ValueError as exc:
+        return fail(f"refused: {exc}")
     from env import sprint_branch, sprint_branch_name
 
     expected = sprint_branch_name(sprint_id)
@@ -120,7 +126,7 @@ def cmd_review(sprint_id: str, dry_run: bool) -> int:
         return fail(err)
     authority = story_close.review_authority_sections()
     digest_before = review.marker_digest(marker)
-    diff_base = state["shown_sha"] if complete_n else ""
+    diff_base = rounds[complete_n - 1].get("shown_sha", state["shown_sha"]) if complete_n else ""
     if diff_base and (missing := _shown_diff(sprint_id, diff_base, head)[1]):
         return fail(missing)
 
@@ -230,6 +236,7 @@ def cmd_review(sprint_id: str, dry_run: bool) -> int:
         )
         if dry_run:  # an EMPTY report, not a shapeless one: a preview walks
             empty = empty_report()
+            empty["actionable"] = []
             return empty, review.abort_text(head, err) if err else ""
         report, report_err = review.read_report(
             path, stage="solution" if stage == "verifier" else stage
@@ -267,14 +274,17 @@ def cmd_review(sprint_id: str, dry_run: bool) -> int:
                 report_err = "fixer moved the close marker"
             else:
                 from completion import committed_contents
-                from review_scope import declared_files
 
                 committed_contents()
                 touched = git(
                     "diff", "--name-only", "--no-renames", stage_head, current
                 ).stdout.splitlines()
-                if any(p.startswith(".xp/") and p not in declared_files(cards) for p in touched):
-                    report_err = "fixer committed an undeclared .xp path; lead must inspect it"
+                if outside := [p for p in touched if p.startswith(".xp/") and p not in declared]:
+                    report_err = (
+                        "fixer committed paths outside the Files line: "
+                        + ", ".join(outside)
+                        + "; lead must inspect preserved work"
+                    )
         return report, review.abort_text(stage_head, report_err) if report_err else ""
 
     resume_announced = False
@@ -397,7 +407,10 @@ def cmd_review(sprint_id: str, dry_run: bool) -> int:
                 [
                     *told,
                     ("What the fixer reported", json.dumps(fixed)),
-                    ("Correction range", f"{head}..{git('rev-parse', 'HEAD').stdout.strip()}"),
+                    (
+                        "Correction range",
+                        f"{reviewed_head}..{git('rev-parse', 'HEAD').stdout.strip()}",
+                    ),
                 ],
             )
             if err:

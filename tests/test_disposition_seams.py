@@ -142,5 +142,6 @@ def test_sprint_delta_fixer_cannot_rename_undeclared_project_authority(tmp_path)
         )
     )
     result = sprint(repo, env, "review")
-    assert result.returncode == 2 and "undeclared .xp path" in result.stderr
+    assert result.returncode == 2 and ".xp/system.md" in result.stderr
+    assert "outside the Files line" in result.stderr
     assert (repo / "system.md").exists()
