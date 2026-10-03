@@ -12,6 +12,26 @@ ORDER = ("executor", "story-tier", "reviewer")
 RESULTS = ("pending", "running", "ran", "skipped", "blocked", "failed", "interrupted")
 
 
+def config_without_story():
+    from work import strip_comment
+
+    config = Path(".xp/config.yml")
+    if not config.exists():
+        return None
+    retained = []
+    inside = False
+    for raw in config.read_text().splitlines(keepends=True):
+        line = strip_comment(raw)
+        if line.rstrip() == "tests:":
+            inside = True
+        elif inside and line.strip() and not line[:1].isspace():
+            inside = False
+        elif inside and ":" in line and line.strip().split(":", 1)[0] == "story":
+            continue
+        retained.append(raw)
+    return "".join(retained)
+
+
 def inputs(story_id, card, *, declaration_checked=False):
     from plan_acceptance import latest
     from plan_review import card_for
@@ -39,6 +59,7 @@ def inputs(story_id, card, *, declaration_checked=False):
     )
     work = tracked_state(excluded)
     work["execution"] = tracked_state([*excluded, ".xp/config.yml"])
+    work["execution"]["config_without_story"] = config_without_story()
     return {
         "work": work,
         "review": {

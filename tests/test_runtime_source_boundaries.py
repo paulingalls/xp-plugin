@@ -203,14 +203,18 @@ def test_artifact_guard_faults(tmp_path, monkeypatch, mutant, damage):
         guarantee()
 
 
-def test_unrelated_config_motion_invalidates_executor(tmp_path):
+@pytest.mark.parametrize("tier_changed", [False, True])
+def test_unrelated_config_motion_invalidates_executor(tmp_path, tier_changed):
     from completed_executor_support import completed, roles
     from plan_confirmation_support import events
 
     launch = installed_launch(tmp_path)
     repo, env, seen = completed(tmp_path, launch)
     config = tmp_path / "data/worktrees/story-042/.xp/config.yml"
-    config.write_text(config.read_text() + "codex_sandbox: workspace-write\n")
+    text = config.read_text()
+    if tier_changed:
+        text = text.replace("story: true", "story: true && true")
+    config.write_text(text + "codex_sandbox: workspace-write\n")
     count = len(events(seen))
     preview = launch(repo, env, "resume", "story-042", "--dry-run")
     assert preview.returncode == 0, preview.stderr
@@ -218,6 +222,24 @@ def test_unrelated_config_motion_invalidates_executor(tmp_path):
     result = launch(repo, env, "resume", "story-042")
     assert result.returncode == 0, result.stderr
     assert roles(seen)[count:] == ["teammate", "reviewer"]
+
+
+@pytest.mark.meta
+def test_combined_config_motion_guard_fault(tmp_path, monkeypatch):
+    control, mutant = tmp_path / "control", tmp_path / "mutant"
+    control.mkdir()
+    mutant.mkdir()
+    test_unrelated_config_motion_invalidates_executor(control, True)
+    install = installed_launch
+    monkeypatch.setitem(
+        globals(),
+        "installed_launch",
+        lambda root: install(
+            root, ('return "".join(retained)', 'return ""'), "scripts/spawn/completion.py"
+        ),
+    )
+    with pytest.raises(AssertionError):
+        test_unrelated_config_motion_invalidates_executor(mutant, True)
 
 
 @pytest.mark.parametrize("mutant", [False, pytest.param(True, marks=pytest.mark.meta)])
