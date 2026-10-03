@@ -108,9 +108,14 @@ def cmd_review(sprint_id: str, dry_run: bool) -> int:
         return fail(  # no way out of the round leaves the sprint with no next action
             f"refused: {refusal}; or discard the incomplete round by moving {marker}"
             " aside — it holds this sprint's recorded rounds and moving it forfeits"
-            f" them — then `close.py sprint {sprint_id} review` for a fresh fanout"
+            f" them — then `xp.py sprint {sprint_id} review` for a fresh fanout"
         )
     resume = resume_round is not None
+    if not resume:
+        from sprint_close import prepare_close
+
+        if error := prepare_close(sprint_id, dry_run):
+            return error
     review_base = resume_round.get("review_base", base) if resume else base
     discarded = next((r for r in reversed(rounds) if r.get("incomplete")), None)
     if not resume and discarded:
@@ -137,7 +142,7 @@ def cmd_review(sprint_id: str, dry_run: bool) -> int:
     render_triage(data_root(), evidence_errors)
     if evidence_errors:
         return fail("refused: " + "\n".join(evidence_errors))
-    salvage_cmd = f"close.py sprint {sprint_id} salvage"
+    salvage_cmd = f"xp.py sprint {sprint_id} salvage"
     if not (dry_run or resume):
         moves = rotate_artifacts(sprint_paths(sprint_id, round_n))
         if left := artifact_notice(moves, salvage_cmd):
@@ -187,7 +192,11 @@ def cmd_review(sprint_id: str, dry_run: bool) -> int:
         correction = bool(resume and resume_round.get("producer") == key)
         if stage in ("fixer", "closer"):
             producer = key
-        path = review.sprint_report_path(sprint_id, key, round_n)
+        path = (
+            data_root() / "reports" / "sprint" / f"{sprint_id}.{key}.round-{round_n}.json"
+            if dry_run
+            else review.sprint_report_path(sprint_id, key, round_n, create=True)
+        )
         if not dry_run and (aside := rotate_artifacts([path, review.patch_path(path)])):
             print("warning: " + artifact_notice(aside, salvage_cmd), file=sys.stderr)
         excluded, trunk_range = set(), ""

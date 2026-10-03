@@ -440,7 +440,7 @@
     "tests/test_lifecycle.py::test_story_close_runs_after_gates_and_before_merge",
     "tests/test_milestone.py::test_a_finished_milestone_is_not_proposed_again",
     "tests/test_milestone.py::test_milestone_done_dry_run_matches_the_real_candidate_refusal",
-    "tests/test_milestone.py::test_milestone_done_dry_run_reports_a_red_done_when_as_the_real_leg_does",
+    "tests/test_milestone.py::test_milestone_preview_does_not_claim_a_red_command_passed",
     "tests/test_milestone.py::test_milestone_done_rechecks_terminal_cards_before_running",
     "tests/test_milestone.py::test_milestone_done_refuses_invalid_or_red_done_when_with_or_without_dry_run",
     "tests/test_milestone.py::test_opening_a_sprint_never_refuses_over_the_milestone_bracket",

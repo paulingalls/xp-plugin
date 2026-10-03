@@ -48,7 +48,7 @@ class TestReviewLeg:
             line = next(line for line in result.stdout.splitlines() if "full diff" in line)
             diff = root / "data" / "reports" / "sprint" / "2.fix.round-1.diff"
             assert str(diff) in line and diff.is_file()
-            assert "close.py sprint 2 land" in line and "landing accepts" in line
+            assert "xp.py sprint 2 land" in line and "landing accepts" in line
             lines.append(line)
         assert lines[0] != lines[1]
 
@@ -172,6 +172,13 @@ class TestReviewLeg:
         )
         assert story.returncode == 0, story.stderr
         g("checkout", "-q", "sprint-002")
+        plan_path = tmp_path / "data/plan.md"
+        plan_path.write_text(
+            plan_path.read_text().replace(
+                "sprint-2 — the colliding id   [in-progress]",
+                "sprint-2 — the colliding id   [done]",
+            )
+        )
         assert sprint(repo, env, "review").returncode == 0
         data = tmp_path / "data"
         story_reports = sorted(p.name for p in (data / "reports").glob("*.json"))

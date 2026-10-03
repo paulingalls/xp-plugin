@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Spawn the story-reviewer and read its structured report — close.py's review leg."""
+"""Spawn the story-reviewer and read its structured report — xp.py's review leg."""
 
 import json
 import subprocess
@@ -90,9 +90,10 @@ def report_path(story_id: str, round_n: int) -> Path:
     return p
 
 
-def sprint_report_path(sprint_id: str, stage: str, round_n: int) -> Path:
+def sprint_report_path(sprint_id: str, stage: str, round_n: int, *, create=False) -> Path:
     d = data_root() / "reports" / "sprint"
-    d.mkdir(parents=True, exist_ok=True)
+    if create:
+        d.mkdir(parents=True, exist_ok=True)
     return d / f"{sprint_id}.{stage}.round-{round_n}.json"
 
 
@@ -100,11 +101,12 @@ def patch_path(report: Path) -> Path:
     return report.with_suffix(".patch")
 
 
-def launch_marker(story_id: str) -> Path:
+def launch_marker(story_id: str, *, create: bool = True) -> Path:
     """What the review was launched AGAINST, on disk before it starts, because a
     killed reviewer returns nothing on its way out and salvage needs it all."""
     p = data_root() / "markers" / f"{story_id}.review-launch"
-    p.parent.mkdir(parents=True, exist_ok=True)
+    if create:
+        p.parent.mkdir(parents=True, exist_ok=True)
     return p
 
 
@@ -275,7 +277,7 @@ def write_reviewer_diff(report: Path, reviewed_head: str, noun: str) -> str:
 
     print(
         f"the committed review fix changed the tree. Read its commit and full"
-        f" diff at {diff} before `close.py {noun} land`; landing accepts it."
+        f" diff at {diff} before `xp.py {noun} land`; landing accepts it."
     )
     return ""
 
@@ -379,4 +381,4 @@ def result_text(harness: str, proc: subprocess.CompletedProcess) -> tuple[str, s
 
 
 if __name__ == "__main__":
-    refuse_direct_invocation("close.py <mode> <id> review")
+    refuse_direct_invocation("xp.py <mode> <id> review")

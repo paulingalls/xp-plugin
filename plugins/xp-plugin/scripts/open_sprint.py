@@ -1,8 +1,6 @@
 #!/usr/bin/env python3
 """Open a sprint on its freshly cut branch without running close checks."""
 
-import argparse
-import os
 import sys
 from pathlib import Path
 
@@ -35,7 +33,10 @@ def cmd_open(sprint_id: str, dry_run: bool = False) -> int:
         next_step = " Run `/sprint-close`" if terminal else ""
         return fail(f"refused: sprint {sprint_id} is already open.{next_step}")
     if recorded:
-        env.record_sprint_branch(branch)
+        return fail(
+            f"refused: {env.sprint_branch_path()} records {recorded}, not {branch} — "
+            "clear it only after that sprint lands"
+        )
     if terminal:
         return fail(
             f"refused: sprint {sprint_id} has nothing to open — every story is done"
@@ -60,23 +61,9 @@ def cmd_open(sprint_id: str, dry_run: bool = False) -> int:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("sprint_id", metavar="<id>")
-    parser.add_argument("--dry-run", action="store_true")
-    args = parser.parse_args()
+    from xp import main as dispatch
 
-    from close import fail
-    from work import chdir_repo_root
-
-    role = os.environ.get("XP_ROLE", "lead")
-    if role != "lead":
-        return fail(
-            f"refused: XP_ROLE={role!r} — only the lead may open a sprint. You hand back"
-            " a green Verify; the lead owns the sprint's branch and its merge"
-        )
-    if not chdir_repo_root():
-        return fail("refused: not inside a git repository")
-    return cmd_open(args.sprint_id, args.dry_run)
+    return dispatch(["sprint", *sys.argv[1:2], "open", *sys.argv[2:]])
 
 
 if __name__ == "__main__":

@@ -56,7 +56,7 @@ def problem(story_id, sequence, stage, why, kind="blocked"):
     save(story_id, sequence)
     return close.fail(
         f"refused: {sequence['problem']}. Work and reports retained. Lead: "
-        f"inspect and correct, then `close.py {close.leg(story_id)[0]} review`."
+        f"inspect and correct, then `xp.py {close.leg(story_id)[0]} review`."
     )
 
 
@@ -117,10 +117,15 @@ def stage(story_id, card, sequence, name, correction=False):
             "Use red-green-refactor, run the card Verify and configured story tier, then "
             "commit through normal Git hooks using the repository identity. "
             "Never bypass hooks or change the card/close marker. Preserve failed work. "
-            "Write JSON with blocking findings; optional fixed, dropped and debt explain decisions."
+            "Write JSON with blocking findings."
             if name == "fixer"
             else "Read-only narrow closure: check these fixes and concrete regressions. "
             "Do not reopen general design review. Write JSON with blocking findings."
+        )
+        charter += (
+            " Optional fixed is a list of finding strings. Each dropped item is an object "
+            "with nonempty finding and reason strings; each debt item is an object with "
+            "nonempty finding, ref, too_big and too_important strings."
         )
         prompt = f"## Your charter\n{charter}\n## Story card\n{card}\n"
         prompt += "## Completed solution findings and fix evidence\n" + json.dumps(
@@ -133,7 +138,10 @@ def stage(story_id, card, sequence, name, correction=False):
     if correction:
         prompt += (
             "\nCorrect only the incomplete report using retained work and logs. "
-            "Do not edit or commit again. Prior producer attempt:\n" + json.dumps(previous)
+            "Do not edit or commit again.\nMeasured refusal:\n"
+            + sequence["problem"]
+            + "\nPrior producer attempt:\n"
+            + json.dumps(previous)
         )
     prompt += f"\nSTAGE: {name}\n"
     from review_cancel import card_changed
@@ -243,7 +251,7 @@ def run(story_id, card, trunk, dry_run=False, explicit=True):
             if not explicit:
                 return close.fail(
                     f"refused: lead must correct {sequence['producer']} output with "
-                    f"`close.py {close.leg(story_id)[0]} review`"
+                    f"`xp.py {close.leg(story_id)[0]} review`"
                 )
             if rc := stage(story_id, card, sequence, sequence["producer"], correction=True):
                 return rc

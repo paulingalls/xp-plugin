@@ -32,7 +32,7 @@ both JUDGMENT bars. Escalate human/scope choices; do not extend ACs automaticall
 Keep discoveries and value tradeoffs in notes, leaving corrected cards only.
 Addressed findings need no automatic second slate review. Then
 `git switch -c sprint-<id>`, the id stripped of leading zeros and zero-padded to three characters (`sprint-007`, `sprint-2b-11`), and
-`python3 ${CLAUDE_PLUGIN_ROOT}/scripts/open_sprint.py <id>`. Opening runs only the
+`python3 ${CLAUDE_PLUGIN_ROOT}/scripts/xp.py sprint <id> open`. Opening runs only the
 sprint-open lifecycle and records the sprint.
 
 ## Done

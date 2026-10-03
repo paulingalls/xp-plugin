@@ -25,7 +25,7 @@ def handback_recovery(tree: Path, story_id: str) -> str:
     noun = leg(story_id)[0]
     return (
         f" Recover by reviewing and committing any remaining work in {tree}. If the"
-        f" committed work completes the card, run `close.py {noun} review` from {tree};"
+        f" committed work completes the card, run `xp.py {noun} review` from {tree};"
         f" if work remains, run `spawn.py resume {story_id}`. Do not remove the inherited"
         " tree."
     )

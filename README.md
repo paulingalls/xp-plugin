@@ -91,7 +91,7 @@ Docker socket, no loopback TCP, no nested `codex exec`, so a teammate's
 mandatory plan review cannot reach an API. Unconfined by default is a decision,
 not an oversight: a Claude teammate already runs with no OS sandbox because
 Claude Code exposes none. What bounds both harnesses is the same either way: a
-throwaway worktree, the git-hook wall, and `close.py` running your `Verify`.
+throwaway worktree, the git-hook wall, and `xp.py` running your `Verify`.
 
 **What a Codex lead does not get.** Sprint 8's live Codex-lead walk classifies
 each claim; the wall, completion contract and review-report contract remain
@@ -100,7 +100,7 @@ shared code:
 - **UNEXERCISED — the Stop gate's Codex path.** The walk left no test-status
   marker, which cannot distinguish a hook that ran and wrote nothing from one
   that never ran. The deterministic payload analysis still says Codex provides
-  no success-or-failure field; `close.py` remains the `Verify` guarantee.
+  no success-or-failure field; `xp.py` remains the `Verify` guarantee.
 - **CONFIRMED — no turns/cost/duration line** when a spawned run ends. The exit
   code is the whole in-band verdict, which is why spawn re-checks the *tree*
   rather than believing either harness's report.
@@ -146,7 +146,7 @@ and [gitleaks](https://github.com/gitleaks/gitleaks) for the enforcement wall
    through note triage and a retro, then gates the release on a multi-stage
    review — blind finders over the whole sprint diff, verifiers that refute,
    one fixer, one blockers-only closing pass — and opens the PR with the
-   version bump. `close.py free <slug>` does the same honesty at patch scale
+   version bump. `xp.py free <slug>` does the same honesty at patch scale
    for out-of-sprint fixes.
 
 ## Configure: `.xp/config.yml`
@@ -201,7 +201,7 @@ role with no key and no fallback refuses and prints the line to paste.
 
 | Key | Values | Absent | What it does |
 |---|---|---|---|
-| `release` | `sprint`, or anything else | stories land on trunk | `sprint`: stories merge into the sprint branch this clone recorded at `open_sprint.py <id>`, and sprint close PRs it to trunk. Otherwise stories land on trunk directly. |
+| `release` | `sprint`, or anything else | stories land on trunk | `sprint`: stories merge into the sprint branch this clone recorded at `xp.py sprint <id> open`, and sprint close PRs it to trunk. Otherwise stories land on trunk directly. |
 | `trunk` | branch name | git's default | Where releases land and tag. A configured branch that doesn't exist refuses — it never falls back. |
 | `version_files` | manifest paths, comma-separated, or `none` | refuses at release | The tag must match `version` in every named manifest. `none` waives the wall and says so on the release line. |
 | `sprint_cap` | integer | refuses at slate review | Story slots a sprint may spend. |
@@ -225,9 +225,9 @@ lifecycle_command: ./scripts/xp-lifecycle "fixed value"
 
 | Event | Fires at | Second arg | Non-zero exit |
 |---|---|---|---|
-| `sprint-open` | `open_sprint.py <id>`, on the open that records the branch | sprint id | refuses the open |
-| `story-close` | `close.py story <id> land`, after the gates, before refs move | story id | refuses the land |
-| `sprint-close` | `close.py sprint <id> post-merge`, on trunk, before the tag | sprint id | refuses before tagging |
+| `sprint-open` | `xp.py sprint <id> open`, on the open that records the branch | sprint id | refuses the open |
+| `story-close` | `xp.py story <id> land`, after the gates, before refs move | story id | refuses the land |
+| `sprint-close` | `xp.py sprint <id> post-merge`, on trunk, before the tag | sprint id | refuses before tagging |
 
 Free closes fire nothing, and a `--dry-run` of any leg fires nothing.
 
@@ -293,7 +293,7 @@ three independent sprints, and none of it lands in your history:
 
 Skills you invoke: `/xp-setup`, `/create-sprint`, `/story-close`,
 `/sprint-close`, `/free-close`. Under them the lead runs `spawn.py`,
-`close.py`, `work.py` and `slate_review.py`; a teammate runs `plan_review.py`
+`xp.py`, `work.py` and `slate_review.py`; a teammate runs `plan_review.py`
 on its own plan. Every one answers `--help` without doing anything, and every
 refusal names the next action.
 
@@ -355,3 +355,5 @@ machinery, and this repo is built by the process it ships: every mechanism
 here reviewed its own pull request.
 
 *by Paul Ingalls, with Claude — built under review by the process it implements.*
+
+Lifecycle commands use `xp.py sprint <id> open|review|land|post-merge` and `xp.py story <id> review|land`. Free patches use `xp.py free <slug> start|review|land|post-merge`; milestone completion uses `xp.py sprint <id> milestone-done`. Saved `close.py` and `open_sprint.py` calls delegate to the same owners.

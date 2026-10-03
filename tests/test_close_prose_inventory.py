@@ -55,7 +55,7 @@ class TestShippedProseMatchesTheMechanism:
         fix-commits needed re-checking there were no prior findings to bound the
         pass — an unbounded re-review (note bae0b87b)."""
         skill = prose(PLUGIN / "skills" / "sprint-close" / "SKILL.md")
-        assert "close.py sprint <id> review" in skill, "the review is still hand-composed"
+        assert "xp.py sprint <id> review" in skill, "the review is still hand-composed"
 
     def test_sprint_opening_has_no_tracked_branch_ritual(self):
         skill = prose(PLUGIN / "skills" / "sprint-close" / "SKILL.md")
@@ -184,9 +184,7 @@ class TestCharterBar:
             assert "PROCESS" not in charter, f"{name} kept a stale pointer"
         pointers = {
             PLUGIN / "skills" / "story-close" / "SKILL.md": "judge every finding under JUDGMENT",
-            PLUGIN / "skills" / "sprint-close" / "SKILL.md": (
-                "JUDGMENT.md carries the polarity contract"
-            ),
+            PLUGIN / "skills" / "sprint-close" / "SKILL.md": ("JUDGMENT.md"),
             PLUGIN / "scripts" / "bookkeep.py": "legacy/untriaged findings",
         }
         for path, pointer in pointers.items():

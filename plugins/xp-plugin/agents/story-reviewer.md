@@ -53,8 +53,10 @@ approved behavior require a lead decision.
 
 Write your report to REPORT_PATH as JSON with required `actionable` and `blocking`
 lists of nonempty finding text. Each finding names its concrete failure, XP value
-and cheapest sufficient fix. Optional prose, `fixed`, `dropped` and `debt` retain
-explanation without mandatory presentation fields.
+and cheapest sufficient fix. Optional `fixed` lists finding text. Each `dropped`
+item is an object with nonempty `finding` and `reason` strings; each `debt` item
+has nonempty `finding`, `ref`, `too_big` and `too_important` strings. Optional prose
+explains decisions.
 
 Authorized actionable work belongs in `actionable`. Authorized unmet ACs belong in `actionable`; reserved decisions and blockers that
 cannot be resolved within the approved scope belong in `blocking`. Drops need explicit reasons; exceptional

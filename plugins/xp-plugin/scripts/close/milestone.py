@@ -54,7 +54,7 @@ def move(sprint_id, done=False):
     if not edit_plan(mutate) and done:
         return (
             f"refused: Sprint {sprint_id}'s cards changed while `Done when:` ran — one is no"
-            f" longer [done] or [retired]. Run `close.py sprint {sprint_id} start` again"
+            f" longer [done] or [retired]. Run `xp.py sprint {sprint_id} review` again"
         )
     return ""
 
@@ -65,7 +65,7 @@ def cmd_done(sprint_id, dry_run=False):
     if not (found := candidate(path.read_text(), sprint_id)):
         return fail(
             f"refused: no [in-progress] milestone owns `### Sprint {sprint_id}` with every"
-            f" scheduled card [done] or [retired] — `close.py sprint {sprint_id} start`"
+            f" scheduled card [done] or [retired] — `xp.py sprint {sprint_id} review`"
             " names the milestone when there is one to close"
         )
     try:
@@ -73,6 +73,11 @@ def cmd_done(sprint_id, dry_run=False):
         commands = lifecycle.declared_commands(found.heading.strip(), block, label="Done when")[1]
     except ValueError as error:
         return fail(str(error))
+    if dry_run:
+        print(f"dry run: would complete {found.heading.strip()}; Done when has NOT run")
+        for command in commands:
+            print(f"would run: {command}")
+        return 0
     span = Span(data_root(), "milestone", f"Sprint {sprint_id}: {found.heading.strip()}")
     outcome = "interrupted"
     try:
@@ -81,10 +86,6 @@ def cmd_done(sprint_id, dry_run=False):
                 outcome = "failed"
                 return fail(red)
         head = found.heading.strip()
-        if dry_run:
-            print(f"milestone ready: {head} (dry-run; `Done when:` RAN, status unchanged)")
-            outcome = "passed"
-            return 0
         if red := move(sprint_id, done=True):
             outcome = "failed"
             return fail(red)

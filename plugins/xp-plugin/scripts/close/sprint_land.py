@@ -37,8 +37,8 @@ PR_BODY_LIMIT = 65_536
 
 
 def _release_body(sprint_id: str, state: dict, marker) -> tuple[str, str]:
-    rerun = f"run `close.py sprint {sprint_id} review`"
-    again = f"then run `close.py sprint {sprint_id} land` again"
+    rerun = f"run `xp.py sprint {sprint_id} review`"
+    again = f"then run `xp.py sprint {sprint_id} land` again"
     plan = plan_path()
     try:
         headings = sprint_stories(plan.read_text(), sprint_id)
@@ -59,7 +59,7 @@ def _release_body(sprint_id: str, state: dict, marker) -> tuple[str, str]:
     except FileNotFoundError:
         return "", (
             f"refused: no close log at {close_log} — no story has closed through"
-            f" `close.py story <id> close` here, so the PR could name no merge SHA."
+            f" `xp.py story <id> land` here, so the PR could name no merge SHA."
             f" Restore it, or create it empty if that is genuinely this sprint, {again}"
         )
     except (OSError, UnicodeError) as exc:
@@ -190,7 +190,7 @@ def cmd_land(sprint_id: str, dry_run: bool) -> int:
     if versioned and (refusal := version_refusal(version)):
         return fail(refusal)
     title = f"release {version}" if versioned else f"release {branch}"
-    ref = overlap.merge_source(default_branch(), "pr")
+    ref = overlap.merge_source(default_branch(), "pr", fetch=not dry_run)
     pending = overlap.unmerged(ref)
     marker, state, marker_error = read_sprint_state(sprint_id)
     if marker_error:
@@ -229,7 +229,7 @@ def cmd_land(sprint_id: str, dry_run: bool) -> int:
         for c in preview:
             print(" ".join(c))
         handoff = f"tag {version}, retire the key" if versioned else "retire the key"
-        print(f"(then: close.py sprint {sprint_id} post-merge — {handoff})")
+        print(f"(then: xp.py sprint {sprint_id} post-merge — {handoff})")
         if not versioned:
             print(VERSIONING_OFF_TEXT)
         if pending:
@@ -330,7 +330,7 @@ def cmd_land(sprint_id: str, dry_run: bool) -> int:
                 f"release PR prepared at {r.stdout.strip()}, but its locator could not be saved: "
                 f"{exc} — preserve that URL and repair the marker before post-merge"
             )
-    print(f"release PR open. After it MERGES: close.py sprint {sprint_id} post-merge")
+    print(f"release PR open. After it MERGES: xp.py sprint {sprint_id} post-merge")
     if not versioned:
         print(VERSIONING_OFF_TEXT)
     return 0

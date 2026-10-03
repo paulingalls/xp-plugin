@@ -36,8 +36,8 @@ class TestFreeCloseSkill:
         release enumeration it must not admit (the sprint-close twin's negative)."""
         body = (PLUGIN / "skills" / "free-close" / "SKILL.md").read_text().split("---", 2)[2]
         text = " ".join(body.split())
-        assert "`close.py free <slug> review`" in text
-        assert "`close.py free <slug> land`" in text
+        assert "`xp.py free <slug> review`" in text
+        assert "`xp.py free <slug> land`" in text
         assert "release artifacts are yours" in text.lower()
         assert "before review" in text.lower()
         assert "bump" not in text.lower() and "changelog" not in text.lower()

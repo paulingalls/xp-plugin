@@ -23,7 +23,7 @@ def command(text, executable):
 
 
 def close_from_named_tree(text, env):
-    rendered, argv = command(text, "close.py")
+    rendered, argv = command(text, "xp.py")
     match = re.search(rf"`{re.escape(rendered)}` from (.+?);", text)
     assert match, text
     return subprocess.run(
@@ -68,9 +68,9 @@ def test_a_free_recovery_takes_its_close_noun_from_leg(monkeypatch):
 
     rendered = resume_module.handback_recovery(Path("/tmp/inherited-tree"), story_id)
 
-    _text, argv = command(rendered, "close.py")
+    _text, argv = command(rendered, "xp.py")
     assert calls == [story_id]
-    assert argv == ["close.py", "free", "fix-typo", "review"]
+    assert argv == ["xp.py", "free", "fix-typo", "review"]
 
 
 def test_lead_recovery_is_not_an_executor_assignment(tmp_path):
@@ -80,7 +80,7 @@ def test_lead_recovery_is_not_an_executor_assignment(tmp_path):
     state = json.loads(marker.read_text())
     state["why"] = (
         "REQUIREMENT-FAILURE: required.txt is absent. Run spawn.py resume story-042, "
-        "then close.py story story-042 review."
+        "then xp.py story story-042 review."
     )
     marker.write_text(json.dumps(state))
     binary = tmp_path / "bin/claude"

@@ -71,7 +71,7 @@ class TestShippedProseMatchesTheMechanism:
 
     def test_close_skills_do_not_restate_tag_mechanics(self):
         cases = (
-            (PLUGIN / "skills" / "sprint-close" / "SKILL.md", "5."),
+            (PLUGIN / "skills" / "sprint-close" / "SKILL.md", "4."),
             (PLUGIN / "skills" / "free-close" / "SKILL.md", "4."),
         )
         for path, step in cases:
@@ -82,7 +82,7 @@ class TestShippedProseMatchesTheMechanism:
         for path in (
             PLUGIN / "skills" / "story-close" / "SKILL.md",
             PLUGIN / "PROCESS.md",
-            PLUGIN / "scripts" / "close.py",  # --help is the first surface a lead reads
+            PLUGIN / "scripts" / "xp.py",  # --help is the first surface a lead reads
         ):
             head = path.read_text().split("import argparse")[0]
             assert "VERDICT" not in head, f"{path.name} still ships the deleted gate"

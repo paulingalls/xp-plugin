@@ -425,4 +425,4 @@ def remove_story_worktree(tree: str, timeout_value: str = "") -> list[str]:
 
 
 if __name__ == "__main__":
-    refuse_direct_invocation("close.py <mode> <id> <action>")
+    refuse_direct_invocation("xp.py <mode> <id> <action>")

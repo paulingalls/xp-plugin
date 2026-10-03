@@ -329,3 +329,117 @@ def test_stage_logs_survive_later_stages_and_explicit_review(tmp_path, scope):
     binary.write_text(binary.read_text().replace("'fixed'", "'clean'"))
     assert invoke(repo, env, key).returncode == 0
     assert all(path.read_bytes() == raw for path, raw in original.items())
+
+
+@pytest.mark.parametrize("harness", ["claude", "codex"])
+@pytest.mark.parametrize("drop", ["out of scope", {"finding": "out of scope", "reason": ""}])
+def test_correction_receives_measured_refusal_and_preserves_attempt(tmp_path, harness, drop):
+    repo, env, git, key, events, hooks = flow_repo(tmp_path, harness)
+    expected = tmp_path / "expected-refusal"
+    binary = tmp_path / "bin" / harness
+    binary.write_text(
+        binary.read_text().replace(
+            "path=re.search",
+            f"report['dropped']=[{drop!r}]\n"
+            f"expected=Path({str(expected)!r})\n"
+            "if expected.exists() and expected.read_text() in prompt:\n"
+            "    report['dropped']=[{'finding':'out of scope',"
+            "'reason':'card excludes this input'}]\n"
+            "path=re.search",
+        )
+    )
+    head = git("rev-parse", "HEAD").stdout
+    source = (repo / "src/thing.py").read_bytes()
+    first = invoke(repo, env, key)
+    assert first.returncode == 2
+    before = checkpoint(env, key)
+    assert before["status"] == "incomplete"
+    original = Path(before["stages"]["solution"]["path"])
+    raw = original.read_bytes()
+    assert json.loads(raw)["dropped"] == [drop]
+    expected.write_text(before["problem"])
+
+    corrected = invoke(repo, env, key)
+    assert corrected.returncode == 0, corrected.stderr
+    after = checkpoint(env, key)
+    assert after["id"] == before["id"]
+    assert after["start"] == before["start"]
+    assert after["output"] == before["output"]
+    assert after["stages"]["solution"]["prior_attempts"] == [before["stages"]["solution"]]
+    assert Path(after["stages"]["solution"]["path"]) != original
+    assert original.read_bytes() == raw
+    assert git("rev-parse", "HEAD").stdout == head
+    assert (repo / "src/thing.py").read_bytes() == source
+    assert not git("status", "--porcelain").stdout
+    assert not hooks.exists()
+    assert events.read_text().splitlines() == ["solution", "solution"]
+    assert after["status"] == "completed"
+
+
+@pytest.mark.meta
+def test_correction_diagnostic_guard_detects_omission(tmp_path, monkeypatch):
+    import shutil
+
+    from close_helpers import PLUGIN
+
+    control = tmp_path / "control"
+    control.mkdir()
+    test_correction_receives_measured_refusal_and_preserves_attempt(control, "claude", "drop")
+    installed = tmp_path / "installed"
+    shutil.copytree(PLUGIN, installed)
+    path = installed / "scripts/close/review_sequence.py"
+    path.write_text(path.read_text().replace('+ sequence["problem"]', '+ ""'))
+    monkeypatch.setenv("XP_FLOW_TEST_CLOSE", str(installed / "scripts/close.py"))
+    mutant = tmp_path / "mutant"
+    mutant.mkdir()
+    with pytest.raises(AssertionError):
+        test_correction_receives_measured_refusal_and_preserves_attempt(mutant, "claude", "drop")
+
+
+@pytest.mark.parametrize("harness", ["claude", "codex"])
+@pytest.mark.parametrize("producer", ["fixer", "closer"])
+def test_fixed_object_correction_preserves_committed_work(tmp_path, harness, producer):
+    repo, env, git, key, events, hooks = flow_repo(tmp_path, harness, scenario="fixed")
+    expected = tmp_path / "expected-refusal"
+    binary = tmp_path / "bin" / harness
+    binary.write_text(
+        binary.read_text()
+        .replace(
+            "if stage=='fixer':",
+            "if stage=='fixer' and 'Correct only the incomplete report' not in prompt:",
+        )
+        .replace(
+            "path=re.search",
+            f"if stage=={producer!r}:\n"
+            "    report['fixed']=[{'finding':'A must equal 3'}]\n"
+            f"    expected=Path({str(expected)!r})\n"
+            "    if expected.exists() and expected.read_text() in prompt "
+            "and re.search(r'\\bstrings?\\b',expected.read_text()):\n"
+            "        report['fixed']=['A must equal 3']\n"
+            "path=re.search",
+        )
+    )
+    assert invoke(repo, env, key).returncode == 2
+    before = checkpoint(env, key)
+    assert before["status"] == "incomplete" and before["producer"] == producer
+    original = Path(before["stages"][producer]["path"])
+    raw = original.read_bytes()
+    assert json.loads(raw)["fixed"] == [{"finding": "A must equal 3"}]
+    head = git("rev-parse", "HEAD").stdout
+    expected.write_text(before["problem"])
+    result = invoke(repo, env, key)
+    assert result.returncode == 0, result.stderr
+    after = checkpoint(env, key)
+    assert after["id"] == before["id"] and after["output"] == before["output"]
+    assert after["stages"][producer]["prior_attempts"] == [before["stages"][producer]]
+    assert after["stages"][producer]["report"]["fixed"] == ["A must equal 3"]
+    assert original.read_bytes() == raw
+    assert git("rev-parse", "HEAD").stdout == head
+    assert (repo / "src/thing.py").read_text() == "A = 3\n"
+    assert hooks.read_text().splitlines() == ["hook"]
+    assert events.read_text().splitlines() == (
+        ["solution", "fixer", "fixer", "closer"]
+        if producer == "fixer"
+        else ["solution", "fixer", "closer", "closer"]
+    )
+    assert after["status"] == "completed"

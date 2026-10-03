@@ -67,7 +67,7 @@ def validate(story_id, card, sequence):
         sequence["status"] = "awaiting-disposition"
         save(story_id, sequence)
         return close.fail(
-            f"refused: green retry retains earlier red; lead must run `close.py "
+            f"refused: green retry retains earlier red; lead must run `xp.py "
             f'{close.leg(story_id)[0]} acknowledge-validation --reason "<observed cause>"`'
         )
     sequence["status"] = "completed"

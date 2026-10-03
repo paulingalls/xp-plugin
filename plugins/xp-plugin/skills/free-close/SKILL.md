@@ -13,12 +13,12 @@ and release blockers cannot be waived; escalate reserved choices.
 
 1. **Release boundary**: Your release artifacts are yours; cut them before review.
 2. **Review**: Read the retained reports and judge remaining findings under JUDGMENT.
-   Commit lead corrections, then explicitly run `close.py free <slug> review`.
+   Commit lead corrections, then explicitly run `xp.py free <slug> review`.
    That command also corrects incomplete producer output while retaining earlier
    stages and commits. Use `spawn.py resume <free-id>` for interrupted validation.
    Inspect retained red/green evidence before recording a same-tree disposition
-   with `close.py free <slug> acknowledge-validation --reason '<observed cause>'`.
+   with `xp.py free <slug> acknowledge-validation --reason '<observed cause>'`.
    The sequence runs one independent solution review, one conditional committing
    fixer and one conditional narrow closer. Remaining problems belong to the lead.
-3. **Land**: `close.py free <slug> land` opens the release PR.
-4. **After merge**: `close.py free <slug> post-merge`.
+3. **Land**: `xp.py free <slug> land` opens the release PR.
+4. **After merge**: `xp.py free <slug> post-merge`.

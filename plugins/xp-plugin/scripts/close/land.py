@@ -31,7 +31,7 @@ from timing import Span
 
 
 def land_red_path(story_id):
-    return close.marker_path(story_id).with_name(f"{story_id}.land-red.json")
+    return close.marker_path(story_id, create=False).with_name(f"{story_id}.land-red.json")
 
 
 def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
@@ -56,8 +56,8 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
                 f"refused: review sequence {sequence['status']}; lead owns "
                 f"{sequence.get('problem', 'unfinished review or validation')}"
             )
-    marker = close.marker_path(story_id)
-    launch_paths = [review.launch_marker(story_id), *story_sidecars(story_id)]
+    marker = close.marker_path(story_id, create=False)
+    launch_paths = [review.launch_marker(story_id, create=False), *story_sidecars(story_id)]
     covered_sidecars = []
     for launch in (path for path in launch_paths if path.exists()):
         # Distinct states stay distinct: salvage refuses when this file is
@@ -94,9 +94,9 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
                 continue
             verified = str(unrecorded.get("verify_head", unrecorded.get("head", "")))[:8]
             next_action = (
-                f"fix it, then run `close.py {close.leg(story_id)[0]} review`"
+                f"fix it, then run `xp.py {close.leg(story_id)[0]} review`"
                 if launch == launch_paths[0]
-                else f"run `close.py {close.leg(story_id)[0]} review`"
+                else f"run `xp.py {close.leg(story_id)[0]} review`"
             )
             return close.fail(
                 f"refused: the review completed on tree {verified}, but {verify_red}."
@@ -112,7 +112,7 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
             f"refused: {len(queued)} unrecorded review round(s) are set aside at"
             f" {', '.join(str(p) for p in queued)} — inspect the saved report and work,"
             " explicitly accept that the round cannot enter the ledger, remove only"
-            f" the named launch marker(s), then retry `close.py {noun} land`"
+            f" the named launch marker(s), then retry `xp.py {noun} land`"
         )
     for sidecar, _round in covered_sidecars:
         destination = covered_destination(sidecar)
@@ -147,7 +147,7 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
     base, stale = bookkeep.fork_point(trunk)
     if stale:
         return close.fail(stale)
-    ref = overlap.merge_source(trunk, merge_mode)
+    ref = overlap.merge_source(trunk, merge_mode, fetch=not dry_run)
     versioned = False
     version = ""
     names = []
@@ -288,7 +288,7 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
             print(f"would run: {tier}")
             for command in pr_cmds:
                 print(" ".join(command))
-            print(f"(then `close.py {noun} post-merge`)")
+            print(f"(then `xp.py {noun} post-merge`)")
             if not versioned:
                 print(VERSIONING_OFF_TEXT)
             set_aside(preview=True)
@@ -322,7 +322,7 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
             )
         except OSError as exc:
             return f"refused: could not record land red at {land_red}: {exc} — run land again"
-        return f"{red} — fix it, commit, then run `close.py {noun} review`"
+        return f"{red} — fix it, commit, then run `xp.py {noun} review`"
 
     try:
         red, _receipt = overlap.gates(
@@ -357,7 +357,7 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
         land_red.unlink(missing_ok=True)
         print(bookkeep.render_noted(rounds), end="")
         target = f" for {version}" if version else ""
-        print(f"PR open against {trunk}{target}. After it merges: `close.py {noun} post-merge`")
+        print(f"PR open against {trunk}{target}. After it merges: `xp.py {noun} post-merge`")
         if not versioned:
             print(VERSIONING_OFF_TEXT)
         return 0
