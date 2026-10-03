@@ -17,6 +17,14 @@ def evidence_path(out):
     return Path(out).with_suffix(".evidence.json")
 
 
+def metadata_identity(path):
+    status = path.lstat()
+    if stat.S_ISDIR(status.st_mode):
+        return content_identity(path)
+    value = json.dumps([status.st_size, status.st_mtime_ns, status.st_ino]).encode()
+    return status.st_mode, hashlib.sha256(value).hexdigest()
+
+
 def content_identity(path):
     mode = path.lstat().st_mode
     if stat.S_ISLNK(mode):
@@ -62,11 +70,21 @@ def repository_fingerprint(plan_file):
     }
     tracked = git("ls-files", "-z", "--", *paths).split(b"\0")
     untracked = git("ls-files", "--others", "-z", "--", *paths).split(b"\0")
+    ignored = set(
+        git("ls-files", "--others", "--ignored", "--exclude-standard", "-z", "--", *paths).split(
+            b"\0"
+        )
+    )
     contents = []
     for name in sorted(set(tracked + untracked) - {b""}):
         path = root / os.fsdecode(name)
         try:
-            mode, digest = content_identity(path)
+            # An ignored dependency tree holds ~10^5 files; opening each costs minutes under
+            # endpoint scanning, so a rewrite there is caught by its metadata. Other ignored
+            # files keep content identity: a build rewrites dist/ with the same bytes and a
+            # new mtime, which must not read as motion.
+            dependency = name in ignored and "node_modules" in Path(os.fsdecode(name)).parts[:-1]
+            mode, digest = (metadata_identity if dependency else content_identity)(path)
         except FileNotFoundError:
             contents.append([name.hex(), "absent"])
             continue
@@ -287,6 +305,18 @@ def recheck(story_id, plan_file, context):
         )
 
 
+def without_components(value):
+    """The reviewer judges a fingerprint by identity; its per-file components can exceed
+    the 10MB stdin limit of the reviewer CLI on a consumer with node_modules."""
+    if isinstance(value, dict):
+        if {"repository", "components", "identity"} <= value.keys():
+            return {"repository": value["repository"], "identity": value["identity"]}
+        return {key: without_components(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [without_components(item) for item in value]
+    return value
+
+
 def run(story_id, plan_file, context):
     import plan_review
     import review
@@ -314,7 +344,7 @@ def run(story_id, plan_file, context):
         "Judge the exact amendment/ruling against the preserved plan; apply an authorized answer "
         "to the draft or explicitly require replan. Preserve justified edits and reasons. "
         "New reserved choices block, and silent/corrupting defects remain in your authority.\n"
-        + json.dumps(context, ensure_ascii=False, indent=2)
+        + json.dumps(without_components(context), ensure_ascii=False, indent=2)
         + f"\nImmutable predecessor manifest: {manifest}\n"
     )
     charter = review.charter("plan-reviewer")
