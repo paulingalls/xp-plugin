@@ -24,7 +24,7 @@ def load(story_id):
 
 def landing_refusal(story_id, card, marker):
     sequence = load(story_id)
-    latest = marker.get("rounds", [{}])[-1]
+    latest = (marker.get("rounds") or [{}])[-1]
     if "sequence_round" in latest and (
         not sequence or sequence.get("round") != latest["sequence_round"]
     ):
@@ -41,7 +41,7 @@ def landing_refusal(story_id, card, marker):
             f"refused: review sequence {sequence['status']}; lead owns "
             f"{sequence.get('problem', 'unfinished review or validation')}"
         )
-    current = measure(story_id, card)
+    current = measure(story_id, card, declaration_checked=True)
     if card != sequence["card"] or current != sequence["output"]:
         import verify_receipt
 
@@ -91,11 +91,16 @@ def save(story_id, sequence):
     _write(data_root(), story_id, state)
 
 
-def measure(story_id, card):
+def measure(story_id, card, *, declaration_checked=False):
+    tree = close.git("write-tree", check=False)
+    if tree.returncode:
+        raise ValueError(
+            f"could not write reviewed tree: {tree.stderr.strip()}; clear it and retry"
+        )
     return {
         "head": close.git("rev-parse", "HEAD").stdout.strip(),
-        "tree": close.git("write-tree").stdout.strip(),
-        "inputs": inputs(story_id, card),
+        "tree": tree.stdout.strip(),
+        "inputs": inputs(story_id, card, declaration_checked=declaration_checked),
     }
 
 

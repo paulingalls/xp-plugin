@@ -12,7 +12,7 @@ ORDER = ("executor", "story-tier", "reviewer")
 RESULTS = ("pending", "running", "ran", "skipped", "blocked", "failed", "interrupted")
 
 
-def inputs(story_id, card):
+def inputs(story_id, card, *, declaration_checked=False):
     from plan_acceptance import latest
     from plan_review import card_for
     from ready import credential, drift, plan_needs_replan
@@ -28,7 +28,7 @@ def inputs(story_id, card):
         raise ValueError("executor declaration moved; inspect the card and resume")
     if accepted and plan_needs_replan(story_id, {}):
         raise ValueError("scope amended before execution; resume to run planning")
-    if problem := drift(story_id, card):
+    if not declaration_checked and (problem := drift(story_id, card)):
         raise ValueError(problem)
     plan = Path(accepted["plan"]) if accepted else data_root() / "plans" / f"{story_id}.plan.md"
     fingerprint = repository_fingerprint(plan, tier_owned=True)

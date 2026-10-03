@@ -31,7 +31,7 @@ from spawn_helpers import make_repo as make_spawn_repo
 
 def normalize(refusal: str) -> str:
     masked = re.sub(r"\b[0-9a-f]{7,40}\b", "<sha>", refusal)
-    return re.sub(r"close\.py \S+ \S+ review", "close.py <leg> review", masked).strip()
+    return re.sub(r"xp\.py \S+ \S+ review", "xp.py <leg> review", masked).strip()
 
 
 def reviewed(tmp_path, slug="fix-typo", tiers=()):
@@ -242,7 +242,7 @@ class TestFreeStart:
         assert r.returncode == 2
         assert "main" in r.stderr and "sprint-001" in r.stderr
         assert "[sprint-direct]" in r.stderr and "sprint review" in r.stderr
-        assert "patch" in r.stderr and "close.py free fix-typo start" in r.stderr
+        assert "patch" in r.stderr and "xp.py free fix-typo start" in r.stderr
         assert (
             g("branch", "--show-current").stdout.strip(),
             g("rev-parse", "HEAD").stdout.strip(),
@@ -359,8 +359,8 @@ class TestSharedLandGuards:
         for mark in marks:
             assert mark in story, story
             assert mark in freed, freed
-        assert "close.py free fix-typo review" in freed, freed
-        assert "close.py story story-042 review" in story, story
+        assert "xp.py free fix-typo review" in freed, freed
+        assert "xp.py story story-042 review" in story, story
         # EQUAL, not merely overlapping, modulo the two things that legitimately
         # differ: the sha each fixture produced and the leg's own review command.
         assert normalize(story) == normalize(freed)

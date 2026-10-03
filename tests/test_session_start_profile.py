@@ -353,19 +353,29 @@ class TestTheRealProfileAgainstTheRealCap:
         assert "[truncated at" not in out, "a 110-character plugin path already cuts the profile"
         self.assert_all_constraints_delivered(out)
 
-    # MEASURED byte boundaries, and BOTH move with the manifest version string's
-    # LENGTH, which the plugin root carries. Re-measure by bisecting
-    # assert_all_constraints_delivered on a version change; nudging until green
-    # hides whether the profile or the path moved.
     @pytest.mark.parametrize(
-        ("last_good", "recorded_root"),
+        ("plugin_path_budget", "recorded_root"),
         [(652, None), (531, Path("/" + "p" * 4_999))],
         ids=["ordinary", "moved-install"],
     )
-    def test_published_plugin_root_boundaries_are_constructed(self, last_good, recorded_root):
-        good = self.run_real(recorded_root=recorded_root, plugin_path_budget=last_good)
-        bad = self.run_real(recorded_root=recorded_root, plugin_path_budget=last_good + 1)
+    def test_published_plugin_root_boundaries_are_constructed(
+        self, tmp_path, plugin_path_budget, recorded_root
+    ):
+        good = self.run_real(recorded_root=recorded_root, plugin_path_budget=plugin_path_budget)
         self.assert_all_constraints_delivered(good)
+        rules = (Path(__file__).parent.parent / ".xp/constraints.md").read_text()
+        last = re.findall(r"^\d+\. \*\*[^\n]+", rules, re.M)[-1]
+        cap = len(good.split(last, 1)[0].encode())
+        plugin = self.copied_plugin(
+            tmp_path, "cut", len(str(tmp_path / "cut")) + 20, output_cap=cap
+        )
+        bad = self.run_real(
+            plugin / "scripts/session_start.py",
+            recorded_root=recorded_root,
+            plugin_path_budget=plugin_path_budget,
+        )
+        assert "[truncated at" in bad and last not in bad
+        assert "ARE NOT ABOVE" in bad
         with pytest.raises(AssertionError, match=r"only \d+/15 constraints"):
             self.assert_all_constraints_delivered(bad)
 

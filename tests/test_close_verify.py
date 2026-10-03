@@ -288,7 +288,7 @@ class TestCommittedFixValidation:
 
         r = close(repo, env, "review")
         assert r.returncode != 0 and "git reset --hard" not in r.stderr, r.stderr
-        assert "close.py story story-042 review" in r.stderr, r.stderr
+        assert "xp.py story story-042 review" in r.stderr, r.stderr
         assert marker(tmp_path)["rounds"][-1]["blocking"] == ["B"]
 
 

@@ -258,7 +258,12 @@ def test_dirty_cancel_keeps_launch_marker(tmp_path):
     assert close(repo, env, "land").returncode == 2
 
 
-def test_close_marker_edit_during_cancel_keeps_launch_marker(tmp_path):
+@pytest.mark.parametrize(
+    "marker_bytes",
+    ['{"rounds": [], "blocking": ["changed"]}', '{"rounds": null}', "[1]", "{"],
+    ids=["empty-rounds", "null-rounds", "non-object", "truncated"],
+)
+def test_close_marker_edit_during_cancel_keeps_launch_marker(tmp_path, marker_bytes):
     repo, env, _g = make_repo(tmp_path)
     sleeping_reviewer(tmp_path)
     proc = subprocess.Popen(
@@ -275,16 +280,18 @@ def test_close_marker_edit_during_cancel_keeps_launch_marker(tmp_path):
             time.sleep(0.05)
         assert (tmp_path / "started").exists()
         marker = tmp_path / "data" / "markers" / "story-042.close.json"
-        marker.write_text('{"rounds": [], "blocking": ["changed"]}')
+        marker.write_text(marker_bytes)
         plan = tmp_path / "data" / "plan.md"
         plan.write_text(plan.read_text().replace("Context: demo.", "Context: changed."))
         out, err = proc.communicate(timeout=10)
     finally:
         stop_stuck(proc, tmp_path)
     assert proc.returncode == 2 and "CANCELLED" in err, (out, err)
-    assert marker.read_text() == '{"rounds": [], "blocking": ["changed"]}'
+    assert marker.read_text() == marker_bytes
     assert checkpoint(env, "story-042")["status"] == "blocked"
-    assert close(repo, env, "land").returncode == 2
+    refused = close(repo, env, "land")
+    assert refused.returncode == 2 and "Traceback" not in refused.stderr
+    assert marker.read_text() == marker_bytes
 
 
 def test_moved_head_cancel_keeps_launch_marker_without_reset(tmp_path):

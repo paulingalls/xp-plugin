@@ -2,12 +2,12 @@ import json
 import shlex
 import sys
 
-from sprint_helpers import PLAN, make_repo, sprint
+from sprint_helpers import CLOSE, PLAN, make_repo, sprint
 
 
 class SprintMembershipCases:
     def test_lifecycle_runs_only_for_the_opening_and_before_the_branch_record(self, tmp_path):
-        repo, env, g = make_repo(tmp_path)
+        repo, env, g = make_repo(tmp_path, plan=PLAN.replace("[done]", "[planned]", 1))
         record = tmp_path / "opened.jsonl"
         script = tmp_path / "open.py"
         script.write_text(
@@ -26,20 +26,21 @@ class SprintMembershipCases:
         branch = tmp_path / "data" / "sprint_branch"
         branch.unlink()
 
-        opened = sprint(repo, env, "start")
+        opened = sprint(repo, env, "open", close=CLOSE.with_name("xp.py"))
         assert opened.returncode == 0, opened.stderr
         assert [json.loads(line) for line in record.read_text().splitlines()] == [
             [["fixed value", "sprint-open", "2"], False]
         ]
         assert branch.exists()
-        assert sprint(repo, env, "start").returncode == 0
-        assert len(record.read_text().splitlines()) == 1, "the close-time re-run reopened it"
+        repeated = sprint(repo, env, "open", close=CLOSE.with_name("xp.py"))
+        assert repeated.returncode == 2 and "already open" in repeated.stderr
+        assert len(record.read_text().splitlines()) == 1
 
         branch.unlink()
         record.with_suffix(".exit").write_text("1")
         plan = tmp_path / "data" / "plan.md"
         plan.write_text(plan.read_text().replace("[in-progress]", "[planned]", 1))
-        refused = sprint(repo, env, "start")
+        refused = sprint(repo, env, "open", close=CLOSE.with_name("xp.py"))
         assert refused.returncode == 2 and "sprint-open" in refused.stderr
         assert command.split()[0] in refused.stderr and not branch.exists()
         assert "[planned]" in plan.read_text()
@@ -100,14 +101,14 @@ class SprintMembershipCases:
         already recorded the mismatch refusal fires anyway, so only the SECOND —
         nothing recorded, the sprint's first start — reaches this guard. Recording
         trunk would point integration_target at trunk, merging every story there."""
-        repo, env, g = make_repo(tmp_path)
+        repo, env, g = make_repo(tmp_path, plan=PLAN.replace("[done]", "[planned]", 1))
         g("checkout", "-q", "main")
         path = tmp_path / "data" / "sprint_branch"
-        r = sprint(repo, env, "start")
+        r = sprint(repo, env, "open", close=CLOSE.with_name("xp.py"))
         assert r.returncode == 2 and "freshly cut branch" in r.stderr
         assert path.read_text().strip() == "sprint-002"
         path.unlink()
-        r = sprint(repo, env, "start")
+        r = sprint(repo, env, "open", close=CLOSE.with_name("xp.py"))
         assert r.returncode == 2 and "freshly cut branch" in r.stderr
         assert not path.exists()
 
@@ -153,5 +154,5 @@ class SprintMembershipCases:
         r = sprint(repo, env, "start")
         assert r.returncode == 0, r.stderr
         assert r.stdout.count("## Milestone 1") == 1
-        assert "close.py sprint 2 milestone-done" in r.stdout
+        assert "xp.py sprint 2 milestone-done" in r.stdout
         assert (tmp_path / "data" / "plan.md").read_text() == plan

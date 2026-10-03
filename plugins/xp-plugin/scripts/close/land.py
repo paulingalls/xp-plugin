@@ -117,15 +117,16 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
 
     if not marker.exists():
         return close.fail(f"refused: no close in progress for {story_id} — run review first")
-    state = json.loads(marker.read_text())
-    from review_sequence import landing_refusal
-
     try:
-        card, _ = close.story_card(close.plan_path().read_text(), story_id)
-        if error := landing_refusal(story_id, card, state):
-            return close.fail(error)
-    except (OSError, ValueError, KeyError) as error:
-        return close.fail(f"refused: review evidence: {error}; preserve work and ask the lead")
+        state = json.loads(marker.read_text())
+        if not isinstance(state, dict) or not isinstance(state.get("rounds"), list):
+            raise ValueError("close marker rounds are unreadable")
+        if not state["rounds"] or any(not isinstance(r, dict) for r in state["rounds"]):
+            raise ValueError("close marker has no usable review rounds")
+    except (OSError, ValueError) as error:
+        return close.fail(
+            f"refused: {error}; preserve {marker} and work; lead must inspect then review"
+        )
     noun, free_slug = close.leg(story_id)
     free = bool(free_slug)
     trunk = close.default_branch() if free else close.integration_target()
@@ -197,6 +198,13 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
         return close.fail(f"refused: {story_id} is [{status}], land requires [in-progress]")
     if drift := ready.drift(story_id, card):
         return close.fail(drift)
+    from review_sequence import landing_refusal
+
+    try:
+        if error := landing_refusal(story_id, card, state):
+            return close.fail(error)
+    except (OSError, ValueError, KeyError) as error:
+        return close.fail(f"refused: review evidence: {error}; preserve work and ask the lead")
     from plan_acceptance import provenance
 
     if accepted := provenance(story_id):

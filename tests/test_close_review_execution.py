@@ -107,7 +107,7 @@ class TestSelfCloseRefusal:
             repo, env, _g = make_repo(tmp_path / f"r-{role or 'empty'}")
             r = close(repo, {**env, "XP_ROLE": role}, "review")
             assert r.returncode == 2, f"XP_ROLE={role!r} was allowed to close"
-            assert "close" in r.stderr.lower()
+            assert "only the lead" in r.stderr and "XP_ROLE" in r.stderr
 
     def test_the_lead_passes_the_same_guard(self, tmp_path):
         repo, env, _g = make_repo(tmp_path)

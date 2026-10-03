@@ -34,7 +34,7 @@ def test_uncovered_red_sidecar_stays_queued(tmp_path):
 
     refused = close(repo, env, "land")
 
-    assert refused.returncode == 2 and "close.py story story-042 review" in refused.stderr
+    assert refused.returncode == 2 and "xp.py story story-042 review" in refused.stderr
     assert sidecar.read_bytes() == evidence
 
 
@@ -56,7 +56,7 @@ def test_canonical_red_marker_stays_queued(tmp_path):
 
     refused = close(repo, env, "land")
 
-    assert refused.returncode == 2 and "close.py story story-042 review" in refused.stderr
+    assert refused.returncode == 2 and "xp.py story story-042 review" in refused.stderr
     assert canonical.read_bytes() == evidence and sidecar.exists()
 
 

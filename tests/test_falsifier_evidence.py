@@ -72,7 +72,7 @@ def test_three_commands_report_two_reds_without_filing(tmp_path):
     assert_evidence(result.stderr, expected)
     assert middle_id not in result.stderr
     assert "work.py bug" in result.stderr
-    assert "Fix it, then run start again" in result.stderr
+    assert "Fix it, then run xp.py sprint 2 review again" in result.stderr
     assert result.stdout.count("falsifier wall clock:") == 3
 
 
@@ -91,7 +91,7 @@ def test_missing_source_files_reports_every_red_and_files_nothing(tmp_path):
     assert result.returncode == 2 and recorded_files(tmp_path / "data") == before
     assert_evidence(result.stderr, expected)
     assert f"{bad[0]} has no usable Files" in result.stderr
-    assert "Fix it, then run start again" in result.stderr
+    assert "Fix it, then run xp.py sprint 2 review again" in result.stderr
 
 
 def test_one_distinct_red_command_with_two_sources_files_one_bug(tmp_path):

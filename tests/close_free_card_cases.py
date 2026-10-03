@@ -232,7 +232,7 @@ class FreeCardCases:
         assert result.returncode == 2, result.stdout
         assert f"#### {key} — <title>   [planned]" in result.stderr
         assert "Context, Files, AC, and Verify" in result.stderr
-        assert "close.py free fix-typo review" in result.stderr
+        assert "xp.py free fix-typo review" in result.stderr
         assert launches(tmp_path) == [], "a card-less branch reached the reviewer"
 
     def test_a_free_card_amends_without_changing_status_or_buying_a_round(self, tmp_path):

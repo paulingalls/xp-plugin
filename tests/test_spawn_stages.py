@@ -65,7 +65,7 @@ class TestSpawnStages:
         log = tmp_path / "data/logs/story-042.round-1.log"
         assert str(log) in why
         assert "generated reviewer cause" in log.read_text()
-        assert "close.py story story-042 review" in why
+        assert "xp.py story story-042 review" in why
         launched = event_roles(events)
         resumed = spawn(repo, env, "resume", "story-042")
         assert resumed.returncode != 0 and "lead handoff" in resumed.stderr

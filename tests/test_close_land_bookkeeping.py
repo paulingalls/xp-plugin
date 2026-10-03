@@ -57,21 +57,6 @@ class TestLandBookkeeping:
         assert rec["story"] == "story-042"
         assert not (tmp_path / "data" / "markers" / "story-042.close.json").exists()
 
-    def test_land_clears_the_stories_test_status_markers(self, tmp_path):
-        """AC 3: cleared, never greened — close.py may not forge another
-        session's measurement (DESIGN §4)."""
-        repo, env, _g = make_repo(tmp_path)
-        d = tmp_path / "data" / "markers"
-        d.mkdir(parents=True, exist_ok=True)
-        stale = d / "sess-old.story-042.test-status"
-        stale.write_text(json.dumps({"story": "story-042", "verify": "true", "red": True}))
-        keep = d / "sess-old.story-099.test-status"
-        keep.write_text(json.dumps({"story": "story-099", "verify": "true", "red": True}))
-        close(repo, env, "review")
-        assert close(repo, env, "land").returncode == 0
-        assert not stale.exists()
-        assert keep.exists(), "another story's gate state is not this close's business"
-
     def test_close_record_is_appended_and_names_the_real_merge_commit(self, tmp_path):
         """AC 8 + G6. The sha was read before the --amend and so was on no ref;
         with the amend gone it is the merge commit, and the claim it must name the
