@@ -1,9 +1,15 @@
 """story-010: size-ratchet. Verify: pytest -q tests/test_ratchet.py"""
 
 import re
+import shlex
+import shutil
 import subprocess
 import sys
 from pathlib import Path
+
+import pytest
+
+pytestmark = pytest.mark.meta
 
 REPO_ROOT = Path(__file__).parent.parent
 PLUGIN_ROOT = REPO_ROOT / "plugins" / "xp-plugin"
@@ -321,12 +327,42 @@ def test_an_EMPTY_tests_directory_refuses_too(tmp_path):
     assert run_ratchet(root).returncode != 0
 
 
-def test_lefthook_pre_push_runs_story_tier_without_ratchet():
-    text = LEFTHOOK.read_text()
+def assert_pre_push_story_gate(tmp_path, text):
     pre_push = text.split("pre-push:", 1)[1]
-    full_tests = pre_push.split("    - name: full-tests\n", 1)[1].split("\n    - ", 1)[0]
-    assert "run_tier story" in full_tests
+    job = pre_push.split("    - name: story-tests\n", 1)[1].split("\n    - ", 1)[0]
+    command = next(line.split("run:", 1)[1].strip() for line in job.splitlines() if "run:" in line)
+    hook = tmp_path / "plugins/xp-plugin/templates/hook-lib.sh"
+    hook.parent.mkdir(parents=True)
+    shutil.copyfile(PLUGIN_ROOT / "templates/hook-lib.sh", hook)
+    (tmp_path / ".xp").mkdir()
+    (tmp_path / ".xp/constraints.md").write_text("fixture")
+    (tmp_path / ".xp/config.yml").write_text(
+        "constraints_chars_cap: 100\ntests:\n  fast: true\n  full: true\n"
+        f"  story: {shlex.quote(sys.executable)} -m pytest -q test_story.py\n"
+    )
+    test = tmp_path / "test_story.py"
+    test.write_text("def test_story():\n    assert False, 'constructed story failure'\n")
+    result = subprocess.run(command, shell=True, cwd=tmp_path, capture_output=True, text=True)
+    assert result.returncode != 0, result.stdout + result.stderr
+    assert "constructed story failure" in result.stdout, result.stdout + result.stderr
+    test.write_text("def test_story():\n    assert True\n")
+    result = subprocess.run(command, shell=True, cwd=tmp_path, capture_output=True, text=True)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "1 passed" in result.stdout, result.stdout + result.stderr
     assert "ratchet.py" not in pre_push
+
+
+def test_lefthook_pre_push_runs_story_tier_without_ratchet(tmp_path):
+    assert_pre_push_story_gate(tmp_path, LEFTHOOK.read_text())
+
+
+def test_pre_push_story_gate_rejects_noop_control(tmp_path):
+    text = LEFTHOOK.read_text()
+    start = text.index("    - name: story-tests\n")
+    before, job = text[:start], text[start:]
+    job = re.sub(r"(?m)^      run: .*$", "      run: echo run_tier story", job, count=1)
+    with pytest.raises(AssertionError):
+        assert_pre_push_story_gate(tmp_path, before + job)
 
 
 def test_no_budget_number_shape_in_the_injected_prose():

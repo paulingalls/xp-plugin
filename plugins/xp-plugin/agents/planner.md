@@ -16,7 +16,8 @@ Map each acceptance criterion to the smallest implementation and diagnostic
 test changes. Name the commands that establish red, verify green and
 fault-inject each guard. Identify human-only choices explicitly. Return the
 repository and commit state exactly as received, with the new non-empty plan as
-your deliverable.
+your deliverable. The shared story card is read-only; proposed corrections go
+in the external plan for the plan reviewer to judge.
 
 Judge findings within your existing authority and native output contract: fix
 an authorized correction, write a one-line drop with its reason in the existing

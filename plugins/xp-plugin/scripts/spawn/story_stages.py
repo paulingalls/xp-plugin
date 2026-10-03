@@ -91,11 +91,17 @@ def run_planner(story_id: str, card: str, tree: Path, handoff: str) -> tuple[int
     sections = teammate_sections(
         card, story_id, handoff, PLUGIN_ROOT, brief=review.charter("planner")
     )
+    from close import story_card
+    from work import plan_path
+
+    own_card = story_card(plan_path().read_text(), story_id)[0]
     head = tree_state(tree)
     _result, error = review.run(build_prompt(sections), tree, name="planner", card=card)
     after = draft.read_bytes() if draft.is_file() else None
     if error:
         return 2, f"the planner stage stopped: {error}"
+    if story_card(plan_path().read_text(), story_id)[0] != own_card:
+        return 2, "the planner changed the story card; it owns only the external plan"
     if tree_state(tree) != head:
         return 2, "the planner changed the repository; it owns only the external plan"
     if not after or after == before or not after.strip():
@@ -171,15 +177,35 @@ def review_story(tree: Path, story_id: str) -> tuple[int, dict, str]:
     return rc, state, captured
 
 
-def finish_story(tree: Path, story_id: str, stop, stage_line, held) -> int:
+def finish_story(tree: Path, story_id: str, stop, stage_line, held, completed=None) -> int:
     from close import leg
     from handback import tree_state
     from handoff import mark_handoff, mark_stage
     from overlap import unresolved_blocking
     from work import data_root
 
+    if completed:
+        import contextlib
+
+        from completion import review_problem
+
+        with contextlib.chdir(tree):
+            if problem := review_problem(story_id, completed):
+                return stop(f"completed reuse refused: {problem}; inspect and resume", 0)
     rc, state, refusal = review_story(tree, story_id)
     if rc:
+        import json
+
+        import review
+        from completion import save
+
+        try:
+            launch = json.loads(review.launch_marker(story_id).read_text())
+            needs_fix = bool(launch.get("verify_red"))
+        except (OSError, ValueError, AttributeError):
+            needs_fix = True
+        if needs_fix:
+            save(story_id)
         cause = refusal or "the diff review produced no readable refusal; inspect its log"
         return stop(f"the diff review leg refused (rc {rc}): {cause}", 0)
     mark_stage(data_root(), story_id, "reviewer", "ran")
@@ -192,6 +218,7 @@ def finish_story(tree: Path, story_id: str, stop, stage_line, held) -> int:
     print(
         f"{story_id} produced commit {tree_state(tree)[0]} at {tree}. Read it, then {instruction}."
     )
-    mark_handoff(data_root(), story_id, True)
+    why = "completed executor reused; independent diff review and post-review Verify ran"
+    mark_handoff(data_root(), story_id, True, why if completed else "")
     held.close()
     return rc

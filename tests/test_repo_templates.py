@@ -10,6 +10,8 @@ from spawn_helpers import make_repo as make_spawn_repo
 from sprint_helpers import CONFIG, PLAN, stub_reviewer
 from sprint_helpers import make_repo as make_sprint_repo
 
+pytestmark = pytest.mark.meta
+
 TIMING_RUNS = 5
 # The lead measured 13.5x over 25 iterations; 5x is the floor a revert to the git
 # build (measured 1.0x) cannot clear and ambient load cannot fake.

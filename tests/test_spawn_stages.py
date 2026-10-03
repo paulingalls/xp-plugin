@@ -5,70 +5,8 @@ import subprocess
 import sys
 
 from spawn_helpers import SPAWN, make_repo, seed_refresh_receipt, spawn
+from spawn_stages_support import stub_stages
 from spawn_stash_cases import TestDirtyReviewStash, dirty_review_repo  # noqa: F401
-
-CLEAN = {"fixed": [], "blocking": [], "schema": 2, "dropped": [], "debt": []}
-
-
-def stub_stages(
-    tmp_path,
-    blocking_plan=False,
-    blocking_diff=False,
-    unreadable_plan=False,
-    review_failure=False,
-):
-    binary = tmp_path / "bin" / "claude"
-    binary.parent.mkdir(exist_ok=True)
-    events = tmp_path / "events.jsonl"
-    if unreadable_plan:
-        findings = '```json\n{"status":\n```'  # a verdict the harness cannot READ
-    elif blocking_plan:
-        findings = json.dumps({"status": "blocked", "reasons": [], "human_question": "choose"})
-    else:
-        findings = json.dumps({"status": "clean", "human_question": None, "reasons": []})
-    report = (
-        {"fixed": [], "blocking": ["cannot land"], "schema": 2, "dropped": [], "debt": []}
-        if blocking_diff
-        else CLEAN
-    )
-    repair = tmp_path / "review-repaired"
-    repair_action = shlex.join(
-        [sys.executable, "-c", f"from pathlib import Path; Path({str(repair)!r}).touch()"]
-    )
-    binary.write_text(
-        "#!/usr/bin/env python3\n"
-        "import json, os, re, subprocess, sys\n"
-        "if sys.argv[1:] == ['plugin', 'list', '--json']:\n"
-        ' print(\'[{"id":"xp-plugin@xp-plugin","version":"fixture",'
-        '"scope":"user"}]\'); sys.exit()\n'
-        "prompt = sys.stdin.read(); role = os.environ['XP_ROLE']\n"
-        f"events = {str(events)!r}\n"
-        "with open(events, 'a') as f:\n"
-        " f.write(json.dumps({'role': role, 'argv': sys.argv[1:], 'prompt': prompt}) + '\\n')\n"
-        "if role == 'planner':\n"
-        " p = re.search(r'^PLAN_PATH: (.+)$', prompt, re.M); assert p\n"
-        " open(p.group(1).strip(), 'a').write('# execution plan\\nred then green\\n')\n"
-        "elif role == 'plan-reviewer':\n"
-        " p = re.search(r'^FINDINGS_PATH: (.+)$', prompt, re.M); assert p\n"
-        f" open(p.group(1).strip(), 'w').write({findings!r})\n"
-        "elif role == 'teammate':\n"
-        " os.makedirs('src', exist_ok=True)\n"
-        " open('src/thing.py', 'a').write('\\nDONE = True\\n')\n"
-        " subprocess.run(['git', 'add', '-A'], check=True)\n"
-        " subprocess.run(['git', 'commit', '-qm', 'executor work'], check=True)\n"
-        "elif role == 'reviewer':\n"
-        f" if {review_failure!r} and not os.path.exists({str(repair)!r}):\n"
-        f"  action = {repair_action!r}\n"
-        "  print('reviewer log noise ' * 200, file=sys.stderr)\n"
-        "  print(f'refused: generated reviewer cause; run `{action}`', file=sys.stderr)\n"
-        "  sys.exit(2)\n"
-        " p = re.search(r'^REPORT_PATH: (.+)$', prompt, re.M); assert p\n"
-        f" report = {report!r}\n"
-        " open(p.group(1).strip(), 'w').write(json.dumps(report))\n"
-        "print(json.dumps({'type':'result','subtype':'success','result':'done'}))\n"
-    )
-    binary.chmod(0o755)
-    return events
 
 
 def event_roles(path):
@@ -314,6 +252,9 @@ class TestSpawnStages:
         assert spawn(repo, env, "story-042").returncode != 0
         marker = tmp_path / "data/plans/story-042.handoff.json"
         state = json.loads(marker.read_text())
+        from plan_review_install import legacy_credential
+
+        legacy_credential(tmp_path)
         state["stages"]["planner"] = "half"
         marker.write_text(json.dumps(state))
         result = spawn(repo, env, "resume", "story-042")
@@ -346,6 +287,9 @@ class TestSpawnStages:
             "a plan review that blocked is recorded the same way as one that never ran"
         )
         assert "blocked" in state["why"] and "failed" not in state["why"], state["why"]
+        from plan_review_install import legacy_credential
+
+        legacy_credential(tmp_path)
         handoff.write_text(json.dumps({**json.loads(handoff.read_text()), "state": "STOPPED"}))
         stub_stages(tmp_path)
         marker = tmp_path / "data/markers/story-042.plan-review-incomplete"
@@ -434,13 +378,13 @@ class TestSpawnStages:
         assert spawn(repo, env, "resume", "story-042").returncode != 0
         assert event_roles(events)[seen:] == ["planner", "plan-reviewer", "teammate", "reviewer"]
 
-    def test_an_amendment_before_the_review_is_recorded_replans_on_resume(self, tmp_path):
+    def test_a_bound_late_amendment_confirms_on_resume(self, tmp_path):
         repo, env, _g = make_repo(tmp_path, files="src/thing.py, src/other.py")
         events = stub_stages(tmp_path, blocking_diff=True)
         assert spawn_amending_after_plan_review(repo, env).returncode != 0
         seen = len(event_roles(events))
         assert spawn(repo, env, "resume", "story-042").returncode != 0
-        assert event_roles(events)[seen:][:2] == ["planner", "plan-reviewer"]
+        assert event_roles(events)[seen:][:2] == ["plan-reviewer", "teammate"]
 
     def test_an_unreadable_review_of_a_replan_reuses_that_draft_on_resume(self, tmp_path):
         repo, env, _g = make_repo(tmp_path, files="src/thing.py, src/other.py")
@@ -451,8 +395,9 @@ class TestSpawnStages:
         assert spawn(repo, env, "amend", "story-042", "--reason", "an AC changed").returncode == 0
         stub_stages(tmp_path, unreadable_plan=True)
         seen = len(event_roles(events))
-        assert spawn(repo, env, "resume", "story-042").returncode != 0
-        assert event_roles(events)[seen:] == ["planner", "plan-reviewer"]
+        failed = spawn(repo, env, "resume", "story-042")
+        assert failed.returncode != 0
+        assert event_roles(events)[seen:] == ["planner", "plan-reviewer"], failed.stderr
         stub_stages(tmp_path, blocking_diff=True)
         seen = len(event_roles(events))
         assert spawn(repo, env, "resume", "story-042").returncode != 0

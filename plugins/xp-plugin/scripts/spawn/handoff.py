@@ -20,7 +20,7 @@ def _is_authored(text: str, story_id: str) -> bool:
 
 
 READ_THEM = " Read each with `work.py show <id>`, then fix the card or take the work over."
-STAGES = ("planner", "plan-reviewer", "executor", "story-tier", "reviewer")
+STAGES = ("planner", "plan-reviewer", "plan-confirmation", "executor", "story-tier", "reviewer")
 # Shared so a new result cannot pass the writer and red the reader: mark_stage
 # and resume.validate spelled ("ran", "skipped") separately until story-102.
 RESULTS = ("ran", "skipped", "blocked", "failed")
@@ -86,10 +86,10 @@ def record_handoff(
     )
 
 
-def mark_handoff(root: Path, story_id: str, finished: bool = False) -> None:
+def mark_handoff(root: Path, story_id: str, finished: bool = False, why: str = "") -> None:
     state = handoff_state(root, story_id) or {}
     kind = "FINISHED" if finished else "RUNNING"
-    state.update(state=kind, why=f"the teammate is {kind.lower()}")
+    state.update(state=kind, why=why or f"the teammate is {kind.lower()}")
     _write(root, story_id, state)
 
 
@@ -101,10 +101,26 @@ def mark_stage(root: Path, story_id: str, stage: str, result: str) -> None:
     _write(root, story_id, state)
 
 
-def mark_plan_reviewed(root: Path, story_id: str, card_digest: str) -> None:
+def mark_plan_reviewed(
+    root: Path, story_id: str, card_digest: str, accepted: dict | None = None
+) -> None:
     state = handoff_state(root, story_id) or {}
     state.setdefault("stages", {})["plan-reviewer"] = "ran"
-    state["plan_reviewed_card"] = card_digest
+    from plan_acceptance import latest
+
+    accepted = accepted or latest(story_id)
+    state["plan_reviewed_card"] = accepted["digest"] if accepted else card_digest
+    if accepted:
+        state["plan_review_findings"] = accepted["findings"]
+        state["plan_review_identity"] = accepted["findings_identity"]
+        from plan_acceptance import identity
+        from plan_confirmation import evidence_path
+
+        evidence = evidence_path(accepted["findings"])
+        if evidence.exists():
+            state["plan_review_evidence_identity"] = identity(evidence)
+        _write(root, story_id, state)
+        return
     rounds = _findings(root, story_id) if (root / "plans").is_dir() else []
     if rounds:
         state["plan_review_findings"] = str(rounds[-1][1].resolve())
@@ -128,9 +144,11 @@ def _findings(root: Path, story_id: str) -> list[tuple[int, Path, bool]]:
     return sorted(rounds)
 
 
-def current_findings(root: Path, story_id: str, multifile: bool = True) -> tuple[Path | None, str]:
-    state = handoff_state(root, story_id) or {}
-    if not multifile or state.get("stages", {}).get("plan-reviewer") != "ran":
+def current_findings(
+    root: Path, story_id: str, multifile: bool = True, state=None
+) -> tuple[Path | None, str]:
+    state = (handoff_state(root, story_id) or {}) if state is None else state
+    if state.get("stages", {}).get("plan-reviewer") != "ran":
         return None, ""
     rounds = _findings(root, story_id) if (root / "plans").is_dir() else []
     recorded = state.get("plan_review_findings")
@@ -156,7 +174,9 @@ def current_findings(root: Path, story_id: str, multifile: bool = True) -> tuple
 
 
 def blocked_problem(root: Path, story_id: str) -> str:
-    return current_disposition(_findings(root, story_id)[-1][1])[1]
+    state = handoff_state(root, story_id) or {}
+    recorded = state.get("plan_review_findings")
+    return current_disposition(Path(recorded) if recorded else _findings(root, story_id)[-1][1])[1]
 
 
 def archive_replanned_rounds(story_id: str, prior_handoff: dict) -> str:
@@ -217,6 +237,11 @@ def inheritance(
     for round_number, path, legacy in _findings(root, story_id) if multifile else []:
         label = f"Plan-review findings round {round_number}{' (legacy)' if legacy else ''}"
         parts.append((label, f"Read {path.resolve()}"))
+    for path in sorted((root / "plans").glob(f"{story_id}.confirmation-*.md")):
+        if path.stem.rsplit("-", 1)[-1].isdecimal():
+            parts.append(("Confirmation findings", f"Read {path.resolve()}"))
+    for manifest in state.get("predecessors", []):
+        parts.append(("Immutable predecessor artifacts", f"Read {manifest}"))
     records = state.get("records", [])
     if records:
         parts.append(("Predecessor escalation records", f"{', '.join(records)}.{READ_THEM}"))
@@ -227,3 +252,29 @@ def report_handoff(root: Path, story_id: str, before: set[str], why: str, rc: in
     result, message = record_handoff(root, story_id, before, why, rc)
     print(message, file=sys.stderr)
     return result
+
+
+def effective_review(root: Path, story_id: str, prior: dict) -> dict:
+    from plan_acceptance import identity, latest
+    from plan_review import durable_disposition, incomplete_marker
+    from plan_writer import CardEditRefusal
+    from ready import current_digest
+
+    record = latest(story_id)
+    if not record or record["digest"] != current_digest(story_id):
+        return prior
+    if prior.get("plan_review_identity") == record["findings_identity"]:
+        return prior
+    marker = incomplete_marker(story_id)
+    if marker.exists() and json.loads(marker.read_text()).get("findings") != record["findings"]:
+        return prior
+    for kind in ("plan", "findings"):
+        if identity(Path(record[kind])) != record[kind + "_identity"]:
+            raise CardEditRefusal(f"accepted {kind} changed; restore its recorded bytes")
+    outcome, _ = durable_disposition(Path(record["findings"]).read_text())
+    return prior | {
+        "stages": prior.get("stages", {}) | {"plan-reviewer": outcome},
+        "plan_reviewed_card": record["digest"],
+        "plan_review_findings": record["findings"],
+        "plan_review_identity": record["findings_identity"],
+    }

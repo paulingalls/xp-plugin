@@ -15,6 +15,7 @@ from work import (
     card_lines,
     chdir_repo_root,
     data_root,
+    edit_plan,
     flip_card,
     missing_plan_refusal,
     plan_path,
@@ -24,7 +25,7 @@ from work import (
 AMEND = "Run `spawn.py amend {} --reason '<why this declaration changed>'`."
 UNPARSABLE = "refused: {}. Repair the Files line in {}, then refresh {}."
 REMINT = "Put the heading back to [planned] and run `spawn.py ready {}`."
-DOC = "The plan-review credential: minted from [planned], amended only with a recorded reason."
+DOC = "Credential: minted from [planned]; accepted review or reasoned amendment updates it."
 
 
 def refresh_instruction(story_id: str) -> str:
@@ -70,6 +71,9 @@ def credential(marker: Path) -> dict | None:
             isinstance(x, dict) and all(isinstance(x.get(k), str) for k in ("reason", "card"))
             for x in history
         )
+        from plan_acceptance import valid_records
+
+        valid &= valid_records(minted) if isinstance(minted, dict) else False
         return minted if valid else None
     except (OSError, ValueError, KeyError, TypeError):
         return None
@@ -81,11 +85,22 @@ def current_digest(story_id: str) -> str | None:
 
 
 def plan_needs_replan(story_id: str, handoff: dict) -> bool:
+    from plan_confirmation import pending_amendment
+
     result = handoff.get("stages", {}).get("plan-reviewer")
+    if result == "failed":
+        return handoff.get("stages", {}).get("plan-confirmation") == "failed" and pending_amendment(
+            story_id
+        )
+    if pending_amendment(story_id):
+        return True
     if result == "blocked":
         return True
     if result != "ran":
-        return False
+        from plan_acceptance import latest
+
+        accepted = latest(story_id)
+        return bool(accepted and accepted["digest"] != current_digest(story_id))
     reviewed = handoff.get("plan_reviewed_card")
     if reviewed is None:
         current = credential(ready_marker_path(story_id))
@@ -160,11 +175,20 @@ def drift(sid: str, card: str) -> str:
     minted = credential(marker)
     if minted is None:
         return f"refused: {marker} is unreadable; nothing vouches for {sid}. {recovery}"
+    from plan_acceptance import binding_problem
+    from plan_confirmation import pending_amendment
+
+    if not pending_amendment(sid) and (problem := binding_problem(sid)):
+        return problem
     if minted.get("digest") == card_digest(card):
         return ""
     if growth := card_growth(minted["card"], card):
         print(f"{sid} card grew — {growth}")
         return ""
+    from plan_acceptance import interrupted_problem
+
+    if problem := interrupted_problem(sid, card, minted):
+        return problem
     diff = card_diff(minted["card"], card)
     return f"refused: {sid} was edited after its plan review:\n{diff}\n{AMEND.format(sid)}"
 
@@ -172,8 +196,25 @@ def drift(sid: str, card: str) -> str:
 def amend(story_id: str, reason: str) -> int:
     if not reason.strip():
         return fail("refused: amend requires --reason")
+    result = 0
+
+    def update(text):
+        nonlocal result
+        if not plan_path().exists():
+            raise FileNotFoundError(missing_plan_refusal())
+        result = _amend_locked(story_id, reason, text)
+        return text
+
     try:
-        card, status = story_card(plan_path().read_text(), story_id)
+        edit_plan(update)
+    except OSError as error:
+        return fail(f"refused: cannot amend {story_id}: {error}; repair it and retry amend")
+    return result
+
+
+def _amend_locked(story_id: str, reason: str, text: str) -> int:
+    try:
+        card, status = story_card(text, story_id)
     except (KeyError, OSError) as e:
         why = missing_plan_refusal() if isinstance(e, OSError) else e.args[0]
         return fail(f"refused: {why}")
@@ -202,8 +243,9 @@ def amend(story_id: str, reason: str) -> int:
     if previous is None and marker.exists():
         prior = marker.read_text(errors="replace") or "(credential empty)"
     history = previous.get("amendments", []) if previous else []
-    history = [*history, {"reason": reason, "card": prior}]
-    payload = {"digest": card_digest(card), "card": card, "amendments": history}
+    history = [*history, {"reason": reason, "card": prior, "after": card}]
+    payload = (previous or {}) | {"digest": card_digest(card), "card": card, "amendments": history}
+    payload.setdefault("minted_card", prior)
     marker.write_text(json.dumps(payload, ensure_ascii=False))
     print(f"{story_id} amended — reason: {reason}\n{card_diff(prior, card)}")
     return 0

@@ -1,8 +1,6 @@
 import json
 import re
-import shutil
 import subprocess
-import sys
 
 import pytest
 from plan_human_question_support import (
@@ -10,35 +8,18 @@ from plan_human_question_support import (
     BEFORE,
     QUESTION,
     REASON,
+    answer,
+    consumer,
     guard_faults,
     invalid_cases,
     parser_probe,
     report,
 )
 from plan_review import durable_disposition, evaluate_disposition
+from plan_review_install import installed_launch, legacy_credential
 from spawn_helpers import make_repo, spawn
 from test_plan_review import PLUGIN
-from test_spawn_stages import event_roles, stub_stages
-
-
-def consumer(tmp_path, status="edited"):
-    repo, env, _ = make_repo(tmp_path, files="src/thing.py, src/other.py")
-    seen = stub_stages(tmp_path)
-    binary = tmp_path / "bin/claude"
-    text = binary.read_text()
-    text = text.replace("'# execution plan\\nred then green\\n'", repr(BEFORE.decode()))
-    clean = json.dumps({"status": "clean", "human_question": None, "reasons": []})
-    payload = report(status, QUESTION, [REASON] if status != "clean" else [])
-    text = text.replace(repr(clean), repr(payload))
-    if status != "clean":
-        text = text.replace(
-            "elif role == 'plan-reviewer':\n",
-            "elif role == 'plan-reviewer':\n"
-            " plan = re.search(r'^PLAN_PATH: (.+)$', prompt, re.M)\n"
-            f" open(plan.group(1), 'a').write({AFTER[len(BEFORE) :].decode()!r})\n",
-        )
-    binary.write_text(text)
-    return repo, env, seen
+from test_spawn_stages import event_roles
 
 
 @pytest.mark.parametrize("status", ["clean", "edited", "blocked"])
@@ -60,6 +41,7 @@ def test_question_stops_real_spawn(tmp_path, status):
 def test_legacy_nominal_success_with_question_refuses(tmp_path, status):
     repo, env, seen = consumer(tmp_path, "blocked")
     assert spawn(repo, env, "story-042").returncode != 0
+    legacy_credential(tmp_path)
     marker = tmp_path / "data/plans/story-042.handoff.json"
     state = json.loads(marker.read_text())
     state["stages"]["plan-reviewer"] = "ran"
@@ -129,6 +111,7 @@ def test_invalid_disposition_refuses_with_action(tmp_path, name, text, before, a
 def test_legacy_question_survives_recovery(tmp_path, filename, state_kind):
     repo, env, seen = consumer(tmp_path, "blocked")
     assert spawn(repo, env, "story-042").returncode != 0
+    legacy_credential(tmp_path)
     plans = tmp_path / "data/plans"
     numbered = plans / "story-042.round-1.md"
     old = json.dumps({"status": "blocked", "question": QUESTION})
@@ -159,6 +142,7 @@ def capped_stop(tmp_path, repo, env, seen, launch=spawn):
         ("resume", "story-042"),
     ]:
         assert launch(repo, env, *args).returncode != 0
+        legacy_credential(tmp_path)
     assert event_roles(seen).count("plan-reviewer") == 2
     assert "teammate" not in event_roles(seen)
     assert not (tmp_path / "data/plans/story-042.round-3.md").exists()
@@ -169,31 +153,6 @@ def capped_stop(tmp_path, repo, env, seen, launch=spawn):
 def test_unanswered_cap_does_not_authorize_execution(tmp_path):
     repo, env, seen = consumer(tmp_path, "blocked")
     capped_stop(tmp_path, repo, env, seen)
-
-
-def answer(tmp_path, repo, env, launch=spawn):
-    card = tmp_path / "data/plan.md"
-    card.write_text(
-        card.read_text().replace("Context: demo.", "Context: human chose local storage.")
-    )
-    result = launch(repo, env, "amend", "story-042", "--reason", "human chose local storage")
-    assert result.returncode == 0, result.stderr
-    for binary in (tmp_path / "bin").iterdir():
-        text = binary.read_text()
-        text = text.replace(
-            repr(report("edited", QUESTION, [REASON])),
-            repr(
-                report(
-                    "edited",
-                    None,
-                    [REASON],
-                )
-            ),
-        )
-        text = text.replace(
-            repr(report("blocked", QUESTION, [REASON])), repr(report("edited", None, [REASON]))
-        )
-        binary.write_text(text)
 
 
 def answered_resume(tmp_path, repo, env, seen, launch=spawn):
@@ -228,6 +187,7 @@ def test_answered_resume_after_unanswered_cap_uses_current_findings(tmp_path):
 def test_answered_legacy_cap_uses_current_findings(tmp_path, fault):
     repo, env, seen = consumer(tmp_path, "blocked")
     assert spawn(repo, env, "story-042").returncode != 0
+    legacy_credential(tmp_path)
     plans = tmp_path / "data/plans"
     old = json.dumps({"status": "blocked", "question": QUESTION})
     for number in (1, 2):
@@ -249,28 +209,6 @@ def test_answered_legacy_cap_uses_current_findings(tmp_path, fault):
     answered_resume(tmp_path, repo, env, seen)
     assert (plans / "story-042.superseded-1.round-1.md").read_text() == old
     assert (plans / "story-042.superseded-1.round-2.md").read_text() == old
-
-
-def installed_launch(tmp_path, mutation=None, relative="scripts/plan_review.py"):
-    installed = tmp_path / "cache/xp-plugin/fixture"
-    shutil.copytree(PLUGIN, installed)
-    if mutation:
-        path = installed / relative
-        source = path.read_text()
-        old, new = mutation
-        assert old in source
-        path.write_text(source.replace(old, new))
-
-    def launch(repo, env, *args):
-        return subprocess.run(
-            [sys.executable, str(installed / "scripts/spawn.py"), *args],
-            cwd=repo,
-            env=dict(env, XP_SPAWN_TEST="1"),
-            capture_output=True,
-            text=True,
-        )
-
-    return launch
 
 
 @pytest.mark.parametrize("harness", ["claude", "codex"])
@@ -315,9 +253,10 @@ def test_installed_harness_stop_and_answered_resume(tmp_path, harness):
 @pytest.mark.parametrize(
     "name,text,before,after,mutation", guard_faults(), ids=[c[0] for c in guard_faults()]
 )
+@pytest.mark.meta
 def test_each_disposition_guard_detects_its_fault(tmp_path, name, text, before, after, mutation):
     path = tmp_path / "parser.py"
-    source = (PLUGIN / "scripts/plan_review.py").read_text()
+    source = (PLUGIN / "scripts/plan_disposition.py").read_text()
     path.write_text(source)
     assert parser_probe(path, text, before, after).startswith("('failed',")
     old, new = mutation
@@ -327,6 +266,7 @@ def test_each_disposition_guard_detects_its_fault(tmp_path, name, text, before, 
     assert not observed.startswith("('failed',"), (name, observed)
 
 
+@pytest.mark.meta
 def test_ignoring_question_detects_executor_launch(tmp_path):
     repo, env, seen = consumer(tmp_path)
     launch = installed_launch(tmp_path, ("if question is not None:", "if False:"))
@@ -336,9 +276,11 @@ def test_ignoring_question_detects_executor_launch(tmp_path):
 
 
 @pytest.mark.parametrize("status", ["clean", "edited"])
+@pytest.mark.meta
 def test_legacy_compatibility_exclusion_detects_executor_launch(tmp_path, status):
     repo, env, seen = consumer(tmp_path, "blocked")
     assert spawn(repo, env, "story-042").returncode != 0
+    legacy_credential(tmp_path)
     marker = tmp_path / "data/plans/story-042.handoff.json"
     state = json.loads(marker.read_text())
     state["stages"]["plan-reviewer"] = "ran"
@@ -358,6 +300,7 @@ def test_legacy_compatibility_exclusion_detects_executor_launch(tmp_path, status
 
 
 @pytest.mark.parametrize("kind", ["failed-archive", "blocked-retain"])
+@pytest.mark.meta
 def test_artifact_lifecycle_detects_its_fault(tmp_path, kind):
     status = "clean" if kind == "failed-archive" else "blocked"
     repo, env, seen = consumer(tmp_path, status)
@@ -368,7 +311,7 @@ def test_artifact_lifecycle_detects_its_fault(tmp_path, kind):
         'archive_failed_findings(out) if outcome == "failed" else ""',
         '""' if kind == "failed-archive" else "archive_failed_findings(out)",
     )
-    launch = installed_launch(tmp_path, mutation)
+    launch = installed_launch(tmp_path, mutation, relative="scripts/plan_review.py")
     assert launch(repo, env, "story-042").returncode != 0
     plans = tmp_path / "data/plans"
     if kind == "failed-archive":
@@ -380,6 +323,7 @@ def test_artifact_lifecycle_detects_its_fault(tmp_path, kind):
     assert "teammate" not in event_roles(seen)
 
 
+@pytest.mark.meta
 def test_stale_question_selection_detects_its_fault(tmp_path):
     repo, env, seen = consumer(tmp_path)
     assert spawn(repo, env, "story-042").returncode != 0
@@ -388,7 +332,7 @@ def test_stale_question_selection_detects_its_fault(tmp_path):
         (
             "outcome, problem = durable_disposition(path.read_text())",
             "outcome, problem = durable_disposition(path.read_text())\n"
-            '    for old in path.parent.glob("*.superseded-*.md"):\n'
+            '    for old in path.parent.glob("story-042.round-*.md"):\n'
             "        old_outcome, old_problem = durable_disposition(old.read_text())\n"
             '        if old_outcome == "blocked":\n'
             "            outcome, problem = old_outcome, old_problem",
@@ -401,12 +345,14 @@ def test_stale_question_selection_detects_its_fault(tmp_path):
 
 
 @pytest.mark.parametrize("guard", ["legacy-extraction", "durable-question", "card-cap-reset"])
+@pytest.mark.meta
 def test_recovery_guards_detect_their_fault(tmp_path, guard):
     repo, env, seen = consumer(tmp_path, "blocked")
     if guard == "legacy-extraction":
         assert spawn(repo, env, "story-042").returncode != 0
         path = tmp_path / "data/plans/story-042.round-1.md"
         path.write_text(json.dumps({"status": "blocked", "question": QUESTION}))
+        legacy_credential(tmp_path)
         marker = tmp_path / "data/plans/story-042.handoff.json"
         state = json.loads(marker.read_text())
         state["stages"]["plan-reviewer"] = "ran"
@@ -418,6 +364,10 @@ def test_recovery_guards_detect_their_fault(tmp_path, guard):
                 'return "blocked", "blocked for the human"',
             ),
         )
+        saved = marker.read_bytes()
+        control = spawn(repo, env, "resume", "story-042")
+        assert control.returncode != 0 and QUESTION in control.stderr, control.stderr
+        marker.write_bytes(saved)
         result = launch(repo, env, "resume", "story-042")
         assert result.returncode != 0
         with pytest.raises(AssertionError):
@@ -450,22 +400,48 @@ def test_recovery_guards_detect_their_fault(tmp_path, guard):
         assert "teammate" not in event_roles(seen)
 
 
+@pytest.mark.meta
 def test_old_current_round_selection_detects_its_fault(tmp_path):
+    for mutant in (False, True):
+        case = tmp_path / str(mutant)
+        case.mkdir()
+        assert_current_round_selection(case, mutant)
+
+
+def assert_current_round_selection(tmp_path, mutant):
+    from plan_confirmation_support import amend, events
     from test_plan_findings_handoff import staged_harness
 
     repo, env, _ = make_repo(tmp_path, files="src/thing.py, src/other.py")
     seen = staged_harness(tmp_path, block_first=True)
+    mutation = (
+        'state["plan_review_findings"] = accepted["findings"]',
+        'state["plan_review_findings"] = str(_findings(root, story_id)[0][1].resolve())',
+    )
     launch = installed_launch(
-        tmp_path,
-        ("rounds[-1][1].resolve()", "rounds[0][1].resolve()"),
-        relative="scripts/spawn/handoff.py",
+        tmp_path, mutation if mutant else None, relative="scripts/spawn/handoff.py"
     )
     assert launch(repo, env, "story-042").returncode != 0
+    amend(tmp_path, repo, env, launch)
     result = launch(repo, env, "resume", "story-042")
-    with pytest.raises(AssertionError):
+    current = tmp_path / "data/plans/story-042.confirmation-1.md"
+    assert "LOUD: run diagnostic check" in current.read_text()
+    assert "STALE BLOCKED ROUND?" not in current.read_text()
+
+    def guarantee():
         assert result.returncode == 0, result.stderr
-    assert "STALE BLOCKED ROUND?" in result.stderr
-    assert "teammate" not in event_roles(seen)
+        executor = next(event for event in events(seen) if event["role"] == "teammate")
+        assert executor["findings_path"].endswith("story-042.confirmation-1.md")
+        assert "LOUD: run diagnostic check" in executor["findings"]
+        assert "STALE BLOCKED ROUND?" not in executor["findings"]
+
+    if mutant:
+        with pytest.raises(AssertionError):
+            guarantee()
+        assert result.returncode != 0
+        assert "teammate" not in event_roles(seen)
+    else:
+        guarantee()
 
 
 @pytest.mark.parametrize(

@@ -18,8 +18,10 @@ PLAN = """# Plan
 
 #### story-aaa — first   [ready]
 Files: a.py
+Verify: true
 #### story-bbb — second   [ready]
 Files: b.py
+Verify: true
 """
 
 CORRECT_WRITER = """
@@ -162,7 +164,9 @@ class TestConcurrentWriters:
 
 class TestPlanCardEditor:
     @pytest.mark.parametrize("fault", ["status", "extra", "stale"])
-    def test_refuses_invalid_or_stale_candidates_and_names_refresh(self, plan_data, fault):
+    def test_refuses_invalid_or_stale_candidates_and_names_candidate_recovery(
+        self, plan_data, fault
+    ):
         path, digest, status = candidate(plan_data)
         if fault == "status":
             path.write_text(path.read_text().replace("[ready]", "[done]"))
@@ -173,7 +177,7 @@ class TestPlanCardEditor:
         before = (plan_data / "plan.md").read_text()
         result = editor(plan_data, path=path, digest=digest, status=status)
         assert result.returncode == 2, result.stdout + result.stderr
-        assert "card refresh story-bbb" in result.stderr and "--refresh" in result.stderr
+        assert "card-edit story-bbb" in result.stderr and "card-snapshot" in result.stderr
         assert (plan_data / "plan.md").read_text() == before
 
     def test_two_free_edits_do_not_report_held_or_stale(self, plan_data):

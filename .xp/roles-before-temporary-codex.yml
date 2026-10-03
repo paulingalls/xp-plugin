@@ -1,0 +1,13 @@
+# Original role mapping before the temporary all-Codex change on 2026-10-02.
+roles:
+  lead: claude/opus
+  planner: codex/gpt-6.1-sol/medium
+  executor: codex/gpt-6.1-sol/medium
+  reviewer: claude/opus/high
+  slate-reviewer: claude/opus/high
+  card-refresher: claude/opus/high
+  plan-reviewer: claude/opus/high
+  finder: codex/gpt-6.1-sol/medium
+  verifier: claude/opus/high
+  fixer: codex/gpt-6.1-sol/medium
+  closer: claude/opus/high

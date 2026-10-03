@@ -433,6 +433,9 @@ def test_blocked_plan_reviews_converge_on_the_cap_instead_of_restarting(tmp_path
     stub_stages(tmp_path, blocking_plan=True)
     plans = Path(env["XP_DATA"]) / "plans"
     assert spawn(repo, env, "story-042").returncode == 2
+    from plan_review_install import legacy_credential
+
+    legacy_credential(tmp_path)
     (plans / "story-042.round-1.md").write_text("BLOCKED-ON-THE-FIRST-PLAN")
 
     second = spawn(repo, env, "resume", "story-042")
@@ -441,6 +444,7 @@ def test_blocked_plan_reviews_converge_on_the_cap_instead_of_restarting(tmp_path
     assert (plans / "story-042.round-2.md").is_file()
     launched = [json.loads(line) for line in (tmp_path / "events.jsonl").read_text().splitlines()]
     assert "BLOCKED-ON-THE-FIRST-PLAN" in launched[-1]["prompt"]
+    legacy_credential(tmp_path)
     third = spawn(repo, env, "resume", "story-042")
     assert third.returncode == 2 and "cap" in third.stderr
     assert not (plans / "story-042.round-3.md").exists()

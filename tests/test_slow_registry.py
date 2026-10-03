@@ -9,6 +9,8 @@ from pathlib import Path
 
 import pytest
 
+pytestmark = pytest.mark.meta
+
 ROOT = Path(__file__).resolve().parents[1]
 STALE = ["tests/test_a.py::test_missing", "tests/test_b.py::test_gone"]
 IDS = ["tests/test_a.py::test_fast", "tests/test_a.py::test_other", "tests/test_b.py::test_slow"]
@@ -89,8 +91,10 @@ def refused(result, bodies):
 
 
 @pytest.mark.parametrize("workers", [[], ["-n", "2"]])
-@pytest.mark.parametrize("selection", [[], ["tests"]])
-@pytest.mark.parametrize("marker", [[], ["-m", "not slow"], ["-m", "slow"]])
+@pytest.mark.parametrize(
+    "selection,marker",
+    [([], []), (["tests"], ["-m", "not slow"]), (["tests"], ["-m", "slow"])],
+)
 def test_full_collection_refuses_stale_ids_before_bodies(suite, workers, selection, marker):
     args = workers + selection + marker
     expected = (
@@ -165,58 +169,6 @@ def test_full_selection_path_spellings(suite, spelling):
     refused(*run(suite, paths[spelling], ids=[*IDS, *STALE], cwd=cwd))
 
 
-@pytest.mark.parametrize("workers", [[], ["-n", "2"]])
-@pytest.mark.parametrize("marker,expected", [("not slow", ["fast", "other"]), ("slow", ["slow"])])
-def test_registry_marking_excludes_slow_body(suite, workers, marker, expected):
-    accepted(*run(suite, *workers, "-m", marker, ids=[IDS[2]]), expected)
-
-
-def test_full_registry_resolves_and_covered_sidecar_is_slow(tmp_path):
-    output = tmp_path / "items.json"
-    plugin = tmp_path / "observe.py"
-    plugin.write_text(
-        "import json, pytest\n"
-        "@pytest.hookimpl(trylast=True)\n"
-        "def pytest_collection_modifyitems(items):\n"
-        "    observed = {i.nodeid: bool(i.get_closest_marker('slow')) for i in items}\n"
-        f"    open({str(output)!r}, 'w').write(json.dumps(observed))\n"
-    )
-    env = dict(os.environ, PYTHONPATH=str(tmp_path))
-    sidecar = (
-        "tests/test_close_land.py::TestLandFailureModes::"
-        "test_a_covered_verify_red_sidecar_is_archived_on_land"
-    )
-    for args in ([], ["-m", "not slow"]):
-        result = subprocess.run(
-            [
-                sys.executable,
-                "-m",
-                "pytest",
-                "--collect-only",
-                "-q",
-                "tests",
-                "-p",
-                "observe",
-                *args,
-            ],
-            cwd=ROOT,
-            env=env,
-            capture_output=True,
-            text=True,
-            timeout=120,
-        )
-        assert result.returncode == 0, result.stdout + result.stderr
-        items = json.loads(output.read_text())
-        if args:
-            assert sidecar not in items
-        else:
-            missing = (
-                set(json.loads((ROOT / "tests/slow_tests.json").read_text())["ids"]) - items.keys()
-            )
-            assert not missing, sorted(missing)
-            assert items[sidecar]
-
-
 @pytest.mark.parametrize(
     "mode,node",
     [
@@ -224,7 +176,7 @@ def test_full_registry_resolves_and_covered_sidecar_is_slow(tmp_path):
         ("never", "test_full_collection_refuses_stale_ids_before_bodies"),
         ("always", "test_partial_selection_allows_unselected_registry_ids"),
         ("always", "test_last_failed_collection_is_partial"),
-        ("unmarked", "test_registry_marking_excludes_slow_body"),
+        ("unmarked", "test_full_collection_refuses_stale_ids_before_bodies"),
         ("late", "test_full_selection_checks_before_deselection"),
     ],
 )

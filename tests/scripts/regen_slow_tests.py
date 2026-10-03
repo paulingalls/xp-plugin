@@ -4,7 +4,7 @@
 Run on a QUIET tree: this suite is subprocess-bound, and a contended census
 marks whatever happened to be unlucky. Usage:
 
-    pytest -q -n 8 --durations=0 > /tmp/census.txt
+    pytest -q -n 6 --durations=0 --durations-min=0 > /tmp/census.txt
     python3 tests/scripts/regen_slow_tests.py /tmp/census.txt [threshold]
 
 The census runs WITHOUT `-m "not slow"` on purpose — excluding the marked tests

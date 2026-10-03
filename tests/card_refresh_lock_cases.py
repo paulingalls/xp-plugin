@@ -157,6 +157,8 @@ def test_a_helper_refusal_names_a_refresh_retry_that_succeeds(tmp_path):
             str(SCRIPTS / "work.py"),
             "edit-card",
             "story-042",
+            "--context",
+            "refresh",
             "--digest",
             card_digest(card),
             "--status",
@@ -169,7 +171,7 @@ def test_a_helper_refusal_names_a_refresh_retry_that_succeeds(tmp_path):
         text=True,
     )
     assert refused.returncode == 2
-    assert "card refresh story-042" in refused.stderr
+    assert "refresh story-042" in refused.stderr
     command = re.search(r"Run `([^`]+)`\.", refused.stderr).group(1)
     stub_card_refresher(tmp_path, correction=CORRECTED)
     retried = subprocess.run(

@@ -2,6 +2,8 @@ import json
 import subprocess
 import sys
 
+from spawn_helpers import make_repo, spawn
+from spawn_stages_support import stub_stages
 from test_plan_review import PLUGIN
 
 QUESTION = "Which storage policy should the human choose?"
@@ -173,6 +175,9 @@ def test_a_capped_foreground_plan_review_is_recorded_apart_from_a_dead_reviewer(
     repo, env, _g = make_repo(tmp_path, files="src/thing.py, src/other.py")
     events = stub_stages(tmp_path, blocking_plan=True)
     assert spawn(repo, env, "story-042").returncode != 0
+    from plan_review_install import legacy_credential
+
+    legacy_credential(tmp_path)
     plans = Path(env["XP_DATA"]) / "plans"
     (plans / "story-042.round-2.md").write_text(
         '{"status":"clean","human_question":null,"reasons":[]}'
@@ -189,3 +194,48 @@ def test_a_capped_foreground_plan_review_is_recorded_apart_from_a_dead_reviewer(
     assert state["stages"]["plan-reviewer"] == "ran" and "cap" in state["why"]
     assert spawn(repo, env, "resume", "story-042").returncode == 0
     assert event_roles(events)[seen:] == ["teammate", "reviewer"]
+
+
+def consumer(tmp_path, status="edited"):
+    repo, env, _ = make_repo(tmp_path, files="src/thing.py, src/other.py")
+    seen = stub_stages(tmp_path)
+    binary = tmp_path / "bin/claude"
+    text = binary.read_text()
+    text = text.replace("'# execution plan\\nred then green\\n'", repr(BEFORE.decode()))
+    clean = json.dumps({"status": "clean", "human_question": None, "reasons": []})
+    payload = report(status, QUESTION, [REASON] if status != "clean" else [])
+    text = text.replace(repr(clean), repr(payload))
+    if status != "clean":
+        text = text.replace(
+            "elif role == 'plan-reviewer':\n",
+            "elif role == 'plan-reviewer':\n"
+            " plan = re.search(r'^PLAN_PATH: (.+)$', prompt, re.M)\n"
+            f" open(plan.group(1), 'a').write({AFTER[len(BEFORE) :].decode()!r})\n",
+        )
+    binary.write_text(text)
+    return repo, env, seen
+
+
+def answer(tmp_path, repo, env, launch=spawn):
+    card = tmp_path / "data/plan.md"
+    card.write_text(
+        card.read_text().replace("Context: demo.", "Context: human chose local storage.")
+    )
+    result = launch(repo, env, "amend", "story-042", "--reason", "human chose local storage")
+    assert result.returncode == 0, result.stderr
+    for binary in (tmp_path / "bin").iterdir():
+        text = binary.read_text()
+        text = text.replace(
+            repr(report("edited", QUESTION, [REASON])),
+            repr(
+                report(
+                    "edited",
+                    None,
+                    [REASON],
+                )
+            ),
+        )
+        text = text.replace(
+            repr(report("blocked", QUESTION, [REASON])), repr(report("edited", None, [REASON]))
+        )
+        binary.write_text(text)

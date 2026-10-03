@@ -8,6 +8,7 @@ import fcntl
 import hashlib
 import os
 import re
+import shlex
 import subprocess
 import sys
 import time
@@ -267,13 +268,27 @@ def edit_card_command(args: argparse.Namespace) -> int:
             edit_plan,
         )
     except CardEditRefusal as error:
-        sys.path.insert(0, str(Path(__file__).parent / "spawn"))
-        from ready import refresh_instruction
+        context = args.context
+        snapshot = shlex.join(
+            [
+                sys.executable,
+                str(Path(__file__).resolve()),
+                "card-snapshot",
+                args.story_id,
+                str(args.candidate.with_suffix(".recovery.md")),
+            ]
+        )
+        repair = (
+            f"Repair {args.candidate}; if stale, run `{snapshot}`, retain your edits there,"
+            " then retry edit-card with its printed digest and status."
+        )
+        if context == "refresh":
+            sys.path.insert(0, str(Path(__file__).parent / "spawn"))
+            from ready import refresh_instruction
 
+            repair = refresh_instruction(args.story_id)
         print(
-            f"refused: card refresh {args.story_id} cannot apply: {error}. "
-            f"{refresh_instruction(args.story_id)}",
-            file=sys.stderr,
+            f"refused: {context} {args.story_id} cannot apply: {error}. {repair}", file=sys.stderr
         )
         return 2
     print(f"{args.story_id} card {'updated' if changed else 'unchanged'}")
@@ -376,8 +391,11 @@ def main() -> int:
     r.add_argument("--ref", required=True, help="record id from `list`")
     r.add_argument("--falsifier", required=True, help="replacement; must be GREEN now")
     r.add_argument("--covered-by", metavar="TIER", help="REQUIRED: a configured tier, or `none`")
-    e = sub.add_parser("edit-card", help="apply one card-refresh candidate under the plan lock")
+    e = sub.add_parser(
+        "edit-card", help="validate and apply one card candidate under the plan lock"
+    )
     e.add_argument("story_id")
+    e.add_argument("--context", choices=("card-edit", "refresh", "executor"), default="card-edit")
     e.add_argument("--digest", required=True)
     e.add_argument("--status", required=True)
     e.add_argument("candidate", type=Path)

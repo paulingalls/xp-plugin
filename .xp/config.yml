@@ -7,35 +7,36 @@ constraints_chars_cap: 4500  # hard character ceiling; retire or shorten a rule
 profile_target: 1209  # this project's measured story-card token allowance
 version_files: plugins/xp-plugin/.claude-plugin/plugin.json
 
-roles:  # Sprint 32 experiment; restore baseline roles from eac107d after close
+# Temporary all-Codex roles; original mapping: .xp/roles-before-temporary-codex.yml
+roles:                 # harness/model[/effort]; lead overrides per story in plan.md
   lead: codex/gpt-6.1-sol/medium
   planner: codex/gpt-6.1-sol/medium
   executor: codex/gpt-6.1-sol/medium
-  reviewer: codex/gpt-6.1-sol/high
-  slate-reviewer: codex/gpt-6.1-sol/high
-  card-refresher: codex/gpt-6.1-sol/low
-  plan-reviewer: codex/gpt-6.1-sol/high
-  finder: codex/gpt-6.1-sol/high
-  verifier: codex/gpt-6.1-sol/high
+  reviewer: codex/gpt-6.1-sol/medium
+  slate-reviewer: codex/gpt-6.1-sol/medium
+  card-refresher: codex/gpt-6.1-sol/medium
+  plan-reviewer: codex/gpt-6.1-sol/medium
+  finder: codex/gpt-6-astra/medium
+  verifier: codex/gpt-6.1-sol/medium
   fixer: codex/gpt-6.1-sol/medium
-  closer: codex/gpt-6.1-sol/high
+  closer: codex/gpt-6.1-sol/medium
 
+# Commit, handback, story land and push recheck the cheap product floor.
+# Slow product checks and test machinery run only at sprint land.
 tests:
-  fast: pytest -q -n 4 -m "not slow"        # pre-commit; measured 2026-09-03 on 729 tests:
-                                            # serial 134s, -n2 69s, -n4 59s, -n6 62s, -n8 78s
-  story: pytest -q -n 4 -m "not slow"  # pre-push + story land. = fast since Sprint 27 (Paul:
-                                        # wall clock): sprint land runs full on the shipping tree
-  full: pytest -q -n 6 -m "not slow" && pytest -q -n 6 -m slow  # = the full_legs join (Sprint 27)
-                                  # measured 2026-09-03: -n 6 182s, -n 12 220s (subprocess-bound)
+  fast: pytest -q -n 4 -m "not slow and not meta"
+  story: pytest -q -n 4 -m "not slow and not meta"
+  full: pytest -q -n 6 -m "not slow and not meta" && pytest -q -n 6 -m "slow and not meta" && pytest -q -n 6 -m meta
 
-full_legs:                        # story-147: land re-runs only the legs not green on this tree
-  not-slow: pytest -q -n 6 -m "not slow"
-  slow: pytest -q -n 6 -m slow
+full_legs:
+  fast: pytest -q -n 6 -m "not slow and not meta"
+  slow: pytest -q -n 6 -m "slow and not meta"
+  meta: pytest -q -n 6 -m meta
 
 tier_coverage:
   fast: story
   story: full
 tier_coverage_pins:
-  fast: pytest -q -n 4 -m "not slow"
-  story: pytest -q -n 4 -m "not slow"
-  full: pytest -q -n 6 -m "not slow" && pytest -q -n 6 -m slow
+  fast: pytest -q -n 4 -m "not slow and not meta"
+  story: pytest -q -n 4 -m "not slow and not meta"
+  full: pytest -q -n 6 -m "not slow and not meta" && pytest -q -n 6 -m "slow and not meta" && pytest -q -n 6 -m meta

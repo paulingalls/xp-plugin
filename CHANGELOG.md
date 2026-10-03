@@ -4,6 +4,30 @@ Release notes started at v0.6.0; earlier entries are summarized from their
 tag and merge messages. Full detail lives in the merge history and the
 per-sprint review reports.
 
+## v0.34.0 — amendments confirm the work they change
+
+No hook setup change is required. Accepted plan-review edits proceed directly;
+explicit unanswered human choices still stop execution.
+
+PLAN REVIEW MOVES THE WORK FORWARD. Reviewer changes to the card and plan remain
+bound to their findings and are handed to execution without reopening review.
+Later lead amendments receive a fresh confirm/replan/block judgment before a new
+planner is launched. A confirmed existing plan retains its strategy; explicit
+replanning preserves the predecessor and buys a replacement plan.
+
+COMPLETED IMPLEMENTATION CAN SURVIVE AN AMENDMENT. An intact committed completion,
+successful stage evidence and a fresh implementation judgment allow an evidence-only
+amendment to reuse the executor's work. Changed requirements, moved or dirty trees,
+invalid evidence and unresolved blockers reach the required implementation or gates.
+Independent diff review and post-review Verify remain required.
+
+RESUME PREVIEW FOLLOWS LIVE EXECUTION. Dry-run validates current findings and shows
+the selected confirmation, replan, executor or completion-reuse path without changing
+card, plan, handoff or worktree state. It names unavailable future findings and pending
+gates instead of fabricating a prompt or running those gates. Stale findings refuse
+with the same recovery as live resume.
+
+
 ## v0.33.0 — findings decided, designs justified, reds preserved
 
 No hook setup change is required. Historical review reports remain readable;

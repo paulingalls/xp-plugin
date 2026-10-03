@@ -1,4 +1,4 @@
-# The unforgeable floor (DESIGN.md §7). pre-commit = seconds; full suite at push.
+# The unforgeable floor (DESIGN.md §7): cheap checks at commit/push; full at sprint land.
 # piped: rewriters run before readers; first failure aborts (single clear error).
 source_dir: .lefthook
 pre-commit:
@@ -54,7 +54,7 @@ pre-push:
       run: ruff check .
     - name: constraints-size
       run: sh -c '. plugins/xp-plugin/templates/hook-lib.sh; constraints_size'
-    - name: full-tests
+    - name: story-tests
       run: sh -c '. plugins/xp-plugin/templates/hook-lib.sh; run_tier story; s=$?; [ $s -eq 5 ] && exit 0; exit $s'
     - name: falsifier-node-ids
       run: python3 tests/scripts/check_falsifier_node_ids.py --skip-script-audit

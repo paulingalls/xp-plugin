@@ -14,8 +14,17 @@ def _declared(text: str) -> str | None:
 
 
 def render(card: str) -> str:
+    from ready import credential
+    from work import ready_marker_path
+
     card_depth = _declared(card)
     story = STORY.search(card)
+    minted = credential(ready_marker_path(story.group(1))) if story else None
+    floor_cards = [minted.get("minted_card", minted["card"])] if minted else []
+    if minted:
+        floor_cards += [change["card"] for change in minted.get("amendments", [])]
+        floor_cards += [record["before"] for record in minted.get("review_acceptances", [])]
+    floor = "deep" if any(_declared(text) == "deep" for text in floor_cards) else None
     draft = data_root() / "plans" / f"{story.group(1)}.plan.md" if story else None
     try:
         draft_depth = _declared(draft.read_text()) if draft else None
@@ -25,6 +34,11 @@ def render(card: str) -> str:
         return (
             "Close review: deep — effective depth. The plan review's depth was unreadable, so the"
             " review fails safe to deep."
+        )
+    if floor == "deep" and card_depth != "deep":
+        return (
+            "Close review: deep — effective depth. A prior credentialed card assigns deep"
+            " and remains the floor."
         )
     if card_depth == "deep" and draft_depth == "standard":
         return (

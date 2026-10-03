@@ -188,9 +188,22 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
         return close.fail(f"refused: {story_id} is [{status}], land requires [in-progress]")
     if drift := ready.drift(story_id, card):
         return close.fail(drift)
-    amended = json.loads(work.ready_marker_path(story_id).read_text()).get("amendments", [])
+    from plan_acceptance import provenance
+
+    if accepted := provenance(story_id):
+        print(accepted)
+    minted = json.loads(work.ready_marker_path(story_id).read_text())
+    amended = minted.get("amendments", [])
+    reviewed = minted.get("review_acceptances", [])
     for i, change in enumerate(amended):
         after = amended[i + 1]["card"] if i + 1 < len(amended) else card
+        if (
+            "after" not in change
+            and reviewed
+            and (i + 1 == len(amended) or "after" in amended[i + 1])
+        ):
+            after = reviewed[0]["before"]
+        after = change.get("after", after)
         print(f"card amended — reason: {change['reason']}")
         print(ready.card_diff(change["card"], after))
     try:

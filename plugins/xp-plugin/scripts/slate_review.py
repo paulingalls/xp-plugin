@@ -234,6 +234,8 @@ def _run_refresh(story_id: str, out: Path, dry_run: bool) -> int:
             str(Path(__file__).with_name("work.py").resolve()),
             "edit-card",
             story_id,
+            "--context",
+            "refresh",
             "--digest",
             card_digest(card),
             "--status",
