@@ -6,8 +6,15 @@ from pathlib import Path
 from close_helpers import make_repo
 
 
-def flow_repo(tmp_path, harness="claude", scope="story", scenario="clean", verify="true"):
-    repo, env, git = make_repo(tmp_path, verify=verify, files="src/thing.py, .xp/config.yml")
+def flow_repo(
+    tmp_path,
+    harness="claude",
+    scope="story",
+    scenario="clean",
+    verify="true",
+    files="src/thing.py, .xp/config.yml",
+):
+    repo, env, git = make_repo(tmp_path, verify=verify, files=files)
     config = repo / ".xp/config.yml"
     config.write_text(
         f"roles:\n  executor: {harness}/model\n  reviewer: {harness}/model\n"
