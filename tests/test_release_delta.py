@@ -78,7 +78,7 @@ def test_land_accepts_release_bump_and_retro(tmp_path):
     record_reviews(tmp_path, repo, env)
     (repo / "manifest.json").write_text('{"name": "x", "version": "0.3.0"}\n')
     (repo / "CHANGELOG.md").write_text("## v0.3.0 — release\n\nDetails.\n")
-    (repo / ".xp" / "retro-notes.md").write_text("# retro\n")
+    (tmp_path / "data" / "retro-notes.md").write_text("# retro\n")
     g("add", "-A")
     g("commit", "-qm", "release bump")
     r = sprint(repo, env, "land", "--dry-run")

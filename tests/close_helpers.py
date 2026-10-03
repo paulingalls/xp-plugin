@@ -137,7 +137,7 @@ def stub_reviewer(tmp_path, result="findings above", exit_code=0, raw=None, repo
     body = report if isinstance(report, str) or report is None else json.dumps(report)
     (bin_dir / "claude").write_text(
         "#!/usr/bin/env python3\n"
-        "import json, os, re, sys\n"
+        "import json, os, re, subprocess, sys\n"
         "if sys.argv[1:] == ['plugin', 'list', '--json']: print("
         '\'[{"id":"xp-plugin@xp-plugin","version":"fixture",'
         '"scope":"user"}]\'); sys.exit()\n'
@@ -145,6 +145,16 @@ def stub_reviewer(tmp_path, result="findings above", exit_code=0, raw=None, repo
         f"open({str(rec)!r}, 'a').write(json.dumps({{'argv': sys.argv[1:],"
         " 'env': dict(os.environ), 'stdin': stdin}) + '\\n')\n"
         f"body = {body!r}\n"
+        f"patch = {patch!r}\n"
+        "stage = re.search(r'^STAGE: (.+)$', stdin, re.M)\n"
+        "stage = stage.group(1) if stage else 'solution'\n"
+        "if patch and stage == 'solution':\n"
+        "    body = json.dumps({'blocking': [], 'actionable': ['apply concrete fix']})\n"
+        "if patch and stage == 'fixer':\n"
+        "    subprocess.run(['git', 'apply', '-'], input=patch, text=True, check=True)\n"
+        "    subprocess.run(['git', 'add', '-A'], check=True)\n"
+        "    subprocess.run(['git', 'commit', '-qm', 'reviewer patch'], check=True)\n"
+        "    body = json.dumps({'blocking': []})\n"
         "if body is not None:\n"
         "    m = re.search(r'^REPORT_PATH: (.+)$', stdin, re.M)\n"
         "    assert m, 'the bundle named no REPORT_PATH'\n"
@@ -182,6 +192,31 @@ def mint_ready(repo, env, story_id="story-042"):
     Re-run it after a test edits a card it intends to land: an edit that outruns
     its credential is exactly what land refuses."""
     plan = Path(env["XP_DATA"]) / "plan.md"
+    root = Path(env["XP_DATA"])
+    prior = [
+        root / "markers" / f"{story_id}.ready.json",
+        root / "markers" / f"{story_id}.close.json",
+        root / "plans" / f"{story_id}.handoff.json",
+    ]
+    if any(path.exists() for path in prior):
+        amended = subprocess.run(
+            [
+                sys.executable,
+                str(SPAWN),
+                "amend",
+                story_id,
+                "--reason",
+                "fixture declaration changed",
+            ],
+            cwd=repo,
+            env=env,
+            capture_output=True,
+            text=True,
+        )
+        assert amended.returncode == 0, amended.stderr
+        for was in ("planned", "ready"):
+            plan.write_text(flip_status(plan.read_text(), f"#### {story_id} ", was, "in-progress"))
+        return
     for was in ("ready", "in-progress"):
         plan.write_text(flip_status(plan.read_text(), f"#### {story_id} ", was, "planned"))
     minted = subprocess.run(

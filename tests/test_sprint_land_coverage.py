@@ -48,28 +48,6 @@ class TestLandCoverage:
         r = sprint(repo, env, "land", "--dry-run")
         assert r.returncode == 2 and "did not cover" in r.stderr
 
-    def test_land_proceeds_when_the_whole_delta_since_the_review_is_under_xp(self, tmp_path):
-        """Paul's call, and it rests on the retro diff having its own human review
-        at triage — NOT on .xp/ being harmless. Retro and constraint-promotion
-        commits always land after the reviews, so a strict rule forces a fresh
-        broad AND security review at every close: the afbd01a3 wedge, where
-        completing the close invalidates the review that permits it.
-
-        story-019 removed plan-status commits from this list — the plan is
-        per-clone now, so a flip never reaches the diff at all. .xp/plan.md was
-        this exemption's only real subject in OUR layout; every .xp/ file left is
-        a GATE_FILE, so the exemption cannot fire here any more (note af6469a5).
-        It still ships for consuming projects, and a non-gate .xp/ file is what
-        constructs the condition it claims."""
-        repo, env, g = make_repo(tmp_path)
-        record_reviews(tmp_path, repo, env)
-        (repo / ".xp" / "retro-notes.md").write_text("# retro\n")
-        g("add", "-A")
-        g("commit", "-qm", "retro prose under .xp/")
-        r = sprint(repo, env, "land", "--dry-run")
-        assert r.returncode == 0, r.stderr
-        assert ".xp/retro-notes.md" in r.stdout, "an exemption nobody is shown is a silent one"
-
     def test_a_code_change_alongside_an_xp_change_is_NOT_exempt(self, tmp_path):
         """Code motion is never exempt; without this the exemption is a hole."""
         repo, env, g = make_repo(tmp_path)
@@ -144,3 +122,26 @@ class TestLandCoverage:
         path.write_text(json.dumps(state))
         r = sprint(repo, env, "land", "--dry-run")
         assert r.returncode == 2 and "Traceback" not in r.stderr, r.stderr
+
+    def test_outcome_retro_and_digest_do_not_buy_another_review(self, tmp_path):
+        from sprint_helpers import launches
+
+        repo, env, _g = make_repo(tmp_path)
+        record_reviews(tmp_path, repo, env)
+        before = head(repo, env)
+        (tmp_path / "data/retro.md").write_text("# Outcome\nDelivered the sprint.\n")
+        (tmp_path / "data/session.md").write_text("# Digest\nReady to prepare release.\n")
+        result = sprint(repo, env, "land", "--dry-run")
+        assert result.returncode == 0, result.stderr
+        assert head(repo, env) == before and launches(tmp_path) == []
+
+    def test_executable_change_cannot_use_narrative_exemption(self, tmp_path):
+        repo, env, g = make_repo(tmp_path)
+        record_reviews(tmp_path, repo, env)
+        (repo / ".xp/retro.md").write_text("# Retro\nRun `python3 unreviewed.py` at every close.\n")
+        (repo / ".xp/unreviewed.py").write_text("raise SystemExit(0)\n")
+        assert g("add", "-A").returncode == 0
+        assert g("commit", "-qm", "behavior labeled narrative").returncode == 0
+        result = sprint(repo, env, "land", "--dry-run")
+        assert result.returncode == 2 and "did not cover" in result.stderr
+        assert ".xp/retro.md" in result.stderr and ".xp/unreviewed.py" in result.stderr

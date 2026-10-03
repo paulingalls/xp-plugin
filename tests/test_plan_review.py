@@ -357,10 +357,12 @@ class TestTheProfileCarriesTheInvocation:
     def rendered(self, tmp_path, executor):
         root = tmp_path / executor.split("/")[0]
         repo, env, _g = make_repo(root, executor=executor, files="src/thing.py, src/other.py")
-        (stub_claude if executor.startswith("claude") else stub_codex)(root)
-        r = spawn(repo, env, "story-042", "--dry-run")
+        rec = stub_claude(root)
+        if executor.startswith("codex"):
+            rec = stub_codex(root)
+        r = spawn(repo, env, "story-042")
         assert r.returncode == 0, r.stderr
-        return r.stdout
+        return json.loads(rec.read_text())["stdin"]
 
     def test_neither_harness_is_handed_a_review_to_launch(self, tmp_path):
         for executor in ("claude/opus", "codex/gpt-5.6-terra/high"):
@@ -391,14 +393,11 @@ from plan_review_disposition import TestPlanEditsInPlace  # noqa: E402,F401
 from plan_review_liveness import TestTheReviewOutlivesItsCaller  # noqa: E402,F401
 
 
-def test_a_replanned_executor_is_handed_the_replacement_rounds_not_the_archived_ones(tmp_path):
-    """The prompt built before the planner names round files the archive has since renamed
-    away, and rebuilding it off the live marker would label this very run the predecessor.
-    (Here rather than beside its sibling: test_spawn.py sits at constraint 8's hard cap.)"""
+def test_an_amended_executor_keeps_the_prior_review_round_as_context(tmp_path):
     from test_spawn_stages import event_roles, stub_stages
 
     repo, env, _g = make_repo(tmp_path, files="src/thing.py, src/other.py")
-    events = stub_stages(tmp_path, blocking_diff=True)
+    events = stub_stages(tmp_path, executor_failure=True)
     assert spawn(repo, env, "story-042").returncode != 0
     plans = Path(env["XP_DATA"]) / "plans"
     (plans / "story-042.round-2.md").write_text("OLD-FINDING")
@@ -412,5 +411,5 @@ def test_a_replanned_executor_is_handed_the_replacement_rounds_not_the_archived_
     teammate = [json.loads(line) for line in events.read_text().splitlines()[seen:]][2]["prompt"]
 
     assert "story-042.round-1.md" in teammate
-    assert "story-042.round-2.md" not in teammate
+    assert "story-042.round-2.md" in teammate
     assert "handback — RUNNING" not in teammate

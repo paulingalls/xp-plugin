@@ -336,7 +336,12 @@ def test_interrupt_preserves_partial_evidence(tmp_path, kill):
     repo, env, _g = make_repo(tmp_path)
     assert close(repo, env, "review").returncode == 0
     assert (tmp_path / "data/markers/story-042.verify.json").exists()
-    source = "import os,time; os.write(1,b'short-out'); os.write(2,b'short-err'); time.sleep(300)"
+    pid_file = tmp_path / "verify-child.pid"
+    source = (
+        "import os,time; from pathlib import Path; "
+        f"Path({str(pid_file)!r}).write_text(str(os.getpid())); "
+        "os.write(1,b'short-out'); os.write(2,b'short-err'); time.sleep(300)"
+    )
     process = record_process(repo, env, [[sys.executable, "-c", source]], start_new_session=True)
     child_pid = None
     try:
@@ -346,10 +351,7 @@ def test_interrupt_preserves_partial_evidence(tmp_path, kill):
         )
         saved = {p.name: p.read_bytes() for p in run.iterdir()}
         assert saved["1.stdout"] == b"short-out" and saved["1.stderr"] == b"short-err", received
-        # The logger's child has its own group; save its PID for SIGKILL recovery cleanup.
-        import subprocess
-
-        child_pid = int(subprocess.check_output(["pgrep", "-P", str(process.pid)]).split()[0])
+        child_pid = int(pid_file.read_text())
         process.send_signal(signal.SIGKILL if kill else signal.SIGINT)
         process.communicate(timeout=30)
         manifest = json.loads((run / "run.json").read_text())

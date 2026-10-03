@@ -15,7 +15,7 @@ from close_free_card_cases import (
     spawn_free,
 )
 from close_helpers import PLUGIN, free, free_repo, gh_calls
-from sprint_helpers import CONFIG, make_repo, marker_path, sprint
+from sprint_helpers import CONFIG, make_repo, marker_path, record_reviews, sprint
 from test_close_free_post_merge import TestFreeTeardown as _FreeTeardown
 from test_sprint_land import record_release, release_state, release_tools
 
@@ -178,6 +178,7 @@ def test_sprint_post_merge_off_runs_lifecycle_clears_record_and_cuts_no_tag(tmp_
         command, record = lifecycle_recorder(root)
         config = CONFIG + f"versioning: off\nlifecycle_command: {command}\n"
         repo, env, g = make_repo(root, config=config)
+        record_reviews(root, repo, env)
         nonsemver_only(g)
         g("checkout", "-q", "main")
         g("merge", "-q", "--no-ff", "sprint-002", "-m", "release")
@@ -204,6 +205,7 @@ def test_sprint_post_merge_off_keeps_branch_record_when_lifecycle_refuses(tmp_pa
     command, record = lifecycle_recorder(tmp_path, exit_code=1)
     config = CONFIG + f"versioning: off\nlifecycle_command: {command}\n"
     repo, env, g = make_repo(tmp_path, config=config)
+    record_reviews(tmp_path, repo, env)
     nonsemver_only(g)
     g("checkout", "-q", "main")
     g("merge", "-q", "--no-ff", "sprint-002", "-m", "release")

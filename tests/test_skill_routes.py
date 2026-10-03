@@ -258,11 +258,12 @@ def test_every_shipped_skill_is_named_by_shipped_prose(tmp_path):
     assert story_nudge.returncode == 0 and story_nudge.stdout, story_nudge.stderr
 
     from sprint_helpers import make_repo as make_sprint_repo
-    from sprint_helpers import sprint
+    from sprint_helpers import record_reviews, sprint
 
     sprint_root = tmp_path / "sprint"
     sprint_root.mkdir()
     repo, env, g = make_sprint_repo(sprint_root)
+    record_reviews(sprint_root, repo, env)
     g("tag", "v0.2.1")
     g("checkout", "-q", "main")
     g("merge", "-q", "--no-ff", "sprint-002", "-m", "release")

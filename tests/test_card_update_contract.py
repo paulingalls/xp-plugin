@@ -164,7 +164,8 @@ def test_installed_harness_review_acceptance(tmp_path, harness, question):
         assert "card corrected by plan review" in landed.stdout
         assert "story-042.round-1.md" in landed.stdout
         assert "card amended — reason" not in landed.stdout
-        assert "card corrected by plan review" in prompt_for(events, "reviewer")
+        reviewed = prompt_for(events, "reviewer")
+        assert "Then REVIEWED-AC" in reviewed and "Context: REVIEWED-CONTEXT." in reviewed
 
 
 def spawn_with_hook(repo, env, code):

@@ -10,11 +10,16 @@ tools: Read, Grep, Glob, Bash
 Round 1: ONE stage, your bundle's charter. Read VALUES and JUDGMENT.md.
 
 ALTITUDE, every stage: Every story was reviewed at its own close; judge a seam between stories.
-Later rounds use one story-shaped reviewer over the delta, authorized to fix inside its round.
+Later rounds independently judge the changed integration; settled story reviews remain context.
 
 Write JSON to REPORT_PATH with a required `blocking` list of nonempty finding text.
-Optional fixed, dropped and debt fields retain explanations. Judge drops and debt
-under JUDGMENT; reserved choices and unwaivable blockers remain blocking.
+Only verifier reports include `actionable`: authorized survivors go there; reserved
+choices and unmet ACs stay `blocking`. Finder, fixer and closer omit `actionable`;
+unresolved findings belong in `blocking`. All readers preserve HEAD, index, work,
+cards and markers.
+Optional `fixed` is a string list; `dropped` entries contain `finding` and `reason`.
+`debt` entries contain `finding`, `ref`, `too_big` and `too_important`; judge them
+under JUDGMENT. Reserved choices and unwaivable blockers remain blocking.
 Only closer may add `clearable_by_full`. Include findings raised in prose.
 
 ## finder
@@ -47,8 +52,8 @@ it is plausible. Refute design claims against actual callers, rule ownership and
 present costs using JUDGMENT; principle names are not evidence. A candidate you
 cannot refute survives.
 
-`blocking` — the survivors, in enough of their own words that a fixer who never
-saw the candidate list can act on them. `dropped` — what you refuted, with the reason.
+`actionable` — authorized survivors, with enough evidence for the fixer to act.
+`blocking` — reserved choices or unmet ACs requiring the lead. `dropped` — what you refuted, with the reason.
 `fixed` — empty.
 
 ## fixer
@@ -60,9 +65,9 @@ Report remaining blockers; optional fixed/dropped/debt explain the decisions.
 
 ## closer
 
-BLOCKERS ONLY. The diff already contains the fixer's commits. One question: does
-anything still fail SILENTLY or corrupt something — a broken fix, vacuous guard,
-surviving candidate, uncovered defect, or false green?
+BLOCKERS ONLY. Inspect the handed findings, correction range and regression evidence.
+Does the correction leave a broken fix, surviving finding or false green?
+Remaining findings return to the lead; they never buy an automatic quality round.
 
 Nothing else is this pass's business. No style, no praise, no finding you
 merely dislike, no re-derivation of what earlier stages already settled.

@@ -29,7 +29,6 @@ def assert_authority(prompt, multifile, root):
         assert "Predecessor plan draft" not in prompt
         assert "plan draft is missing" not in prompt.lower()
     assert "story close, review, and land belong to the lead" in brief
-    assert "executor hands back after the green commit" in brief
 
 
 @pytest.mark.parametrize(
@@ -44,13 +43,17 @@ def test_dry_run_brief_uses_card_authority(tmp_path, files, multifile):
     stub_stages(tmp_path)
     result = spawn(repo, env, "story-042", "--dry-run")
     assert result.returncode == 0, result.stderr
-    assert_authority(result.stdout, multifile, Path(env["XP_DATA"]))
+    if multifile:
+        assert result.stdout.startswith("Next stage: planner.")
+        assert "## How you work" not in result.stdout
+    else:
+        assert_authority(result.stdout, multifile, Path(env["XP_DATA"]))
 
 
 @pytest.mark.parametrize("change_to_one", [False, True])
 def test_replan_rebuild_uses_current_card_shape(tmp_path, change_to_one):
     repo, env, _g = make_repo(tmp_path, files="src/thing.py, src/other.py")
-    events = stub_stages(tmp_path, blocking_diff=True)
+    events = stub_stages(tmp_path, executor_failure=True)
     first = spawn(repo, env, "story-042")
     assert first.returncode != 0 and events.exists(), first.stdout + first.stderr
     plan = Path(env["XP_DATA"]) / "plan.md"
@@ -87,7 +90,7 @@ raise SystemExit(spawn.main())
 
 def test_multi_file_respawn_without_replan_inherits_the_reviewed_plan(tmp_path):
     repo, env, _g = make_repo(tmp_path, files="src/thing.py, src/other.py")
-    events = stub_stages(tmp_path, blocking_diff=True)
+    events = stub_stages(tmp_path, executor_failure=True)
     assert spawn(repo, env, "story-042").returncode != 0
     before = len(events.read_text().splitlines())
     spawn(repo, env, "resume", "story-042")

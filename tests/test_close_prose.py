@@ -56,11 +56,12 @@ class TestShippedProseMatchesTheMechanism:
 
     def test_process_routes_each_mid_sprint_choice_by_release_outcome(self):
         process = prose(PLUGIN / "PROCESS.md")
-        sentence = process.split("Mid-sprint:", 1)[1].split(".", 1)[0]
-        record, sprint, patch = sentence.split(";")
+        routes = process.split("Mid-sprint:", 1)[1].split("2. **Story**", 1)[0]
+        record, sprint = routes.split("`[sprint-direct]`:", 1)
+        sprint, patch = sprint.split("; free:", 1)
+        patch = "free:" + patch
         assert "record" in record and "never schedule" in record
-        assert "[sprint-direct]" in sprint and "sprint branch" in sprint
-        assert "sprint review" in sprint
+        assert "sprint branch" in sprint and "review" in sprint
         assert "free" in patch and "ship now" in patch
         assert not re.search(r"\btag|version|trunk|branch", patch)
 

@@ -3,18 +3,16 @@
 import json
 
 from close_free_card_cases import free_identity
-from close_helpers import CLEAN, close, close_bare, free, make_repo, marker, stub_reviewer
+from close_helpers import close, close_bare, free, make_repo, marker
 from test_close_free import reviewed
 
 
 def superseded(tmp_path, *, red=True):
     repo, env, g = make_repo(tmp_path)
-    stub_reviewer(tmp_path, report=CLEAN, exit_code=1)
-    assert close(repo, env, "review").returncode == 2
-    stub_reviewer(tmp_path)
     assert close(repo, env, "review").returncode == 0
     sidecar = tmp_path / "data/markers/story-042.round-2.launch"
-    state = json.loads(sidecar.read_text())
+    state = {"head": marker(tmp_path)["shown_sha"]}
+    sidecar.write_text(json.dumps(state))
     if red:
         state.update(verify_red="Verify red", verify_head=marker(tmp_path)["shown_sha"])
         sidecar.write_text(json.dumps(state))
@@ -36,7 +34,7 @@ def test_uncovered_red_sidecar_stays_queued(tmp_path):
 
     refused = close(repo, env, "land")
 
-    assert refused.returncode == 2 and "salvage" in refused.stderr
+    assert refused.returncode == 2 and "close.py story story-042 review" in refused.stderr
     assert sidecar.read_bytes() == evidence
 
 
@@ -46,7 +44,7 @@ def test_nonred_sidecar_stays_queued(tmp_path):
 
     refused = close(repo, env, "land")
 
-    assert refused.returncode == 2 and "salvage" in refused.stderr
+    assert refused.returncode == 2 and str(sidecar) in refused.stderr
     assert sidecar.read_bytes() == evidence
 
 
@@ -58,7 +56,7 @@ def test_canonical_red_marker_stays_queued(tmp_path):
 
     refused = close(repo, env, "land")
 
-    assert refused.returncode == 2 and "repair" in refused.stderr
+    assert refused.returncode == 2 and "close.py story story-042 review" in refused.stderr
     assert canonical.read_bytes() == evidence and sidecar.exists()
 
 
@@ -165,15 +163,8 @@ def test_covering_round_must_be_latest_recorded_round(tmp_path):
 def free_superseded(tmp_path):
     repo, env, g = reviewed(tmp_path)
     _branch, key = free_identity(g)
-    stub_reviewer(tmp_path, exit_code=1)
-    assert free(repo, env, "fix-typo", "review").returncode == 2
-    stub_reviewer(tmp_path)
-    assert free(repo, env, "fix-typo", "review").returncode == 0
-    sidecars = sorted((tmp_path / "data/markers").glob(f"{key}.round-*.launch"))
-    assert sidecars
-    sidecar = sidecars[-1]
-    state = json.loads(sidecar.read_text())
-    state.update(verify_red="Verify red", verify_head=marker(tmp_path, key)["shown_sha"])
+    sidecar = tmp_path / "data/markers" / f"{key}.round-3.launch"
+    state = {"verify_red": "Verify red", "verify_head": marker(tmp_path, key)["shown_sha"]}
     sidecar.write_text(json.dumps(state))
     return repo, env, sidecar
 

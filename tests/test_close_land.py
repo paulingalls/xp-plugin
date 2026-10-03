@@ -14,11 +14,9 @@ from close_helpers import (
     make_repo,
     marker,
     marker_file,
-    stub_reviewer,
     worktree_land_setup,
 )
 from close_land_findings_cases import TestFullReviewFindings  # noqa: F401
-from review_interruption_helpers import FIXED
 
 
 def recording_git(tmp_path, env, construct_conflict=False):
@@ -72,14 +70,11 @@ class TestLandFailureModes:
 
     def test_a_covered_verify_red_sidecar_is_archived_on_land(self, tmp_path):
         repo, env, g = make_repo(tmp_path)
-        stub_reviewer(tmp_path, report=FIXED, exit_code=1)
-        assert close(repo, env, "review").returncode == 2
-        stub_reviewer(tmp_path)
         assert close(repo, env, "review").returncode == 0
         sidecar = tmp_path / "data/markers/story-042.round-2.launch"
-        launch = json.loads(sidecar.read_text())
-        launch.update(verify_red="Verify red", verify_head=marker(tmp_path)["shown_sha"])
-        sidecar.write_text(json.dumps(launch))
+        sidecar.write_text(
+            json.dumps({"verify_red": "Verify red", "verify_head": marker(tmp_path)["shown_sha"]})
+        )
         evidence = sidecar.read_bytes()
         before = (g("rev-parse", "main").stdout, marker_file(tmp_path).read_bytes())
 

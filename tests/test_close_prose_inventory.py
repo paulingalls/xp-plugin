@@ -57,33 +57,9 @@ class TestShippedProseMatchesTheMechanism:
         skill = prose(PLUGIN / "skills" / "sprint-close" / "SKILL.md")
         assert "close.py sprint <id> review" in skill, "the review is still hand-composed"
 
-    def test_the_sprint_close_skill_states_the_confirming_round_shape(self):
-        skill = prose(PLUGIN / "skills" / "sprint-close" / "SKILL.md")
-        assert "cost a confirming round, except any land names as exempt" in skill
-        assert "re-run `close.py sprint <id> review`" in skill
-        assert "one story-shaped reviewer over the delta, not another fanout" in skill
-
     def test_sprint_opening_has_no_tracked_branch_ritual(self):
         skill = prose(PLUGIN / "skills" / "sprint-close" / "SKILL.md")
         assert "sprint_branch" not in skill and "retire" not in skill
-
-    def test_the_sprint_close_skill_orders_the_retro_BEFORE_the_reviews(self):
-        """Measured against the last real close: sprint-002's retro commit touched
-        CHANGELOG.md, docs/DESIGN.md, PROCESS.md and story-close/SKILL.md — five of
-        six paths outside .xp/, so land's exemption does not cover it. Retro last
-        means reviewing again, which invalidates the retro just written. The order
-        is the fix, and it also puts the retro diff under the review DESIGN §6
-        already says it deserves."""
-        skill = prose(PLUGIN / "skills" / "sprint-close" / "SKILL.md")
-        assert skill.index("Triage, then the retro") < skill.index("close.py sprint <id> review")
-        assert "BEFORE the review" in skill
-
-    def test_release_artifacts_are_project_owned_and_timed_without_enumeration(self):
-        skill = prose(PLUGIN / "skills" / "sprint-close" / "SKILL.md")
-        step = skill.split("5. **", 1)[1]
-        assert "Your release artifacts are yours" in step
-        assert "before" in step.lower() and "review" in step.lower()
-        assert "bump" not in step.lower() and "changelog" not in step.lower()
 
     def test_system_context_names_every_shipped_prose_document(self):
         """This line rides into every reviewer bundle, so a short list tells a

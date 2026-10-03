@@ -261,7 +261,7 @@ class TestSprintTriage:
         marker.parent.mkdir(exist_ok=True)
         marker.write_text("{broken")
         result = sprint(repo, env, "start")
-        assert result.returncode == 0, result.stderr
+        assert result.returncode == 2, result.stderr
         assert f"Open debt {ref} (" in result.stdout
         assert f"Unusable debt {ref}:" in result.stdout
         assert str(marker) in result.stdout and "Unreadable" in result.stdout

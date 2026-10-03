@@ -62,7 +62,7 @@ def assert_open_route(create_skill, close_skill, process):
     assert "author's conclusions" in opening and "do not give" in opening
     assert "corrected cards" in opening and "one-line reasoned drop" in opening
     assert "`/create-sprint`" in card_step and "`/sprint-close`" not in card_step
-    assert card_step.index("`/create-sprint`") < card_step.index("spawn.py <story-id>")
+    assert process.index("`/create-sprint`") < process.index("spawn.py <story-id>")
     for fragment in ("slate-reviewer", "slate_review.py", "git switch", "Open the sprint"):
         assert fragment not in close_skill
 

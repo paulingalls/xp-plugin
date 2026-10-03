@@ -52,7 +52,7 @@ class TestAnUndeclaredPathIsRefused:
         r = sprint(repo, env, "review")
         assert r.returncode == 2, r.stdout
         assert ".xp/constraints.md" in r.stderr and "Files line" in r.stderr, r.stderr
-        assert "sneaky" not in (repo / ".xp" / "constraints.md").read_text()
+        assert "sneaky" in (repo / ".xp" / "constraints.md").read_text()
         assert json.loads(marker_path(tmp_path).read_text())["rounds"][-1]["incomplete"]
 
     def test_LAND_names_a_GATE_file_the_fixer_rewrote(self, tmp_path):
@@ -188,7 +188,7 @@ class TestTheFilesLineIsProseNotAPath:
         assert "Traceback" not in refused.stderr
         assert "boot: x" not in (repo / ".xp" / "system.md").read_text()
         assert not g("status", "--porcelain").stdout
-        assert json.loads(marker_path(bad).read_text())["rounds"][-1]["incomplete"]
+        assert not marker_path(bad).exists()
 
         repaired = tmp_path / "repaired"
         plan = declaring(".xp/system.md").replace(

@@ -237,7 +237,7 @@ def spawn_refusal(tmp_path, teardown):
     g("add", str(system))
     g("commit", "-qm", "configure teardown")
     g("checkout", "-q", "elsewhere")
-    stub_claude(tmp_path, commit=False)
+    stub_claude(tmp_path, commit=False, write_file=True)
     return spawn(repo, env, "story-042")
 
 

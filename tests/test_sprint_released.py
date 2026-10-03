@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 
 import pytest
 from session_start_helpers import HOOK, next_lines
-from sprint_helpers import CONFIG, make_repo, sprint
+from sprint_helpers import CONFIG, make_repo, record_reviews, sprint
 from sprint_released_next_cases import ReleasedNextActionCases
 
 RELEASE_PLAN = """# plan
@@ -30,6 +30,7 @@ def released_repo(root, *, versioning_off=False, merged=True):
     if versioning_off:
         config += "versioning: off\n"
     repo, env, g = make_repo(root, plan=RELEASE_PLAN, config=config)
+    record_reviews(root, repo, env)
     g("tag", "v0.2.0", "main")
     g("checkout", "-q", "main")
     if merged:
@@ -112,12 +113,15 @@ class TestReleaseRecord:
     def test_dry_run_and_lifecycle_refusal_never_record_a_release(
         self, tmp_path, versioning_off, mode
     ):
-        repo, env, _g = released_repo(tmp_path, versioning_off=versioning_off)
+        repo, env, g = released_repo(tmp_path, versioning_off=versioning_off)
         if mode == "lifecycle-refusal":
             config = repo / ".xp" / "config.yml"
             config.write_text(
                 config.read_text().replace("lifecycle_command: true", "lifecycle_command: false")
             )
+
+        if mode == "lifecycle-refusal":
+            assert g("commit", "-qam", "refusing lifecycle").returncode == 0
 
         result = sprint(repo, env, "post-merge", *(("--dry-run",) if mode == "dry-run" else ()))
 
@@ -132,6 +136,8 @@ class TestReleaseRecord:
             config.write_text(
                 config.read_text().replace("lifecycle_command: false", "lifecycle_command: true")
             )
+        if mode == "lifecycle-refusal":
+            assert g("commit", "-qam", "restore lifecycle").returncode == 0
         retried = sprint(repo, env, "post-merge")
         assert retried.returncode == 0, retried.stderr + retried.stdout
         assert release_path(tmp_path).exists()
