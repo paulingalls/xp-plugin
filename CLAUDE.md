@@ -34,6 +34,8 @@ instead.
   verbatim, xdist flag included. Serial pytest is ~6x slower, and the worker count
   is a measured choice per tier, not a default (sprint-10 retro). Restating a tier
   here is a fourth copy that drifts the day one is retuned; it already did.
+  Ordinary tiers exclude installed-agent acceptance. Explicit opt-in:
+  `pytest -q -n 4 -m native` (calls real Claude/Codex agents).
 - Lint: `ruff check --fix . && ruff format .`
 - Hooks: `lefthook install` (once per clone)
 
