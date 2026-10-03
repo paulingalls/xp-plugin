@@ -302,6 +302,18 @@ def recheck(story_id, plan_file, context):
         )
 
 
+def without_components(value):
+    """The reviewer judges a fingerprint by identity; its per-file components can exceed
+    the 10MB stdin limit of the reviewer CLI on a consumer with node_modules."""
+    if isinstance(value, dict):
+        if {"repository", "components", "identity"} <= value.keys():
+            return {"repository": value["repository"], "identity": value["identity"]}
+        return {key: without_components(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [without_components(item) for item in value]
+    return value
+
+
 def run(story_id, plan_file, context):
     import plan_review
     import review
@@ -329,7 +341,7 @@ def run(story_id, plan_file, context):
         "Judge the exact amendment/ruling against the preserved plan; apply an authorized answer "
         "to the draft or explicitly require replan. Preserve justified edits and reasons. "
         "New reserved choices block, and silent/corrupting defects remain in your authority.\n"
-        + json.dumps(context, ensure_ascii=False, indent=2)
+        + json.dumps(without_components(context), ensure_ascii=False, indent=2)
         + f"\nImmutable predecessor manifest: {manifest}\n"
     )
     charter = review.charter("plan-reviewer")
