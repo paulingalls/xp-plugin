@@ -41,9 +41,6 @@ class TestFreeCloseSkill:
         assert "release artifacts are yours" in text.lower()
         assert "before review" in text.lower()
         assert "bump" not in text.lower() and "changelog" not in text.lower()
-        assert "inside the round that found" in text
-        assert "past what the review covered" in text and "confirming round" in text
-        assert "finding bar" in text and "JUDGMENT.md" in text
 
 
 class TestFreeLand:
@@ -215,5 +212,5 @@ class TestFreeIsUndocumentedNowhere:
             cwd=tmp_path,
         )
         assert r.returncode == 0
-        for action in ("start", "review", "repair", "salvage", "land", "post-merge"):
+        for action in ("start", "review", "acknowledge-validation", "land", "post-merge"):
             assert action in r.stdout

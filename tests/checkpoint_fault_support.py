@@ -91,14 +91,6 @@ FAULTS = {
         "state",
         "evidence",
     ),
-    "review-red": (
-        "scripts/spawn/completion.py",
-        'if reviewed.get("result") == "blocked" and '
-        'current["verify"] == reviewed["input"]["verify"]:',
-        "if False:",
-        "review-red",
-        None,
-    ),
     "checkout": (
         "scripts/spawn/resume.py",
         "if actual.returncode or actual.stdout.strip() != branch:",

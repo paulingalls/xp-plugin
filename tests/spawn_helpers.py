@@ -125,7 +125,7 @@ def stub_claude(
         "if spawn_review:",
         " import re",
         " match = re.search(r'^REPORT_PATH: (.+)$', stdin, re.M); assert match",
-        " report = {'schema': 2, 'fixed': [], 'blocking': [], 'dropped': [], 'debt': []}",
+        " report = {'schema': 2, 'actionable': [], 'blocking': []}",
         " open(match.group(1).strip(), 'w').write(json.dumps(report))",
     ]
     if execute_escalation:
@@ -311,7 +311,7 @@ def stub_codex(
             "if spawn_review:",
             " m = re.search(r'^REPORT_PATH: (.+)$', stdin, re.M); assert m",
             " open(m.group(1).strip(), 'w').write("
-            '\'{"schema":2,"fixed":[],"blocking":[],"dropped":[],"debt":[]}\')',
+            '\'{"schema":2,"actionable":[],"fixed":[],"blocking":[],"dropped":[],"debt":[]}\')',
         ]
     if report is not None:
         body += [
@@ -355,7 +355,7 @@ def stub_codex(
             '"scope":"user"}]\'); sys.exit()\n'
             "stdin = sys.stdin.read(); "
             "p = re.search(r'^REPORT_PATH: (.+)$', stdin, re.M); assert p\n"
-            "report = {'schema': 2, 'fixed': [], 'blocking': [], 'dropped': [], 'debt': []}\n"
+            "report = {'schema': 2, 'actionable': [], 'blocking': []}\n"
             "open(p.group(1).strip(), 'w').write(json.dumps(report))\n"
             "print(json.dumps({'type':'result','result':json.dumps(report)}))\n"
         )

@@ -2,10 +2,10 @@ import json
 from pathlib import Path
 
 from close_free_card_cases import add_free_card, checkout_free, commit_on_free, spawn_free
-from close_helpers import close, free, free_repo, make_repo, marker_file
+from close_helpers import free, free_repo, marker_file
+from review_interruption_helpers import FIXED
 from sprint_helpers import PLAN, SPRINT_ID, marker_path, snapshot, sprint
 from sprint_helpers import make_repo as sprint_repo
-from test_close_salvage import FIXED, KILLED, dying_reviewer
 
 FREE_PATCH = """diff --git a/src/free.py b/src/free.py
 --- a/src/free.py
@@ -41,27 +41,6 @@ class DroppedDryRunCases:
         assert started.returncode == 0, started.stderr
         assert len(branch_refs(g)) == len(before) + 1
         assert any(name.endswith("-fix-typo") for name in branch_refs(g))
-
-    def test_free_salvage_dry_run_preserves_the_unrecorded_round(self, tmp_path):
-        repo, env, g = free_repo(tmp_path)
-        assert free(repo, env, "fix-typo", "start").returncode == 0
-        _branch, key = checkout_free(g)
-        commit_on_free(repo, g)
-        add_free_card(env, key)
-        tree = spawn_free(repo, env, g, tmp_path, key)
-        dying_reviewer(tmp_path, patch=FREE_PATCH)
-        assert free(tree, env | KILLED, "fix-typo", "review").returncode == 2
-        data = Path(env["XP_DATA"])
-        assert list((data / "reports").glob("*.json"))
-        assert list((data / "reports").glob("*.patch"))
-        before = snapshot(data)
-        head = g("-C", str(tree), "rev-parse", "HEAD").stdout.strip()
-
-        preview = free(tree, env, "fix-typo", "salvage", "--dry-run")
-
-        previewed(preview)
-        assert snapshot(data) == before
-        assert g("-C", str(tree), "rev-parse", "HEAD").stdout.strip() == head
 
     def test_free_post_merge_dry_run_does_not_cut_the_patch_tag(self, tmp_path):
         repo, env, g = free_repo(tmp_path)
@@ -169,39 +148,3 @@ class DroppedDryRunCases:
 
         previewed(preview)
         assert snapshot(data) == before
-
-    def test_story_salvage_dry_run_does_not_shift_a_queued_round_down(self, tmp_path):
-        repo, env, _g = make_repo(tmp_path)
-        data = Path(env["XP_DATA"])
-        for relative, body in (
-            ("reports/story-042.round-2.json", json.dumps(FIXED)),
-            ("reports/story-042.round-2.patch", FREE_PATCH),
-            ("markers/story-042.round-2.launch", json.dumps({"head": "0" * 40})),
-        ):
-            path = data / relative
-            path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(body)
-        before = snapshot(data)
-
-        preview = close(repo, env, "salvage", "--dry-run")
-
-        previewed(preview)
-        assert snapshot(data) == before
-
-    def test_story_salvage_dry_run_preserves_the_unrecorded_round(self, tmp_path):
-        repo, env, g = make_repo(tmp_path)
-        dying_reviewer(tmp_path)
-        assert close(repo, env | KILLED, "review").returncode == 2
-        data = Path(env["XP_DATA"])
-        assert list((data / "reports").glob("*.json"))
-        assert list((data / "reports").glob("*.patch"))
-        before = snapshot(data)
-        head = g("rev-parse", "HEAD").stdout.strip()
-        assert not marker_file(tmp_path).exists()
-
-        preview = close(repo, env, "salvage", "--dry-run")
-
-        previewed(preview)
-        assert snapshot(data) == before
-        assert g("rev-parse", "HEAD").stdout.strip() == head
-        assert not marker_file(tmp_path).exists()

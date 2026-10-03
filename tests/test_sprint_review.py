@@ -7,6 +7,7 @@ import sys
 
 from close_helpers import launches, mint_ready, stub_reviewer
 from diff_reference_helpers import read_named_diff
+from review_interruption_helpers import FIXED
 from spawn_helpers import stub_codex
 from sprint_helpers import (
     CLOSE,
@@ -20,7 +21,6 @@ from sprint_helpers import (
     sprint,
     staged_stub,
 )
-from test_close_salvage import FIXED
 from test_sprint_review_resume import _stop_at_closer
 
 CLEAN = {"fixed": [], "blocking": [], "schema": 2, "dropped": [], "debt": []}
@@ -53,10 +53,6 @@ class TestReviewLeg:
         assert lines[0] != lines[1]
 
     def test_a_round_without_its_handoff_diff_is_incomplete(self, tmp_path):
-        """And the round does NOT claim the fix. That write rolls the fixer's
-        commit back when it fails, so a round naming it in `fixed` — in the marker
-        AND in the git-versioned merge body — outlives every artifact a later
-        reader could check it against. The findings that survive still must."""
         repo, env, _g = make_repo(tmp_path)
         before = head(repo, env)
         staged_stub(
@@ -75,11 +71,11 @@ class TestReviewLeg:
             )
         )
         result = sprint(repo, env, "review")
-        assert result.returncode == 2 and "could not write reviewer handoff" in result.stderr
-        assert head(repo, env) == before
+        assert result.returncode == 2 and "could not write fix evidence" in result.stderr
+        assert head(repo, env) != before
         round_ = json.loads(marker_path(tmp_path).read_text())["rounds"][-1]
         assert round_["incomplete"] and round_["blocking"] == ["FIXED"]
-        assert round_["fixed"] == [] and "fix" not in round_["stages"], round_
+        assert round_["fixed"] == ["FIXED"] and "fix" in round_["stages"], round_
         assert sprint(repo, env, "land", "--dry-run").returncode == 2
 
     def test_a_stage_that_DIES_offers_no_undo_spanning_the_applied_fix(self, tmp_path):

@@ -1,7 +1,6 @@
 """Resume an incomplete first sprint-review round from validated reports."""
 
 import shlex
-import subprocess
 from pathlib import Path
 
 from review_report import aggregate, normalize_report
@@ -21,41 +20,17 @@ def reviewed_head(round_: dict, head: str, patch: Path, git, reviewer_name: str)
     shown = round_.get("shown_sha", "")
     reviewed = round_.get("reviewed_head", "")
     if not reviewed:
-        if round_.get("stages", [])[-1:] != ["fix"]:
-            return "", "the incomplete round predates resume provenance"
-        parent = git("rev-parse", f"{head}^", check=False).stdout.strip()
-        author = git("show", "-s", "--format=%an", head).stdout.strip()
-        saved = patch.read_text() if patch.is_file() else ""
-
-        def patch_id(text: str) -> list[str]:
-            return subprocess.run(
-                ["git", "patch-id", "--stable"], input=text, capture_output=True, text=True
-            ).stdout.split()
-
-        saved_id = patch_id(saved)[:1]
-        exact = bool(saved_id) and saved_id == patch_id(git("diff", f"{parent}..{head}").stdout)[:1]
-        if author != reviewer_name or not parent or not exact:
-            return "", (
-                "the incomplete round predates resume provenance and its fixer commit"
-                " cannot be derived from the saved patch"
-            )
-        return parent, ""
-    if head == shown:
-        return reviewed, ""
-    if git("merge-base", "--is-ancestor", reviewed, head, check=False).returncode:
-        return "", f"HEAD {head[:8]} is not a descendant of reviewed head {reviewed[:8]}"
-    if round_.get("stages", [])[-1:] != ["fix"]:
-        return "", f"HEAD moved since the incomplete round stopped at {shown[:8]}"
-    names = git("diff", "--name-only", "--no-renames", f"{reviewed}..{head}").stdout
-    changed = set(names.splitlines())
-    covered = patch_paths(patch)
-    if outside := sorted(changed - covered):
-        commits = git("log", "--oneline", f"{shown}..{head}").stdout.strip()
-        return "", (
-            f"HEAD moved through commits not covered by the saved fixer patch ({commits});"
-            f" unaccounted paths: {', '.join(outside)}. Reset to {reviewed[:8]} to resume"
-            " this round"
+        return (
+            "",
+            "incomplete historical round has no measured reviewed HEAD; explicitly review again",
         )
+    if head != shown:
+        return (
+            "",
+            f"HEAD moved after incomplete round {shown[:8]}; explicitly review again",
+        )
+    if git("merge-base", "--is-ancestor", reviewed, head, check=False).returncode:
+        return "", "HEAD rewrote the reviewed ancestry"
     return reviewed, ""
 
 
@@ -81,9 +56,7 @@ def state(rounds: list[dict], head: str, sprint_id: str, review, git):
     if complete or not (stopped := resumable(rounds)):
         return complete, head, None, "", ""
     saved = review.sprint_report_path(sprint_id, "fix", 1)
-    reviewed, why = reviewed_head(
-        stopped, head, review.patch_path(saved), git, review.REVIEWER_NAME
-    )
+    reviewed, why = reviewed_head(stopped, head, review.patch_path(saved), git, "")
     if not why:
         return complete, reviewed, stopped, "", ""
     hard = (

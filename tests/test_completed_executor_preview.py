@@ -27,7 +27,7 @@ def test_completed_executor_preview_matches_live_resume(tmp_path, harness, inval
     assert f"Next stage: {expected}." in preview.stdout
     live = launch(repo, env, "resume", "story-042")
     assert live.returncode == 0, live.stderr
-    assert roles(seen)[count:] == (["teammate", "reviewer"] if invalidated else ["reviewer"])
+    assert roles(seen)[count:] == (["teammate", "reviewer"] if invalidated else [])
 
 
 @pytest.mark.parametrize("damage", ["binding", "result", "evidence"])

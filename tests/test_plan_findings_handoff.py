@@ -59,7 +59,7 @@ def staged_harness(tmp_path, fail_first=False, block_first=False):
         "elif role == 'reviewer':\n"
         " p = re.search(r'^REPORT_PATH: (.+)$', prompt, re.M); assert p\n"
         ' open(p.group(1), \'w\').write(\'{"schema":2,"fixed":[],'
-        '"blocking":[],"dropped":[],"debt":[]}\')\n'
+        '"actionable":[],"blocking":[],"dropped":[],"debt":[]}\')\n'
         "with open(seen, 'a') as f: f.write(json.dumps(event) + '\\n')\n"
         "print(json.dumps({'type':'result','subtype':'success','result':'done'}))\n"
     )

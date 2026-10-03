@@ -108,7 +108,7 @@ def run_planner(story_id: str, card: str, tree: Path, handoff: str) -> tuple[int
     return 0, ""
 
 
-def review_story(tree: Path, story_id: str) -> tuple[int, dict, str]:
+def review_story(tree: Path, story_id: str, held=None) -> tuple[int, dict, str]:
     import contextlib
     import json
     import sys
@@ -130,8 +130,12 @@ def review_story(tree: Path, story_id: str) -> tuple[int, dict, str]:
         preserved = dropped = False
         try:
             with contextlib.redirect_stderr(refusal):
-                rc = cmd_review(story_id)
-            state = json.loads(marker_path(story_id).read_text()) if not rc else {}
+                rc = cmd_review(story_id, held=held, explicit=False)
+            state = (
+                json.loads(marker_path(story_id).read_text())
+                if marker_path(story_id).exists()
+                else {}
+            )
         finally:
             # Restore AND drop inside the finally: a review that raises — a kill, an
             # unreadable marker — otherwise unwinds past the drop and leaks the entry
@@ -190,23 +194,10 @@ def finish_story(tree: Path, story_id: str, stop, stage_line, held) -> int:
     with contextlib.chdir(tree):
         review_input = inputs(story_id, card_for(story_id))
         record(story_id, "reviewer", "running", review_input)
-    rc, state, refusal = review_story(tree, story_id)
+    rc, state, refusal = review_story(tree, story_id, held)
     if rc:
-        import json
-
-        import review
-        from close import marker_path
-
-        blocked = False
-        try:
-            launch = json.loads(review.launch_marker(story_id).read_text())
-            blocked = bool(launch.get("verify_red"))
-            if marker_path(story_id).exists():
-                blocked |= unresolved_blocking(json.loads(marker_path(story_id).read_text()))
-        except (OSError, ValueError, TypeError, AttributeError):
-            pass
         with contextlib.chdir(tree):
-            record(story_id, "reviewer", "blocked" if blocked else "failed", review_input)
+            record(story_id, "reviewer", "blocked", review_input)
         cause = refusal or "the diff review produced no readable refusal; inspect its log"
         return stop(f"the diff review leg refused (rc {rc}): {cause}", 0)
     with contextlib.chdir(tree):
@@ -217,7 +208,7 @@ def finish_story(tree: Path, story_id: str, stop, stage_line, held) -> int:
             inputs(story_id, card_for(story_id)),
         )
     if unresolved_blocking(state):
-        why = "diff review recorded blocking findings; resume with a fresh executor to fix them"
+        why = "diff review recorded blocking findings; the lead owns correction and explicit review"
         return stop(why, 0)
     free_slug = leg(story_id)[1]
     instruction = "run `/free-close` from that worktree" if free_slug else "run `/story-close`"

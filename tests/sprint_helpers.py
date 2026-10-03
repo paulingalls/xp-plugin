@@ -146,7 +146,7 @@ def staged_stub(tmp_path, patches=(), **stages):
     table = {k.replace("_", "-"): v for k, v in stages.items()}
     (bin_dir / "claude").write_text(
         "#!/usr/bin/env python3\n"
-        "import difflib, json, os, re, sys\n"
+        "import difflib, json, os, re, subprocess, sys\n"
         "if sys.argv[1:] == ['plugin', 'list', '--json']: print("
         '\'[{"id":"xp-plugin@xp-plugin","version":"fixture",'
         '"scope":"user"}]\'); sys.exit()\n'
@@ -169,7 +169,9 @@ def staged_stub(tmp_path, patches=(), **stages):
         "        diff = 'diff --git a/{0} b/{0}\\n'.format(target)\n"
         "        diff += ''.join(difflib.unified_diff(\n"
         "            before, after, 'a/' + target, 'b/' + target))\n"
-        "        open(pm.group(1).strip(), 'w').write(diff)\n"
+        "        open(target, 'w').writelines(after)\n"
+        "        subprocess.run(['git','add',target],check=True)\n"
+        "        subprocess.run(['git','commit','-qm','fix finding'],check=True)\n"
         f"sys.stdout.write({stream_json('findings above')!r})\n"
     )
     (bin_dir / "claude").chmod(0o755)

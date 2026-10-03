@@ -362,53 +362,6 @@ def test_unwritable_reports_path_keeps_the_index_and_omits_reset(tmp_path, monke
     assert before == after and reports.is_file()
 
 
-@pytest.mark.parametrize("failure", ["git", "write"])
-def test_failed_patch_creation_removes_partial_artifact_and_omits_reset(
-    tmp_path, monkeypatch, failure
-):
-    import review
-    import review_refusal
-
-    repo, head = git_repo(tmp_path, monkeypatch)
-    (repo / "a.txt").write_text("only copy\n")
-    subprocess.run(["git", "add", "a.txt"], cwd=repo, check=True)
-    if failure == "git":
-        real_run = subprocess.run
-
-        def failing_run(argv, *args, **kwargs):
-            if argv[:2] == ["git", "diff-index"]:
-                raise subprocess.CalledProcessError(1, argv)
-            return real_run(argv, *args, **kwargs)
-
-        monkeypatch.setattr(review_refusal.subprocess, "run", failing_run)
-    else:
-        real_file = review_refusal.tempfile.NamedTemporaryFile
-
-        class FailingFile:
-            def __enter__(self):
-                (tmp_path / "data" / "reports").mkdir(parents=True, exist_ok=True)
-                self.file = real_file(
-                    "wb", dir=tmp_path / "data" / "reports", suffix=".patch", delete=False
-                )
-                self.name = self.file.name
-                return self
-
-            def write(self, text):
-                self.file.write(text[:5])
-                self.file.flush()
-                raise OSError("write failed")
-
-            def __exit__(self, *_args):
-                self.file.close()
-
-        monkeypatch.setattr(
-            review_refusal.tempfile, "NamedTemporaryFile", lambda *_args, **_kwargs: FailingFile()
-        )
-    text = review.abort_text(head, "dirty")
-    assert "could not save" in text and "reset --hard" not in text
-    assert list((tmp_path / "data" / "reports").glob("*.patch")) == []
-
-
 def test_clean_review_refusal_text_and_reports_are_unchanged(tmp_path, monkeypatch):
     import review
 

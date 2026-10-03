@@ -1,46 +1,22 @@
 ---
 name: story-close
-description: >-
-  Close the current story: spawned review, Verify, merge, digest.
+description: Close the current story with independent review, one conditional fix and closure, and landing.
 ---
 
 # Story Close
 
-`close.py` runs the mechanical steps. You own exactly one thing: the now-or-never
-call on the reviewer's findings. Everything else is scripted, and a step you find
-yourself doing by hand is a finding to judge under JUDGMENT.
+Read the completed review sequence and its retained reports from spawn; judge every finding under JUDGMENT.md: fix by default, explicitly drop with a reason, or
+retain exceptional debt with a real record reference and both bars. Reserved choices
+and unmet ACs belong to the lead; dispositions cannot waive release blockers.
 
-1. **Pre-check**: `git status` clean, and you are on the story branch.
-2. **Read the round `spawn` already recorded** — the reviewer was its fourth stage.
-   Run `close.py story <id> review` only if the tree moved since; by reflex it spends
-   a second full reviewer on a diff already reviewed. The leg spawns the
-   story-reviewer, which FIXES what it finds in your tree and commits. Reading its
-   diff is your judgment point; running land is how you accept it.
-   DOES NOT EXIST, so do not go looking: a delta review, a flag by which you supply
-   a finding yourself, a round recorded without the reviewer's own report, a refusal
-   because trunk moved (only files trunk and your story BOTH changed cost a round).
-3. **Judgment point** (yours, and the only one): judge every finding under JUDGMENT:
-   fix by default, explicitly drop with a reason, or exceptionally retain debt by
-   record reference with both bars. Judge legacy/untriaged findings the same way.
-   Unmet ACs and release blockers still require a fix; escalate reserved choices
-   and disagreement to the human.
-   Stopping rule: the REVIEWER's fixes cost no confirming round — inside the round
-   that found them, and your read of its diff is the judgment. YOUR fixes move HEAD
-   past what the review covered and still cost one confirming round — land REPORTS
-   that delta now rather than refusing, so re-run `close.py story <id> review`
-   before land. Exception: when a completed review's Verify redded without blocking
-   findings, fix only reviewed or card Files paths, commit, then run
-   `close.py story <id> repair`; a bounded repair passing Verify owes no confirming
-   round. If land measures a Verify or tier red after a recorded round with no blocking
-   finding, fix only reviewed or card Files paths, commit, run
-   `close.py story <id> repair`, then `close.py story <id> land` again. This bounded
-   land-time repair also owes no confirming round. Other lead fixes still do.
-   The finding bar ends the rounds — silent or corrupting earns another, loud does
-   not — never a count.
-4. **`close.py story <id> land`** — deterministic, and it never spawns. Run it from
-   the story worktree: it merges in whichever tree holds the integration branch, so
-   YOUR SHELL IS LEFT IN A DELETED DIRECTORY. Every refusal names its own next
-   action; run it twice and you get the same answer.
-5. **REPLACE the session digest** (≤30 lines: intent, surprises, next step) —
-   rewritten, never appended to. You are its sole writer; the pipeline records
-   the facts, never the narrative.
+If correction changes the solution, commit it and run `close.py story <id> review`
+to explicitly authorize a new sequence. For incomplete producer output, the same
+command corrects that producer while retaining completed stages and commits.
+`spawn.py resume <id>` resumes interrupted validation. A green same-tree retry still
+needs `close.py story <id> acknowledge-validation --reason '<observed cause>'` from
+the lead before completion. Inspect the retained red and green evidence first.
+
+Run `close.py story <id> land` from the story worktree after the sequence completes.
+It runs deterministic gates and moves refs. Replace the session digest (≤30 lines) with intent,
+surprises and the next step. Automatic reviewer/fixer/closer retry and separate
+repair/salvage routes do not exist.

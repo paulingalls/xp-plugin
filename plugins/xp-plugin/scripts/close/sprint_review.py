@@ -153,8 +153,6 @@ def cmd_review(sprint_id: str, dry_run: bool) -> int:
         path = review.sprint_report_path(sprint_id, key, round_n)
         if not dry_run and (aside := rotate_artifacts([path, review.patch_path(path)])):
             print("warning: " + artifact_notice(aside, salvage_cmd), file=sys.stderr)
-        if stage == "fixer":
-            extra = [("Your patch", f"PATCH_PATH: {review.patch_path(path)}"), *extra]
         excluded, trunk_range = set(), ""
         if diff_base:
             prior = next((r for r in reversed(rounds) if not r.get("incomplete")), {})
@@ -179,7 +177,7 @@ def cmd_review(sprint_id: str, dry_run: bool) -> int:
             trunk_range,
         )
         stage_head = batch_head or git("rev-parse", "HEAD").stdout.strip()
-        role = stage if not complete_n else ""
+        role = "fixer" if stage == "fixer" else stage if not complete_n else ""
         result, err = review.run(
             bundle,
             Path.cwd(),
@@ -203,14 +201,32 @@ def cmd_review(sprint_id: str, dry_run: bool) -> int:
         print(
             f"--- {key} ---\n{result}" if batch_head else result
         )  # before any refusal: the findings exist nowhere else yet
-        if not batch_head and (
-            motion := review.check_reviewer_motion(stage_head, marker, digest_before, cards)
+        if (
+            not batch_head
+            and stage != "fixer"
+            and (motion := review.check_reviewer_motion(stage_head, marker, digest_before, cards))
         ):
             return empty_report(), motion
         if batch_head:
             return report, review.abort_text(stage_head, report_err) if report_err else ""
         if not report_err and stage == "fixer":
-            report_err = review.apply_patch(path, cards)
+            current = git("rev-parse", "HEAD").stdout.strip()
+            if git("status", "--porcelain").stdout.strip():
+                report_err = "fixer left uncommitted work; lead must inspect it"
+            elif git("merge-base", "--is-ancestor", stage_head, current, check=False).returncode:
+                report_err = "fixer rewrote the reviewed solution"
+            elif review.marker_digest(marker) != digest_before:
+                report_err = "fixer moved the close marker"
+            else:
+                from completion import committed_contents
+                from review_scope import declared_files
+
+                committed_contents()
+                touched = git(
+                    "diff", "--name-only", "--no-renames", stage_head, current
+                ).stdout.splitlines()
+                if any(p.startswith(".xp/") and p not in declared_files(cards) for p in touched):
+                    report_err = "fixer committed an undeclared .xp path; lead must inspect it"
         return report, review.abort_text(stage_head, report_err) if report_err else ""
 
     resume_announced = False
@@ -270,7 +286,33 @@ def cmd_review(sprint_id: str, dry_run: bool) -> int:
 
     prior = [("Findings from earlier rounds", render_sprint_prior(rounds))]
     if complete_n:
-        fixed, err = leg("fixer", "fix", [("Sprint altitude", altitude), *prior], review.charter())
+        charter = (
+            review.charter()
+            .replace(
+                "Review independently without changing HEAD, the index, working files, "
+                "your card or\nclose marker.",
+                "Review the delta and commit authorized fixes through ordinary hooks. "
+                "Preserve the card and close marker.",
+            )
+            .replace(
+                "Report authorized actionable findings and reserved/unresolved blockers.",
+                "Fix authorized findings and report reserved/unresolved blockers.",
+            )
+            .replace(
+                "The coordinator conditionally launches one committing fixer "
+                "and one narrow closer;",
+                "This sprint delta review fixes within its round; "
+                "the lead checks its committed diff;",
+            )
+        )
+        charter = charter.split("\n## Output", 1)[0] + (
+            "\n## Output\nWrite JSON to REPORT_PATH with required blocking findings for "
+            "anything still unresolved. Fix authorized findings and commit through normal hooks; "
+            "do not hand actionable findings to another fixer. Optional fixed finding-text "
+            "strings, dropped and debt "
+            "explain decisions under JUDGMENT. Reserved choices and unmet ACs remain blocking."
+        )
+        fixed, err = leg("fixer", "fix", [("Sprint altitude", altitude), *prior], charter)
         if err:
             return stop(err)
         if dry_run:
@@ -329,10 +371,6 @@ def cmd_review(sprint_id: str, dry_run: bool) -> int:
         round_[review.CLEARABLE_BY_FULL] = clearable
     fix_report = review.sprint_report_path(sprint_id, "fix", round_n)
     if err := review.write_reviewer_diff(fix_report, reviewed_head, f"sprint {sprint_id}"):
-        # A rolled-back fix must not remain in the recorded round.
-        if "fix" in ran and git("rev-parse", "HEAD").stdout.strip() == head:
-            reports.pop([*(prefix.reused if prefix else []), *ran].index("fix"))
-            ran.remove("fix")
         return stop(err)
     sprint_review_resume.finish(
         resume,
@@ -350,6 +388,6 @@ def cmd_review(sprint_id: str, dry_run: bool) -> int:
     )
     print(
         f"round {round_n} recorded at {shown_sha[:8]}:"
-        f" {len(round_['fixed'])} fixed, {len(round_['blocking'])} blocking"
+        f" {len(round_.get('fixed', []))} fixed, {len(round_['blocking'])} blocking"
     )
     return 0

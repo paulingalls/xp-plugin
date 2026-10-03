@@ -4,30 +4,12 @@ import json
 
 import pytest
 from close_helpers import close, make_repo, stub_reviewer
+from review_interruption_helpers import FIXED, KILLED
 from sprint_helpers import SPRINT_ID, sprint
 from sprint_helpers import make_repo as sprint_repo
-from test_close_salvage import FIXED, KILLED, dying_reviewer, report_of
 
 
 class TestUnrecordedArtifactPreservation:
-    @pytest.mark.slow
-    def test_a_relaunched_story_review_sets_prior_artifacts_aside(self, tmp_path):
-        repo, env, _ = make_repo(tmp_path)
-        dying_reviewer(tmp_path)
-        assert close(repo, env | KILLED, "review").returncode == 2
-        report = report_of(tmp_path)
-        patch = report.with_suffix(".patch")
-        before = report.read_bytes(), patch.read_bytes()
-
-        stub_reviewer(tmp_path)
-        again = close(repo, env, "review")
-        shifted = report.with_name(report.name.replace("round-1", "round-2"))
-        shifted_patch = shifted.with_suffix(".patch")
-        assert again.returncode == 0, again.stderr
-        assert (shifted.read_bytes(), shifted_patch.read_bytes()) == before
-        assert "salvage" in again.stderr, again.stderr
-        assert str(report) in again.stderr and str(shifted) in again.stderr, again.stderr
-
     @pytest.mark.slow
     def test_a_first_review_sets_nothing_aside(self, tmp_path):
         repo, env, _ = make_repo(tmp_path)
@@ -63,7 +45,7 @@ class TestUnrecordedArtifactPreservation:
         assert (shifted.read_bytes(), shifted_patch.read_bytes()) == before
         assert str(left) in killed.stderr, killed.stderr
         assert str(shifted) in killed.stderr, killed.stderr
-        assert f"close.py sprint {SPRINT_ID} salvage" in killed.stderr, killed.stderr
+        assert "inspect retained work" in killed.stderr, killed.stderr
 
     @pytest.mark.slow
     def test_a_first_sprint_review_sets_nothing_aside(self, tmp_path):
@@ -81,4 +63,4 @@ class TestUnrecordedArtifactPreservation:
         killed = sprint(repo, env | KILLED, "review")
 
         assert "set aside" not in killed.stderr, killed.stderr
-        assert f"close.py sprint {SPRINT_ID} salvage" in killed.stderr, killed.stderr
+        assert "inspect retained work" in killed.stderr, killed.stderr

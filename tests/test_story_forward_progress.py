@@ -142,7 +142,11 @@ def test_external_inputs_invalidate_only_affected_stages(tmp_path, motion):
     result = launch(repo, env, "resume", "story-042")
     assert result.returncode == 0, result.stderr
     assert roles(seen)[count:] == (
-        ["teammate", "reviewer"] if expected == "executor" else ["reviewer"]
+        ["teammate", "reviewer"]
+        if expected == "executor"
+        else []
+        if motion == "tier"
+        else ["reviewer"]
     )
 
 
@@ -233,7 +237,6 @@ def test_amended_planning_survives_interrupted_plan_review(tmp_path, amend_again
         "scope",
         "owner",
         "preview",
-        "review-red",
         "evidence",
         "missing",
         "truncated",

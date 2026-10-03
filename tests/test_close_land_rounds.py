@@ -323,10 +323,12 @@ class TestStructuredGate:
 
 class TestReviewMemory:
     def test_every_story_item_reaches_the_next_round_once(self, tmp_path):
-        repo, env, _g = make_repo(tmp_path)
+        repo, env, g = make_repo(tmp_path)
         findings = overflowing_findings()
         stub_reviewer(tmp_path, report=findings)
-        assert close(repo, env, "review").returncode == 0
+        assert close(repo, env, "review").returncode == 2
+        (repo / "src/thing.py").write_text("A = 3\n")
+        g("commit", "-qam", "lead correction")
         stub_reviewer(tmp_path, report=CLEAN)
         assert close(repo, env, "review").returncode == 0
 
@@ -353,7 +355,9 @@ class TestReviewMemory:
             "debt": [],
         }
         stub_reviewer(tmp_path, report=first)
-        assert close(repo, env, "review").returncode == 0
+        assert close(repo, env, "review").returncode == 2
+        (repo / "src/thing.py").write_text("A = 3\n")
+        g("commit", "-qam", "lead correction")
         stub_reviewer(tmp_path, report=CLEAN)
         assert close(repo, env, "review").returncode == 0
 

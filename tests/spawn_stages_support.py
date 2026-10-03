@@ -4,7 +4,7 @@ import json
 import shlex
 import sys
 
-CLEAN = {"fixed": [], "blocking": [], "schema": 2, "dropped": [], "debt": []}
+CLEAN = {"actionable": [], "fixed": [], "blocking": [], "schema": 2, "dropped": [], "debt": []}
 
 
 def stub_stages(

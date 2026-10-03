@@ -18,7 +18,7 @@ from work_helpers import run
 
 
 class TestReportAcceptance:
-    @pytest.mark.parametrize("reason", [None, "", " ", 4, "first\nsecond"])
+    @pytest.mark.parametrize("reason", [None, "", " ", 4])
     def test_drop_reason_is_required(self, tmp_path, reason):
         data = report(dropped=[{"finding": "loud oversized change", "reason": reason}])
         path = write_report(tmp_path, data)

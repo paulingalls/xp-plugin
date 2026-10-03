@@ -81,18 +81,13 @@ class TestLandCoverage:
         r = sprint(repo, env, "land", "--dry-run")
         assert r.returncode == 2 and "src.py" in r.stderr
 
-    def test_the_reviewers_OWN_fix_commits_do_not_invalidate_the_round(self, tmp_path):
-        """The afbd01a3 wedge, at the sprint scale: the review leg's fixer commits
-        INSIDE the range the round covers, so a bare shown_sha compare refuses the
-        release over the fixes the review exists to produce. This knowingly
-        reverses check_report_only — the sprint reviewer moves the tree now, and
-        authorship is what bounds it, exactly as the story leg's gate does."""
+    def test_a_synthetic_author_cannot_certify_unreviewed_code(self, tmp_path):
         repo, env, g = make_repo(tmp_path)
         record_reviews(tmp_path, repo, env)
         (repo / "src.py").write_text("A = 1\nFIXED_BY_THE_REVIEWER = 2\n")
         commit_as_reviewer(g, "reviewer fix")
         r = sprint(repo, env, "land", "--dry-run")
-        assert r.returncode == 0, r.stdout + r.stderr
+        assert r.returncode == 2 and "did not cover" in r.stderr
 
     def test_a_HEAD_that_no_longer_CONTAINS_the_reviewed_tree_refuses(self, tmp_path):
         """The authorship branch above reads an EMPTY commit range as "no strays",

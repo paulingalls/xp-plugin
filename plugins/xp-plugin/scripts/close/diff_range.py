@@ -1,6 +1,8 @@
 import shlex
 import subprocess
 
+import env  # noqa: F401 -- interpreter floor before annotations
+
 
 def _git(*args: str) -> str:
     return subprocess.run(

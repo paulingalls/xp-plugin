@@ -18,7 +18,7 @@ def test_reuse_preserves_commit_attribution(tmp_path):
     result = launch(repo, env, "resume", "story-042")
     assert result.returncode == 0, result.stderr
     assert git(tmp_path, "rev-parse", "HEAD") == head
-    assert roles(seen)[count:] == ["reviewer"]
+    assert roles(seen)[count:] == []
 
 
 @pytest.mark.parametrize("kind", ["STOPPED", "FINISHED"])
@@ -105,5 +105,6 @@ def test_failed_acceptance_requires_execution_before_retry(tmp_path):
     )
     count = len(events(seen))
     recovered = launch(repo, env, "resume", "story-042")
-    assert recovered.returncode == 0, recovered.stderr
-    assert roles(seen)[count:] == ["teammate", "reviewer"]
+    assert recovered.returncode == 2, recovered.stderr
+    assert roles(seen)[count:] == []
+    assert not (tmp_path / "data/worktrees/story-042/required.txt").exists()

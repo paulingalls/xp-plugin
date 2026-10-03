@@ -114,7 +114,8 @@ class TestMotionIsBoundedByAMechanism:
         before = head(repo, env)
         r = sprint(repo, env, "review")
         assert r.returncode == 2, r.stdout
-        assert before[:8] in r.stderr, "the undo names no sha to reset to"
+        assert head(repo, env) != before
+        assert (repo / "snuck.py").read_text() == "X = 1\n"
         assert json.loads(marker_path(tmp_path).read_text())["rounds"][-1]["incomplete"]
 
     def test_a_reviewer_that_leaves_the_tree_DIRTY_is_refused(self, tmp_path):
@@ -243,13 +244,6 @@ class TestSprintCharter:
         assert "JUDGMENT.md" in shared, "the bar and rubric pointer drifted"
         assert "Round 1" in shared and "Later rounds use one" in shared
         assert "story-shaped reviewer" in shared and "fix inside its round" in shared
-        # the report SHAPE as the stage must write it, not the bucket names in
-        # prose: `noted` reads fine in a sentence that never states the JSON
-        for token in ('"schema"', '"fixed"', '"blocking"', '"dropped"', '"debt"'):
-            assert token in shared, f"the charter never names {token}"
-        closer = text.split("\n## closer\n", 1)[1]
-        assert '"clearable_by_full"' in closer and "tests.full" in closer
-        assert '"clearable_by_full"' in shared and "only `closer`" in shared
 
 
 class TestShippedProse:
