@@ -133,7 +133,10 @@ def stage(story_id, card, sequence, name, correction=False):
     if correction:
         prompt += (
             "\nCorrect only the incomplete report using retained work and logs. "
-            "Do not edit or commit again. Prior producer attempt:\n" + json.dumps(previous)
+            "Do not edit or commit again.\nMeasured refusal:\n"
+            + sequence["problem"]
+            + "\nPrior producer attempt:\n"
+            + json.dumps(previous)
         )
     prompt += f"\nSTAGE: {name}\n"
     from review_cancel import card_changed
