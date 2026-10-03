@@ -16,7 +16,7 @@ roles:                 # harness/model[/effort]; lead overrides per story in pla
   slate-reviewer: codex/gpt-6.1-sol/medium
   card-refresher: codex/gpt-6.1-sol/medium
   plan-reviewer: codex/gpt-6.1-sol/medium
-  finder: codex/gpt-6.1-sol/medium
+  finder: codex/gpt-6-astra/medium
   verifier: codex/gpt-6.1-sol/medium
   fixer: codex/gpt-6.1-sol/medium
   closer: codex/gpt-6.1-sol/medium
