@@ -403,3 +403,76 @@ def test_invalid_review_candidate_names_the_resume_that_reruns_review(tmp_path):
     assert resumed.returncode == 0, resumed.stderr
     assert event_roles(events).count("plan-reviewer") == 2
     assert "teammate" in event_roles(events)
+
+
+def test_reason_amendment_serializes_review_publication(tmp_path, monkeypatch):
+    import fcntl
+    import json
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Event
+
+    import ready
+    from plan_confirmation import pending_amendment
+
+    acceptance, _plan, marker, draft, out, candidate = acceptance_fixture(tmp_path, monkeypatch)
+    candidate.write_text(CARD)
+    out.write_text(json.dumps(dict(status="clean", human_question=None, reasons=[])))
+    prior = acceptance.prepare("story-042", CARD, candidate, draft, out)
+    acceptance.publish("story-042", prior)
+    out = tmp_path / "story-042.round-2.md"
+    out.write_text(json.dumps(dict(status="clean", human_question=None, reasons=[])))
+    record = acceptance.prepare("story-042", CARD, candidate, draft, out)
+    monkeypatch.setattr(ready, "check_refresh", lambda *args, **kwargs: "")
+    monkeypatch.setattr(ready, "progressed", lambda sid: True)
+    entering = Event()
+    proceed = Event()
+    original_edit = acceptance.edit_plan
+    original_read = ready.credential
+    interleaved = False
+    future = None
+
+    def publication_edit(mutate):
+        entering.set()
+        assert proceed.wait(10), "amendment did not release the publication probe"
+        return original_edit(mutate)
+
+    def publish():
+        try:
+            acceptance.publish("story-042", record)
+            return "published"
+        except CardEditRefusal as error:
+            return str(error)
+
+    def credential(path):
+        nonlocal interleaved, future
+        snapshot = original_read(path)
+        if not interleaved:
+            interleaved = True
+            future = pool.submit(publish)
+            assert entering.wait(10), "publication did not reach the shared lock"
+            with open(tmp_path / "locks/plan.lock", "a+") as probe:
+                try:
+                    fcntl.flock(probe, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                except BlockingIOError:
+                    proceed.set()
+                else:
+                    fcntl.flock(probe, fcntl.LOCK_UN)
+                    proceed.set()
+                    assert future.result(timeout=10) == "published"
+        return snapshot
+
+    monkeypatch.setattr(acceptance, "edit_plan", publication_edit)
+    monkeypatch.setattr(ready, "credential", credential)
+    before_digest = original_read(marker)["digest"]
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        assert ready.amend("story-042", "reason-only evidence") == 0
+        outcome = future.result(timeout=10)
+    assert interleaved and original_read(marker)["digest"] == before_digest
+    retained = record if outcome == "published" else prior
+    if outcome != "published":
+        assert "credential changed" in outcome
+    assert acceptance.latest("story-042") == retained
+    assert not acceptance.binding_problem("story-042")
+    assert pending_amendment("story-042")
+    draft.write_text("unreviewed plan replacement")
+    assert "accepted plan changed" in acceptance.binding_problem("story-042")

@@ -352,6 +352,7 @@ def test_recovery_guards_detect_their_fault(tmp_path, guard):
         assert spawn(repo, env, "story-042").returncode != 0
         path = tmp_path / "data/plans/story-042.round-1.md"
         path.write_text(json.dumps({"status": "blocked", "question": QUESTION}))
+        legacy_credential(tmp_path)
         marker = tmp_path / "data/plans/story-042.handoff.json"
         state = json.loads(marker.read_text())
         state["stages"]["plan-reviewer"] = "ran"
@@ -363,6 +364,10 @@ def test_recovery_guards_detect_their_fault(tmp_path, guard):
                 'return "blocked", "blocked for the human"',
             ),
         )
+        saved = marker.read_bytes()
+        control = spawn(repo, env, "resume", "story-042")
+        assert control.returncode != 0 and QUESTION in control.stderr, control.stderr
+        marker.write_bytes(saved)
         result = launch(repo, env, "resume", "story-042")
         assert result.returncode != 0
         with pytest.raises(AssertionError):
@@ -397,24 +402,46 @@ def test_recovery_guards_detect_their_fault(tmp_path, guard):
 
 @pytest.mark.meta
 def test_old_current_round_selection_detects_its_fault(tmp_path):
+    for mutant in (False, True):
+        case = tmp_path / str(mutant)
+        case.mkdir()
+        assert_current_round_selection(case, mutant)
+
+
+def assert_current_round_selection(tmp_path, mutant):
+    from plan_confirmation_support import amend, events
     from test_plan_findings_handoff import staged_harness
 
     repo, env, _ = make_repo(tmp_path, files="src/thing.py, src/other.py")
     seen = staged_harness(tmp_path, block_first=True)
+    mutation = (
+        'state["plan_review_findings"] = accepted["findings"]',
+        'state["plan_review_findings"] = str(_findings(root, story_id)[0][1].resolve())',
+    )
     launch = installed_launch(
-        tmp_path,
-        (
-            'state["plan_review_findings"] = accepted["findings"]',
-            'state["plan_review_findings"] = str(_findings(root, story_id)[0][1].resolve())',
-        ),
-        relative="scripts/spawn/handoff.py",
+        tmp_path, mutation if mutant else None, relative="scripts/spawn/handoff.py"
     )
     assert launch(repo, env, "story-042").returncode != 0
+    amend(tmp_path, repo, env, launch)
     result = launch(repo, env, "resume", "story-042")
-    with pytest.raises(AssertionError):
+    current = tmp_path / "data/plans/story-042.confirmation-1.md"
+    assert "LOUD: run diagnostic check" in current.read_text()
+    assert "STALE BLOCKED ROUND?" not in current.read_text()
+
+    def guarantee():
         assert result.returncode == 0, result.stderr
-    assert "STALE BLOCKED ROUND?" in result.stderr
-    assert "teammate" not in event_roles(seen)
+        executor = next(event for event in events(seen) if event["role"] == "teammate")
+        assert executor["findings_path"].endswith("story-042.confirmation-1.md")
+        assert "LOUD: run diagnostic check" in executor["findings"]
+        assert "STALE BLOCKED ROUND?" not in executor["findings"]
+
+    if mutant:
+        with pytest.raises(AssertionError):
+            guarantee()
+        assert result.returncode != 0
+        assert "teammate" not in event_roles(seen)
+    else:
+        guarantee()
 
 
 @pytest.mark.parametrize(

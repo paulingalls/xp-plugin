@@ -15,6 +15,7 @@ from work import (
     card_lines,
     chdir_repo_root,
     data_root,
+    edit_plan,
     flip_card,
     missing_plan_refusal,
     plan_path,
@@ -195,8 +196,25 @@ def drift(sid: str, card: str) -> str:
 def amend(story_id: str, reason: str) -> int:
     if not reason.strip():
         return fail("refused: amend requires --reason")
+    result = 0
+
+    def update(text):
+        nonlocal result
+        if not plan_path().exists():
+            raise FileNotFoundError(missing_plan_refusal())
+        result = _amend_locked(story_id, reason, text)
+        return text
+
     try:
-        card, status = story_card(plan_path().read_text(), story_id)
+        edit_plan(update)
+    except OSError as error:
+        return fail(f"refused: cannot amend {story_id}: {error}; repair it and retry amend")
+    return result
+
+
+def _amend_locked(story_id: str, reason: str, text: str) -> int:
+    try:
+        card, status = story_card(text, story_id)
     except (KeyError, OSError) as e:
         why = missing_plan_refusal() if isinstance(e, OSError) else e.args[0]
         return fail(f"refused: {why}")
