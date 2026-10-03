@@ -10,6 +10,8 @@ import pytest
 from test_data_root_guard import real_data_root
 from work import entry_id
 
+pytestmark = pytest.mark.meta
+
 ROOT = Path(__file__).parent.parent
 CHECKER_PATH = ROOT / "tests" / "scripts" / "check_falsifier_node_ids.py"
 HOOKSPATH_PATH = ROOT / "tests" / "scripts" / "falsifier_hookspath_bypass.py"

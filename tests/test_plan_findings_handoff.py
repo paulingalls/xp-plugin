@@ -338,6 +338,7 @@ def test_resume_preview_preserves_state(tmp_path, route):
 @pytest.mark.parametrize(
     "defect", ["divergent", "restore", "binding", "selection", "fallback-selection", "writer"]
 )
+@pytest.mark.meta
 def test_preview_guard_fault_injections(tmp_path, defect):
     from plan_confirmation_support import amend, events
 
@@ -401,6 +402,7 @@ def test_preview_guard_fault_injections(tmp_path, defect):
 
 
 @pytest.mark.parametrize("guard", ["readability", "disposition"])
+@pytest.mark.meta
 def test_preview_findings_validation_faults(tmp_path, guard):
     from plan_review_install import legacy_credential
 
@@ -473,13 +475,14 @@ def test_live_findings_refusal_retains_review_failure(tmp_path):
     assert state["stages"]["plan-reviewer"] == "failed"
 
 
-@pytest.mark.parametrize("mutant", [False, True])
+@pytest.mark.parametrize("mutant", [False, pytest.param(True, marks=pytest.mark.meta)])
 def test_resume_preview_and_live_refuse_stale_identity(tmp_path, mutant):
     from resume_preview_support import stale_identity_check
 
     stale_identity_check(tmp_path, mutant)
 
 
+@pytest.mark.meta
 def test_preview_snapshot_ignores_read_only_code_mutation(tmp_path):
     from resume_preview_support import read_only_preview_check
 

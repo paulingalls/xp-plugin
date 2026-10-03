@@ -275,6 +275,7 @@ def probe(tmp_path, fault, launch=spawn):
 
 
 @pytest.mark.parametrize("fault", FAULTS)
+@pytest.mark.meta
 def test_confirmation_guard_detects_its_fault(tmp_path, fault):
     normal = tmp_path / "normal"
     normal.mkdir()
@@ -383,6 +384,7 @@ def ignored_content_recovery(tmp_path, launch=spawn):
 
 
 @pytest.mark.parametrize("kind", ["amendment-count", "ignored-runtime"])
+@pytest.mark.meta
 def test_amendment_evidence_guard_detects_its_fault(tmp_path, kind):
     guarantee = lost_evidence_recovery if kind == "amendment-count" else ignored_content_recovery
     normal = tmp_path / "normal"

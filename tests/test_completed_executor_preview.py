@@ -31,6 +31,7 @@ def test_completed_executor_preview_matches_live_resume(tmp_path, harness, inval
     assert added == (["teammate", "reviewer"] if invalidated else ["reviewer"])
 
 
+@pytest.mark.meta
 def test_completed_preview_selection_fault(tmp_path):
     launch = installed_launch(tmp_path)
     repo, env, seen = completed(tmp_path, launch)
@@ -48,7 +49,7 @@ def test_completed_preview_selection_fault(tmp_path):
     assert roles(seen)[count:] == ["reviewer"]
 
 
-@pytest.mark.parametrize("writer", [False, True])
+@pytest.mark.parametrize("writer", [False, pytest.param(True, marks=pytest.mark.meta)])
 def test_completed_preview_leaves_changed_gates_pending(tmp_path, writer):
     from completed_executor_support import amendment
 
@@ -93,7 +94,7 @@ def test_completed_preview_leaves_changed_gates_pending(tmp_path, writer):
     assert roles(seen)[count:] == ["reviewer"]
 
 
-@pytest.mark.parametrize("mutant", [False, True])
+@pytest.mark.parametrize("mutant", [False, pytest.param(True, marks=pytest.mark.meta)])
 def test_integrated_preview_preserves_candidate_binding(tmp_path, mutant):
     import json
     from pathlib import Path

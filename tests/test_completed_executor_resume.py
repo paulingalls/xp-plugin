@@ -396,6 +396,7 @@ FAULTS = [
 
 
 @pytest.mark.parametrize("kind", FAULTS)
+@pytest.mark.meta
 def test_reuse_guard_detects_its_fault(tmp_path, kind):
     from completed_executor_support import refusal_fault
 

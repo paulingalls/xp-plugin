@@ -25,8 +25,9 @@ instead.
   never fake a red — say so in the commit body.
 - Story done → run the `/story-close` checklist (spawns `story-reviewer`).
 - Records (bug/debt/note) per JUDGMENT.md; mid-sprint you may record, never schedule.
-- Git hooks (lefthook) are the wall: ruff + gitleaks + fast tests at commit, full
-  suite at push. Don't bypass them (`--no-verify` is a values violation, not a trick).
+- Git hooks (lefthook) are the wall: ruff + gitleaks + fast tests at commit, story
+  tier at push, full tier at sprint land. Don't bypass them (`--no-verify` is a
+  values violation, not a trick).
 
 ## Commands
 

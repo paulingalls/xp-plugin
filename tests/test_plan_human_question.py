@@ -253,6 +253,7 @@ def test_installed_harness_stop_and_answered_resume(tmp_path, harness):
 @pytest.mark.parametrize(
     "name,text,before,after,mutation", guard_faults(), ids=[c[0] for c in guard_faults()]
 )
+@pytest.mark.meta
 def test_each_disposition_guard_detects_its_fault(tmp_path, name, text, before, after, mutation):
     path = tmp_path / "parser.py"
     source = (PLUGIN / "scripts/plan_disposition.py").read_text()
@@ -265,6 +266,7 @@ def test_each_disposition_guard_detects_its_fault(tmp_path, name, text, before, 
     assert not observed.startswith("('failed',"), (name, observed)
 
 
+@pytest.mark.meta
 def test_ignoring_question_detects_executor_launch(tmp_path):
     repo, env, seen = consumer(tmp_path)
     launch = installed_launch(tmp_path, ("if question is not None:", "if False:"))
@@ -274,6 +276,7 @@ def test_ignoring_question_detects_executor_launch(tmp_path):
 
 
 @pytest.mark.parametrize("status", ["clean", "edited"])
+@pytest.mark.meta
 def test_legacy_compatibility_exclusion_detects_executor_launch(tmp_path, status):
     repo, env, seen = consumer(tmp_path, "blocked")
     assert spawn(repo, env, "story-042").returncode != 0
@@ -297,6 +300,7 @@ def test_legacy_compatibility_exclusion_detects_executor_launch(tmp_path, status
 
 
 @pytest.mark.parametrize("kind", ["failed-archive", "blocked-retain"])
+@pytest.mark.meta
 def test_artifact_lifecycle_detects_its_fault(tmp_path, kind):
     status = "clean" if kind == "failed-archive" else "blocked"
     repo, env, seen = consumer(tmp_path, status)
@@ -319,6 +323,7 @@ def test_artifact_lifecycle_detects_its_fault(tmp_path, kind):
     assert "teammate" not in event_roles(seen)
 
 
+@pytest.mark.meta
 def test_stale_question_selection_detects_its_fault(tmp_path):
     repo, env, seen = consumer(tmp_path)
     assert spawn(repo, env, "story-042").returncode != 0
@@ -340,6 +345,7 @@ def test_stale_question_selection_detects_its_fault(tmp_path):
 
 
 @pytest.mark.parametrize("guard", ["legacy-extraction", "durable-question", "card-cap-reset"])
+@pytest.mark.meta
 def test_recovery_guards_detect_their_fault(tmp_path, guard):
     repo, env, seen = consumer(tmp_path, "blocked")
     if guard == "legacy-extraction":
@@ -389,6 +395,7 @@ def test_recovery_guards_detect_their_fault(tmp_path, guard):
         assert "teammate" not in event_roles(seen)
 
 
+@pytest.mark.meta
 def test_old_current_round_selection_detects_its_fault(tmp_path):
     from test_plan_findings_handoff import staged_harness
 
