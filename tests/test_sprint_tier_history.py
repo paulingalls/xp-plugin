@@ -7,7 +7,6 @@ from datetime import datetime, timezone
 import pytest
 from sprint_helpers import make_repo, marker_path, record_reviews, sprint, staged_stub
 from test_sprint_tier_receipt import counted_repo, run_count, state, tree
-from test_tier_coverage import config, covered_debt
 
 
 def test_reentry_records_reuse_without_running_again(tmp_path):
@@ -114,22 +113,6 @@ def test_corrupt_history_cannot_certify_receipt(tmp_path, corrupt):
     assert marker.read_bytes() == before and run_count(events) == 1
 
 
-@pytest.mark.parametrize("value", ["F-1", [1]])
-def test_unreadable_start_deferred_ids_refuses_before_the_tier(tmp_path, value):
-    """A string would turn `eid in start_ids` into a substring match."""
-    repo, env, _g, events, _tier = counted_repo(tmp_path)
-    record_reviews(tmp_path, repo, env)
-    marker = marker_path(tmp_path)
-    saved = state(tmp_path)
-    saved["start_deferred_ids"] = value
-    marker.write_text(json.dumps(saved))
-
-    result = sprint(repo, env, "land")
-
-    assert result.returncode == 2 and "unreadable start_deferred_ids" in result.stderr
-    assert "sprint 2 start" in result.stderr and run_count(events) == 0
-
-
 def test_unmeasured_refusals_preserve_history(tmp_path):
     repo, env, _g, events, _tier = counted_repo(tmp_path)
     record_reviews(tmp_path, repo, env)
@@ -189,7 +172,7 @@ def test_reuse_append_rechecks_latest_outcome_under_lock(tmp_path, monkeypatch):
     assert state(tmp_path) == saved
 
 
-def test_round_recorded_during_the_falsifier_batch_gates_land(tmp_path):
+def test_round_recorded_during_the_tier_gates_land(tmp_path):
     script, flag = tmp_path / "falsifier.py", tmp_path / "armed"
     script.write_text(
         "import json, pathlib\n"
@@ -201,14 +184,10 @@ def test_round_recorded_during_the_falsifier_batch_gates_land(tmp_path):
         "'incomplete': 'concurrent round', 'blocking': []})\n"
         "marker.write_text(json.dumps(state))\n"
     )
-    full = f"printf x >> {tmp_path / 'full'}"
-    tiers = (("fast", "true"), ("full", full))
-    cfg = config(tiers, (("fast", "full"),), tiers)
-    repo, env, g = make_repo(tmp_path, config=cfg)
-    covered_debt(repo, env, f"python3 {script}", "fast")
-    assert sprint(repo, env, "start").returncode == 0
-    (repo / ".xp/config.yml").write_text(cfg.replace("tier_coverage:\n  fast: full\n", ""))
-    g("commit", "-qam", "remove coverage")
+    from sprint_helpers import CONFIG
+
+    cfg = CONFIG.replace("full: true", f"full: python3 {script}")
+    repo, env, _g = make_repo(tmp_path, config=cfg)
     record_reviews(tmp_path, repo, env)
     flag.touch()
 

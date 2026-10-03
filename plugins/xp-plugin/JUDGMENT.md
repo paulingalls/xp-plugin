@@ -8,8 +8,7 @@ Escalate reserved choices; ACs/blockers unwaivable. LLMs judge; hooks validate.
 ## Records (`work.py` only)
 - **bug** — claim + red falsifier + files; fix now. No red: judge.
 - **debt** — claim + green falsifier + files; BOTH too big (doubles card/crosses concern/separate design) AND too important (silent/corrupting/privacy/user harm). `debt`/renewed `keep --ref ID`: restate reasons via `--too-big`/`--too-important`.
-- **resolve** — substitute green falsifier; lead only, close, landed tree.
-- **coverage** — optional TIER: bug/debt; resolve: TIER|none required. Selection UNCHECKED; only tier pins checked.
+- **resolve** — green replacement evidence; lead only, close, landed tree. Suite owns regression; only open claims recur.
 - **note** — tradeoff/discovery, never deferred findings; promote/archive at close; next-story: card.
 - **Polarity** — debt: green=still OK; red=materialised; green from flaw=inverted.
 Telemetry: remeasure; never record.

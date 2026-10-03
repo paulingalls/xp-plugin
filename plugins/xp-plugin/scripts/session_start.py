@@ -381,8 +381,10 @@ def recover() -> int:
     if not top or not (Path(top) / ".xp").is_dir():
         return 0
 
+    refresh = refresh_env(PLUGIN_ROOT, plugin_version(PLUGIN_ROOT))
     regions = [
         ("", BEGIN),
+        ("environment notice", refresh),
         ("NEXT", next_action()),
         ("digest", "## digest\n" + safe(digest_output, "digest")),
         ("recovery block", "## recovery block\n" + safe(recovery_block, "recovery block")),

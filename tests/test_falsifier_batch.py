@@ -3,19 +3,13 @@
 import inspect
 import shlex
 import subprocess
-import sys
 from unittest.mock import patch
 
 import pytest
 import work as work_module
 from sprint_helpers import (
     CONFIG,
-    WORK,
-    WORK_SECTION,
-    launches,
     make_repo,
-    record_reviews,
-    section,
     sprint,
     work,
 )
@@ -36,49 +30,6 @@ def test_falsifier_result_measures_the_command_wall_clock():
     )
 
 
-def test_resolve_requires_a_noninteractive_tier_or_none_answer(tmp_path):
-    config = CONFIG.replace("tests:\n", "tests:\n  fast: true\n  story: true\n")
-    repo, env, _g = make_repo(tmp_path, config=config)
-    filed = work(repo, env, "bug", "--claim", "fixed", "--falsifier", "false", "--files", "a.py")
-    process = subprocess.Popen(
-        [
-            sys.executable,
-            str(WORK),
-            "resolve",
-            "--ref",
-            filed.stdout.strip(),
-            "--falsifier",
-            "true",
-        ],
-        cwd=repo,
-        env=env,
-        stdin=subprocess.PIPE,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-    )
-    try:
-        process.wait(timeout=10)
-    except subprocess.TimeoutExpired:
-        process.kill()
-        pytest.fail("resolve prompted on an open stdin pipe")
-    _stdout, stderr = process.communicate()
-    assert process.returncode == 2 and all(tier in stderr for tier in ("fast", "story", "full"))
-    assert "--covered-by TIER" in stderr and "--covered-by none" in stderr
-    retry = work(
-        repo,
-        env,
-        "resolve",
-        "--ref",
-        filed.stdout.strip(),
-        "--falsifier",
-        "true",
-        "--covered-by",
-        "none",
-    )
-    assert retry.returncode == 0 and "Covered by: none" in (tmp_path / "data/work.md").read_text()
-
-
 def test_resolve_rejects_an_empty_falsifier_without_writing_a_resolution(tmp_path):
     repo, env, _g = make_repo(tmp_path)
     filed = work(repo, env, "bug", "--claim", "fixed", "--falsifier", "false", "--files", "a.py")
@@ -93,8 +44,6 @@ def test_resolve_rejects_an_empty_falsifier_without_writing_a_resolution(tmp_pat
         filed.stdout.strip(),
         "--falsifier",
         "",
-        "--covered-by",
-        "none",
     )
 
     assert result.returncode == 2 and "falsifier" in result.stderr
@@ -102,32 +51,6 @@ def test_resolve_rejects_an_empty_falsifier_without_writing_a_resolution(tmp_pat
 
 
 class TestFalsifierBatch:
-    def test_a_resolved_record_runs_the_RESOLUTION_falsifier_not_nothing(self, tmp_path):
-        """A resolution that was wrong must red later and reopen the record."""
-        repo, env, _g = make_repo(tmp_path)
-        flag = tmp_path / "fixed"
-        flag.write_text("ok")
-        work(repo, env, "bug", "--claim", "broken", "--falsifier", "false", "--files", "a.py")
-        ref = work(repo, env, "list").stdout.split()[0]
-        assert (
-            work(
-                repo,
-                env,
-                "resolve",
-                "--ref",
-                ref,
-                "--falsifier",
-                f"test -f {flag}",
-                "--covered-by",
-                "none",
-            ).returncode
-            == 0
-        )
-        assert sprint(repo, env, "start").returncode == 0, "a green resolution should pass"
-        flag.unlink()  # the fix regressed
-        r = sprint(repo, env, "start")
-        assert r.returncode == 2, "a resolved record was skipped instead of re-checked"
-
     def test_only_a_resolved_record_can_substitute_a_falsifier(self, tmp_path):
         """Keyed off the heading `resolve` writes, never off a `Resolves:` line
         anywhere in a block: a record that merely REFERENCES an id would
@@ -151,10 +74,8 @@ class TestFalsifierBatch:
         assert r.returncode == 2, "a record that only referenced an id silenced a live bug"
 
 
-def file_debt(repo, env, claim, command, covered_by=""):
+def file_debt(repo, env, claim, command):
     args = ["debt", "--claim", claim, "--falsifier", command, "--files", "a.py"]
-    if covered_by:
-        args += ["--covered-by", covered_by]
     result = work(repo, env, *args)
     assert result.returncode == 0, result.stderr
     return result.stdout.strip()
@@ -237,8 +158,6 @@ def test_archive_wins_over_resolution_before_and_after_compaction(tmp_path, orde
             ref,
             "--falsifier",
             writes(replacement),
-            "--covered-by",
-            "none",
         ],
         "archive": ["archive", "--ref", ref, "--disposition", "dropped"],
     }
@@ -267,8 +186,6 @@ def test_archive_wins_over_resolution_before_and_after_compaction(tmp_path, orde
         ref,
         "--falsifier",
         writes(replacement),
-        "--covered-by",
-        "none",
     )
     assert stale.returncode == 2 and "archived" in stale.stderr
     assert sprint(repo, env, "start").returncode == 0
@@ -323,40 +240,6 @@ def writes(path, succeeds=True):
     return f"printf x >> {shlex.quote(str(path))}; {'true' if succeeds else 'false'}"
 
 
-def test_a_green_full_tier_is_trusted_without_reexecuting_the_falsifier(tmp_path):
-    tier, falsifier = tmp_path / "tier", tmp_path / "falsifier"
-    config = CONFIG.replace("full: true", f"full: {writes(tier)}")
-    repo, env, _g = make_repo(tmp_path, config=config)
-    ref = file_debt(repo, env, "covered claim", writes(falsifier), "full")
-    before = falsifier.read_text()
-
-    result = sprint(repo, env, "start")
-
-    assert result.returncode == 0, result.stderr
-    assert not tier.exists() and falsifier.read_text() == before
-    record_reviews(tmp_path, repo, env)
-    result = sprint(repo, env, "land")
-    assert result.returncode == 2 and "gh" in result.stderr
-    assert tier.read_text() == "x" and falsifier.read_text() == before
-    assert f"trusted {ref}" in result.stdout and "via tier full" in result.stdout
-
-
-def test_a_shared_command_with_a_legacy_record_is_not_deferred(tmp_path):
-    tier, falsifier = tmp_path / "tier", tmp_path / "falsifier"
-    config = CONFIG.replace("full: true", f"full: {writes(tier)}")
-    repo, env, _g = make_repo(tmp_path, config=config)
-    command = writes(falsifier)
-    file_debt(repo, env, "covered claim", command, "full")
-    file_debt(repo, env, "legacy claim", command)
-    before = falsifier.read_text()
-
-    result = sprint(repo, env, "start")
-
-    assert result.returncode == 0, result.stderr
-    assert not tier.exists() and falsifier.read_text() == before + "x"
-    assert "trusted" not in result.stdout
-
-
 def test_a_declaration_whose_tier_the_config_no_longer_defines_still_executes(tmp_path):
     """The record names `full`, the project renamed it, so no run of `full`
     happened this close. Without the configured-tier half of the defer test the
@@ -376,35 +259,6 @@ def test_a_declaration_whose_tier_the_config_no_longer_defines_still_executes(tm
     assert "trusted" not in result.stdout
 
 
-def test_a_declared_tier_that_was_not_run_does_not_suppress_the_falsifier(tmp_path):
-    falsifier = tmp_path / "falsifier"
-    config = CONFIG.replace("tests:\n", "tests:\n  fast: printf fast >/dev/null\n")
-    repo, env, _g = make_repo(tmp_path, config=config)
-    file_debt(repo, env, "fast selection", writes(falsifier), "fast")
-    before = falsifier.read_text()
-
-    result = sprint(repo, env, "start")
-
-    assert result.returncode == 0, result.stderr
-    assert falsifier.read_text() == before + "x"
-    assert "trusted" not in result.stdout
-
-
-def test_a_red_full_tier_runs_the_deferred_falsifier_before_refusing(tmp_path):
-    tier, falsifier = tmp_path / "tier", tmp_path / "falsifier"
-    config = CONFIG.replace("full: true", f"full: {writes(tier, False)}")
-    repo, env, _g = make_repo(tmp_path, config=config)
-    file_debt(repo, env, "covered claim", writes(falsifier), "full")
-    before = falsifier.read_text()
-
-    assert sprint(repo, env, "start").returncode == 0
-    record_reviews(tmp_path, repo, env)
-    result = sprint(repo, env, "land")
-
-    assert result.returncode == 2 and "test tier red" in result.stderr
-    assert tier.read_text() == "x" and falsifier.read_text() == before + "x"
-
-
 def test_a_project_with_no_tiers_executes_legacy_records_without_tier_prose(tmp_path):
     repo, env, _g = make_repo(tmp_path, config="release: sprint\nroles:\n  reviewer: claude/opus\n")
     counter = tmp_path / "legacy"
@@ -418,74 +272,3 @@ def test_a_project_with_no_tiers_executes_legacy_records_without_tier_prose(tmp_
     assert result.returncode == 0, result.stderr
     assert counter.read_text() == "x"
     assert "Covered by:" not in result.stdout and "tier_coverage" not in result.stdout
-
-
-def test_a_resolution_without_a_declaration_executes_its_replacement(tmp_path):
-    counter = tmp_path / "replacement"
-    repo, env, _g = make_repo(tmp_path)
-    result = work(
-        repo,
-        env,
-        "bug",
-        "--claim",
-        "fixed",
-        "--falsifier",
-        "false",
-        "--files",
-        "a",
-        "--covered-by",
-        "full",
-    )
-    assert result.returncode == 0, result.stderr
-    ref = result.stdout.strip()
-    assert (
-        work(
-            repo,
-            env,
-            "resolve",
-            "--ref",
-            ref,
-            "--falsifier",
-            writes(counter),
-            "--covered-by",
-            "none",
-        ).returncode
-        == 0
-    )
-    before = counter.read_text()
-
-    assert sprint(repo, env, "start").returncode == 0
-    assert counter.read_text() == before + "x"
-
-
-def test_a_resolution_coverage_declaration_is_visible_to_sprint_review(tmp_path):
-    repo, env, _g = make_repo(tmp_path)
-    filed = work(
-        repo,
-        env,
-        "bug",
-        "--claim",
-        "fixed",
-        "--falsifier",
-        "false",
-        "--files",
-        "a",
-    )
-    result = work(
-        repo,
-        env,
-        "resolve",
-        "--ref",
-        filed.stdout.strip(),
-        "--falsifier",
-        "true",
-        "--covered-by",
-        "full",
-    )
-    assert result.returncode == 0, result.stderr
-
-    assert sprint(repo, env, "review").returncode == 0
-    body = section(
-        launches(tmp_path)[0]["stdin"], "Resolutions filed during the sprint", WORK_SECTION
-    )
-    assert "covered by: full" in body

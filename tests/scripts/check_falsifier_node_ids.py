@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Refuse stale node IDs and unowned or unconstructable falsifier scripts."""
+"""Check actionable OPEN falsifier nodes and scripts."""
 
 import argparse
 import os
@@ -78,21 +78,14 @@ def script_owners(records) -> dict[str, list[str]]:
 def script_correspondence(records, scripts_dir: Path) -> int:
     owners = script_owners(records)
     present = {f"tests/scripts/{path.name}" for path in scripts_dir.glob("falsifier_*.py")}
-    orphans = present - owners.keys()
     missing = owners.keys() - present
-    for path in sorted(orphans):
-        print(
-            f"refused: orphan falsifier script {path}; no live Falsifier line owns it."
-            " Remove it if its record was archived, or restore a live Falsifier line",
-            file=sys.stderr,
-        )
     for path in sorted(missing):
         print(
             f"refused: live record(s) {', '.join(owners[path])} name missing script {path}."
             " Restore the script or repoint the live Falsifier line",
             file=sys.stderr,
         )
-    return int(bool(orphans or missing))
+    return int(bool(missing))
 
 
 def run_at_repo_root(command: str):
@@ -224,7 +217,7 @@ def main() -> int:
     parser.add_argument(
         "--skip-script-audit",
         action="store_true",
-        help="check script ownership without executing live script commands",
+        help="check open command paths without executing them",
     )
     args = parser.parse_args()
     root = args.root or data_root()

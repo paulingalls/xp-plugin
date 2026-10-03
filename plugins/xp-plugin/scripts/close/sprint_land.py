@@ -9,7 +9,6 @@ import overlap
 import preflight as pf
 import tier_legs
 from env import data_root
-from falsifier_batch import ARCHIVED, batch_refusal, execute_batch, grouped_batch
 from milestone import sprint_stories
 from release import (
     VERSIONING_OFF_TEXT,
@@ -252,46 +251,6 @@ def cmd_land(sprint_id: str, dry_run: bool) -> int:
             f"refused: {history_error} in sprint marker {marker} — repair or delete"
             " full_tier_history, then run land again"
         )
-    start_ids = state.get("start_deferred_ids", [])
-    if not isinstance(start_ids, list) or any(not isinstance(eid, str) for eid in start_ids):
-        return fail(
-            f"refused: unreadable start_deferred_ids in sprint marker {marker} — delete that"
-            f" key, run `close.py sprint {sprint_id} start` to re-record it, then land again"
-        )
-    root = data_root()
-    _standalone, pre_deferred, _records, _source, error = grouped_batch(root)
-    if error:
-        return fail(f"refused: {error}")
-    retry = f"`close.py sprint {sprint_id} land`"
-
-    def after_full(tier_red: str) -> str:
-        _standalone, deferred, records, _source, error = grouped_batch(root)
-        if error:
-            return f"refused: {error}"
-        displaced = {key: sources for key, sources in pre_deferred.items() if key not in deferred}
-        deferred_ids = {eid for sources in deferred.values() for eid, _head, _covered in sources}
-        displaced_ids = {eid for sources in displaced.values() for eid, _head, _covered in sources}
-        for record in records:
-            if (
-                record.eid in start_ids
-                and record.eid not in deferred_ids | displaced_ids
-                and record.state != ARCHIVED
-            ):
-                displaced.setdefault(record.falsifier, []).append(
-                    (record.eid, record.head, record.covered)
-                )
-        if tier_red:
-            rerun = deferred | displaced
-            results = execute_batch(rerun)
-            return batch_refusal(root, rerun, results, retry) or tier_red
-        if displaced:
-            results = execute_batch(displaced)
-            if red := batch_refusal(root, displaced, results, retry):
-                return red
-        for sources in deferred.values():
-            for eid, head, covered in sources:
-                print(f"trusted {eid} ({head}) via tier {covered}")
-        return ""
 
     def record_attempt(event: dict, receipt: dict | None) -> str:
         try:
@@ -301,12 +260,11 @@ def cmd_land(sprint_id: str, dry_run: bool) -> int:
         return ""
 
     red, receipt = overlap.gates(
-        ref, [], "full", pending, prior, after_full, record_attempt, history, legs
+        ref, [], "full", pending, prior, None, record_attempt, history, legs
     )
     if red:
         return fail(_clearance_failure(red, bound) if bound else red)
-    # Read AFTER the falsifier batch, not the snapshot from before the tier: a round
-    # recorded while either ran must reach the gate and the disclosure below.
+    # Validation may outlast a concurrent review; gate its latest state.
     marker, state, marker_error = read_sprint_state(sprint_id)
     if marker_error:
         return fail(marker_error)

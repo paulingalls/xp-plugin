@@ -443,7 +443,6 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
     failed += bookkeep.remove_story_checkout(
         story_tree if held else "", branch, close.config_flat("teardown_timeout")
     )
-    bookkeep.delete_story_markers(story_id)
     bookkeep.log_close(story_id, card, rounds, merge_sha, files_beyond_map)
     marker.unlink()
     land_red.unlink(missing_ok=True)

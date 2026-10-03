@@ -20,9 +20,7 @@ from falsifier_batch import (
     batch_refusal,
     execute_batch,
     grouped_batch,
-    resolved_offers,
     triage_notes,
-    unavailable_coverage,
 )
 from review_artifacts import (
     restore_sprint_queue,
@@ -39,7 +37,6 @@ from review_runner import (
 from sprint_state import read_sprint_state, sprint_marker, write_sprint_state
 from timing import Span, report
 from work import (
-    config_block_value,
     data_root,
     missing_plan_refusal,
     plan_path,
@@ -156,7 +153,7 @@ def cmd_start(sprint_id: str, dry_run: bool = False) -> int:
         print(f"recorded; {len(unfinished)} stories unfinished — close checks wait")
         return 0
 
-    marker, state, marker_error = read_sprint_state(sprint_id)
+    _marker, state, marker_error = read_sprint_state(sprint_id)
     if marker_error:
         return fail(marker_error)
     if dirty := git("status", "--porcelain").stdout.strip():
@@ -167,12 +164,7 @@ def cmd_start(sprint_id: str, dry_run: bool = False) -> int:
     if error := pf.check(config_flat("preflight")):
         return fail(error)
     root = data_root()
-    standalone, deferred, records, source, coverage_error = grouped_batch(root)
-    if coverage_error:
-        return fail(f"refused: {coverage_error}")
-    tiers = config_block_value("tests")
-    for notice in unavailable_coverage(records, tiers):
-        print(notice)
+    standalone, source = grouped_batch(root)
     span = Span(root, "falsifier-batch", f"Sprint {sprint_id} start")
     try:
         results = execute_batch(standalone)
@@ -185,15 +177,6 @@ def cmd_start(sprint_id: str, dry_run: bool = False) -> int:
         return fail(red)
     if dirty := git("status", "--porcelain").stdout.strip():
         return fail(f"refused: the falsifier batch left the working tree dirty:\n  {dirty}")
-    deferred_ids = sorted(eid for sources in deferred.values() for eid, _head, _covered in sources)
-    if (deferred_ids or "start_deferred_ids" in state) and state.get(
-        "start_deferred_ids"
-    ) != deferred_ids:
-        try:
-            write_sprint_state(marker, {"start_deferred_ids": deferred_ids})
-        except (OSError, ValueError) as exc:
-            return fail(f"refused: could not record deferred falsifiers at {marker}: {exc}")
-
     if completion := milestone.candidate(plan.read_text(), sprint_id):
         print(f"\n{completion.heading.rstrip()}")
         print(f"close.py sprint {sprint_id} milestone-done")
@@ -209,7 +192,6 @@ def cmd_start(sprint_id: str, dry_run: bool = False) -> int:
     if evidence_errors:
         return fail("refused: close evidence needs repair before triage")
     notes = triage_notes(source)
-    print("\n" + resolved_offers(records, results))
     print(f"\n{len(members)} stories, {len(notes)} notes to triage. Each note: promote to")
     print("reviewed executable work, preserve in the narrative retro, or archive explicitly.\n")
     for text in notes:

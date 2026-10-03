@@ -96,6 +96,7 @@ class EnvRefreshCases:
         path = self.seed(tmp_path)
         before = path.read_bytes()
         monkeypatch.setenv("XP_DATA", str(tmp_path / "xp"))
+        monkeypatch.setenv("XP_ROLE", "lead")
 
         def fail_replace(_self, _target):
             raise OSError("fault-injected replace failure")

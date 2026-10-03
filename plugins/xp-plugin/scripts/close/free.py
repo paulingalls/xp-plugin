@@ -179,7 +179,6 @@ def cmd_post_merge(slug: str, dry_run: bool = False) -> int:
         failed.append(f"flip {key} to [done] in {plan_path()}")
     failed += bookkeep.remove_story_checkout(tree, spawned_branch, config_flat("teardown_timeout"))
     failed += bookkeep.delete_story_branch(branch)
-    bookkeep.delete_story_markers(key)
     ready_marker_path(key).unlink(missing_ok=True)
     marker_path(key).unlink(missing_ok=True)
     verify_receipt.path(key).unlink(missing_ok=True)

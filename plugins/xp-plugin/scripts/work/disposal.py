@@ -8,7 +8,6 @@ from work import (
     _record,
     _single_line,
     append,
-    checked_coverage,
     entries,
     falsifier_is_green,
     neutralize,
@@ -40,14 +39,7 @@ def _resolved(root: Path, ref: str) -> bool:
 
 
 def resolve(root: Path, args: argparse.Namespace) -> int:
-    """Resolve a record by SUBSTITUTING a falsifier, never by deleting one.
-
-    Marking a record done is an unchecked assertion, and one command would
-    silence a live bug forever. The replacement must be green now and the batch
-    runs it, so a wrong resolution reds later and the record reopens.
-    """
-    if (coverage := checked_coverage(args, required=True)) is None:
-        return 2
+    """Record a resolution with green replacement evidence; the suite owns regression."""
     if not _single_line(args.falsifier, "falsifier"):
         return 2
     if (kind := _kind_of(root, args.ref)) is None:
@@ -78,8 +70,7 @@ def resolve(root: Path, args: argparse.Namespace) -> int:
     print(
         append(
             root,
-            f"## resolved {stamp()}\nResolves: {args.ref}\nFalsifier: `{args.falsifier}`\n"
-            f"{coverage}\n",
+            f"## resolved {stamp()}\nResolves: {args.ref}\nFalsifier: `{args.falsifier}`\n\n",
         )
     )
     return 0

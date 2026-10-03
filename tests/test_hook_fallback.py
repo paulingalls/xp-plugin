@@ -1,18 +1,12 @@
 import json
 import os
-import shlex
 import subprocess
 from pathlib import Path
 
 import pytest
 
 HOOKS = Path(__file__).parent.parent / "plugins" / "xp-plugin" / "hooks" / "hooks.json"
-SCRIPTS = {
-    "SessionStart": "session_start.py",
-    "PostToolUse": "bash_status.py",
-    "Stop": "stop_gate.py",
-    "PostToolUseFailure": "bash_status.py",
-}
+SCRIPTS = {"SessionStart": "session_start.py"}
 
 
 def commands():
@@ -67,11 +61,11 @@ def test_deleted_root_runs_sibling_with_streams_and_status(tmp_path, event):
 
 def test_numeric_newest_sibling_with_script_wins(tmp_path):
     gone = tmp_path / "0.23.1"
-    script(tmp_path / "0.23.2", "stop_gate.py", b"wrong", 2)
-    script(tmp_path / "0.23.10", "stop_gate.py", b"right", 10)
-    script(tmp_path / "0.24.0", "bash_status.py", b"incomplete", 24)
+    script(tmp_path / "0.23.2", "session_start.py", b"wrong", 2)
+    script(tmp_path / "0.23.10", "session_start.py", b"right", 10)
+    script(tmp_path / "0.24.0", "unrelated.py", b"incomplete", 24)
 
-    result = run(commands()["Stop"], gone)
+    result = run(commands()["SessionStart"], gone)
 
     assert result.stdout == b"right"
     assert result.returncode == 10
@@ -80,9 +74,9 @@ def test_numeric_newest_sibling_with_script_wins(tmp_path):
 
 def test_no_usable_sibling_is_advisory(tmp_path):
     gone = tmp_path / "0.23.1"
-    script(tmp_path / "0.23.2", "bash_status.py", b"unrelated", 2)
+    script(tmp_path / "0.23.2", "unrelated.py", b"unrelated", 2)
 
-    result = run(commands()["Stop"], gone)
+    result = run(commands()["SessionStart"], gone)
 
     assert result.returncode == 0
     assert result.stdout == b""
@@ -94,10 +88,10 @@ def test_intact_root_never_switches(script_present, tmp_path):
     pinned = tmp_path / "0.23.1"
     pinned.mkdir()
     if script_present:
-        script(pinned, "stop_gate.py", b"pinned", 7)
-    script(tmp_path / "0.23.2", "stop_gate.py", b"sibling", 8)
+        script(pinned, "session_start.py", b"pinned", 7)
+    script(tmp_path / "0.23.2", "session_start.py", b"sibling", 8)
 
-    result = run(commands()["Stop"], pinned)
+    result = run(commands()["SessionStart"], pinned)
 
     if script_present:
         assert result.stdout == b"pinned"
@@ -107,14 +101,3 @@ def test_intact_root_never_switches(script_present, tmp_path):
         assert result.returncode == 0
         assert result.stdout == b""
         assert str(pinned).encode() in result.stderr
-
-
-def test_all_four_commands_share_one_launcher():
-    actual = commands()
-    assert set(actual) == set(SCRIPTS)
-    normalized = []
-    for event, command in actual.items():
-        words = shlex.split(command)
-        assert words[-1] == SCRIPTS[event]
-        normalized.append(command.removesuffix(SCRIPTS[event]))
-    assert len(set(normalized)) == 1

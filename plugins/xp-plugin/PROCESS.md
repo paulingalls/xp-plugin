@@ -1,5 +1,5 @@
 # Process
-`/xp-setup` once; exact `recover:` command; first region next; artifacts win.
+`/xp-setup` once; exact `recover:` command after reload or resuming; first region next; artifacts win.
 Every review is named for the artifact it reads:
 **slate review** → **execution plan review** → **diff review**.
 Background long legs. No timeout.
