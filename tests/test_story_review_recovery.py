@@ -394,3 +394,52 @@ def test_correction_diagnostic_guard_detects_omission(tmp_path, monkeypatch):
     mutant.mkdir()
     with pytest.raises(AssertionError):
         test_correction_receives_measured_refusal_and_preserves_attempt(mutant, "claude", "drop")
+
+
+@pytest.mark.parametrize("harness", ["claude", "codex"])
+@pytest.mark.parametrize("producer", ["fixer", "closer"])
+def test_fixed_object_correction_preserves_committed_work(tmp_path, harness, producer):
+    repo, env, git, key, events, hooks = flow_repo(tmp_path, harness, scenario="fixed")
+    expected = tmp_path / "expected-refusal"
+    binary = tmp_path / "bin" / harness
+    binary.write_text(
+        binary.read_text()
+        .replace(
+            "if stage=='fixer':",
+            "if stage=='fixer' and 'Correct only the incomplete report' not in prompt:",
+        )
+        .replace(
+            "path=re.search",
+            f"if stage=={producer!r}:\n"
+            "    report['fixed']=[{'finding':'A must equal 3'}]\n"
+            f"    expected=Path({str(expected)!r})\n"
+            "    if expected.exists() and expected.read_text() in prompt "
+            "and re.search(r'\\bstrings?\\b',expected.read_text()):\n"
+            "        report['fixed']=['A must equal 3']\n"
+            "path=re.search",
+        )
+    )
+    assert invoke(repo, env, key).returncode == 2
+    before = checkpoint(env, key)
+    assert before["status"] == "incomplete" and before["producer"] == producer
+    original = Path(before["stages"][producer]["path"])
+    raw = original.read_bytes()
+    assert json.loads(raw)["fixed"] == [{"finding": "A must equal 3"}]
+    head = git("rev-parse", "HEAD").stdout
+    expected.write_text(before["problem"])
+    result = invoke(repo, env, key)
+    assert result.returncode == 0, result.stderr
+    after = checkpoint(env, key)
+    assert after["id"] == before["id"] and after["output"] == before["output"]
+    assert after["stages"][producer]["prior_attempts"] == [before["stages"][producer]]
+    assert after["stages"][producer]["report"]["fixed"] == ["A must equal 3"]
+    assert original.read_bytes() == raw
+    assert git("rev-parse", "HEAD").stdout == head
+    assert (repo / "src/thing.py").read_text() == "A = 3\n"
+    assert hooks.read_text().splitlines() == ["hook"]
+    assert events.read_text().splitlines() == (
+        ["solution", "fixer", "fixer", "closer"]
+        if producer == "fixer"
+        else ["solution", "fixer", "closer", "closer"]
+    )
+    assert after["status"] == "completed"

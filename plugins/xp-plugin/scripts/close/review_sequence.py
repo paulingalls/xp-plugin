@@ -117,10 +117,15 @@ def stage(story_id, card, sequence, name, correction=False):
             "Use red-green-refactor, run the card Verify and configured story tier, then "
             "commit through normal Git hooks using the repository identity. "
             "Never bypass hooks or change the card/close marker. Preserve failed work. "
-            "Write JSON with blocking findings; optional fixed, dropped and debt explain decisions."
+            "Write JSON with blocking findings."
             if name == "fixer"
             else "Read-only narrow closure: check these fixes and concrete regressions. "
             "Do not reopen general design review. Write JSON with blocking findings."
+        )
+        charter += (
+            " Optional fixed is a list of finding strings. Each dropped item is an object "
+            "with nonempty finding and reason strings; each debt item is an object with "
+            "nonempty finding, ref, too_big and too_important strings."
         )
         prompt = f"## Your charter\n{charter}\n## Story card\n{card}\n"
         prompt += "## Completed solution findings and fix evidence\n" + json.dumps(

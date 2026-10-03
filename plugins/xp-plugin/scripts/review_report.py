@@ -42,7 +42,7 @@ def normalize_report(data, *, fresh=False, stage="") -> tuple[dict, str]:
         if key in data and not isinstance(data[key], list):
             return {}, f"{key} must be a list"
     if "fixed" in data and not all(isinstance(item, str) for item in data["fixed"]):
-        return {}, "fixed must contain finding text"
+        return {}, "fixed must be a list of finding text strings, not objects"
     for key, fields in (
         ("dropped", ("finding", "reason")),
         ("debt", ("finding", "ref", "too_big", "too_important")),
