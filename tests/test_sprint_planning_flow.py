@@ -392,7 +392,7 @@ def test_open_separation_mutants(tmp_path, defect):
             'return "\\n".join([owner.heading.rstrip(), *fields, cards])', "return cards"
         )
     elif defect == "branch":
-        text = text.replace("    env.record_sprint_branch(branch)\n", "", 1)
+        text = text.replace("\n    env.record_sprint_branch(branch)\n", "\n", 1)
     elif defect == "milestone":
         text = text.replace("        move(sprint_id)", "        pass")
     else:
@@ -409,6 +409,7 @@ def test_open_separation_mutants(tmp_path, defect):
             '        return fail("capacity exceeded")\n',
         }[defect]
         text = text.replace("    if dry_run:\n", injected + "    if dry_run:\n", 1)
+    compile(text, str(path), "exec")
     path.write_text(text)
     node = (
         "test_over_guidance_slate_reviews_and_opens[False-claude]"
