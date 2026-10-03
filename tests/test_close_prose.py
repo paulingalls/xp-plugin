@@ -196,33 +196,6 @@ class TestShippedProseMatchesTheMechanism:
             ]
             assert len(matches) == 1, f"{name} has {len(matches)} complete copies: {matches}"
 
-    def test_both_shipped_copies_name_the_two_reviews_and_who_owns_the_plan(self):
-        """The lead drafted the executor's implementation plan twice in one week
-        (bug 898ad9e1, note c3d8e2a7): one word covered two artifacts and no
-        lead-facing sentence said whose each was. The executable pin holds both
-        copies directly — ownership in the LEAD's, where that bug was written, and
-        the handoff in the executor's — so a later edit cannot silently remove the
-        newest, least-obvious sentence. "sprint review" is
-        excluded by name: `close.py sprint <id> review` already holds it.
-        """
-        process = prose(PLUGIN / "PROCESS.md").lower()
-        import spawn
-
-        executor = " ".join(
-            dict(spawn.teammate_sections("card", "story-042", "", PLUGIN, multifile=True))[
-                "How you work"
-            ]
-            .lower()
-            .split()
-        )
-        for name, text in (("PROCESS.md", process), ("EXECUTOR.md", executor)):
-            assert "slate review" in text, f"{name}: the lead's review is unnamed"
-            assert "execution plan review" in text, f"{name}: plan review unnamed"
-        assert process.count("sprint review") == 1, "PROCESS.md confuses the routed review"
-        assert "sprint review" not in executor, "EXECUTOR.md: close.py owns that phrase"
-        assert "the planner writes the plan" in process, "PROCESS.md: the plan's owner is unnamed"
-        assert "re-read the reviewed plan" in executor, "multi-file brief drops the handoff"
-
     def test_a_mandatory_step_failing_twice_routes_to_escalation(self):
         teammate = " ".join(prose(PLUGIN / "EXECUTOR.md").lower().split())
         assert "mandatory step fails twice for infrastructure reasons" in teammate

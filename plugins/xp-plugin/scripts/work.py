@@ -282,11 +282,6 @@ def edit_card_command(args: argparse.Namespace) -> int:
             f"Repair {args.candidate}; if stale, run `{snapshot}`, retain your edits there,"
             " then retry edit-card with its printed digest and status."
         )
-        if context == "refresh":
-            sys.path.insert(0, str(Path(__file__).parent / "spawn"))
-            from ready import refresh_instruction
-
-            repair = refresh_instruction(args.story_id)
         print(
             f"refused: {context} {args.story_id} cannot apply: {error}. {repair}", file=sys.stderr
         )
@@ -395,7 +390,7 @@ def main() -> int:
         "edit-card", help="validate and apply one card candidate under the plan lock"
     )
     e.add_argument("story_id")
-    e.add_argument("--context", choices=("card-edit", "refresh", "executor"), default="card-edit")
+    e.add_argument("--context", choices=("card-edit", "executor"), default="card-edit")
     e.add_argument("--digest", required=True)
     e.add_argument("--status", required=True)
     e.add_argument("candidate", type=Path)

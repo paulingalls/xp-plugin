@@ -128,22 +128,6 @@ def run(
         reviewed_now = True
         accepted = getattr(result, "acceptance", None) or latest(story_id)
         if rc:
-            if outcome == "capped":
-                api.handoff_io.mark_plan_reviewed(
-                    api.data_root(), story_id, api.ready().current_digest(story_id), accepted
-                )
-                findings, problem = api.handoff_io.current_findings(api.data_root(), story_id)
-                if not problem and findings:
-                    outcome, problem = api.handoff_io.current_disposition(findings)
-                if problem:
-                    return stop(f"execution plan review cap: {problem}", 0)
-                if not accepted:
-                    return stop(
-                        "execution plan review reached its two-round cap; read and apply both"
-                        f" dispositions, then run `spawn.py resume {story_id}`",
-                        0,
-                    )
-                rc = 0
             if outcome == "blocked":
                 api.handoff_io.mark_plan_reviewed(
                     api.data_root(), story_id, api.ready().current_digest(story_id), accepted

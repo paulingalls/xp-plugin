@@ -37,5 +37,5 @@ sprint-open lifecycle and records the sprint.
 
 ## Done
 
-Do not run `spawn.py ready <story-id>` for any card until the review and sprint
+Do not launch a story until the review and sprint
 open are complete.

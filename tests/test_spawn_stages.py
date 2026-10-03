@@ -4,7 +4,7 @@ import shlex
 import subprocess
 import sys
 
-from spawn_helpers import SPAWN, make_repo, seed_refresh_receipt, spawn
+from spawn_helpers import SPAWN, make_repo, spawn
 from spawn_stages_support import stub_stages
 from spawn_stash_cases import TestDirtyReviewStash, dirty_review_repo  # noqa: F401
 
@@ -185,7 +185,6 @@ class TestSpawnStages:
         plan.write_text(
             plan.read_text().replace("Executor:", "Planner: claude/card-planner\nExecutor:")
         )
-        seed_refresh_receipt(repo, env)
         amended = spawn(repo, env, "amend", "story-042", "--reason", "exercise planner override")
         assert amended.returncode == 0, amended.stderr
         assert g("commit", "-aqm", "distinct project roles").returncode == 0

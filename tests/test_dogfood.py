@@ -97,7 +97,7 @@ class TestDogfoodMatchesTheScaffold(ConstraintsWallCases):
             }
             for label, text in (("shipped", shipped_text), ("dogfood", dogfood_text))
         }
-        required = {"roles.planner", "roles.slate-reviewer", "roles.card-refresher"}
+        required = {"roles.planner", "roles.slate-reviewer"}
         redundant = {"roles.story-reviewer", "roles.sprint-reviewer"}
         invalid = {
             (label, key, spec)
@@ -110,7 +110,8 @@ class TestDogfoodMatchesTheScaffold(ConstraintsWallCases):
         problems = {
             "missing": missing,
             "required": {label: required - roles.keys() for label, roles in role_specs.items()},
-            "parity": role_specs["shipped"].keys() ^ role_specs["dogfood"].keys(),
+            "parity": (role_specs["shipped"].keys() ^ role_specs["dogfood"].keys())
+            - {"roles.card-refresher"},
             "redundant": {label: redundant & roles.keys() for label, roles in role_specs.items()},
             "invalid": invalid,
         }

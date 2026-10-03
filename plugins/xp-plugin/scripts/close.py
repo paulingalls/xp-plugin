@@ -18,7 +18,6 @@ from lifecycle import declared_commands as verify_commands
 from review_artifacts import (
     advance_story_checkpoints,
 )
-from review_depth import render as render_review_depth
 from review_launch import verify_on_reviewed_tree
 from work import (
     chdir_repo_root,
@@ -199,12 +198,15 @@ def build_bundle(card: str, base: str, report: Path, prior: str = "", notice: st
     import review  # function-local: spawn -> close -> review would close a cycle
 
     base_epoch = int(git("show", "-s", "--format=%ct", base).stdout.strip())
-    depth = render_review_depth(card)
+    executor_log = data_root() / "logs" / f"{card.split()[1]}-executor.log"
     sections = [
         ("Your charter", review.charter()),
         ("Your report", f"REPORT_PATH: {report}\nPATCH_PATH: {review.patch_path(report)}"),
         ("Story card", card),
-        *([("Close-review depth", depth)] if depth else []),
+        (
+            "Execution evidence",
+            f"EXECUTOR_LOG: {executor_log}\nRead it when present for implementation observations.",
+        ),
         *([("Before you start", notice)] if notice else []),
         ("Earlier rounds of THIS review", prior or "none — you are round 1"),
         ("Cumulative diff", render_diff_range(base, "HEAD")),

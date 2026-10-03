@@ -1,10 +1,12 @@
 import json
+import re
 import subprocess
 import sys
 
 from spawn_helpers import make_repo, spawn
 from spawn_stages_support import stub_stages
 from test_plan_review import PLUGIN
+from test_spawn_stages import event_roles
 
 QUESTION = "Which storage policy should the human choose?"
 REASON = "Feedback: exercise the silent loss boundary"
@@ -58,11 +60,6 @@ def invalid_cases():
         add(f"status-{value!r}", {"status": value})
     for value in [None, "reason", [None], [3], [""], ["***"]]:
         add(f"reasons-{value!r}", {"reasons": value})
-    add("edited-unchanged", {"status": "edited"})
-    add("clean-changed", {}, BEFORE, AFTER)
-    add("blocked-no-reason", {"status": "blocked", "human_question": QUESTION}, BEFORE, AFTER)
-    add("reason-absent", {"status": "edited", "reasons": ["absent reason"]}, BEFORE, AFTER)
-    add("reason-without-motion", {"reasons": [REASON]})
     cases.extend(
         (name, text, BEFORE, BEFORE)
         for name, text in [
@@ -90,23 +87,6 @@ def guard_faults():
             "pass",
         ),
         "contradictory-question": ('if "question" in report:', "if False:"),
-        "edited-unchanged": (
-            'problem = "an edited disposition left the plan unchanged"',
-            'problem = ""',
-        ),
-        "reason-without-motion": (
-            'problem = "edit reasons reported but the plan is unchanged"',
-            'problem = ""',
-        ),
-        "clean-changed": ('problem = "a clean review changed the plan"', 'problem = ""'),
-        "blocked-no-reason": (
-            'problem = "every plan edit must carry its reason in the plan file"',
-            'problem = ""',
-        ),
-        "reason-absent": (
-            'problem = "every plan edit must carry its reason in the plan file"',
-            'problem = ""',
-        ),
         "missing-object": (
             'return None, "the plan review wrote no structured disposition"',
             f'return {json.loads(report())!r}, ""',
@@ -139,7 +119,7 @@ def guard_faults():
             line = (
                 'return "", None, "plan reasons must be a JSON list"'
                 if not isinstance(json.loads(text).get("reasons"), list)
-                else 'return "", None, "every plan edit must carry its reason in the plan file"'
+                else 'return "", None, "plan reasons must contain non-empty text"'
             )
             mutation = (line, 'report["reasons"] = reasons = []')
         else:
@@ -164,36 +144,6 @@ def parser_probe(path, text, before, after):
     result = subprocess.run([sys.executable, "-c", program], capture_output=True, text=True)
     assert result.returncode == 0, result.stderr
     return result.stdout
-
-
-def test_a_capped_foreground_plan_review_is_recorded_apart_from_a_dead_reviewer(tmp_path):
-    from pathlib import Path
-
-    from spawn_helpers import make_repo, spawn
-    from test_spawn_stages import event_roles, stub_stages
-
-    repo, env, _g = make_repo(tmp_path, files="src/thing.py, src/other.py")
-    events = stub_stages(tmp_path, blocking_plan=True)
-    assert spawn(repo, env, "story-042").returncode != 0
-    from plan_review_install import legacy_credential
-
-    legacy_credential(tmp_path)
-    plans = Path(env["XP_DATA"]) / "plans"
-    (plans / "story-042.round-2.md").write_text(
-        '{"status":"clean","human_question":null,"reasons":[]}'
-    )
-    marker = plans / "story-042.handoff.json"
-    state = json.loads(marker.read_text())
-    state["state"], state["stages"]["plan-reviewer"] = "STOPPED", "failed"
-    marker.write_text(json.dumps(state))
-    seen = len(event_roles(events))
-    stub_stages(tmp_path)
-    capped = spawn(repo, env, "resume", "story-042")
-    assert capped.returncode == 2 and event_roles(events)[seen:] == []
-    state = json.loads(marker.read_text())
-    assert state["stages"]["plan-reviewer"] == "ran" and "cap" in state["why"]
-    assert spawn(repo, env, "resume", "story-042").returncode == 0
-    assert event_roles(events)[seen:] == ["teammate", "reviewer"]
 
 
 def consumer(tmp_path, status="edited"):
@@ -239,3 +189,34 @@ def answer(tmp_path, repo, env, launch=spawn):
             repr(report("blocked", QUESTION, [REASON])), repr(report("edited", None, [REASON]))
         )
         binary.write_text(text)
+
+
+def repeated_stop(tmp_path, repo, env, seen, launch=spawn):
+    for args in [
+        ("story-042",),
+        ("resume", "story-042"),
+        ("resume", "story-042"),
+        ("resume", "story-042"),
+    ]:
+        assert launch(repo, env, *args).returncode != 0
+    assert event_roles(seen).count("plan-reviewer") == 1
+    assert "teammate" not in event_roles(seen)
+    assert not (tmp_path / "data/plans/story-042.round-3.md").exists()
+    state = json.loads((tmp_path / "data/plans/story-042.handoff.json").read_text())
+    assert QUESTION in state["why"]
+
+
+def answered_resume(tmp_path, repo, env, seen, launch=spawn):
+    answer(tmp_path, repo, env, launch)
+    result = launch(repo, env, "resume", "story-042")
+    assert result.returncode == 0, result.stderr
+    event = next(
+        json.loads(line)
+        for line in seen.read_text().splitlines()
+        if json.loads(line)["role"] == "teammate"
+    )
+    path = re.search(r"^Plan-review findings: (.+)$", event["prompt"], re.M).group(1)
+    current = json.loads(__import__("pathlib").Path(path).read_text())
+    assert current["human_question"] is None
+    assert REASON in current["reasons"]
+    assert "human chose local storage" in event["prompt"]

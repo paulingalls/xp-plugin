@@ -312,7 +312,6 @@ def test_installed_consumer_evidence_walk(tmp_path, harness, scope):
     from close_free_card_cases import add_free_card, checkout_free, commit_on_free
     from close_helpers import PLUGIN, free, free_repo
     from spawn_helpers import make_repo as spawn_repo
-    from spawn_helpers import seed_refresh_receipt
     from test_spawn_stages import stub_stages
     from test_verify_evidence import locator
 
@@ -370,7 +369,6 @@ def test_installed_consumer_evidence_walk(tmp_path, harness, scope):
         g("checkout", "-q", branch)
         g("merge", "-q", "main")
         g("checkout", "-q", "main")
-    seed_refresh_receipt(repo, env, identity)
 
     def invoke(script, argv, cwd=repo):
         return subprocess.run(

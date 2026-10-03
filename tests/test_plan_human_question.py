@@ -9,10 +9,12 @@ from plan_human_question_support import (
     QUESTION,
     REASON,
     answer,
+    answered_resume,
     consumer,
     guard_faults,
     invalid_cases,
     parser_probe,
+    repeated_stop,
     report,
 )
 from plan_review import durable_disposition, evaluate_disposition
@@ -134,41 +136,9 @@ def test_legacy_question_survives_recovery(tmp_path, filename, state_kind):
     assert "teammate" not in event_roles(seen)
 
 
-def capped_stop(tmp_path, repo, env, seen, launch=spawn):
-    for args in [
-        ("story-042",),
-        ("resume", "story-042"),
-        ("resume", "story-042"),
-        ("resume", "story-042"),
-    ]:
-        assert launch(repo, env, *args).returncode != 0
-        legacy_credential(tmp_path)
-    assert event_roles(seen).count("plan-reviewer") == 2
-    assert "teammate" not in event_roles(seen)
-    assert not (tmp_path / "data/plans/story-042.round-3.md").exists()
-    state = json.loads((tmp_path / "data/plans/story-042.handoff.json").read_text())
-    assert QUESTION in state["why"]
-
-
-def test_unanswered_cap_does_not_authorize_execution(tmp_path):
+def test_unanswered_question_does_not_authorize_execution(tmp_path):
     repo, env, seen = consumer(tmp_path, "blocked")
-    capped_stop(tmp_path, repo, env, seen)
-
-
-def answered_resume(tmp_path, repo, env, seen, launch=spawn):
-    answer(tmp_path, repo, env, launch)
-    result = launch(repo, env, "resume", "story-042")
-    assert result.returncode == 0, result.stderr
-    event = next(
-        json.loads(line)
-        for line in seen.read_text().splitlines()
-        if json.loads(line)["role"] == "teammate"
-    )
-    path = re.search(r"^Plan-review findings: (.+)$", event["prompt"], re.M).group(1)
-    current = json.loads(__import__("pathlib").Path(path).read_text())
-    assert current["human_question"] is None
-    assert REASON in current["reasons"]
-    assert "human chose local storage" in event["prompt"]
+    repeated_stop(tmp_path, repo, env, seen)
 
 
 def test_answered_resume_uses_current_findings(tmp_path):
@@ -177,14 +147,13 @@ def test_answered_resume_uses_current_findings(tmp_path):
     answered_resume(tmp_path, repo, env, seen)
 
 
-def test_answered_resume_after_unanswered_cap_uses_current_findings(tmp_path):
+def test_answered_resume_after_repeated_stops_uses_current_findings(tmp_path):
     repo, env, seen = consumer(tmp_path, "blocked")
-    capped_stop(tmp_path, repo, env, seen)
+    repeated_stop(tmp_path, repo, env, seen)
     answered_resume(tmp_path, repo, env, seen)
 
 
-@pytest.mark.parametrize("fault", [False, True], ids=["answered", "cap-reset-fault"])
-def test_answered_legacy_cap_uses_current_findings(tmp_path, fault):
+def test_answered_legacy_rounds_use_current_findings(tmp_path):
     repo, env, seen = consumer(tmp_path, "blocked")
     assert spawn(repo, env, "story-042").returncode != 0
     legacy_credential(tmp_path)
@@ -196,16 +165,6 @@ def test_answered_legacy_cap_uses_current_findings(tmp_path, fault):
     state = json.loads(marker.read_text())
     state.pop("plan_reviewed_card")
     marker.write_text(json.dumps(state))
-    if fault:
-        launch = installed_launch(
-            tmp_path,
-            ("or plan_needs_replan(\n        story_id, reviewed\n    )", "or False"),
-            relative="scripts/spawn/handoff.py",
-        )
-        with pytest.raises(AssertionError):
-            answered_resume(tmp_path, repo, env, seen, launch)
-        assert "teammate" not in event_roles(seen)
-        return
     answered_resume(tmp_path, repo, env, seen)
     assert (plans / "story-042.superseded-1.round-1.md").read_text() == old
     assert (plans / "story-042.superseded-1.round-2.md").read_text() == old
@@ -344,7 +303,7 @@ def test_stale_question_selection_detects_its_fault(tmp_path):
     assert "teammate" not in event_roles(seen)
 
 
-@pytest.mark.parametrize("guard", ["legacy-extraction", "durable-question", "card-cap-reset"])
+@pytest.mark.parametrize("guard", ["legacy-extraction", "durable-question"])
 @pytest.mark.meta
 def test_recovery_guards_detect_their_fault(tmp_path, guard):
     repo, env, seen = consumer(tmp_path, "blocked")
@@ -373,31 +332,18 @@ def test_recovery_guards_detect_their_fault(tmp_path, guard):
         with pytest.raises(AssertionError):
             assert QUESTION in result.stderr
         assert "teammate" not in event_roles(seen)
-    elif guard == "durable-question":
-        launch = installed_launch(
-            tmp_path,
-            (
-                'if question is not None:\n        return "blocked",',
-                'if False:\n        return "blocked",',
-            ),
-        )
-        with pytest.raises(AssertionError):
-            capped_stop(tmp_path, repo, env, seen, launch)
-        assert event_roles(seen).count("plan-reviewer") == 2
-        assert "teammate" in event_roles(seen)
     else:
-        capped_stop(tmp_path, repo, env, seen)
-        launch = installed_launch(
-            tmp_path,
-            (
-                "or plan_needs_replan(\n        story_id, reviewed\n    )",
-                "or False",
-            ),
-            relative="scripts/spawn/handoff.py",
+        source = (PLUGIN / "scripts/plan_disposition.py").read_text()
+        scope = {}
+        exec(compile(source, "plan_disposition.py", "exec"), scope)
+        text = report("blocked", QUESTION)
+        assert scope["durable_disposition"](text)[0] == "blocked"
+        mutated = source.replace(
+            'if question is not None:\n        return "blocked",',
+            'if False:\n        return "blocked",',
         )
-        with pytest.raises(AssertionError):
-            answered_resume(tmp_path, repo, env, seen, launch)
-        assert "teammate" not in event_roles(seen)
+        exec(compile(mutated, "plan_disposition.py", "exec"), scope)
+        assert scope["durable_disposition"](text) == ("ran", "")
 
 
 @pytest.mark.meta
@@ -461,3 +407,59 @@ def test_legacy_success_compatibility_is_recovery_only(old):
         evaluate_disposition(text, BEFORE, AFTER if old["status"] == "edited" else BEFORE)[0]
         == "failed"
     )
+
+
+def test_mixed_corrections_wait_for_explicit_answer(tmp_path):
+    from test_card_update_contract import CHANGES, edited_stages
+
+    repo, env, _ = make_repo(tmp_path, files="src/thing.py, src/other.py")
+    events = edited_stages(tmp_path, [CHANGES["ac"]], QUESTION)
+    first = spawn(repo, env, "story-042")
+    assert first.returncode != 0 and QUESTION in first.stderr
+    plan = tmp_path / "data/plan.md"
+    draft = tmp_path / "data/plans/story-042.plan.md"
+    preserved = draft.read_bytes()
+    assert "REVIEWED-AC" in plan.read_text()
+    for _ in range(4):
+        result = spawn(repo, env, "resume", "story-042")
+        assert result.returncode != 0 and QUESTION in result.stderr
+        assert draft.read_bytes() == preserved
+    assert event_roles(events) == ["planner", "plan-reviewer"]
+    assert (
+        spawn(repo, env, "amend", "story-042", "--reason", "unrelated observation").returncode == 0
+    )
+    unrelated = spawn(repo, env, "resume", "story-042")
+    assert unrelated.returncode != 0 and QUESTION in unrelated.stderr
+    assert "teammate" not in event_roles(events)
+    assert "REVIEWED-AC" in plan.read_text()
+
+
+@pytest.mark.parametrize("new_question", [False, True], ids=["resolved", "new-question"])
+def test_explicit_answer_continues_preserved_plan(tmp_path, new_question):
+    repo, env, events = consumer(tmp_path)
+    assert spawn(repo, env, "story-042").returncode != 0
+    plan = tmp_path / "data/plans/story-042.plan.md"
+    before = plan.read_bytes()
+    if new_question:
+        answer(tmp_path, repo, env)
+        binary = tmp_path / "bin/claude"
+        binary.write_text(
+            binary.read_text().replace(
+                repr(report("edited", None, [REASON])),
+                repr(report("edited", "A new reserved choice?", [REASON])),
+            )
+        )
+        result = spawn(repo, env, "resume", "story-042")
+        assert result.returncode != 0 and "A new reserved choice?" in result.stderr
+        assert "teammate" not in event_roles(events)
+        assert plan.read_bytes().startswith(before)
+        return
+    answered_resume(tmp_path, repo, env, events)
+    assert plan.read_bytes().startswith(before)
+    assert event_roles(events) == [
+        "planner",
+        "plan-reviewer",
+        "plan-reviewer",
+        "teammate",
+        "reviewer",
+    ]

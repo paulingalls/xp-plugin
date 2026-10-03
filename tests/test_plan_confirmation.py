@@ -341,7 +341,7 @@ def test_confirmation_retry_preserves_completed_round(tmp_path):
     assert (tmp_path / "data/plans/story-042.confirmation-2.md").exists()
 
 
-def test_amended_confirmation_survives_full_review_cap(tmp_path, launch=spawn):
+def test_amended_confirmation_preserves_prior_rounds(tmp_path, launch=spawn):
     repo, env, seen = consumer(tmp_path)
     assert launch(repo, env, "story-042").returncode != 0
     from spawn_helpers import SPAWN

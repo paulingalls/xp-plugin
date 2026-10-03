@@ -27,7 +27,6 @@ roles:               # harness/model[/effort]; the lead overrides per story in p
   executor: claude/sonnet/medium
   reviewer: claude/opus
   slate-reviewer: claude/opus  # falls back to `reviewer` when absent in an older config
-  card-refresher: claude/opus  # falls back to `reviewer` when absent in an older config
   plan-reviewer: claude/opus   # spawn's own stage; no agent ever starts a review
   finder: claude/opus     # the four round-1 stages of `close.py sprint <id> review`;
   verifier: claude/opus   # each falls back to `reviewer` when its key is absent, so

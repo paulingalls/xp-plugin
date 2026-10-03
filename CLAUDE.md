@@ -17,14 +17,11 @@ instead.
   capacity advises the lead, who judges every result and applies corrections.
   Addressed findings need no automatic second review; opening only runs its
   lifecycle and records branch/membership;
-  `spawn.py ready <story-id>` now REFUSES until card refresh has run — `slate_review.py
-  --refresh <story-id>` rewrites the card's stale claims against HEAD, not a review, and
-  the lead owns the result. ready runs nothing itself; it remains the lead's per-card
-  commitment, not a review.
-  **Execution plan review**: only the executor writes the implementation plan and runs
-  `scripts/plan_review.py <story-id> <plan-file>`; the lead never writes one. The
-  executor re-reads its edits before code. Red test first; for config/docs commits,
-  never fake a red — say so in the commit body.
+  `spawn.py <story-id>` launches planned work directly. The planner checks current
+  code and owns the implementation plan; one independent plan reviewer corrects
+  correctness within approved intent. Accepted corrections proceed to execution;
+  human-only questions preserve corrections and return to the lead.
+  Red test first; for config/docs commits, never fake a red — say so in the commit body.
 - Story done → run the `/story-close` checklist (spawns `story-reviewer`).
 - Records (bug/debt/note) per JUDGMENT.md; mid-sprint you may record, never schedule.
 - Git hooks (lefthook) are the wall: ruff + gitleaks + fast tests at commit, story
@@ -60,10 +57,8 @@ nothing under `plugins/xp-plugin/` may exist for our benefit rather than a
 consuming project's. Our cards carry a `Spend:` line the shipped card shape has
 no field for — the ratchet component, the declared files' counts, and any
 extraction the card must make first. It is a claim about existing code, so
-re-measure and correct it at card refresh. That rule lives HERE because `Spend`,
-components and extraction are all ours: a consuming project's refresher would go
-hunting for a field, a budget and a cap it does not have. Caught at Sprint 21,
-one commit after shipping exactly that into the refresher charter.
+re-measure it during planning. This rule lives HERE because `Spend`, components
+and extraction are ours; a consuming project's planner has its own constraints.
 Every added rule displaces one. When in doubt: VALUES.md;
 conflicts resolve Honesty > Courage > Simplicity > Feedback > Communication.
 

@@ -8,7 +8,9 @@ tools: Read, Grep, Glob, Bash
 # Planner — the execution plan
 
 Read the story card, VALUES, JUDGMENT, constraints and relevant repository
-surfaces. Write a concrete red-first execution plan to:
+surfaces against current code. Correct stale implementation premises and propose
+card corrections within approved intent. You own the implementation plan.
+Write a concrete red-first execution plan to:
 
 PLAN_PATH: {PLAN_PATH}
 

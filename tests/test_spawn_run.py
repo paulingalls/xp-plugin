@@ -12,7 +12,6 @@ from spawn_helpers import (  # noqa: F401
     block_commits,
     in_tree,
     make_repo,
-    seed_refresh_receipt,
     set_system_md,
     spawn,
     stub_claude,
@@ -359,7 +358,6 @@ class TestFirstSpawnInAScaffoldedRepo:
         )
         # cleared through the leg, so the guard under test is still the one that
         # fires: a hand-typed [ready] refuses at the credential and never reaches it
-        seed_refresh_receipt(repo, env, "story-777")
         assert spawn(repo, env, "ready", "story-777").returncode == 0
         r = spawn(repo, env, "story-777")
         assert r.returncode == 2, r.stdout

@@ -27,7 +27,7 @@ class TestRoleBriefs:
         assert "before handing back" in work
         assert ("reviewed plan" if multifile else "card is the authority") in work
 
-    def run_planner(self, tmp_path, monkeypatch, mutate_repo=False):
+    def run_planner(self, tmp_path, monkeypatch, mutate_repo=None):
         import review
         from story_stages import run_planner
 
@@ -40,8 +40,17 @@ class TestRoleBriefs:
             captured["prompt"] = prompt
             plan.parent.mkdir(parents=True, exist_ok=True)
             plan.write_text("# execution plan\n")
-            if mutate_repo:
+            if mutate_repo == "untracked":
                 (tree / "planner-change.txt").write_text("planner changed the repository\n")
+            elif mutate_repo:
+                import subprocess
+
+                (tree / ".xp/system.md").write_text("changed tracked source\n")
+                if mutate_repo in {"index", "head"}:
+                    subprocess.run(["git", "add", ".xp/system.md"], cwd=tree, check=True)
+                if mutate_repo == "head":
+                    subprocess.run(["git", "commit", "-qm", "planner motion"], cwd=tree, check=True)
+
             return None, ""
 
         monkeypatch.setattr(review, "run", write_plan)
@@ -66,9 +75,9 @@ class TestRoleBriefs:
         assert prompt_section(prompt, "How you work") != executor
         assert prompt_section(prompt, "How you work") == planner.replace("{PLAN_PATH}", path)
 
-    def test_repository_writing_planner_is_refused(self, tmp_path, monkeypatch):
-        repo, _prompt, result = self.run_planner(tmp_path, monkeypatch, mutate_repo=True)
-        assert (repo / "planner-change.txt").read_text() == "planner changed the repository\n"
+    @pytest.mark.parametrize("motion", ["untracked", "tracked", "index", "head"])
+    def test_repository_writing_planner_is_refused(self, tmp_path, monkeypatch, motion):
+        _repo, _prompt, result = self.run_planner(tmp_path, monkeypatch, mutate_repo=motion)
         assert result == (
             2,
             "the planner changed the repository; it owns only the external plan",

@@ -9,7 +9,9 @@ extend Files, and report the deviation.
 - **Carry plan-review findings into the card.** When your prompt names plan-review
   findings, read them first. The accepted final card and plan are the reviewed
   declaration; reviewer corrections need no amendment or second plan review, and
-  the bound plan stays unedited. Fix authorized work by default, append a one-line
+  the reviewed launch plan stays unedited. Ordinary implementation notes evolve in
+  handback evidence and remain visible to solution review; changes to approved
+  behavior require a lead decision. Fix authorized work by default, append a one-line
   reasoned drop in the handback, or retain exceptional debt with both JUDGMENT bars
   and a real record reference. Escalate reserved choices to the lead.
   Run diagnostic tests named by the reviewed plan. Add

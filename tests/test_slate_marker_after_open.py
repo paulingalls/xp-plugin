@@ -34,7 +34,7 @@ def test_dead_open_marker_falls_through_to_card(tmp_path, monkeypatch):
     recovery = run_recovery(repo, tmp_path)
     assert recovery.returncode == 0, recovery.stderr
     assert next_lines(recovery.stdout) == [
-        "NEXT: story-042 is [planned] — run `spawn.py ready story-042`"
+        "NEXT: story-042 is [planned] — run `spawn.py story-042`"
     ]
     assert (marker.read_bytes(), log.read_bytes()) == before
 
@@ -100,7 +100,6 @@ def test_capped_slate_refuses_with_correct_action(tmp_path, open_sprint):
     [
         ("slate", "1", ["/current/slate_review.py", "1"]),
         ("plan", "story-042", ["/current/plan_review.py", "story-042", "/plan.md"]),
-        ("refresh", "story-042", ["/current/slate_review.py", "story-042", "--refresh"]),
     ],
 )
 @pytest.mark.parametrize("route", ["rejoin", "new"])
