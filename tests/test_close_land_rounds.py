@@ -412,44 +412,8 @@ def test_land_requires_sequence_authority_after_red_retry(tmp_path, damage):
     assert invoke(repo, env, key, "land", "--merge-mode", "local").returncode == 0
 
 
-@pytest.mark.parametrize("declaration", [False, True])
-def test_land_refuses_ignored_runtime_drift_and_recovers(tmp_path, declaration):
-    from pathlib import Path
-
-    from story_review_helpers import checkpoint, flow_repo, invoke
-
-    gate = tmp_path / "gate"
-    gate.write_text("#!/bin/sh\ngrep -qx good runtime.cfg\n")
-    gate.chmod(0o755)
-    repo, env, git, key, _events, _hooks = flow_repo(tmp_path, verify=str(gate))
-    (repo / ".git/info/exclude").write_text("runtime.cfg\n")
-    runtime = repo / "runtime.cfg"
-    runtime.write_text("good\n")
-    if declaration:
-        plan = Path(env["XP_DATA"]) / "plan.md"
-        plan.write_text(plan.read_text().replace("Verify:", "Verify reads: src/thing.py\nVerify:"))
-        from close_helpers import mint_ready
-
-        mint_ready(repo, env, key)
-    assert invoke(repo, env, key).returncode == 0
-    sequence = checkpoint(env, key)
-    report = Path(sequence["stages"]["solution"]["path"])
-    original = report.read_bytes()
-    runtime.write_text("bad\n")
-    assert not git("status", "--porcelain").stdout
-    before = git("rev-parse", "main").stdout
-    result = invoke(repo, env, key, "land", "--merge-mode", "local")
-    assert result.returncode == 2, result.stdout + result.stderr
-    assert "inputs moved" in result.stderr and "review" in result.stderr
-    assert git("rev-parse", "main").stdout == before and report.read_bytes() == original
-    assert not (Path(env["XP_DATA"]) / "markers" / f"{key}.verify.json").exists()
-    runtime.write_text("good\n")
-    assert invoke(repo, env, key).returncode == 0
-    assert invoke(repo, env, key, "land", "--merge-mode", "local").returncode == 0
-
-
 @pytest.mark.meta
-@pytest.mark.parametrize("guard", ["authority", "runtime"])
+@pytest.mark.parametrize("guard", ["authority"])
 def test_land_input_guard_detects_its_fault(tmp_path, monkeypatch, guard):
     import shutil
 
@@ -457,22 +421,15 @@ def test_land_input_guard_detects_its_fault(tmp_path, monkeypatch, guard):
 
     def guarantee(root):
         root.mkdir()
-        if guard == "authority":
-            test_land_requires_sequence_authority_after_red_retry(root, "handoff")
-        else:
-            test_land_refuses_ignored_runtime_drift_and_recovers(root, True)
+        test_land_requires_sequence_authority_after_red_retry(root, "handoff")
 
     guarantee(tmp_path / "control")
     installed = tmp_path / "installed"
     shutil.copytree(PLUGIN, installed)
     target = installed / "scripts/close/review_sequence.py"
     text = target.read_text()
-    old = (
-        'if "sequence_round" in latest and ('
-        if guard == "authority"
-        else "if runtime(before) != runtime(after):"
-    )
-    new = "if False and (" if guard == "authority" else "if False:"
+    old = 'if "sequence_round" in latest and ('
+    new = "if False and ("
     assert old in text
     target.write_text(text.replace(old, new))
     monkeypatch.setenv("XP_FLOW_TEST_CLOSE", str(installed / "scripts/close.py"))

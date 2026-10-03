@@ -272,15 +272,13 @@ def test_resume_preview_and_live_refuse_current_findings(tmp_path, damage):
     assert recovered.returncode == 0, recovered.stderr
 
 
-@pytest.mark.parametrize("route", ["confirmation", "fallback", "review", "planner"])
+@pytest.mark.parametrize("route", ["confirmation", "review", "planner"])
 def test_resume_preview_reports_pending_plan_stages(tmp_path, route):
     from plan_confirmation_support import amend, events
 
     repo, env, seen, launch = preview_fixture(tmp_path)
-    if route in ("confirmation", "fallback"):
+    if route == "confirmation":
         amend(tmp_path, repo, env, launch)
-        if route == "fallback":
-            next((tmp_path / "data/plans").glob("*.evidence.json")).unlink()
     else:
         marker = tmp_path / "data/plans/story-042.handoff.json"
         state = json.loads(marker.read_text())
@@ -296,31 +294,25 @@ def test_resume_preview_reports_pending_plan_stages(tmp_path, route):
     preview = launch(repo, env, "resume", "story-042", "--dry-run")
     assert preview.returncode == 0, preview.stderr
     assert events(seen) == before
-    expected = "planner" if route in ("confirmation", "planner", "fallback") else "plan-reviewer"
+    expected = "planner" if route in ("confirmation", "planner") else "plan-reviewer"
     assert expected in preview.stdout
     assert "executor inputs are not yet available" in preview.stdout
     assert "## Current plan review" not in preview.stdout
     live = launch(repo, env, "resume", "story-042")
     assert live.returncode == 0, live.stderr
     roles = [e["role"] for e in events(seen)[len(before) :]]
-    assert roles[0] == (
-        "planner" if route in ("confirmation", "planner", "fallback") else "plan-reviewer"
-    )
+    assert roles[0] == ("planner" if route in ("confirmation", "planner") else "plan-reviewer")
 
 
-@pytest.mark.parametrize(
-    "route", ["executable", "restorable", "confirmation", "fallback", "refusal"]
-)
+@pytest.mark.parametrize("route", ["executable", "restorable", "confirmation", "refusal"])
 def test_resume_preview_preserves_state(tmp_path, route):
     from plan_confirmation_support import amend
 
     repo, env, _seen, launch = preview_fixture(tmp_path)
     if route == "restorable":
         restorable(tmp_path)
-    elif route in ("confirmation", "fallback"):
+    elif route == "confirmation":
         amend(tmp_path, repo, env, launch)
-        if route == "fallback":
-            next((tmp_path / "data/plans").glob("*.evidence.json")).unlink()
     elif route == "refusal":
         damage_findings(tmp_path, "stale")
     import os
@@ -333,9 +325,7 @@ def test_resume_preview_preserves_state(tmp_path, route):
     assert snapshot(tmp_path) == before
 
 
-@pytest.mark.parametrize(
-    "defect", ["divergent", "restore", "binding", "selection", "fallback-selection", "writer"]
-)
+@pytest.mark.parametrize("defect", ["divergent", "restore", "binding", "selection", "writer"])
 @pytest.mark.meta
 def test_preview_guard_fault_injections(tmp_path, defect):
     from plan_confirmation_support import amend, events
@@ -358,10 +348,8 @@ def test_preview_guard_fault_injections(tmp_path, defect):
         damage_findings(tmp_path, "stale")
         old = "        findings\n        and accepted"
         new = "        False\n        and accepted"
-    elif defect in ("selection", "fallback-selection"):
+    elif defect == "selection":
         amend(tmp_path, repo, env, launch)
-        if defect == "fallback-selection":
-            next((tmp_path / "data/plans").glob("*.evidence.json")).unlink()
         old = "stage = planning_stage(api, story_id, prior, multifile or bool(latest(story_id)))"
         new = 'stage = "executor"'
     else:
@@ -379,7 +367,7 @@ def test_preview_guard_fault_injections(tmp_path, defect):
         assert preview.returncode == 0 and live.returncode == 0, (preview.stderr, live.stderr)
         with pytest.raises(AssertionError):
             assert_refusal(preview, live, seen, before)
-    elif defect in ("selection", "fallback-selection"):
+    elif defect == "selection":
         preview = launch(repo, env, "resume", "story-042", "--dry-run")
         assert "declaration amended after review" in preview.stderr, preview.stderr
         with pytest.raises(AssertionError):

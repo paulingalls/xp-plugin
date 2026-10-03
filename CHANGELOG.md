@@ -4,6 +4,12 @@ Release notes started at v0.6.0; earlier entries are summarized from their
 tag and merge messages. Full detail lives in the merge history and the
 per-sprint review reports.
 
+## v0.35.2 — remove runtime scans
+
+- Remove repository-wide runtime fingerprinting from planning, execution checkpoints, review and land. Ignored dependencies, generated output and test caches no longer replay completed work or block clean reviews; agents judge environmental relevance.
+- Retain tracked Git source/index/HEAD boundaries, ancestry checks and plan/report/card artifact integrity. In-flight runs stay pinned to their starting plugin; fresh runs adopt this change.
+- Supersede PR172 by removing the recursive scan rather than adding dependency metadata workarounds.
+
 ## v0.35.1 — opt-in model acceptance
 
 Repository test policy now excludes real-agent planning walks from ordinary

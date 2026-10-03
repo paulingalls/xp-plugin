@@ -8,7 +8,6 @@ makes the shipped charter reachable there.
 import argparse
 import json
 import shlex
-import subprocess
 import sys
 from pathlib import Path
 
@@ -23,7 +22,7 @@ from plan_disposition import durable_disposition as durable_disposition
 from plan_disposition import evaluate_disposition as evaluate_disposition
 from review_runner import archive_failed_findings, review_prior
 from slate_review import review_findings_path, review_marker, run_detached
-from spawn import _read, _read_shipped, tree_state
+from spawn import _read, _read_shipped
 from teammate_tee import agent_log_id, log_path
 from work import chdir_repo_root, data_root, plan_path, ready_marker_path
 
@@ -78,7 +77,7 @@ def build_bundle(
     return "".join(f"## {title}\n\n{body}\n\n" for title, body in sections)
 
 
-def review_state(plan_file: Path, story_id: str) -> tuple[str, str, str]:
+def review_state(plan_file: Path, story_id: str) -> tuple:
     """State a plan reviewer must leave unchanged outside its draft.
 
     THIS STORY'S OWN CARD, never the whole plan: plan.md is project-global and the
@@ -88,21 +87,16 @@ def review_state(plan_file: Path, story_id: str) -> tuple[str, str, str]:
     close.review.check_reviewer_motion already scopes its card check this way.
     """
 
-    head, porcelain = tree_state(Path.cwd())
-    try:
-        relative = str(plan_file.relative_to(Path.cwd()))
-    except ValueError:
-        relative = ""
-    if relative:
-        status = subprocess.run(
-            ["git", "status", "--porcelain", "--", ".", f":(exclude){relative}"],
-            capture_output=True,
-            text=True,
-        )
-        if status.returncode:
-            raise OSError(status.stderr.strip())
-        porcelain = status.stdout.strip()
-    return head, porcelain, card_for(story_id)
+    from git_source import tracked_state
+
+    root = Path.cwd().resolve()
+    excluded = [
+        str(path.resolve().relative_to(root))
+        for path in (plan_file, plan_path())
+        if path.resolve().is_relative_to(root)
+    ]
+    source = tracked_state(excluded)
+    return source["head"], source["status"], card_for(story_id), source
 
 
 def plan_bytes(path: Path) -> bytes | None:
@@ -192,9 +186,6 @@ def _run_review(
 ) -> tuple[int, str]:
     try:
         before = review_state(plan_file, story_id)
-        from plan_confirmation import repository_fingerprint
-
-        fingerprint = repository_fingerprint(plan_file) if review_card else None
         from ready import credential
 
         minted_before = credential(ready_marker_path(story_id)) if review_card else None
@@ -222,8 +213,6 @@ def _run_review(
 
     try:
         changed = review_state(plan_file, story_id) != before
-        if fingerprint is not None:
-            changed |= repository_fingerprint(plan_file) != fingerprint
         if review_card:
             changed |= credential(ready_marker_path(story_id)) != minted_before
     except (OSError, ValueError, UnicodeError) as e:
@@ -263,25 +252,20 @@ def _run_review(
     outcome, problem = evaluate_disposition(findings, before_plan, after_plan, card, after_card)
     if outcome in {"ran", "blocked"} and candidate:
         try:
-            record = prepare(
-                story_id,
-                card,
-                candidate,
-                plan_file,
-                out,
-                repository_identity=fingerprint["identity"] if fingerprint else "",
-            )
-            if fingerprint is not None:
-                from plan_confirmation import record_evidence
-
-                record_evidence(record, fingerprint)
-            if fingerprint is not None and repository_fingerprint(plan_file) != fingerprint:
-                raise ValueError("repository moved before acceptance; restore it before resuming")
+            record = prepare(story_id, card, candidate, plan_file, out)
             if review_state(plan_file, story_id) != before:
                 raise ValueError("story card moved before acceptance; inspect concurrent edits")
             if credential(ready_marker_path(story_id)) != minted_before:
                 raise ValueError("credential moved before acceptance; inspect concurrent amendment")
-            publish(story_id, record)
+
+            def source_check(applied=False):
+                expected = (*before[:2], record["after"] if applied else before[2], before[3])
+                if review_state(plan_file, story_id) != expected:
+                    raise CardEditRefusal(
+                        "tracked source moved during plan publication; inspect retained work"
+                    )
+
+            publish(story_id, record, source_check)
             accepted = record
         except (OSError, ValueError, KeyError, CardEditRefusal) as error:
             if not receipt_path(out).exists():
