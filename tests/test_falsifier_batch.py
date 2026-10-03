@@ -241,9 +241,6 @@ def writes(path, succeeds=True):
 
 
 def test_a_declaration_whose_tier_the_config_no_longer_defines_still_executes(tmp_path):
-    """The record names `full`, the project renamed it, so no run of `full`
-    happened this close. Without the configured-tier half of the defer test the
-    command is dropped in silence — no execution and no `trusted` line either."""
     counter = tmp_path / "renamed-tier"
     repo, env, _g = make_repo(tmp_path, config=CONFIG.replace("full:", "nightly:"))
     (tmp_path / "data" / "work.md").write_text(
