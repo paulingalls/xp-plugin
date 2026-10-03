@@ -418,7 +418,7 @@ def test_reason_amendment_serializes_review_publication(tmp_path, monkeypatch):
     from threading import Event
 
     import ready
-    from plan_confirmation import pending_amendment
+    from ready import plan_needs_replan
 
     acceptance, _plan, marker, draft, out, candidate = acceptance_fixture(tmp_path, monkeypatch)
     candidate.write_text(CARD)
@@ -478,6 +478,6 @@ def test_reason_amendment_serializes_review_publication(tmp_path, monkeypatch):
         assert "credential changed" in outcome
     assert acceptance.latest("story-042") == retained
     assert not acceptance.binding_problem("story-042")
-    assert pending_amendment("story-042")
+    assert plan_needs_replan("story-042", {})
     draft.write_text("unreviewed plan replacement")
     assert "accepted plan changed" in acceptance.binding_problem("story-042")

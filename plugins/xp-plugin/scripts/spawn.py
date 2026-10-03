@@ -223,8 +223,13 @@ def cmd_spawn(story_id: str, override: str, dry_run: bool, resuming: bool = Fals
         reads(card)
     except ValueError as error:
         return fail(f"refused: {error}. Repair the card in {plan_path()} before launch.")
-    if not resuming and not dry_run and ready().capture(story_id):
-        return 2
+    if not dry_run:
+        held, problem = resume().acquire(data_root(), story_id)
+        if problem:
+            return fail(problem)
+        if not resuming and ready().capture(story_id):
+            held.close()
+            return 2
     harness, model, effort = resolve_role("executor", card, override)
     sandbox, problem = resolve_codex_sandbox(harness, config_flat("codex_sandbox"))
     if problem:
@@ -284,9 +289,6 @@ def cmd_spawn(story_id: str, override: str, dry_run: bool, resuming: bool = Fals
             " cut from a commit, so uncommitted files (a fresh .xp/ scaffold included)"
             f" would not be in it:\n{dirty}"
         )
-    held, problem = resume().acquire(data_root(), story_id)
-    if problem:
-        return fail(problem)
     if resuming:
         if problem := resume().validate(data_root(), story_id, tree, branch):
             held.close()
@@ -317,9 +319,15 @@ def cmd_spawn(story_id: str, override: str, dry_run: bool, resuming: bool = Fals
         added = git(*args, check=False)
         if added.returncode != 0:
             return fail(f"git worktree add failed: {added.stderr.strip()}")
+        mark_handoff(data_root(), story_id)
         if command:
             done = subprocess.run(command, shell=True, cwd=tree, capture_output=True, text=True)
             if done.returncode != 0:
+                mark_handoff(
+                    data_root(),
+                    story_id,
+                    why="worktree bootstrap failed; inspect its output and resume",
+                )
                 print(done.stderr.strip(), file=sys.stderr)
                 return fail(
                     f"refused: worktree bootstrap failed ({command!r}) — not launching"

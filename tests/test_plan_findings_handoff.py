@@ -218,7 +218,7 @@ def test_resume_after_blocked_round_hands_over_the_later_round(tmp_path):
     resumed = spawn(repo, env, "resume", "story-042")
     assert resumed.returncode == 0, resumed.stderr
     event = next(json.loads(line) for line in seen.read_text().splitlines() if '"teammate"' in line)
-    assert event["findings_path"] == str(tmp_path / "data/plans/story-042.confirmation-1.md")
+    assert event["findings_path"] == str(tmp_path / "data/plans/story-042.round-1.md")
     assert "LOUD: run diagnostic check" in event["findings"]
 
 
@@ -252,7 +252,9 @@ def test_resume_preview_and_live_refuse_current_findings(tmp_path, damage):
     if damage == "stale":
         marker = tmp_path / "data/plans/story-042.handoff.json"
         state = json.loads(marker.read_text())
-        state["plan_review_findings"] = str(marker.with_name("story-042.round-1.md"))
+        state["plan_review_findings"] = str(
+            next(marker.parent.glob("story-042.superseded-*.round-*.md"))
+        )
         marker.write_text(json.dumps(state))
     else:
         damage_findings(tmp_path, damage)
@@ -294,20 +296,16 @@ def test_resume_preview_reports_pending_plan_stages(tmp_path, route):
     preview = launch(repo, env, "resume", "story-042", "--dry-run")
     assert preview.returncode == 0, preview.stderr
     assert events(seen) == before
-    expected = (
-        "plan-confirmation"
-        if route == "confirmation"
-        else ("planner, plan-reviewer" if route in ("planner", "fallback") else "plan-reviewer")
-    )
+    expected = "planner" if route in ("confirmation", "planner", "fallback") else "plan-reviewer"
     assert expected in preview.stdout
     assert "executor inputs are not yet available" in preview.stdout
     assert "## Current plan review" not in preview.stdout
     live = launch(repo, env, "resume", "story-042")
     assert live.returncode == 0, live.stderr
     roles = [e["role"] for e in events(seen)[len(before) :]]
-    assert roles[0] == ("planner" if route in ("planner", "fallback") else "plan-reviewer")
-    if route == "confirmation":
-        assert events(seen)[len(before)]["kind"] == "confirmation"
+    assert roles[0] == (
+        "planner" if route in ("confirmation", "planner", "fallback") else "plan-reviewer"
+    )
 
 
 @pytest.mark.parametrize(
@@ -364,8 +362,8 @@ def test_preview_guard_fault_injections(tmp_path, defect):
         amend(tmp_path, repo, env, launch)
         if defect == "fallback-selection":
             next((tmp_path / "data/plans").glob("*.evidence.json")).unlink()
-        old = '        if mode == "refuse":\n            return api.fail(problem)'
-        new = '        mode, planned = "unchanged", False\n' + old
+        old = "stage = planning_stage(api, story_id, prior, multifile or bool(latest(story_id)))"
+        new = 'stage = "executor"'
     else:
         old = "    try:\n        prior = api.handoff_io.effective_review"
         new = '    api.mark_stage(api.data_root(), story_id, "executor", "ran")\n' + old
@@ -388,11 +386,7 @@ def test_preview_guard_fault_injections(tmp_path, defect):
             assert preview.returncode == 0
         live = launch(repo, env, "resume", "story-042")
         assert live.returncode == 0, live.stderr
-        assert (
-            any(e.get("kind") == "confirmation" for e in events(seen))
-            if defect == "selection"
-            else any(e["role"] == "planner" for e in events(seen))
-        )
+        assert any(e["role"] == "planner" for e in events(seen))
     else:
         before = snapshot(tmp_path)
         preview = launch(repo, env, "resume", "story-042", "--dry-run")
@@ -412,11 +406,12 @@ def test_preview_findings_validation_faults(tmp_path, guard):
     findings = tmp_path / "data/plans/story-042.round-1.md"
     contents = findings.read_bytes()
     if guard == "readability":
-        anchor = "\n    findings, problem = api.handoff_io.current_findings"
-        injection = "\n    __import__('pathlib').Path(accepted['findings']).unlink()"
+        anchor = "\n        findings, problem = api.handoff_io.current_findings"
+        legacy_credential(tmp_path)
+        injection = f"\n        __import__('pathlib').Path({str(findings)!r}).unlink()"
         assert anchor in source
         source = source.replace(anchor, injection + anchor)
-        old = "api.handoff_io.current_findings(api.data_root(), story_id, reviewed, state)"
+        old = "api.handoff_io.current_findings(api.data_root(), story_id, True, prior)"
         new = '(None, "")'
         reason = "cannot read current plan-review findings"
     else:

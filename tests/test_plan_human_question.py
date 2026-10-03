@@ -127,7 +127,7 @@ def test_legacy_question_survives_recovery(tmp_path, filename, state_kind):
     state["plan_review_findings"] = str(path)
     marker.write_text(json.dumps(state))
     if state_kind == "blocked":
-        (plans / "story-042.round-2.md").write_text(old)
+        (plans / "story-042.round-1.md").write_text(old)
         assert spawn(repo, env, "resume", "story-042").returncode != 0
     result = spawn(repo, env, "resume", "story-042")
     assert result.returncode != 0
@@ -235,8 +235,7 @@ def test_ignoring_question_detects_executor_launch(tmp_path):
 
 
 @pytest.mark.parametrize("status", ["clean", "edited"])
-@pytest.mark.meta
-def test_legacy_compatibility_exclusion_detects_executor_launch(tmp_path, status):
+def test_legacy_success_without_acceptance_requires_review(tmp_path, status):
     repo, env, seen = consumer(tmp_path, "blocked")
     assert spawn(repo, env, "story-042").returncode != 0
     legacy_credential(tmp_path)
@@ -245,17 +244,10 @@ def test_legacy_compatibility_exclusion_detects_executor_launch(tmp_path, status
     state["stages"]["plan-reviewer"] = "ran"
     marker.write_text(json.dumps(state))
     path = tmp_path / "data/plans/story-042.round-1.md"
-    path.write_text(json.dumps(dict(status=status, reasons=[], question=QUESTION)))
-    launch = installed_launch(
-        tmp_path,
-        (
-            'if status in ("clean", "edited") and "question" not in report:',
-            'if status in ("clean", "edited"):\n            report.pop("question", None)',
-        ),
-    )
-    result = launch(repo, env, "resume", "story-042")
-    assert result.returncode == 0, result.stderr
-    assert "teammate" in event_roles(seen)
+    path.write_text(json.dumps(dict(status=status, reasons=[])))
+    result = spawn(repo, env, "resume", "story-042")
+    assert result.returncode == 2 and QUESTION in result.stderr
+    assert event_roles(seen) == ["planner", "plan-reviewer", "plan-reviewer"]
 
 
 @pytest.mark.parametrize("kind", ["failed-archive", "blocked-retain"])
@@ -291,7 +283,7 @@ def test_stale_question_selection_detects_its_fault(tmp_path):
         (
             "outcome, problem = durable_disposition(path.read_text())",
             "outcome, problem = durable_disposition(path.read_text())\n"
-            '    for old in path.parent.glob("story-042.round-*.md"):\n'
+            '    for old in path.parent.glob("story-042.*round-*.md"):\n'
             "        old_outcome, old_problem = durable_disposition(old.read_text())\n"
             '        if old_outcome == "blocked":\n'
             "            outcome, problem = old_outcome, old_problem",
@@ -362,7 +354,8 @@ def assert_current_round_selection(tmp_path, mutant):
     seen = staged_harness(tmp_path, block_first=True)
     mutation = (
         'state["plan_review_findings"] = accepted["findings"]',
-        'state["plan_review_findings"] = str(_findings(root, story_id)[0][1].resolve())',
+        'state["plan_review_findings"] = str(next((root / "plans").glob('
+        'f"{story_id}.superseded-*.round-*.md")).resolve())',
     )
     launch = installed_launch(
         tmp_path, mutation if mutant else None, relative="scripts/spawn/handoff.py"
@@ -370,14 +363,14 @@ def assert_current_round_selection(tmp_path, mutant):
     assert launch(repo, env, "story-042").returncode != 0
     amend(tmp_path, repo, env, launch)
     result = launch(repo, env, "resume", "story-042")
-    current = tmp_path / "data/plans/story-042.confirmation-1.md"
+    current = tmp_path / "data/plans/story-042.round-1.md"
     assert "LOUD: run diagnostic check" in current.read_text()
     assert "STALE BLOCKED ROUND?" not in current.read_text()
 
     def guarantee():
         assert result.returncode == 0, result.stderr
         executor = next(event for event in events(seen) if event["role"] == "teammate")
-        assert executor["findings_path"].endswith("story-042.confirmation-1.md")
+        assert executor["findings_path"].endswith("story-042.round-1.md")
         assert "LOUD: run diagnostic check" in executor["findings"]
         assert "STALE BLOCKED ROUND?" not in executor["findings"]
 
@@ -459,6 +452,7 @@ def test_explicit_answer_continues_preserved_plan(tmp_path, new_question):
     assert event_roles(events) == [
         "planner",
         "plan-reviewer",
+        "planner",
         "plan-reviewer",
         "teammate",
         "reviewer",

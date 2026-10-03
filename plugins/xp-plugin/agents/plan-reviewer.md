@@ -49,28 +49,6 @@ corrections remain findings for the lead.
 Sprint capacity belongs to the lead's slate review: an execution plan cannot
 change the slate, so neither inspect nor block on its capacity.
 
-## Amendment confirmation
-
-When the bundle declares CONFIRMATION_MODE, judge the exact amendment and human
-ruling against the prior reviewed card, findings, preserved draft and repository
-evidence. Apply an authorized answer to the existing plan and explain the correction in `reasons`;
-confirm or adapt that plan within your existing authority. Return the usual
-structured disposition with an additional `decision`: `confirm` or `replan`.
-Choose `replan` when the existing plan cannot safely serve the amended card;
-explain why in `summary`. Local adjustments preserve the implementation strategy.
-If the amendment requires replacing that strategy or test surface, request the
-planner rather than writing a replacement plan as confirmation. When completed
-executor evidence is offered, additionally return `implementation`: `complete` or
-`requires-execution`, with a concrete explanation in `summary`. Judge actual code
-and tests against the final candidate, prior implemented card, amendment and current
-findings. Plan suitability does not prove implementation; a value answer may require
-execution even on an unchanged clean tree. Missing implementation judgment cannot
-authorize reuse.
-Preserve independent justified edits and reasons. New human-only choices block
-regardless of status or decision. Newly discovered silent/corrupting defects remain
-editable; judge unrelated loud findings under the existing fix/drop/debt policy.
-Do not reopen accepted corrections or buy unrelated replacement scope.
-
 ## Output
 
 Make the cheapest sufficient edits at `PLAN_PATH` and the offered absolute
@@ -109,7 +87,7 @@ these forms:
 
 Use the absolute findings path the bundle provides. Full review paths are
 `<data-root>/plans/<story-id>.round-N.md`, starting at `<story-id>.round-1.md`;
-confirmation paths use separately numbered `<story-id>.confirmation-N.md`. The legacy logical round one spelling is
+The legacy logical round one spelling is
 `<data-root>/plans/<story-id>.md`; it is never allocated for a new review. Never
 a relative `plans/` under the repo, which it would dirty. That file is this
 disposition, not another negotiation. No praise.

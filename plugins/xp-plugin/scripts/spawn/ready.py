@@ -59,27 +59,12 @@ def current_digest(story_id: str) -> str | None:
 
 
 def plan_needs_replan(story_id: str, handoff: dict) -> bool:
-    from plan_confirmation import pending_amendment
+    from plan_acceptance import latest
 
-    result = handoff.get("stages", {}).get("plan-reviewer")
-    if result == "failed":
-        return handoff.get("stages", {}).get("plan-confirmation") == "failed" and pending_amendment(
-            story_id
-        )
-    if pending_amendment(story_id):
-        return True
-    if result == "blocked":
-        return True
-    if result != "ran":
-        from plan_acceptance import latest
-
-        accepted = latest(story_id)
-        return bool(accepted and accepted["digest"] != current_digest(story_id))
-    reviewed = handoff.get("plan_reviewed_card")
-    if reviewed is None:
-        current = credential(ready_marker_path(story_id))
-        return bool(current and current.get("amendments"))
-    return reviewed != current_digest(story_id)
+    current = credential(ready_marker_path(story_id))
+    accepted = latest(story_id)
+    count = accepted.get("amendment_count", 0) if accepted else 0
+    return bool(current and len(current.get("amendments", [])) > count)
 
 
 def card_diff(reviewed: str, card: str) -> str:
@@ -150,9 +135,8 @@ def drift(sid: str, card: str) -> str:
     if minted is None:
         return f"refused: {marker} is unreadable; nothing vouches for {sid}. {recovery}"
     from plan_acceptance import binding_problem
-    from plan_confirmation import pending_amendment
 
-    if not pending_amendment(sid) and (problem := binding_problem(sid)):
+    if not plan_needs_replan(sid, {}) and (problem := binding_problem(sid)):
         return problem
     if minted.get("digest") == card_digest(card):
         return ""

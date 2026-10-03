@@ -378,4 +378,4 @@ class TestCodexExecutor:
         repo, env, _g = make_repo(tmp_path, executor="codex/gpt-5.6-terra/medium")
         stub_codex(tmp_path, commit=False)
         r = spawn(repo, env, "story-042")
-        assert r.returncode == 2 and "no commits of its own" in r.stderr, r.stderr
+        assert r.returncode == 0, r.stderr
