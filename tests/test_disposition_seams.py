@@ -93,10 +93,14 @@ def test_sprint_delta_cannot_drop_unresolved_actionable_findings(tmp_path):
     record_reviews(tmp_path, repo, env)
     (repo / "src.py").write_text("A = 2\n")
     assert git("commit", "-qam", "lead delta").returncode == 0
-    staged_stub(tmp_path, fix={"actionable": ["unmet AC: silent loss"], "blocking": []})
+    staged_stub(
+        tmp_path,
+        solution={"actionable": ["silent loss"], "blocking": []},
+        fix={"actionable": ["unmet AC: silent loss"], "blocking": []},
+    )
     result = sprint(repo, env, "review")
     assert result.returncode == 2 and "actionable" in result.stderr
-    assert len(json.loads(marker_path(tmp_path).read_text())["rounds"]) == 1
+    assert json.loads(marker_path(tmp_path).read_text())["rounds"][-1]["incomplete"]
 
 
 def test_minimal_judgment_remains_effective_in_triage(tmp_path):
@@ -126,12 +130,13 @@ def test_sprint_delta_fixer_cannot_rename_undeclared_project_authority(tmp_path)
 
     repo, env, _git = sprint_repo(tmp_path)
     record_reviews(tmp_path, repo, env)
-    staged_stub(tmp_path)
+    staged_stub(tmp_path, solution={"actionable": ["fix F"], "blocking": []})
     binary = tmp_path / "bin/claude"
     binary.write_text(
         binary.read_text().replace(
             "sys.stdout.write(",
-            "subprocess.run(['git','mv','.xp/system.md','system.md'],check=True)\n"
+            "if key == 'fix': subprocess.run(['git','mv','.xp/system.md','system.md'],check=True)\n"
+            "if key == 'fix': "
             "subprocess.run(['git','commit','-qm','move project authority'],check=True)\n"
             "sys.stdout.write(",
         )

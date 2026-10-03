@@ -199,12 +199,19 @@ def cmd_start(sprint_id: str, dry_run: bool = False) -> int:
         print(f"close.py sprint {sprint_id} milestone-done")
 
     from finding_triage import render_triage
+    from sprint_bundle import delivered_scope
 
-    print("\n" + render_triage(root))
+    print(
+        "\nDelivered outcome\n" + delivered_scope(sprint_cards(plan.read_text(), sprint_id), root)
+    )
+    evidence_errors = []
+    print("\n" + render_triage(root, evidence_errors))
+    if evidence_errors:
+        return fail("refused: close evidence needs repair before triage")
     notes = triage_notes(source)
     print("\n" + resolved_offers(records, results))
     print(f"\n{len(members)} stories, {len(notes)} notes to triage. Each note: promote to")
-    print("constraints.md/system.md via the retro diff, or archive it.\n")
+    print("reviewed executable work, preserve in the narrative retro, or archive explicitly.\n")
     for text in notes:
         heading, body = record_summary(text)
         print(f"  {heading[3:]} — {body[:100]}")

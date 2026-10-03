@@ -242,7 +242,7 @@ class TestReviewLeg:
         closer is the stage that exists to catch the fixer. A closer that produced
         nothing is exactly the coverage the lead must not be told it has."""
         repo, env, _g = make_repo(tmp_path)
-        staged_stub(tmp_path)
+        staged_stub(tmp_path, find={"blocking": ["candidate"]}, verify={"blocking": ["candidate"]})
         claude = tmp_path / "bin" / "claude"
         write = "open(m.group(1).strip(), 'w').write(json.dumps(report))"
         claude.write_text(claude.read_text().replace(write, f"None if key == 'close' else {write}"))

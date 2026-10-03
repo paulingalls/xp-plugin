@@ -1,3 +1,4 @@
+import json
 import re
 from pathlib import Path
 
@@ -75,6 +76,42 @@ def _sprint_records(root: Path, since_epoch: int) -> tuple[str, str]:
     return "\n".join(out) or "none", "\n".join(kept).strip() or "none"
 
 
+def delivered_scope(cards: str, root: Path) -> str:
+    members = re.findall(r"^#### (\S+) — (.+?)\s+\[(done|retired)\]$", cards, re.M)
+    closes, errors = {}, []
+    path = root / "closes.jsonl"
+    try:
+        for number, line in enumerate(path.read_text().splitlines(), 1):
+            try:
+                record = json.loads(line)
+                closes[record["story"]] = record["merge_sha"]
+            except (ValueError, KeyError, TypeError):
+                errors.append(f"Unreadable close record {path}:{number} — repair the evidence")
+    except FileNotFoundError:
+        pass
+    except (OSError, UnicodeError) as error:
+        errors.append(f"Unreadable close history {path}: {error} — repair the evidence")
+    return (
+        "\n".join(
+            [
+                *(
+                    f"- {story} — {title} — "
+                    + (
+                        "retired"
+                        if status == "retired"
+                        else f"delivered at {closes[story]}"
+                        if closes.get(story)
+                        else "missing close evidence"
+                    )
+                    for story, title, status in members
+                ),
+                *errors,
+            ]
+        )
+        or "no terminal members"
+    )
+
+
 def build(
     sprint_id,
     cards,
@@ -91,6 +128,8 @@ def build(
     caller's snapshot, read once before the first launch. Re-read here it would exit
     from a later stage's bundle, past leg()'s error return and the incomplete round
     it writes (stages.check_roles refuses up front for the same reason)."""
+    from finding_triage import render_triage
+
     epoch = int(git("show", "-s", "--format=%ct", base).stdout.strip())
     resolutions, work_md = _sprint_records(data_root(), epoch)
     title = "The delta since the last recorded round" if diff_base else "Cumulative sprint diff"
@@ -99,6 +138,8 @@ def build(
         ("Your report", f"REPORT_PATH: {report}"),
         *extra,
         (f"The stories in sprint {sprint_id}", cards),
+        ("Delivered outcome", delivered_scope(cards, data_root())),
+        ("Current unresolved obligations and historical sources", render_triage(data_root())),
         (title, render_diff_range(diff_base or base, "HEAD", excluded, trunk_range)),
         ("Resolutions filed during the sprint", resolutions),
         ("work.md entries filed during the sprint", work_md),

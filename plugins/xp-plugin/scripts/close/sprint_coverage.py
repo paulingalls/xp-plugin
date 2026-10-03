@@ -7,10 +7,6 @@ from review_report import normalize_report
 from sprint_close import _shown_diff, default_branch, git, read_sprint_state
 
 
-def _is_retro_prose(path: str) -> bool:
-    return path.startswith(".xp/") and path not in overlap.GATE_FILES
-
-
 def _blocking_refusal(blocking: list) -> str:
     return (
         "refused: the last round left blocking findings:\n  "
@@ -39,6 +35,10 @@ def coverage_refusal(
         _marker, state, marker_error = read_sprint_state(sprint_id)
         if marker_error:
             return marker_error
+    if state.get("running_producer"):
+        return (
+            "refused: uncertain integration producer — inspect and salvage its reports before land"
+        )
     rerun = f"run `close.py sprint {sprint_id} review`"
     if not (rounds := state.get("rounds") or []):
         return f"refused: no recorded review for sprint {sprint_id} — {rerun}"
@@ -110,7 +110,7 @@ def coverage_refusal(
             reported.add(trunk_range)
     paths = [path for path in paths if path not in eligible]
     bumps = release_bump_paths(shown, head, paths) - set(overlap.GATE_FILES)
-    if code := [f for f in paths if not _is_retro_prose(f) and f not in bumps]:
+    if code := [f for f in paths if f not in bumps]:
         return (
             f"refused: the review did not cover HEAD — {', '.join(code)}"
             f" changed since {shown[:8]}. {rerun}"
@@ -120,8 +120,7 @@ def coverage_refusal(
                 else ""
             )
         )
-    retro = sorted(set(paths) - bumps)
-    kinds = [f".xp/ prose: {', '.join(retro)}"] if retro else []
+    kinds = []
     if bumps:
         kinds.append(f"the release bump: {', '.join(sorted(bumps))}")
     if kinds:

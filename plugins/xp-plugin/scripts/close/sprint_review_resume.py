@@ -85,7 +85,8 @@ def dirty_fixer(rounds: list[dict], head: str, sprint_id: str, review) -> str:
 def inputs(complete: int, cards: str, stages):
     if complete:
         altitude, error = stages.altitude()
-        return [], 0, {}, altitude, error
+        charters, charter_error = stages.charters()
+        return [], 0, charters, altitude, error or charter_error
     found, error = stages.angles()
     if error:
         return [], 0, {}, "", error
@@ -192,6 +193,7 @@ def stop(
     review,
     edit,
     base,
+    producer="",
 ):
     reused = prefix.reused if prefix else None
     recorded = f"Round {number} IS recorded, incomplete."
@@ -206,7 +208,7 @@ def stop(
             review.REPORT_KEYS,
             reused,
             ran,
-        ) | {"review_base": base}
+        ) | {"review_base": base, "producer": producer}
 
     if resume:
         if dry_run:

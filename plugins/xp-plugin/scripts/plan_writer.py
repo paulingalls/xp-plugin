@@ -24,7 +24,7 @@ def strip_lifecycle(plan: str) -> str:
     return "".join(out)
 
 
-def locked_edit(path: Path, lock: Path, mutate, noun: str = "plan") -> bool:
+def locked_edit(path: Path, lock: Path, mutate, noun: str = "plan", after_write=None) -> bool:
     lock.parent.mkdir(parents=True, exist_ok=True)
     with open(lock, "a+") as handle:
         waited = False
@@ -54,6 +54,8 @@ def locked_edit(path: Path, lock: Path, mutate, noun: str = "plan") -> bool:
             tmp = path.with_name(path.name + ".tmp")
             tmp.write_text(edited)
             tmp.replace(path)
+            if after_write:
+                after_write()
         finally:
             handle.seek(0)
             handle.truncate()
@@ -61,7 +63,7 @@ def locked_edit(path: Path, lock: Path, mutate, noun: str = "plan") -> bool:
     return edited != text
 
 
-def locked_json_edit(path: Path, lock: Path, mutate, noun: str) -> dict:
+def locked_json_edit(path: Path, lock: Path, mutate, noun: str, after_write=None) -> dict:
     edited = {}
 
     def apply(text: str) -> str:
@@ -75,7 +77,7 @@ def locked_json_edit(path: Path, lock: Path, mutate, noun: str) -> dict:
         edited.update(current)
         return json.dumps(current)
 
-    locked_edit(path, lock, apply, noun)
+    locked_edit(path, lock, apply, noun, after_write)
     return edited
 
 

@@ -27,7 +27,7 @@ from sprint_bundle import build
 # close/sprint_land.py and slate_review.py still read them out of that module, and a
 # second home for either is the one-rule-two-implementations shape this repo keeps filing.
 from sprint_close import _shown_diff, sprint_cards
-from sprint_state import sprint_marker, write_sprint_state
+from sprint_state import read_sprint_state, write_sprint_state
 from teammate_tee import kill_live
 from work import missing_plan_refusal, plan_path
 
@@ -35,10 +35,16 @@ from work import missing_plan_refusal, plan_path
 def cmd_review(sprint_id: str, dry_run: bool) -> int:
     import review
     import sprint_review_resume
-    from bookkeep import render_sprint_prior
 
-    marker = sprint_marker(sprint_id)
-    state = json.loads(marker.read_text()) if marker.exists() else {}
+    marker, state, marker_error = read_sprint_state(sprint_id)
+    if marker_error:
+        return fail(marker_error)
+    if state.get("running_producer"):
+        return fail(
+            f"refused: uncertain producer at {marker} — inspect saved reports/work and "
+            "logs; salvage the interrupted round, then the lead must repair its "
+            "running_producer state after confirming the producer has stopped"
+        )
     rounds = state.get("rounds", [])
     if not isinstance(rounds, list):
         return fail(f"refused: unreadable rounds in {marker} — repair the marker before review")
@@ -53,6 +59,13 @@ def cmd_review(sprint_id: str, dry_run: bool) -> int:
         return fail(f"refused: {why}")
     if dirty:
         return fail("refused: working tree is dirty — commit or stash first")
+    if rounds and head == rounds[-1].get("shown_sha", state.get("shown_sha")):
+        last = rounds[-1]
+        if last.get("blocking") and not last.get("incomplete"):
+            return fail(
+                "refused: the integration handoff needs the lead — inspect preserved "
+                "reports/work, correct the solution, then explicitly review the delta"
+            )
     plan = plan_path()
     if not plan.exists():
         return fail(f"refused: {missing_plan_refusal()}")
@@ -64,6 +77,11 @@ def cmd_review(sprint_id: str, dry_run: bool) -> int:
         )
     if not (cards := sprint_cards(plan.read_text(), sprint_id)):
         return fail(f"refused: no `### Sprint {sprint_id}` section in {plan}")
+    from env import sprint_branch, sprint_branch_name
+
+    expected = sprint_branch_name(sprint_id)
+    if branch != expected or sprint_branch() != expected:
+        return fail(f"refused: sprint {sprint_id} review belongs on recorded branch {expected}")
     from bookkeep import fork_point
 
     base, stale = fork_point(trunk)
@@ -106,6 +124,13 @@ def cmd_review(sprint_id: str, dry_run: bool) -> int:
     if diff_base and (missing := _shown_diff(sprint_id, diff_base, head)[1]):
         return fail(missing)
 
+    from finding_triage import render_triage
+    from work import data_root
+
+    evidence_errors = []
+    render_triage(data_root(), evidence_errors)
+    if evidence_errors:
+        return fail("refused: " + "\n".join(evidence_errors))
     salvage_cmd = f"close.py sprint {sprint_id} salvage"
     if not (dry_run or resume):
         moves = rotate_artifacts(sprint_paths(sprint_id, round_n))
@@ -113,6 +138,7 @@ def cmd_review(sprint_id: str, dry_run: bool) -> int:
             print("warning: " + left, file=sys.stderr)
 
     ran, reports = [], []
+    producer = ""
     prefix = (
         sprint_review_resume.Prefix(
             resume_round, review.read_report, review.sprint_report_path, sprint_id, round_n
@@ -137,6 +163,7 @@ def cmd_review(sprint_id: str, dry_run: bool) -> int:
             review,
             write_sprint_state,
             review_base,
+            producer,
         )
         if notice:
             print(notice)
@@ -150,6 +177,10 @@ def cmd_review(sprint_id: str, dry_run: bool) -> int:
         *,
         batch_head: str = "",
     ) -> tuple[dict, str]:
+        nonlocal producer, digest_before
+        correction = bool(resume and resume_round.get("producer") == key)
+        if stage in ("fixer", "closer"):
+            producer = key
         path = review.sprint_report_path(sprint_id, key, round_n)
         if not dry_run and (aside := rotate_artifacts([path, review.patch_path(path)])):
             print("warning: " + artifact_notice(aside, salvage_cmd), file=sys.stderr)
@@ -169,7 +200,13 @@ def cmd_review(sprint_id: str, dry_run: bool) -> int:
             cards,
             base,
             path,
-            charter or charters[stage],
+            (
+                (charter or charters[stage]) + "\nCorrect only this interrupted producer's report"
+                " using preserved work and logs. "
+                "Do not edit or commit again; report missing evidence honestly."
+                if correction
+                else charter or charters[stage]
+            ),
             extra,
             authority,
             diff_base,
@@ -177,7 +214,10 @@ def cmd_review(sprint_id: str, dry_run: bool) -> int:
             trunk_range,
         )
         stage_head = batch_head or git("rev-parse", "HEAD").stdout.strip()
-        role = "fixer" if stage == "fixer" else stage if not complete_n else ""
+        role = "reviewer" if stage == "solution" or correction else stage
+        if stage == "fixer" and not dry_run:
+            write_sprint_state(marker, {"running_producer": key})
+            digest_before = review.marker_digest(marker)
         result, err = review.run(
             bundle,
             Path.cwd(),
@@ -191,10 +231,18 @@ def cmd_review(sprint_id: str, dry_run: bool) -> int:
         if dry_run:  # an EMPTY report, not a shapeless one: a preview walks
             empty = empty_report()
             return empty, review.abort_text(head, err) if err else ""
-        report, report_err = review.read_report(path, stage=stage)
+        report, report_err = review.read_report(
+            path, stage="solution" if stage == "verifier" else stage
+        )
         if not report_err and not batch_head:
             ran.append(key)
             reports.append(report)
+        if stage == "fixer" and not dry_run:
+            producer_motion = review.marker_digest(marker) != digest_before
+            write_sprint_state(marker, {}, remove=("running_producer",))
+            digest_before = review.marker_digest(marker)
+            if producer_motion:
+                err = err or "fixer moved the close marker; lead must inspect preserved evidence"
         if err:  # stage_head, not head: an undo from the ROUND's start spans an applied fix
             empty = empty_report()
             return report if batch_head else empty, review.abort_text(stage_head, err)
@@ -203,7 +251,7 @@ def cmd_review(sprint_id: str, dry_run: bool) -> int:
         )  # before any refusal: the findings exist nowhere else yet
         if (
             not batch_head
-            and stage != "fixer"
+            and (stage != "fixer" or correction)
             and (motion := review.check_reviewer_motion(stage_head, marker, digest_before, cards))
         ):
             return empty_report(), motion
@@ -233,7 +281,11 @@ def cmd_review(sprint_id: str, dry_run: bool) -> int:
 
     def stage(stage_name: str, key: str, extra: list, charter: str = "") -> tuple[dict, str]:
         nonlocal resume_announced
-        report, _error = sprint_review_resume.take(prefix, stage_name, key, reports, round_n)
+        if prefix and resume_round.get("producer") == key:
+            prefix.close("the interrupted producer may correct only its report")
+        report, _error = sprint_review_resume.take(
+            prefix, "solution" if stage_name == "verifier" else stage_name, key, reports, round_n
+        )
         if report is not None:
             return report, ""
         if resume and not resume_announced:
@@ -253,7 +305,13 @@ def cmd_review(sprint_id: str, dry_run: bool) -> int:
         ordered = []
         with ThreadPoolExecutor(max_workers=max(1, len(jobs))) as pool:
             for key, extra in jobs:
-                report, _ = sprint_review_resume.take(prefix, stage_name, key, reports, round_n)
+                report, _ = sprint_review_resume.take(
+                    prefix,
+                    "solution" if stage_name == "verifier" else stage_name,
+                    key,
+                    reports,
+                    round_n,
+                )
                 if report is not None:
                     ordered.append((key, report, None))
                     continue
@@ -284,42 +342,19 @@ def cmd_review(sprint_id: str, dry_run: bool) -> int:
         motion = review.check_reviewer_motion(batch_head, marker, digest_before, cards)
         return results, motion or (errors[0] if errors else "")
 
-    prior = [("Findings from earlier rounds", render_sprint_prior(rounds))]
+    prior = [
+        ("Current integration obligations", "\n".join(overlap.unresolved_blocking(state)) or "none")
+    ]
+    fixed, closing = empty_report(), empty_report()
+    survivors, reserved = [], []
     if complete_n:
-        charter = (
-            review.charter()
-            .replace(
-                "Review independently without changing HEAD, the index, working files, "
-                "your card or\nclose marker.",
-                "Review the delta and commit authorized fixes through ordinary hooks. "
-                "Preserve the card and close marker.",
-            )
-            .replace(
-                "Report authorized actionable findings and reserved/unresolved blockers.",
-                "Fix authorized findings and report reserved/unresolved blockers.",
-            )
-            .replace(
-                "The coordinator conditionally launches one committing fixer "
-                "and one narrow closer;",
-                "This sprint delta review fixes within its round; "
-                "the lead checks its committed diff;",
-            )
+        solution, err = stage(
+            "solution", "solution", [("Sprint altitude", altitude), *prior], review.charter()
         )
-        charter = charter.split("\n## Output", 1)[0] + (
-            "\n## Output\nWrite JSON to REPORT_PATH with required blocking findings for "
-            "anything still unresolved. Fix authorized findings and commit through normal hooks; "
-            "do not hand actionable findings to another fixer. Optional fixed finding-text "
-            "strings, dropped and debt "
-            "explain decisions under JUDGMENT. Reserved choices and unmet ACs remain blocking."
-        )
-        fixed, err = leg("fixer", "fix", [("Sprint altitude", altitude), *prior], charter)
         if err:
             return stop(err)
-        if dry_run:
-            return 0
-        closing = empty_report()
+        survivors, reserved = solution["actionable"], solution["blocking"]
     else:
-        fixed = empty_report()
         candidates = []
         jobs = [(f"find-{slug}", [("Your angle", prose), *prior]) for slug, prose in found]
         finder_reports, err = batch("finder", jobs)
@@ -328,9 +363,8 @@ def cmd_review(sprint_id: str, dry_run: bool) -> int:
         for report in finder_reports:
             candidates += report["blocking"]
         if dry_run:
-            print("(then: verifiers, the fixer, the closer)")
+            print("(then: verifiers; authorized findings buy one fixer and narrow closer)")
             return 0
-        survivors = []
         batches = stages.batches(candidates, cap)
         verify_keys = [f"verify-{n}" for n in range(1, len(batches) + 1)]
         if prefix and (why := prefix.match_verifiers(verify_keys)):
@@ -346,19 +380,30 @@ def cmd_review(sprint_id: str, dry_run: bool) -> int:
         if err:
             return stop(err)
         for report in verifier_reports:
-            survivors += report["blocking"]
-        print(f"{len(candidates)} candidates, {len(survivors)} survived refutation")
-        if survivors:
-            told = [("The findings you must fix", "\n".join(f"- {s}" for s in survivors))]
-            if prefix and prefix.open and head == reviewed_head and resume_round.get("fixed"):
-                why = prefix.close("the tree is unchanged and carries none of the claimed fixes")
-                print(f"round {round_n}: cannot reuse fix: {why}")
-            fixed, err = stage("fixer", "fix", told)
-            if err:
-                return stop(err)
-        closing, err = stage("closer", "close", [("What the fixer reported", json.dumps(fixed))])
+            survivors += report["actionable"]
+            reserved += report["blocking"]
+        print(
+            f"{len(candidates)} candidates, {len(survivors)} authorized, {len(reserved)} reserved"
+        )
+    if survivors:
+        told = [("The findings you must fix", "\n".join(f"- {s}" for s in survivors))]
+        fixed, err = stage("fixer", "fix", told)
         if err:
             return stop(err)
+        if not fixed["blocking"]:
+            closing, err = stage(
+                "closer",
+                "close",
+                [
+                    *told,
+                    ("What the fixer reported", json.dumps(fixed)),
+                    ("Correction range", f"{head}..{git('rev-parse', 'HEAD').stdout.strip()}"),
+                ],
+            )
+            if err:
+                return stop(err)
+    if dry_run:
+        return 0
     shown_sha = git("rev-parse", "HEAD").stdout.strip()
 
     # Plan drift is safe to reject only after every sprint member is terminal.
@@ -366,7 +411,8 @@ def cmd_review(sprint_id: str, dry_run: bool) -> int:
         changed = f"sprint {sprint_id}'s cards changed during the review"
         return stop(review.abort_text(shown_sha, changed))
     round_ = aggregate(reports)
-    round_["blocking"] = [*fixed["blocking"], *closing["blocking"]]
+    round_["schema"] = 2
+    round_["blocking"] = [*reserved, *fixed["blocking"], *closing["blocking"]]
     if clearable := closing.get(review.CLEARABLE_BY_FULL):
         round_[review.CLEARABLE_BY_FULL] = clearable
     fix_report = review.sprint_report_path(sprint_id, "fix", round_n)
@@ -390,4 +436,9 @@ def cmd_review(sprint_id: str, dry_run: bool) -> int:
         f"round {round_n} recorded at {shown_sha[:8]}:"
         f" {len(round_.get('fixed', []))} fixed, {len(round_['blocking'])} blocking"
     )
+    if round_["blocking"]:
+        return fail(
+            "refused: integration findings remain — the lead must inspect the reports "
+            "and correction, then explicitly review any changed solution"
+        )
     return 0

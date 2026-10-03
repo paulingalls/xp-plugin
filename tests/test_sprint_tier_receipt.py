@@ -119,7 +119,7 @@ class TestStartReceipt:
         repo, env, _g, events, _tier = counted_repo(tmp_path)
         path = marker_path(tmp_path)
         path.parent.mkdir(parents=True)
-        path.write_text(json.dumps({"rounds": [{"sentinel": "preserved"}]}))
+        path.write_text(json.dumps({"rounds": [{"blocking": [], "sentinel": "preserved"}]}))
 
         result = sprint(repo, env, "start")
 
@@ -128,7 +128,7 @@ class TestStartReceipt:
         assert "full_tier" not in state(tmp_path)
         assert "notes to triage" in result.stdout
         assert "Session digest" in result.stdout
-        assert state(tmp_path)["rounds"] == [{"sentinel": "preserved"}]
+        assert state(tmp_path)["rounds"] == [{"blocking": [], "sentinel": "preserved"}]
 
     @pytest.mark.parametrize("kind", ["tracked", "untracked"])
     def test_start_refuses_dirt_before_the_batch(self, tmp_path, kind):
@@ -180,7 +180,8 @@ Verify: true
 
         result = sprint(repo, env, "start")
 
-        assert result.returncode == 0 and "close checks wait" in result.stdout
+        assert result.returncode == 0
+        assert (tmp_path / "data/sprint_branch").read_text().strip() == "sprint-002"
         assert not events.exists()
 
     @pytest.mark.parametrize("kind", ["tracked", "untracked", "commit"])

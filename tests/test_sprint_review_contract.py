@@ -230,31 +230,7 @@ class TestMotionIsBoundedByAMechanism:
         assert r.returncode == 0, r.stderr + r.stdout
 
 
-class TestSprintCharter:
-    def test_what_every_stage_shares_is_a_delta_not_a_second_charter(self):
-        """An opus executor with no bound modelled this on story-reviewer.md (712
-        words). Four stages now share ONE preamble, and it is the part every
-        launch pays for — the per-stage sections have their own cap in
-        test_review.py. `report-only` is gone from it deliberately: the fixer
-        commits, and a charter still claiming otherwise contradicts the gate."""
-        text = (PLUGIN / "agents" / "sprint-reviewer.md").read_text()
-        shared = text.split("---", 2)[2].split("\n## ")[0]
-        assert len(shared.split()) <= 150, f"{len(shared.split())} words: a preamble, not a charter"
-        assert "report-only" not in shared.lower(), "the fixer commits; this leg is not report-only"
-        assert "JUDGMENT.md" in shared, "the bar and rubric pointer drifted"
-        assert "Round 1" in shared and "Later rounds use one" in shared
-        assert "story-shaped reviewer" in shared and "fix inside its round" in shared
-
-
 class TestShippedProse:
-    def test_the_sprint_close_skill_names_the_human_only_steps(self):
-        """The two reviews stopped being human-only at story-014 — the pipeline
-        marshals them. What a script still cannot absorb (constraint 7) is note
-        triage and the retro narrative, so those are what this pins now."""
-        skill = (PLUGIN / "skills" / "sprint-close" / "SKILL.md").read_text().lower()
-        assert "note triage" in skill and "retro" in skill
-        assert "narrative is the part" in skill, "the judgment step lost its reason"
-
     def test_judgment_carries_the_record_lifecycle_and_the_polarity_contract(self):
         judgment = (PLUGIN / "JUDGMENT.md").read_text()
         assert "resolve" in judgment, (

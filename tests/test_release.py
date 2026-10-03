@@ -153,7 +153,7 @@ def _sprint_release_repo(tmp_path):
     git("config", "user.email", "t@t")
     git("config", "user.name", "t")
     (repo / ".xp").mkdir()
-    (repo / ".xp" / "config.yml").write_text("versioning: off\n")
+    (repo / ".xp" / "config.yml").write_text("versioning: off\ntests:\n  full: true\n")
     (repo / "release.txt").write_text("base\n")
     git("add", "-A")
     git("commit", "-qm", "base")
@@ -167,7 +167,7 @@ def _sprint_release_repo(tmp_path):
     marker = data / "markers" / "sprint" / "11.json"
     marker.parent.mkdir(parents=True)
     state = {"reviewed_head": reviewed, "shown_sha": shown}
-    marker.write_text(json.dumps(state | {"rounds": [state]}))
+    marker.write_text(json.dumps(state | {"rounds": [state | {"blocking": []}]}))
     (data / "sprint_branch").write_text("sprint-011\n")
 
     def close():
@@ -390,7 +390,9 @@ def test_sprint_lifecycle_runs_after_validation_and_before_the_retryable_tag(tmp
     )
     command = shlex.join([sys.executable, str(hook), "fixed value"])
     config = repo / ".xp" / "config.yml"
-    config.write_text(f"lifecycle_command: {command}\nversion_files: manifest.json\n")
+    config.write_text(
+        f"lifecycle_command: {command}\nversion_files: manifest.json\ntests:\n  full: true\n"
+    )
     git("add", "-A")
     git("commit", "-qm", "release tree")
     git("tag", "v1.1.0")
@@ -398,6 +400,13 @@ def test_sprint_lifecycle_runs_after_validation_and_before_the_retryable_tag(tmp
     state = tmp_path / "data" / "sprint_branch"
     state.parent.mkdir()
     state.write_text("sprint-011\n")
+    marker = state.parent / "markers/sprint/11.json"
+    marker.parent.mkdir(parents=True)
+    marker.write_text(
+        json.dumps(
+            {"rounds": [{"blocking": []}], "shown_sha": git("rev-parse", "HEAD").stdout.strip()}
+        )
+    )
     monkeypatch.chdir(repo)
     monkeypatch.setenv("PATH", env["PATH"])
     monkeypatch.setenv("XP_DATA", env["XP_DATA"])

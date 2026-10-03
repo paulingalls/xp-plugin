@@ -26,9 +26,16 @@ def sprint_slice(output):
 
 def configure_release(repo):
     (repo / ".xp" / "config.yml").write_text(
-        "release: sprint\ntrunk: main\nversion_files: manifest.json\nlifecycle_command: true\n"
+        "release: sprint\ntrunk: main\nversion_files: manifest.json\n"
+        "lifecycle_command: true\ntests:\n  full: true\n"
     )
     (repo / "manifest.json").write_text('{"version": "0.3.0"}\n')
+
+
+def integration_evidence(data, sprint_id, sha):
+    path = data / "markers/sprint" / f"{sprint_id}.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({"rounds": [{"blocking": []}], "shown_sha": sha}))
 
 
 def test_a_lettered_sprint_opens_releases_and_reads_back_as_released(tmp_path):
@@ -56,6 +63,7 @@ def test_a_lettered_sprint_opens_releases_and_reads_back_as_released(tmp_path):
     (data / "plan.md").write_text(LETTERED_PLAN.format(status="done"))
     env = {"PATH": "/usr/bin:/bin", "HOME": str(tmp_path), "XP_DATA": str(data)}
 
+    integration_evidence(data, "2b-11", merged_sha)
     closed = sprint(repo, env, "post-merge", sprint_id="2b-11")
 
     assert closed.returncode == 0, closed.stderr + closed.stdout
@@ -237,6 +245,7 @@ def test_a_non_oserror_after_tag_is_compensated_and_retryable(tmp_path, monkeypa
     g("checkout", "-q", "main")
     g("merge", "-q", "--no-ff", "sprint-002", "-m", "release Sprint 2")
     (data / "sprint_branch").write_text("sprint-002\n")
+    integration_evidence(data, "2", g("rev-parse", "HEAD").stdout.strip())
     monkeypatch.chdir(repo)
     monkeypatch.setenv("PATH", "/usr/bin:/bin")
     monkeypatch.setenv("HOME", str(tmp_path))
@@ -275,6 +284,7 @@ def test_versioning_off_turns_a_non_oserror_write_failure_into_a_retryable_refus
     g("checkout", "-q", "main")
     g("merge", "-q", "--no-ff", "sprint-002", "-m", "release Sprint 2")
     (data / "sprint_branch").write_text("sprint-002\n")
+    integration_evidence(data, "2", g("rev-parse", "HEAD").stdout.strip())
     monkeypatch.chdir(repo)
     monkeypatch.setenv("XP_DATA", str(data))
     writer = release.write_release_record
@@ -317,7 +327,6 @@ def test_unsafe_sprint_ids_refuse_before_tagging_or_writing(tmp_path, monkeypatc
     monkeypatch.setattr(release, "sprint_branch", lambda: release.sprint_branch_name(sprint_id))
     monkeypatch.setattr(release, "next_version", lambda _part: "v0.3.0")
     monkeypatch.setattr(release, "version_refusal", lambda _version, _names: "")
-    monkeypatch.setattr(release.lc, "run", lambda *_args: 0)
     monkeypatch.setattr(release, "write_release_record", lambda *args: written.append(args))
     monkeypatch.setattr(release, "clear_sprint_branch", lambda: cleared.append(True))
 

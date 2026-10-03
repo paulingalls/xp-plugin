@@ -11,7 +11,7 @@ from timing import Span, release_start, report, table
 
 def tier_event(started_at, ended_at, command="tier-history-sentinel"):
     return {
-        "leg": "not-slow",
+        "leg": "land",
         "outcome": "passed",
         "command": command,
         "tree": "tree",
@@ -26,7 +26,10 @@ def write_tier_history(marker):
     marker.parent.mkdir(parents=True, exist_ok=True)
     start = datetime.now(timezone.utc) - timedelta(seconds=2)
     marker.write_text(
-        json.dumps({"full_tier_history": [tier_event(start, start + timedelta(seconds=1))]})
+        json.dumps(
+            (json.loads(marker.read_text()) if marker.exists() else {})
+            | {"full_tier_history": [tier_event(start, start + timedelta(seconds=1))]}
+        )
     )
 
 
@@ -163,7 +166,7 @@ def test_post_merge_prints_prior_window_and_then_records_release(tmp_path):
     repo, env, _g = released_repo(tmp_path)
     root = tmp_path / "data"
     Span(root, "agent", "prior-release-window").finish("passed")
-    marker = marker_path(tmp_path, sprint_id="002")
+    marker = marker_path(tmp_path, sprint_id="2")
     write_tier_history(marker)
     result = sprint(repo, env, "post-merge", sprint_id="002")
     assert result.returncode == 0, result.stderr

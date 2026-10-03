@@ -90,7 +90,7 @@ FINDING = {"fixed": [], "blocking": ["F"], "schema": 2, "dropped": [], "debt": [
 
 
 class TestRoundProvenance:
-    def test_complete_round_records_only_the_closers_validated_occurrences(self, tmp_path):
+    def test_fixer_remainder_cannot_buy_closer_clearance(self, tmp_path):
         repo, env, _g = make_repo(tmp_path)
         staged_stub(
             tmp_path,
@@ -107,10 +107,10 @@ class TestRoundProvenance:
             },
         )
         result = sprint(repo, env, "review")
-        assert result.returncode == 0, result.stderr
+        assert result.returncode == 2, result.stdout
         round_ = json.loads(marker_path(tmp_path).read_text())["rounds"][-1]
-        assert round_["blocking"] == ["SAME", "SAME"]
-        assert round_["clearable_by_full"] == ["SAME"]
+        assert round_["blocking"] == ["SAME"]
+        assert "clearable_by_full" not in round_
 
     def test_a_binding_to_only_the_fixers_text_refuses_the_closer_report(self, tmp_path):
         repo, env, _g = make_repo(tmp_path)
@@ -118,7 +118,7 @@ class TestRoundProvenance:
             tmp_path,
             find=FINDING,
             verify=FINDING,
-            fix={"fixed": ["F"], "blocking": ["SAME"], "schema": 2, "dropped": [], "debt": []},
+            fix={"fixed": ["F"], "blocking": [], "schema": 2, "dropped": [], "debt": []},
             close={
                 "fixed": [],
                 "blocking": [],
@@ -157,3 +157,18 @@ class TestRoundProvenance:
         assert json.loads(marker_path(tmp_path).read_text())["rounds"][-1]["incomplete"]
         land = sprint(repo, env, "land")
         assert land.returncode == 2 and not sentinel.exists()
+
+
+def test_closer_clearance_cannot_waive_a_same_text_reserved_occurrence(tmp_path):
+    repo, env, _g = make_repo(tmp_path)
+    staged_stub(
+        tmp_path,
+        find=FINDING,
+        verify={"actionable": ["F"], "blocking": ["SAME"]},
+        fix={"fixed": ["F"], "blocking": []},
+        close={"blocking": ["SAME"], "clearable_by_full": ["SAME"]},
+    )
+    assert sprint(repo, env, "review").returncode == 2
+    landed = sprint(repo, env, "land", "--dry-run")
+    assert landed.returncode == 2, "full-tier clearance waived a reserved occurrence"
+    assert "blocking findings" in landed.stderr
