@@ -97,13 +97,8 @@ def stub_claude(
     break_git=False,
     execute_escalation=False,
 ):
-    """A fake `claude` that records argv, env and stdin, then (by default)
-    commits its own "work" and emits a stream-json terminal result object —
-    the shape of a clean, successful teammate run. The other three knobs
-    produce the shapes TestTeammateCompletion's guard must catch:
-    `write_file` alone leaves an UNCOMMITTED file (dirty tree); `commit=False,
-    write_file=False` leaves the tree clean but with NO commit of its own —
-    the two injections the completion guard's AC calls for.
+    """Record argv, environment and prompt, optionally commit, then emit a native
+    terminal result. Failure knobs leave dirty work, omit the result or break Git.
     """
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir(exist_ok=True)

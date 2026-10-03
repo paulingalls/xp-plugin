@@ -2,7 +2,6 @@
 
 import argparse
 import fcntl
-import shlex
 import subprocess
 import sys
 from pathlib import Path
@@ -52,11 +51,16 @@ def validate(root: Path, story_id: str, tree: Path, branch: str) -> str:
     state = handoff_state(root, story_id)
     if state is None:
         return (
-            f"refused: {marker} is unreadable, so it cannot prove the teammate stopped —"
-            " read `work.py list`, repair the handoff, then resume"
+            f"refused: execution stage selection is unknown because {marker} is unreadable —"
+            " restore its saved bytes from preserved evidence, then resume; work and logs remain"
         )
     # A locked RUNNING marker proves a dead launch; FINISHED would forge clean success.
     kind = state.get("state") if marker.exists() else "NEVER SPAWNED"
+    if kind == "NEVER SPAWNED" and tree.is_dir():
+        return (
+            f"refused: missing executor checkpoint beside {tree}; preserve artifacts "
+            f"and restore the handoff before resuming"
+        )
     if kind == "NEVER SPAWNED" and not tree.is_dir():
         return f"refused: {story_id} was NEVER SPAWNED — use `spawn.py {story_id}` first"
     if kind not in ("STOPPED", "FINISHED", "RUNNING", "NEVER SPAWNED"):
@@ -69,25 +73,6 @@ def validate(root: Path, story_id: str, tree: Path, branch: str) -> str:
         return f"refused: invalid stage state in {marker} — restore {RESULTS} stage values"
     if not tree.is_dir():
         return f"refused: {kind} worktree {tree} is missing — recover it before resuming"
-    if kind in ("RUNNING", "NEVER SPAWNED"):
-        code = (
-            f"import json; from pathlib import Path; p=Path({str(marker)!r});"
-            " state=json.loads(p.read_text()) if p.exists() else {};"
-            " state['state']='STOPPED'; p.parent.mkdir(parents=True, exist_ok=True);"
-            " p.write_text(json.dumps(state))"
-        )
-        repair = shlex.join(
-            [
-                sys.executable,
-                "-c",
-                code,
-            ]
-        )
-        return (
-            f"refused: {story_id} left {tree} with no handback and nothing holds its launch"
-            f" lock — an INTERRUPTED spawn, not a RUNNING teammate. Run `{repair}` to"
-            " record an explicit stopped handoff, then resume; or remove the worktree and re-spawn"
-        )
     actual = subprocess.run(
         ["git", "branch", "--show-current"], cwd=tree, capture_output=True, text=True
     )
@@ -96,6 +81,15 @@ def validate(root: Path, story_id: str, tree: Path, branch: str) -> str:
             f"refused: {tree} is not on {kind.lower()} branch {branch} — restore that checkout"
             " before resuming"
         )
+    import contextlib
+
+    from completion import validate as checkpoint
+
+    try:
+        with contextlib.chdir(tree):
+            checkpoint(story_id, state)
+    except ValueError as error:
+        return f"refused: {error}"
     if kind == "FINISHED":
         status = subprocess.run(
             ["git", "status", "--porcelain"], cwd=tree, capture_output=True, text=True

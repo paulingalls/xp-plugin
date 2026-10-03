@@ -189,17 +189,11 @@ def _run_review(
     dry_run: bool,
     prior: str = "",
     review_card: bool = False,
-    confirmation: dict | None = None,
 ) -> tuple[int, str]:
     try:
         before = review_state(plan_file, story_id)
-        from plan_acceptance import identity
-        from plan_confirmation import recheck, repository_fingerprint
+        from plan_confirmation import repository_fingerprint
 
-        if confirmation:
-            recheck(story_id, plan_file, confirmation)
-            if identity(plan_file) != confirmation["record"]["plan_identity"]:
-                raise ValueError("prior draft changed before confirmation; restore bound bytes")
         fingerprint = repository_fingerprint(plan_file) if review_card else None
         from ready import credential
 
@@ -232,10 +226,6 @@ def _run_review(
             changed |= repository_fingerprint(plan_file) != fingerprint
         if review_card:
             changed |= credential(ready_marker_path(story_id)) != minted_before
-        if confirmation:
-            from plan_confirmation import recheck
-
-            recheck(story_id, plan_file, confirmation)
     except (OSError, ValueError, UnicodeError) as e:
         return refused(f"refused: the plan reviewer left the repository unreadable: {e}")
     if changed:
@@ -271,18 +261,7 @@ def _run_review(
     except (OSError, UnicodeError) as error:
         return refused(f"refused: cannot read review candidate: {error}; restore {candidate}")
     outcome, problem = evaluate_disposition(findings, before_plan, after_plan, card, after_card)
-    decision = "confirm"
-    if confirmation and outcome != "failed":
-        from plan_confirmation import confirmation_decision
-
-        decision, invalid = confirmation_decision(findings)
-        if invalid:
-            return refused(f"refused: {invalid}")
-    if (
-        outcome in {"ran", "blocked"}
-        and candidate
-        and (decision != "replan" or outcome == "blocked")
-    ):
+    if outcome in {"ran", "blocked"} and candidate:
         try:
             record = prepare(
                 story_id,
@@ -302,8 +281,6 @@ def _run_review(
                 raise ValueError("story card moved before acceptance; inspect concurrent edits")
             if credential(ready_marker_path(story_id)) != minted_before:
                 raise ValueError("credential moved before acceptance; inspect concurrent amendment")
-            if confirmation:
-                recheck(story_id, plan_file, confirmation)
             publish(story_id, record)
             accepted = record
         except (OSError, ValueError, KeyError, CardEditRefusal) as error:
@@ -340,22 +317,9 @@ def _run_review(
                 json.dumps(state | {"state": "PLAN REVIEW BLOCKED", "disposition": "blocked"})
             )
         return refused(f"refused: {problem}", outcome)
-    if confirmation and decision == "replan":
-        from close import story_card
-        from plan_acceptance import protected
-        from plan_writer import validate_candidate
-
-        try:
-            checked = validate_candidate(
-                story_id, story_card(card, story_id)[1], candidate, story_card
-            )
-            if protected(card) != protected(checked):
-                raise ValueError("reserved candidate choice; report it in human_question")
-        except (OSError, ValueError, CardEditRefusal) as error:
-            return refused(f"refused: invalid replan candidate: {error}")
     incomplete_marker(story_id).unlink(missing_ok=True)  # the child's own verdict
     print(findings)
-    return ReviewResult(0, "replan" if decision == "replan" else outcome, accepted)
+    return ReviewResult(0, outcome, accepted)
 
 
 def main() -> int:

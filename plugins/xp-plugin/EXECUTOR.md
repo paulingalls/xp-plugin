@@ -33,4 +33,7 @@ extend Files, and report the deviation.
 - **Finish green.** Make small red-green-refactor increments. Run the card's exact
   Verify and the configured `tests.story` from `.xp/config.yml`.
   Then commit the green change with hooks enabled before handing back its result.
-  Story close, review, and land belong to the lead; the executor hands back after the green commit.
+  Attribute inherited commits and tests honestly. If the inherited implementation
+  already satisfies the card, hand it back with the current checks; no empty commit
+  is required. Historical lead recovery directions are evidence, while your assignment
+  is implementation. Story close, review, and land belong to the lead.

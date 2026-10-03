@@ -247,14 +247,6 @@ plan_review.run_foreground = interrupted
             shlex.split(command), cwd=repo, env=env, capture_output=True, text=True
         )
         assert repaired.returncode == 0, repaired.stderr
-    else:
-        refused = spawn(repo, env, "resume", "story-042")
-        assert "INTERRUPTED spawn" in refused.stderr
-        command = re.search(r"Run `([^`]+)`", refused.stderr).group(1)
-        repaired = subprocess.run(
-            shlex.split(command), cwd=repo, env=env, capture_output=True, text=True
-        )
-        assert repaired.returncode == 0, repaired.stderr
     resumed = spawn(repo, env, "resume", "story-042")
     assert resumed.returncode == 0, resumed.stderr
     assert event_roles(events) == ["planner", "plan-reviewer", "teammate", "reviewer"]

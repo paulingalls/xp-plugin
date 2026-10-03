@@ -15,7 +15,9 @@ def compare_prompt(repo, env, seen, launch):
     prompt = event["prompt"]
     assert "## Current plan review\n" in preview.stdout, "Current plan review missing from preview"
     assert preview.stdout.endswith(prompt + "\n")
-    assert preview.stdout.splitlines()[1].split(" ", 1)[1] == " ".join(event["argv"])
+    assert next(
+        line for line in preview.stdout.splitlines() if line.startswith(("claude ", "codex "))
+    ).split(" ", 1)[1] == " ".join(event["argv"])
     assert re.search(r"profile: total \d+ tokens", preview.stdout).group() in live.stdout
 
 

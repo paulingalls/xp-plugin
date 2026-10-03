@@ -1,4 +1,4 @@
-"""Real spawn fixtures with harness-native confirmation decisions."""
+"""Real spawn fixtures with independent plan-review results."""
 
 import json
 import subprocess
@@ -8,15 +8,11 @@ from test_plan_findings_handoff import staged_harness
 
 QUESTION = "Which lease value does the human authorize?"
 REASON = "Honesty prevents silent loss by retaining the lease guard."
-ANSWER_REASON = "Courage applies the authorized lease value."
 
 
 def consumer(
     tmp_path,
     harness="claude",
-    decision="confirm",
-    question=None,
-    status="edited",
     initial_status="edited",
     initial_question=QUESTION,
     dirty=False,
@@ -33,27 +29,13 @@ def consumer(
         reasons=[] if initial_status == "clean" else [REASON],
         summary="",
     )
-    confirmed = dict(
-        status=status,
-        human_question=question,
-        reasons=[ANSWER_REASON],
-        summary="Old plan cannot serve amended behavior." if decision == "replan" else "",
-        decision=decision,
-    )
     text = (
         text[:start]
         + (
             "elif role == 'plan-reviewer':\n"
             " p = re.search(r'^FINDINGS_PATH: (.+)$', prompt, re.M); assert p\n"
             " draft = re.search(r'^PLAN_PATH: (.+)$', prompt, re.M).group(1)\n"
-            " confirming = '.confirmation-' in p.group(1)\n"
-            " event['kind'] = 'confirmation' if confirming else 'full'\n"
-            " if confirming:\n"
-            f"  verdict = {confirmed!r}\n"
-            "  if verdict['status'] != 'clean':\n"
-            f"   open(draft, 'a').write('lease = 17\\nReason: {ANSWER_REASON}\\n')\n"
-            "  else: verdict['reasons'] = []\n"
-            " elif 'replacement requested' in open(draft).read():\n"
+            " if 'replacement requested' in open(draft).read():\n"
             "  verdict = dict(status='clean', human_question=None, reasons=[], "
             "summary='replacement reviewed')\n"
             " else:\n"
@@ -90,9 +72,7 @@ def consumer(
         subprocess.run(["git", "branch", "-f", "main", "HEAD"], cwd=repo, env=env, check=True)
     text = text.replace(
         "if role == 'planner':",
-        "if role == 'planner':\n"
-        " m = re.search(r'### Confirmation findings\\n\\nRead (.+)', prompt)\n"
-        " if m: event['replan_disposition'] = json.loads(open(m.group(1)).read())",
+        "if role == 'planner':\n",
     )
     binary.write_text(text)
     if harness == "codex":
@@ -183,7 +163,8 @@ def perturb(*args):
             Path(record['findings']).with_suffix('.evidence.json').unlink()
         elif target == 'card':
             from work import plan_path
-            plan_path().write_text(plan_path().read_text().replace('lease = 17', 'lease = 99'))
+            text = plan_path().read_text().replace('Context: demo.', 'Context: unreviewed scope.')
+            plan_path().write_text(text)
         elif target == 'credential':
             from work import ready_marker_path
             ready_marker_path('story-042').write_text('{}')

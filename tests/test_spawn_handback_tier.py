@@ -97,13 +97,17 @@ def test_second_red_refuses_without_third_executor(tmp_path):
     assert marker(tmp_path)["stages"]["story-tier"] == "failed"
 
 
-def test_retry_requires_its_own_commit(tmp_path):
+def test_retry_without_a_commit_still_runs_current_tier(tmp_path):
     repo, env, path, _command = fixture(tmp_path, outcomes=(1, 0), commit_second=False)
     result = spawn(repo, env, "story-042")
-    assert result.returncode == 2
-    assert [e["kind"] for e in read_events(path)] == ["teammate", "tier", "teammate"]
-    assert "no commits of its own" in result.stderr
-    assert "git worktree remove" not in result.stderr
+    assert result.returncode == 0, result.stderr
+    assert [e["kind"] for e in read_events(path)] == [
+        "teammate",
+        "tier",
+        "teammate",
+        "tier",
+        "reviewer",
+    ]
 
 
 def test_retry_tolerates_what_the_tier_run_left_untracked(tmp_path):

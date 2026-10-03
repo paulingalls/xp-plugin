@@ -15,12 +15,13 @@ def stopped_story(tmp_path):
     plans = tmp_path / "data" / "plans"
     plans.mkdir(exist_ok=True)
     (plans / "story-042.plan.md").write_text("DRAFT-SENTINEL\n")
-    stub_claude(tmp_path, commit=False)
+    stub_claude(tmp_path, commit=False, write_file=True)
     stopped = spawn(repo, env, "story-042")
-    assert stopped.returncode == 2 and "no commits" in stopped.stderr.lower(), stopped.stderr
+    assert stopped.returncode == 2 and "uncommitted" in stopped.stderr.lower(), stopped.stderr
     # the FIRST stop is the one that has to name the verb; nothing else will
     assert "spawn.py resume story-042" in stopped.stderr, stopped.stderr
     tree = tmp_path / "data" / "worktrees" / "story-042"
+    (tree / "teammate-left-this-uncommitted.txt").unlink()
     marker = plans / "story-042.handoff.json"
     assert tree.is_dir() and marker.is_file()
     return repo, env, g, tree, marker
@@ -128,36 +129,18 @@ class TestResume(BootstrapLeftTreeCases):
 
         assert result.returncode == 0, result.stderr
         commits = in_tree(tree, env, "log", "--format=%H")
-        assert predecessor in commits and len(commits.splitlines()) >= 3
+        assert commits.splitlines()[0] == predecessor
 
-    def test_a_killed_successor_does_not_leave_a_finished_credential(self, tmp_path):
-        repo, env, _g, _tree, marker = finished_story(tmp_path)
+    def test_a_killed_successor_recovers_without_manual_state_repair(self, tmp_path):
+        repo, env, _g, tree, marker = stopped_story(tmp_path)
         stub_killer(tmp_path)
-
         killed = resume(repo, env)
-
         assert killed.returncode < 0
         assert json.loads(marker.read_text())["state"] == "RUNNING"
         rec, _nested, _second = stub_takeover(tmp_path)
-        refused = resume(repo, env)
-        assert refused.returncode == 2 and "RUNNING" in refused.stderr
-        assert "FINISHED" not in refused.stderr, "a dead launch was offered the credential"
-        assert not rec.exists(), "resume trusted a FINISHED state from the earlier run"
-
-    def test_an_interrupted_launch_takes_the_repair_its_refusal_names(self, tmp_path):
-        """Constraint 12: the refusal prescribes a repair, so walk it rather than ship it
-        unrun. `spawn.py resume` is the only route back to a tree a dead launch left."""
-        repo, env, _g, _tree, marker = stopped_story(tmp_path)
-        stub_killer(tmp_path)
-        assert resume(repo, env).returncode < 0
-        refused = resume(repo, env)
-        assert refused.returncode == 2 and "INTERRUPTED" in refused.stderr, refused.stderr
-        rec, _nested, _second = stub_takeover(tmp_path)
-
-        marker.write_text(json.dumps(json.loads(marker.read_text()) | {"state": "STOPPED"}))
-
-        assert resume(repo, env).returncode == 0, "the prescribed repair does not resume"
-        assert "STOPPED" in json.loads(rec.read_text())["stdin"]
+        recovered = resume(repo, env)
+        assert recovered.returncode == 0, recovered.stderr
+        assert rec.exists() and tree.is_dir()
 
     def test_fresh_teammate_reuses_the_tree_commit_branch_and_draft(self, tmp_path):
         repo, env, _g, tree, _marker = stopped_story(tmp_path)
@@ -173,7 +156,7 @@ class TestResume(BootstrapLeftTreeCases):
         prompt = json.loads(rec.read_text())["stdin"]
         assert "Predecessor plan draft" not in prompt
         assert str(tmp_path / "data" / "plans" / "story-042.plan.md") not in prompt
-        assert "DRAFT-SENTINEL" not in prompt and "no commits" in prompt.lower()
+        assert "DRAFT-SENTINEL" not in prompt and "uncommitted" in prompt.lower()
 
     def test_a_tree_off_its_stopped_branch_is_never_taken_over(self, tmp_path):
         repo, env, _g, tree, _marker = stopped_story(tmp_path)
@@ -245,6 +228,7 @@ class TestResume(BootstrapLeftTreeCases):
         assert resume(repo, env).returncode == 0
         finished = json.loads(marker.read_text())
         assert finished["state"] == "FINISHED" and finished["records"] == ["deadbeef"]
+        commit(_tree, env, "external-input.py")
         rec, _nested, _second = stub_takeover(tmp_path)
 
         assert resume(repo, env).returncode == 0
@@ -262,7 +246,7 @@ class TestResume(BootstrapLeftTreeCases):
             predecessor = commit(tree, env)
         else:
             repo, env, _g, tree, marker = finished_story(case)
-            predecessor = in_tree(tree, env, "rev-parse", "HEAD")
+            predecessor = commit(tree, env)
         assert json.loads(marker.read_text())["state"] == state
         rec, _nested, _second = stub_takeover(case)
 
@@ -333,19 +317,19 @@ class TestResume(BootstrapLeftTreeCases):
             repo, env, "amend", "story-042", "--reason", "the answer changed during execution"
         )
         assert amended.returncode == 0, amended.stderr
-        stub_claude(tmp_path)
+        from test_plan_findings_handoff import staged_harness
+
+        staged_harness(tmp_path)
         assert resume(repo, env).returncode == 0
         assert "[in-progress]" in plan.read_text()
 
-    def test_predecessor_commit_is_not_credited_to_a_successor_that_commits_nothing(self, tmp_path):
+    def test_inherited_commit_without_successor_commit_reaches_current_review(self, tmp_path):
         repo, env, _g, tree, _marker = stopped_story(tmp_path)
-        commit(tree, env)
+        predecessor = commit(tree, env)
         stub_claude(tmp_path, commit=False)
-
         result = resume(repo, env)
-
-        assert result.returncode == 2
-        assert "no commits" in result.stderr.lower(), result.stderr
+        assert result.returncode == 0, result.stderr
+        assert in_tree(tree, env, "rev-parse", "HEAD") == predecessor
 
     def test_dirty_diff_is_evidence_and_partial_adoption_stays_a_handback(self, tmp_path):
         repo, env, _g, tree, marker = stopped_story(tmp_path)
@@ -376,6 +360,7 @@ class TestResume(BootstrapLeftTreeCases):
 
     def test_a_finished_successor_failure_names_its_own_remaining_work(self, tmp_path):
         repo, env, _g, _tree, _marker = finished_story(tmp_path)
+        commit(_tree, env)
         stub_claude(tmp_path, write_file=True, add_all=False)
 
         result = resume(repo, env)
@@ -401,7 +386,8 @@ class TestResume(BootstrapLeftTreeCases):
 
         result = resume(repo, env)
 
-        assert result.returncode == 2 and "INTERRUPTED" in result.stderr, result.stderr
+        assert result.returncode == 2, result.stderr
+        assert "missing executor checkpoint" in result.stderr
         assert not rec.exists(), "resume launched without evidence of a stop"
 
     def test_a_teammate_that_is_actually_running_is_refused_by_the_lock(self, tmp_path):
