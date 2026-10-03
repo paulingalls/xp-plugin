@@ -40,7 +40,8 @@ def hook(repo, tmp_path):
     output = tmp_path / "hook-event"
     script = tmp_path / "hook.py"
     script.write_text(
-        f"import pathlib, sys\npathlib.Path({str(output)!r}).write_text(' '.join(sys.argv[1:]))\n"
+        f"import pathlib, sys\npathlib.Path({str(output)!r}).open('a')"
+        ".write(' '.join(sys.argv[1:]))\n"
     )
     config = repo / ".xp/config.yml"
     config.write_text(
@@ -149,3 +150,18 @@ def test_role_and_git_guards_and_help(tmp_path):
     assert outside.returncode == 2 and "not inside a git repository" in outside.stderr
     assert help_result.returncode == 0 and "--dry-run" in help_result.stdout
     assert not branch.exists() and not output.exists()
+
+
+def test_open_dry_run_ignores_close_preflight(tmp_path):
+    repo, env, _g, branch = fixture(tmp_path)
+    config = repo / ".xp/config.yml"
+    config.write_text("preflight: |\n  cd nowhere\n" + config.read_text())
+    before = (tmp_path / "data/plan.md").read_bytes()
+
+    result = invoke(repo, env, "2", "--dry-run")
+
+    assert result.returncode == 0, result.stderr
+    assert "falsifier" not in result.stdout
+    assert "preflight" not in result.stdout
+    assert not branch.exists()
+    assert (tmp_path / "data/plan.md").read_bytes() == before

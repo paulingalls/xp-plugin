@@ -13,22 +13,15 @@ never apply a card's change: building it, even in a copy, is the story's work.
 
 ## Checks
 
-1. **Slate** — check card responsibilities/boundaries and contracts through
-   JUDGMENT, plus order, funding, dependencies, collisions and capacity. Price
-   moves or cuts against current costs.
-2. **Acceptance** — map each AC to executable Verify and a system surface. A
-   command unable to red is a false green.
-3. **Premises** — execute existing-code claims and RESOLVE every cited record id;
-   test required state is reachable. Reading does not substitute, and an id naming
-   nothing is never a red.
-4. **Omitted pins** — search affected gates, callers, types, templates and tests
-   that the card does not name; trace authoritative rule ownership across cards.
-   Citations do not bound scope.
-5. **Stop states** — a card naming a stop, escalation or refusal branch states what
-   `Verify:` means AT that branch, or says the branch closes no story.
-6. **Optional fields** — use the shipped card template in this bundle as the
-   authority. For each card, name any optional field that would pay on that card
-   as a NOTED candidate; absence never makes the card RED.
+1. **Slate** — check the goal, order, dependencies and collisions through
+   JUDGMENT. Capacity is advice to the lead; size alone cannot make a coherent
+   slate RED. Missing prerequisites and human decisions remain actionable.
+2. **Acceptance** — check meaningful, observable outcomes and whether Verify
+   can distinguish success from the failure the card owns.
+3. **Premises** — check existing-code claims against the checkout and RESOLVE
+   cited record ids. Construct required state where reading cannot establish it.
+4. **Authority** — identify unresolved human, scope and design choices. Cards
+   declare necessary scope paths; executor implementation planning belongs later.
 
 ## Output
 

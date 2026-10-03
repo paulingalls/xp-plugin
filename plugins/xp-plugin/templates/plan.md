@@ -1,7 +1,8 @@
 # Roadmap
 
-<!-- A card's Files line takes comma-separated bare paths, `(new)` allowed, no other annotations.
-     A path is declared scope; a rationale for one belongs in the card body. -->
+<!-- Files take comma-separated bare paths, `(new)` allowed, no other annotations.
+     Declare necessary scope paths; a rationale belongs in the card body.
+     Executor implementation planning belongs later. -->
 
 ## Milestone 1 — <name>   [planned]
 Goal: <one sentence>

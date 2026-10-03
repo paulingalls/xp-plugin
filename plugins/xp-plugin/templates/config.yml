@@ -6,7 +6,7 @@ release: sprint      # sprint = stories integrate on a sprint branch, sprint clo
 # lifecycle_command: ./scripts/xp-lifecycle "fixed value"  # argv prefix, no shell
 #                    # receives sprint-open/story-close/sprint-close and the id
 # preflight: ./scripts/check-environment  # seconds-scale check before expensive gates; no receipt
-sprint_cap: 6        # max stories per sprint
+sprint_cap: 6        # story-count guidance for the lead
 debt_budget: 0.2     # maximum share of scheduled debt; no allocation to fill
 constraints_chars_cap: 4500  # hard character ceiling; retire or shorten a rule
 profile_target: 806  # story-card token allowance; also the default when absent

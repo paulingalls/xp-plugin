@@ -13,8 +13,10 @@ instead.
 
 ## The process, enforced
 
-- **Slate review**: at sprint open a fresh `slate-reviewer` reads the whole slate and
-  the lead judges every result;
+- **Slate review**: before sprint open one fresh `slate-reviewer` reads the whole slate;
+  capacity advises the lead, who judges every result and applies corrections.
+  Addressed findings need no automatic second review; opening only runs its
+  lifecycle and records branch/membership;
   `spawn.py ready <story-id>` now REFUSES until card refresh has run — `slate_review.py
   --refresh <story-id>` rewrites the card's stale claims against HEAD, not a review, and
   the lead owns the result. ready runs nothing itself; it remains the lead's per-card
