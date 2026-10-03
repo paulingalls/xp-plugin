@@ -45,8 +45,13 @@ def run(
         if api.ready().plan_needs_replan(story_id, prior):
             from plan_confirmation import preserve
 
-            with api.contextlib.chdir(tree):
-                preserve(story_id, api.draft_path(api.data_root(), story_id))
+            try:
+                with api.contextlib.chdir(tree):
+                    preserve(story_id, api.draft_path(api.data_root(), story_id))
+            except (OSError, ValueError) as error:
+                return stop(
+                    f"cannot preserve predecessor: {error}; restore snapshots and resume", 0
+                )
             if problem := api.handoff_io.archive_replanned_rounds(story_id, prior):
                 return stop(problem, 0)
         api.mark_stage(api.data_root(), story_id, "planner", "running")
@@ -62,8 +67,13 @@ def run(
         if prior.get("stages", {}).get("plan-reviewer") == "ran" and not latest(story_id):
             from plan_confirmation import preserve
 
-            with api.contextlib.chdir(tree):
-                preserve(story_id, api.draft_path(api.data_root(), story_id))
+            try:
+                with api.contextlib.chdir(tree):
+                    preserve(story_id, api.draft_path(api.data_root(), story_id))
+            except (OSError, ValueError) as error:
+                return stop(
+                    f"cannot preserve predecessor: {error}; restore snapshots and resume", 0
+                )
 
         api.mark_stage(api.data_root(), story_id, "plan-reviewer", "running")
         with api.contextlib.chdir(tree):

@@ -180,6 +180,46 @@ def test_stage_owned_changes_advance(tmp_path):
     assert roles(seen)[count:] == ["reviewer"]
 
 
+@pytest.mark.parametrize("amend_again", [False, True])
+def test_amended_planning_survives_interrupted_plan_review(tmp_path, amend_again):
+    from completed_executor_support import completed, roles
+    from plan_confirmation_support import amend
+
+    launch = installed_launch(tmp_path)
+    repo, env, seen = completed(tmp_path, launch)
+    amend(tmp_path, repo, env, launch)
+    binary = tmp_path / "bin/claude"
+    source = binary.read_text()
+    binary.write_text(
+        source.replace(
+            "elif role == 'plan-reviewer':", "elif role == 'plan-reviewer':\n sys.exit(1)"
+        )
+    )
+    stopped = launch(repo, env, "resume", "story-042")
+    assert stopped.returncode == 2, stopped.stderr
+    marker = tmp_path / "data/plans/story-042.handoff.json"
+    state = json.loads(marker.read_text())
+    assert state["stages"]["planner"] == "ran"
+    draft = tmp_path / "data/plans/story-042.plan.md"
+    saved = draft.read_bytes()
+    binary.write_text(source)
+    if amend_again:
+        amend(tmp_path, repo, env, launch)
+    count = len(events(seen))
+    preview = launch(repo, env, "resume", "story-042", "--dry-run")
+    assert preview.returncode == 0, preview.stderr
+    expected = "planner" if amend_again else "plan-reviewer"
+    assert f"Next stage: {expected}." in preview.stdout
+    result = launch(repo, env, "resume", "story-042")
+    assert result.returncode == 0, result.stderr
+    assert roles(seen)[count:] == (["planner"] if amend_again else []) + [
+        "plan-reviewer",
+        "teammate",
+        "reviewer",
+    ]
+    assert draft.read_bytes() == saved
+
+
 @pytest.mark.meta
 @pytest.mark.parametrize(
     "guard",
@@ -202,6 +242,7 @@ def test_stage_owned_changes_advance(tmp_path):
         "submodule",
         "role",
         "lock",
+        "planner-scope",
     ],
 )
 def test_checkpoint_guard_detects_its_fault(tmp_path, monkeypatch, guard):

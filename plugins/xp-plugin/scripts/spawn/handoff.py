@@ -98,6 +98,12 @@ def mark_stage(root: Path, story_id: str, stage: str, result: str) -> None:
         raise ValueError(f"invalid spawn stage {stage}={result}")
     state = handoff_state(root, story_id) or {}
     state.setdefault("stages", {})[stage] = result
+    if stage == "planner" and result == "running":
+        from ready import credential
+        from work import ready_marker_path
+
+        current = credential(ready_marker_path(story_id))
+        state["planned_amendment_count"] = len(current.get("amendments", [])) if current else None
     _write(root, story_id, state)
 
 

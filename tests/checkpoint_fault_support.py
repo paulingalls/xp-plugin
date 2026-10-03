@@ -5,6 +5,14 @@ from test_completed_executor_preview import (
 )
 
 FAULTS = {
+    "planner-scope": (
+        "scripts/spawn/handoff.py",
+        'state["planned_amendment_count"] = len(current.get("amendments", [])) '
+        "if current else None",
+        "pass",
+        "planner-scope",
+        None,
+    ),
     "work": (
         "scripts/spawn/completion.py",
         'if any(current[key] != baseline[key] for key in ("work", "review", "scope")):',
@@ -151,6 +159,8 @@ def guarantee(root, scenario, parameter):
         resume.test_tier_motion_cannot_publish_success(root)
     elif scenario == "scope":
         forward.test_scope_amendment_returns_to_planning(root)
+    elif scenario == "planner-scope":
+        forward.test_amended_planning_survives_interrupted_plan_review(root, False)
     elif scenario == "owner":
         forward.test_stage_owned_changes_advance(root)
     elif scenario == "preview":

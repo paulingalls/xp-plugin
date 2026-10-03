@@ -64,6 +64,14 @@ def plan_needs_replan(story_id: str, handoff: dict) -> bool:
     current = credential(ready_marker_path(story_id))
     accepted = latest(story_id)
     count = accepted.get("amendment_count", 0) if accepted else 0
+    planned = handoff.get("planned_amendment_count")
+    if (
+        current
+        and handoff.get("stages", {}).get("planner") == "ran"
+        and type(planned) is int
+        and planned == len(current.get("amendments", []))
+    ):
+        count = planned
     return bool(current and len(current.get("amendments", [])) > count)
 
 
