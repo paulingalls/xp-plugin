@@ -220,3 +220,15 @@ def test_adoption_and_flow_guards_detect_target_faults(tmp_path, monkeypatch, fa
     monkeypatch.setattr(invoke, "__kwdefaults__", {"script": installed / "scripts/xp.py"})
     with pytest.raises(AssertionError):
         guarantee(tmp_path / "mutant")
+
+
+def test_saved_milestone_falsifier_remains_executable():
+    import re
+    import shlex
+
+    command = re.search(r"^Falsifier: `([^`]+)`", (SAVED / "work.md").read_text(), re.M)[1]
+    result = subprocess.run(
+        shlex.split(command), cwd=PLUGIN.parent.parent, capture_output=True, text=True
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "1 passed" in result.stdout

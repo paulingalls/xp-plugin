@@ -286,3 +286,9 @@ def test_locked_flip_rechecks_after_the_condition_succeeds(tmp_path, monkeypatch
     assert sentinel.read_text() == "green"
     assert "changed" in capsys.readouterr().err
     assert "## Milestone 2 repeats Milestone 20   [in-progress]" in path.read_text()
+
+
+# Durable work.md falsifiers retain this node ID across session-boundary installs.
+test_milestone_done_dry_run_runs_the_condition_without_changing_plan = (
+    test_milestone_done_dry_run_previews_without_running_the_condition
+)

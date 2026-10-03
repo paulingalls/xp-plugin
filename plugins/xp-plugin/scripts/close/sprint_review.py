@@ -195,7 +195,7 @@ def cmd_review(sprint_id: str, dry_run: bool) -> int:
         path = (
             data_root() / "reports" / "sprint" / f"{sprint_id}.{key}.round-{round_n}.json"
             if dry_run
-            else review.sprint_report_path(sprint_id, key, round_n)
+            else review.sprint_report_path(sprint_id, key, round_n, create=True)
         )
         if not dry_run and (aside := rotate_artifacts([path, review.patch_path(path)])):
             print("warning: " + artifact_notice(aside, salvage_cmd), file=sys.stderr)

@@ -90,9 +90,10 @@ def report_path(story_id: str, round_n: int) -> Path:
     return p
 
 
-def sprint_report_path(sprint_id: str, stage: str, round_n: int) -> Path:
+def sprint_report_path(sprint_id: str, stage: str, round_n: int, *, create=False) -> Path:
     d = data_root() / "reports" / "sprint"
-    d.mkdir(parents=True, exist_ok=True)
+    if create:
+        d.mkdir(parents=True, exist_ok=True)
     return d / f"{sprint_id}.{stage}.round-{round_n}.json"
 
 

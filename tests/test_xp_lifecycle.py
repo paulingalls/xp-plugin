@@ -162,3 +162,21 @@ def test_retired_saved_actions_refuse_with_executable_recovery(tmp_path, kind, a
     assert recovered.returncode == 2 and "refused:" in recovered.stderr
     assert "usage:" not in recovered.stderr and "Traceback" not in recovered.stderr
     assert snapshot(tmp_path) == before
+
+
+def test_interrupted_sprint_review_preview_leaves_missing_reports_directory_absent(tmp_path):
+    import shutil
+
+    from test_sprint_review_resume import _stop_at_fixer
+
+    repo, env, _g = make_repo(tmp_path)
+    _stop_at_fixer(tmp_path)
+    stopped = invoke(repo, env, "sprint", "2", "review")
+    assert stopped.returncode == 2 and "wrote no report" in stopped.stderr
+    reports = tmp_path / "data/reports"
+    shutil.rmtree(reports)
+    before = snapshot(tmp_path / "data")
+    preview = invoke(repo, env, "sprint", "2", "review", "--dry-run")
+    assert preview.returncode == 0, preview.stderr
+    assert not reports.exists()
+    assert snapshot(tmp_path / "data") == before
