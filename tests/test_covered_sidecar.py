@@ -2,6 +2,7 @@
 
 import json
 
+import pytest
 from close_free_card_cases import free_identity
 from close_helpers import close, close_bare, free, make_repo, marker
 from test_close_free import reviewed
@@ -205,3 +206,21 @@ def test_free_dry_run_previews_without_moving(tmp_path):
     assert preview.returncode == 0, preview.stderr
     assert f"would set aside {sidecar} -> {archived}" in preview.stdout
     assert sidecar.read_bytes() == evidence and not archived.exists()
+
+
+@pytest.mark.parametrize(
+    "marker_bytes", ["{", "[1]", '{"rounds": null}', '{"rounds": []}', '{"rounds": [1]}']
+)
+def test_red_sidecar_with_unreadable_close_marker_preserves_evidence(tmp_path, marker_bytes):
+    repo, env, git, sidecar = superseded(tmp_path)
+    path = tmp_path / "data/markers/story-042.close.json"
+    path.write_text(marker_bytes)
+    evidence = sidecar.read_bytes()
+    before = git("rev-parse", "main").stdout
+
+    refused = close(repo, env, "land")
+
+    assert refused.returncode == 2 and "Traceback" not in refused.stderr, refused.stderr
+    assert str(path) in refused.stderr and "preserve" in refused.stderr
+    assert path.read_text() == marker_bytes and sidecar.read_bytes() == evidence
+    assert git("rev-parse", "main").stdout == before

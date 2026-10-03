@@ -40,6 +40,18 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
     if not work.plan_path().exists():
         return close.fail(f"refused: {work.missing_plan_refusal()}")
     marker = close.marker_path(story_id, create=False)
+    state = None
+    if marker.exists():
+        try:
+            state = json.loads(marker.read_text())
+            if not isinstance(state, dict) or not isinstance(state.get("rounds"), list):
+                raise ValueError("close marker rounds are unreadable")
+            if not state["rounds"] or any(not isinstance(r, dict) for r in state["rounds"]):
+                raise ValueError("close marker has no usable review rounds")
+        except (OSError, ValueError) as error:
+            return close.fail(
+                f"refused: {error}; preserve {marker} and work; lead must inspect then review"
+            )
     launch_paths = [review.launch_marker(story_id, create=False), *story_sidecars(story_id)]
     covered_sidecars = []
     for launch in (path for path in launch_paths if path.exists()):
@@ -57,8 +69,7 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
             )
         if verify_red:
             covered = False
-            if launch != launch_paths[0] and marker.exists():
-                state = json.loads(marker.read_text())
+            if launch != launch_paths[0] and state is not None:
                 verify_head = unrecorded.get("verify_head", unrecorded.get("head", ""))
                 shown_sha = state.get("shown_sha", "")
                 covered = (
@@ -115,18 +126,8 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
             print(f"{verb} {sidecar} -> {destination}; covered by round {round_n}")
         return ""
 
-    if not marker.exists():
+    if state is None:
         return close.fail(f"refused: no close in progress for {story_id} — run review first")
-    try:
-        state = json.loads(marker.read_text())
-        if not isinstance(state, dict) or not isinstance(state.get("rounds"), list):
-            raise ValueError("close marker rounds are unreadable")
-        if not state["rounds"] or any(not isinstance(r, dict) for r in state["rounds"]):
-            raise ValueError("close marker has no usable review rounds")
-    except (OSError, ValueError) as error:
-        return close.fail(
-            f"refused: {error}; preserve {marker} and work; lead must inspect then review"
-        )
     noun, free_slug = close.leg(story_id)
     free = bool(free_slug)
     trunk = close.default_branch() if free else close.integration_target()
