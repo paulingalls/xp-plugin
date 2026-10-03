@@ -76,10 +76,19 @@ def build_bundle(
 
 
 def _slate(sprint_id: str) -> str:
+    from milestone import find
     from sprint_close import sprint_cards
 
     try:
-        return sprint_cards(plan_path().read_text(), sprint_id)
+        text = plan_path().read_text()
+        cards = sprint_cards(text, sprint_id)
+        if cards and (owner := find(text, sprint_id)):
+            header = owner.block.split("\n### ", 1)[0]
+            fields = [
+                line for line in header.splitlines() if line.startswith(("Goal:", "Done when:"))
+            ]
+            return "\n".join([owner.heading.rstrip(), *fields, cards])
+        return cards
     except OSError:
         return ""
 

@@ -12,7 +12,8 @@ Before writing:
 
 - Carry every open card named by session recovery unchanged into the new sprint,
   before slate review.
-- Budget story slots against `sprint_cap`; `debt_budget` bounds the share spent
+- Use `sprint_cap` as size advice, not a quota or exception ceremony. The lead
+  chooses a coherent slate; `debt_budget` bounds the share spent
   on scheduled debt; it is a ceiling, never an obligation to fill it.
 - Put prerequisites first in merge order. Find file collisions between cards;
   order or split them before execution.
@@ -28,10 +29,11 @@ context; do not give it the author's conclusions. Check EVERY returned per-card
 and slate result. Fix authorized corrections, record a one-line reasoned drop in
 the slate judgment, or retain exceptional debt with a real record reference and
 both JUDGMENT bars. Escalate human/scope choices; do not extend ACs automatically.
-Keep discoveries and value tradeoffs in notes, leaving corrected cards only. Then `git switch -c sprint-<id>`, the id stripped of
-leading zeros and zero-padded to three characters (`sprint-007`, `sprint-2b-11`), and
-`python3 ${CLAUDE_PLUGIN_ROOT}/scripts/open_sprint.py <id>`; unfinished output says close
-checks wait.
+Keep discoveries and value tradeoffs in notes, leaving corrected cards only.
+Addressed findings need no automatic second slate review. Then
+`git switch -c sprint-<id>`, the id stripped of leading zeros and zero-padded to three characters (`sprint-007`, `sprint-2b-11`), and
+`python3 ${CLAUDE_PLUGIN_ROOT}/scripts/open_sprint.py <id>`. Opening runs only the
+sprint-open lifecycle and records the sprint.
 
 ## Done
 

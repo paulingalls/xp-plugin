@@ -1,7 +1,7 @@
 # xp-plugin project config (dogfood instance)
 release: sprint
 codex_sandbox: danger-full-access  # Codex only: workspace-write | danger-full-access
-sprint_cap: 6          # max stories per sprint
+sprint_cap: 6          # story-count guidance for the lead
 debt_budget: 0.2       # max share of sprint stories that are scheduled debt
 constraints_chars_cap: 4500  # hard character ceiling; retire or shorten a rule
 profile_target: 1209  # this project's measured story-card token allowance

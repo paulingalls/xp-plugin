@@ -123,6 +123,10 @@ def cmd_start(sprint_id: str, dry_run: bool = False) -> int:
     if branch != (expected := sprint_branch_name(sprint_id)):
         return fail(f"refused: open sprint {sprint_id} from {expected}, not {branch}")
     first_open = not sprint_branch()
+    if first_open and any(not m.endswith(milestone.TERMINAL) for m in members):
+        from open_sprint import cmd_open
+
+        return cmd_open(sprint_id, dry_run)
     if first_open and (running := _running_slate_refusal(sprint_id)):
         return fail(running)
     if dry_run:
