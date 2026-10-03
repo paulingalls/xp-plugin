@@ -9,7 +9,6 @@ import overlap
 import preflight as pf
 import tier_legs
 from env import data_root
-from falsifier_batch import ARCHIVED, batch_refusal, execute_batch, grouped_batch
 from milestone import sprint_stories
 from release import (
     VERSIONING_OFF_TEXT,
@@ -30,7 +29,7 @@ from sprint_close import (
 )
 from sprint_coverage import _covered_gate_files
 from sprint_coverage import coverage_refusal as _coverage_refusal
-from sprint_state import append_tier_evidence, read_tier_history
+from sprint_state import append_tier_evidence, read_tier_history, write_sprint_state
 from work import config_block_value, plan_path
 
 # GitHub's own ceiling on a pull request body; gh rejects a longer --body-file.
@@ -38,8 +37,8 @@ PR_BODY_LIMIT = 65_536
 
 
 def _release_body(sprint_id: str, state: dict, marker) -> tuple[str, str]:
-    rerun = f"run `close.py sprint {sprint_id} review`"
-    again = f"then run `close.py sprint {sprint_id} land` again"
+    rerun = f"run `xp.py sprint {sprint_id} review`"
+    again = f"then run `xp.py sprint {sprint_id} land` again"
     plan = plan_path()
     try:
         headings = sprint_stories(plan.read_text(), sprint_id)
@@ -60,7 +59,7 @@ def _release_body(sprint_id: str, state: dict, marker) -> tuple[str, str]:
     except FileNotFoundError:
         return "", (
             f"refused: no close log at {close_log} — no story has closed through"
-            f" `close.py story <id> close` here, so the PR could name no merge SHA."
+            f" `xp.py story <id> land` here, so the PR could name no merge SHA."
             f" Restore it, or create it empty if that is genuinely this sprint, {again}"
         )
     except (OSError, UnicodeError) as exc:
@@ -191,7 +190,7 @@ def cmd_land(sprint_id: str, dry_run: bool) -> int:
     if versioned and (refusal := version_refusal(version)):
         return fail(refusal)
     title = f"release {version}" if versioned else f"release {branch}"
-    ref = overlap.merge_source(default_branch(), "pr")
+    ref = overlap.merge_source(default_branch(), "pr", fetch=not dry_run)
     pending = overlap.unmerged(ref)
     marker, state, marker_error = read_sprint_state(sprint_id)
     if marker_error:
@@ -230,7 +229,7 @@ def cmd_land(sprint_id: str, dry_run: bool) -> int:
         for c in preview:
             print(" ".join(c))
         handoff = f"tag {version}, retire the key" if versioned else "retire the key"
-        print(f"(then: close.py sprint {sprint_id} post-merge — {handoff})")
+        print(f"(then: xp.py sprint {sprint_id} post-merge — {handoff})")
         if not versioned:
             print(VERSIONING_OFF_TEXT)
         if pending:
@@ -252,46 +251,6 @@ def cmd_land(sprint_id: str, dry_run: bool) -> int:
             f"refused: {history_error} in sprint marker {marker} — repair or delete"
             " full_tier_history, then run land again"
         )
-    start_ids = state.get("start_deferred_ids", [])
-    if not isinstance(start_ids, list) or any(not isinstance(eid, str) for eid in start_ids):
-        return fail(
-            f"refused: unreadable start_deferred_ids in sprint marker {marker} — delete that"
-            f" key, run `close.py sprint {sprint_id} start` to re-record it, then land again"
-        )
-    root = data_root()
-    _standalone, pre_deferred, _records, _source, error = grouped_batch(root)
-    if error:
-        return fail(f"refused: {error}")
-    retry = f"`close.py sprint {sprint_id} land`"
-
-    def after_full(tier_red: str) -> str:
-        _standalone, deferred, records, _source, error = grouped_batch(root)
-        if error:
-            return f"refused: {error}"
-        displaced = {key: sources for key, sources in pre_deferred.items() if key not in deferred}
-        deferred_ids = {eid for sources in deferred.values() for eid, _head, _covered in sources}
-        displaced_ids = {eid for sources in displaced.values() for eid, _head, _covered in sources}
-        for record in records:
-            if (
-                record.eid in start_ids
-                and record.eid not in deferred_ids | displaced_ids
-                and record.state != ARCHIVED
-            ):
-                displaced.setdefault(record.falsifier, []).append(
-                    (record.eid, record.head, record.covered)
-                )
-        if tier_red:
-            rerun = deferred | displaced
-            results = execute_batch(rerun)
-            return batch_refusal(root, rerun, results, retry) or tier_red
-        if displaced:
-            results = execute_batch(displaced)
-            if red := batch_refusal(root, displaced, results, retry):
-                return red
-        for sources in deferred.values():
-            for eid, head, covered in sources:
-                print(f"trusted {eid} ({head}) via tier {covered}")
-        return ""
 
     def record_attempt(event: dict, receipt: dict | None) -> str:
         try:
@@ -301,12 +260,11 @@ def cmd_land(sprint_id: str, dry_run: bool) -> int:
         return ""
 
     red, receipt = overlap.gates(
-        ref, [], "full", pending, prior, after_full, record_attempt, history, legs
+        ref, [], "full", pending, prior, None, record_attempt, history, legs
     )
     if red:
         return fail(_clearance_failure(red, bound) if bound else red)
-    # Read AFTER the falsifier batch, not the snapshot from before the tier: a round
-    # recorded while either ran must reach the gate and the disclosure below.
+    # Validation may outlast a concurrent review; gate its latest state.
     marker, state, marker_error = read_sprint_state(sprint_id)
     if marker_error:
         return fail(marker_error)
@@ -344,6 +302,11 @@ def cmd_land(sprint_id: str, dry_run: bool) -> int:
     with tempfile.NamedTemporaryFile("w", encoding="utf-8") as body_file:
         body_file.write(body)
         body_file.flush()
+        prepared = {
+            "branch": branch,
+            "head": head,
+            "tree": git("rev-parse", "HEAD^{tree}").stdout.strip(),
+        }
         cmds = [
             ["git", "push", "-u", "origin", branch],
             [
@@ -360,7 +323,14 @@ def cmd_land(sprint_id: str, dry_run: bool) -> int:
             r = subprocess.run(c, capture_output=True, text=True)
             if r.returncode != 0:
                 return bookkeep.refuse_command(c, r)
-    print(f"release PR open. After it MERGES: close.py sprint {sprint_id} post-merge")
+        try:
+            write_sprint_state(marker, {"prepared_pr": prepared | {"url": r.stdout.strip()}})
+        except (OSError, ValueError) as exc:
+            return fail(
+                f"release PR prepared at {r.stdout.strip()}, but its locator could not be saved: "
+                f"{exc} — preserve that URL and repair the marker before post-merge"
+            )
+    print(f"release PR open. After it MERGES: xp.py sprint {sprint_id} post-merge")
     if not versioned:
         print(VERSIONING_OFF_TEXT)
     return 0

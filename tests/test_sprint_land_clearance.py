@@ -47,7 +47,7 @@ def release_tools(tmp_path, env, g):
     g("remote", "add", "origin", str(origin))
     (tmp_path / "data" / "closes.jsonl").write_text("")
     gh = tmp_path / "bin" / "gh"
-    gh.write_text("#!/bin/sh\nexit 0\n")
+    gh.write_text("#!/bin/sh\necho https://example.test/pr/2\n")
     gh.chmod(0o755)
 
 
@@ -65,6 +65,13 @@ class TestBoundFullClearance:
         marker_after = json.loads(marker_path(tmp_path).read_text())
         receipt = marker_after.pop("full_tier")
         history = marker_after.pop("full_tier_history")
+        prepared = marker_after.pop("prepared_pr")
+        assert prepared == {
+            "branch": "sprint-002",
+            "head": head(repo, env),
+            "tree": g("rev-parse", "HEAD^{tree}").stdout.strip(),
+            "url": "https://example.test/pr/2",
+        }
         assert marker_after == marker_before
         assert [(entry["outcome"], entry["tree"]) for entry in history] == [
             ("passed", receipt["tree"])

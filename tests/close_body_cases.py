@@ -42,7 +42,9 @@ class TestBoundedDurableBody:
         findings = overflowing_findings()
         findings["fixed"][0] = "x" * 5000
         stub_reviewer(tmp_path, report=findings)
-        assert close(repo, env, "review").returncode == 0
+        assert close(repo, env, "review").returncode == 2
+        (repo / "src/thing.py").write_text("A = 3\n")
+        g("commit", "-qam", "lead correction")
         stub_reviewer(tmp_path, report=CLEAN)
         assert close(repo, env, "review").returncode == 0
 

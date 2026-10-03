@@ -67,7 +67,6 @@ def make_repo(tmp_path, status="ready", executor="(default)", trunk="main", file
     )
     (plan.parent / "sprint_branch").write_text(f"{trunk}\n")
     if full:
-        seed_refresh_receipt(repo, env)
         minted = spawn(repo, env, "ready", "story-042")
         assert minted.returncode == 0, minted.stderr
         return repo, env, g
@@ -76,7 +75,6 @@ def make_repo(tmp_path, status="ready", executor="(default)", trunk="main", file
         # MINTED, never typed: a fixture that writes [ready] by hand hands out the
         # forgery story-023 removed, and every test below it stops walking the real
         # sequence (constraint 12). The forgery has its own test.
-        seed_refresh_receipt(repo, env)
         minted = spawn(repo, env, "ready", "story-042")
         assert minted.returncode == 0, minted.stderr
     (repo / ".xp" / "constraints.md").write_text("# Constraints\n1. CONSTRAINT-SENTINEL\n")
@@ -99,13 +97,8 @@ def stub_claude(
     break_git=False,
     execute_escalation=False,
 ):
-    """A fake `claude` that records argv, env and stdin, then (by default)
-    commits its own "work" and emits a stream-json terminal result object —
-    the shape of a clean, successful teammate run. The other three knobs
-    produce the shapes TestTeammateCompletion's guard must catch:
-    `write_file` alone leaves an UNCOMMITTED file (dirty tree); `commit=False,
-    write_file=False` leaves the tree clean but with NO commit of its own —
-    the two injections the completion guard's AC calls for.
+    """Record argv, environment and prompt, optionally commit, then emit a native
+    terminal result. Failure knobs leave dirty work, omit the result or break Git.
     """
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir(exist_ok=True)
@@ -125,14 +118,24 @@ def stub_claude(
         # tests that drive this stub bare red. RECORDING still follows the test
         # flag: the reviewer launch must not clobber the teammate's record inside a
         # spawn run, while the close-review leg's own tests read that same record.
+        "planner = os.environ.get('XP_ROLE') in ('planner', 'plan-reviewer')",
         "spawn_review = os.environ.get('XP_ROLE') == 'reviewer' and 'REPORT_PATH: ' in stdin",
+        "if os.environ.get('XP_ROLE') == 'planner':\n"
+        " import re\n"
+        " match = re.search(r'^PLAN_PATH: (.+)$', stdin, re.M); assert match\n"
+        " open(match.group(1).strip(), 'w').write('# execution plan\\nred then green\\n')",
+        "if os.environ.get('XP_ROLE') == 'plan-reviewer':\n"
+        " import re\n"
+        " match = re.search(r'^FINDINGS_PATH: (.+)$', stdin, re.M); assert match\n"
+        " open(match.group(1).strip(), 'w').write(json.dumps(\n"
+        " {'status': 'clean', 'reasons': [], 'human_question': None}))",
         "keep_record = not (os.environ.get('XP_SPAWN_TEST') and spawn_review)",
         f"record = {{'argv': argv, 'env': dict(os.environ), 'stdin': stdin}}; path = {str(rec)!r}",
         "json.dump(record, open(path, 'w')) if keep_record else None",
         "if spawn_review:",
         " import re",
         " match = re.search(r'^REPORT_PATH: (.+)$', stdin, re.M); assert match",
-        " report = {'schema': 2, 'fixed': [], 'blocking': [], 'dropped': [], 'debt': []}",
+        " report = {'schema': 2, 'actionable': [], 'blocking': []}",
         " open(match.group(1).strip(), 'w').write(json.dumps(report))",
     ]
     if execute_escalation:
@@ -153,10 +156,12 @@ def stub_claude(
         # — except with add_all=False, which is the teammate that stages only
         # its own files and leaves a pre-existing leftover where it found it
         if add_all:
-            body.append("subprocess.run(['git', 'add', '-A']) if not spawn_review else None")
+            body.append(
+                "subprocess.run(['git', 'add', '-A']) if not (spawn_review or planner) else None"
+            )
         body.append(
             "subprocess.run(['git', 'commit', '--allow-empty', '-qm', 'teammate work'])"
-            " if not spawn_review else None"
+            " if not (spawn_review or planner) else None"
         )
     if break_git:
         body.append("open('.git', 'w').write('not a gitdir pointer')")
@@ -170,35 +175,6 @@ def stub_claude(
     (bin_dir / "claude").write_text("\n".join(body) + "\n")
     (bin_dir / "claude").chmod(0o755)
     return rec
-
-
-def seed_refresh_receipt(repo, env, story_id="story-042", refuses=False):
-    """Route a fixture's `ready` mint through a REAL card-refresh receipt, via
-    `ready.write_refresh_receipt`; local re-mints use `ready.remint_refresh_receipt`.
-    Never hand-build JSON: a raw acceptance test must exercise the actual
-    refusal `check_refresh` would otherwise raise. A subprocess, not an
-    in-process import: `close.git` shells out with no explicit cwd, so calling
-    it from the pytest process itself would touch this repo's OWN git, and
-    under `-n auto` every worker shares that process."""
-    script = (
-        "import sys\n"
-        "sys.path.insert(0, sys.argv[1]); sys.path.insert(0, sys.argv[1] + '/spawn')\n"
-        "from close import story_card\n"
-        "from work import plan_path\n"
-        "import ready\n"
-        "card, _status = story_card(plan_path().read_text(), sys.argv[2])\n"
-        "sys.exit(ready.write_refresh_receipt(sys.argv[2], card, False) or 0)\n"
-    )
-    r = subprocess.run(
-        [sys.executable, "-c", script, str(SPAWN.parent), story_id],
-        cwd=repo,
-        env=env,
-        capture_output=True,
-        text=True,
-    )
-    if refuses:  # the writer REFUSES a card it cannot parse; it no longer raises
-        return r
-    assert r.returncode == 0, r.stderr
 
 
 def spawn(repo, env, *args):
@@ -347,7 +323,7 @@ def stub_codex(
             "if spawn_review:",
             " m = re.search(r'^REPORT_PATH: (.+)$', stdin, re.M); assert m",
             " open(m.group(1).strip(), 'w').write("
-            '\'{"schema":2,"fixed":[],"blocking":[],"dropped":[],"debt":[]}\')',
+            '\'{"schema":2,"actionable":[],"fixed":[],"blocking":[],"dropped":[],"debt":[]}\')',
         ]
     if report is not None:
         body += [
@@ -391,7 +367,7 @@ def stub_codex(
             '"scope":"user"}]\'); sys.exit()\n'
             "stdin = sys.stdin.read(); "
             "p = re.search(r'^REPORT_PATH: (.+)$', stdin, re.M); assert p\n"
-            "report = {'schema': 2, 'fixed': [], 'blocking': [], 'dropped': [], 'debt': []}\n"
+            "report = {'schema': 2, 'actionable': [], 'blocking': []}\n"
             "open(p.group(1).strip(), 'w').write(json.dumps(report))\n"
             "print(json.dumps({'type':'result','result':json.dumps(report)}))\n"
         )

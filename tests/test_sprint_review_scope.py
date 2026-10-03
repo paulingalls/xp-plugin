@@ -59,7 +59,10 @@ class TestRoundOneRoles:
             "close",
         }
         assert {model(item) for item in ran} == {"opus"}
-        assert {item["env"]["XP_ROLE"] for item in ran} == {"reviewer"}
+        assert all(
+            item["env"]["XP_ROLE"] == ("fixer" if stage_key(item["stdin"]) == "fix" else "reviewer")
+            for item in ran
+        )
         assert not [
             key
             for item in ran
@@ -68,7 +71,14 @@ class TestRoundOneRoles:
         ]
         for item in ran:
             key = stage_key(item["stdin"])
-            assert (tmp_path / "data" / "logs" / f"sprint-{key}-review.log").exists()
+            log = (
+                "story-042-fixer.log"
+                if key == "fix"
+                else "story-042-closer.log"
+                if key == "close"
+                else f"sprint-{key}-review.log"
+            )
+            assert (tmp_path / "data" / "logs" / log).exists()
 
     def test_only_finders_use_the_finder_role(self, tmp_path):
         config = stage_config("finder", "claude/haiku")
@@ -159,13 +169,10 @@ class TestConfirmingRound:
         assert g("commit", "-qm", "round two delta").returncode == 0
 
     def test_one_story_shaped_reviewer_reads_the_delta_and_round_one_is_unchanged(self, tmp_path):
-        # `fixer` set away from `reviewer` because the assertion below is the one
-        # pinning round 2 to the story shape: on a config where the two agree, a
-        # confirming round resolving the FIXER key looks identical.
         repo, env, g, split = self._round_one(tmp_path, stage_config("fixer", "claude/haiku"))
         first = [stage_key(r["stdin"]) for r in launches(tmp_path)]
-        assert set(first) == {"find-security", "find-state-lifecycle", "find-test-vacuity", "close"}
-        assert first[-1] == "close"
+        assert set(first) == {"find-security", "find-state-lifecycle", "find-test-vacuity"}
+        round_one = json.loads(marker_path(tmp_path).read_text())["rounds"][0]
         self._commit(repo, g)
         staged_stub(tmp_path)
 
@@ -177,15 +184,16 @@ class TestConfirmingRound:
 
         assert sprint(repo, env, "review").returncode == 0
         second = launches(tmp_path)[split:]
-        assert [stage_key(r["stdin"]) for r in second] == ["fix"]
+        assert [stage_key(r["stdin"]) for r in second] == ["solution"]
         assert model(second[0]) == "opus" and second[0]["env"]["XP_ROLE"] == "reviewer"
         bundle = second[0]["stdin"]
         delta = read_named_diff(bundle, DELTA, repo, env)
         assert "+ROUND_2" in delta and "+B = 'SPRINT-ONLY-SENTINEL'" not in delta
         assert "every story was reviewed at its own close" in bundle.lower()
         assert "a seam between stories" in bundle
+        assert json.loads(marker_path(tmp_path).read_text())["rounds"][0] == round_one
 
-    def test_the_reviewer_fixes_and_records_all_three_buckets_in_the_same_round(self, tmp_path):
+    def test_later_authorized_correction_records_fix_and_remainder(self, tmp_path):
         repo, env, g, split = self._round_one(tmp_path)
         self._commit(repo, g)
         before = head(repo, env)
@@ -199,17 +207,21 @@ class TestConfirmingRound:
             ],
             "debt": [],
         }
-        staged_stub(tmp_path, patches=[("fix", "src.py", "REVIEW_FIX = 1")], fix=report)
+        staged_stub(
+            tmp_path,
+            patches=[("fix", "src.py", "REVIEW_FIX = 1")],
+            fix=report,
+            solution={"actionable": ["src.py loses the marker"], "blocking": []},
+        )
 
         result = sprint(repo, env, "review")
-        assert result.returncode == 0, result.stderr
-        assert [stage_key(r["stdin"]) for r in launches(tmp_path)[split:]] == ["fix"]
+        assert result.returncode == 2 and "lead" in result.stderr
+        assert [stage_key(r["stdin"]) for r in launches(tmp_path)[split:]] == ["solution", "fix"]
         assert head(repo, env) != before and "REVIEW_FIX = 1" in (repo / "src.py").read_text()
         state = json.loads(marker_path(tmp_path).read_text())
         assert state["rounds"][-1] | report == state["rounds"][-1], state["rounds"][-1]
         diff = tmp_path / "data/reports/sprint/2.fix.round-2.diff"
         assert diff.is_file() and "REVIEW_FIX = 1" in diff.read_text()
-        assert str(diff) in result.stdout and "landing accepts it" in result.stdout
         land = sprint(repo, env, "land", "--dry-run")
         assert land.returncode == 2 and report["blocking"][0] in land.stderr
 
@@ -219,7 +231,7 @@ class TestConfirmingRound:
         staged_stub(tmp_path, fix=CLEAN)
 
         assert sprint(repo, env, "review").returncode == 0
-        assert [stage_key(r["stdin"]) for r in launches(tmp_path)[split:]] == ["fix"]
+        assert [stage_key(r["stdin"]) for r in launches(tmp_path)[split:]] == ["solution"]
         state = json.loads(marker_path(tmp_path).read_text())
         # The round carries its own coverage as well as the report: top-level
         # coverage is overwritten by a later round, so a round that does not

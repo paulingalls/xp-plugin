@@ -15,7 +15,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from sprint_helpers import CONFIG, make_repo, sprint
+from sprint_helpers import CONFIG, make_repo, record_reviews, sprint
 
 SCRIPTS = Path(__file__).parent.parent / "plugins" / "xp-plugin" / "scripts"
 GITFLOW = CONFIG + "trunk: develop\n"
@@ -63,6 +63,7 @@ def test_post_merge_tags_the_configured_trunk_and_leaves_git_s_default_alone(tmp
     """The field case end to end: the sprint integrates on develop and the tag
     lands on the merged develop sha, while main keeps none of it."""
     repo, env, g = make_repo(tmp_path, config=GITFLOW)
+    record_reviews(tmp_path, repo, env)
     g("branch", "develop", "main")
     g("tag", "v0.2.1", "main")
     g("checkout", "-q", "develop")

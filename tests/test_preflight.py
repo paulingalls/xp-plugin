@@ -216,7 +216,7 @@ def test_sprint_start_red_or_preview_keeps_records(tmp_path, dry_run):
     result = sprint(repo, env, "start", *(["--dry-run"] if dry_run else []))
     if dry_run:
         assert result.returncode == 0, result.stderr
-        assert result.stdout.splitlines()[0].startswith("dry run:")
+        assert "dry run: close checks would run" in result.stdout
         assert _steps(result)[0] == "would run preflight: ./check-env"
         assert "preflight-output" not in result.stdout
     else:

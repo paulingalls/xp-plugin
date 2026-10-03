@@ -12,7 +12,6 @@ from spawn_helpers import (  # noqa: F401
     block_commits,
     in_tree,
     make_repo,
-    seed_refresh_receipt,
     set_system_md,
     spawn,
     stub_claude,
@@ -212,17 +211,11 @@ class TestTeammateCompletion:
         assert "dirty" in r.stderr.lower() or "uncommitted" in r.stderr.lower()
         assert "commit" in r.stderr.lower() and "worktree remove" in r.stderr
 
-    def test_no_commits_of_its_own_is_refused_naming_both_recoveries(self, tmp_path):
-        """`trunk..HEAD` is still the vacuous spelling constraints.md #11 forbids,
-        for a second reason since story-019: the flip is no longer a commit, so
-        that range counts the teammate's own work and greens on the very run this
-        must red. Only HEAD-after-the-flip lets it red."""
+    def test_noop_terminal_executor_reaches_current_checks(self, tmp_path):
         repo, env, _g = make_repo(tmp_path)
-        stub_claude(tmp_path, commit=False)  # clean tree, but nothing committed
-        r = spawn(repo, env, "story-042")
-        assert r.returncode == 2
-        assert "no commits" in r.stderr.lower()
-        assert "commit" in r.stderr.lower() and "worktree remove" in r.stderr
+        stub_claude(tmp_path, commit=False)
+        result = spawn(repo, env, "story-042")
+        assert result.returncode == 0, result.stderr
 
     def test_the_printed_recovery_actually_lets_the_story_be_re_spawned(self, tmp_path):
         """A guard whose remediation does not work is a wall. Before story-019 the
@@ -235,7 +228,7 @@ class TestTeammateCompletion:
         The middle arm is the point: it executes the old prescription exactly and
         shows it is not enough, so this cannot pass by re-spawning for free."""
         repo, env, _g = make_repo(tmp_path)
-        stub_claude(tmp_path, commit=False)
+        stub_claude(tmp_path, commit=False, write_file=True)
         plan = tmp_path / "data" / "plan.md"
         refused = spawn(repo, env, "story-042")
         assert refused.returncode == 2
@@ -264,7 +257,14 @@ class TestTeammateCompletion:
         r = spawn(repo, env, "story-042")
         assert r.returncode != 0
         assert "teammate-left-this-uncommitted.txt" in r.stderr
-        assert "worktree remove" in r.stderr
+        import json
+
+        tree = tmp_path / "data/worktrees/story-042"
+        assert (tree / "teammate-left-this-uncommitted.txt").is_file()
+        state = json.loads((tmp_path / "data/plans/story-042.handoff.json").read_text())
+        assert state["state"] == "STOPPED"
+        assert state["checkpoint"]["results"]["executor"]["result"] == "interrupted"
+        assert not (tmp_path / "data/logs/story-042-reviewer.log").exists()
 
     def test_a_leftover_from_the_bootstrap_is_not_blamed_on_the_teammate(self, tmp_path):
         """`Worktree bootstrap:` runs BEFORE the teammate and can leave the tree
@@ -287,15 +287,18 @@ class TestTeammateCompletion:
         ).exists()
 
     def test_a_tree_git_cannot_read_is_refused_rather_than_certified(self, tmp_path):
-        """Reading only stdout makes a FAILED git indistinguishable from a clean
-        one: empty porcelain reads as "nothing uncommitted" and an empty HEAD
-        never equals the flip's, so both halves pass and the spawn reports a
-        finished story it never actually looked at."""
         repo, env, _g = make_repo(tmp_path)
         stub_claude(tmp_path, break_git=True)
         r = spawn(repo, env, "story-042")
         assert r.returncode == 2, r.stdout
-        assert "worktree remove" in r.stderr
+        import json
+
+        tree = tmp_path / "data/worktrees/story-042"
+        assert (tree / ".git").read_text() == "not a gitdir pointer"
+        state = json.loads((tmp_path / "data/plans/story-042.handoff.json").read_text())
+        assert state["state"] == "STOPPED"
+        assert state["checkpoint"]["results"]["executor"]["result"] == "running"
+        assert not (tmp_path / "data/logs/story-042-reviewer.log").exists()
 
     def test_a_clean_committed_run_is_accepted(self, tmp_path):
         repo, env, _g = make_repo(tmp_path)
@@ -359,7 +362,6 @@ class TestFirstSpawnInAScaffoldedRepo:
         )
         # cleared through the leg, so the guard under test is still the one that
         # fires: a hand-typed [ready] refuses at the credential and never reaches it
-        seed_refresh_receipt(repo, env, "story-777")
         assert spawn(repo, env, "ready", "story-777").returncode == 0
         r = spawn(repo, env, "story-777")
         assert r.returncode == 2, r.stdout

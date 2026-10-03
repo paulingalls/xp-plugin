@@ -6,7 +6,6 @@ import sys
 from pathlib import Path
 
 import pytest
-from sprint_helpers import CONFIG, make_repo, work
 from test_work import run
 from work import entry_id
 
@@ -60,16 +59,6 @@ def test_repo_checker_refuses_an_open_broad_test_selector(tmp_path, command):
 def test_repo_checker_ignores_the_selector_on_a_resolved_record(tmp_path):
     text = record("pytest -q tests/test_example.py -k selected", replacement="true")
     assert check_records(tmp_path, text).returncode == 0
-
-
-def test_repo_checker_refuses_a_resolution_that_selects_by_name(tmp_path):
-    """Constraint 11 binds the replacement too, and the corpus substitutes it for the
-    original — so the clean-resolution case alone would pass a checker that never
-    read a resolution at all."""
-    text = record("true", replacement="pytest -q tests/test_example.py -k selected")
-    result = check_records(tmp_path, text)
-    assert result.returncode == 1
-    assert "exact node id" in result.stderr.lower()
 
 
 @pytest.mark.parametrize(
@@ -146,45 +135,3 @@ def test_unbalanced_shell_quote_retains_current_polarity_behavior(tmp_path):
     result = run(["bug", "--claim", "x", "--falsifier", "printf '", "--files", "a"], tmp_path)
     assert result.returncode == 0, result.stderr
     assert "Traceback" not in result.stderr
-
-
-def test_an_unknown_coverage_tier_is_refused_with_the_available_names(tmp_path):
-    config = CONFIG.replace("tests:\n", "tests:\n  fast: true\n")
-    repo, env, _g = make_repo(tmp_path, config=config)
-    result = work(
-        repo,
-        env,
-        "debt",
-        "--claim",
-        "x",
-        "--falsifier",
-        "true",
-        "--files",
-        "a",
-        "--covered-by",
-        "missing",
-    )
-    assert result.returncode == 2
-    assert "missing" in result.stderr and all(t in result.stderr for t in ("fast", "full"))
-    assert not (tmp_path / "data" / "work.md").exists()
-
-
-@pytest.mark.parametrize("field", ("claim", "files"))
-def test_free_text_cannot_forge_a_coverage_declaration(tmp_path, field):
-    repo, env, _g = make_repo(tmp_path)
-    values = {"claim": "real", "files": "a.py"}
-    values[field] += "\nCovered by: full"
-    result = work(
-        repo,
-        env,
-        "debt",
-        "--claim",
-        values["claim"],
-        "--falsifier",
-        "true",
-        "--files",
-        values["files"],
-    )
-    assert result.returncode == 0, result.stderr
-    text = (tmp_path / "data" / "work.md").read_text()
-    assert not [line for line in text.splitlines() if line.startswith("Covered by:")]

@@ -142,7 +142,7 @@ def run_agent(
     # Never the executor or planner: cmd_spawn's call sites have no except, so a
     # bound there kills a whole story and abandons its worktree (rejected design).
     timeout = None
-    if role.endswith("reviewer"):
+    if role.endswith("reviewer") or role == "fixer":
         timeout = float(os.environ.get("XP_AGENT_TIMEOUT", AGENT_TIMEOUT_DEFAULT))
         # The read-only bound is the ABSENT credential plus close.py's HEAD check,
         # never the permission mode — bypass stays (harness.PERMISSION_ARGV).
@@ -156,7 +156,7 @@ def run_agent(
         harness,
         env,
         timeout,
-        widen_git=False,
+        widen_git=role == "fixer",
         echo=echo,
         cancel=cancel,
     )
@@ -183,23 +183,9 @@ def worktree_path(story_id: str) -> Path:
 def flip_to_in_progress(story_id: str) -> None:
     """Both marks of a started story, together: close.py refuses a card that is not
     [in-progress], and ready.py refuses re-minting one already handed to an executor."""
-    flip_card(story_id, "ready", "in-progress")
+    _card, status = story_card(plan_path().read_text(), story_id)
+    flip_card(story_id, status, "in-progress")
     mark_handoff(data_root(), story_id)
-
-
-def not_ready_hint(status: str, story_id: str) -> str:
-    if status == "in-progress":
-        return (
-            "An earlier spawn already flipped it, and since the plan is per-clone the"
-            f" flip lives in {plan_path()} — not on the story branch, so removing the"
-            " worktree and deleting the branch no longer undo it. To start this story"
-            " over, put its heading back to [ready] there."
-        )
-    return (
-        "A card starts [planned]; the plan review and then `spawn.py ready"
-        f" {story_id}` are what clear it — twice in sprint-003 a card reached a teammate"
-        " with no review, and only a human caught it"
-    )
 
 
 def story_branch(card: str, story_id: str) -> str:
@@ -221,22 +207,34 @@ def cmd_spawn(story_id: str, override: str, dry_run: bool, resuming: bool = Fals
         return fail(drift)
     if resuming and status not in {"ready", "in-progress"}:
         return fail(f"refused: {story_id} is [{status}], resume requires [in-progress] or [ready]")
-    if not resuming and status != "ready":
-        hint = not_ready_hint(status, story_id)
-        return fail(f"refused: {story_id} is [{status}], spawn requires [ready]. {hint}")
-    if not resuming and (drift := ready().drift(story_id, card)):
-        return fail(drift)
+    if not resuming and status not in {"planned", "ready"}:
+        return fail(
+            f"refused: {story_id} is [{status}], launch requires [planned] or [ready]. "
+            f"Run `spawn.py resume {story_id}` for preserved work. To recreate a removed "
+            f"worktree, put its heading back to [ready] in {plan_path()}; the approved "
+            "declaration is retained."
+        )
     try:
         multifile = len(declared_files(card)) > 1
+        from close import verify_commands
+        from verify_receipt import reads
+
+        verify_commands(story_id, card)
+        reads(card)
     except ValueError as error:
-        repair = ready().AMEND.format(story_id)
-        return fail(f"refused: {error}. Repair the Files line in {plan_path()}. {repair}")
-    if (
-        not resuming
-        and not leg(story_id)[1]
-        and (problem := ready().check_refresh(story_id, card, require_digest=False))
-    ):
-        return fail(problem)
+        return fail(f"refused: {error}. Repair the card in {plan_path()} before launch.")
+    if not dry_run:
+        held, problem = resume().acquire(data_root(), story_id)
+        if problem:
+            return fail(problem)
+        if not resuming and ready().capture(story_id):
+            held.close()
+            return 2
+    if resuming and not dry_run:
+        result = resume().validation_only(data_root(), story_id, held)
+        if result is not None:
+            held.close()
+            return result
     harness, model, effort = resolve_role("executor", card, override)
     sandbox, problem = resolve_codex_sandbox(harness, config_flat("codex_sandbox"))
     if problem:
@@ -296,9 +294,6 @@ def cmd_spawn(story_id: str, override: str, dry_run: bool, resuming: bool = Fals
             " cut from a commit, so uncommitted files (a fresh .xp/ scaffold included)"
             f" would not be in it:\n{dirty}"
         )
-    held, problem = resume().acquire(data_root(), story_id)
-    if problem:
-        return fail(problem)
     if resuming:
         if problem := resume().validate(data_root(), story_id, tree, branch):
             held.close()
@@ -329,9 +324,15 @@ def cmd_spawn(story_id: str, override: str, dry_run: bool, resuming: bool = Fals
         added = git(*args, check=False)
         if added.returncode != 0:
             return fail(f"git worktree add failed: {added.stderr.strip()}")
+        mark_handoff(data_root(), story_id)
         if command:
             done = subprocess.run(command, shell=True, cwd=tree, capture_output=True, text=True)
             if done.returncode != 0:
+                mark_handoff(
+                    data_root(),
+                    story_id,
+                    why="worktree bootstrap failed; inspect its output and resume",
+                )
                 print(done.stderr.strip(), file=sys.stderr)
                 return fail(
                     f"refused: worktree bootstrap failed ({command!r}) — not launching"

@@ -1,0 +1,17 @@
+{
+  "source_head": "7697bd7e2f0bcc4e23fe571301495fb83170f37c",
+  "slices": {
+    "plan.md": [
+      3179,
+      3247
+    ],
+    "work.md": [
+      3827,
+      3836
+    ]
+  },
+  "source_hashes": {
+    "plan.md": "6a9dfb0dc6378270dc1ee63835e5f466e89d9e4a13f51e881fd125526c048fea",
+    "work.md": "0a5c4a8bffdc49ea8aaa3878767aacf5eea956bd860318d6fa04d969a9ab4b28"
+  }
+}

@@ -87,7 +87,6 @@ def run_planner(story_id: str, card: str, tree: Path, handoff: str) -> tuple[int
     from spawn import PLUGIN_ROOT, build_prompt, data_root, teammate_sections
 
     draft = draft_path(data_root(), story_id)
-    before = draft.read_bytes() if draft.is_file() else None
     sections = teammate_sections(
         card, story_id, handoff, PLUGIN_ROOT, brief=review.charter("planner")
     )
@@ -104,12 +103,12 @@ def run_planner(story_id: str, card: str, tree: Path, handoff: str) -> tuple[int
         return 2, "the planner changed the story card; it owns only the external plan"
     if tree_state(tree) != head:
         return 2, "the planner changed the repository; it owns only the external plan"
-    if not after or after == before or not after.strip():
-        return 2, f"the planner did not write a new non-empty plan at {draft}"
+    if not after or not after.strip():
+        return 2, f"the planner did not write a non-empty plan at {draft}"
     return 0, ""
 
 
-def review_story(tree: Path, story_id: str) -> tuple[int, dict, str]:
+def review_story(tree: Path, story_id: str, held=None) -> tuple[int, dict, str]:
     import contextlib
     import json
     import sys
@@ -131,8 +130,12 @@ def review_story(tree: Path, story_id: str) -> tuple[int, dict, str]:
         preserved = dropped = False
         try:
             with contextlib.redirect_stderr(refusal):
-                rc = cmd_review(story_id)
-            state = json.loads(marker_path(story_id).read_text()) if not rc else {}
+                rc = cmd_review(story_id, held=held, explicit=False)
+            state = (
+                json.loads(marker_path(story_id).read_text())
+                if marker_path(story_id).exists()
+                else {}
+            )
         finally:
             # Restore AND drop inside the finally: a review that raises — a kill, an
             # unreadable marker — otherwise unwinds past the drop and leaks the entry
@@ -177,48 +180,47 @@ def review_story(tree: Path, story_id: str) -> tuple[int, dict, str]:
     return rc, state, captured
 
 
-def finish_story(tree: Path, story_id: str, stop, stage_line, held, completed=None) -> int:
+def finish_story(tree: Path, story_id: str, stop, stage_line, held) -> int:
+    import contextlib
+
     from close import leg
+    from completion import inputs, record
     from handback import tree_state
-    from handoff import mark_handoff, mark_stage
+    from handoff import mark_handoff
     from overlap import unresolved_blocking
+    from plan_review import card_for
     from work import data_root
 
-    if completed:
-        import contextlib
-
-        from completion import review_problem
-
-        with contextlib.chdir(tree):
-            if problem := review_problem(story_id, completed):
-                return stop(f"completed reuse refused: {problem}; inspect and resume", 0)
-    rc, state, refusal = review_story(tree, story_id)
+    with contextlib.chdir(tree):
+        review_input = inputs(story_id, card_for(story_id))
+        record(story_id, "reviewer", "running", review_input)
+    rc, state, refusal = review_story(tree, story_id, held)
     if rc:
-        import json
-
-        import review
-        from completion import save
-
-        try:
-            launch = json.loads(review.launch_marker(story_id).read_text())
-            needs_fix = bool(launch.get("verify_red"))
-        except (OSError, ValueError, AttributeError):
-            needs_fix = True
-        if needs_fix:
-            save(story_id)
+        with contextlib.chdir(tree):
+            record(story_id, "reviewer", "blocked", review_input)
         cause = refusal or "the diff review produced no readable refusal; inspect its log"
         return stop(f"the diff review leg refused (rc {rc}): {cause}", 0)
-    mark_stage(data_root(), story_id, "reviewer", "ran")
+    with contextlib.chdir(tree):
+        record(
+            story_id,
+            "reviewer",
+            "blocked" if unresolved_blocking(state) else "ran",
+            inputs(story_id, card_for(story_id)),
+        )
     if unresolved_blocking(state):
-        why = "diff review recorded blocking findings; resume with a fresh executor to fix them"
+        why = "diff review recorded blocking findings; the lead owns correction and explicit review"
         return stop(why, 0)
     free_slug = leg(story_id)[1]
     instruction = "run `/free-close` from that worktree" if free_slug else "run `/story-close`"
     print(stage_line())
     print(
-        f"{story_id} produced commit {tree_state(tree)[0]} at {tree}. Read it, then {instruction}."
+        f"{story_id} candidate HEAD {tree_state(tree)[0]} at {tree}. Read it, then {instruction}."
     )
-    why = "completed executor reused; independent diff review and post-review Verify ran"
-    mark_handoff(data_root(), story_id, True, why if completed else "")
+    mark_handoff(
+        data_root(),
+        story_id,
+        True,
+        "executor result retained; independent diff review and post-review Verify ran",
+    )
     held.close()
     return rc

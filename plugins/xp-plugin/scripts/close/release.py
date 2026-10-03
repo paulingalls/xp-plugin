@@ -6,7 +6,6 @@ import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 
-import lifecycle as lc
 import sprint_state
 from close import config_flat, config_has, default_branch, fail, git
 from env import (
@@ -272,6 +271,8 @@ def cmd_post_merge(
         safe_release_id(release_id)
     except ValueError as exc:
         return fail(f"refused: {exc}")
+    if retire_sprint:
+        release_id = str(sprint_id_value(release_id))
     versioned, refusal = versioning_mode()
     if refusal:
         return fail(refusal)
@@ -340,16 +341,24 @@ def cmd_post_merge(
                 )
             print(VERSIONING_OFF_TEXT)
             return 0
-        if retire_sprint and (red := lc.run(config_flat(lc.KEY), "sprint-close", release_id)):
-            return fail(red)
         if retire_sprint:
-            cycle = report(data_root(), state.get("full_tier_history", []))
-            try:
-                write_release_record(release_id, None)
-            except Exception as exc:
-                path = release_record_path(release_id)
-                return fail(f"refused: could not write release record {path}: {exc}")
-            clear_sprint_branch()
+            import shipping
+
+            def publish_unversioned():
+                nonlocal cycle
+                current = sprint_state.read_sprint_state(release_id)[1]
+                cycle = report(data_root(), current.get("full_tier_history", []))
+                try:
+                    write_release_record(release_id, None)
+                except Exception as exc:
+                    return (
+                        f"could not write release record {release_record_path(release_id)}: {exc}"
+                    )
+                clear_sprint_branch()
+                return ""
+
+            if red := shipping.finish(release_id, publish_unversioned):
+                return fail(f"refused: {red}")
         print(VERSIONING_OFF_TEXT)
         if retire_sprint:
             if cycle:
@@ -377,27 +386,41 @@ def cmd_post_merge(
         )
         print(f"dry run: would tag {version}{after}; {walled_text(checked, version)}")
         return 0
-    if retire_sprint and (red := lc.run(config_flat(lc.KEY), "sprint-close", release_id)):
+
+    def publish_versioned():
+        nonlocal cycle
+        if retire_sprint:
+            current = sprint_state.read_sprint_state(release_id)[1]
+            cycle = report(data_root(), current.get("full_tier_history", []))
+        if refusal := version_refusal(version, checked):
+            return refusal
+        if git("tag", version, check=False).returncode:
+            return f"refused: could not create tag {version}"
+        if retire_sprint:
+            try:
+                write_release_record(release_id, version)
+            except Exception as exc:
+                removed = git("tag", "-d", version, check=False)
+                stranded = (
+                    f"; tag {version} was created but could not be removed"
+                    " — remove it before retrying"
+                    if removed.returncode
+                    else ""
+                )
+                return (
+                    f"could not write release record {release_record_path(release_id)}:"
+                    f" {exc}{stranded}"
+                )
+            clear_sprint_branch()
+        return ""
+
+    if retire_sprint:
+        import shipping
+
+        if red := shipping.finish(release_id, publish_versioned):
+            return fail(f"refused: {red}")
+    elif red := publish_versioned():
         return fail(red)
-    if retire_sprint:
-        cycle = report(data_root(), state.get("full_tier_history", []))
-    if git("tag", version, check=False).returncode:
-        return fail(f"refused: could not create tag {version}")
-    if retire_sprint:
-        try:
-            write_release_record(release_id, version)
-        except Exception as exc:
-            removed = git("tag", "-d", version, check=False)
-            stranded = (
-                f"; tag {version} was created but could not be removed — remove it before retrying"
-                if removed.returncode
-                else ""
-            )
-            return fail(
-                f"refused: could not write release record {release_record_path(release_id)}:"
-                f" {exc}{stranded}"
-            )
-        clear_sprint_branch()
     suffix = "; sprint branch cleared" if retire_sprint else ""
     walled = walled_text(checked, version)
     print(f"tagged {version} at {git('rev-parse', 'HEAD').stdout.strip()[:8]}{suffix}; {walled}")

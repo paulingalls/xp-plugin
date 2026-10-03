@@ -1,16 +1,15 @@
-"""Resume an incomplete first sprint-review round from validated reports."""
+"""Resume the latest incomplete sprint-review round from validated reports."""
 
 import shlex
-import subprocess
 from pathlib import Path
 
 from review_report import aggregate, normalize_report
 
 
 def resumable(rounds: list[dict]) -> dict | None:
-    if len(rounds) != 1:
+    if not rounds:
         return None
-    round_ = rounds[0]
+    round_ = rounds[-1]
     parsed, error = normalize_report(round_)
     if error or "legacy_untriaged" in parsed:
         return None
@@ -21,40 +20,16 @@ def reviewed_head(round_: dict, head: str, patch: Path, git, reviewer_name: str)
     shown = round_.get("shown_sha", "")
     reviewed = round_.get("reviewed_head", "")
     if not reviewed:
-        if round_.get("stages", [])[-1:] != ["fix"]:
-            return "", "the incomplete round predates resume provenance"
-        parent = git("rev-parse", f"{head}^", check=False).stdout.strip()
-        author = git("show", "-s", "--format=%an", head).stdout.strip()
-        saved = patch.read_text() if patch.is_file() else ""
-
-        def patch_id(text: str) -> list[str]:
-            return subprocess.run(
-                ["git", "patch-id", "--stable"], input=text, capture_output=True, text=True
-            ).stdout.split()
-
-        saved_id = patch_id(saved)[:1]
-        exact = bool(saved_id) and saved_id == patch_id(git("diff", f"{parent}..{head}").stdout)[:1]
-        if author != reviewer_name or not parent or not exact:
-            return "", (
-                "the incomplete round predates resume provenance and its fixer commit"
-                " cannot be derived from the saved patch"
-            )
-        return parent, ""
-    if head == shown:
-        return reviewed, ""
+        return (
+            "",
+            "incomplete historical round has no measured reviewed HEAD; explicitly review again",
+        )
     if git("merge-base", "--is-ancestor", reviewed, head, check=False).returncode:
-        return "", f"HEAD {head[:8]} is not a descendant of reviewed head {reviewed[:8]}"
-    if round_.get("stages", [])[-1:] != ["fix"]:
-        return "", f"HEAD moved since the incomplete round stopped at {shown[:8]}"
-    names = git("diff", "--name-only", "--no-renames", f"{reviewed}..{head}").stdout
-    changed = set(names.splitlines())
-    covered = patch_paths(patch)
-    if outside := sorted(changed - covered):
-        commits = git("log", "--oneline", f"{shown}..{head}").stdout.strip()
-        return "", (
-            f"HEAD moved through commits not covered by the saved fixer patch ({commits});"
-            f" unaccounted paths: {', '.join(outside)}. Reset to {reviewed[:8]} to resume"
-            " this round"
+        return "", "HEAD rewrote the reviewed ancestry"
+    if head != shown:
+        return (
+            "",
+            f"HEAD moved after incomplete round {shown[:8]}; explicitly review again",
         )
     return reviewed, ""
 
@@ -78,19 +53,13 @@ def state(rounds: list[dict], head: str, sprint_id: str, review, git):
     complete = max(
         (n for n, round_ in enumerate(rounds, 1) if not round_.get("incomplete")), default=0
     )
-    if complete or not (stopped := resumable(rounds)):
+    if not (stopped := resumable(rounds)):
         return complete, head, None, "", ""
-    saved = review.sprint_report_path(sprint_id, "fix", 1)
-    reviewed, why = reviewed_head(
-        stopped, head, review.patch_path(saved), git, review.REVIEWER_NAME
-    )
+    saved = review.sprint_report_path(sprint_id, "fix", len(rounds))
+    reviewed, why = reviewed_head(stopped, head, review.patch_path(saved), git, "")
     if not why:
         return complete, reviewed, stopped, "", ""
-    hard = (
-        bool(stopped.get("reviewed_head"))
-        and stopped.get("stages", [])[-1:] == ["fix"]
-        and head != stopped.get("shown_sha")
-    )
+    hard = why == "HEAD rewrote the reviewed ancestry"
     return complete, head, None, "" if hard else why, why if hard else ""
 
 
@@ -100,10 +69,10 @@ def dirty_fixer(rounds: list[dict], head: str, sprint_id: str, review) -> str:
         return ""
     if round_.get("reviewed_head") != head or round_.get("shown_sha") != head:
         return ""
-    report = review.sprint_report_path(sprint_id, "fix", 1)
+    report = review.sprint_report_path(sprint_id, "fix", len(rounds))
     patch = review.patch_path(report)
     return (
-        "the staged fixer work from incomplete round 1 still needs the lead."
+        f"the staged fixer work from incomplete round {len(rounds)} still needs the lead."
         " Repair the commit gate and finish/commit that staged work, or discard it before"
         f" rerunning the fixer. The saved report is {report}; the patch is {patch}"
     )
@@ -112,7 +81,10 @@ def dirty_fixer(rounds: list[dict], head: str, sprint_id: str, review) -> str:
 def inputs(complete: int, cards: str, stages):
     if complete:
         altitude, error = stages.altitude()
-        return [], 0, {}, altitude, error
+        charters, charter_error = stages.charters()
+        if not (error or charter_error):
+            stages.check_roles(cards, ("reviewer", "fixer", "closer"))
+        return [], 0, charters, altitude, error or charter_error
     found, error = stages.angles()
     if error:
         return [], 0, {}, "", error
@@ -168,6 +140,14 @@ class Prefix:
 
 def record(reports, keys, error, reviewed, shown, report_keys, reused=None, ran=None) -> dict:
     result = aggregate(reports, blockers=False)
+    settled = {
+        item if isinstance(item, str) else item["finding"]
+        for key in ("fixed", "dropped", "debt")
+        for item in result.get(key, [])
+    }
+    result.setdefault("blocking", []).extend(
+        item for report in reports for item in report.get("actionable", []) if item not in settled
+    )
     result.update(incomplete=error, stages=keys, reviewed_head=reviewed, shown_sha=shown)
     if reused is not None:
         result.update(reused=reused, ran=ran)
@@ -219,6 +199,7 @@ def stop(
     review,
     edit,
     base,
+    producer="",
 ):
     reused = prefix.reused if prefix else None
     recorded = f"Round {number} IS recorded, incomplete."
@@ -233,7 +214,7 @@ def stop(
             review.REPORT_KEYS,
             reused,
             ran,
-        ) | {"review_base": base}
+        ) | {"review_base": base, "producer": producer}
 
     if resume:
         if dry_run:

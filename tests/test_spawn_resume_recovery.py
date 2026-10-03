@@ -23,7 +23,7 @@ def command(text, executable):
 
 
 def close_from_named_tree(text, env):
-    rendered, argv = command(text, "close.py")
+    rendered, argv = command(text, "xp.py")
     match = re.search(rf"`{re.escape(rendered)}` from (.+?);", text)
     assert match, text
     return subprocess.run(
@@ -53,10 +53,7 @@ def test_each_resumed_refusal_executes_its_complete_route_and_the_first_drives_t
 
     second = spawn(repo, env, *resume_argv[1:])
 
-    assert second.returncode == 2 and "no commits" in second.stderr.lower(), second.stderr
-    second_close = close_from_named_tree(second.stderr, env)
-    assert second_close.returncode == 0, second_close.stderr
-    command(second.stderr, "spawn.py")
+    assert second.returncode == 0, second.stderr
 
 
 def test_a_free_recovery_takes_its_close_noun_from_leg(monkeypatch):
@@ -71,6 +68,42 @@ def test_a_free_recovery_takes_its_close_noun_from_leg(monkeypatch):
 
     rendered = resume_module.handback_recovery(Path("/tmp/inherited-tree"), story_id)
 
-    _text, argv = command(rendered, "close.py")
+    _text, argv = command(rendered, "xp.py")
     assert calls == [story_id]
-    assert argv == ["close.py", "free", "fix-typo", "review"]
+    assert argv == ["xp.py", "free", "fix-typo", "review"]
+
+
+def test_lead_recovery_is_not_an_executor_assignment(tmp_path):
+    import json
+
+    repo, env, _g, tree, marker = stopped_story(tmp_path)
+    state = json.loads(marker.read_text())
+    recovery = resume_module.handback_recovery(tree, "story-042")
+    _rendered, recovery_argv = command(recovery, "spawn.py")
+    state["why"] = "REQUIREMENT-FAILURE: required.txt is absent. " + recovery
+    marker.write_text(json.dumps(state))
+    binary = tmp_path / "bin/claude"
+    stub_claude(tmp_path, commit=False)
+    source = binary.read_text()
+    point = "if spawn_review:\n"
+    recovery_pattern = r"\s+".join(map(re.escape, recovery_argv))
+    probe = (
+        "import re\n"
+        "if not spawn_review:\n"
+        " assignment = re.sub(r'<predecessor-evidence>.*?</predecessor-evidence>', "
+        "'', stdin, flags=re.S)\n"
+        " assert 'REQUIREMENT-FAILURE' in stdin\n"
+        f" if re.search({recovery_pattern!r}, assignment):\n"
+        f"  p = subprocess.run([{sys.executable!r}, {str(SPAWN)!r}, 'resume', "
+        "'story-042'], capture_output=True, text=True)\n"
+        f"  open({str(tmp_path / 'lifecycle-attempt')!r}, 'w').write(p.stderr)\n"
+        "  sys.exit(1)\n"
+        " open('required.txt', 'w').write('implemented')\n"
+        " subprocess.run(['git', 'add', 'required.txt'], check=True)\n"
+        " subprocess.run(['git', 'commit', '-qm', 'repair requirement'], check=True)\n"
+    )
+    binary.write_text(source.replace(point, probe + point))
+    result = spawn(repo, env, "resume", "story-042")
+    assert result.returncode == 0, result.stderr
+    assert (tree / "required.txt").read_text() == "implemented"
+    assert not (tmp_path / "lifecycle-attempt").exists()

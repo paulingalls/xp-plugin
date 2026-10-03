@@ -216,13 +216,19 @@ def test_unreadable_acceptance_cannot_certify_card(tmp_path, monkeypatch, corrup
 
 
 def test_reserved_decision_continuations_cannot_change(tmp_path, monkeypatch):
-    acceptance, _plan, _marker, draft, out, candidate = acceptance_fixture(tmp_path, monkeypatch)
+    acceptance, plan, marker, draft, out, candidate = acceptance_fixture(tmp_path, monkeypatch)
     before = CARD.replace(
         "Decision: human choice.", "Decision: human choice.\n  Reserved continuation."
     )
+    import json
+
+    plan.write_text(before)
+    marker.write_text(json.dumps({"card": before, "digest": card_digest(before)}))
     candidate.write_text(before.replace("Reserved continuation.", "invented choice."))
-    with pytest.raises(CardEditRefusal, match="reserved"):
+    with pytest.raises(CardEditRefusal):
         acceptance.prepare("story-042", before, candidate, draft, out)
+    candidate.write_text(before)
+    assert acceptance.prepare("story-042", before, candidate, draft, out)["after"] == before
 
 
 def test_foreground_recovery_keeps_question_blocked_after_redigest(tmp_path, monkeypatch):
@@ -412,7 +418,7 @@ def test_reason_amendment_serializes_review_publication(tmp_path, monkeypatch):
     from threading import Event
 
     import ready
-    from plan_confirmation import pending_amendment
+    from ready import plan_needs_replan
 
     acceptance, _plan, marker, draft, out, candidate = acceptance_fixture(tmp_path, monkeypatch)
     candidate.write_text(CARD)
@@ -422,7 +428,6 @@ def test_reason_amendment_serializes_review_publication(tmp_path, monkeypatch):
     out = tmp_path / "story-042.round-2.md"
     out.write_text(json.dumps(dict(status="clean", human_question=None, reasons=[])))
     record = acceptance.prepare("story-042", CARD, candidate, draft, out)
-    monkeypatch.setattr(ready, "check_refresh", lambda *args, **kwargs: "")
     monkeypatch.setattr(ready, "progressed", lambda sid: True)
     entering = Event()
     proceed = Event()
@@ -473,6 +478,6 @@ def test_reason_amendment_serializes_review_publication(tmp_path, monkeypatch):
         assert "credential changed" in outcome
     assert acceptance.latest("story-042") == retained
     assert not acceptance.binding_problem("story-042")
-    assert pending_amendment("story-042")
+    assert plan_needs_replan("story-042", {})
     draft.write_text("unreviewed plan replacement")
     assert "accepted plan changed" in acceptance.binding_problem("story-042")

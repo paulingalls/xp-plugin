@@ -4,11 +4,8 @@ import shlex
 import sys
 from pathlib import Path
 
-import sprint_close
 import work as work_module
-from sprint_helpers import CONFIG, make_repo, record_reviews, snapshot, sprint, work
-
-batch_module = sys.modules[sprint_close.resolved_offers.__module__]
+from sprint_helpers import make_repo, snapshot, sprint, work
 
 
 def recorded_files(root):
@@ -36,15 +33,12 @@ def red_debt(repo, env, tmp_path, claim, stdout, stderr, files="a.py"):
 
 
 def make_legacy_stub(repo, env, tmp_path, ref, command):
-    text = dict(work_module.entries(tmp_path / "data"))[ref]
-    files = next(line[7:] for line in text.splitlines() if line.startswith("Files: "))
-    resolved = work(
-        repo, env, "resolve", "--ref", ref, "--falsifier", command, "--covered-by", "none"
-    )
-    assert resolved.returncode == 0
-    assert work(repo, env, "compact").returncode == 0
-    path = tmp_path / "data" / "work.md"
-    path.write_text(path.read_text().replace(f"Files: {files}\n", "", 1))
+    root = tmp_path / "data"
+    text = dict(work_module.entries(root))[ref]
+    (root / "archive.md").write_text(f"# Record {ref}\n\n{text}")
+    stub = f"{text.splitlines()[0]}\nId: {ref}\nFalsifier: `{command}`\n\n"
+    path = root / "work.md"
+    path.write_text(path.read_text().replace(text, stub))
 
 
 def assert_evidence(text, expected):
@@ -55,37 +49,6 @@ def assert_evidence(text, expected):
         assert marker in section
         assert f"stdout:\n{stdout}" in section
         assert f"stderr:\n{stderr}" in section
-
-
-def test_land_red_deferred_evidence_names_land_as_retry(tmp_path):
-    flag = tmp_path / "covered-flag"
-    flag.write_text("ok")
-    command = f"test -f {shlex.quote(str(flag))} || {{ printf OUT; printf ERR >&2; false; }}"
-    config = CONFIG.replace("full: true", f"full: test -f {flag}")
-    repo, env, _g = make_repo(tmp_path, config=config)
-    filed = work(
-        repo,
-        env,
-        "debt",
-        "--claim",
-        "covered debt",
-        "--falsifier",
-        command,
-        "--covered-by",
-        "full",
-        "--files",
-        "a.py",
-    )
-    assert filed.returncode == 0
-    assert sprint(repo, env, "start").returncode == 0
-    record_reviews(tmp_path, repo, env)
-    flag.unlink()
-
-    result = sprint(repo, env, "land")
-
-    assert result.returncode == 2
-    assert_evidence(result.stderr, [(filed.stdout.strip(), command, "OUT", "ERR")])
-    assert "run `close.py sprint 2 land` again" in result.stderr
 
 
 def test_three_commands_report_two_reds_without_filing(tmp_path):
@@ -109,7 +72,7 @@ def test_three_commands_report_two_reds_without_filing(tmp_path):
     assert_evidence(result.stderr, expected)
     assert middle_id not in result.stderr
     assert "work.py bug" in result.stderr
-    assert "Fix it, then run start again" in result.stderr
+    assert "Fix it, then run xp.py sprint 2 review again" in result.stderr
     assert result.stdout.count("falsifier wall clock:") == 3
 
 
@@ -128,7 +91,7 @@ def test_missing_source_files_reports_every_red_and_files_nothing(tmp_path):
     assert result.returncode == 2 and recorded_files(tmp_path / "data") == before
     assert_evidence(result.stderr, expected)
     assert f"{bad[0]} has no usable Files" in result.stderr
-    assert "Fix it, then run start again" in result.stderr
+    assert "Fix it, then run xp.py sprint 2 review again" in result.stderr
 
 
 def test_one_distinct_red_command_with_two_sources_files_one_bug(tmp_path):
@@ -281,93 +244,6 @@ def test_a_green_batch_keeps_command_streams_silent_and_writes_nothing(tmp_path)
         for n in range(2)
         for stream in ("OUT", "ERR")
     )
-
-
-def test_triage_offers_a_resolved_record_but_not_archived_or_open_records(tmp_path):
-    repo, env, _g = make_repo(tmp_path)
-    replacement = tmp_path / "replacement"
-    resolved = work(
-        repo, env, "bug", "--claim", "fixed", "--falsifier", "false", "--files", "a.py"
-    ).stdout.strip()
-    fixed = work(
-        repo,
-        env,
-        "resolve",
-        "--ref",
-        resolved,
-        "--falsifier",
-        f"touch {replacement}",
-        "--covered-by",
-        "none",
-    )
-    assert fixed.returncode == 0
-    archived = file_debt(repo, env, "retired", "true")
-    assert work(repo, env, "archive", "--ref", archived, "--disposition", "dropped").returncode == 0
-    opened = file_debt(repo, env, "still open", "true")
-    work(repo, env, "note", "remember this")
-
-    first = sprint(repo, env, "start")
-    offers = first.stdout.split("resolved records to consider archiving", 1)[1].split(
-        "notes to triage", 1
-    )[0]
-    assert first.returncode == 0 and resolved in offers
-    assert archived not in offers and opened not in offers
-    assert "remember this" in first.stdout and replacement.exists()
-
-    disposed = work(repo, env, "archive", "--ref", resolved, "--disposition", "superseded")
-    assert disposed.returncode == 0
-    repeated = work(repo, env, "archive", "--ref", resolved, "--disposition", "again")
-    assert repeated.returncode == 2 and "already archived" in repeated.stderr
-    replacement.unlink()
-    second = sprint(repo, env, "start")
-    assert second.returncode == 0 and resolved not in second.stdout and not replacement.exists()
-
-
-def test_a_compacted_resolution_is_still_offered_for_archive(tmp_path):
-    """The stub compaction leaves is the shape the offer meets in production —
-    70 of this repo's 71 resolved records on 2026-09-07 — and it reaches RESOLVED
-    down a different branch from a live `## resolved` block: `Resolves:` on the
-    record's OWN heading. Delete that branch and this file otherwise stays green."""
-    repo, env, _g = make_repo(tmp_path)
-    ref = work(
-        repo, env, "bug", "--claim", "fixed", "--falsifier", "false", "--files", "a.py"
-    ).stdout.strip()
-    resolved = work(
-        repo, env, "resolve", "--ref", ref, "--falsifier", "true", "--covered-by", "none"
-    )
-    assert resolved.returncode == 0 and work(repo, env, "compact").returncode == 0
-    ledger = (tmp_path / "data" / "work.md").read_text()
-    assert "## resolved " not in ledger and f"Resolves: {ref}" in ledger
-
-    result = sprint(repo, env, "start")
-
-    assert result.returncode == 0, result.stderr
-    offers = result.stdout.split("resolved records to consider archiving", 1)[1]
-    assert "1 resolved records" in result.stdout and ref in offers.split("notes to triage", 1)[0]
-
-
-def test_resolved_offers_are_cost_sorted_and_bounded():
-    # Cost order and id order DISAGREE by construction. A fixture where the two
-    # coincide asserts the bound and nothing else: it greens against a plain
-    # sort by id, which is the mutation constraint 2 calls certifying.
-    commands = ["deferred-1", "third", "second", "shared", "shared", "deferred-2", "deferred-3"]
-    records = [
-        batch_module.LedgerRecord(str(n), f"debt {n}", command, "full", "RESOLVED")
-        for n, command in enumerate(commands)
-    ]
-    result = work_module.FalsifierResult
-    measured = {
-        "shared": result(0, "", "", 3.0),
-        "second": result(0, "", "", 2.0),
-        "third": result(0, "", "", 1.0),
-    }
-    text = batch_module.resolved_offers(records, measured)
-    lines = [line for line in text.splitlines() if "forfeits" in line]
-    assert len(lines) == 5 and "7 resolved records" in text
-    assert [line.split()[0] for line in lines] == ["3", "4", "2", "1", "0"]
-    assert "total distinct measured cost: 6.000s" in text
-    assert "deferred; standalone duration not measured" in text
-    assert all("forfeits its replacement falsifier's recurring guarantee" in line for line in lines)
 
 
 def test_long_streams_keep_labeled_tails_and_exact_cut_counts(tmp_path):

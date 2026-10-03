@@ -36,11 +36,21 @@ def stash_shas(repo):
 def run_review(repo, tracked, monkeypatch, during_review):
     captured = {}
 
-    def reviewed(story_id):
+    def reviewed(story_id, *, held=None, explicit=True):
+        assert held is None and not explicit
         captured["sha"] = git(repo, "rev-parse", "stash@{0}").stdout.strip()
         during_review(tracked, captured["sha"])
         close.marker_path(story_id).write_text(
-            json.dumps({"fixed": [], "blocking": [], "schema": 2, "dropped": [], "debt": []})
+            json.dumps(
+                {
+                    "actionable": [],
+                    "fixed": [],
+                    "blocking": [],
+                    "schema": 2,
+                    "dropped": [],
+                    "debt": [],
+                }
+            )
         )
         return 0
 
@@ -55,7 +65,7 @@ class TestDirtyReviewStash:
 
         assert result == (
             0,
-            {"fixed": [], "blocking": [], "schema": 2, "dropped": [], "debt": []},
+            {"actionable": [], "fixed": [], "blocking": [], "schema": 2, "dropped": [], "debt": []},
             "",
         )
         assert tracked.read_text() == "review dirt\n"
@@ -78,7 +88,7 @@ class TestDirtyReviewStash:
 
         assert result == (
             0,
-            {"fixed": [], "blocking": [], "schema": 2, "dropped": [], "debt": []},
+            {"actionable": [], "fixed": [], "blocking": [], "schema": 2, "dropped": [], "debt": []},
             "",
         )
         assert tracked.read_text() == "review dirt\n"
@@ -105,7 +115,8 @@ class TestDirtyReviewStash:
     ):
         repo, tracked, human = dirty_review_repo
 
-        def killed(_story_id):
+        def killed(_story_id, *, held=None, explicit=True):
+            assert held is None and not explicit
             raise KeyboardInterrupt
 
         monkeypatch.setattr(close, "cmd_review", killed)
@@ -127,7 +138,7 @@ class TestDirtyReviewStash:
 
         assert result == (
             0,
-            {"fixed": [], "blocking": [], "schema": 2, "dropped": [], "debt": []},
+            {"actionable": [], "fixed": [], "blocking": [], "schema": 2, "dropped": [], "debt": []},
             "",
         )
         assert tracked.read_text() == "review dirt\n"

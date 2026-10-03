@@ -3,7 +3,7 @@
 import shlex
 import sys
 
-from sprint_helpers import PLAN, make_repo, sprint
+from sprint_helpers import PLAN, make_repo, record_reviews, sprint
 
 
 def test_start_records_and_prints_each_clones_own_branch_before_stories(tmp_path):
@@ -65,10 +65,15 @@ def test_a_sprint_the_pipeline_opened_is_one_post_merge_will_release(tmp_path):
     branch from the id INDEPENDENTLY, which is the divergence that shipped: open
     recorded a name release refused to attribute. Every other test fixes one end's
     spelling by hand, so only walking open -> release pins the two together."""
-    repo, env, g = make_repo(tmp_path)
+    repo, env, g = make_repo(
+        tmp_path, plan=PLAN.replace("also done   [done]", "also done   [planned]")
+    )
     (tmp_path / "data" / "sprint_branch").unlink()
 
     assert sprint(repo, env, "start").returncode == 0
+    path = tmp_path / "data/plan.md"
+    path.write_text(path.read_text().replace("also done   [planned]", "also done   [done]"))
+    record_reviews(tmp_path, repo, env)
     g("tag", "v0.2.1")
     g("checkout", "-q", "main")
     g("merge", "-q", "--no-ff", "sprint-002", "-m", "release")

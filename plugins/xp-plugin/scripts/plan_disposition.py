@@ -4,17 +4,6 @@ import json
 import re
 
 
-def normalized_words(text: str) -> str:
-    """The word stream both artifacts share, so a reason compares by content.
-
-    Naming the markers to strip is the rejected design — it fixed the blockquote
-    and left the backtick. Dropping every non-word run ignores presentation as a
-    class; the words and their order must still match, so a reason absent from the
-    plan, or written there in other words, refuses.
-    """
-    return " ".join(re.findall(r"\w+", text))
-
-
 def _unique_fields(pairs: list[tuple[str, object]]) -> dict:
     report = {}
     for key, value in pairs:
@@ -104,8 +93,8 @@ def disposition_fields(report: dict) -> tuple[str, str | None, str]:
     reasons = report.get("reasons")
     if not isinstance(reasons, list):
         return "", None, "plan reasons must be a JSON list"
-    if any(not isinstance(r, str) or not normalized_words(r) for r in reasons):
-        return "", None, "every plan edit must carry its reason in the plan file"
+    if any(not isinstance(r, str) or not re.search(r"\w", r) for r in reasons):
+        return "", None, "plan reasons must contain non-empty text"
     return status, question, ""
 
 
@@ -118,22 +107,8 @@ def evaluate_disposition(
 ) -> tuple[str, str]:
     report, problem = disposition_object(text)
     if not problem:
-        status, question, problem = disposition_fields(report)
+        _status, question, problem = disposition_fields(report)
     repair = " — repair the disposition and plan, then rerun the plan review"
-    if problem:
-        return "failed", problem + repair
-    changed = before != after or before_card != after_card
-    reasons = report["reasons"]
-    if status == "clean" and changed:
-        problem = "a clean review changed the plan"
-    elif status == "edited" and not changed:
-        problem = "an edited disposition left the plan unchanged"
-    elif not changed and reasons:
-        problem = "edit reasons reported but the plan is unchanged"
-    elif changed:
-        plan = f" {normalized_words((after or b'').decode(errors='replace'))} "
-        if not reasons or not all(f" {normalized_words(r)} " in plan for r in reasons):
-            problem = "every plan edit must carry its reason in the plan file"
     if problem:
         return "failed", problem + repair
     if question is not None:
@@ -157,7 +132,7 @@ def durable_disposition(text: str) -> tuple[str, str]:
             return "failed", "legacy blocked disposition requires a question"
         if status in ("clean", "edited") and "question" not in report:
             report = report | {"human_question": None, "reasons": report.get("reasons", [])}
-    status, question, problem = disposition_fields(report)
+    _status, question, problem = disposition_fields(report)
     if problem:
         return "failed", problem
     if question is not None:

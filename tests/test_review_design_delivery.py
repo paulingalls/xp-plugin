@@ -42,8 +42,15 @@ def delivered_section(bundle, title, until):
     return section(bundle, title, until)
 
 
-def assert_delivery(bundle, plugin, charter, next_title="Your report"):
-    assert delivered_section(bundle, "Your charter", next_title).strip() == charter
+def assert_delivery(bundle, plugin, charter, next_title="Your report", *, delta=False):
+    delivered = delivered_section(bundle, "Your charter", next_title).strip()
+    if delta:
+        assert (
+            delivered.split("## Checks", 1)[-1].split("## Output", 1)[0]
+            == charter.split("## Checks", 1)[-1].split("## Output", 1)[0]
+        )
+    else:
+        assert delivered == charter
     following = (
         "Shipped card template"
         if next_title == "Your findings file" and "## Full proposed slate" in bundle
@@ -216,7 +223,9 @@ def test_shared_judgment_reaches_every_sprint_stage(tmp_path, fault):
             if stage == "finder":
                 own = angles[key.removeprefix("find-")]
                 assert (
-                    delivered_section(bundle, "Your angle", "Findings from earlier rounds").strip()
+                    delivered_section(
+                        bundle, "Your angle", "Current integration obligations"
+                    ).strip()
                     == own
                 )
                 assert all(value not in bundle for value in angles.values() if value != own)
@@ -257,10 +266,15 @@ def test_shared_judgment_reaches_confirmation(tmp_path, surface, fault):
             p for p in body(plugin, "sprint-reviewer").split("\n\n") if p.startswith("ALTITUDE")
         )
         assert (
-            section(captured[0]["stdin"], "Sprint altitude", "Findings from earlier rounds").strip()
+            section(
+                captured[0]["stdin"], "Sprint altitude", "Current integration obligations"
+            ).strip()
             == altitude
         )
-    check_or_red(fault, lambda: assert_delivery(captured[0]["stdin"], plugin, expected))
+    check_or_red(
+        fault,
+        lambda: assert_delivery(captured[0]["stdin"], plugin, expected, delta=surface == "sprint"),
+    )
 
 
 @pytest.mark.parametrize("fault", ["intact", "omit", "stale", "cap"])

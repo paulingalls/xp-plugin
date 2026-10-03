@@ -1,7 +1,7 @@
 ---
 name: free-close
 description: >-
-  Close a free patch: release boundary, review judgment, confirming round.
+  Close a free patch: release boundary, one-pass review and lead judgment.
 ---
 
 # Free Close
@@ -12,16 +12,13 @@ reference with both JUDGMENT bars. Judge legacy/untriaged findings too. Unmet AC
 and release blockers cannot be waived; escalate reserved choices.
 
 1. **Release boundary**: Your release artifacts are yours; cut them before review.
-2. **Review**: Read the round `spawn` recorded and the reviewer's diff; re-run
-   `close.py free <slug> review` only if the tree moved. The reviewer's fixes
-   stay inside the round that found them. Your fixes move HEAD past what the review
-   covered and cost one confirming round. Exception: when a completed review's
-   Verify redded without blocking findings, fix only reviewed or card Files paths,
-   commit, then run `close.py free <slug> repair`; a bounded repair passing Verify
-   owes no confirming round. Apply the finding bar in JUDGMENT.md.
-   If land measures a Verify or tier red after a recorded round with no blocking
-   finding, fix only reviewed or card Files paths, commit, run
-   `close.py free <slug> repair`, then `close.py free <slug> land` again. This bounded
-   land-time repair also owes no confirming round. Other lead fixes still do.
-3. **Land**: `close.py free <slug> land` opens the release PR.
-4. **After merge**: `close.py free <slug> post-merge`.
+2. **Review**: Read the retained reports and judge remaining findings under JUDGMENT.
+   Commit lead corrections, then explicitly run `xp.py free <slug> review`.
+   That command also corrects incomplete producer output while retaining earlier
+   stages and commits. Use `spawn.py resume <free-id>` for interrupted validation.
+   Inspect retained red/green evidence before recording a same-tree disposition
+   with `xp.py free <slug> acknowledge-validation --reason '<observed cause>'`.
+   The sequence runs one independent solution review, one conditional committing
+   fixer and one conditional narrow closer. Remaining problems belong to the lead.
+3. **Land**: `xp.py free <slug> land` opens the release PR.
+4. **After merge**: `xp.py free <slug> post-merge`.

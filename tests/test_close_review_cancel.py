@@ -1,14 +1,17 @@
 """A card edit stops only the review that launched against that card."""
 
 import contextlib
+import json
 import os
 import signal
 import subprocess
 import sys
 import time
+from pathlib import Path
 
 import pytest
-from close_helpers import CLOSE, close, make_repo, stub_reviewer
+from close_helpers import CLOSE, close, make_repo
+from story_review_helpers import checkpoint
 
 SCRIPTS = CLOSE.parent
 
@@ -25,7 +28,7 @@ def sleeping_reviewer(tmp_path):
         f"root = pathlib.Path({str(tmp_path)!r})\n"
         "report = pathlib.Path(re.search(r'^REPORT_PATH: (.+)$', prompt, re.M).group(1))\n"
         "report.write_text(json.dumps({'schema': 2, 'fixed': [], "
-        "'blocking': [], 'dropped': [], 'debt': []}))\n"
+        "'actionable': [], 'blocking': [], 'dropped': [], 'debt': []}))\n"
         "patch = re.search(r'^PATCH_PATH: (.+)$', prompt, re.M)\n"
         "if patch: pathlib.Path(patch.group(1)).write_text('')\n"
         "mode = root.joinpath('mode').read_text() if root.joinpath('mode').exists() else ''\n"
@@ -85,18 +88,15 @@ def test_card_edit_cancels_running_review(tmp_path):
     assert "NO OUTPUT" not in err and "XP_AGENT_TIMEOUT" not in err
     assert not (tmp_path / "data" / "markers" / "story-042.review-launch").exists()
     assert not (tmp_path / "data" / "markers" / "story-042.close.json").exists()
-    assert list((tmp_path / "data" / "reports").glob("*CANCELLED*.json"))
-    assert list((tmp_path / "data" / "reports").glob("*CANCELLED*.patch"))
-    assert list((tmp_path / "data" / "logs").glob("*CANCELLED*.log"))
-    landed = close(repo, env, "land")
-    assert "unrecorded review" not in landed.stderr
-    cancelled = list((tmp_path / "data" / "reports").glob("*CANCELLED*.json"))
-    saved = cancelled[0].read_text()
+    state = checkpoint(env, "story-042")
+    assert state["status"] == "blocked" and state["producer"] == "solution"
+    report = Path(state["stages"]["solution"]["path"])
+    assert json.loads(report.read_text())["blocking"] == []
+    saved = report.read_bytes()
+    assert close(repo, env, "land").returncode == 2
     plan.write_text(plan.read_text().replace("Context: edited.", "Context: demo."))
-    stub_reviewer(tmp_path)
-    later = close(repo, env, "review")
-    assert later.returncode == 0, later.stderr
-    assert cancelled[0].read_text() == saved
+    assert close(repo, env, "review").returncode == 2
+    assert report.read_bytes() == saved
 
 
 def test_unchanged_card_records_round(tmp_path):
@@ -253,12 +253,17 @@ def test_dirty_cancel_keeps_launch_marker(tmp_path):
         stop_stuck(proc, tmp_path)
     assert proc.returncode == 2 and "dirty.txt" in err, (out, err)
     assert "reset --hard" not in err
-    assert (tmp_path / "data" / "markers" / "story-042.review-launch").exists()
+    assert checkpoint(env, "story-042")["status"] == "blocked"
     (repo / "dirty.txt").unlink()
-    assert "unrecorded review" in close(repo, env, "land").stderr
+    assert close(repo, env, "land").returncode == 2
 
 
-def test_close_marker_edit_during_cancel_keeps_launch_marker(tmp_path):
+@pytest.mark.parametrize(
+    "marker_bytes",
+    ['{"rounds": [], "blocking": ["changed"]}', '{"rounds": null}', "[1]", "{"],
+    ids=["empty-rounds", "null-rounds", "non-object", "truncated"],
+)
+def test_close_marker_edit_during_cancel_keeps_launch_marker(tmp_path, marker_bytes):
     repo, env, _g = make_repo(tmp_path)
     sleeping_reviewer(tmp_path)
     proc = subprocess.Popen(
@@ -275,16 +280,18 @@ def test_close_marker_edit_during_cancel_keeps_launch_marker(tmp_path):
             time.sleep(0.05)
         assert (tmp_path / "started").exists()
         marker = tmp_path / "data" / "markers" / "story-042.close.json"
-        marker.write_text('{"rounds": [], "blocking": ["changed"]}')
+        marker.write_text(marker_bytes)
         plan = tmp_path / "data" / "plan.md"
         plan.write_text(plan.read_text().replace("Context: demo.", "Context: changed."))
         out, err = proc.communicate(timeout=10)
     finally:
         stop_stuck(proc, tmp_path)
     assert proc.returncode == 2 and "CANCELLED" in err, (out, err)
-    assert "close marker changed" in err
-    assert (tmp_path / "data" / "markers" / "story-042.review-launch").exists()
-    assert "unrecorded review" in close(repo, env, "land").stderr
+    assert marker.read_text() == marker_bytes
+    assert checkpoint(env, "story-042")["status"] == "blocked"
+    refused = close(repo, env, "land")
+    assert refused.returncode == 2 and "Traceback" not in refused.stderr
+    assert marker.read_text() == marker_bytes
 
 
 def test_moved_head_cancel_keeps_launch_marker_without_reset(tmp_path):
@@ -311,8 +318,8 @@ def test_moved_head_cancel_keeps_launch_marker_without_reset(tmp_path):
         stop_stuck(proc, tmp_path)
     assert proc.returncode == 2, (out, err)
     assert "lead moved HEAD" in err and "reset --hard" not in err, err
-    assert (tmp_path / "data" / "markers" / "story-042.review-launch").exists()
-    assert "unrecorded review" in close(repo, env, "land").stderr
+    assert checkpoint(env, "story-042")["status"] == "blocked"
+    assert close(repo, env, "land").returncode == 2
 
 
 def test_free_review_inherits_card_cancel(tmp_path):

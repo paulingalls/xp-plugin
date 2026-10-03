@@ -56,14 +56,13 @@ def numbered_items(text):
 def assert_open_route(create_skill, close_skill, process):
     opening = section(create_skill, "## Open", "## Done")
     card_step = section(process, "1. **Slate review**", "2. **Story**")
-    assert opening.index("slate-reviewer") < opening.index("open_sprint.py <id>")
-    assert opening.index("slate_review.py") < opening.index("open_sprint.py <id>")
+    assert opening.index("slate-reviewer") < opening.index("xp.py sprint <id> open")
+    assert opening.index("slate_review.py") < opening.index("xp.py sprint <id> open")
     assert "full proposed slate" in opening and "`sprint_cap`" in opening
     assert "author's conclusions" in opening and "do not give" in opening
     assert "corrected cards" in opening and "one-line reasoned drop" in opening
     assert "`/create-sprint`" in card_step and "`/sprint-close`" not in card_step
-    assert "corrected slate" in card_step
-    assert card_step.index("`/create-sprint`") < card_step.index("spawn.py ready")
+    assert process.index("`/create-sprint`") < process.index("spawn.py <story-id>")
     for fragment in ("slate-reviewer", "slate_review.py", "git switch", "Open the sprint"):
         assert fragment not in close_skill
 
@@ -222,11 +221,11 @@ def assert_review_vocabulary(sources, design, template):
     # The rule SENTENCE, not the whole owner: the loop restates three of the four names at
     # their action sites, so `owner.index` read a restatement as the declaration.
     rule_line = owner.split(rule, 1)[1].split(".", 1)[0]
-    names = ("slate review", "card refresh", "execution plan review", "diff review")
+    names = ("slate review", "execution plan review", "diff review")
     positions = [rule_line.index(name) for name in names]
     assert positions == sorted(positions), "review artifacts are not named in process order"
-    assert "card refresh" in rule_line and "reserved" not in rule_line
-    for name in ("slate review", "card refresh", "execution plan review", "diff review"):
+    assert "reserved" not in rule_line
+    for name in ("slate review", "execution plan review", "diff review"):
         # Outside the declaring file: a name only PROCESS repeats reaches no artifact a
         # lead opens, and counting every file greened `diff review` at zero such uses.
         uses = sum(t.count(name) for p, t in normalized.items() if p != rule_path)
@@ -245,118 +244,3 @@ def assert_review_vocabulary(sources, design, template):
         assert token in migration, f"review-name migration no longer states {token}"
     assert template.startswith("# Roadmap\n")
     assert "plan.md                        roadmap:" in design
-
-
-SIBLING = """#### story-043 — the card refresh must not touch this one   [planned]
-Context: untouched by story-042's refresh.
-Files: src/other.py
-AC:
-- Given A, When B, Then C
-Verify: true
-"""
-
-
-def refresh_repo(tmp_path):
-    """A [planned] card with a SIBLING beside it, and no receipt: the two states
-    `ready` must tell apart are "refreshed" and "never refreshed", so a fixture
-    that inherits make_repo's mint would start past the guard under test."""
-    repo, env, g = make_repo(tmp_path, status="planned")
-    plan = Path(env["XP_DATA"]) / "plan.md"
-    plan.write_text(plan.read_text() + SIBLING)
-    return repo, env, g, plan
-
-
-def stub_card_refresher(
-    tmp_path,
-    correction="",
-    sibling=False,
-    repo_file="",
-    status="",
-    findings="corrected 1 claim\n",
-    unparsable=False,
-    direct_plan=False,
-    skip_apply=False,
-    extra_card="",
-    read_event="",
-    release_event="",
-    plan_unparsable=False,
-    applied_other=False,
-    plan_status="",
-    exit_code=0,
-):
-    """A fake refresher with knobs for sanctioned candidate edits and violations."""
-    binary = tmp_path / "bin" / "claude"
-    binary.parent.mkdir(exist_ok=True)
-    python = binary.parent / "python3"
-    if not python.exists():
-        python.symlink_to(sys.executable)
-    launch = tmp_path / "refresh-launch.json"
-    binary.write_text(
-        "#!/usr/bin/env python3\n"
-        "import json, os, re, shlex, subprocess, sys, time\n"
-        "if sys.argv[1:] == ['plugin', 'list', '--json']:\n"
-        ' print(\'[{"id":"xp-plugin@xp-plugin","version":"fixture",'
-        '"scope":"user"}]\'); sys.exit()\n'
-        "prompt = sys.stdin.read()\n"
-        "env = {k: v for k, v in os.environ.items() if k.startswith('XP_')}\n"
-        "record = {'argv': sys.argv[1:], 'env': env, 'prompt': prompt}\n"
-        f"json.dump(record, open({str(launch)!r}, 'w'))\n"
-        "card = re.search(r'^CARD_PATH: (.+)$', prompt, re.M).group(1)\n"
-        "command = re.search(r'^PLAN_EDIT_COMMAND: (.+)$', prompt, re.M).group(1)\n"
-        "text = open(card).read()\n"
-        f"read_event, release_event = {read_event!r}, {release_event!r}\n"
-        "open(read_event, 'w').write('read') if read_event else None\n"
-        "while release_event and not os.path.exists(release_event): time.sleep(0.01)\n"
-        "original = text\n"
-        f"correction = {correction!r}\n"
-        f"if correction and not {direct_plan!r}:\n"
-        " text = text.replace('Context: demo.', correction, 1)\n"
-        f"if {status!r}:\n"
-        f" text = text.replace('demo story   [planned]', 'demo story   [{status}]', 1)\n"
-        f"if {unparsable!r}:\n"
-        " text = text.replace('#### story-042', '#### mangled-042', 1)\n"
-        f"text += {extra_card!r}\n"
-        "open(card, 'w').write(text)\n"
-        f"if text != original and not {skip_apply!r}:\n"
-        " applied = subprocess.run(shlex.split(command), capture_output=True, text=True)\n"
-        " sys.stdout.write(applied.stdout); sys.stderr.write(applied.stderr)\n"
-        "plan = os.path.join(os.environ['XP_DATA'], 'plan.md')\n"
-        f"if {sibling!r}:\n"
-        " current = open(plan).read()\n"
-        " open(plan, 'w').write(current.replace('Context: untouched', 'Context: MEDDLED', 1))\n"
-        f"if {direct_plan!r}:\n"
-        " current = open(plan).read()\n"
-        " open(plan, 'w').write(current.replace('Context: demo.', correction, 1))\n"
-        f"if {plan_unparsable!r}:\n"
-        " current = open(plan).read()\n"
-        " open(plan, 'w').write(current.replace('#### story-042', '#### broken-042', 1))\n"
-        f"if {applied_other!r}:\n"
-        " current = open(plan).read()\n"
-        " open(plan, 'w').write(current.replace(correction, 'Context: OTHER APPLIED TEXT', 1))\n"
-        f"if {plan_status!r}:\n"
-        " current = open(plan).read()\n"
-        " open(plan, 'w').write(current.replace('demo story   [planned]',"
-        f" 'demo story   [{plan_status}]', 1))\n"
-        f"stray = {repo_file!r}\n"
-        "open(stray, 'w').write('the refresher wrote here\\n') if stray else None\n"
-        "path = re.search(r'^FINDINGS_PATH: (.+)$', prompt, re.M)\n"
-        f"open(path.group(1), 'w').write({findings!r}) if path and {findings!r} else None\n"
-        "print(json.dumps({'type': 'result', 'result': 'refresh complete'}))\n"
-        f"sys.exit({exit_code})\n"
-    )
-    binary.chmod(0o755)
-    return launch
-
-
-def card_refresh(repo, env, story_id="story-042"):
-    return subprocess.run(
-        [sys.executable, str(SLATE_REVIEW), story_id, "--refresh"],
-        cwd=repo,
-        env=env,
-        capture_output=True,
-        text=True,
-    )
-
-
-def receipt_of(env, story_id="story-042"):
-    return Path(env["XP_DATA"]) / "card-refreshes" / f"{story_id}.json"

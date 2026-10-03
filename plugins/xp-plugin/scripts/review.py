@@ -1,9 +1,7 @@
 #!/usr/bin/env python3
-"""Spawn the story-reviewer and read its structured report — close.py's review leg."""
+"""Spawn the story-reviewer and read its structured report — xp.py's review leg."""
 
 import json
-import os
-import re
 import subprocess
 import sys
 from pathlib import Path
@@ -20,11 +18,10 @@ from review_report import (
     REPORT_KEYS,  # noqa: F401
     cap_display,  # noqa: F401
     cap_items,  # noqa: F401
-    parse_report_json,
     read_report,  # noqa: F401
     validate_clearable,  # noqa: F401
 )
-from review_scope import declared_files
+from review_scope import declared_files  # noqa: F401
 from teammate_tee import agent_log_id
 from work import data_root
 
@@ -36,9 +33,6 @@ ACCOUNTED = {"reviewed_head", "incomplete"}
 # A marker naming no artifact leaves the verdict UNKNOWN, which is neither "signed off"
 # nor "nobody signed": the lead is owed the state and the check, never a guessed file.
 UNKNOWN = " — what that review produced is UNKNOWN; confirm the plan was reviewed before close"
-
-REVIEWER_NAME = "xp story-reviewer"
-REVIEWER_EMAIL = "story-reviewer@xp.local"
 
 
 def charter(name: str = "story-reviewer") -> str:
@@ -96,9 +90,10 @@ def report_path(story_id: str, round_n: int) -> Path:
     return p
 
 
-def sprint_report_path(sprint_id: str, stage: str, round_n: int) -> Path:
+def sprint_report_path(sprint_id: str, stage: str, round_n: int, *, create=False) -> Path:
     d = data_root() / "reports" / "sprint"
-    d.mkdir(parents=True, exist_ok=True)
+    if create:
+        d.mkdir(parents=True, exist_ok=True)
     return d / f"{sprint_id}.{stage}.round-{round_n}.json"
 
 
@@ -106,34 +101,16 @@ def patch_path(report: Path) -> Path:
     return report.with_suffix(".patch")
 
 
-def launch_marker(story_id: str) -> Path:
+def launch_marker(story_id: str, *, create: bool = True) -> Path:
     """What the review was launched AGAINST, on disk before it starts, because a
     killed reviewer returns nothing on its way out and salvage needs it all."""
     p = data_root() / "markers" / f"{story_id}.review-launch"
-    p.parent.mkdir(parents=True, exist_ok=True)
+    if create:
+        p.parent.mkdir(parents=True, exist_ok=True)
     return p
 
 
 def stamp(path: Path, why: str) -> str:
-    """Record the refusal IN the report and return `why`; `why` of "" clears one.
-
-    close.py keeps a refused round's report on purpose, and the file a person
-    opens to ask "did this round pass" then answered `blocking: []` either way.
-    Writing only when the key MOVES is what leaves an accepted report byte-
-    identical. Only a report we could parse: unreadable is a different problem
-    and read_report already distinguishes unreadable from absent.
-    """
-    try:
-        report = parse_report_json(path.read_text())
-    except (OSError, ValueError):
-        return why
-    if not isinstance(report, dict):
-        return why
-    had = report.pop("refused", None)  # ours wins: a reviewer may write it too
-    if why:
-        path.write_text(json.dumps({"refused": why} | report, indent=2))
-    elif had is not None:
-        path.write_text(json.dumps(report, indent=2))
     return why
 
 
@@ -235,79 +212,6 @@ def check_reviewer_motion(
     return ""
 
 
-def reviewer_strays(start: str, end: str) -> list[str]:
-    from close import git
-
-    return [
-        ln
-        for ln in git("log", "--format=%h|%an|%s", f"{start}..{end}").stdout.splitlines()
-        if ln.split("|")[1] != REVIEWER_NAME
-    ]
-
-
-ANSI = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
-
-
-def _plain(text: str) -> str:
-    return ANSI.sub("", text).strip()
-
-
-def apply_patch(report: Path, card: str) -> str:
-    from close import git
-
-    path = patch_path(report)
-    if not path.exists() or not path.stat().st_size:
-        return ""
-    try:
-        declared = declared_files(card)
-    except ValueError as error:
-        return str(error)
-    checked = git("apply", "--check", str(path), check=False)
-    if checked.returncode:
-        return f"the reviewer's patch does not apply cleanly: {checked.stderr.strip()}"
-    applied = git("apply", "--index", str(path), check=False)
-    if applied.returncode:
-        return f"the reviewer's patch could not be applied: {applied.stderr.strip()}"
-    # SCOPE from the staged tree with --no-renames, never from `git apply --numstat`:
-    # numstat reports a rename's DESTINATION only, so a patch that renamed
-    # .xp/config.yml OUT of .xp/ read as untouched and deleted the gate file.
-    # Resetting is safe — check_reviewer_motion proved the tree clean and HEAD here.
-    touched = git("diff", "--cached", "--name-only", "--no-renames", "HEAD").stdout.splitlines()
-    if bad := [p for p in touched if p.startswith(".xp/") and p not in declared]:
-        git("reset", "-q", "--hard", check=False)  # a refusal must not become a traceback
-        return (
-            f"the reviewer proposed {', '.join(bad)} — the Files line does not name it."
-            f" The reset undoes the patch in the tree, NOT the patch itself: it survives"
-            f" at {path}; a relaunched review sets it aside for salvage. Name the path"
-            " on the card and review again"
-        )
-    env = os.environ | {
-        "GIT_AUTHOR_NAME": REVIEWER_NAME,
-        "GIT_COMMITTER_NAME": REVIEWER_NAME,
-        "GIT_AUTHOR_EMAIL": REVIEWER_EMAIL,
-        "GIT_COMMITTER_EMAIL": REVIEWER_EMAIL,
-    }
-    committed = subprocess.run(
-        ["git", "commit", "-qm", "reviewer patch"], capture_output=True, text=True, env=env
-    )
-    if committed.returncode:
-        # The commit gate is the caller here, so its output is a hook transcript:
-        # ANSI frames and colour put the one line that matters screens deep inside
-        # a box (field-reported, Legacy 0.7.4). Strip and tail to the cause.
-        lines = (_plain(committed.stderr) or _plain(committed.stdout)).splitlines()
-        # Under review abort_text appends `git reset --hard` right under this, which
-        # discards the staged patch this text just told the human to commit. Naming the
-        # patch file is what keeps the two from reading as opposite instructions.
-        return (
-            "the reviewer patch did not commit — the commit gate refused it. The"
-            " fixer is gone, so this is yours: fix what the gate names, commit the"
-            f" staged tree yourself, then re-run — the patch is also at {path}, so"
-            f" discarding the staged tree loses nothing. The gate's last"
-            f" {min(12, len(lines))} of {len(lines)} lines:\n  " + "\n  ".join(lines[-12:])
-        )
-    return ""
-
-
 def reviewer_range(start: str, end: str) -> str:
     """Show the commits and stat in one covered range."""
     from close import git
@@ -360,13 +264,6 @@ def diff_path(report: Path) -> Path:
 
 
 def write_reviewer_diff(report: Path, reviewed_head: str, noun: str) -> str:
-    """Hand the script-applied fix over on disk, or say why no round may be
-    recorded: stdout is lossy and this was the only place the assent artifact
-    lived. The tree has ALREADY moved here, so a write that fails rolls back
-    rather than leave the lead accepting commits nothing showed them, and
-    a rollback that itself fails keeps the patch commit and offers no reset for it,
-    because close.py authored it. `noun` is the caller's
-    `story <id>` / `sprint <id>` / `free <slug>`: one rule, one implementation."""
     from close import git
 
     summary = reviewer_range(reviewed_head, git("rev-parse", "HEAD").stdout.strip())
@@ -376,22 +273,11 @@ def write_reviewer_diff(report: Path, reviewed_head: str, noun: str) -> str:
     try:
         diff.write_text(summary + "\n" + git("diff", f"{reviewed_head}..HEAD").stdout)
     except OSError as exc:
-        why = f"could not write reviewer handoff at {diff} ({exc})"
-        if git("reset", "--hard", reviewed_head, check=False).returncode:
-            # abort_text reads only whether the tree MOVED, so here it would offer to
-            # reset away close.py's own patch commit — the reset that just failed.
-            applied = git("rev-parse", "HEAD").stdout.strip()
-            return (
-                f"refused: {why}; rolling back to {reviewed_head[:8]} ALSO failed, so"
-                f" {applied[:8]} — the patch commit close.py applied — is still HEAD, and"
-                f" no reset is offered for a commit close.py authored. Clear whatever"
-                f" blocked both (a stale .git/index.lock is the usual one), then"
-                f" `close.py {noun} review` again from this tree."
-            )
-        return f"refused: {why}; rolled the fix back — fix that path, then `close.py {noun} review`"
+        return f"refused: could not write fix evidence at {diff} ({exc}); keep the committed fix"
+
     print(
-        f"the script-applied review fix changed the tree. Read its commit and full"
-        f" diff at {diff} before `close.py {noun} land`; landing accepts it."
+        f"the committed review fix changed the tree. Read its commit and full"
+        f" diff at {diff} before `xp.py {noun} land`; landing accepts it."
     )
     return ""
 
@@ -420,6 +306,7 @@ def run(
     checked=False,
     noun="",
     cancel=None,
+    log_id="",
 ) -> tuple[str, str]:
     """Launch a configured reviewer, returning (result text, error).
     Function-local imports avoid spawn -> close -> review cycling at import time."""
@@ -437,9 +324,8 @@ def run(
             "planner": ("planner", "executor"),
             "plan-reviewer": ("plan-reviewer", ""),
             "slate-reviewer": ("slate-reviewer", "reviewer"),
-            "card-refresher": ("card-refresher", "reviewer"),
         }.get(name, ("reviewer", ""))
-        seat_card = "" if name in ("slate-reviewer", "card-refresher") else card
+        seat_card = "" if name == "slate-reviewer" else card
         harness, model, effort = stage_role(seat, seat_card, fallback)
     sandbox, problem = resolve_codex_sandbox(harness, config_flat("codex_sandbox"))
     if problem:
@@ -451,28 +337,29 @@ def run(
         print("would launch: " + " ".join(argv))
         print(prompt)
         return "", ""
-    log_id = agent_log_id(name, role, "" if stage else card)
+    log_id = log_id or agent_log_id(
+        name, role, card if stage in ("reviewer", "fixer", "closer") else "" if stage else card
+    )
     try:
         # finders, then verifiers, run concurrently: their streams stay in their own logs
         echo = stage not in ("finder", "verifier")
         proc = run_agent(
-            argv, cwd, prompt, "reviewer" if stage else role, harness, log_id, echo, cancel=cancel
+            argv,
+            cwd,
+            prompt,
+            "fixer" if stage == "fixer" else "reviewer" if stage else role,
+            harness,
+            log_id,
+            echo,
+            cancel=cancel,
         )
     except OSError as e:  # claude absent from PATH
         return "", f"could not launch the reviewer: {e}"
     except subprocess.TimeoutExpired as e:
-        salvage = (
-            # NOT "saves you a review": true of story/free, where salvage records a
-            # landable round, and false of sprint, where it records an incomplete one
-            # land always refuses. One sentence, three nouns.
-            f" If it wrote its report and patch before dying, `close.py {noun}"
-            " salvage` records that round from what survives instead of discarding it."
-            if noun
-            else ""
-        )
         return "", (
             f"the reviewer produced NO OUTPUT for {e.timeout:.0f}s and was killed."
-            f" Live output remains in {e.stderr}.{salvage} Widen the silence it may"
+            f" Live output remains in {e.stderr}. Lead: inspect retained work."
+            " Widen the silence it may"
             " keep with XP_AGENT_TIMEOUT=<seconds> and review again"
         )
     if proc.returncode != 0:
@@ -494,4 +381,4 @@ def result_text(harness: str, proc: subprocess.CompletedProcess) -> tuple[str, s
 
 
 if __name__ == "__main__":
-    refuse_direct_invocation("close.py <mode> <id> review")
+    refuse_direct_invocation("xp.py <mode> <id> review")

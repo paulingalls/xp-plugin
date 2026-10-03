@@ -55,35 +55,11 @@ class TestShippedProseMatchesTheMechanism:
         fix-commits needed re-checking there were no prior findings to bound the
         pass — an unbounded re-review (note bae0b87b)."""
         skill = prose(PLUGIN / "skills" / "sprint-close" / "SKILL.md")
-        assert "close.py sprint <id> review" in skill, "the review is still hand-composed"
-
-    def test_the_sprint_close_skill_states_the_confirming_round_shape(self):
-        skill = prose(PLUGIN / "skills" / "sprint-close" / "SKILL.md")
-        assert "cost a confirming round, except any land names as exempt" in skill
-        assert "re-run `close.py sprint <id> review`" in skill
-        assert "one story-shaped reviewer over the delta, not another fanout" in skill
+        assert "xp.py sprint <id> review" in skill, "the review is still hand-composed"
 
     def test_sprint_opening_has_no_tracked_branch_ritual(self):
         skill = prose(PLUGIN / "skills" / "sprint-close" / "SKILL.md")
         assert "sprint_branch" not in skill and "retire" not in skill
-
-    def test_the_sprint_close_skill_orders_the_retro_BEFORE_the_reviews(self):
-        """Measured against the last real close: sprint-002's retro commit touched
-        CHANGELOG.md, docs/DESIGN.md, PROCESS.md and story-close/SKILL.md — five of
-        six paths outside .xp/, so land's exemption does not cover it. Retro last
-        means reviewing again, which invalidates the retro just written. The order
-        is the fix, and it also puts the retro diff under the review DESIGN §6
-        already says it deserves."""
-        skill = prose(PLUGIN / "skills" / "sprint-close" / "SKILL.md")
-        assert skill.index("Triage, then the retro") < skill.index("close.py sprint <id> review")
-        assert "BEFORE the review" in skill
-
-    def test_release_artifacts_are_project_owned_and_timed_without_enumeration(self):
-        skill = prose(PLUGIN / "skills" / "sprint-close" / "SKILL.md")
-        step = skill.split("5. **", 1)[1]
-        assert "Your release artifacts are yours" in step
-        assert "before" in step.lower() and "review" in step.lower()
-        assert "bump" not in step.lower() and "changelog" not in step.lower()
 
     def test_system_context_names_every_shipped_prose_document(self):
         """This line rides into every reviewer bundle, so a short list tells a
@@ -131,14 +107,6 @@ class TestShippedProseMatchesTheMechanism:
         # class of identifier goes into the shipped seed and must come back out.
         for term in ("spawn.py", "DESIGN.md", "a falsifier", "at story-042"):
             assert project_identifiers(seed + f"\n11. **Ported** — see {term}.\n"), term
-
-    def test_the_skills_keep_the_negative_space_that_earns_its_words(self):
-        """The counterweight to the cut: what deliberately does NOT exist cannot be
-        read off the code an agent has not read, so it is the one description that
-        stays. These sentences stop an agent hunting for a flag."""
-        story = prose(PLUGIN / "skills" / "story-close" / "SKILL.md")
-        assert "DOES NOT EXIST" in story, "the lead will hunt for a delta review"
-        assert "never spawns" in story, "land's one hard guarantee"
 
     def test_every_shipped_script_is_reachable_from_the_plugin(self):
         """ratchet.py sat in scripts/ for a sprint measuring OUR budgets against
@@ -216,9 +184,7 @@ class TestCharterBar:
             assert "PROCESS" not in charter, f"{name} kept a stale pointer"
         pointers = {
             PLUGIN / "skills" / "story-close" / "SKILL.md": "judge every finding under JUDGMENT",
-            PLUGIN / "skills" / "sprint-close" / "SKILL.md": (
-                "JUDGMENT.md carries the polarity contract"
-            ),
+            PLUGIN / "skills" / "sprint-close" / "SKILL.md": ("JUDGMENT.md"),
             PLUGIN / "scripts" / "bookkeep.py": "legacy/untriaged findings",
         }
         for path, pointer in pointers.items():

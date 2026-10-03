@@ -25,12 +25,6 @@ def git(*args: str, check: bool = False) -> subprocess.CompletedProcess:
     return subprocess.run(["git", *args], capture_output=True, text=True, check=check)
 
 
-def delete_story_markers(story_id: str) -> None:
-    """Delete dead telemetry; only the measured `[done]` flip releases Stop."""
-    for path in (data_root() / "markers").glob(f"*.{story_id}.test-status"):
-        path.unlink(missing_ok=True)
-
-
 def _render_rounds(rounds: list[dict], story_id: str = "") -> str:
     """A `story_id` bounds each list for a human reader and names the round's own
     report for the rest; prompts pass none, where a notice in place of six
@@ -431,4 +425,4 @@ def remove_story_worktree(tree: str, timeout_value: str = "") -> list[str]:
 
 
 if __name__ == "__main__":
-    refuse_direct_invocation("close.py <mode> <id> <action>")
+    refuse_direct_invocation("xp.py <mode> <id> <action>")

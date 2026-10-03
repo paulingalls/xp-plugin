@@ -48,13 +48,12 @@ def run_count(events):
 @pytest.mark.parametrize("dry", [False, True])
 @pytest.mark.parametrize("declared, reason", [("0.2.0", "BEHIND"), ("0.4.0", "does not match")])
 def test_land_rejects_stale_manifest_before_tier_and_falsifier(tmp_path, dry, declared, reason):
-    # a RED tier is what makes land run a deferred falsifier: a green one trusts it
     repo, env, g, events, _tier = counted_repo(
         tmp_path, f"printf x >> {tmp_path / 'tier-events'}; false"
     )
     falsifier_events = tmp_path / "falsifier-events"
     args = ["debt", "--claim", "deferred", "--falsifier", f"printf x >> {falsifier_events}"]
-    filed = work(repo, env, *args, "--covered-by", "full", "--files", "src.py")
+    filed = work(repo, env, *args, "--files", "src.py")
     assert filed.returncode == 0
     assert sprint(repo, env, "start").returncode == 0
     (repo / "manifest.json").write_text(json.dumps({"version": declared}) + "\n")
@@ -119,7 +118,7 @@ class TestStartReceipt:
         repo, env, _g, events, _tier = counted_repo(tmp_path)
         path = marker_path(tmp_path)
         path.parent.mkdir(parents=True)
-        path.write_text(json.dumps({"rounds": [{"sentinel": "preserved"}]}))
+        path.write_text(json.dumps({"rounds": [{"blocking": [], "sentinel": "preserved"}]}))
 
         result = sprint(repo, env, "start")
 
@@ -128,7 +127,7 @@ class TestStartReceipt:
         assert "full_tier" not in state(tmp_path)
         assert "notes to triage" in result.stdout
         assert "Session digest" in result.stdout
-        assert state(tmp_path)["rounds"] == [{"sentinel": "preserved"}]
+        assert state(tmp_path)["rounds"] == [{"blocking": [], "sentinel": "preserved"}]
 
     @pytest.mark.parametrize("kind", ["tracked", "untracked"])
     def test_start_refuses_dirt_before_the_batch(self, tmp_path, kind):
@@ -180,7 +179,8 @@ Verify: true
 
         result = sprint(repo, env, "start")
 
-        assert result.returncode == 0 and "close checks wait" in result.stdout
+        assert result.returncode == 0
+        assert (tmp_path / "data/sprint_branch").read_text().strip() == "sprint-002"
         assert not events.exists()
 
     @pytest.mark.parametrize("kind", ["tracked", "untracked", "commit"])
@@ -434,7 +434,7 @@ class TestFullTierReceipt:
         assert "Traceback" not in result.stderr and run_count(events) == 1
         assert marker_path(tmp_path).read_bytes() == before
 
-    def test_pending_trunk_red_falsifier_runs_before_trial_merge_aborts(self, tmp_path):
+    def test_pending_trunk_red_tier_refuses_and_aborts_trial_merge(self, tmp_path):
         repo, env, g, _events, _tier = counted_repo(tmp_path, "test ! -f trunk-only")
         add_origin(tmp_path, repo, env, g)
         filed = work(
@@ -445,26 +445,22 @@ class TestFullTierReceipt:
             "trunk must stay clear",
             "--falsifier",
             "test ! -f trunk-only",
-            "--covered-by",
-            "full",
             "--files",
             "trunk-only",
         )
         assert filed.returncode == 0
-        source = filed.stdout.strip()
         assert sprint(repo, env, "start").returncode == 0
         record_reviews(tmp_path, repo, env)
         advance_origin(repo, g, "trunk-only", "present\n")
 
         result = sprint(repo, env, "land")
 
-        assert result.returncode == 2 and f"source {source}" in result.stderr
-        assert "`close.py sprint 2 land` again" in result.stderr
-        assert "## bug " in (tmp_path / "data" / "work.md").read_text()
+        assert result.returncode == 2 and "test tier red" in result.stderr
+        assert "## bug " not in (tmp_path / "data" / "work.md").read_text()
         assert g("rev-parse", "-q", "--verify", "MERGE_HEAD").returncode != 0
         assert not g("status", "--porcelain").stdout
 
-    def test_green_pending_merge_receipt_names_staged_tree_without_deferred_rerun(self, tmp_path):
+    def test_green_pending_merge_receipt_names_staged_tree(self, tmp_path):
         repo, env, g, events, _tier = counted_repo(tmp_path, "true")
         add_origin(tmp_path, repo, env, g)
         command = f"printf x >> {events}"
@@ -476,8 +472,6 @@ class TestFullTierReceipt:
             "covered",
             "--falsifier",
             command,
-            "--covered-by",
-            "full",
             "--files",
             "src.py",
         )
@@ -492,5 +486,5 @@ class TestFullTierReceipt:
         result = sprint(repo, env, "land")
 
         assert result.returncode == 2 and "gh" in result.stderr
-        assert run_count(events) == 1
+        assert run_count(events) == 2
         assert state(tmp_path)["full_tier"]["tree"] == staged_tree

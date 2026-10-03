@@ -188,3 +188,28 @@ def test_shortened_budget_keeps_explicit_fence_and_cut_notice(tmp_path):
     assert mutant != text
     marker.write_text(mutant)
     assert end not in output()
+
+
+def test_explicit_recovery_repins_moved_plugin(tmp_path):
+    repo, _git = xp_repo(tmp_path)
+    data = tmp_path / "data"
+    data.mkdir()
+    plugin = tmp_path / "moved plugin"
+    shutil.copytree(HOOK.parent.parent, plugin)
+    path = data / "env.json"
+    path.write_text(json.dumps({"plugin_root": "/gone", "plugin_version": "0.0.0", "keep": 7}))
+    result = subprocess.run(
+        [sys.executable, str(plugin / "scripts/session_start.py"), "recover"],
+        cwd=repo,
+        env=os.environ | {"XP_DATA": str(data), "XP_ROLE": "lead"},
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, result.stderr
+    saved = json.loads(path.read_text())
+    assert saved["plugin_root"] == str(plugin)
+    assert (
+        saved["plugin_version"]
+        == json.loads((plugin / ".claude-plugin/plugin.json").read_text())["version"]
+    )
+    assert saved["keep"] == 7

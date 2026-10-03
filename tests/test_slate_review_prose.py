@@ -12,23 +12,18 @@ from pathlib import Path
 
 import pytest
 from slate_review_helpers import (
-    CHARTER,
     CLOSE_SKILL,
     CREATE_SKILL,
     DESIGN,
-    DESIGN_CLAIMS,
     PLAN_REVIEW,
     PLAN_TEMPLATE,
     PLUGIN,
     PROCESS,
     REVIEW,
     assert_bundle_schema,
-    assert_charter_contract,
-    assert_design_contract,
     assert_one_lifecycle,
     assert_open_route,
     assert_review_vocabulary,
-    numbered_items,
     section,
     shipped_sources,
     slate_repo,
@@ -323,54 +318,20 @@ def test_route_isolation_guard_reds_when_shipped_instructions_are_removed():
         line = next(line for line in create_skill.splitlines() if fragment in line)
         with pytest.raises((AssertionError, IndexError, ValueError)):
             assert_open_route(create_skill.replace(line + "\n", ""), close_skill, process)
-    for token in ("`/create-sprint`", "corrected slate"):
-        with pytest.raises(AssertionError):
+    for token in ("`/create-sprint`", "spawn.py <story-id>"):
+        with pytest.raises((AssertionError, ValueError)):
             assert_open_route(create_skill, close_skill, process.replace(token, "the lead", 1))
     # both tokens present in the wrong order: ready before authoring is the whole defect
     # the ordering assertion exists for, and no dropped token exercises it
-    step = section(process, "1. **Slate review**", "2. **Story**")
-    flip = step.replace("`/create-sprint`", "\x00").replace("spawn.py ready", "`/create-sprint`", 1)
+    step = section(process, "1. **Slate review**", "3. **Story close**")
+    flip = step.replace("`/create-sprint`", "\x00").replace(
+        "spawn.py <story-id>", "`/create-sprint`", 1
+    )
     with pytest.raises(AssertionError):
-        flipped = flip.replace("\x00", "spawn.py ready", 1)
+        flipped = flip.replace("\x00", "spawn.py <story-id>", 1)
         assert_open_route(create_skill, close_skill, process.replace(step, flipped))
     with pytest.raises(AssertionError):
         assert_open_route(create_skill, close_skill + opening, process)
-    with pytest.raises(AssertionError):
-        assert_open_route(
-            create_skill, close_skill, process.replace("fresh reader", "`/sprint-close`")
-        )
-
-
-def test_charter_contract_and_its_fault_injections():
-    charter = CHARTER.read_text()
-    assert_charter_contract(charter)
-    checks = section(charter, "## Checks", "## Output")
-    for label in numbered_items(checks):
-        item = re.search(
-            rf"^\d+\. \*\*{re.escape(label)}\*\*.*?(?=^\d+\. \*\*|\Z)",
-            checks,
-            re.M | re.S,
-        ).group()
-        with pytest.raises(AssertionError):
-            assert_charter_contract(charter.replace(item, ""))
-    for fragment in (
-        "lead's conclusions",
-        "falsified premise",
-        "## Slate — RED|GREEN",
-        "never apply a card's change",
-    ):
-        line = next(line for line in charter.splitlines() if fragment in line)
-        with pytest.raises(AssertionError):
-            assert_charter_contract(charter.replace(line + "\n", ""))
-
-
-def test_design_pins_timing_harness_evidence_and_residuals():
-    design = DESIGN.read_text()
-    assert_design_contract(design)
-    card = section(design, "**Slate review**", "**Story**")
-    for claim in DESIGN_CLAIMS:
-        with pytest.raises(AssertionError):
-            assert_design_contract(design.replace(card, card.replace(claim, "omitted decision")))
 
 
 def test_review_vocabulary_has_one_shipped_owner_and_a_dated_migration():
@@ -387,7 +348,6 @@ def test_review_vocabulary_has_one_shipped_owner_and_a_dated_migration():
         assert_review_vocabulary(mutated, design, template)
     for token in (
         "every review is named for the artifact it reads",
-        "card refresh",
         "execution plan review",
         "diff review",
     ):

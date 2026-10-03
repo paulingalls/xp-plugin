@@ -100,16 +100,19 @@ def test_red_evidence_survives_rerun_and_repair(tmp_path):
     original = locator(red.stderr)
     saved = {p.name: p.read_bytes() for p in original.iterdir()}
     gate.write_text("#!/bin/sh\nprintf green\n")
-    repaired = close(repo, env, "repair")
-    assert repaired.returncode == 2 and "green rerun" in repaired.stderr
+    repaired = close(repo, env, "review")
+    assert repaired.returncode == 2 and "acknowledge-validation" in repaired.stderr
     assert len(evidence(tmp_path)) == 2
     assert {p.name: p.read_bytes() for p in original.iterdir()} == saved
-    assert close(repo, env, "review").returncode == 0
-    assert len(evidence(tmp_path)) == 3
+    assert (
+        close(repo, env, "acknowledge-validation", "--reason", "external gate recovered").returncode
+        == 0
+    )
+    assert len(evidence(tmp_path)) == 2
     (repo / "src" / "thing.py").write_text("A = 3\n")
     g("commit", "-qam", "later delta")
     assert close(repo, env, "review").returncode == 0
-    assert len(evidence(tmp_path)) == 4
+    assert len(evidence(tmp_path)) == 3
     assert {p.name: p.read_bytes() for p in original.iterdir()} == saved
 
 
@@ -273,7 +276,6 @@ def test_spawn_refusal_keeps_verify_locator(tmp_path):
     ],
 )
 def test_evidence_failure_never_receipts(tmp_path, boundary):
-    repo, env, _g = make_repo(tmp_path)
     sentinel = tmp_path / "later"
     from test_land_verify_receipt import evidence_fault
 
@@ -286,21 +288,18 @@ def test_evidence_failure_never_receipts(tmp_path, boundary):
         argv.append(
             [sys.executable, "-c", f"from pathlib import Path; Path({str(sentinel)!r}).touch()"]
         )
-    plan = tmp_path / "data/plan.md"
-    plan.write_text(
-        plan.read_text().replace("Verify: true", "Verify: " + " && ".join(map(shlex.join, argv)))
-    )
-    from close_helpers import mint_ready
-
-    mint_ready(repo, env)
+    repo, env, _g = make_repo(tmp_path, verify=" && ".join(map(shlex.join, argv)))
     process = record_process(repo, env, argv, injection, action="review")
     _out, err = process.communicate(timeout=30)
     assert not sentinel.exists()
     marker = tmp_path / "data/markers/story-042.close.json"
-    assert not marker.exists() or not json.loads(marker.read_text()).get("rounds")
+    assert json.loads(marker.read_text())["rounds"]
+    from story_review_helpers import checkpoint
+
+    assert checkpoint(env, "story-042")["status"] == "validation-red"
     assert process.returncode == 2, err
     assert reached.exists(), err
-    assert "refused" in (tmp_path / "data/reports/story-042.round-1.json").read_text()
+    assert "refused" not in (tmp_path / "data/reports/story-042.round-1.json").read_text()
     assert not (tmp_path / "data" / "markers" / "story-042.verify.json").exists()
     if boundary == "all-metadata":
         run = locator(err.decode())
@@ -337,7 +336,12 @@ def test_interrupt_preserves_partial_evidence(tmp_path, kill):
     repo, env, _g = make_repo(tmp_path)
     assert close(repo, env, "review").returncode == 0
     assert (tmp_path / "data/markers/story-042.verify.json").exists()
-    source = "import os,time; os.write(1,b'short-out'); os.write(2,b'short-err'); time.sleep(300)"
+    pid_file = tmp_path / "verify-child.pid"
+    source = (
+        "import os,time; from pathlib import Path; "
+        f"Path({str(pid_file)!r}).write_text(str(os.getpid())); "
+        "os.write(1,b'short-out'); os.write(2,b'short-err'); time.sleep(300)"
+    )
     process = record_process(repo, env, [[sys.executable, "-c", source]], start_new_session=True)
     child_pid = None
     try:
@@ -347,10 +351,7 @@ def test_interrupt_preserves_partial_evidence(tmp_path, kill):
         )
         saved = {p.name: p.read_bytes() for p in run.iterdir()}
         assert saved["1.stdout"] == b"short-out" and saved["1.stderr"] == b"short-err", received
-        # The logger's child has its own group; save its PID for SIGKILL recovery cleanup.
-        import subprocess
-
-        child_pid = int(subprocess.check_output(["pgrep", "-P", str(process.pid)]).split()[0])
+        child_pid = int(pid_file.read_text())
         process.send_signal(signal.SIGKILL if kill else signal.SIGINT)
         process.communicate(timeout=30)
         manifest = json.loads((run / "run.json").read_text())

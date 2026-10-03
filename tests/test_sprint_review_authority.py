@@ -70,22 +70,15 @@ class TestReviewAuthority:
             "debt": [],
         }
         staged_stub(tmp_path, find=blocking, verify=blocking)
-        deletion = (
-            "diff --git a/.xp/system.md b/.xp/system.md\n"
-            "deleted file mode 100644\n"
-            "--- a/.xp/system.md\n"
-            "+++ /dev/null\n"
-            "@@ -1,2 +0,0 @@\n"
-            "-# System\n"
-            "-SYSTEM-SENTINEL\n"
-        )
         claude = tmp_path / "bin" / "claude"
         write = "sys.stdout.write("
         claude.write_text(
             claude.read_text().replace(
                 write,
-                f"open(pm.group(1).strip(), 'w').write({deletion!r}) if key == 'fix' else None\n"
-                + write,
+                "if key == 'fix':\n"
+                "    os.unlink('.xp/system.md')\n"
+                "    subprocess.run(['git','add','-A'],check=True)\n"
+                "    subprocess.run(['git','commit','-qm','remove rubric'],check=True)\n" + write,
                 1,
             )
         )

@@ -67,7 +67,7 @@ def cmd_start(slug: str, dry_run: bool = False) -> int:
             f"refused: free start cuts off {trunk} {reason}; from {branch} it would include"
             " unreleased work. If this branch integrates into a sprint review, commit there"
             " with `[sprint-direct]` so that review absorbs it."
-            f" {ending}, `git checkout {trunk}`, then retry `close.py free {slug} start`"
+            f" {ending}, `git checkout {trunk}`, then retry `xp.py free {slug} start`"
         )
     new = branch_for(slug)
     if git("rev-parse", "--verify", "-q", f"refs/heads/{new}", check=False).returncode == 0:
@@ -82,10 +82,10 @@ def cmd_start(slug: str, dry_run: bool = False) -> int:
     key = new.split("/", 1)[1]
     card = "card in the plan" if card_in_plan(key) else "card required, add it"
     print(
-        f"{new} off {trunk} — {card}. Next run `spawn.py ready {key}`, then"
+        f"{new} off {trunk} — {card}. Next"
         f" `spawn.py {key}`. Cut release artifacts in `{spawn.worktree_path(key)}` while that"
         f" worktree exists; otherwise in the main repo after `git checkout {new}`. Then run"
-        f" `close.py {leg(key)[0]} review` there"
+        f" `xp.py {leg(key)[0]} review` there"
     )
     if not versioned:
         print(VERSIONING_OFF_TEXT)
@@ -105,7 +105,7 @@ def cmd_review(slug: str, dry_run: bool) -> int:
         noun = leg(key)[0]
         return fail(
             f"refused: add `#### {key} — <title>   [planned]` with Context, Files, AC,"
-            f" and Verify to {plan_path()}, then run `close.py {noun} review`"
+            f" and Verify to {plan_path()}, then run `xp.py {noun} review`"
         )
     try:
         _card, status = story_card(plan_path().read_text(), key)
@@ -118,7 +118,7 @@ def cmd_review(slug: str, dry_run: bool) -> int:
                 f"refused: {key} has an existing worktree at {tree} but no handoff — run"
                 f" `spawn.py resume {key}` to inspect and take it over, then review there"
             )
-        before_spawn = f"run `spawn.py ready {key}`, then " if status == "planned" else ""
+        before_spawn = ""
         if status == "in-progress":
             before_spawn = "put its heading back to [ready], then "
         return fail(
@@ -126,20 +126,6 @@ def cmd_review(slug: str, dry_run: bool) -> int:
             " the main repo and review from its worktree"
         )
     return close.cmd_review(key, dry_run)
-
-
-def cmd_salvage(slug: str, dry_run: bool = False) -> int:
-    import close
-
-    key, _branch, err = current_free(slug)
-    return fail(err) if err else close.cmd_salvage(key, dry_run)
-
-
-def cmd_repair(slug: str) -> int:
-    import close
-
-    key, _branch, err = current_free(slug)
-    return fail(err) if err else close.cmd_repair(key)
 
 
 def cmd_land(slug: str, dry_run: bool) -> int:
@@ -193,7 +179,6 @@ def cmd_post_merge(slug: str, dry_run: bool = False) -> int:
         failed.append(f"flip {key} to [done] in {plan_path()}")
     failed += bookkeep.remove_story_checkout(tree, spawned_branch, config_flat("teardown_timeout"))
     failed += bookkeep.delete_story_branch(branch)
-    bookkeep.delete_story_markers(key)
     ready_marker_path(key).unlink(missing_ok=True)
     marker_path(key).unlink(missing_ok=True)
     verify_receipt.path(key).unlink(missing_ok=True)

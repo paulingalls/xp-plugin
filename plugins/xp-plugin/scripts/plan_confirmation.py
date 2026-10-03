@@ -1,4 +1,4 @@
-"""Evidence-bound amendment confirmation through the existing review owner."""
+"""Content measurement and immutable evidence for plan-review publication."""
 
 import contextlib
 import hashlib
@@ -8,9 +8,8 @@ import stat
 import subprocess
 from pathlib import Path
 
-from plan_acceptance import atomic_json, identity, receipt_path
-from plan_disposition import disposition_object, durable_disposition
-from work import card_digest, data_root, ready_marker_path
+from plan_acceptance import atomic_json, receipt_path
+from work import data_root, ready_marker_path
 
 
 def evidence_path(out):
@@ -38,7 +37,7 @@ def content_identity(path):
     return mode, hashlib.sha256(value).hexdigest()
 
 
-def repository_fingerprint(plan_file):
+def repository_fingerprint(plan_file, tier_owned=False):
     root = Path.cwd().resolve()
     excluded = Path(plan_file).resolve()
     relative = str(excluded.relative_to(root)) if excluded.is_relative_to(root) else None
@@ -52,13 +51,16 @@ def repository_fingerprint(plan_file):
             raise OSError(result.stderr.decode(errors="replace"))
         return result.stdout
 
+    work_paths = [*paths, ":(exclude,literal).xp/config.yml"] if tier_owned else paths
     measured = {
         "head": git("rev-parse", "HEAD").hex(),
         "index": git("ls-files", "--stage", "-z", "--", *paths).hex(),
         "staged": git(
             "diff", "--cached", "--binary", "--no-ext-diff", "--no-textconv", "--", *paths
         ).hex(),
-        "worktree": git("diff", "--binary", "--no-ext-diff", "--no-textconv", "--", *paths).hex(),
+        "worktree": git(
+            "diff", "--binary", "--no-ext-diff", "--no-textconv", "--", *work_paths
+        ).hex(),
     }
     tracked = git("ls-files", "-z", "--", *paths).split(b"\0")
     untracked = git("ls-files", "--others", "-z", "--", *paths).split(b"\0")
@@ -67,6 +69,14 @@ def repository_fingerprint(plan_file):
         path = root / os.fsdecode(name)
         try:
             mode, digest = content_identity(path)
+            if tier_owned and name == b".xp/config.yml":
+                active, lines = False, []
+                for line in path.read_text().splitlines():
+                    if line and not line[0].isspace() and not line.startswith("#"):
+                        active = line.startswith("tests:")
+                    if not (active and line.lstrip().startswith("story:")):
+                        lines.append(line)
+                digest = hashlib.sha256("\n".join(lines).encode()).hexdigest()
         except FileNotFoundError:
             contents.append([name.hex(), "absent"])
             continue
@@ -149,270 +159,6 @@ def prior_binding(record, plan_file):
         raise ValueError("acceptance receipt binding changed")
     if Path(record["candidate"]).read_text() != record["after"]:
         raise ValueError("reviewed card candidate binding changed")
-
-
-def eligibility(story_id, prior, plan_file):
-    """Return mode, bundle, reason: confirm, fallback or refuse."""
-    from plan_acceptance import latest
-    from ready import card_diff, credential
-
-    minted = credential(ready_marker_path(story_id))
-    record = latest(story_id)
-    if not minted:
-        return "refuse", None, "ready credential unreadable; restore it before resuming"
-    if not record:
-        return (
-            "fallback",
-            None,
-            "legacy-unbound review has no acceptance; planner and full review required",
-        )
-    if record["digest"] == minted["digest"] and not pending_amendment(story_id):
-        return "unchanged", None, ""
-    try:
-        prior_binding(record, plan_file)
-        findings = Path(record["findings"]).read_text()
-        if identity(Path(record["findings"])) != record["findings_identity"]:
-            raise ValueError("accepted findings changed")
-        outcome, problem = durable_disposition(findings)
-        if outcome == "failed":
-            raise ValueError(problem)
-    except (OSError, UnicodeError, ValueError) as error:
-        return (
-            "refuse",
-            None,
-            f"cannot reuse authoritative findings: {error}; restore {record['findings']}",
-        )
-    try:
-        draft = Path(plan_file).read_text()
-        if not draft.strip():
-            raise ValueError("empty draft")
-        if identity(Path(plan_file)) != record["plan_identity"]:
-            return "refuse", None, f"accepted draft changed; restore {plan_file} before resuming"
-    except (OSError, UnicodeError, ValueError) as error:
-        return "fallback", None, f"cannot reuse draft: {error}; planner and full review required"
-    try:
-        evidence_file = evidence_path(record["findings"])
-        if prior.get("plan_review_evidence_identity") != identity(evidence_file):
-            raise ValueError("repository evidence identity changed or unbound")
-        evidence = json.loads(evidence_file.read_text())
-        if evidence["version"] != 1 or evidence["acceptance"] != record:
-            raise ValueError("evidence binding/version mismatch")
-        if evidence["credential_digest"] != record["digest"]:
-            raise ValueError("prior credential binding mismatch")
-        if (
-            prior.get("plan_review_identity") != record["findings_identity"]
-            or prior.get("plan_reviewed_card") != record["digest"]
-        ):
-            raise ValueError("handoff acceptance binding mismatch")
-        from plan_review import card_for
-
-        if card_digest(card_for(story_id)) != minted["digest"]:
-            raise ValueError("current card is not credentialed")
-        fingerprint = repository_fingerprint(plan_file)
-        from completion import review_limit, validate
-
-        completed, limit = validate(story_id, prior, record)
-        if completed and (limit := review_limit(story_id)):
-            completed = None
-        baseline = completed["fingerprint"] if completed else evidence["repository"]
-        if fingerprint != baseline:
-            raise ValueError(limit or "repository evidence changed")
-        chain = minted.get("amendments", [])[evidence["amendment_count"] :]
-        current = record["after"]
-        if not chain:
-            raise ValueError("no explicit amendment chain")
-        for amendment in chain:
-            if card_digest(amendment["card"]) != card_digest(current):
-                raise ValueError("amendment chain gap")
-            current = amendment["after"]
-        if card_digest(current) != minted["digest"]:
-            raise ValueError("amendment chain does not reach current credential")
-    except (OSError, UnicodeError, ValueError, KeyError, TypeError) as error:
-        return "fallback", None, f"cannot reuse evidence: {error}; planner and full review required"
-    bundle = {
-        "completion": completed,
-        "record": record,
-        "minted": minted,
-        "fingerprint": fingerprint,
-        "prior_card": record["after"],
-        "current_card": minted["card"],
-        "amendments": chain,
-        "delta": card_diff(record["after"], minted["card"]),
-        "findings": findings,
-        "evidence": evidence,
-        "evidence_identity": identity(evidence_file),
-    }
-    return "confirm", bundle, ""
-
-
-def confirmation_decision(findings):
-    report, problem = disposition_object(findings)
-    if problem:
-        return "", problem
-    decision = report.get("decision")
-    if decision not in ("confirm", "replan"):
-        return "", "confirmation requires explicit decision confirm or replan; repair and resume"
-    summary = report.get("summary")
-    if decision == "replan" and (not isinstance(summary, str) or not summary.strip()):
-        return (
-            "",
-            "replan requires an explanation of why the existing plan cannot serve the amendment",
-        )
-    return decision, ""
-
-
-def recheck(story_id, plan_file, context):
-    from ready import credential
-
-    if credential(ready_marker_path(story_id)) != context["minted"]:
-        raise ValueError("credential changed during confirmation; inspect amendment and resume")
-    from plan_review import card_for
-
-    if card_for(story_id) != context["current_card"]:
-        raise ValueError("card changed during confirmation; inspect amendment and resume")
-    if context.get("completion"):
-        from handoff import handoff_state
-
-        if (handoff_state(data_root(), story_id) or {}).get("completion") != context["completion"]:
-            raise ValueError("completion evidence changed during confirmation")
-    record = context["record"]
-    prior_binding(record, plan_file)
-    if identity(Path(record["findings"])) != record["findings_identity"]:
-        raise ValueError("prior findings changed during confirmation; restore them before resuming")
-    if identity(evidence_path(record["findings"])) != context["evidence_identity"]:
-        raise ValueError("prior evidence changed during confirmation; restore it before resuming")
-    if repository_fingerprint(plan_file) != context["fingerprint"]:
-        raise ValueError(
-            "repository changed during confirmation; inspect and restore before resuming"
-        )
-
-
-def run(story_id, plan_file, context):
-    import plan_review
-    import review
-
-    manifest = preserve(story_id, plan_file)
-    parent = data_root() / "plans"
-    number = 1
-    while any(parent.glob(f"{story_id}.confirmation-{number}.*")):
-        number += 1
-    out = parent / f"{story_id}.confirmation-{number}.md"
-    marker = plan_review.incomplete_marker(story_id)
-    marker.parent.mkdir(parents=True, exist_ok=True)
-    marker.write_text(
-        json.dumps(
-            {
-                "kind": "confirmation",
-                "findings": str(out),
-                "state": "PLAN CONFIRMATION DID NOT COMPLETE",
-                "next": f"run spawn.py resume {story_id}",
-            }
-        )
-    )
-    prior = (
-        "CONFIRMATION_MODE: amendment\n"
-        "Judge the exact amendment/ruling against the preserved plan; apply an authorized answer "
-        "to the draft or explicitly require replan. Preserve justified edits and reasons. "
-        "New reserved choices block, and silent/corrupting defects remain in your authority.\n"
-        + json.dumps(context, ensure_ascii=False, indent=2)
-        + f"\nImmutable predecessor manifest: {manifest}\n"
-    )
-    charter = review.charter("plan-reviewer")
-    if not charter:
-        return plan_review.fail("restore the empty plan-reviewer charter"), "failed"
-    import re
-
-    def mode_example(match):
-        report = json.loads(match.group(1))
-        return "```json\n" + json.dumps(report | {"decision": "confirm"}) + "\n```"
-
-    charter = re.sub(r"```json\n(.*?)```", mode_example, charter, flags=re.S)
-    result = plan_review._run_review(
-        story_id,
-        plan_file,
-        charter,
-        plan_file.read_text(),
-        plan_review.card_for(story_id),
-        out,
-        False,
-        prior,
-        True,
-        confirmation=context,
-    )
-
-    if context.get("completion") and result[0] == 0 and result[1] != "replan":
-        from completion import digest, save
-
-        report, problem = disposition_object(out.read_text())
-        implementation = report.get("implementation") if not problem else None
-        if "implementation" in report and implementation not in ("complete", "requires-execution"):
-            return plan_review.ReviewResult(
-                plan_review.fail("invalid implementation judgment; repair and resume"),
-                "failed",
-                result.acceptance,
-            )
-        if implementation == "complete":
-            if not isinstance(report.get("summary"), str) or not report["summary"].strip():
-                return plan_review.ReviewResult(
-                    plan_review.fail(
-                        "complete implementation judgment requires a summary; repair and resume"
-                    ),
-                    "failed",
-                    result.acceptance,
-                )
-            value = context["completion"]
-            if repository_fingerprint(plan_file) != context["fingerprint"]:
-                return plan_review.ReviewResult(
-                    plan_review.fail("completed tree moved after confirmation; inspect and resume"),
-                    "failed",
-                    result.acceptance,
-                )
-            from handoff import handoff_state
-
-            if (handoff_state(data_root(), story_id) or {}).get("completion") != value:
-                return plan_review.ReviewResult(
-                    plan_review.fail("completion moved after confirmation; inspect and resume"),
-                    "failed",
-                    result.acceptance,
-                )
-            save(story_id, value, {"completion": digest(value), "acceptance": result.acceptance})
-    return result
-
-
-def execution_problem(record):
-    from handoff import handoff_state
-
-    try:
-        handoff = handoff_state(data_root(), record["story_id"]) or {}
-        if identity(evidence_path(record["findings"])) != handoff.get(
-            "plan_review_evidence_identity"
-        ):
-            raise ValueError("published evidence identity changed")
-        evidence = json.loads(evidence_path(record["findings"]).read_text())
-        if evidence["acceptance"] != record:
-            raise ValueError("acceptance evidence binding changed")
-        if repository_fingerprint(Path(record["plan"])) != evidence["repository"]:
-            raise ValueError("repository moved after plan review")
-    except (OSError, ValueError, KeyError, TypeError) as error:
-        return f"cannot certify reviewed evidence: {error}; restore evidence and resume"
-    return ""
-
-
-def pending_amendment(story_id):
-    from plan_acceptance import latest
-    from ready import credential
-
-    record = latest(story_id)
-    minted = credential(ready_marker_path(story_id))
-    if not record or not minted:
-        return False
-    count = record.get("amendment_count")
-    try:
-        if count is None:
-            count = json.loads(evidence_path(record["findings"]).read_text())["amendment_count"]
-        return len(minted.get("amendments", [])) > count
-    except (OSError, ValueError, KeyError, TypeError):
-        return bool(minted.get("amendments"))
 
 
 def publication_problem(record):

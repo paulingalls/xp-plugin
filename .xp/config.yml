@@ -1,7 +1,7 @@
 # xp-plugin project config (dogfood instance)
 release: sprint
 codex_sandbox: danger-full-access  # Codex only: workspace-write | danger-full-access
-sprint_cap: 6          # max stories per sprint
+sprint_cap: 6          # story-count guidance for the lead
 debt_budget: 0.2       # max share of sprint stories that are scheduled debt
 constraints_chars_cap: 4500  # hard character ceiling; retire or shorten a rule
 profile_target: 1209  # this project's measured story-card token allowance
@@ -32,11 +32,3 @@ full_legs:
   fast: pytest -q -n 6 -m "not slow and not meta"
   slow: pytest -q -n 6 -m "slow and not meta"
   meta: pytest -q -n 6 -m meta
-
-tier_coverage:
-  fast: story
-  story: full
-tier_coverage_pins:
-  fast: pytest -q -n 4 -m "not slow and not meta"
-  story: pytest -q -n 4 -m "not slow and not meta"
-  full: pytest -q -n 6 -m "not slow and not meta" && pytest -q -n 6 -m "slow and not meta" && pytest -q -n 6 -m meta

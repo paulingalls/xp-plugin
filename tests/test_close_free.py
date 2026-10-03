@@ -31,7 +31,7 @@ from spawn_helpers import make_repo as make_spawn_repo
 
 def normalize(refusal: str) -> str:
     masked = re.sub(r"\b[0-9a-f]{7,40}\b", "<sha>", refusal)
-    return re.sub(r"close\.py \S+ \S+ review", "close.py <leg> review", masked).strip()
+    return re.sub(r"xp\.py \S+ \S+ review", "xp.py <leg> review", masked).strip()
 
 
 def reviewed(tmp_path, slug="fix-typo", tiers=()):
@@ -115,15 +115,14 @@ class TestFreeStart:
         commit_on_free(repo, g)
         g("checkout", "-q", "main")
         commands = re.findall(r"`(spawn\.py [^`]+)`", started.stdout)
-        assert commands == [f"spawn.py ready {key}", f"spawn.py {key}"]
-        assert spawn(repo, env, *shlex.split(commands[0])[1:]).returncode == 0
+        assert commands == [f"spawn.py {key}"]
         stub_claude(tmp_path)
         before = (
             g("branch", "--show-current").stdout.strip(),
             g("rev-parse", "HEAD").stdout.strip(),
             g("status", "--porcelain").stdout,
         )
-        result = spawn(repo, env, *shlex.split(commands[1])[1:])
+        result = spawn(repo, env, *shlex.split(commands[0])[1:])
         assert result.returncode == 0, result.stderr
         tree = Path(env["XP_DATA"]) / "worktrees" / key
         after = (
@@ -158,11 +157,10 @@ class TestFreeStart:
         commands = re.findall(r"`(spawn\.py [^`]+)`", started.stdout)
         tree_match = re.search(r"in `([^`]+)` while that worktree exists", started.stdout)
         checkout_match = re.search(r"after `(git checkout [^`]+)`", started.stdout)
-        assert commands == [f"spawn.py ready {key}", f"spawn.py {key}"]
+        assert commands == [f"spawn.py {key}"]
         assert tree_match and checkout_match
-        assert spawn(repo, env, *shlex.split(commands[0])[1:]).returncode == 0
         stub_claude(tmp_path)
-        assert spawn(repo, env, *shlex.split(commands[1])[1:]).returncode == 0
+        assert spawn(repo, env, *shlex.split(commands[0])[1:]).returncode == 0
         tree = Path(tree_match[1])
         assert tree == Path(env["XP_DATA"]) / "worktrees" / key
         target = tree
@@ -198,9 +196,7 @@ class TestFreeStart:
         assert freed.stdout.endswith("Read it, then run `/free-close` from that worktree.\n")
 
     def test_free_start_names_release_timing_without_telling_the_lead_to_commit(self, tmp_path):
-        """The printed next action is RUN, not just named (constraint 12): the
-        card refresh story-103 put in front of the mint has no free lane, so
-        `spawn.py ready <key>` refuses here unless the exemption is the lane's."""
+        """Walk the printed next action from an authored free card."""
         outputs = []
         for name, slug in (("one", "fix-one"), ("two", "fix-two")):
             repo, env, g = free_repo(tmp_path / name)
@@ -208,7 +204,7 @@ class TestFreeStart:
             assert result.returncode == 0, result.stderr
             outputs.append(result.stdout)
             key = free_identity(g)[1]
-            assert result.stdout.index(f"spawn.py ready {key}") < result.stdout.index("review")
+            assert result.stdout.index(f"spawn.py {key}") < result.stdout.index("review")
             assert result.stdout.index("release artifacts") < result.stdout.index("review")
             assert "Commit, then" not in result.stdout
             add_free_card(env, key)
@@ -246,7 +242,7 @@ class TestFreeStart:
         assert r.returncode == 2
         assert "main" in r.stderr and "sprint-001" in r.stderr
         assert "[sprint-direct]" in r.stderr and "sprint review" in r.stderr
-        assert "patch" in r.stderr and "close.py free fix-typo start" in r.stderr
+        assert "patch" in r.stderr and "xp.py free fix-typo start" in r.stderr
         assert (
             g("branch", "--show-current").stdout.strip(),
             g("rev-parse", "HEAD").stdout.strip(),
@@ -363,8 +359,8 @@ class TestSharedLandGuards:
         for mark in marks:
             assert mark in story, story
             assert mark in freed, freed
-        assert "close.py free fix-typo review" in freed, freed
-        assert "close.py story story-042 review" in story, story
+        assert "xp.py free fix-typo review" in freed, freed
+        assert "xp.py story story-042 review" in story, story
         # EQUAL, not merely overlapping, modulo the two things that legitimately
         # differ: the sha each fixture produced and the leg's own review command.
         assert normalize(story) == normalize(freed)

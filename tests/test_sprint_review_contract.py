@@ -47,8 +47,6 @@ class TestResolutionsAreCarried:
                     ref,
                     "--falsifier",
                     f"true # {attempt}",
-                    "--covered-by",
-                    "none",
                 ).returncode
                 == 0
             )
@@ -83,8 +81,6 @@ class TestResolutionsAreCarried:
             ref,
             "--falsifier",
             "true # THE-REPLACEMENT",
-            "--covered-by",
-            "none",
         )
         work(repo, env, "note", "A-PLAIN-NOTE")
         assert sprint(repo, env, "review").returncode == 0
@@ -114,7 +110,8 @@ class TestMotionIsBoundedByAMechanism:
         before = head(repo, env)
         r = sprint(repo, env, "review")
         assert r.returncode == 2, r.stdout
-        assert before[:8] in r.stderr, "the undo names no sha to reset to"
+        assert head(repo, env) != before
+        assert (repo / "snuck.py").read_text() == "X = 1\n"
         assert json.loads(marker_path(tmp_path).read_text())["rounds"][-1]["incomplete"]
 
     def test_a_reviewer_that_leaves_the_tree_DIRTY_is_refused(self, tmp_path):
@@ -229,38 +226,7 @@ class TestMotionIsBoundedByAMechanism:
         assert r.returncode == 0, r.stderr + r.stdout
 
 
-class TestSprintCharter:
-    def test_what_every_stage_shares_is_a_delta_not_a_second_charter(self):
-        """An opus executor with no bound modelled this on story-reviewer.md (712
-        words). Four stages now share ONE preamble, and it is the part every
-        launch pays for — the per-stage sections have their own cap in
-        test_review.py. `report-only` is gone from it deliberately: the fixer
-        commits, and a charter still claiming otherwise contradicts the gate."""
-        text = (PLUGIN / "agents" / "sprint-reviewer.md").read_text()
-        shared = text.split("---", 2)[2].split("\n## ")[0]
-        assert len(shared.split()) <= 150, f"{len(shared.split())} words: a preamble, not a charter"
-        assert "report-only" not in shared.lower(), "the fixer commits; this leg is not report-only"
-        assert "JUDGMENT.md" in shared, "the bar and rubric pointer drifted"
-        assert "Round 1" in shared and "Later rounds use one" in shared
-        assert "story-shaped reviewer" in shared and "fix inside its round" in shared
-        # the report SHAPE as the stage must write it, not the bucket names in
-        # prose: `noted` reads fine in a sentence that never states the JSON
-        for token in ('"schema"', '"fixed"', '"blocking"', '"dropped"', '"debt"'):
-            assert token in shared, f"the charter never names {token}"
-        closer = text.split("\n## closer\n", 1)[1]
-        assert '"clearable_by_full"' in closer and "tests.full" in closer
-        assert '"clearable_by_full"' in shared and "only `closer`" in shared
-
-
 class TestShippedProse:
-    def test_the_sprint_close_skill_names_the_human_only_steps(self):
-        """The two reviews stopped being human-only at story-014 — the pipeline
-        marshals them. What a script still cannot absorb (constraint 7) is note
-        triage and the retro narrative, so those are what this pins now."""
-        skill = (PLUGIN / "skills" / "sprint-close" / "SKILL.md").read_text().lower()
-        assert "note triage" in skill and "retro" in skill
-        assert "narrative is the part" in skill, "the judgment step lost its reason"
-
     def test_judgment_carries_the_record_lifecycle_and_the_polarity_contract(self):
         judgment = (PLUGIN / "JUDGMENT.md").read_text()
         assert "resolve" in judgment, (

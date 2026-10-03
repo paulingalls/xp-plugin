@@ -1,11 +1,11 @@
 # Process
-`/xp-setup` once; exact `recover:` command; first region next; artifacts win.
+`/xp-setup` once; exact `recover:` command after reload or resuming; first region next; artifacts win.
 Every review is named for the artifact it reads:
-**slate review** → **card refresh** → **execution plan review** → **diff review**.
+**slate review** → **execution plan review** → **diff review**.
 Background long legs. No timeout.
-1. **Slate review** — `/create-sprint` opens; fresh reader: `sprint_cap`. Mid-sprint: record, never schedule; `[sprint-direct]`: sprint branch, sprint review; free: ship now. Lead non-review `slate_review.py --refresh`; then `spawn.py ready <story-id>`: corrected slate. Multi-file: the planner writes the plan; then `plan_review.py`. Human-only questions stop.
+1. **Slate review** — `/create-sprint`; `sprint_cap` advises the lead. Apply authorized corrections; escalate human-only questions. Mid-sprint: record, never schedule. `[sprint-direct]`: sprint branch and review; free: ship now.
 2. **Story** — `spawn.py <story-id>`; red → green → refactor; small commits. Carded/free work stays in its worktree; data root proves spawn, not authorship. Done: surface ACs.
 3. **Story close** — `/story-close`; one full review.
-4. **Sprint close** — `/sprint-close`: with human, judge all debt/findings per JUDGMENT; debt ceiling.
-5. **Free** — `close.py free <slug> start`, then `/free-close`: slotless; ship now.
+4. **Sprint close** — `/sprint-close`: judge delivered integration and unresolved obligations with the human; keep retro narrative; validate and release the shipping tree.
+5. **Free** — `xp.py free <slug> start`, then `/free-close`: slotless; ship now.
 Close replaces ≤30-line session digest.

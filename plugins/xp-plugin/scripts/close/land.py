@@ -25,17 +25,34 @@ from release import (
     version_refusal,
     versioning_mode,
 )
-from repair import land_red_path
 from review_artifacts import archive_covered, covered_destination, story_sidecars
 from review_scope import declared_files
 from timing import Span
 
 
+def land_red_path(story_id):
+    return close.marker_path(story_id, create=False).with_name(f"{story_id}.land-red.json")
+
+
 def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
     if close.git("status", "--porcelain").stdout.strip():
         return close.fail("refused: working tree is dirty — Verify must judge the tree that merges")
-    marker = close.marker_path(story_id)
-    launch_paths = [review.launch_marker(story_id), *story_sidecars(story_id)]
+    if not work.plan_path().exists():
+        return close.fail(f"refused: {work.missing_plan_refusal()}")
+    marker = close.marker_path(story_id, create=False)
+    state = None
+    if marker.exists():
+        try:
+            state = json.loads(marker.read_text())
+            if not isinstance(state, dict) or not isinstance(state.get("rounds"), list):
+                raise ValueError("close marker rounds are unreadable")
+            if not state["rounds"] or any(not isinstance(r, dict) for r in state["rounds"]):
+                raise ValueError("close marker has no usable review rounds")
+        except (OSError, ValueError) as error:
+            return close.fail(
+                f"refused: {error}; preserve {marker} and work; lead must inspect then review"
+            )
+    launch_paths = [review.launch_marker(story_id, create=False), *story_sidecars(story_id)]
     covered_sidecars = []
     for launch in (path for path in launch_paths if path.exists()):
         # Distinct states stay distinct: salvage refuses when this file is
@@ -52,8 +69,7 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
             )
         if verify_red:
             covered = False
-            if launch != launch_paths[0] and marker.exists():
-                state = json.loads(marker.read_text())
+            if launch != launch_paths[0] and state is not None:
                 verify_head = unrecorded.get("verify_head", unrecorded.get("head", ""))
                 shown_sha = state.get("shown_sha", "")
                 covered = (
@@ -72,9 +88,9 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
                 continue
             verified = str(unrecorded.get("verify_head", unrecorded.get("head", "")))[:8]
             next_action = (
-                f"fix it, then run `close.py {close.leg(story_id)[0]} repair`"
+                f"fix it, then run `xp.py {close.leg(story_id)[0]} review`"
                 if launch == launch_paths[0]
-                else f"run `close.py {close.leg(story_id)[0]} salvage`, or review again"
+                else f"run `xp.py {close.leg(story_id)[0]} review`"
             )
             return close.fail(
                 f"refused: the review completed on tree {verified}, but {verify_red}."
@@ -88,11 +104,9 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
         noun = close.leg(story_id)[0]
         return close.fail(
             f"refused: {len(queued)} unrecorded review round(s) are set aside at"
-            f" {', '.join(str(p) for p in queued)} — `close.py {noun} salvage` records"
-            " them. If salvage refuses because the"
-            " recorded tree or marker moved, inspect the saved report and patch,"
+            f" {', '.join(str(p) for p in queued)} — inspect the saved report and work,"
             " explicitly accept that the round cannot enter the ledger, remove only"
-            f" the named launch marker(s), then retry `close.py {noun} land`"
+            f" the named launch marker(s), then retry `xp.py {noun} land`"
         )
     for sidecar, _round in covered_sidecars:
         destination = covered_destination(sidecar)
@@ -112,9 +126,8 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
             print(f"{verb} {sidecar} -> {destination}; covered by round {round_n}")
         return ""
 
-    if not marker.exists():
+    if state is None:
         return close.fail(f"refused: no close in progress for {story_id} — run review first")
-    state = json.loads(marker.read_text())
     noun, free_slug = close.leg(story_id)
     free = bool(free_slug)
     trunk = close.default_branch() if free else close.integration_target()
@@ -127,7 +140,7 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
     base, stale = bookkeep.fork_point(trunk)
     if stale:
         return close.fail(stale)
-    ref = overlap.merge_source(trunk, merge_mode)
+    ref = overlap.merge_source(trunk, merge_mode, fetch=not dry_run)
     versioned = False
     version = ""
     names = []
@@ -178,8 +191,6 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
         held, err = bookkeep.held_trunk_tree(trunk)
         if err:
             return close.fail(err)
-    if not work.plan_path().exists():
-        return close.fail(f"refused: {work.missing_plan_refusal()}")
     try:
         card, status = close.story_card(work.plan_path().read_text(), story_id)
     except KeyError as e:
@@ -188,6 +199,13 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
         return close.fail(f"refused: {story_id} is [{status}], land requires [in-progress]")
     if drift := ready.drift(story_id, card):
         return close.fail(drift)
+    from review_sequence import landing_refusal
+
+    try:
+        if error := landing_refusal(story_id, card, state):
+            return close.fail(error)
+    except (OSError, ValueError, KeyError) as error:
+        return close.fail(f"refused: review evidence: {error}; preserve work and ask the lead")
     from plan_acceptance import provenance
 
     if accepted := provenance(story_id):
@@ -270,7 +288,7 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
             print(f"would run: {tier}")
             for command in pr_cmds:
                 print(" ".join(command))
-            print(f"(then `close.py {noun} post-merge`)")
+            print(f"(then `xp.py {noun} post-merge`)")
             if not versioned:
                 print(VERSIONING_OFF_TEXT)
             set_aside(preview=True)
@@ -304,7 +322,7 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
             )
         except OSError as exc:
             return f"refused: could not record land red at {land_red}: {exc} — run land again"
-        return f"{red} — fix it, commit, then run `close.py {noun} repair`"
+        return f"{red} — fix it, commit, then run `xp.py {noun} review`"
 
     try:
         red, _receipt = overlap.gates(
@@ -339,7 +357,7 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
         land_red.unlink(missing_ok=True)
         print(bookkeep.render_noted(rounds), end="")
         target = f" for {version}" if version else ""
-        print(f"PR open against {trunk}{target}. After it merges: `close.py {noun} post-merge`")
+        print(f"PR open against {trunk}{target}. After it merges: `xp.py {noun} post-merge`")
         if not versioned:
             print(VERSIONING_OFF_TEXT)
         return 0
@@ -425,7 +443,6 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
     failed += bookkeep.remove_story_checkout(
         story_tree if held else "", branch, close.config_flat("teardown_timeout")
     )
-    bookkeep.delete_story_markers(story_id)
     bookkeep.log_close(story_id, card, rounds, merge_sha, files_beyond_map)
     marker.unlink()
     land_red.unlink(missing_ok=True)

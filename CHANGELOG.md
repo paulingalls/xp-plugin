@@ -4,6 +4,35 @@ Release notes started at v0.6.0; earlier entries are summarized from their
 tag and merge messages. Full detail lives in the merge history and the
 per-sprint review reports.
 
+## v0.35.0 — a shorter path from plan to release
+
+Existing plans, work records and project role mappings remain usable. Finish active
+runs with the plugin version that started them; this release does not translate
+in-flight receipts. Git hooks remain the enforcement boundary.
+
+ONE PLANNING HANDOFF. The planner checks current code; one independent plan review
+corrects the work. Accepted changes proceed to execution. Unanswered human choices
+stop with the reviewed work preserved. Sprint capacity advises the lead, and opening
+records the sprint without running close checks. The separate card refresher,
+readiness handshake and persisted review-depth machinery are removed.
+
+RESUME THE UNFINISHED WORK. One checkpoint retains completed stages and artifacts.
+Interrupted work resumes where needed without demanding a new executor commit or
+replaying completed agents. A solution review conditionally buys one committing
+fixer and one narrow closer. Remaining findings return to the lead for judgment.
+
+CLOSE THE SHIPPING TREE. Sprint review judges integration and current unresolved
+obligations. Only open falsifiers recur; resolved records remain historical evidence
+and the regression suite owns coverage. Release preparation is distinct from release:
+post-merge validates the actual shipping tree before publishing the tag and record.
+Narrative retros live with the external project data.
+
+ONE PUBLIC LIFECYCLE ENTRY POINT. `xp.py` exposes sprint, story, free-patch and
+milestone actions. Saved `close.py` and `open_sprint.py` commands delegate to the same
+owners; retired replay commands give recovery guidance. Preview commands do not run
+gates or mutate lifecycle state. SessionStart and explicit recovery refresh the
+installed-plugin pointer. Advisory shell-policing and stop hooks are removed.
+
 ## v0.34.0 — amendments confirm the work they change
 
 No hook setup change is required. Accepted plan-review edits proceed directly;

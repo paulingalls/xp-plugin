@@ -6,9 +6,6 @@ import subprocess
 from pathlib import Path
 
 import pytest
-from plan_human_question_support import (
-    test_a_capped_foreground_plan_review_is_recorded_apart_from_a_dead_reviewer,  # noqa: F401
-)
 from spawn_helpers import (  # noqa: F401
     CARD,
     CONFIG,
@@ -17,7 +14,6 @@ from spawn_helpers import (  # noqa: F401
     block_commits,
     in_tree,
     make_repo,
-    seed_refresh_receipt,
     set_system_md,
     spawn,
     stub_claude,
@@ -136,7 +132,6 @@ class TestWorktree:
         plan2.write_text(
             (tmp_path / "data" / "plan.md").read_text().replace("[in-progress]", "[planned]")
         )
-        seed_refresh_receipt(other, env2)
         assert spawn(other, env2, "ready", "story-042").returncode == 0
         second_run = spawn(other, env2, "story-042")
         assert second_run.returncode == 0
@@ -461,9 +456,9 @@ def test_the_brief_states_the_commit_the_handback_guard_requires(tmp_path, monke
         assert_commit_precedes_handback(broken)
 
 
-def test_an_amended_card_restarts_review_rounds_for_its_replacement_plan(tmp_path):
+def test_an_amended_card_after_executor_interruption_preserves_prior_review_context(tmp_path):
     repo, env, _g = make_repo(tmp_path, files="src/thing.py, src/other.py")
-    events = stub_stages(tmp_path, blocking_diff=True)
+    events = stub_stages(tmp_path, executor_failure=True)
     assert spawn(repo, env, "story-042").returncode != 0
     plans = Path(env["XP_DATA"]) / "plans"
     (plans / "story-042.round-2.md").write_text("OLD-FINDING")
@@ -475,9 +470,12 @@ def test_an_amended_card_restarts_review_rounds_for_its_replacement_plan(tmp_pat
     assert spawn(repo, env, "resume", "story-042").returncode != 0
     new = [json.loads(line) for line in events.read_text().splitlines()[seen:]]
     assert [event["role"] for event in new] == ["planner", "plan-reviewer", "teammate", "reviewer"]
-    assert "OLD-FINDING" not in new[1]["prompt"] and "OLD-FINDING" not in new[2]["prompt"]
+    assert "Then amended Z" in new[1]["prompt"] and "Then amended Z" in new[2]["prompt"]
     assert (plans / "story-042.round-1.md").is_file()
-    assert len(list(plans.glob("story-042.superseded-*.round-*.md"))) == 2
+    archived = list(plans.glob("story-042.superseded-*.round-*.md"))
+    assert len(archived) == 2
+    assert any(path.read_text() == "OLD-FINDING" for path in archived)
+    assert "OLD-FINDING" not in new[2]["prompt"]
 
 
 from test_spawn_stages import TestSpawnStages, event_roles, stub_stages  # noqa: E402,F401

@@ -86,34 +86,6 @@ def test_mixed_review_preserves_edits_and_blocks_executor(tmp_path):
     assert event_roles(events) == ["planner", "plan-reviewer"]
 
 
-@pytest.mark.parametrize("source", ["minted", "amended"])
-def test_minted_deep_floor_survives_review_downgrade(tmp_path, source):
-    from spawn_helpers import seed_refresh_receipt
-
-    repo, env, _g = make_repo(tmp_path, status="planned", files="src/thing.py, src/other.py")
-    plan = Path(env["XP_DATA"]) / "plan.md"
-    initial = "deep" if source == "minted" else "standard"
-    plan.write_text(plan.read_text().replace("Executor:", f"Close review: {initial}\nExecutor:"))
-    seed_refresh_receipt(repo, env)
-    assert spawn(repo, env, "ready", "story-042").returncode == 0
-    if source == "amended":
-        plan.write_text(plan.read_text().replace("Close review: standard", "Close review: deep"))
-        amended = spawn(repo, env, "amend", "story-042", "--reason", "human raises depth")
-        assert amended.returncode == 0, amended.stderr
-    events = edited_stages(tmp_path, [("Close review: deep", "Close review: standard")])
-    binary = tmp_path / "bin/claude"
-    binary.write_text(
-        binary.read_text().replace(
-            "'# execution plan\\nred then green\\n'",
-            "'# execution plan\\nClose review: standard\\nred then green\\n'",
-        )
-    )
-    result = spawn(repo, env, "story-042")
-    assert result.returncode == 0, result.stderr
-    assert "Close review: deep — effective depth." in prompt_for(events, "reviewer")
-    assert "Close review: standard" in plan.read_text()
-
-
 def test_planner_card_motion_has_no_review_authority(tmp_path):
     repo, env, _g = make_repo(tmp_path, files="src/thing.py, src/other.py")
     events = stub_stages(tmp_path)
@@ -192,7 +164,8 @@ def test_installed_harness_review_acceptance(tmp_path, harness, question):
         assert "card corrected by plan review" in landed.stdout
         assert "story-042.round-1.md" in landed.stdout
         assert "card amended — reason" not in landed.stdout
-        assert "card corrected by plan review" in prompt_for(events, "reviewer")
+        reviewed = prompt_for(events, "reviewer")
+        assert "Then REVIEWED-AC" in reviewed and "Context: REVIEWED-CONTEXT." in reviewed
 
 
 def spawn_with_hook(repo, env, code):
@@ -271,14 +244,6 @@ plan_review.run_foreground = interrupted
         refused = spawn(repo, env, "resume", "story-042")
         assert "interrupted review acceptance" in refused.stderr
         command = re.search(r"completed round with `([^`]+)`", refused.stderr).group(1)
-        repaired = subprocess.run(
-            shlex.split(command), cwd=repo, env=env, capture_output=True, text=True
-        )
-        assert repaired.returncode == 0, repaired.stderr
-    else:
-        refused = spawn(repo, env, "resume", "story-042")
-        assert "INTERRUPTED spawn" in refused.stderr
-        command = re.search(r"Run `([^`]+)`", refused.stderr).group(1)
         repaired = subprocess.run(
             shlex.split(command), cwd=repo, env=env, capture_output=True, text=True
         )
@@ -391,7 +356,7 @@ def test_land_separates_review_corrections_from_later_lead_amendment(tmp_path):
     assert event_roles(events).count("plan-reviewer") == 2
 
 
-def test_free_lane_retains_review_source_and_minted_depth_floor(tmp_path):
+def test_free_lane_retains_review_source_and_current_card(tmp_path):
     from close_free_card_cases import add_free_card, checkout_free, commit_on_free
     from close_helpers import free, free_repo
     from test_close_free import configure_executor
@@ -426,7 +391,7 @@ def test_free_lane_retains_review_source_and_minted_depth_floor(tmp_path):
     )
     result = spawn(repo, env, key)
     assert result.returncode == 0, result.stderr
-    assert "Close review: deep — effective depth." in prompt_for(events, "reviewer")
+    assert "Close review: standard" in prompt_for(events, "reviewer")
     tree = Path(env["XP_DATA"]) / "worktrees" / key
     landed = free(tree, env, "fix-typo", "land")
     assert landed.returncode == 0, landed.stderr
@@ -472,3 +437,27 @@ def test_legacy_amendment_does_not_claim_a_later_review_correction(tmp_path):
     amendment = landed.stdout.split("card amended — reason: prior human correction", 1)[1]
     assert "Context: human measured." in amendment
     assert "Then REVIEWED-AC" not in amendment
+
+
+def test_approved_behavior_change_requires_lead_decision(tmp_path):
+    repo, env, _ = make_repo(tmp_path, status="planned", files="src/thing.py, src/other.py")
+    card = Path(env["XP_DATA"]) / "plan.md"
+    card.write_text(
+        card.read_text().replace("Context: demo.", "Context: demo.\nDecision: approved")
+    )
+    events = edited_stages(
+        tmp_path, [CHANGES["ac"], ("Decision: approved", "Decision: new behavior")]
+    )
+    result = spawn(repo, env, "story-042")
+    assert result.returncode != 0 and "reserved" in result.stderr
+    assert "Decision: approved" in card.read_text()
+    assert "teammate" not in event_roles(events)
+    card.write_text(card.read_text().replace("Decision: approved", "Decision: new behavior"))
+    assert (
+        spawn(repo, env, "amend", "story-042", "--reason", "lead approved new behavior").returncode
+        == 0
+    )
+    edited_stages(tmp_path, [CHANGES["ac"]])
+    allowed = spawn(repo, env, "resume", "story-042")
+    assert allowed.returncode == 0, allowed.stdout + allowed.stderr
+    assert "Decision: new behavior" in prompt_for(events, "teammate")

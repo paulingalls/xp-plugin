@@ -1,10 +1,12 @@
+import json
 import re
+from datetime import datetime, timezone
 from pathlib import Path
 
 import review_scope
 from close import git
 from diff_range import render as render_diff_range
-from work import data_root, entries, work_entries_since
+from work import _disposal, data_root, entries, entry_id
 
 FALSIFIER = re.compile(r"^Falsifier: `(.+)`$", re.M)
 COVERED_BY = re.compile(r"^Covered by: (.+)$", re.M)
@@ -52,16 +54,42 @@ def source_files(root: Path, refs: list[str]) -> tuple[list[str], list[str], str
 
 
 def _sprint_records(root: Path, since_epoch: int) -> tuple[str, str]:
-    """Keep original falsifiers for review while corpus substitutes the batch copy."""
-    originals = {e: t for e, t in entries(root) if t.startswith(("## bug ", "## debt "))}
+    archive = root / "archive.md"
+    archived = [
+        b
+        for b in re.split(r"^(?=## )", archive.read_text() if archive.exists() else "", flags=re.M)
+        if b.startswith("## ")
+    ]
+    active = entries(root)
+    originals = {
+        e: t
+        for e, t in [*active, *((entry_id(b), b) for b in archived)]
+        if t.startswith(("## bug ", "## debt "))
+    }
+    disposal = _disposal()
     latest, kept = {}, []
-    for block in re.split(r"^(?=## )", work_entries_since(since_epoch), flags=re.M):
-        if block.startswith("## archived "):
+    for ref, block in [*((entry_id(b), b) for b in archived), *active]:
+        try:
+            timestamp = block.splitlines()[0].rsplit(" ", 1)[-1]
+            epoch = (
+                datetime.strptime(timestamp, "%Y-%m-%dT%H:%M:%SZ")
+                .replace(tzinfo=timezone.utc)
+                .timestamp()
+            )
+        except ValueError:
             continue
-        if not block.startswith("## resolved "):
+        if epoch < since_epoch:
+            continue
+        if (
+            block.startswith("## resolved ")
+            and (resolved := RESOLVES.search(block))
+            and (new := FALSIFIER.search(block))
+        ):
+            latest[resolved.group(1)] = (new.group(1), COVERED_BY.search(block))
+        elif block.startswith(("## bug ", "## debt ", "## note ")) and not (
+            disposal._archived(root, ref) or disposal._resolved(root, ref)
+        ):
             kept.append(block)
-        elif (ref := RESOLVES.search(block)) and (new := FALSIFIER.search(block)):
-            latest[ref.group(1)] = (new.group(1), COVERED_BY.search(block))
     out = []
     for ref, (new, covered) in latest.items():
         text = originals.get(ref, "")
@@ -73,6 +101,42 @@ def _sprint_records(root: Path, since_epoch: int) -> tuple[str, str]:
             + (f"\n  covered by: {covered.group(1)}" if covered else "")
         )
     return "\n".join(out) or "none", "\n".join(kept).strip() or "none"
+
+
+def delivered_scope(cards: str, root: Path) -> str:
+    members = re.findall(r"^#### (\S+) — (.+?)\s+\[(done|retired)\]$", cards, re.M)
+    closes, errors = {}, []
+    path = root / "closes.jsonl"
+    try:
+        for number, line in enumerate(path.read_text().splitlines(), 1):
+            try:
+                record = json.loads(line)
+                closes[record["story"]] = record["merge_sha"]
+            except (ValueError, KeyError, TypeError):
+                errors.append(f"Unreadable close record {path}:{number} — repair the evidence")
+    except FileNotFoundError:
+        pass
+    except (OSError, UnicodeError) as error:
+        errors.append(f"Unreadable close history {path}: {error} — repair the evidence")
+    return (
+        "\n".join(
+            [
+                *(
+                    f"- {story} — {title} — "
+                    + (
+                        "retired"
+                        if status == "retired"
+                        else f"delivered at {closes[story]}"
+                        if closes.get(story)
+                        else "missing close evidence"
+                    )
+                    for story, title, status in members
+                ),
+                *errors,
+            ]
+        )
+        or "no terminal members"
+    )
 
 
 def build(
@@ -91,6 +155,8 @@ def build(
     caller's snapshot, read once before the first launch. Re-read here it would exit
     from a later stage's bundle, past leg()'s error return and the incomplete round
     it writes (stages.check_roles refuses up front for the same reason)."""
+    from finding_triage import render_triage
+
     epoch = int(git("show", "-s", "--format=%ct", base).stdout.strip())
     resolutions, work_md = _sprint_records(data_root(), epoch)
     title = "The delta since the last recorded round" if diff_base else "Cumulative sprint diff"
@@ -99,6 +165,8 @@ def build(
         ("Your report", f"REPORT_PATH: {report}"),
         *extra,
         (f"The stories in sprint {sprint_id}", cards),
+        ("Delivered outcome", delivered_scope(cards, data_root())),
+        ("Current unresolved obligations and historical sources", render_triage(data_root())),
         (title, render_diff_range(diff_base or base, "HEAD", excluded, trunk_range)),
         ("Resolutions filed during the sprint", resolutions),
         ("work.md entries filed during the sprint", work_md),

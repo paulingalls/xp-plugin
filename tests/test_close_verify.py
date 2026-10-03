@@ -9,10 +9,9 @@ import pathlib
 
 import pytest
 from close import story_card
-from close_free_card_cases import add_free_card, checkout_free, spawn_free
+from close_free_card_cases import add_free_card, checkout_free, commit_on_free, spawn_free
 from close_helpers import (
     CLEAN,
-    FIX_PATCH,
     NEW_FILE_PATCH,
     close,
     free,
@@ -20,7 +19,6 @@ from close_helpers import (
     launches,
     make_repo,
     marker,
-    marker_file,
     ready_marker,
     stub_reviewer,
 )
@@ -116,17 +114,6 @@ class TestVerifyGate:
 
 
 class TestIncompletePlanReviewReachesTheLead:
-    """plan_review.py leaves a marker when its review produced no findings; the
-    close leg is where the lead and the story reviewer both meet it.
-
-    Measured twice in the field, both invisible from here: a codex teammate whose
-    review was killed at the model's own timeout guess, and a claude teammate that
-    backgrounded the review and then YIELDED — headless `-p` ends on yield, so the
-    review died with its parent. The second was caught only because that teammate
-    happened to leave work uncommitted; committing first would have handed back a
-    story whose mandatory gate never ran, with nothing to say so.
-    """
-
     def marker(self, env):
         p = pathlib.Path(env["XP_DATA"]) / "markers" / "story-042.plan-review-incomplete"
         p.parent.mkdir(parents=True, exist_ok=True)
@@ -145,8 +132,6 @@ class TestIncompletePlanReviewReachesTheLead:
         assert "plan review" in bundle.lower(), bundle[:600]
 
     def test_a_story_whose_review_completed_says_nothing(self, tmp_path):
-        """An always-present line is wallpaper (constraint 3): the silence is the
-        assertion, so it is tested positively."""
         from close_helpers import launches, stub_reviewer
 
         repo, env, _g = make_repo(tmp_path)
@@ -157,30 +142,20 @@ class TestIncompletePlanReviewReachesTheLead:
         assert "did not complete" not in launches(tmp_path)[0]["stdin"].lower()
 
 
-class TestTheRoundIsRecordedOnlyIfVerifyRan:
-    """story-036. `blocking: []` is today the reviewer's OWN judgment that Verify
-    ran, and a reviewer whose sandbox cannot reach a leg reports green in good
-    faith — note 1b45d1c7 measured four rounds of bun+tsc green with the native
-    build dead. The pipeline already knows how: land computes verify_commands and
-    runs it, so the same call at REVIEW time turns the claim into a fact.
-    """
-
+class TestReviewValidationAuthority:
     def test_a_green_report_on_a_red_tree_is_refused(self, tmp_path):
-        """AC 1: the whole card. The reviewer is CLEAN and the tree is red."""
-        from close_helpers import marker_file
 
         repo, env, _g = make_repo(tmp_path, verify="false")
         r = close(repo, env, "review")
         assert r.returncode != 0, r.stdout
         assert "Verify red" in r.stderr, r.stderr
-        assert not marker_file(tmp_path).exists(), "a refused round was recorded anyway"
+        from story_review_helpers import checkpoint
+
+        assert checkpoint(env, "story-042")["status"] == "validation-red"
+        assert close(repo, env, "land").returncode == 2
 
     @pytest.mark.parametrize("configured", [True, False], ids=["set", "unset"])
     def test_the_reviewed_tree_verify_never_answers_for_the_land_tier(self, tmp_path, configured):
-        """Routing this leg through the gate runner made it speak about a tier it
-        was never asked to run. Now that the runner REFUSES an unset one, the
-        unset arm is the one that matters: it would kill every round for a project
-        with no story tier. `None` (no tier applies) stays distinct from unset."""
         repo, env, g = make_repo(tmp_path)
         if not configured:
             config = repo / ".xp" / "config.yml"
@@ -207,34 +182,24 @@ class TestTheRoundIsRecordedOnlyIfVerifyRan:
             assert verdict.startswith("refused: tests.story") and "Set tests.story" in verdict
 
     def test_a_verify_that_cannot_run_is_not_a_verify_that_failed(self):
-        """AC 2 of story-036, whose only cover the argv cut deleted: the lead's next
-        action differs — one is a code fix, the other a harness problem. A shell
-        reported that as 127; an argv RAISES, and nothing else walks that arm (the
-        PATH pre-check cannot, since it refuses before anything runs)."""
         import overlap
 
         verdict = overlap.run_one("Verify", ["xp-no-such-command-036"])
         assert "could not be RUN" in verdict and "Verify red" not in verdict, verdict
 
-    def test_a_refused_round_says_so_in_the_file_a_reader_opens(self, tmp_path):
-        """AC 3: close.py keeps a refused round's report on purpose — its findings
-        exist nowhere else — and the file then reads `blocking: []` whether the
-        round was accepted or thrown away. Asserted by READING the report, never
-        by a sibling marker."""
+    def test_red_validation_has_bound_evidence_and_blocks_land(self, tmp_path):
         repo, env, _g = make_repo(tmp_path, verify="false")
         assert close(repo, env, "review").returncode != 0
-        (report,) = (tmp_path / "data" / "reports").glob("*.json")
-        recorded = json.loads(report.read_text())
-        assert "Verify red" in recorded["refused"], recorded
-        assert next(iter(recorded)) == "refused", "the refusal must be the first key read"
+        from story_review_helpers import checkpoint
+
+        sequence = checkpoint(env, "story-042")
+        assert sequence["status"] == "validation-red"
+        attempt = pathlib.Path(sequence["validation"][-1]["path"])
+        evidence = json.loads((attempt / "run.json").read_text())
+        assert evidence["status"] == "failed"
+        assert close(repo, env, "land").returncode == 2
 
     def test_an_accepted_report_is_left_exactly_as_the_reviewer_wrote_it(self, tmp_path):
-        """AC 4: the stamp must not become wallpaper on every file (constraint 3).
-
-        The fixture writes an INDENTED report on purpose: `json.dumps` reproduces
-        the stub's default form byte for byte, so a round-trip through the accept
-        path would pass this assertion for a reason unrelated to the property.
-        """
         from close_helpers import stub_reviewer
 
         repo, env, _g = make_repo(tmp_path)
@@ -245,9 +210,6 @@ class TestTheRoundIsRecordedOnlyIfVerifyRan:
         assert report.read_text() == written
 
     def test_the_findings_of_a_refused_round_still_reach_the_lead_first(self, tmp_path):
-        """AC 5: a report the pipeline rejects still cost a full review, and its
-        findings exist nowhere else — close.py prints them before every refusal
-        below it, and this card must not regress that."""
         from close_helpers import stub_reviewer
 
         repo, env, _g = make_repo(tmp_path, verify="false")
@@ -257,12 +219,6 @@ class TestTheRoundIsRecordedOnlyIfVerifyRan:
         assert "F1: the retry flag is inverted" in r.stdout, r.stdout
 
     def test_land_still_runs_verify_after_the_review_leg_does(self, tmp_path):
-        """AC 6: this card ADDS a gate, it does not move one, and the cheapest
-        wrong implementation deletes land's copy as a duplicate.
-
-        The TREE moves rather than the Verify line, so the card keeps its ready
-        credential and the reds are attributable to the two legs separately.
-        """
         repo, env, g = make_repo(tmp_path, verify="test -f sentinel")
         (repo / "sentinel").write_text("green at review time\n")
         g("add", "-A")
@@ -276,59 +232,7 @@ class TestTheRoundIsRecordedOnlyIfVerifyRan:
         assert "Verify red" in landed.stderr, landed.stderr
 
 
-class TestTheRoundNeedsItsHandoffDiff:
-    """One rule, two implementations, and only story-047's sprint half was told.
-
-    The story leg calls write_reviewer_diff with no arm for a write that fails —
-    and the reviewer's fix is already COMMITTED by the time it runs, so the lead
-    is left holding reviewer commits nothing handed over, no round recording
-    them, and a next review that refuses on the HEAD this one moved.
-    """
-
-    def test_a_round_is_not_recorded_without_its_handoff_diff(self, tmp_path):
-        """The obstruction is made by the REVIEWER, the way test_sprint_review.py
-        makes it: story-124's rotation sweeps the whole `.round-N.*` slot at launch,
-        so a directory pre-placed at the diff path is carried off before the write
-        and the guard certifies. Created after the bundle is read, it is still there
-        when write_reviewer_diff runs — which keeps the CLI-level red, and with it
-        the two halves a seam call cannot reach: no round recorded, and land refuses.
-        """
-        repo, env, g = make_repo(tmp_path)
-        before = g("rev-parse", "HEAD").stdout.strip()
-        stub_reviewer(tmp_path, patch=FIX_PATCH)
-        claude = tmp_path / "bin" / "claude"
-        diff = pathlib.Path(env["XP_DATA"]) / "reports" / "story-042.round-1.diff"
-        obstruct = f"os.makedirs({str(diff)!r}, exist_ok=True)\n"
-        claude.write_text(
-            claude.read_text().replace("sys.stdout.write(", obstruct + "sys.stdout.write(", 1)
-        )
-
-        r = close(repo, env, "review")
-        assert r.returncode == 2, r.stdout
-        assert "could not write reviewer handoff" in r.stderr, r.stderr
-        assert "refused: refused:" not in r.stderr, "the refusal was wrapped twice"
-        assert "close.py story story-042 review" in r.stderr, r.stderr
-        assert g("rev-parse", "HEAD").stdout.strip() == before, "the applied fix was not undone"
-        assert not marker_file(tmp_path).exists(), "a round was recorded without its handoff"
-        assert close(repo, env, "land").returncode != 0
-
-
-class TestTheReviewersOwnFixIsUnderTheGateItPasses:
-    """close.py::_record_round runs Verify AFTER applying the reviewer's patch, so
-    the round certifies the same tree it stores as `shown_sha`. Nothing pinned that
-    order: measured on this tree, swapping the two statements so Verify reads the
-    PRE-patch tree left all 844 tests green, because every other test's reviewer
-    stub leaves a tree that is red both before and after its patch. Story-036's own
-    argument is the property — "a reviewer that cannot run tests still produces
-    confident fixes, and they are exactly as wrong as the confidence is unearned".
-
-    The consequence is bounded and must not be read as larger: land runs Verify
-    again on the tree it merges (test_land_still_runs_verify_after_the_review_leg_
-    does), so a bad reviewer patch is still caught one leg later and no wrong merge
-    lands. What a swap costs is the review-time catch and the truth of a RECORDED
-    round, not the merge gate.
-    """
-
+class TestCommittedFixValidation:
     # green on the reviewed tree (`A = 2`), red on the tree the reviewer leaves
     VERIFY = (
         'python3 -c "from pathlib import Path; '
@@ -342,7 +246,7 @@ class TestTheReviewersOwnFixIsUnderTheGateItPasses:
 +BROKEN = 1
 """
 
-    def test_a_reviewer_patch_that_reds_verify_records_no_round(self, tmp_path):
+    def test_committed_fix_that_reds_verify_cannot_land(self, tmp_path):
         repo, env, _g = make_repo(tmp_path, verify=self.VERIFY)
         thing = repo / "src" / "thing.py"
         assert "BROKEN" not in thing.read_text(), "Verify was already red before the patch"
@@ -354,12 +258,12 @@ class TestTheReviewersOwnFixIsUnderTheGateItPasses:
         # BOTH halves, or the assertion above passes for the wrong reason: a patch
         # that never applied would red Verify only by failing to apply.
         assert "BROKEN" in thing.read_text(), "the reviewer's patch never reached the tree"
-        assert not marker_file(tmp_path).exists(), "a round certified a tree Verify never saw"
+        from story_review_helpers import checkpoint
 
-    def test_a_recorded_round_is_not_offered_an_undo_that_denies_it(self, tmp_path):
-        """The same red tree, but with findings, so story-054 records the round. The
-        commit the undo would destroy is close.py's own patch-apply, and it is the sha
-        that round names: no reset may be offered for it."""
+        assert checkpoint(env, "story-042")["status"] == "validation-red"
+        assert close(repo, env, "land").returncode == 2
+
+    def test_closer_blocker_preserves_fix_and_refuses_land(self, tmp_path):
         repo, env, g = make_repo(tmp_path, verify=self.VERIFY)
         report = {"fixed": [], "blocking": ["B"], "schema": 2, "dropped": [], "debt": []}
         stub_reviewer(tmp_path, patch=self.BREAKS_VERIFY, report=report)
@@ -368,15 +272,14 @@ class TestTheReviewersOwnFixIsUnderTheGateItPasses:
         r = close(repo, env, "review")
         assert r.returncode != 0 and g("rev-parse", "HEAD").stdout.strip() != launched
         assert "git reset" not in r.stderr, r.stderr
-        assert "close.py applied" in r.stderr, r.stderr
-        assert "No round was" not in r.stderr and "IS recorded" in r.stderr, r.stderr
-        assert marker(tmp_path)["rounds"][-1]["blocking"] == ["B"]
+        from story_review_helpers import checkpoint
 
-    def test_a_recorded_round_says_so_even_when_no_undo_is_offered(self, tmp_path):
-        """The same recording, with the reviewer writing NO patch: the tree never
-        moves, abort_text takes its short path, and the round's fate rode in the
-        undo sentence the short path drops. Exit 2 over a silently recorded round
-        sends the lead to re-review a story that already has one."""
+        sequence = checkpoint(env, "story-042")
+        assert sequence["status"] == "blocked"
+        assert sequence["stages"]["closer"]["report"]["blocking"] == ["B"]
+        assert close(repo, env, "land").returncode == 2
+
+    def test_solution_blocker_is_recorded_and_returned_to_lead(self, tmp_path):
         repo, env, _g = make_repo(tmp_path, verify="false")
         stub_reviewer(
             tmp_path,
@@ -385,61 +288,31 @@ class TestTheReviewersOwnFixIsUnderTheGateItPasses:
 
         r = close(repo, env, "review")
         assert r.returncode != 0 and "git reset --hard" not in r.stderr, r.stderr
-        assert "IS recorded" in r.stderr, r.stderr
+        assert "xp.py story story-042 review" in r.stderr, r.stderr
         assert marker(tmp_path)["rounds"][-1]["blocking"] == ["B"]
 
 
-class TestTheFreeLegNamesItsOwnLandCommand:
-    """The handoff after a reviewer patch printed the STORY leg's command for a
-    free card — wrong subcommand and wrong id, so a reader following it is
-    refused. close.py passes f"story {story_id}" into write_reviewer_diff with no
-    arm for the third leg, and free.cmd_review knows the slug but drops it where
-    cmd_land threads it through. Field-reported by a consuming project that
-    followed the printed line and got the refusal (work.md e2ff1a03).
-
-    The slug is spelled UNNORMALIZED on purpose: `free start` accepts any spelling
-    that slugifies to itself modulo case and separators, so a handoff echoing the
-    lead's own word prints a line argparse splits into two.
-    """
-
-    def test_the_free_handoff_names_the_command_that_actually_works(self, tmp_path):
+class TestFreeCorrectionLands:
+    def test_free_correction_lands_with_normalized_slug(self, tmp_path):
         repo, env, g = free_repo(tmp_path)
         started = free(repo, env, "Fix Typo", "start")
         assert started.returncode == 0 and "free fix-typo review" in started.stdout
         _branch, key = checkout_free(g)
         add_free_card(env, key)
-        (repo / "src").mkdir(parents=True, exist_ok=True)
-        (repo / "src" / "free.py").write_text("B = 1\n")
-        g("add", "-A")
-        g("commit", "-qm", "free work")
+        commit_on_free(repo, g)
         tree = spawn_free(repo, env, g, tmp_path, key)
         stub_reviewer(tmp_path, patch=NEW_FILE_PATCH)
 
         r = free(tree, env, "Fix Typo", "review")
 
         assert r.returncode == 0, r.stderr + r.stdout
-        assert "the script-applied review fix changed the tree" in r.stdout, r.stdout
-        assert "close.py free fix-typo land" in r.stdout, r.stdout
-        assert "close.py story" not in r.stdout, r.stdout
+        assert (tree / "src/fixed.py").exists()
+        landed = free(tree, env, "Fix Typo", "land")
+        assert landed.returncode == 0, landed.stderr
 
 
-class TestTheRollbackThatItselfFails:
-    """The sibling of TestTheRoundNeedsItsHandoffDiff: there the rollback SUCCEEDS
-    and the tree returns to the reviewed sha. When it fails, close.py's own patch
-    commit stays at HEAD — and abort_text, which reads only whether the tree MOVED,
-    would offer to reset it away. That is the reset this card forbids for work
-    close.py authored, on the one path where it has already been proven to fail.
-    """
-
-    def test_a_failed_rollback_keeps_the_patch_commit_and_offers_no_reset(
-        self, tmp_path, monkeypatch
-    ):
-        """Both failures are real on-disk state, not injected: a directory at the
-        diff path makes the write fail, and a stale `.git/index.lock` — what a
-        crashed git leaves behind — makes `git reset --hard` fail. The seam is
-        called directly because that lock would also block the apply_patch commit
-        that has to happen first.
-        """
+class TestFailedFixEvidenceWrite:
+    def test_failed_evidence_write_keeps_committed_fix(self, tmp_path, monkeypatch):
         import review
 
         repo, env, g = make_repo(tmp_path)
@@ -460,6 +333,5 @@ class TestTheRollbackThatItselfFails:
 
         assert refusal.startswith("refused: "), refusal
         assert "reset --hard" not in refusal, f"a destructive undo for OUR commit:\n{refusal}"
-        assert applied[:8] in refusal, "the refusal does not name the commit it kept"
-        assert "close.py story story-042 review" in refusal, "no next action that can succeed"
+        assert str(review.diff_path(report)) in refusal
         assert g("rev-parse", "HEAD").stdout.strip() == applied, "the patch commit was lost"

@@ -225,21 +225,6 @@ class TestTheLaunch:
         assert prior in prompt
         assert "story-042.round-2.md" in prompt
 
-    @pytest.mark.parametrize("verdict", ["RED", "GREEN"])
-    def test_a_third_plan_round_is_refused_without_launching(self, tmp_path, verdict):
-        repo, env, draft = self.repo(tmp_path)
-        root = Path(env["XP_DATA"]) / "plans"
-        root.mkdir(parents=True, exist_ok=True)
-        (root / "story-042.round-1.md").write_text("first")
-        (root / "story-042.round-2.md").write_text(f"second says {verdict}")
-        rec = stub_planner(tmp_path)
-
-        result = plan_review(repo, env, "story-042", str(draft))
-
-        assert result.returncode == 2
-        assert not rec.exists()
-        assert not (root / "story-042.round-3.md").exists()
-
     def test_a_live_round_is_joined_rather_than_counted_against_the_cap(self, tmp_path):
         from test_slate_review_prose import orphan_pid
 
@@ -260,25 +245,6 @@ class TestTheLaunch:
         assert f"joining the plan review already running (pid {pid})" in joined.stderr
         assert "already exist" not in joined.stderr
         assert not rec.exists() and not (root / "story-042.round-3.md").exists()
-
-    def test_the_foreground_cap_is_not_a_failed_reviewer(self, tmp_path, monkeypatch):
-        import plan_review
-
-        repo, env, draft = self.repo(tmp_path)
-        root = Path(env["XP_DATA"]) / "plans"
-        root.mkdir(parents=True, exist_ok=True)
-        (root / "story-042.round-1.md").write_text(CLEAN)
-        second = root / "story-042.round-2.md"
-        second.write_text(CLEAN)
-        monkeypatch.setenv("XP_DATA", env["XP_DATA"])
-        monkeypatch.chdir(repo)
-
-        assert plan_review.run_foreground("story-042", draft) == (2, "capped")
-        incomplete = Path(env["XP_DATA"]) / "markers/story-042.plan-review-incomplete"
-        incomplete.parent.mkdir(parents=True, exist_ok=True)
-        incomplete.write_text(json.dumps({"findings": str(second)}))
-        monkeypatch.setattr(plan_review, "_run_review", lambda *_args: (2, "attempted"))
-        assert plan_review.run_foreground("story-042", draft) == (2, "attempted")
 
     def test_dead_reviewers_do_not_satisfy_the_two_round_cap(self, tmp_path):
         repo, env, draft = self.repo(tmp_path)
@@ -391,10 +357,12 @@ class TestTheProfileCarriesTheInvocation:
     def rendered(self, tmp_path, executor):
         root = tmp_path / executor.split("/")[0]
         repo, env, _g = make_repo(root, executor=executor, files="src/thing.py, src/other.py")
-        (stub_claude if executor.startswith("claude") else stub_codex)(root)
-        r = spawn(repo, env, "story-042", "--dry-run")
+        rec = stub_claude(root)
+        if executor.startswith("codex"):
+            rec = stub_codex(root)
+        r = spawn(repo, env, "story-042")
         assert r.returncode == 0, r.stderr
-        return r.stdout
+        return json.loads(rec.read_text())["stdin"]
 
     def test_neither_harness_is_handed_a_review_to_launch(self, tmp_path):
         for executor in ("claude/opus", "codex/gpt-5.6-terra/high"):
@@ -425,39 +393,11 @@ from plan_review_disposition import TestPlanEditsInPlace  # noqa: E402,F401
 from plan_review_liveness import TestTheReviewOutlivesItsCaller  # noqa: E402,F401
 
 
-def test_blocked_plan_reviews_converge_on_the_cap_instead_of_restarting(tmp_path):
-    """A block replans, but a replanned block is round 2 — not round 1 again."""
-    from test_spawn_stages import stub_stages
-
-    repo, env, _g = make_repo(tmp_path, files="src/thing.py, src/other.py")
-    stub_stages(tmp_path, blocking_plan=True)
-    plans = Path(env["XP_DATA"]) / "plans"
-    assert spawn(repo, env, "story-042").returncode == 2
-    from plan_review_install import legacy_credential
-
-    legacy_credential(tmp_path)
-    (plans / "story-042.round-1.md").write_text("BLOCKED-ON-THE-FIRST-PLAN")
-
-    second = spawn(repo, env, "resume", "story-042")
-
-    assert second.returncode == 2
-    assert (plans / "story-042.round-2.md").is_file()
-    launched = [json.loads(line) for line in (tmp_path / "events.jsonl").read_text().splitlines()]
-    assert "BLOCKED-ON-THE-FIRST-PLAN" in launched[-1]["prompt"]
-    legacy_credential(tmp_path)
-    third = spawn(repo, env, "resume", "story-042")
-    assert third.returncode == 2 and "cap" in third.stderr
-    assert not (plans / "story-042.round-3.md").exists()
-
-
-def test_a_replanned_executor_is_handed_the_replacement_rounds_not_the_archived_ones(tmp_path):
-    """The prompt built before the planner names round files the archive has since renamed
-    away, and rebuilding it off the live marker would label this very run the predecessor.
-    (Here rather than beside its sibling: test_spawn.py sits at constraint 8's hard cap.)"""
+def test_an_amended_executor_keeps_the_prior_review_round_as_context(tmp_path):
     from test_spawn_stages import event_roles, stub_stages
 
     repo, env, _g = make_repo(tmp_path, files="src/thing.py, src/other.py")
-    events = stub_stages(tmp_path, blocking_diff=True)
+    events = stub_stages(tmp_path, executor_failure=True)
     assert spawn(repo, env, "story-042").returncode != 0
     plans = Path(env["XP_DATA"]) / "plans"
     (plans / "story-042.round-2.md").write_text("OLD-FINDING")
@@ -471,5 +411,5 @@ def test_a_replanned_executor_is_handed_the_replacement_rounds_not_the_archived_
     teammate = [json.loads(line) for line in events.read_text().splitlines()[seen:]][2]["prompt"]
 
     assert "story-042.round-1.md" in teammate
-    assert "story-042.round-2.md" not in teammate
+    assert "story-042.round-2.md" in teammate
     assert "handback — RUNNING" not in teammate

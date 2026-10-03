@@ -73,9 +73,9 @@ class TestPlanReviewArtifacts:
 
     @pytest.mark.parametrize(
         ("identifier", "kind", "stem"),
-        [("7", "slate", "sprint-7"), ("story-042", "refresh", "story-042.refresh")],
+        [("7", "slate", "sprint-7")],
     )
-    def test_slate_and_refresh_allocate_a_new_numbered_artifact_each_round(
+    def test_slate_allocates_a_new_numbered_artifact_each_round(
         self, tmp_path, monkeypatch, identifier, kind, stem
     ):
         _repo, env, _draft = self.repo(tmp_path)
@@ -150,7 +150,7 @@ class TestIncompleteReviewIsVisibleToTheLead:
         assert not self.marker(tmp_path).exists(), "a clean review must not accuse itself"
 
     def test_an_unbound_marker_is_not_joined_as_a_running_round(self, tmp_path, monkeypatch):
-        import slate_review as runner
+        import review_runner as runner
 
         monkeypatch.setenv("XP_DATA", str(tmp_path / "data"))
         marker = self.marker(tmp_path)

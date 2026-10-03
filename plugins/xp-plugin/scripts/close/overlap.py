@@ -50,7 +50,7 @@ def land_refusal(state: dict, key: str, base: str, exempt: set[str] | None = Non
     """Whether the recorded round describes the tree in front of us — the whole
     question every land leg asks, in ONE implementation. `key` is the leg's own
     spelling of its review command, which is all that legitimately differs."""
-    rerun = f"Run `close.py {key} review`"
+    rerun = f"Run `xp.py {key} review`"
     for number, raw in enumerate(state.get("rounds", []), 1):
         _, error = normalize_report(raw)
         if error:
@@ -102,10 +102,10 @@ def land_refusal(state: dict, key: str, base: str, exempt: set[str] | None = Non
     return ""
 
 
-def merge_source(trunk: str, merge_mode: str) -> str:
+def merge_source(trunk: str, merge_mode: str, *, fetch: bool = True) -> str:
     """The ref land integrates, fetched and fully qualified — every message repeats
     it verbatim, so an ambiguous name would send the lead to merge the wrong ref."""
-    if merge_mode == "pr" and origin_trunk_sha(trunk):
+    if merge_mode == "pr" and origin_trunk_sha(trunk, fetch=fetch):
         return f"refs/remotes/origin/{trunk}"
     return f"refs/heads/{trunk}"
 
@@ -115,7 +115,7 @@ def _files(rng: str) -> set[str]:
 
 
 def trunk_only_paths(
-    recorded: object, shown: str, head: str, trunk: str
+    recorded: object, shown: str, head: str, trunk: str, released_ref: str = ""
 ) -> tuple[set[str], str, str]:
     """Paths introduced by released trunk that never carried reviewed sprint work."""
     if not isinstance(recorded, str) or not recorded:
@@ -124,10 +124,11 @@ def trunk_only_paths(
         return set(), "", "unresolvable recorded base"
     from bookkeep import fork_point
 
-    _local_base, stale = fork_point(trunk)
-    if stale:
-        return set(), "", stale
-    ref = merge_source(trunk, "pr")
+    if not released_ref:
+        _local_base, stale = fork_point(trunk)
+        if stale:
+            return set(), "", stale
+    ref = released_ref or merge_source(trunk, "pr")
     today = git("merge-base", ref, head, check=False).stdout.strip()
     if not today or git("merge-base", "--is-ancestor", recorded, today, check=False).returncode:
         return set(), "", "recorded base is not an ancestor of released trunk base"

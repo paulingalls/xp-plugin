@@ -329,10 +329,8 @@ def _next_action() -> str:
         return f"NEXT: no open card in Sprint {sprint} — run `/sprint-close`"
     story, status = selected[0]
     exists, tree_state = _worktree_state(data_root(), story)
-    if status == "planned" and not exists and tree_state == "ABSENT":
-        return f"NEXT: {story} is [planned] — run `spawn.py ready {shlex.quote(story)}`"
-    if status == "ready" and not exists and tree_state == "ABSENT":
-        return f"NEXT: {story} is [ready] — run `spawn.py {shlex.quote(story)}`"
+    if status in {"planned", "ready"} and not exists and tree_state == "ABSENT":
+        return f"NEXT: {story} is [{status}] — run `spawn.py {shlex.quote(story)}`"
     if status == "in-progress" and not exists and tree_state == "ABSENT":
         return f"NEXT: {story} is [in-progress] without a worktree — recover it before resuming"
     if status == "in-progress" and tree_state == "STOPPED":
@@ -383,8 +381,10 @@ def recover() -> int:
     if not top or not (Path(top) / ".xp").is_dir():
         return 0
 
+    refresh = refresh_env(PLUGIN_ROOT, plugin_version(PLUGIN_ROOT))
     regions = [
         ("", BEGIN),
+        ("environment notice", refresh),
         ("NEXT", next_action()),
         ("digest", "## digest\n" + safe(digest_output, "digest")),
         ("recovery block", "## recovery block\n" + safe(recovery_block, "recovery block")),

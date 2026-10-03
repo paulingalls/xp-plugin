@@ -56,11 +56,12 @@ class TestShippedProseMatchesTheMechanism:
 
     def test_process_routes_each_mid_sprint_choice_by_release_outcome(self):
         process = prose(PLUGIN / "PROCESS.md")
-        sentence = process.split("Mid-sprint:", 1)[1].split(".", 1)[0]
-        record, sprint, patch = sentence.split(";")
+        routes = process.split("Mid-sprint:", 1)[1].split("2. **Story**", 1)[0]
+        record, sprint = routes.split("`[sprint-direct]`:", 1)
+        sprint, patch = sprint.split("; free:", 1)
+        patch = "free:" + patch
         assert "record" in record and "never schedule" in record
-        assert "[sprint-direct]" in sprint and "sprint branch" in sprint
-        assert "sprint review" in sprint
+        assert "sprint branch" in sprint and "review" in sprint
         assert "free" in patch and "ship now" in patch
         assert not re.search(r"\btag|version|trunk|branch", patch)
 
@@ -70,83 +71,18 @@ class TestShippedProseMatchesTheMechanism:
 
     def test_close_skills_do_not_restate_tag_mechanics(self):
         cases = (
-            (PLUGIN / "skills" / "sprint-close" / "SKILL.md", "5."),
+            (PLUGIN / "skills" / "sprint-close" / "SKILL.md", "4."),
             (PLUGIN / "skills" / "free-close" / "SKILL.md", "4."),
         )
         for path, step in cases:
             body = prose(path).split(step, 1)[1]
             assert not re.search(r"\btag|version", body.lower())
 
-    def test_review_and_salvage_give_distinct_dirty_tree_advice(self, tmp_path):
-        repo, env, g = make_repo(tmp_path)
-        killed_review(tmp_path, g)
-        dirt = repo / "uninspected.txt"
-        dirt.write_text("dead reviewer work\n")
-
-        ordinary = close(repo, env, "review")
-        recovery = close(repo, env, "salvage")
-
-        assert ordinary.returncode == recovery.returncode == 2
-        assert "commit or stash first" in ordinary.stderr, ordinary.stderr
-        assert "dead reviewer's uninspected work" in recovery.stderr, recovery.stderr
-        assert "read it before committing or discarding it" in recovery.stderr, recovery.stderr
-        assert ordinary.stderr != recovery.stderr
-        assert "git reset --hard" not in ordinary.stderr + recovery.stderr
-        assert dirt.read_text() == "dead reviewer work\n"
-
-    def test_a_moved_head_does_not_order_a_reset_over_the_lines_it_says_to_read(self, tmp_path):
-        repo, env, g = make_repo(tmp_path)
-        launched = g("rev-parse", "HEAD").stdout.strip()
-        (repo / "lead.py").write_text("committed after the kill\n")
-        g("add", "-A")
-        g("-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "the lead moved HEAD")
-        (repo / "round.py").write_text("recorded round patch\n")
-        g("add", "-A")
-        g("-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "recorded round patch")
-        killed_review(tmp_path, g, launched)
-        reports = tmp_path / "data" / "reports"
-        (reports / "story-042.round-2.json").write_text(
-            (reports / "story-042.round-1.json").read_text()
-        )
-        marker_file(tmp_path).write_text(
-            json.dumps(
-                {"rounds": [{"fixed": [], "blocking": [], "schema": 2, "dropped": [], "debt": []}]}
-            )
-        )
-        dirt = repo / "uninspected.txt"
-        dirt.write_text("dead reviewer work\n")
-
-        recovery = close(repo, env, "salvage")
-
-        assert recovery.returncode == 2 and launched[:8] in recovery.stderr, recovery.stderr
-        assert "the lead moved HEAD" in recovery.stderr, recovery.stderr
-        assert "recorded round patch" in recovery.stderr, recovery.stderr
-        assert "reset --hard" not in recovery.stderr, recovery.stderr
-        assert "restoring the reviewed sha" not in recovery.stderr, recovery.stderr
-        assert "reviewer's work" not in recovery.stderr, recovery.stderr
-        assert "remove the named launch marker" in recovery.stderr.lower(), recovery.stderr
-        assert dirt.read_text() == "dead reviewer work\n"
-
-    def test_clean_salvage_after_lead_commit_has_no_restore_offer(self, tmp_path):
-        repo, env, g = make_repo(tmp_path)
-        launched = g("rev-parse", "HEAD").stdout.strip()
-        (repo / "lead.py").write_text("lead work\n")
-        g("add", "-A")
-        g("-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "lead commit")
-        killed_review(tmp_path, g, launched)
-
-        recovery = close(repo, env, "salvage")
-
-        assert recovery.returncode == 2, recovery.stderr
-        assert "lead commit" in recovery.stderr, recovery.stderr
-        assert "reset --hard" not in recovery.stderr, recovery.stderr
-        assert "restoring the reviewed sha" not in recovery.stderr, recovery.stderr
-
     def test_no_verdict_token_survives_in_the_shipped_prose(self):
         for path in (
             PLUGIN / "skills" / "story-close" / "SKILL.md",
             PLUGIN / "PROCESS.md",
-            PLUGIN / "scripts" / "close.py",  # --help is the first surface a lead reads
+            PLUGIN / "scripts" / "xp.py",  # --help is the first surface a lead reads
         ):
             head = path.read_text().split("import argparse")[0]
             assert "VERDICT" not in head, f"{path.name} still ships the deleted gate"
@@ -178,8 +114,7 @@ class TestShippedProseMatchesTheMechanism:
             "record shapes and polarity": (
                 "**bug** — claim + red falsifier",
                 "**debt** — claim + green falsifier",
-                "**resolve** — substitute green falsifier",
-                "**coverage** — optional",
+                "**resolve** — green replacement evidence",
                 "**note** — tradeoff/discovery",
                 "**Polarity**",
             ),
@@ -195,33 +130,6 @@ class TestShippedProseMatchesTheMechanism:
                 p.relative_to(PLUGIN) for p in corpus if all(s in prose(p) for s in signatures)
             ]
             assert len(matches) == 1, f"{name} has {len(matches)} complete copies: {matches}"
-
-    def test_both_shipped_copies_name_the_two_reviews_and_who_owns_the_plan(self):
-        """The lead drafted the executor's implementation plan twice in one week
-        (bug 898ad9e1, note c3d8e2a7): one word covered two artifacts and no
-        lead-facing sentence said whose each was. The executable pin holds both
-        copies directly — ownership in the LEAD's, where that bug was written, and
-        the handoff in the executor's — so a later edit cannot silently remove the
-        newest, least-obvious sentence. "sprint review" is
-        excluded by name: `close.py sprint <id> review` already holds it.
-        """
-        process = prose(PLUGIN / "PROCESS.md").lower()
-        import spawn
-
-        executor = " ".join(
-            dict(spawn.teammate_sections("card", "story-042", "", PLUGIN, multifile=True))[
-                "How you work"
-            ]
-            .lower()
-            .split()
-        )
-        for name, text in (("PROCESS.md", process), ("EXECUTOR.md", executor)):
-            assert "slate review" in text, f"{name}: the lead's review is unnamed"
-            assert "execution plan review" in text, f"{name}: plan review unnamed"
-        assert process.count("sprint review") == 1, "PROCESS.md confuses the routed review"
-        assert "sprint review" not in executor, "EXECUTOR.md: close.py owns that phrase"
-        assert "the planner writes the plan" in process, "PROCESS.md: the plan's owner is unnamed"
-        assert "re-read the reviewed plan" in executor, "multi-file brief drops the handoff"
 
     def test_a_mandatory_step_failing_twice_routes_to_escalation(self):
         teammate = " ".join(prose(PLUGIN / "EXECUTOR.md").lower().split())
@@ -241,31 +149,6 @@ class TestShippedProseMatchesTheMechanism:
 
         bundle = build_bundle("charter", "plan", "card", tmp_path / "plan", tmp_path / "out")
         assert "## JUDGMENT\n\n" in bundle and "Polarity" in bundle
-
-    def test_every_stopping_rule_copy_states_the_split_arithmetic(self):
-        """PROCESS spends its one-page loop on routing. The story-close skill and
-        DESIGN retain the complete stopping rule: pin both because a prior negative
-        grep missed DESIGN, and "confirming round" alone passed before the rule was
-        split between reviewer and lead fixes (story-012b)."""
-        for path in (
-            PLUGIN / "skills" / "story-close" / "SKILL.md",
-            Path(__file__).parent.parent / "docs" / "DESIGN.md",
-        ):
-            text = prose(path)
-            assert "confirming round" in text, f"{path.name} still promises"
-            assert "inside the round that found" in text, f"{path.name}: reviewer half"
-            assert "past what the review covered" in text, f"{path.name}: lead half"
-
-    def test_red_completed_verify_has_a_bounded_repair_exception(self):
-        paths = (
-            Path(__file__).parent.parent / "docs" / "DESIGN.md",
-            PLUGIN / "skills" / "story-close" / "SKILL.md",
-            PLUGIN / "skills" / "free-close" / "SKILL.md",
-        )
-        for path in paths:
-            text = prose(path)
-            assert "past what the review covered" in text, f"{path.name}: general rule"
-            assert "repair" in text and "owes no confirming round" in text, path.name
 
     def test_the_loop_states_carded_execution_once(self):
         raw = (PLUGIN / "PROCESS.md").read_text()

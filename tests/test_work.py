@@ -214,9 +214,9 @@ class TestResolution:
     def test_a_ref_matching_zero_or_many_entries_is_refused(self, tmp_path):
         self.filed_bug(tmp_path)
         assert run(resolve_without_tier("deadbeef", "true"), tmp_path).returncode == 2
-        (tmp_path / "work.md").write_text(
-            "## note 2026-08-20T03:41:29Z\nidentical\n\n## note 2026-08-20T03:41:29Z\nidentical\n\n"
-        )
+        ledger = tmp_path / "work.md"
+        bug = ledger.read_text()
+        ledger.write_text(bug + bug)
         dup = run(["list"], tmp_path, check=True).stdout.split()[0]
         r = run(resolve_without_tier(dup, "true"), tmp_path)
         assert r.returncode == 2, "one ref silenced two records"
@@ -382,3 +382,26 @@ class TestLineBreakDisagreement:
 
 
 from work_archive_cases import TestArchive  # noqa: E402, F401
+
+
+def test_resolve_without_coverage_preserves_history_and_checks_replacement(tmp_path):
+    filed = run(["bug", "--claim", "fixed", "--falsifier", "false", "--files", "a.py"], tmp_path)
+    ref = filed.stdout.strip()
+    ledger = tmp_path / "work.md"
+    with ledger.open("a") as stream:
+        stream.write("Covered by: old-tier\n")
+    from work import entries
+
+    ref = entries(tmp_path)[0][0]
+    before = ledger.read_bytes()
+    for replacement in ("", "false"):
+        result = run(["resolve", "--ref", ref, "--falsifier", replacement], tmp_path)
+        assert result.returncode == 2 and ledger.read_bytes() == before
+    result = run(["resolve", "--ref", "missing", "--falsifier", "true"], tmp_path)
+    assert result.returncode == 2 and ledger.read_bytes() == before
+    result = run(["resolve", "--ref", ref, "--falsifier", "true"], tmp_path)
+    assert result.returncode == 0, result.stderr
+    assert ledger.read_bytes().startswith(before)
+    appended = ledger.read_bytes()[len(before) :].decode()
+    assert f"Resolves: {ref}" in appended and "Falsifier: `true`" in appended
+    assert "Covered by:" not in appended

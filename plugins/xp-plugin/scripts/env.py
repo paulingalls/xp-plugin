@@ -157,7 +157,21 @@ def write_env(root: Path, version: str) -> str:
 
 
 def refresh_env(root: Path, version: str) -> str:
+    if os.environ.get("XP_ROLE", "lead") != "lead":
+        return ""
+    if root.resolve().is_relative_to((data_root() / "worktrees").resolve()):
+        return ""
+    if version == "unknown":
+        return "plugin root refresh FAILED: running manifest is unreadable"
     try:
+        try:
+            current = json.loads(env_path().read_text())
+        except FileNotFoundError:
+            current = {}
+        if not isinstance(current, dict):
+            raise ValueError("env.json must contain an object")
+        if current.get("plugin_root") == str(root) and current.get("plugin_version") == version:
+            return ""
         previous = write_env(root, version)
     except Exception as exc:
         return f"plugin root refresh FAILED for {display_path(env_path())!r}: {exc!r}"
@@ -167,9 +181,8 @@ def refresh_env(root: Path, version: str) -> str:
 
 
 REFRESH = (
-    "refresh it by starting a LEAD session, whose SessionStart rewrites both entries, or by"
-    " running `/reload-plugins` in an existing LEAD session and completing its next turn — a"
-    " spawned session deliberately does neither"
+    "refresh it by starting a LEAD session (SessionStart), or run the installed plugin's"
+    " `python3 /absolute/plugin/scripts/session_start.py recover` in a LEAD session"
 )
 
 

@@ -30,7 +30,7 @@ def run(args, data_dir, check=False, story=""):
 
 
 def resolve_without_tier(ref, falsifier):
-    return ["resolve", "--ref", ref, "--falsifier", falsifier, "--covered-by", "none"]
+    return ["resolve", "--ref", ref, "--falsifier", falsifier]
 
 
 def _append_notes(job):

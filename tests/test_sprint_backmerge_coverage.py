@@ -264,9 +264,8 @@ def test_stale_local_trunk_does_not_refuse_a_prose_only_delta(tmp_path):
     assert g("push", "-q", "origin", "main").returncode == 0
     assert g("reset", "-q", "--hard", "HEAD~1").returncode == 0
     g("checkout", "-q", "sprint-002")
-    (repo / ".xp" / "retro.md").write_text("# retro\n")
-    g("add", "-A")
-    g("commit", "-qm", "retro prose")
+    (tmp_path / "data" / "retro.md").write_text("# retro\n")
+
     result = sprint(repo, env, "land", "--dry-run")
     assert result.returncode == 0, result.stderr
 

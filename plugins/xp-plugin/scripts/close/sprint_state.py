@@ -9,14 +9,15 @@ import plan_writer
 from work import data_root
 
 
-def sprint_marker(sprint_id: str) -> Path:
+def sprint_marker(sprint_id: str, *, create: bool = True) -> Path:
     d = data_root() / "markers" / "sprint"
-    d.mkdir(parents=True, exist_ok=True)
+    if create:
+        d.mkdir(parents=True, exist_ok=True)
     return d / f"{sprint_id}.json"
 
 
 def read_sprint_state(sprint_id: str) -> tuple[Path, dict, str]:
-    path = sprint_marker(sprint_id)
+    path = sprint_marker(sprint_id, create=False)
     if not path.exists():
         return path, {}, ""
     try:
@@ -28,7 +29,9 @@ def read_sprint_state(sprint_id: str) -> tuple[Path, dict, str]:
     return path, state, ""
 
 
-def write_sprint_state(path: Path, changes, remove=()) -> dict:
+def write_sprint_state(path: Path, changes, remove=(), after_write=None) -> dict:
+    path.parent.mkdir(parents=True, exist_ok=True)
+
     def update(current: dict) -> None:
         if callable(changes):
             changes(current)
@@ -42,7 +45,7 @@ def write_sprint_state(path: Path, changes, remove=()) -> dict:
                 current.pop(key, None)
 
     lock = data_root() / "locks" / f"sprint-{path.stem}.lock"
-    return plan_writer.locked_json_edit(path, lock, update, "sprint marker")
+    return plan_writer.locked_json_edit(path, lock, update, "sprint marker", after_write)
 
 
 HISTORY_KEYS = {

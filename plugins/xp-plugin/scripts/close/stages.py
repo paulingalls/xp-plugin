@@ -48,7 +48,7 @@ def charters() -> tuple[dict[str, str], str]:
     return found, ""
 
 
-def check_roles(card: str) -> None:
+def check_roles(card: str, stages=STAGES) -> None:
     """Resolve every stage's role before the FIRST launch, for charters()'s reason
     one stage later: a bad `closer` key first read at the closer's turn refuses
     after every earlier stage has spent and the fixer has committed, and that exit
@@ -58,7 +58,7 @@ def check_roles(card: str) -> None:
     import spawn
     from close import fail
 
-    for harness in {review.stage_role(stage, card)[0] for stage in STAGES}:
+    for harness in {review.stage_role(stage, card)[0] for stage in stages}:
         if missing := spawn.missing_harness(harness):
             raise SystemExit(fail("refused: " + missing))
 
