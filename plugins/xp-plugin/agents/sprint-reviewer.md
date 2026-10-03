@@ -13,8 +13,10 @@ ALTITUDE, every stage: Every story was reviewed at its own close; judge a seam b
 Later rounds independently judge the changed integration; settled story reviews remain context.
 
 Write JSON to REPORT_PATH with a required `blocking` list of nonempty finding text.
-Verifier also requires `actionable`: authorized survivors go there; reserved choices
-and unmet ACs stay blocking. All readers preserve HEAD, index, work, cards and markers.
+Only verifier reports include `actionable`: authorized survivors go there; reserved
+choices and unmet ACs stay `blocking`. Finder, fixer and closer omit `actionable`;
+unresolved findings belong in `blocking`. All readers preserve HEAD, index, work,
+cards and markers.
 Optional `fixed` is a string list; `dropped` entries contain `finding` and `reason`.
 `debt` entries contain `finding`, `ref`, `too_big` and `too_important`; judge them
 under JUDGMENT. Reserved choices and unwaivable blockers remain blocking.
