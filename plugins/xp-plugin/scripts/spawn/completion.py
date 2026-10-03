@@ -90,9 +90,11 @@ def next_stage(story_id, prior, current):
 
         check_reports(sequence)
         if sequence["status"] in ("blocked", "incomplete"):
+            from close import leg
+
             raise ValueError(
                 f"lead handoff: {sequence.get('problem', 'incomplete review')}; "
-                f"inspect work then explicitly run close.py review"
+                f"inspect work then explicitly run `xp.py {leg(story_id)[0]} review`"
             )
         if sequence["status"] in ("validation", "validation-red", "awaiting-disposition"):
             return "reviewer"

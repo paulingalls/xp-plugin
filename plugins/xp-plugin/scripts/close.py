@@ -1,8 +1,6 @@
 #!/usr/bin/env python3
 """Story review records judgment; story land runs gates and moves refs without spawning."""
 
-import argparse
-import os
 import re
 import subprocess
 import sys
@@ -14,7 +12,6 @@ from diff_range import render as render_diff_range
 from env import sprint_branch
 from lifecycle import declared_commands as verify_commands
 from work import (
-    chdir_repo_root,
     data_root,
     missing_plan_refusal,
     plan_path,
@@ -91,7 +88,7 @@ def integration_target() -> str:
             raise SystemExit(
                 fail(
                     "refused: remove sprint_branch: from .xp/config.yml, THEN record"
-                    " this clone's branch with `close.py sprint <id> start` — without"
+                    " this clone's branch with `xp.py sprint <id> open` — without"
                     " that record every story merge falls back to the default branch"
                 )
             )
@@ -130,18 +127,20 @@ def default_branch() -> str:
     raise SystemExit(fail("no main/master branch found and origin/HEAD unset"))
 
 
-def origin_trunk_sha(trunk: str) -> str | None:
+def origin_trunk_sha(trunk: str, *, fetch: bool = True) -> str | None:
     """Fetch the PR-mode ref; local mode guards the local trunk instead."""
     if not git("remote", check=False).stdout.strip():
         return None
-    git("fetch", "-q", "origin", trunk, check=False)
+    if fetch:
+        git("fetch", "-q", "origin", trunk, check=False)
     r = git("rev-parse", "--verify", "-q", f"refs/remotes/origin/{trunk}", check=False)
     return r.stdout.strip() if r.returncode == 0 else None
 
 
-def marker_path(story_id: str) -> Path:
+def marker_path(story_id: str, *, create: bool = True) -> Path:
     p = data_root() / "markers" / f"{story_id}.close.json"
-    p.parent.mkdir(parents=True, exist_ok=True)
+    if create:
+        p.parent.mkdir(parents=True, exist_ok=True)
     return p
 
 
@@ -259,7 +258,7 @@ def cmd_review(story_id: str, dry_run: bool = False, held=None, explicit=True) -
             return fail(error)
         return run(story_id, card, trunk, dry_run, explicit)
 
-    return locked(story_id, action, held)
+    return action() if dry_run else locked(story_id, action, held)
 
 
 def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
@@ -270,77 +269,9 @@ def cmd_land(story_id: str, merge_mode: str, dry_run: bool) -> int:
 
 
 def main() -> int:
-    p = argparse.ArgumentParser(description=__doc__)
-    sub = p.add_subparsers(dest="kind", required=True)
-    sp = sub.add_parser("sprint")
-    sp.add_argument("sprint_id")
-    sp.add_argument(
-        "action", choices=["start", "review", "salvage", "land", "post-merge", "milestone-done"]
-    )
-    sp.add_argument("--dry-run", action="store_true")
-    f = sub.add_parser("free")
-    f.add_argument("slug")
-    f.add_argument(
-        "action", choices=["start", "review", "acknowledge-validation", "land", "post-merge"]
-    )
-    f.add_argument("--dry-run", action="store_true")
-    f.add_argument("--reason", default="")
-    s = sub.add_parser("story")
-    s.add_argument("story_id")
-    s.add_argument("action", choices=["review", "acknowledge-validation", "land"])
-    # Derived: PR mode cannot integrate into a recorded sprint branch.
-    s.add_argument("--merge-mode", choices=["pr", "local"], default=None)
-    s.add_argument("--dry-run", action="store_true")
-    s.add_argument("--reason", default="")
-    a = p.parse_args()
-    # Unknown roles fail safe; this bounds the injected close path, not forged env.
-    role = os.environ.get("XP_ROLE", "lead")
-    if role != "lead":
-        return fail(
-            f"refused: XP_ROLE={role!r} — only the lead may close. You hand back a green"
-            " Verify; the lead owns the judgment gap and the merge"
-        )
-    if not chdir_repo_root():
-        return fail("refused: not inside a git repository")
-    if a.kind == "free":
-        import free
+    from xp import main as dispatch
 
-        if a.action == "start":
-            return free.cmd_start(a.slug, a.dry_run)
-        if a.action == "review":
-            return free.cmd_review(a.slug, a.dry_run)
-        if a.action == "acknowledge-validation":
-            from review_validation import acknowledge
-
-            key, _, error = free.current_free(a.slug)
-            return fail(error) if error else acknowledge(key, a.reason)
-        if a.action == "land":
-            return free.cmd_land(a.slug, a.dry_run)
-        return free.cmd_post_merge(a.slug, a.dry_run)
-    if a.kind == "sprint":
-        import sprint_close
-
-        if a.action == "start":
-            return sprint_close.cmd_start(a.sprint_id, a.dry_run)
-        if a.action == "review":
-            import sprint_review
-
-            return sprint_review.cmd_review(a.sprint_id, a.dry_run)
-        if a.action == "salvage":
-            return sprint_close.cmd_salvage(a.sprint_id, a.dry_run)
-        if a.action == "land":
-            return sprint_close.cmd_land(a.sprint_id, a.dry_run)
-        if a.action == "milestone-done":
-            return sprint_close.milestone.cmd_done(a.sprint_id, a.dry_run)
-        return sprint_close.cmd_post_merge(a.sprint_id, a.dry_run)
-    if a.action == "review":
-        return cmd_review(a.story_id, a.dry_run)
-    if a.action == "acknowledge-validation":
-        from review_validation import acknowledge
-
-        return acknowledge(a.story_id, a.reason)
-    mode = a.merge_mode or ("local" if integration_target() != default_branch() else "pr")
-    return cmd_land(a.story_id, mode, a.dry_run)
+    return dispatch(legacy=True)
 
 
 if __name__ == "__main__":

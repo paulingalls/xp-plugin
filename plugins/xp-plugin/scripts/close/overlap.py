@@ -50,7 +50,7 @@ def land_refusal(state: dict, key: str, base: str, exempt: set[str] | None = Non
     """Whether the recorded round describes the tree in front of us — the whole
     question every land leg asks, in ONE implementation. `key` is the leg's own
     spelling of its review command, which is all that legitimately differs."""
-    rerun = f"Run `close.py {key} review`"
+    rerun = f"Run `xp.py {key} review`"
     for number, raw in enumerate(state.get("rounds", []), 1):
         _, error = normalize_report(raw)
         if error:
@@ -102,10 +102,10 @@ def land_refusal(state: dict, key: str, base: str, exempt: set[str] | None = Non
     return ""
 
 
-def merge_source(trunk: str, merge_mode: str) -> str:
+def merge_source(trunk: str, merge_mode: str, *, fetch: bool = True) -> str:
     """The ref land integrates, fetched and fully qualified — every message repeats
     it verbatim, so an ambiguous name would send the lead to merge the wrong ref."""
-    if merge_mode == "pr" and origin_trunk_sha(trunk):
+    if merge_mode == "pr" and origin_trunk_sha(trunk, fetch=fetch):
         return f"refs/remotes/origin/{trunk}"
     return f"refs/heads/{trunk}"
 

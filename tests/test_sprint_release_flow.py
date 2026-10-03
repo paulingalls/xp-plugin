@@ -99,7 +99,7 @@ def test_close_presents_delivered_scope_and_current_obligations(tmp_path):
     )
     assert (
         work(
-            repo, env, "bug", "--claim", "current bug", "--falsifier", "false", "--files", "src.py"
+            repo, env, "debt", "--claim", "current debt", "--falsifier", "true", "--files", "src.py"
         ).returncode
         == 0
     )
@@ -113,7 +113,7 @@ def test_close_presents_delivered_scope_and_current_obligations(tmp_path):
     assert f"delivered at {merge}" in body
     assert "story-044 — unused — retired" in body
     assert "story-043 — also done — missing close evidence" in body
-    assert "current bug" in body
+    assert "current debt" in body
     assert "story-099" not in body
 
 

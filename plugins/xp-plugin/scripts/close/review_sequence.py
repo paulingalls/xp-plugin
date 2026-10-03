@@ -56,7 +56,7 @@ def problem(story_id, sequence, stage, why, kind="blocked"):
     save(story_id, sequence)
     return close.fail(
         f"refused: {sequence['problem']}. Work and reports retained. Lead: "
-        f"inspect and correct, then `close.py {close.leg(story_id)[0]} review`."
+        f"inspect and correct, then `xp.py {close.leg(story_id)[0]} review`."
     )
 
 
@@ -243,7 +243,7 @@ def run(story_id, card, trunk, dry_run=False, explicit=True):
             if not explicit:
                 return close.fail(
                     f"refused: lead must correct {sequence['producer']} output with "
-                    f"`close.py {close.leg(story_id)[0]} review`"
+                    f"`xp.py {close.leg(story_id)[0]} review`"
                 )
             if rc := stage(story_id, card, sequence, sequence["producer"], correction=True):
                 return rc

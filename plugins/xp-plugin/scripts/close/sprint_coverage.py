@@ -39,7 +39,7 @@ def coverage_refusal(
         return (
             "refused: uncertain integration producer — inspect and salvage its reports before land"
         )
-    rerun = f"run `close.py sprint {sprint_id} review`"
+    rerun = f"run `xp.py sprint {sprint_id} review`"
     if not (rounds := state.get("rounds") or []):
         return f"refused: no recorded review for sprint {sprint_id} — {rerun}"
     for number, raw in enumerate(state.get("rounds", []), 1):

@@ -11,11 +11,11 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 sys.path.insert(0, str(Path(__file__).parent / "close"))
 import close as story_close
-import lifecycle as lc
 import milestone
 import preflight as pf
-from close import config_flat, default_branch, fail, git, story_card
-from env import record_sprint_branch, refuse_direct_invocation, sprint_branch, sprint_branch_name
+from close import config_flat, fail, git, story_card
+from close import default_branch as default_branch
+from env import refuse_direct_invocation, sprint_branch, sprint_branch_name
 from falsifier_batch import (
     batch_refusal,
     execute_batch,
@@ -55,7 +55,7 @@ def cmd_salvage(sprint_id: str, dry_run: bool = False) -> int:
     """Record reports left by a host-killed sprint review as incomplete."""
     import review
 
-    marker = sprint_marker(sprint_id)
+    marker = sprint_marker(sprint_id, create=not dry_run)
     state = json.loads(marker.read_text()) if marker.exists() else {}
     round_n = len(state.get("rounds", [])) + 1
     root = data_root() / "reports" / "sprint"
@@ -108,51 +108,38 @@ def cmd_salvage(sprint_id: str, dry_run: bool = False) -> int:
 
 
 def cmd_start(sprint_id: str, dry_run: bool = False) -> int:
+    if not (recorded := sprint_branch()):
+        from open_sprint import cmd_open
+
+        return cmd_open(sprint_id, dry_run)
+    branch = git("branch", "--show-current").stdout.strip()
+    expected = sprint_branch_name(sprint_id)
+    if branch != expected or recorded != expected:
+        return fail(
+            f"refused: sprint {sprint_id} close belongs on recorded branch {expected}; "
+            f"current branch {branch}, record {recorded} — clear the record only after "
+            "that sprint lands"
+        )
+    return prepare_close(sprint_id, dry_run)
+
+
+def prepare_close(sprint_id: str, dry_run: bool = False) -> int:
     plan = plan_path()
     if not plan.exists():
         return fail(f"refused: {missing_plan_refusal()}")
     members = sprint_stories(plan.read_text(), sprint_id)
     if not members:
         return fail(f"refused: no `### Sprint {sprint_id}` section in {plan}")
-    branch = git("branch", "--show-current").stdout.strip()
-    if not branch or branch == default_branch():
-        return fail("refused: open the sprint from its freshly cut branch, not trunk")
-    if branch != (expected := sprint_branch_name(sprint_id)):
-        return fail(f"refused: open sprint {sprint_id} from {expected}, not {branch}")
-    first_open = not sprint_branch()
-    if first_open and any(not m.endswith(milestone.TERMINAL) for m in members):
-        from open_sprint import cmd_open
-
-        return cmd_open(sprint_id, dry_run)
-    if first_open and (running := _running_slate_refusal(sprint_id)):
-        return fail(running)
+    if unfinished := [m for m in members if not m.endswith(milestone.TERMINAL)]:
+        return fail(f"refused: sprint {sprint_id} is unfinished:\n  " + "\n  ".join(unfinished))
     if dry_run:
         raw, _commands, error = pf.prepare(config_flat("preflight"))
         if error:
             return fail(error)
-        does = "opens" if first_open else "re-runs the close checks for"
-        print(f"dry run: {branch} {does} sprint {sprint_id}; nothing ran, nothing recorded")
         if raw:
             print(pf.preview(raw))
-        print("would run: falsifier batch, when all stories are done")
+        print("dry run: close checks would run falsifier batch and delivered-scope preparation")
         return 0
-    if first_open and (red := lc.run(config_flat(lc.KEY), "sprint-open", sprint_id)):
-        return fail(red)
-    if first_open:
-        if running := _running_slate_refusal(sprint_id):
-            return fail(running)
-        if error := supersede_slate_marker(sprint_id):
-            return fail(error)
-    opening = record_sprint_branch(branch)
-    if (owner := milestone.find(plan.read_text(), sprint_id)) and owner.status == "planned":
-        milestone.move(sprint_id)
-    print(f"sprint branch: {branch}")
-    if unfinished := [m for m in members if not m.endswith(("[done]", "[retired]"))]:
-        if not opening:
-            return fail(f"refused: sprint {sprint_id} is unfinished:\n  " + "\n  ".join(unfinished))
-        print(f"recorded; {len(unfinished)} stories unfinished — close checks wait")
-        return 0
-
     _marker, state, marker_error = read_sprint_state(sprint_id)
     if marker_error:
         return fail(marker_error)
@@ -165,13 +152,13 @@ def cmd_start(sprint_id: str, dry_run: bool = False) -> int:
         return fail(error)
     root = data_root()
     standalone, source = grouped_batch(root)
-    span = Span(root, "falsifier-batch", f"Sprint {sprint_id} start")
+    span = Span(root, "falsifier-batch", f"Sprint {sprint_id} close preparation")
     try:
         results = execute_batch(standalone)
     except BaseException:
         span.finish("interrupted")
         raise
-    red = batch_refusal(root, standalone, results)
+    red = batch_refusal(root, standalone, results, retry=f"xp.py sprint {sprint_id} review")
     span.finish("failed" if red else "passed")
     if red:
         return fail(red)
@@ -179,7 +166,7 @@ def cmd_start(sprint_id: str, dry_run: bool = False) -> int:
         return fail(f"refused: the falsifier batch left the working tree dirty:\n  {dirty}")
     if completion := milestone.candidate(plan.read_text(), sprint_id):
         print(f"\n{completion.heading.rstrip()}")
-        print(f"close.py sprint {sprint_id} milestone-done")
+        print(f"xp.py sprint {sprint_id} milestone-done")
 
     from finding_triage import render_triage
     from sprint_bundle import delivered_scope
@@ -190,7 +177,7 @@ def cmd_start(sprint_id: str, dry_run: bool = False) -> int:
     evidence_errors = []
     print("\n" + render_triage(root, evidence_errors))
     if evidence_errors:
-        return fail("refused: close evidence needs repair before triage")
+        return fail("refused: " + "\n".join(evidence_errors))
     notes = triage_notes(source)
     print(f"\n{len(members)} stories, {len(notes)} notes to triage. Each note: promote to")
     print("reviewed executable work, preserve in the narrative retro, or archive explicitly.\n")
@@ -257,7 +244,7 @@ def _shown_diff(sprint_id: str, shown: str, head: str) -> tuple[subprocess.Compl
     if moved.returncode:
         action = (
             f"move {sprint_marker(sprint_id)} aside — it holds this sprint's recorded"
-            f" rounds and moving it forfeits them — then run `close.py sprint"
+            f" rounds and moving it forfeits them — then run `xp.py sprint"
             f" {sprint_id} review`"
         )
         return moved, f"refused: the review recorded {shown[:8]}, which no longer exists — {action}"
@@ -277,4 +264,4 @@ def cmd_post_merge(sprint_id: str, dry_run: bool = False) -> int:
 
 
 if __name__ == "__main__":
-    refuse_direct_invocation("close.py sprint <id> <action>")
+    refuse_direct_invocation("xp.py sprint <id> <action>")

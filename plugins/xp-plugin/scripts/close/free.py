@@ -67,7 +67,7 @@ def cmd_start(slug: str, dry_run: bool = False) -> int:
             f"refused: free start cuts off {trunk} {reason}; from {branch} it would include"
             " unreleased work. If this branch integrates into a sprint review, commit there"
             " with `[sprint-direct]` so that review absorbs it."
-            f" {ending}, `git checkout {trunk}`, then retry `close.py free {slug} start`"
+            f" {ending}, `git checkout {trunk}`, then retry `xp.py free {slug} start`"
         )
     new = branch_for(slug)
     if git("rev-parse", "--verify", "-q", f"refs/heads/{new}", check=False).returncode == 0:
@@ -85,7 +85,7 @@ def cmd_start(slug: str, dry_run: bool = False) -> int:
         f"{new} off {trunk} — {card}. Next"
         f" `spawn.py {key}`. Cut release artifacts in `{spawn.worktree_path(key)}` while that"
         f" worktree exists; otherwise in the main repo after `git checkout {new}`. Then run"
-        f" `close.py {leg(key)[0]} review` there"
+        f" `xp.py {leg(key)[0]} review` there"
     )
     if not versioned:
         print(VERSIONING_OFF_TEXT)
@@ -105,7 +105,7 @@ def cmd_review(slug: str, dry_run: bool) -> int:
         noun = leg(key)[0]
         return fail(
             f"refused: add `#### {key} — <title>   [planned]` with Context, Files, AC,"
-            f" and Verify to {plan_path()}, then run `close.py {noun} review`"
+            f" and Verify to {plan_path()}, then run `xp.py {noun} review`"
         )
     try:
         _card, status = story_card(plan_path().read_text(), key)

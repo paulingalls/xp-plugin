@@ -66,4 +66,4 @@ def test_a_directly_runnable_script_answers_with_a_refusal(path, tmp_path):
 
 def test_sprint_close_names_its_real_entry_point(tmp_path):
     result = invoke(SCRIPTS / "sprint_close.py", tmp_path)
-    assert "close.py sprint <id> <action>" in result.stderr
+    assert "xp.py sprint <id> <action>" in result.stderr

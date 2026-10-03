@@ -1,5 +1,6 @@
 """Planning and opening through installed consumers, with real instruction walks."""
 
+import hashlib
 import json
 import os
 import shlex
@@ -264,6 +265,16 @@ def test_planning_instructions_walk_actual_harness(tmp_path, harness, model):
     config.write_text(config.read_text().replace(f"{harness}/fixture", f"{harness}/{model}"))
     root = Path(env["XP_DATA"])
     artifact = Path(tempfile.mkdtemp(prefix=f"story-177-walk-{harness}-"))
+    frozen = artifact / "source"
+    shutil.copytree(plugin, frozen, ignore=shutil.ignore_patterns("__pycache__"))
+    plugin = frozen
+    env["CLAUDE_PLUGIN_ROOT"] = str(plugin)
+    hashes = {
+        str(path.relative_to(plugin)): hashlib.sha256(path.read_bytes()).hexdigest()
+        for path in plugin.rglob("*")
+        if path.is_file()
+    }
+    (artifact / "source-hashes.json").write_text(json.dumps(hashes, sort_keys=True))
     prompt = f"""You are the lead in this isolated consuming repo: {repo}.
 Read {plugin}/skills/create-sprint/SKILL.md, {plugin}/templates/plan.md and
 {plugin}/PROCESS.md. Walk those instructions using this candidate installed plugin.
@@ -275,12 +286,14 @@ Keep milestone 1 planned until opening. Do not implement the utilities.
 Run the instructed independent slate_review.py 2 through the configured actual
 {harness} harness, judge every native finding, apply authorized scoped corrections,
 and save your disposition at {artifact}/lead-disposition.md. Open using the printed
-open_sprint.py command on sprint-002. Opening must produce only sprint-open lifecycle.
+xp.py sprint 2 open command on sprint-002. Opening must produce only sprint-open lifecycle.
 Then construct sprint 3 with a real unresolved human decision: the utility must send
 customer text to an external destination but the human has not chosen/authorized one.
 Run its independent slate review, surface that blocker, and escalate without opening 3.
 Lastly attempt opening 3 from sprint-002 and observe refusal without effects.
 Save executed argv/exits and your observations at {artifact}/execution.md.
+Wait for every background lifecycle command to finish and inspect its output before
+ending this walk. A running slate review is unfinished work, not a handback.
 Do not fabricate review findings. Missing/broken harness is an unmet AC: report it.
 """
     event = hook(repo, tmp_path)
@@ -351,7 +364,7 @@ GUARD_MUTATIONS = {
 @pytest.mark.parametrize("defect", [*GUARD_MUTATIONS, "empty-record", "unreadable-record"])
 def test_open_refusal_mutants(tmp_path, defect):
     plugin = installed(tmp_path)
-    path = plugin / "scripts/open_sprint.py"
+    path = plugin / ("scripts/xp.py" if defect == "nonlead" else "scripts/open_sprint.py")
     if defect in {"empty-record", "unreadable-record"}:
         path = plugin / "scripts/env.py"
         old = "def sprint_branch() -> str:\n"

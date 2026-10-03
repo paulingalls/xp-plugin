@@ -74,15 +74,18 @@ def test_lookup_owns_the_exact_sprint_and_only_scheduled_cards():
 
 
 def test_opening_the_first_sprint_starts_only_its_milestone(tmp_path):
-    repo, env, _g = make_repo(tmp_path, plan=PLAN)
+    repo, env, _g = make_repo(tmp_path, plan=PLAN.replace("shipped   [done]", "shipped   [ready]"))
     branch = tmp_path / "data" / "sprint_branch"
+    branch.unlink()
     resumed = sprint(repo, env, "start")
     assert resumed.returncode == 0, resumed.stderr
     assert (
         "## Milestone 2 repeats Milestone 20   [in-progress]"
         in (tmp_path / "data" / "plan.md").read_text()
     )
-    (tmp_path / "data" / "plan.md").write_text(PLAN)
+    (tmp_path / "data" / "plan.md").write_text(
+        PLAN.replace("shipped   [done]", "shipped   [ready]")
+    )
     branch.unlink()
 
     opened = sprint(repo, env, "start")
@@ -106,7 +109,10 @@ def test_opening_a_sprint_never_refuses_over_the_milestone_bracket(tmp_path):
     branch = tmp_path / "data" / "sprint_branch"
 
     for heading, expected in cases:
-        plan = f"# plan\n{heading}\n### Sprint 2\n#### story-042 — done   [done]\nVerify: true\n"
+        plan = (
+            f"# plan\n{heading}\n### Sprint 2\n"
+            "#### story-042 — selected   [planned]\nVerify: true\n"
+        )
         path.write_text(plan)
         branch.unlink(missing_ok=True)
         opened = sprint(repo, env, "start")
@@ -150,7 +156,7 @@ def test_milestone_done_runs_declared_argv_then_flips_only_its_heading(tmp_path)
     assert "## Milestone 2 repeats Milestone 20   extended   [in-progress]" in changed
 
 
-def test_milestone_done_dry_run_runs_the_condition_without_changing_plan(tmp_path):
+def test_milestone_done_dry_run_previews_without_running_the_condition(tmp_path):
     command, sentinel = condition(tmp_path)
     repo, env, _g = make_repo(tmp_path, plan=active_plan(command))
     path = tmp_path / "data" / "plan.md"
@@ -159,9 +165,8 @@ def test_milestone_done_dry_run_runs_the_condition_without_changing_plan(tmp_pat
     result = sprint(repo, env, "milestone-done", "--dry-run")
 
     assert result.returncode == 0, result.stderr
-    assert sentinel.read_text() == "green"
-    assert "milestone ready:" in result.stdout
-    assert "status unchanged" in result.stdout
+    assert not sentinel.exists()
+    assert "Done when has NOT run" in result.stdout
     assert path.read_bytes() == before
 
 
@@ -179,7 +184,7 @@ def test_milestone_done_dry_run_matches_the_real_candidate_refusal(tmp_path):
     assert path.read_bytes() == before
 
 
-def test_milestone_done_dry_run_reports_a_red_done_when_as_the_real_leg_does(tmp_path):
+def test_milestone_preview_does_not_claim_a_red_command_passed(tmp_path):
     repo, env, _g = make_repo(tmp_path, plan=active_plan("false"))
     path = tmp_path / "data" / "plan.md"
     before = path.read_bytes()
@@ -187,9 +192,9 @@ def test_milestone_done_dry_run_reports_a_red_done_when_as_the_real_leg_does(tmp
     preview = sprint(repo, env, "milestone-done", "--dry-run")
     real = sprint(repo, env, "milestone-done")
 
-    assert preview.returncode == real.returncode == 2
-    assert preview.stderr == real.stderr
-    assert "milestone ready:" not in preview.stdout
+    assert preview.returncode == 0 and real.returncode == 2
+    assert "Done when has NOT run" in preview.stdout
+    assert "Done when:" in real.stderr
     assert path.read_bytes() == before
 
 
@@ -221,7 +226,11 @@ def test_milestone_done_refuses_invalid_or_red_done_when_with_or_without_dry_run
 
         assert result.returncode == 2
         assert "Done when:" in result.stderr
-        assert (preview.returncode, preview.stderr) == (result.returncode, result.stderr)
+        if declared in ("false", "true && false"):
+            assert preview.returncode == 0
+            assert "Done when has NOT run" in preview.stdout
+        else:
+            assert (preview.returncode, preview.stderr) == (result.returncode, result.stderr)
         assert "## Milestone 2 repeats Milestone 20   [in-progress]" in path.read_text()
         assert not (repo / "SHELL-PAYLOAD").exists()
 
@@ -247,7 +256,7 @@ def test_milestone_done_rechecks_terminal_cards_before_running(tmp_path):
     command, sentinel = condition(tmp_path)
     repo, env, _g = make_repo(tmp_path, plan=active_plan(command))
     proposed = sprint(repo, env, "start")
-    assert "close.py sprint 2 milestone-done" in proposed.stdout
+    assert "xp.py sprint 2 milestone-done" in proposed.stdout
     path = tmp_path / "data" / "plan.md"
     reopen(path)
 

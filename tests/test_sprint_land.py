@@ -51,7 +51,7 @@ class TestLandAndPostMerge:
         r = sprint(repo, env, "land", "--dry-run")
         assert r.returncode == 2 and "incomplete" in r.stderr
         assert "blocking findings" not in r.stderr
-        assert "close.py sprint 2 review" in r.stderr, "the refusal names no next action"
+        assert "xp.py sprint 2 review" in r.stderr, "the refusal names no next action"
 
     def test_land_dry_run_previews_the_commands_it_would_run(self, tmp_path):
         repo, env, _g = make_repo(tmp_path)
@@ -257,7 +257,7 @@ class TestLandRefusesOnADirtyTree:
     """Sprint-4 closing pass, the round's one blocker: sprint land was the one
     land leg of three with no dirty-tree refusal, so an UNCOMMITTED file decided
     the tier's verdict about a tree the PR does not contain (measured both arms
-    on the real leg). The story and free legs refuse this at close.py:241 and
+    on the real leg). The story and free legs refuse this at xp.py:241 and
     free.py:80; the green arm is pinned by test_land_proceeds_on_a_green_tier."""
 
     def test_an_uncommitted_file_refuses_before_the_tier(self, tmp_path):
