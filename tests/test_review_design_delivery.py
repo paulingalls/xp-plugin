@@ -42,9 +42,15 @@ def delivered_section(bundle, title, until):
     return section(bundle, title, until)
 
 
-def assert_delivery(bundle, plugin, charter, next_title="Your report"):
+def assert_delivery(bundle, plugin, charter, next_title="Your report", *, delta=False):
     delivered = delivered_section(bundle, "Your charter", next_title).strip()
-    assert delivered.split("## Checks", 1)[-1] == charter.split("## Checks", 1)[-1]
+    if delta:
+        assert (
+            delivered.split("## Checks", 1)[-1].split("## Output", 1)[0]
+            == charter.split("## Checks", 1)[-1].split("## Output", 1)[0]
+        )
+    else:
+        assert delivered == charter
     following = (
         "Shipped card template"
         if next_title == "Your findings file" and "## Full proposed slate" in bundle
@@ -261,7 +267,10 @@ def test_shared_judgment_reaches_confirmation(tmp_path, surface, fault):
             section(captured[0]["stdin"], "Sprint altitude", "Findings from earlier rounds").strip()
             == altitude
         )
-    check_or_red(fault, lambda: assert_delivery(captured[0]["stdin"], plugin, expected))
+    check_or_red(
+        fault,
+        lambda: assert_delivery(captured[0]["stdin"], plugin, expected, delta=surface == "sprint"),
+    )
 
 
 @pytest.mark.parametrize("fault", ["intact", "omit", "stale", "cap"])

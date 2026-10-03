@@ -18,7 +18,7 @@ def test_reuse_preserves_commit_attribution(tmp_path):
     result = launch(repo, env, "resume", "story-042")
     assert result.returncode == 0, result.stderr
     assert git(tmp_path, "rev-parse", "HEAD") == head
-    assert roles(seen)[count:] == ["reviewer"]
+    assert roles(seen)[count:] == []
 
 
 @pytest.mark.parametrize("kind", ["STOPPED", "FINISHED"])

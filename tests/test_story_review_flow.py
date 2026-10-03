@@ -203,12 +203,14 @@ def test_explicit_report_correction_keeps_completed_work(tmp_path, producer):
     assert names.count("closer") == (2 if producer == "closer" else 1)
 
 
-def test_validation_kill_resumes_validation_only(tmp_path):
+@pytest.mark.parametrize("scenario", ["clean", "fixed"])
+def test_validation_kill_resumes_validation_only(tmp_path, monkeypatch, scenario):
     import os
     import signal
     import subprocess
     import sys
     import time
+    from contextlib import chdir
     from pathlib import Path
 
     from close_helpers import CLOSE, SPAWN
@@ -220,13 +222,22 @@ def test_validation_kill_resumes_validation_only(tmp_path):
         f"#!/bin/sh\ntouch {ready}\nwhile [ ! -e {finish} ]; do sleep 0.1; done\necho finished\n"
     )
     gate.chmod(0o755)
-    repo, env, git, key, events, _hooks = flow_repo(tmp_path, verify=str(gate))
+    repo, env, git, key, events, _hooks = flow_repo(tmp_path, verify=str(gate), scenario=scenario)
     assert git("branch", "-m", "t/story-042-demo-story").returncode == 0
     branch = git("branch", "--show-current").stdout.strip()
     assert git("checkout", "-q", "main").returncode == 0
     tree = Path(env["XP_DATA"]) / "worktrees" / key
     tree.parent.mkdir()
     assert git("worktree", "add", str(tree), branch).returncode == 0
+    from completion import inputs, record
+    from plan_review import card_for
+
+    with monkeypatch.context() as patch, chdir(tree):
+        for name, value in env.items():
+            patch.setenv(name, value)
+        snapshot = inputs(key, card_for(key))
+        for stage in ("executor", "story-tier", "reviewer"):
+            record(key, stage, "running" if stage == "reviewer" else "ran", snapshot)
     process = subprocess.Popen(
         [sys.executable, str(CLOSE), "story", key, "review"],
         cwd=tree,
@@ -255,9 +266,22 @@ def test_validation_kill_resumes_validation_only(tmp_path):
             text=True,
         )
         assert result.returncode == 0, result.stderr
-        assert events.read_text().splitlines() == ["solution"]
+        expected = ["solution"] if scenario == "clean" else ["solution", "fixer", "closer"]
+        assert events.read_text().splitlines() == expected
         assert Path(old["stages"]["solution"]["path"]).read_bytes() == saved
         assert checkpoint(env, key)["status"] == "completed"
+        import json
+
+        handoff = json.loads((Path(env["XP_DATA"]) / "plans" / f"{key}.handoff.json").read_text())
+        from completion import next_stage
+
+        with monkeypatch.context() as patch, chdir(tree):
+            for name, value in env.items():
+                patch.setenv(name, value)
+            assert next_stage(key, handoff, inputs(key, card_for(key))) == "reviewer"
+        reviewer = handoff["checkpoint"]["results"]["reviewer"]
+        assert reviewer["result"] == "ran"
+        assert reviewer["output"] == checkpoint(env, key)["output"]["inputs"]
     finally:
         if process.poll() is None:
             os.killpg(process.pid, signal.SIGKILL)

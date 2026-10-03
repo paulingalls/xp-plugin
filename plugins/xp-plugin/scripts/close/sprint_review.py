@@ -222,7 +222,9 @@ def cmd_review(sprint_id: str, dry_run: bool) -> int:
                 from review_scope import declared_files
 
                 committed_contents()
-                touched = git("diff", "--name-only", stage_head, current).stdout.splitlines()
+                touched = git(
+                    "diff", "--name-only", "--no-renames", stage_head, current
+                ).stdout.splitlines()
                 if any(p.startswith(".xp/") and p not in declared_files(cards) for p in touched):
                     report_err = "fixer committed an undeclared .xp path; lead must inspect it"
         return report, review.abort_text(stage_head, report_err) if report_err else ""
@@ -293,11 +295,22 @@ def cmd_review(sprint_id: str, dry_run: bool) -> int:
                 "Preserve the card and close marker.",
             )
             .replace(
+                "Report authorized actionable findings and reserved/unresolved blockers.",
+                "Fix authorized findings and report reserved/unresolved blockers.",
+            )
+            .replace(
                 "The coordinator conditionally launches one committing fixer "
                 "and one narrow closer;",
                 "This sprint delta review fixes within its round; "
                 "the lead checks its committed diff;",
             )
+        )
+        charter = charter.split("\n## Output", 1)[0] + (
+            "\n## Output\nWrite JSON to REPORT_PATH with required blocking findings for "
+            "anything still unresolved. Fix authorized findings and commit through normal hooks; "
+            "do not hand actionable findings to another fixer. Optional fixed finding-text "
+            "strings, dropped and debt "
+            "explain decisions under JUDGMENT. Reserved choices and unmet ACs remain blocking."
         )
         fixed, err = leg("fixer", "fix", [("Sprint altitude", altitude), *prior], charter)
         if err:

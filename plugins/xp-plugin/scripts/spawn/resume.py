@@ -146,6 +146,10 @@ def validation_only(root, story_id, held):
         return close.fail(error)
     with contextlib.chdir(tree):
         rc = close.cmd_review(story_id, held=held, explicit=False)
+        if not rc:
+            from completion import inputs, record
+
+            record(story_id, "reviewer", "ran", inputs(story_id, card))
     if not rc:
         mark_handoff(root, story_id, True, "retained review; interrupted validation completed")
     return rc

@@ -31,6 +31,8 @@ def normalize_report(data, *, fresh=False, stage="") -> tuple[dict, str]:
     missing = [key for key in required if not isinstance(data.get(key), list)]
     if missing:
         return {}, f"the {stage or 'reviewer'} report is missing list keys: {', '.join(missing)}"
+    if fresh and stage and stage != "solution" and data.get("actionable"):
+        return {}, f"the {stage} report must put unresolved actionable findings in blocking"
     for key in required:
         if not isinstance(data.get(key), list):
             return {}, f"the {stage or 'reviewer'} report is missing list keys: {key}"
@@ -56,8 +58,8 @@ def normalize_report(data, *, fresh=False, stage="") -> tuple[dict, str]:
 
                     if error := debt_reference_error(data_root(), item["ref"]):
                         return {}, error
-            elif not isinstance(item, str) or not item.strip():
-                return {}, f"{key} requires finding text or an explained disposition"
+            else:
+                return {}, f"{key} needs an explained disposition with {', '.join(fields)}"
     report = dict(data)
     if "noted" in report:
         if fresh:

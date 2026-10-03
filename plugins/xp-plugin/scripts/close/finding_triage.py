@@ -45,7 +45,7 @@ def render_triage(root) -> str:
             selected = [
                 item if isinstance(item, str) else item["finding"]
                 for key in ("fixed", "dropped", "debt")
-                for item in parsed[key]
+                for item in parsed.get(key, [])
             ]
             judgments.setdefault((fields["Source"], fields["Digest"]), set()).update(selected)
         except (ValueError, KeyError, TypeError):
