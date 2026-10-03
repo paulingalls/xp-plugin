@@ -24,11 +24,12 @@ roles:                 # harness/model[/effort]; lead overrides per story in pla
 # Commit, handback, story land and push recheck the cheap product floor.
 # Slow product checks and test machinery run only at sprint land.
 tests:
-  fast: pytest -q -n 4 -m "not slow and not meta"
-  story: pytest -q -n 4 -m "not slow and not meta"
-  full: pytest -q -n 6 -m "not slow and not meta" && pytest -q -n 6 -m "slow and not meta" && pytest -q -n 6 -m meta
+  fast: pytest -q -n 4 -m "not slow and not meta and not native"
+  story: pytest -q -n 4 -m "not slow and not meta and not native"
+  full: pytest -q -n 6 -m "not slow and not meta and not native" && pytest -q -n 6 -m "slow and not meta and not native" && pytest -q -n 6 -m "meta and not native"
+  native: pytest -q -n 4 -m native
 
 full_legs:
-  fast: pytest -q -n 6 -m "not slow and not meta"
-  slow: pytest -q -n 6 -m "slow and not meta"
-  meta: pytest -q -n 6 -m meta
+  fast: pytest -q -n 6 -m "not slow and not meta and not native"
+  slow: pytest -q -n 6 -m "slow and not meta and not native"
+  meta: pytest -q -n 6 -m "meta and not native"

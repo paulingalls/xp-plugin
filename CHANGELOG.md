@@ -4,6 +4,12 @@ Release notes started at v0.6.0; earlier entries are summarized from their
 tag and merge messages. Full detail lives in the merge history and the
 per-sprint review reports.
 
+## v0.35.1 — opt-in model acceptance
+
+Repository test policy now excludes real-agent planning walks from ordinary
+pytest, commit, push and sprint-close tiers. The explicit native tier retains
+the Claude and Codex acceptance cases.
+
 ## v0.35.0 — a shorter path from plan to release
 
 Existing plans, work records and project role mappings remain usable. Finish active

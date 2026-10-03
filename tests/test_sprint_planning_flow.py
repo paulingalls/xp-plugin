@@ -254,6 +254,7 @@ def test_failed_lifecycle_does_not_commit_opening(tmp_path, post_hook):
     assert (root / "plan.md").read_bytes() == before
 
 
+@pytest.mark.native
 @pytest.mark.slow
 @pytest.mark.parametrize("harness,model", [("claude", "sonnet"), ("codex", "gpt-6.1-sol")])
 def test_planning_instructions_walk_actual_harness(tmp_path, harness, model):
