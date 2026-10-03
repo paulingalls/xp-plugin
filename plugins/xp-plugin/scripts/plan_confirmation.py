@@ -17,6 +17,14 @@ def evidence_path(out):
     return Path(out).with_suffix(".evidence.json")
 
 
+def metadata_identity(path):
+    status = path.lstat()
+    if stat.S_ISDIR(status.st_mode):
+        return content_identity(path)
+    value = json.dumps([status.st_size, status.st_mtime_ns, status.st_ino]).encode()
+    return status.st_mode, hashlib.sha256(value).hexdigest()
+
+
 def content_identity(path):
     mode = path.lstat().st_mode
     if stat.S_ISLNK(mode):
@@ -62,11 +70,18 @@ def repository_fingerprint(plan_file):
     }
     tracked = git("ls-files", "-z", "--", *paths).split(b"\0")
     untracked = git("ls-files", "--others", "-z", "--", *paths).split(b"\0")
+    ignored = set(
+        git("ls-files", "--others", "--ignored", "--exclude-standard", "-z", "--", *paths).split(
+            b"\0"
+        )
+    )
     contents = []
     for name in sorted(set(tracked + untracked) - {b""}):
         path = root / os.fsdecode(name)
         try:
-            mode, digest = content_identity(path)
+            # Ignored trees (node_modules) hold ~10^5 files; opening each costs minutes
+            # under endpoint scanning, so a rewrite is caught by its metadata instead.
+            mode, digest = (metadata_identity if name in ignored else content_identity)(path)
         except FileNotFoundError:
             contents.append([name.hex(), "absent"])
             continue
