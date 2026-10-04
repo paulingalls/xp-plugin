@@ -95,8 +95,9 @@ roles:                     # harness/model[/effort]; a card's Executor: line ove
   lead: claude/opus
   planner: claude/sonnet
   executor: claude/sonnet
-  reviewer: claude/opus    # plan and diff reviews; pick a different family from executor
-  # plan-reviewer: codex/...  # optional: slate and plan reviews on another harness
+  reviewer: claude/opus    # story diff reviews; pick a different family from executor
+  # optional seats, falling back to their family: plan-reviewer (→ reviewer),
+  # slate-reviewer (→ plan-reviewer), angle-reviewer (→ reviewer), fixer (→ executor)
 ```
 
 `codex_sandbox` stays (decided during the build): a project has no other way to state a
@@ -165,29 +166,41 @@ missing. A lead who wants a stage re-run deletes its file.
 
 ## 8. The agents
 
-Four charters, each under 40 lines, each three sections: read, produce, own. VALUES and
-JUDGMENT are injected once alongside; constraints.md and system.md are passed as files.
+Seven charters over four required seats (decided after the build: a charter written for
+one artifact needs no "when given" clauses, and the orchestration is unchanged because
+`bundle.prompt(role)` only picks a file). Each under 40 lines, three sections: read,
+produce, own. VALUES and JUDGMENT are in the bundle, once: agents launch with `XP_AGENT`
+set and no plugin dir, so the SessionStart injection stays silent for them on both
+harnesses. constraints.md and system.md are passed in the bundle too.
 
 - **planner** reads the card, the code and the tests; produces `stories/<id>/plan.md`;
   owns the implementation approach. Read-only on the repo.
-- **plan reviewer** reads one card (or the slate) with its plan and the constraints; produces
-  findings and edits the card and plan in place; owns correctness within the approved
-  intent. A line beginning `QUESTION:` in the findings stops the story until the lead
+- **plan reviewer** reads one card with its plan and the constraints; produces findings
+  and edits the card and plan in place; owns correctness within the approved intent. A line beginning `QUESTION:` in the findings stops the story until the lead
   answers it in the card and deletes that line (or deletes the review file to have the plan
   re-reviewed against the answer). Read-only on the repo. No second round.
 - **executor** reads the card, the plan, the findings; produces commits through the hooks;
   owns scope, Files, the card's wording and the Acceptance command. Runs Acceptance before
   handing back. Hands back with a short note: what changed, what deviated, what it could
   not decide. Reserved to the lead: title, Executor, anything a `QUESTION:` raised.
-- **reviewer** reads a commit range, the card and the handback; produces `review-N.md` with
-  findings as fix / drop-with-reason / debt-with-both-bars; owns independent adversarial
-  pressure, including fault-injecting any new guard. May commit fixes it is sure of, on the
-  story branch, through the hooks. Reserved to the lead: anything it is not sure of.
+- **reviewer** reads a story's commit range, the card as spawned and now, and the handback;
+  produces `review-N.md` with findings as fix / drop-with-reason / debt-with-both-bars; owns
+  independent adversarial pressure, including fault-injecting any new guard. May commit
+  fixes it is sure of, on the story branch, through the hooks. Reserved to the lead:
+  anything it is not sure of.
+- **slate reviewer** reads every card in a sprint's slate; produces findings and edits the
+  cards in place; owns the slate's coherence: one outcome per card, true premises, size,
+  order, collisions. Seat falls back to plan-reviewer, then reviewer.
+- **angle reviewer** reads the whole sprint range under one angle file, with the slate and
+  handbacks as context; produces findings at the seams between stories; commits nothing.
+  Seat falls back to reviewer.
+- **fixer** reads the merged angle findings; produces one commit per fix on the sprint
+  branch and a handback naming each finding fixed, dropped or left to the lead; owns only
+  the fixes it is sure of. Seat falls back to executor.
 
-Sprint review is the reviewer given the sprint range plus one angle file per launch, run in
-parallel and committing nothing; findings are merged; the executor gets one fix pass on the
-sprint branch; the lead judges. The finder, verifier, fixer, closer, slate-reviewer and card-refresher roles
-do not exist.
+Sprint review is one angle reviewer per angle file, run in parallel; findings are merged;
+the fixer gets one pass on the sprint branch; the lead judges. The finder, verifier, closer
+and card-refresher stages do not exist.
 
 ## 9. Land
 

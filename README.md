@@ -105,7 +105,7 @@ Acceptance is one command, run from the repo root, that executes the ACs; Gherki
 | `sprint_cap` | Advised stories per sprint |
 | `debt_budget` | Maximum share of a sprint spent on debt |
 | `codex_sandbox` | Sandbox for Codex agents: `danger-full-access` (default) or `workspace-write` |
-| `roles` | `lead`, `planner`, `executor`, `reviewer`, each `harness/model[/effort]`; pick a reviewer from a different model family than the executor. Optional `plan-reviewer` takes the slate and plan reviews, so review load can be split across harnesses |
+| `roles` | Seats, each `harness/model[/effort]`. Required: `lead`, `planner`, `executor`, `reviewer`; pick a reviewer from a different model family than the executor. Optional, falling back to their family when unset: `plan-reviewer` (one card's plan; falls back to `reviewer`), `slate-reviewer` (the slate; falls back to `plan-reviewer`), `angle-reviewer` (sprint review; falls back to `reviewer`), `fixer` (the sprint fix pass; falls back to `executor`). Each is its own charter under `agents/` |
 
 ## Where state lives
 

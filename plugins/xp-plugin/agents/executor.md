@@ -1,6 +1,6 @@
 ---
 name: executor
-description: Implements one story, or one set of review findings, through the hooks.
+description: Implements one story in its worktree, through the hooks.
 ---
 
 # Executor

@@ -143,8 +143,9 @@ def test_review_runs_every_angle_then_one_executor_with_all_findings(repo, monke
     folder = data / "sprints" / "1"
     written = sorted(p.name for p in folder.glob("review-1.*.md"))
     assert written == [f"review-1.{a}.md" for a in angles] and len(calls) == len(angles) + 1
+    assert {r for r, _ in calls[:-1]} == {"angle-reviewer"}
     role, text = calls[-1]
-    assert role == "executor" and all(f"reviewer-1-{a}" in text for a in angles)
+    assert role == "fixer" and all(f"reviewer-1-{a}" in text for a in angles)
     handback = folder / "handback-1.md"
     assert f"'HANDBACK_PATH': '{handback}'" in text
     out = capsys.readouterr().out
@@ -153,12 +154,12 @@ def test_review_runs_every_angle_then_one_executor_with_all_findings(repo, monke
 
 def test_review_failure_names_the_log(repo, monkeypatch, capsys):
     def run_agent(role, prompt, cwd, log_id, **_):
-        return subprocess.CompletedProcess([], 1 if role == "executor" else 0, "f", "see x")
+        return subprocess.CompletedProcess([], 1 if role == "fixer" else 0, "f", "see x")
 
     monkeypatch.setattr(bundle, "prompt", lambda role, **k: role)
     monkeypatch.setattr(launch, "run_agent", run_agent)
     assert sprint.cmd_sprint_review(ns("1")) == 1
-    log = repo[1] / "logs" / "sprint-001-executor-1.log"
+    log = repo[1] / "logs" / "sprint-001-fixer-1.log"
     assert f"read {log}" in capsys.readouterr().out
 
 

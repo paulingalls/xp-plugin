@@ -41,8 +41,10 @@ def agent_argv(harness: str, model: str, effort: str, sandbox: str = "") -> list
     if harness == "claude":
         # Bypass even for reviewers: under acceptEdits headless claude denies Bash and
         # out-of-tree writes, then exits 0 with nothing written. stream-json needs --verbose.
-        argv = ["claude", "-p", "--plugin-dir", str(config.plugin_root())]
-        argv += ["--dangerously-skip-permissions", "--output-format", "stream-json", "--verbose"]
+        # No --plugin-dir: the bundle carries the prose, and XP_AGENT keeps an installed
+        # copy's SessionStart hook silent.
+        argv = ["claude", "-p", "--dangerously-skip-permissions"]
+        argv += ["--output-format", "stream-json", "--verbose"]
         return argv + ["--model", model] + (["--effort", effort] if effort else [])
     if harness != "codex":
         config.refuse(f"unknown harness {harness!r}; use claude or codex in the role")
@@ -209,7 +211,7 @@ def run_agent(
         argv = [*argv[:-1], *codex_widening(cwd), argv[-1]]
     if posture := sandbox_line(argv):
         print(posture, file=sys.stderr)
-    child_env = (CLAUDE_ENV if harness == "claude" else {}) | os.environ
+    child_env = (CLAUDE_ENV if harness == "claude" else {}) | os.environ | {"XP_AGENT": role}
     path = log_path(log_id)
     path.parent.mkdir(parents=True, exist_ok=True)
     print(f"live log: {path}", file=sys.stderr)

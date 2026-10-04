@@ -79,6 +79,16 @@ def test_role_resolution(project):
     assert config.role("executor", "claude/sonnet/low") == ("claude", "sonnet", "low")
 
 
+def test_optional_seats_fall_back_along_their_family(project):
+    assert config.role("slate-reviewer") == config.role("angle-reviewer") == ("claude", "opus", "")
+    assert config.role("fixer") == ("codex", "gpt-6", "high")
+    with open(project / ".xp" / "config.yml", "a") as out:
+        out.write("  plan-reviewer: codex/gpt-6/medium\n  fixer: claude/sonnet\n")
+    assert config.role("slate-reviewer") == ("codex", "gpt-6", "medium")  # via plan-reviewer
+    assert config.role("fixer") == ("claude", "sonnet", "")
+    assert config.role("angle-reviewer") == ("claude", "opus", "")
+
+
 def test_bad_or_missing_role_refuses(project, capsys):
     assert "planner" in refused(capsys, config.role, "planner")
     assert "harness/model" in refused(capsys, config.role, "executor", "gpt/x")

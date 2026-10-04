@@ -9,8 +9,14 @@ from pathlib import Path
 from typing import NoReturn
 
 HARNESSES = ("claude", "codex")
-# The shipped config names one reviewer seat for plan and diff reviews alike.
-ROLE_FALLBACK = {"plan-reviewer": "reviewer"}
+# Four seats are required; the optional ones fall back along their family, so a project
+# can put one kind of review or fix on another harness without naming every seat.
+ROLE_FALLBACK = {
+    "plan-reviewer": "reviewer",
+    "slate-reviewer": "plan-reviewer",
+    "angle-reviewer": "reviewer",
+    "fixer": "executor",
+}
 SETUP = "run `python3 <plugin>/scripts/xp.py setup` in the repo root"
 
 
@@ -102,12 +108,13 @@ def load_config() -> dict:
 
 def role(name: str, override: str = "") -> tuple[str, str, str]:
     """(harness, model, effort) from `harness/model[/effort]`; a card's Executor: line overrides."""
-    spec = override.strip()
+    spec, seat = override.strip(), name
     if not spec:
         roles = load_config().get("roles") or {}
-        spec = str(roles.get(name) or roles.get(ROLE_FALLBACK.get(name, name)) or "")
+        while not (spec := str(roles.get(seat) or "")) and seat in ROLE_FALLBACK:
+            seat = ROLE_FALLBACK[seat]
     if not spec:
-        refuse(f"no role {name!r} under roles: in .xp/config.yml; add `{name}: claude/opus`")
+        refuse(f"no role {seat!r} under roles: in .xp/config.yml; add `{seat}: claude/opus`")
     parts = spec.split("/")
     if len(parts) not in (2, 3) or not all(parts) or parts[0] not in HARNESSES:
         refuse(

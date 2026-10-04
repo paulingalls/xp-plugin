@@ -13,7 +13,7 @@ prompt = sys.stdin.read()
 print(json.dumps({"type": "system", "subtype": "init", "session_id": "sess-1"}), flush=True)
 print("not json", flush=True)
 print(json.dumps({"type": "assistant", "message": {"content": [{"type": "text"}]}}), flush=True)
-env = sorted(k for k in os.environ if k in ("XP_ROLE", "XP_STORY_ID", "XP_HARNESS"))
+env = sorted(k for k in os.environ if k in ("XP_ROLE", "XP_STORY_ID", "XP_HARNESS", "XP_AGENT"))
 if prompt != "silent":
     print(json.dumps({"type": "result", "num_turns": 2, "duration_ms": 3000,
                       "total_cost_usd": 0.5, "result": json.dumps([prompt, env])}))
@@ -57,6 +57,7 @@ def project(tmp_path, monkeypatch):
 def test_claude_argv():
     argv = launch.agent_argv("claude", "opus", "high")
     assert argv[:2] == ["claude", "-p"] and "--dangerously-skip-permissions" in argv
+    assert "--plugin-dir" not in argv  # the bundle carries the prose; the hook stays silent
     assert argv[argv.index("--output-format") + 1] == "stream-json" and "--verbose" in argv
     assert argv[-4:] == ["--model", "opus", "--effort", "high"]
     assert "--effort" not in launch.agent_argv("claude", "opus", "")
@@ -112,7 +113,9 @@ def test_run_agent_claude_streams_tees_and_returns_result(project, tmp_path, cap
     assert proc.returncode == 0
     prompt, env = json.loads(proc.stdout)
     assert prompt == "do the thing"
-    assert env == []  # nothing reads them; the role is the prompt's charter
+    assert env == [
+        "XP_AGENT"
+    ]  # session-start reads it to stay silent; the bundle carries the prose
     out = capsys.readouterr().out
     assert "[system] init" in out and "[result] ok 2 turns 3s $0.50" in out
     log = (tmp_path / "data" / "logs" / "story-007-executor.log").read_text()

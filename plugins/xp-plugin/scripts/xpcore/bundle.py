@@ -32,15 +32,17 @@ def charter(role: str, paths: dict[str, str]) -> tuple[str, dict[str, str]]:
 def prompt(
     role: str,
     *,
-    card,
+    card=None,
+    slate: str = "",
     plan: str = "",
     findings: str = "",
     angle: str = "",
     extra: str = "",
     paths: dict[str, str] | None = None,
 ) -> str:
-    """`card` is a cards.Card or text (a slate). `paths` maps placeholder names such as
-    PLAN_PATH, FINDINGS_PATH, HANDBACK_PATH, CARD_ID to values; DATA is always set."""
+    """`card` is a cards.Card or its text; `slate` is a sprint's section of plan.md. `paths`
+    maps placeholder names such as PLAN_PATH, FINDINGS_PATH, HANDBACK_PATH, CARD_ID to
+    values; DATA is always set."""
     root, project = config.plugin_root(), config.repo_root() / ".xp"
     body, unused = charter(role, {"DATA": str(config.data_root()), **(paths or {})})
     parts = (
@@ -49,7 +51,8 @@ def prompt(
         (f"Your charter: {role}", body),
         ("Project constraints (.xp/constraints.md)", _read(project / "constraints.md")),
         ("Project system (.xp/system.md)", _read(project / "system.md")),
-        ("Card", str(getattr(card, "text", card)).strip()),
+        ("Card", str(getattr(card, "text", card or "")).strip()),
+        ("Slate", slate.strip()),
         ("Plan", plan.strip()),
         ("Findings", findings.strip()),
         ("Angle", angle.strip()),

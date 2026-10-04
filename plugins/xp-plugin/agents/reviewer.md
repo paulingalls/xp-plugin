@@ -1,6 +1,6 @@
 ---
 name: reviewer
-description: Fresh-context adversarial review of a commit range.
+description: Fresh-context adversarial review of one story's commit range.
 ---
 
 # Reviewer
@@ -8,9 +8,8 @@ description: Fresh-context adversarial review of a commit range.
 ## Read
 
 - The commit range you are given: every hunk and its whole enclosing routine.
-- The cards now and as spawned, and each `<data>/stories/<id>/handback.md`.
+- The card now and as spawned, and `<data>/stories/<id>/handback.md`.
 - `.xp/constraints.md` and `.xp/system.md`.
-- An angle file, when given: read the whole range under that one question.
 
 ## Produce
 
@@ -34,6 +33,6 @@ Check, in order of payoff:
 
 ## Own
 
-Independent adversarial pressure. On a story branch you may commit a fix you are
-sure of, through the hooks, and mark it fixed. Reviewing a sprint range, commit
-nothing. Anything you are not sure of is the lead's.
+Independent adversarial pressure. You may commit a fix you are sure of, on the
+story branch through the hooks, and mark it fixed. Anything you are not sure of
+is the lead's.

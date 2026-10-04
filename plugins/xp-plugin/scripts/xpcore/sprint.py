@@ -49,13 +49,8 @@ def cmd_sprint_plan(args) -> int:
         print(f"would run the plan reviewer over Sprint {args.id}'s slate into {out}")
         return 0
     out.unlink(missing_ok=True)
-    text = bundle.prompt(
-        "plan-reviewer",
-        card=slate,
-        extra="Review this sprint slate as a whole: the cards together, not one card.",
-        paths={"FINDINGS_PATH": str(out)},
-    )
-    agent("plan-reviewer", text, root, f"{sprint_branch_name(args.id)}-plan-reviewer", out)
+    text = bundle.prompt("slate-reviewer", slate=slate, paths={"FINDINGS_PATH": str(out)})
+    agent("slate-reviewer", text, root, f"{sprint_branch_name(args.id)}-slate-reviewer", out)
     print(out.read_text(), end="")
     cut = f"git switch -c {sprint_branch_name(args.id)} {trunk()}"
     print(f"slate review: {out}. Correct the slate, then `{cut}`")
@@ -103,9 +98,10 @@ def cmd_sprint_review(args) -> int:
         extra = f"Commits:\n{log}\n\nDiff {main}..{branch}:\n{diff}"
         out = {"FINDINGS_PATH": str(outs[angle])}
         text = bundle.prompt(
-            "reviewer", card=slate, angle=angle.read_text(), extra=extra, paths=out
+            "angle-reviewer", slate=slate, angle=angle.read_text(), extra=extra, paths=out
         )
-        return agent("reviewer", text, root, f"{branch}-reviewer-{n}-{angle.stem}", outs[angle])
+        log_id = f"{branch}-reviewer-{n}-{angle.stem}"
+        return agent("angle-reviewer", text, root, log_id, outs[angle])
 
     with ThreadPoolExecutor(max_workers=len(angles)) as pool:
         try:
@@ -115,18 +111,18 @@ def cmd_sprint_review(args) -> int:
             raise
     findings = "\n\n".join(f"## {p.name}\n\n{p.read_text()}" for p in written)
     extra = f"You are on {branch} at {root}. Fix what these findings warrant and commit."
-    handback, log_id = folder / f"handback-{n}.md", f"{branch}-executor-{n}"
+    handback, log_id = folder / f"handback-{n}.md", f"{branch}-fixer-{n}"
     paths = {"HANDBACK_PATH": str(handback)}
-    text = bundle.prompt("executor", card=slate, findings=findings, extra=extra, paths=paths)
-    result = launch.run_agent("executor", text, root, log_id)
+    text = bundle.prompt("fixer", slate=slate, findings=findings, extra=extra, paths=paths)
+    result = launch.run_agent("fixer", text, root, log_id)
     for path in written:
         body = [ln for ln in path.read_text().splitlines() if ln.strip()]
         print(f"{path}: {len(body)} lines; {body[0] if body else 'empty'}")
     print(f"handback: {handback}{'' if handback.is_file() else ' (not written)'}")
     if result.returncode:
-        print(f"failed: the executor exited {result.returncode}; read {launch.log_path(log_id)}")
+        print(f"failed: the fixer exited {result.returncode}; read {launch.log_path(log_id)}")
         return 1
-    print(f"executor done; judge what it left open, then `xp.py sprint land {args.id}`")
+    print(f"fixer done; judge what it left open, then `xp.py sprint land {args.id}`")
     return 0
 
 

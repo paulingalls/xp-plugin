@@ -41,6 +41,19 @@ def test_placeholders_are_substituted_not_appended(repo, tmp_path, monkeypatch):
     assert "name: x" not in text and "===== Card =====\nslate" in text
 
 
+def test_a_slate_is_its_own_section_not_a_card(repo):
+    text = bundle.prompt("angle-reviewer", slate="## Sprint 1", angle="Q?")
+    assert "===== Slate =====\n## Sprint 1" in text and "===== Card" not in text
+    assert "===== Angle =====\nQ?" in text
+
+
+def test_every_charter_is_three_short_sections(repo):
+    for path in sorted((config.plugin_root() / "agents").glob("*.md")):
+        lines = path.read_text().splitlines()
+        assert len(lines) <= 40, path.name
+        assert [ln for ln in lines if ln.startswith("## ")] == ["## Read", "## Produce", "## Own"]
+
+
 def test_missing_charter_refuses(repo, capsys):
     with pytest.raises(SystemExit):
         bundle.prompt("nobody", card="c")

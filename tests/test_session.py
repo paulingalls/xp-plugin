@@ -1,4 +1,5 @@
 import json
+import os
 import subprocess
 import sys
 
@@ -85,3 +86,10 @@ def test_recover_lists_open_cards_with_their_stage_files(repo, capsys):
     assert "story-001 — first [in-progress]\n  stages: plan.md, review-1.md" in out
     assert "story-002 — second [planned]" in out and "story-003" not in out
     assert "## open records\nnone" in out and "## sprint\nsprint-001" in out
+
+
+def test_an_agent_launch_gets_no_injection(repo):
+    (repo / ".xp" / "constraints.md").write_text("1. rule\n")
+    proc = start(repo, env={**os.environ, "XP_AGENT": "executor"})
+    assert proc.returncode == 0 and proc.stdout == b"" and proc.stderr == b""
+    assert b"XP Values" in start(repo).stdout

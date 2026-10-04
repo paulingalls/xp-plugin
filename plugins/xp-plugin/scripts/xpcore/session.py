@@ -67,6 +67,8 @@ def injection(repo: Path | None) -> str:
 
 
 def cmd_session_start(args) -> int:
+    if os.environ.get("XP_AGENT"):
+        return 0  # a spawned agent's prompt already carries the prose; both harnesses hook here
     try:
         if not sys.stdin.isatty():
             sys.stdin.read()  # the hook's JSON payload; drained so the writer never blocks

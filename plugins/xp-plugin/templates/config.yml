@@ -10,5 +10,9 @@ roles:                     # harness/model[/effort]; a card's Executor: line ove
   lead: claude/opus
   planner: claude/sonnet
   executor: claude/sonnet
-  reviewer: claude/opus    # plan and diff reviews; pick a different family from executor
-  # plan-reviewer: codex/gpt-6.1-sol/high   # optional: slate and plan reviews on another harness
+  reviewer: claude/opus    # story diff reviews; pick a different family from executor
+  # Optional seats, each falling back to its family when unset:
+  # plan-reviewer: claude/opus      # one card's plan        (falls back to reviewer)
+  # slate-reviewer: claude/opus     # the sprint slate       (falls back to plan-reviewer)
+  # angle-reviewer: claude/opus     # sprint review angles   (falls back to reviewer)
+  # fixer: claude/sonnet            # the sprint fix pass    (falls back to executor)

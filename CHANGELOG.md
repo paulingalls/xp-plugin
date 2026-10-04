@@ -45,7 +45,11 @@ under a dollar.
   preferred. A post-merge interrupted after its tag finishes on rerun.
 - The sprint hook runs with every `LEFTHOOK*` variable stripped, so the lead's shell
   cannot make lefthook skip the release suite.
-- Four roles: lead, planner, executor, reviewer. Four charters of three sections each.
+- Four required seats (lead, planner, executor, reviewer) and four optional ones that fall
+  back to their family (plan-reviewer, slate-reviewer, angle-reviewer, fixer). Seven
+  charters of three sections each, one artifact per charter. Agents launch without the
+  plugin dir and with `XP_AGENT` set, so the session-start injection stays silent for them
+  and the bundle carries the prose once, on both harnesses.
 - `templates/constraints.md` is eight items; the three new ones cap test growth: test at the
   outermost boundary once, tests cost what code costs, fault-inject a guard once.
 - `versioning: on | off` is required and `off` is the template default: the project owns
