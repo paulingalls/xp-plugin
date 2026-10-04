@@ -103,7 +103,6 @@ recommended. Falsifiers are shell lines too, run once when a record is filed or 
 | `trunk` | Release branch, only when it is not the default branch |
 | `versioning` | `off` (the default): the project owns versions and tags; `on`: every sprint and free patch is tagged |
 | `version_files` | With versioning on: comma-separated JSON manifests whose version the tag must match, or `none` |
-| `sprint_cap` | Advised stories per sprint |
 | `debt_budget` | Maximum share of a sprint spent on debt |
 | `codex_sandbox` | Sandbox for Codex agents: `danger-full-access` (default) or `workspace-write` |
 | `roles` | Seats, each `harness/model[/effort]`. Required: `lead`, `planner`, `executor`, `reviewer`; pick a reviewer from a different model family than the executor. Optional, falling back to their family when unset: `plan-reviewer` (one card's plan; falls back to `reviewer`), `slate-reviewer` (the slate; falls back to `plan-reviewer`), `angle-reviewer` (sprint review; falls back to `reviewer`), `fixer` (the sprint fix pass; falls back to `executor`). Each is its own charter under `agents/` |

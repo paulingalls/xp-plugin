@@ -50,7 +50,7 @@ def test_none_bumps_the_latest_tag_and_unset_refuses(root, capsys):
     git(root, "tag", "v1.4.2")
     assert release.version_wall("patch") == "1.4.3"
     assert release.version_wall("minor") == "1.5.0"
-    (root / ".xp" / "config.yml").write_text("versioning: on\nsprint_cap: 6\n")
+    (root / ".xp" / "config.yml").write_text("versioning: on\ndebt_budget: 0.2\n")
     with pytest.raises(SystemExit):
         release.version_files()
     assert "set version_files in .xp/config.yml" in capsys.readouterr().err

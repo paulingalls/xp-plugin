@@ -64,7 +64,7 @@ diff review is its net. A free patch is a story whose land target is trunk. A sp
 
 ```
 repo/.xp/
-  config.yml         release target, trunk, roles, version_files, sprint_cap, debt_budget
+  config.yml         versioning, trunk, roles, version_files, debt_budget
   system.md          the project: stack, surfaces, conventions
   constraints.md     the project's rules; the plan reviewer enforces them
 lefthook.yml (or .githooks/)   pre-commit, pre-push, sprint, nightly — the project's commands
@@ -89,7 +89,6 @@ Deleted from the current tree: `markers/`, `evidence/` as a plugin concept, `rep
 # trunk: develop           # only when releases do not land on the default branch
 versioning: off            # off: the project owns versions and tags; on: each release tagged
 # version_files: package.json   # with versioning on; `none` tags without the wall
-sprint_cap: 6
 debt_budget: 0.2
 roles:                     # harness/model[/effort]; a card's Executor: line overrides
   lead: claude/opus

@@ -57,6 +57,7 @@ under a dollar.
 - `versioning: on | off` is required and `off` is the template default: the project owns
   its versions and tags. `on` keeps the version wall and the tag; `version_files` is read
   only then. A consumer that tags today adds `versioning: on` as part of its first card.
+- A sprint is sized by releasability, not a count: `sprint_cap` is gone.
 - Removed config keys: `release`, `tests`, `full_legs`, `tier_coverage`, `tier_coverage_pins`,
   `preflight`, `lifecycle_command`, `profile_target`, `constraints_chars_cap`,
   `teardown_timeout`, `review`, and the seven extra role seats.

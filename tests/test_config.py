@@ -9,7 +9,6 @@ CONFIG = """\
 release: story   # trailing comment
 # trunk: develop
 version_files: package.json, pyproject.toml
-sprint_cap: 6
 debt_budget: 0.2
 roles:
   lead: claude/opus
@@ -63,7 +62,7 @@ def test_parse_config_maps_comments_and_numbers(project):
     assert cfg["release"] == "story"
     assert "trunk" not in cfg
     assert cfg["version_files"] == "package.json, pyproject.toml"
-    assert cfg["sprint_cap"] == 6 and cfg["debt_budget"] == 0.2
+    assert cfg["debt_budget"] == 0.2
     assert cfg["roles"]["executor"] == "codex/gpt-6/high"
 
 
