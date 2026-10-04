@@ -191,3 +191,18 @@ def test_land_refuses_a_red_sprint_hook_before_the_pr(repo, tmp_path, monkeypatc
     commit(repo[0], {"lefthook.yml": "sprint:\n"}, "lefthook")
     assert "the sprint hook exited 1" in refused_land(capsys)
     assert not gh.exists() and not (repo[1] / "sprints" / "1" / "land.json").exists()
+
+
+def test_versioning_off_releases_without_a_wall_or_a_tag(repo, tmp_path, monkeypatch, capsys):
+    root, data, _ = repo
+    gh = fake_gh(tmp_path, monkeypatch)
+    off = "trunk: main\nversioning: off\nroles:\n  reviewer: claude/opus\n"
+    commit(root, {".xp/config.yml": off, "CHANGELOG.md": "## v0.0.1 — stale on purpose\n"}, "off")
+    assert sprint.cmd_sprint_land(ns("1")) == 0
+    assert "--title Sprint 1 --body Sprint 1." in gh.read_text() and "v1.2.0" not in gh.read_text()
+    merge_on_trunk(root)
+    assert sprint.cmd_sprint_post_merge(ns("1")) == 0
+    assert git(root, "tag", "--list") == "" and config.sprint_branch() == ""
+    record = json.loads((data / "sprints" / "1" / "release.json").read_text())
+    assert record["version"] == "" and record["tag"] == ""
+    assert "versioning: off" in capsys.readouterr().out

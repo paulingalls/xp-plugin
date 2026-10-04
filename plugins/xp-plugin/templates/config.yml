@@ -1,7 +1,8 @@
 # trunk: develop           # only when releases do not land on the default branch
-# version_files: package.json   # REQUIRED before the first release: comma-separated JSON
-#                                # manifests whose "version" the tag must match; `none`
-#                                # releases without that wall, deliberately
+versioning: off            # off: the project owns versions and tags; on: each release is
+                           # tagged, and version_files must then be set
+# version_files: package.json   # with versioning on: comma-separated JSON manifests whose
+#                                # "version" the tag must match; `none` tags without that wall
 sprint_cap: 6
 debt_budget: 0.2
 # codex_sandbox: danger-full-access   # workspace-write | danger-full-access

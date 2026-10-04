@@ -11,7 +11,7 @@ from xpcore.session import recover_command
 XP_FILES = ("config.yml", "system.md", "constraints.md")
 GITHOOKS = ("pre-commit", "pre-merge-commit", "pre-push", "sprint")
 NEXT = (
-    "next: fill .xp/config.yml roles and version_files, .xp/system.md, the hook test commands"
+    "next: fill .xp/config.yml roles and versioning, .xp/system.md, the hook test commands"
     " (every EDIT-ME); then /create-sprint"
 )
 

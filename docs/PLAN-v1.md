@@ -87,7 +87,8 @@ Deleted from the current tree: `markers/`, `evidence/` as a plugin concept, `rep
 
 ```yaml
 # trunk: develop           # only when releases do not land on the default branch
-# version_files: package.json   # required before the first release; `none` skips the wall
+versioning: off            # off: the project owns versions and tags; on: each release tagged
+# version_files: package.json   # with versioning on; `none` tags without the wall
 sprint_cap: 6
 debt_budget: 0.2
 roles:                     # harness/model[/effort]; a card's Executor: line overrides

@@ -166,9 +166,10 @@ def cmd_sprint_land(args) -> int:
     land_json = sprint_dir(args.id) / "land.json"
     land_json.parent.mkdir(parents=True, exist_ok=True)
     land_json.write_text(json.dumps({"tested_tree": tree, "version": version}) + "\n")
-    after = f"v{version} is ready; after it merges, pull {main} and run"
+    name = f"Release v{version}" if version else f"Sprint {args.id}"
+    after = f"{name} is ready; after it merges, pull {main} and run"
     reviews = sorted(p.name for p in sprint_dir(args.id).glob("review-*.md"))
-    body = f"Release v{version}.\n\nReviews:\n" + "".join(f"- {r}\n" for r in reviews)
+    body = f"{name}.\n\nReviews:\n" + "".join(f"- {r}\n" for r in reviews)
     after += f" `xp.py sprint post-merge {args.id}`"
     pull_request(branch, main, root, after, title=f"Sprint {args.id}", body=body)
     return 0
@@ -196,12 +197,12 @@ def cmd_sprint_post_merge(args) -> int:
         refuse(f"no {land_json}; run `xp.py sprint land {args.id}` first")
     tested = json.loads(land_json.read_text())["tested_tree"]
     # A rerun after the tag: the hook passed and the wall held before it was made.
-    tagged = release.tag_at_head(root)
+    tagged = release.tag_at_head(root) if release.versioning() else ""
     version = tagged.removeprefix("v") or release.version_wall("minor")
     changed = not tagged and gitx.git("rev-parse", "HEAD^{tree}", cwd=root) != tested
     if args.dry_run:
         rerun = "rerun the sprint hook, " if changed else ""
-        make = "" if tagged else f"tag v{version}, "
+        make = f"tag v{version}, " if version and not tagged else ""
         print(f"would {rerun}{make}write release.json, delete {branch}")
         return 0
     if tagged:
@@ -211,11 +212,11 @@ def cmd_sprint_post_merge(args) -> int:
         green_hook(root, f"{branch}-sprint-hook")
     else:
         print("the merged tree is the one land tested; the sprint hook does not rerun")
-    if not tagged:
+    if version and not tagged:
         release.tag(version)
     if not (sprint_dir(args.id) / "release.json").is_file():
         release.write_release_record(sprint_dir(args.id).name, version, gitx.head(root))
     clear_sprint_branch()
     gitx.git("branch", "-D", branch, cwd=root)
-    print(f"Sprint {args.id} released as v{version}. Push the tag: git push origin v{version}")
+    print(f"Sprint {args.id} released{release.tag_note(version)}")
     return 0

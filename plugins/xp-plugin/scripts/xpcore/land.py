@@ -203,16 +203,17 @@ def cmd_free_post_merge(args) -> int:
     if how == "squash":
         print(f"{card.id} was squash-merged; its history is not on {main}; prefer merge commits")
     # A rerun after the tag but before close finished: the tag is this release's.
-    tagged = release.tag_at_head(lead)
+    tagged = release.tag_at_head(lead) if release.versioning() else ""
     version = tagged.removeprefix("v") if tagged else release.version_wall("patch")
     if args.dry_run:
-        print(f"would run `{card.acceptance}` on {main}, tag v{version}, close {card.id}")
+        make = f"tag v{version}, " if version and not tagged else ""
+        print(f"would run `{card.acceptance}` on {main}, {make}close {card.id}")
         return 0
     where = f"{main} at {gitx.head(lead)[:10]}"
     then = f"commit the fix on {branch}, merge it to {main}, then run xp.py free post-merge"
     acceptance(card, lead, f"{card.id}-post-merge", where, f"{then} {args.id} again")
-    if not tagged:
+    if version and not tagged:
         release.tag(version)
     close(card, gitx.head(lead), path, branch, lead)
-    print(f"{card.id} closed; tagged v{version}. Push the tag: git push origin v{version}")
+    print(f"{card.id} closed{release.tag_note(version)}")
     return 0

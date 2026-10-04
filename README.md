@@ -35,7 +35,7 @@ hooks and an empty plan, and refuses if `.xp/` already exists. Then fill in:
 - **Every `EDIT-ME` in the hooks.** pre-commit runs lint and quick tests in under a minute.
   pre-push runs the broader tests. The `sprint` hook is the release suite. `nightly` is
   optional and wired to your own scheduler. Test commands live only here.
-- **`.xp/config.yml`.** Set `version_files` and `roles` (below).
+- **`.xp/config.yml`.** Set `versioning`, `version_files` if it is on, and `roles` (below).
 - **`.xp/system.md`.** Describe the product, especially Surfaces & acceptance.
 - **`.xp/constraints.md`.** Keep the project's rules, at most ten, which reviewers cite.
 
@@ -100,7 +100,8 @@ Acceptance is one command, run from the repo root, that executes the ACs; Gherki
 | Key | Meaning |
 |---|---|
 | `trunk` | Release branch, only when it is not the default branch |
-| `version_files` | Comma-separated JSON manifests whose version the tag must match, or `none` |
+| `versioning` | `off` (the default): the project owns versions and tags; `on`: every sprint and free patch is tagged |
+| `version_files` | With versioning on: comma-separated JSON manifests whose version the tag must match, or `none` |
 | `sprint_cap` | Advised stories per sprint |
 | `debt_budget` | Maximum share of a sprint spent on debt |
 | `codex_sandbox` | Sandbox for Codex agents: `danger-full-access` (default) or `workspace-write` |

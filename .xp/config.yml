@@ -1,3 +1,4 @@
+versioning: on
 version_files: plugins/xp-plugin/.claude-plugin/plugin.json
 sprint_cap: 6
 debt_budget: 0.2

@@ -28,7 +28,7 @@ def test_agreeing_manifest_changelog_and_free_tag_pass(root):
             lambda r: commit(
                 r,
                 {
-                    ".xp/config.yml": "version_files: package.json, b.json\n",
+                    ".xp/config.yml": "versioning: on\nversion_files: package.json, b.json\n",
                     "b.json": '{"version": "1.0.0"}',
                 },
                 "b",
@@ -46,18 +46,22 @@ def test_wall_refuses_each_mismatch_by_name(root, capsys, setup, named):
 
 
 def test_none_bumps_the_latest_tag_and_unset_refuses(root, capsys):
-    (root / ".xp" / "config.yml").write_text("version_files: none\n")
+    (root / ".xp" / "config.yml").write_text("versioning: on\nversion_files: none\n")
     git(root, "tag", "v1.4.2")
     assert release.version_wall("patch") == "1.4.3"
     assert release.version_wall("minor") == "1.5.0"
-    (root / ".xp" / "config.yml").write_text("sprint_cap: 6\n")
+    (root / ".xp" / "config.yml").write_text("versioning: on\nsprint_cap: 6\n")
     with pytest.raises(SystemExit):
         release.version_files()
     assert "set version_files in .xp/config.yml" in capsys.readouterr().err
 
 
 def test_non_json_manifest_refuses(root, capsys):
-    commit(root, {".xp/config.yml": "version_files: pyproject.toml\n", **manifest("1.1.0")}, "t")
+    commit(
+        root,
+        {".xp/config.yml": "versioning: on\nversion_files: pyproject.toml\n", **manifest("1.1.0")},
+        "t",
+    )
     with pytest.raises(SystemExit):
         release.version_wall("minor")
     assert "is not JSON" in capsys.readouterr().err
@@ -79,3 +83,13 @@ def test_tag_at_head_names_the_highest_release_tag_or_nothing(root):
     assert release.tag_at_head(root) == "v1.10.0"
     commit(root, {"x.txt": "x\n"}, "past the tags")
     assert release.tag_at_head(root) == ""
+
+
+def test_versioning_off_skips_the_wall_and_an_unset_key_refuses(root, capsys):
+    (root / "CHANGELOG.md").write_text("## v0.0.1 — wrong on purpose\n")
+    (root / ".xp" / "config.yml").write_text("versioning: off\nversion_files: package.json\n")
+    assert release.version_wall("minor") == ""
+    (root / ".xp" / "config.yml").write_text("version_files: package.json\n")
+    with pytest.raises(SystemExit) as exit_:
+        release.version_wall("minor")
+    assert exit_.value.code == 2 and "set versioning: on or off" in capsys.readouterr().err

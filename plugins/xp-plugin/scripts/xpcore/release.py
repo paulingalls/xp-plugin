@@ -10,6 +10,18 @@ from xpcore.config import data_root, load_config, refuse, repo_root
 SEMVER = re.compile(r"v?(\d+)\.(\d+)\.(\d+)")
 
 
+def versioning() -> bool:
+    """`versioning: on` tags each release from version_files; `off` leaves versions and
+    tags to the project. Unset refuses: a consumer upgrading must say which it wants."""
+    raw = str(load_config().get("versioning") or "").strip().lower()
+    if raw not in ("on", "off"):
+        refuse(
+            "set versioning: on or off in .xp/config.yml; on tags each release from"
+            " version_files, off leaves versions and tags to the project"
+        )
+    return raw == "on"
+
+
 def version_files() -> list[str]:
     raw = str(load_config().get("version_files") or "").strip()
     if not raw:
@@ -74,8 +86,11 @@ def bump(version: str, part: str) -> str:
 
 
 def version_wall(part: str, root=None) -> str:
-    """The release version X that `root`'s tree (default: this one) names. `part` only
-    matters under `version_files: none`, where the latest tag bumped by it is X."""
+    """The release version X that `root`'s tree (default: this one) names, or "" under
+    `versioning: off`. `part` only matters under `version_files: none`, where the latest
+    tag bumped by it is X."""
+    if not versioning():
+        return ""
     files, latest = version_files(), latest_tag()
     if not files:
         return bump(latest or "0.0.0", part)
@@ -99,6 +114,12 @@ def version_wall(part: str, root=None) -> str:
     return version
 
 
+def tag_note(version: str) -> str:
+    if not version:
+        return "; versions and tags are the project's (versioning: off)"
+    return f" as v{version}. Push the tag: git push origin v{version}"
+
+
 def tag(version: str) -> None:
     gitx.git("tag", "-a", f"v{version}", "-m", f"v{version}", cwd=repo_root())
 
@@ -107,6 +128,6 @@ def write_release_record(sprint_id, version: str, merge_sha: str):
     path = data_root() / "sprints" / str(sprint_id) / "release.json"
     path.parent.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now(timezone.utc).isoformat(timespec="seconds")
-    record = {"sprint": str(sprint_id), "version": version, "tag": f"v{version}"}
+    record = {"sprint": str(sprint_id), "version": version, "tag": f"v{version}" if version else ""}
     path.write_text(json.dumps(record | {"merge": merge_sha, "date": stamp}, indent=2) + "\n")
     return path

@@ -6,7 +6,9 @@ import subprocess
 import pytest
 from xpcore import cards, gitx, hooks, land, release
 
-CONFIG = "trunk: main\nversion_files: package.json\nroles:\n  reviewer: claude/opus\n"
+CONFIG = (
+    "trunk: main\nversioning: on\nversion_files: package.json\nroles:\n  reviewer: claude/opus\n"
+)
 CHECK = "import pathlib, sys\nsys.exit(pathlib.Path('merged.txt').read_text() != 'ok\\n')\n"
 CARD = "## Sprint 1 — s\n\n#### story-001 — add   [in-progress]\nAcceptance: python3 check.py\n"
 
@@ -313,3 +315,15 @@ def test_free_post_merge_rerun_after_its_tag_finishes_without_tagging(tmp_path, 
     monkeypatch.setattr(release, "tag", no_second_tag)
     assert land.cmd_free_post_merge(ns("fix")) == 0
     assert cards.find_card("free-fix").status == "done" and not wt.exists()
+
+
+def test_free_patch_with_versioning_off_lands_and_closes_untagged(tmp_path, monkeypatch, capsys):
+    fake_gh(tmp_path, monkeypatch)
+    off = "trunk: main\nversioning: off\nroles:\n  reviewer: claude/opus\n"
+    root, _, wt = free_patch(tmp_path, monkeypatch, files={".xp/config.yml": off, "f.txt": "x\n"})
+    assert land.cmd_free_land(ns("fix")) == 0
+    git(root, "merge", "-q", "--no-ff", "free-fix-x", "-m", "PR")
+    assert land.cmd_free_post_merge(ns("fix")) == 0
+    assert git(root, "tag", "--list") == "" and not wt.exists()
+    assert cards.find_card("free-fix").status == "done"
+    assert "versioning: off" in capsys.readouterr().out

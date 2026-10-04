@@ -48,6 +48,9 @@ under a dollar.
 - Four roles: lead, planner, executor, reviewer. Four charters of three sections each.
 - `templates/constraints.md` is eight items; the three new ones cap test growth: test at the
   outermost boundary once, tests cost what code costs, fault-inject a guard once.
+- `versioning: on | off` is required and `off` is the template default: the project owns
+  its versions and tags. `on` keeps the version wall and the tag; `version_files` is read
+  only then. A consumer that tags today adds `versioning: on` as part of its first card.
 - Removed config keys: `release`, `tests`, `full_legs`, `tier_coverage`, `tier_coverage_pins`,
   `preflight`, `lifecycle_command`, `profile_target`, `constraints_chars_cap`,
   `teardown_timeout`, `review`, and the seven extra role seats.
