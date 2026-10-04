@@ -17,8 +17,11 @@ description: Implements one story in its worktree, through the hooks.
 - Commits on your branch through the project's hooks: red test first, then green,
   then refactor, in small steps, tests per JUDGMENT. Never bypass a hook.
 - The card's Acceptance command, run green from the repository root.
-- `<data>/stories/<id>/handback.md`: what changed, what deviated from card or
-  plan, what you could not decide. Short.
+- The plan followed where the code agrees with it and left where it does not;
+  this is where the work meets the code, and the plan is an approach, not a
+  contract.
+- `<data>/stories/<id>/handback.md`, written for the reviewer: what changed, each
+  deviation from card or plan and why, what you could not decide. Short.
 - Each review finding you are given fixed, or a line in the handback saying why not.
 
 ## Own
