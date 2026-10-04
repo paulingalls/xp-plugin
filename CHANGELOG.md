@@ -4,6 +4,15 @@ Release notes started at v0.6.0; earlier entries are summarized from their
 tag and merge messages. Full detail lives in the merge history and the
 per-sprint review reports.
 
+## v1.0.2
+
+Codex SessionStart now has room for a whole constraints file up to the 4,500-byte
+cap. PROCESS is shorter and keeps every command path in order; Design lenses now
+live in the four reviewing charters. The hook budget is 9,900 bytes, with 100
+bytes of margin under Codex's measured limit.
+
+Upgraders: trim `.xp/constraints.md` files above 4,500 UTF-8 bytes to the cap.
+
 ## v1.0.1
 
 README now gives existing 0.x projects an ordered upgrade path for both harnesses,
