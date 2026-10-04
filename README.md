@@ -75,6 +75,8 @@ hooks and an empty plan, and refuses if `.xp/` already exists. Then fill in:
    or [plain sprint hook](plugins/xp-plugin/templates/githooks-sprint); preserve existing hooks.
    Delete hook steps that read a removed key (`tests`, `constraints_chars_cap`) or call a
    0.x plugin script: with the key gone they refuse every commit.
+   If the hooks scan no secrets, adopt the template's gitleaks jobs (pre-commit,
+   pre-merge-commit, pre-push); setup adds them only to new repositories.
 5. Convert open cards from `Verify:` to `Acceptance:`; retire cards about removed 0.x
    machinery. Preserve applicable acceptance obligations. Re-file each open 0.x bug or debt
    with `xp.py bug` / `xp.py debt` (falsifier included), or drop it with a reason: v1 reads
@@ -150,7 +152,7 @@ recommended. Falsifiers are shell lines too, run once when a record is filed or 
 | `trunk` | Release branch, only when it is not the default branch |
 | `versioning` | Required: `off`: the project owns versions and tags; `on`: every sprint and free patch is tagged |
 | `version_files` | With versioning on: comma-separated JSON manifests whose version the tag must match, or `none` |
-| `worktree_setup` | Optional shell line in a new story/free worktree, before any agent. Nonzero refuses and removes the worktree and any branch created by that attempt |
+| `worktree_setup` | Optional shell line in a new story/free worktree, before any agent. Nonzero refuses and removes the worktree and any branch created by that attempt. Agents start only after it passes; a run killed mid-setup reruns it in the same worktree, so it must tolerate a rerun |
 | `worktree_teardown` | Optional shell line inside the worktree before `story land` or `free post-merge` removes it. Nonzero warns and cleanup continues: the merge has landed. `free land` keeps the worktree |
 | `lifecycle_command` | Optional shell line with two appended, shell-quoted arguments: event and id. `sprint-open <id>` runs in the invoking repo root before recording the open sprint; `story-close <card-id>` in the story worktree after green Acceptance and before merge; `sprint-close <id>` in the invoking repo root during post-merge before the tag/release record. Nonzero refuses the guarded step. Free patches emit no lifecycle events |
 | `debt_budget` | Maximum share of a sprint spent on debt |

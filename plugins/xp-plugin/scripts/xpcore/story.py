@@ -73,7 +73,9 @@ def questions(sdir: Path) -> list[str]:
 
 
 def stages(card: cards.Card, sdir: Path, wt: Path, base: str) -> list[str]:
-    todo = [] if wt.is_dir() else ["worktree"]
+    # The worktree counts as made only once setup has passed in it: a killed setup
+    # leaves the directory behind, and agents must not start in an unbootstrapped checkout.
+    todo = [] if (sdir / "setup.ok").is_file() and wt.is_dir() else ["worktree"]
     if len(card.files) > 1:  # a single-file card's net is the diff review alone
         if not (sdir / "plan.md").is_file():
             todo.append("planner")
@@ -256,7 +258,8 @@ def walk(card: cards.Card, base: str, dry: bool) -> int:
             s = slug(card.title)
             branch = card.id if card.id.endswith(s) else f"{card.id}-{s}"
             existed = gitx.branch_exists(branch, root)
-            gitx.worktree_add(wt, branch, base, cwd=root)
+            if not wt.is_dir():
+                gitx.worktree_add(wt, branch, base, cwd=root)
             log_id = f"{card.id}-worktree-setup"
             line, rc = hooks.project_command("worktree_setup", wt, log_id)
             if rc:
@@ -267,6 +270,7 @@ def walk(card: cards.Card, base: str, dry: bool) -> int:
                     f"worktree_setup `{line}` exited {rc}; removed {wt};"
                     f" read {hooks.log_path(log_id)}, fix the command and run {rerun} again"
                 )
+            (sdir / "setup.ok").touch()
             print(f"{card.id}: worktree {wt} on {branch} from {base}")
         elif stage == "planner":
             plan_stage(card, sdir, wt)

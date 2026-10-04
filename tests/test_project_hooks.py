@@ -74,6 +74,19 @@ def test_setup_failure_rolls_back_and_retries(repo, free, capsys):
     assert wt.is_dir() and (repo / "stories" / identity / "review-1.md").is_file()
 
 
+def test_setup_killed_mid_run_reruns_before_agents(repo):
+    """A kill (SIGTERM, SIGKILL) skips any rollback and leaves the worktree behind."""
+    root = Path.cwd()
+    args, identity, branch, base = entry(repo, False)
+    trace = repo / "setup"
+    setup_config(root, base, f"pwd >> {trace}")
+    wt = repo / "worktrees" / identity
+    git(root, "worktree", "add", "-q", "-b", branch, str(wt), base)
+    assert xp.main(args) == 0
+    assert trace.read_text().splitlines() == [str(wt)]
+    assert (repo / "stories" / identity / "review-1.md").is_file()
+
+
 def test_setup_rollback_preserves_a_reused_branch_tip(repo):
     root = Path.cwd()
     args, identity, branch, base = entry(repo, False)
