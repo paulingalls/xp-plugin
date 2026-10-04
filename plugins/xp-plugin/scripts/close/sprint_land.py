@@ -195,7 +195,7 @@ def cmd_land(sprint_id: str, dry_run: bool) -> int:
     marker, state, marker_error = read_sprint_state(sprint_id)
     if marker_error:
         return fail(marker_error)
-    legs, legs_error = tier_legs.inspect(ref, pending)
+    legs, full, legs_error = tier_legs.inspect(ref, pending)
     if legs_error:
         return fail(legs_error)
     bound = state["rounds"][-1].get(CLEARABLE_BY_FULL) or []
@@ -203,7 +203,6 @@ def cmd_land(sprint_id: str, dry_run: bool) -> int:
         preflight_raw, _commands, error = pf.prepare(config_flat("preflight"))
         if error:
             return fail(error)
-        full = tier_legs.full_command(legs)
         if refusal := overlap.tier_refusal(full, "full"):
             return fail(_clearance_failure(refusal, bound) if bound else refusal)
         if preflight_raw:

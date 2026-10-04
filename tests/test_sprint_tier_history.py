@@ -41,6 +41,9 @@ def test_pass_then_fail_vetoes_reuse(tmp_path):
     )
     saved = state(tmp_path)
     saved["full_tier"] = passed_receipt
+    saved["full_tier_history"].append(
+        dict(saved["full_tier_history"][-1], leg="retired", outcome="passed")
+    )
     marker.write_text(json.dumps(saved))
     assert sprint(repo, env, "land").returncode == 2
     assert events.read_text() == "xxx"
@@ -144,7 +147,7 @@ def test_reuse_append_rechecks_latest_outcome_under_lock(tmp_path, monkeypatch):
     marker = marker_path(tmp_path)
     saved = state(tmp_path)
     failed = dict(saved["full_tier_history"][-1], outcome="failed")
-    saved["full_tier_history"].append(failed)
+    saved["full_tier_history"].extend([failed, dict(failed, leg="retired", outcome="passed")])
     marker.write_text(json.dumps(saved))
     monkeypatch.setattr(sprint_state, "data_root", lambda: tmp_path / "data")
 
@@ -202,3 +205,29 @@ def test_history_that_does_not_vouch_for_the_receipt_refuses_reuse(tmp_path, fie
     assert result.returncode == 2 and reason in result.stderr
     assert "delete full_tier" in result.stderr
     assert marker.read_bytes() == before and run_count(events) == 1
+
+
+def test_post_merge_unrelated_pass_cannot_hide_legacy_failure(tmp_path):
+    from test_full_tier_consumers import publishing
+
+    flag = tmp_path / "red"
+    events = tmp_path / "events"
+    repo, env, g, _events, _tier = counted_repo(
+        tmp_path, f"printf x >> '{events}'; test ! -e '{flag}'"
+    )
+    record_reviews(tmp_path, repo, env)
+    publishing(tmp_path, repo, env, g)
+    result = sprint(repo, env, "land")
+    assert result.returncode == 0, result.stdout + result.stderr
+    saved = state(tmp_path)
+    passed = saved["full_tier_history"][-1]
+    saved["full_tier_history"].extend([dict(passed, outcome="failed"), dict(passed, leg="retired")])
+    marker_path(tmp_path).write_text(json.dumps(saved))
+    flag.touch()
+    assert g("checkout", "-q", "main").returncode == 0
+    assert g("merge", "--no-ff", "sprint-002", "-m", "release").returncode == 0
+    result = sprint(repo, env, "post-merge")
+    assert result.returncode == 2, result.stdout + result.stderr
+    assert events.read_text() == "xx"
+    assert not (tmp_path / "data/releases/sprint-2.json").exists()
+    assert state(tmp_path)["full_tier_history"][-1]["outcome"] == "failed"

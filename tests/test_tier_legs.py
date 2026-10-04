@@ -156,30 +156,42 @@ def test_shell_full_uses_authoritative_commands(tmp_path, case):
 
 
 @pytest.mark.parametrize("dry", [False, True])
-def test_pending_merge_uses_incoming_full_authority(tmp_path, dry):
+@pytest.mark.parametrize("transition", ["incoming-legs", "legs-to-legacy", "stale-to-legacy"])
+def test_pending_merge_uses_incoming_full_authority(tmp_path, dry, transition):
     from test_full_tier_consumers import publishing
 
-    repo, env, g = make_repo(tmp_path)
+    config = CONFIG
+    if transition != "incoming-legs":
+        config = config.replace(
+            "  full: true\n", "" if transition == "legs-to-legacy" else "  full: false\n"
+        )
+        config += "full_legs:\n  local: true\n"
+    repo, env, g = make_repo(tmp_path, config=config)
     record_reviews(tmp_path, repo, env)
     publishing(tmp_path, repo, env, g)
     event = tmp_path / "incoming"
     command = f"printf incoming >> '{event}'"
     assert g("checkout", "-q", "main").returncode == 0
     path = repo / ".xp/config.yml"
-    path.write_text(
-        path.read_text().replace("full: true", "full: false")
-        + f"full_legs:\n  incoming: {command}\n"
-    )
+    if transition == "incoming-legs":
+        incoming = (
+            config.replace("full: true", "full: false") + f"full_legs:\n  incoming: {command}\n"
+        )
+    else:
+        incoming = CONFIG.replace("full: true", f"full: {command}")
+    path.write_text(incoming)
     assert g("commit", "-qam", "incoming legs").returncode == 0
     assert g("push", "origin", "main").returncode == 0
     assert g("checkout", "-q", "sprint-002").returncode == 0
     before = g("rev-parse", "HEAD").stdout
+    index_before = g("write-tree").stdout
     result = sprint(repo, env, "land", *(("--dry-run",) if dry else ()))
     assert result.returncode == 0, result.stdout + result.stderr
     assert command in result.stdout
     if dry:
         assert not event.exists()
         assert g("rev-parse", "HEAD").stdout == before
+        assert g("write-tree").stdout == index_before
         assert not g("status", "--porcelain").stdout
     else:
         assert event.read_text() == "incoming"

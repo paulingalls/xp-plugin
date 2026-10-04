@@ -71,8 +71,11 @@ LATEST_FAILED = "latest outcome failed"
 
 def reuse_veto(history: list[dict], tree: str, command: str, head: str) -> str:
     """Why a receipt matching `tree` may not be reused; only the LATEST outcome for a
-    tree counts, so a superseded pass is never re-promoted."""
-    latest = next((item for item in reversed(history) if item["tree"] == tree), None)
+    land leg and tree counts, so a superseded pass is never re-promoted."""
+    latest = next(
+        (item for item in reversed(history) if item["leg"] == "land" and item["tree"] == tree),
+        None,
+    )
     if latest is None:
         return "receipt has no matching history entry"
     if latest["outcome"] == "failed":
