@@ -4,6 +4,39 @@ Release notes started at v0.6.0; earlier entries are summarized from their
 tag and merge messages. Full detail lives in the merge history and the
 per-sprint review reports.
 
+## v1.0.0 — the light touch
+
+A rewrite by deletion. The card, an implementing agent, Git, independent fresh-context
+review, and the project's own tests are the whole process; everything that certified the
+relationships between them is gone: ready credentials and card digests, plan acceptance
+receipts, handoff checkpoints and resume, Verify logs and receipts, acknowledge-validation,
+salvage and repair, finding-triage ledgers, tier legs and coverage pins, overlap refusals,
+timing, the card refresher and the four sprint-review seats. Shipped Python 13,486 → 2,003.
+
+Breaking, and no state migrates. Finish any in-flight sprint on 0.36.x before installing.
+
+- One entry point, `xp.py`: `setup | recover | sprint plan|open|review|land|post-merge |
+  story <id> | story review|land <id> | free <slug> | free land|post-merge <slug> |
+  bug | debt | note | resolve`. Every subcommand answers `--help`; every refusal names the
+  next action.
+- A story is an idempotent walk over `<data>/stories/<id>/`: planner, plan reviewer,
+  executor, reviewer run only when their file is missing. Re-run after any edit; delete a
+  stage's file to repeat it. A `QUESTION:` from the plan reviewer stops the story.
+- Agents edit the card and plan in place. No lock but the plan.md append lock.
+- `Acceptance:` replaces `Verify:` on the card: one command, Gherkin recommended.
+- Hooks own every test. `.xp/config.yml` has no `tests:`; the scaffolded hooks carry
+  pre-commit, pre-push, `sprint` and `nightly` commands, and refuse while one reads EDIT-ME.
+  The plugin runs only a card's Acceptance (on the trial-merged tree at land) and the
+  `sprint` hook (once at sprint land; again at post-merge only if the merged tree differs).
+- A lead commit after a review never forces another review. Land lists it as unreviewed;
+  the sprint review is the net.
+- Four roles: lead, planner, executor, reviewer. Four charters of three sections each.
+- `templates/constraints.md` is eight items; the three new ones cap test growth: test at the
+  outermost boundary once, tests cost what code costs, fault-inject a guard once.
+- Removed config keys: `release`, `tests`, `full_legs`, `tier_coverage`, `tier_coverage_pins`,
+  `preflight`, `lifecycle_command`, `profile_target`, `constraints_chars_cap`,
+  `teardown_timeout`, `review`, and the seven extra role seats.
+
 ## v0.36.0 — lighter recovery and ordinary card corrections
 
 - Store compact Git facts in recovery checkpoints and use readable numbered predecessor copies. Fixer and closer prompts carry relevant reports and diffs instead of serialized checkpoint inventories.

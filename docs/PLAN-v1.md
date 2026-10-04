@@ -18,7 +18,7 @@ cut, measured per consuming-project story, not per line:
 
 | Per story | Today | Target |
 |---|---|---|
-| Agent launches, happy path | 9 | 4 (planner, plan reviewer, executor, reviewer) |
+| Agent launches, happy path | 9 | 4 (planner, plan reviewer, executor, reviewer); 2 for a single-file card |
 | Suite runs the plugin itself starts | 3 | 0 (hooks own them) |
 | Lead CLI calls, slate to landed | 5 to 9 | 3 (`sprint open`, `story <id>`, `story land`) |
 | Shipped Python | 13,486 | ≤ 4,000 (our cap; lives in CLAUDE.md) |
@@ -57,7 +57,8 @@ Every scope is plan → review the plan → do → review the diff → land.
 | sprint | the slate | the stories | sprint branch since trunk | trunk, tagged |
 | free | one card | executor in a worktree | branch since trunk | trunk, patch tag |
 
-A free patch is a story whose land target is trunk. A sprint's "do" is its stories.
+A single-file card skips the planner and the plan reviewer: its plan is the card, and the
+diff review is its net. A free patch is a story whose land target is trunk. A sprint's "do" is its stories.
 
 ## 4. Architecture
 
@@ -85,9 +86,8 @@ Deleted from the current tree: `markers/`, `evidence/` as a plugin concept, `rep
 ## 5. Config
 
 ```yaml
-release: sprint            # sprint | story
 # trunk: develop           # only when releases do not land on the default branch
-version_files: package.json
+# version_files: package.json   # required before the first release; `none` skips the wall
 sprint_cap: 6
 debt_budget: 0.2
 roles:                     # harness/model[/effort]; a card's Executor: line overrides
@@ -97,7 +97,8 @@ roles:                     # harness/model[/effort]; a card's Executor: line ove
   reviewer: claude/opus    # plan and diff reviews; pick a different family from executor
 ```
 
-Gone: `tests:`, `full_legs`, `tier_coverage`, `tier_coverage_pins`, `preflight`,
+Gone: `release:` (stories land on the sprint branch, free patches on trunk; nothing else),
+`tests:`, `full_legs`, `tier_coverage`, `tier_coverage_pins`, `preflight`,
 `lifecycle_command`, `profile_target`, `constraints_chars_cap`, `codex_sandbox` (becomes a
 role suffix if a project needs it), `teardown_timeout`, `review.verify_batches`, the seven
 extra role seats.
@@ -106,7 +107,7 @@ extra role seats.
 
 - **pre-commit** (scaffolded by setup): secrets scan, lint, the project's quick tests. The
   template says "under a minute; this runs on every commit" and leaves the command to the
-  project. Setup refuses to finish while it reads `EDIT-ME`.
+  project. A hook refuses at run time while its command still reads `EDIT-ME`.
 - **pre-push**: secrets scan, the project's broader tests.
 - **sprint**: a named hook (`lefthook run sprint`, or `.githooks/sprint`) the plugin invokes
   once at sprint land on the trial-merged tree and once at post-merge if the merged tree
@@ -168,7 +169,8 @@ JUDGMENT are injected once alongside; constraints.md and system.md are passed as
 - **plan reviewer** reads one card (or the slate) with its plan and the constraints; produces
   findings and edits the card and plan in place; owns correctness within the approved
   intent. A line beginning `QUESTION:` in the findings stops the story until the lead
-  answers it in the card. Read-only on the repo. No second round.
+  answers it in the card and deletes that line (or deletes the review file to have the plan
+  re-reviewed against the answer). Read-only on the repo. No second round.
 - **executor** reads the card, the plan, the findings; produces commits through the hooks;
   owns scope, Files, the card's wording and the Acceptance command. Runs Acceptance before
   handing back. Hands back with a short note: what changed, what deviated, what it could
@@ -179,8 +181,8 @@ JUDGMENT are injected once alongside; constraints.md and system.md are passed as
   story branch, through the hooks. Reserved to the lead: anything it is not sure of.
 
 Sprint review is the reviewer given the sprint range plus one angle file per launch, run in
-parallel; findings are merged; the executor gets one fix pass on the sprint branch; the
-lead judges. The finder, verifier, fixer, closer, slate-reviewer and card-refresher roles
+parallel and committing nothing; findings are merged; the executor gets one fix pass on the
+sprint branch; the lead judges. The finder, verifier, fixer, closer, slate-reviewer and card-refresher roles
 do not exist.
 
 ## 9. Land
