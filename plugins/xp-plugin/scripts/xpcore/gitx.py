@@ -47,6 +47,26 @@ def is_ancestor(ancestor: str, descendant: str, cwd=None) -> bool:
     return _run(("merge-base", "--is-ancestor", ancestor, descendant), cwd).returncode == 0
 
 
+def _applied(trunk_head: str, branch: str, cwd) -> bool:
+    lines = git("cherry", trunk_head, branch, cwd=cwd).splitlines()
+    return bool(lines) and not any(line.startswith("+") for line in lines)
+
+
+def merged_how(branch: str, trunk_head: str, cwd) -> str:
+    """ "merge" when `branch` is in `trunk_head`'s history; "squash" when it is not but its
+    changes are: every commit's patch is (a rebase merge), or the whole branch's patch is."""
+    if is_ancestor(branch, trunk_head, cwd):
+        return "merge"
+    base = _run(("merge-base", trunk_head, branch), cwd)
+    if base.returncode:
+        return ""
+    if _applied(trunk_head, branch, cwd):
+        return "squash"
+    probe = ("-c", "user.name=xp", "-c", "user.email=xp@localhost", "commit-tree")
+    whole = git(*probe, f"{branch}^{{tree}}", "-p", base.stdout.strip(), "-m", "probe", cwd=cwd)
+    return "squash" if _applied(trunk_head, whole, cwd) else ""
+
+
 def fork_point(branch: str, base: str, cwd=None) -> str:
     return git("merge-base", base, branch, cwd=cwd)
 

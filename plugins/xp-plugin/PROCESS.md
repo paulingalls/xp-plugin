@@ -17,24 +17,29 @@ every unfinished card, open records. What is on disk wins over memory.
 **Sprint.**
 1. `/create-sprint`: write the slate in the plan, then `xp.py sprint plan <id>`.
    A fresh plan reviewer reads the slate. Judge its findings and correct cards.
-2. `git switch -c sprint-<id>` from trunk, then `xp.py sprint open <id>`.
+2. `git switch -c sprint-NNN` from trunk (sprint 7 is `sprint-007`), then
+   `xp.py sprint open <id>`.
 3. Each story: `xp.py story <id>`, then `/story-close`.
 4. `/sprint-close`: `xp.py sprint review <id>`, judge, `xp.py sprint land <id>`;
    after the PR merges, `xp.py sprint post-merge <id>` on trunk.
 
 **Story.** `xp.py story <id>` plans, reviews the plan, executes and reviews the
-diff. It runs only the stages whose files are missing under the story's data
-directory: re-run it after any edit, delete plan.md or plan-review.md to repeat
-that stage. The executor runs only while `handback.md` is absent and the reviewer
-whenever no review is as new as the worktree's last commit, so a crashed review or
+diff; a card naming one file skips the planner and plan reviewer. It runs only
+the stages whose files are missing under the story's data directory: re-run it
+after any edit, delete plan.md or plan-review.md to repeat that stage. The
+executor runs while `handback.md` is absent or the branch has no commits, and the
+reviewer whenever no review recorded the worktree's HEAD, so a crashed review or
 a lead commit reruns only the reviewer; delete `handback.md` to execute again.
-A `QUESTION:` from the plan reviewer stops the story; answer it in the card and
-run again. `xp.py story review <id>` buys one more review when you want one.
+A `QUESTION:` from the plan reviewer stops the story; answer it in the card,
+delete that line from `plan-review.md` (or the file, to re-review), and run
+again. `xp.py story review <id>` buys one more review when you want one.
+The reviewer sees the card as spawned and as it is now.
 `xp.py story land <id>` trial-merges, runs Acceptance on the merged tree, merges
 and marks the card done. Commits after the last review land listed as
 unreviewed; the sprint review is their net.
 
-**Free patch.** `xp.py free <slug>` is a story cut from trunk. `/free-close`:
+**Free patch.** `xp.py free <slug>` mints the card; fill it in and run it again
+for a story cut from trunk. `/free-close`:
 `xp.py free land <slug>` opens a PR; after it merges,
 `xp.py free post-merge <slug>` tags the patch.
 

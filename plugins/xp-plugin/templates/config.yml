@@ -10,3 +10,4 @@ roles:                     # harness/model[/effort]; a card's Executor: line ove
   planner: claude/sonnet
   executor: claude/sonnet
   reviewer: claude/opus    # plan and diff reviews; pick a different family from executor
+  # plan-reviewer: codex/gpt-6.1-sol/high   # optional: slate and plan reviews on another harness

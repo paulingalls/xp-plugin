@@ -12,6 +12,7 @@ from xpcore.launch import log_path
 REVIEW = re.compile(r"review-(\d+)\.md")
 SLUG = re.compile(r"[a-z0-9]+(-[a-z0-9]+)*")
 QUESTION = re.compile(r"\W*QUESTION:")
+REVIEWED = re.compile(r"^reviewed: ([0-9a-f]{40})\s*$", re.M)
 
 
 def slug(title: str) -> str:
@@ -35,12 +36,35 @@ def reviews(sdir: Path) -> list[tuple[int, Path]]:
     return sorted(found)
 
 
+def reviewed_sha(review: Path) -> str:
+    """The HEAD the review's round ended on; "" covers nothing. Not the file's mtime: a
+    lead who annotates the review after committing would hide that commit."""
+    found = REVIEWED.findall(_read(review))
+    return found[-1] if found else ""
+
+
+def last_reviewed(sdir: Path) -> str:
+    return next((sha for _, p in reversed(reviews(sdir)) if (sha := reviewed_sha(p))), "")
+
+
 def reviewed(sdir: Path, wt: Path) -> bool:
-    """A review at least as new as HEAD's commit covers it; a later commit wants another round."""
     if not wt.is_dir():
         return False
-    stamp = int(gitx.git("log", "-1", "--format=%ct", cwd=wt))
-    return any(p.stat().st_mtime >= stamp for _, p in reviews(sdir))
+    head = gitx.head(wt)
+    return any(reviewed_sha(p) == head for _, p in reviews(sdir))
+
+
+def committed(wt: Path, base: str) -> bool:
+    if not wt.is_dir():
+        return False
+    return bool(gitx.log_range(gitx.fork_point("HEAD", base, cwd=wt), "HEAD", cwd=wt))
+
+
+def card_changes(card: cards.Card) -> tuple[str, list[str]]:
+    """The card's diff against its text at spawn, and the fields that changed. A change is
+    shown to the reviewer and the merge, never refused; deleting card.md re-baselines."""
+    spawned = story_dir(card.id) / "card.md"
+    return cards.changes(spawned.read_text(), card.text) if spawned.is_file() else ("", [])
 
 
 def questions(sdir: Path) -> list[str]:
@@ -48,7 +72,7 @@ def questions(sdir: Path) -> list[str]:
     return [ln.strip() for ln in lines if QUESTION.match(ln)]
 
 
-def stages(card: cards.Card, sdir: Path, wt: Path) -> list[str]:
+def stages(card: cards.Card, sdir: Path, wt: Path, base: str) -> list[str]:
     todo = [] if wt.is_dir() else ["worktree"]
     if len(card.files) > 1:  # a single-file card's net is the diff review alone
         if not (sdir / "plan.md").is_file():
@@ -57,7 +81,7 @@ def stages(card: cards.Card, sdir: Path, wt: Path) -> list[str]:
             todo.append("plan-reviewer")
         elif questions(sdir):
             return [*todo, "question"]
-    if not (sdir / "handback.md").is_file():
+    if not (sdir / "handback.md").is_file() or not committed(wt, base):
         todo.append("executor")
     if not reviewed(sdir, wt):
         todo.append("reviewer")
@@ -152,7 +176,7 @@ def execute_stage(card: cards.Card, sdir: Path, wt: Path, base: str) -> None:
             f"the executor left uncommitted changes in {wt}; commit or discard them there"
             f" (git -C {wt} status), then run {commands(card.id)[0]} again"
         )
-    if not gitx.log_range(gitx.fork_point("HEAD", base, cwd=wt), "HEAD", cwd=wt):
+    if not committed(wt, base):
         handback.unlink(missing_ok=True)
         fail(
             f"the executor committed nothing; read {log_path(log_id)}, then fix the card or"
@@ -170,6 +194,7 @@ def review_round(card: cards.Card, sdir: Path, wt: Path, base: str) -> Path:
     extra = (
         f"Commit range {fork}..{head} in {wt}\n\n## Log\n{gitx.log_range(fork, head, cwd=wt)}"
         f"\n\n## Handback\n{_read(sdir / 'handback.md') or '(none)'}"
+        f"\n\n## Card changes since spawn\n{card_changes(card)[0] or '(none)'}"
         f"\n\n## Diff\n{gitx.diff_range(fork, head, cwd=wt)}"
     )
     text = bundle.prompt(
@@ -182,7 +207,7 @@ def review_round(card: cards.Card, sdir: Path, wt: Path, base: str) -> Path:
     run("reviewer", card, text, wt, log_id)
     expect(review, "reviewer", log_id, card.id)
     # The reviewer may commit fixes after writing; those commits are its own reviewed work.
-    os.utime(review)
+    review.write_text(f"{review.read_text().rstrip()}\n\nreviewed: {gitx.head(wt)}\n")
     print(f"{card.id}: review at {review}")
     print("\n".join(review.read_text().splitlines()[:40]))
     return review
@@ -197,7 +222,7 @@ def walk(card: cards.Card, base: str, dry: bool) -> int:
     sdir, wt = story_dir(card.id), worktree(card.id)
     rerun, land = commands(card.id)
     if dry:
-        print(f"{card.id}: would run {', '.join(stages(card, sdir, wt)) or 'nothing'}")
+        print(f"{card.id}: would run {', '.join(stages(card, sdir, wt, base)) or 'nothing'}")
         if len(card.files) <= 1:
             print(f"{card.id}: one file: no planner or plan reviewer; the diff review is its net")
         return 0
@@ -211,8 +236,11 @@ def walk(card: cards.Card, base: str, dry: bool) -> int:
     if card.status == "planned":
         cards.set_status(card.id, "in-progress")
         print(f"{card.id}: [in-progress]")
+        card = cards.find_card(card.id)
+    if not (spawned := sdir / "card.md").is_file():
+        spawned.write_text(card.text)
     ran = []
-    while todo := stages(card, sdir, wt):
+    while todo := stages(card, sdir, wt, base):
         stage = todo[0]
         if stage in ran:
             fail(f"{stage} ran and its file is still missing or stale in {sdir}; read its log")

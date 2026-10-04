@@ -3,7 +3,7 @@ import subprocess
 
 import pytest
 from test_land import commit, fake_gh, git, make_project, manifest, ns
-from xpcore import bundle, config, launch, sprint
+from xpcore import bundle, config, launch, release, sprint
 
 HOOK = "#!/bin/sh\ntest -f trunk.txt || exit 1\necho ran >> {log}\n"
 SLATE = "## Sprint 1 — s\n\n#### story-001 — a   [{status}]\nAcceptance: true\n"
@@ -43,7 +43,9 @@ def test_open_refuses_off_branch_then_records(tmp_path, monkeypatch, capsys):
     assert config.sprint_branch() == "sprint-002"
 
 
-def test_land_tests_the_trial_merge_and_post_merge_skips_that_tree(repo, tmp_path, monkeypatch):
+def test_land_tests_the_trial_merge_and_post_merge_skips_that_tree(
+    repo, tmp_path, monkeypatch, capsys
+):
     root, data, hooklog = repo
     gh = fake_gh(tmp_path, monkeypatch)
     (data / "sprints" / "1").mkdir(parents=True)
@@ -53,6 +55,13 @@ def test_land_tests_the_trial_merge_and_post_merge_skips_that_tree(repo, tmp_pat
     assert "--base main --head sprint-001 --title Sprint 1 --body " in gh.read_text()
     assert "v1.2.0" in gh.read_text() and "review-1.tests.md" in gh.read_text()
     assert not (root / "trunk.txt").exists()
+    git(root, "switch", "-q", "main")
+    with pytest.raises(SystemExit):
+        sprint.cmd_sprint_post_merge(ns("1"))
+    err = capsys.readouterr().err
+    assert "sprint-001 is not merged into main" in err and "squash- or rebase-merged" in err
+    assert git(root, "tag", "--list", "v1.2.0") == "" and config.sprint_branch() == "sprint-001"
+    assert git(root, "branch", "--list", "sprint-001")
     merge_on_trunk(root)
     assert sprint.cmd_sprint_post_merge(ns("1")) == 0
     assert hooklog.read_text() == "ran\n"
@@ -73,6 +82,47 @@ def test_post_merge_refuses_in_progress_then_reruns_a_changed_tree(repo, capsys)
     (data / "plan.md").write_text(SLATE.format(status="done"))
     assert sprint.cmd_sprint_post_merge(ns("1")) == 0
     assert hooklog.read_text() == "ran\n"
+
+
+def test_squash_merged_sprint_post_merges_and_says_merge_commits_are_preferred(
+    repo, tmp_path, monkeypatch, capsys
+):
+    root, _, hooklog = repo
+    fake_gh(tmp_path, monkeypatch)
+    assert sprint.cmd_sprint_land(ns("1")) == 0
+    git(root, "switch", "-q", "main")
+    git(root, "merge", "-q", "--squash", "sprint-001")
+    git(root, "commit", "-qm", "Sprint 1 (#1)")
+    assert sprint.cmd_sprint_post_merge(ns("1")) == 0
+    assert "squash-merged" in capsys.readouterr().out and hooklog.read_text() == "ran\n"
+    assert git(root, "cat-file", "-t", "v1.2.0") == "tag"
+    assert config.sprint_branch() == "" and git(root, "branch", "--list", "sprint-001") == ""
+
+
+def test_post_merge_rerun_after_the_tag_finishes_without_tagging_again(repo, monkeypatch):
+    root, data, _ = repo
+    merge_on_trunk(root)
+    (data / "sprints" / "1").mkdir(parents=True)
+    tree = git(root, "rev-parse", "HEAD^{tree}")
+    (data / "sprints" / "1" / "land.json").write_text(json.dumps({"tested_tree": tree}))
+    with monkeypatch.context() as m:
+        m.setattr(release, "write_release_record", lambda *a: 1 / 0)
+        with pytest.raises(ZeroDivisionError):
+            sprint.cmd_sprint_post_merge(ns("1"))
+    assert git(root, "tag", "--points-at", "HEAD") == "v1.2.0"
+    assert config.sprint_branch() == "sprint-001"
+    assert sprint.cmd_sprint_post_merge(ns("1")) == 0
+    assert git(root, "tag", "--points-at", "HEAD") == "v1.2.0"
+    assert json.loads((data / "sprints" / "1" / "release.json").read_text())["tag"] == "v1.2.0"
+    assert config.sprint_branch() == "" and git(root, "branch", "--list", "sprint-001") == ""
+
+
+def test_plan_names_the_branch_to_cut(repo, monkeypatch, capsys):
+    run = subprocess.CompletedProcess([], 0, "slate ok", "")
+    monkeypatch.setattr(bundle, "prompt", lambda role, **k: role)
+    monkeypatch.setattr(launch, "run_agent", lambda *a, **k: run)
+    assert sprint.cmd_sprint_plan(ns("1")) == 0
+    assert "`git switch -c sprint-001 main`" in capsys.readouterr().out
 
 
 def test_review_runs_every_angle_then_one_executor_with_all_findings(repo, monkeypatch, capsys):

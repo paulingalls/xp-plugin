@@ -1,3 +1,4 @@
+import os
 import subprocess
 
 import pytest
@@ -39,3 +40,19 @@ def test_missing_sprint_hook_refuses_rather_than_passing(root, capsys):
 
 def test_missing_binary_is_red(root):
     assert hooks.run_acceptance([["no-such-binary-xp"]], root, "acc") == 127
+
+
+def test_and_chain_splits_and_its_first_failure_wins(root):
+    assert hooks.split_commands("a && b") == [["a"], ["b"]]
+    assert hooks.run_acceptance([["false"], ["true"]], root, "x") != 0
+
+
+def test_sprint_hook_ignores_lefthook_switches_in_the_leads_env(root, tmp_path, monkeypatch):
+    (root / "lefthook.yml").write_text("sprint: {}\n")
+    (bin_ := tmp_path / "bin").mkdir()
+    (bin_ / "lefthook").write_text("#!/bin/sh\nenv | grep '^LEFTHOOK' && exit 1\nexit 0\n")
+    (bin_ / "lefthook").chmod(0o755)
+    monkeypatch.setenv("PATH", f"{bin_}:{os.environ['PATH']}")
+    monkeypatch.setenv("LEFTHOOK", "0")
+    monkeypatch.setenv("LEFTHOOK_EXCLUDE", "tests")
+    assert hooks.run_sprint_hook(root, "s-hook") == 0

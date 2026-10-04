@@ -57,6 +57,13 @@ def latest_tag() -> str:
     return max(tags, key=key, default="")
 
 
+def tag_at_head(root) -> str:
+    """The highest vX.Y.Z tag on HEAD, or "": a release that already tagged this commit."""
+    tags = gitx.git("tag", "--points-at", "HEAD", cwd=root).split()
+    tags = [t for t in tags if t.startswith("v") and SEMVER.fullmatch(t)]
+    return max(tags, key=lambda t: key(t.removeprefix("v")), default="")
+
+
 def bump(version: str, part: str) -> str:
     major, minor, patch = key(version)
     return {

@@ -70,3 +70,12 @@ def test_wall_reads_the_manifests_of_the_tree_it_is_given(root, tmp_path):
         (other / name).write_text(text)
     assert release.version_wall("patch", other) == "1.2.0"
     assert release.version_wall("patch") == "1.1.0"
+
+
+def test_tag_at_head_names_the_highest_release_tag_or_nothing(root):
+    assert release.tag_at_head(root) == ""
+    for name in ("v1.0.0", "v1.10.0", "v1.9.0", "not-a-release"):
+        git(root, "tag", name)
+    assert release.tag_at_head(root) == "v1.10.0"
+    commit(root, {"x.txt": "x\n"}, "past the tags")
+    assert release.tag_at_head(root) == ""

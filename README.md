@@ -13,7 +13,8 @@ Everything else is the agent's judgment, guided by [VALUES](plugins/xp-plugin/VA
 
 Requires Python 3.11+, git, [gitleaks](https://github.com/gitleaks/gitleaks), and `gh`
 for release PRs. [lefthook](https://github.com/evilmartians/lefthook) is optional; without
-it, setup writes plain `.githooks/`. Install the plugin for every harness named in `roles`.
+it, setup writes plain `.githooks/`. Install the plugin for the harness you lead from; a
+harness that only runs agents needs its binary on PATH.
 
 ```bash
 # Claude Code
@@ -51,20 +52,23 @@ Every scope runs plan, review the plan, do, review the diff, land.
 The lead judges every finding: fix it, drop it with a reason, or file debt. The skills
 `/create-sprint`, `/story-close`, `/sprint-close` and `/free-close` guide each step.
 
+Merge a PR any way your host allows. Merge commits are preferred, because post-merge then
+finds the branch in trunk's history; squash and rebase merges work, and post-merge says so.
+
 ## Commands
 
 ```
 xp.py setup                     scaffold .xp/ and the hooks
 xp.py recover                   session digest, unfinished cards, open records
 xp.py sprint plan <id>          fresh review of the slate
-xp.py sprint open <id>          on branch sprint-<id>, cut from trunk
+xp.py sprint open <id>          on branch sprint-NNN (sprint 7 is sprint-007), cut from trunk by you
 xp.py sprint review <id>        one reviewer per angle over the sprint, one fix pass
 xp.py sprint land <id>          version check, trial merge, sprint hook, PR
 xp.py sprint post-merge <id>    on trunk after the PR merges: tag and record
 xp.py story <id>                plan, plan review, execute, review; only missing stages
 xp.py story review <id>         one more diff review
 xp.py story land <id>           trial merge, Acceptance on the merged tree, merge
-xp.py free <slug>               a story cut from trunk
+xp.py free <slug>               mint the card; run again to walk it as a story cut from trunk
 xp.py free land <slug>          PR against trunk
 xp.py free post-merge <slug>    patch tag
 xp.py bug | debt | note | resolve    records with a falsifier command
@@ -83,8 +87,10 @@ AC:
 - Given a cart with no items, When the shopper adds one item, Then the cart shows 1 item
 Files: src/cart.py, features/cart.feature
 Acceptance: <your runner> features/cart.feature
-Executor: codex/<model>/medium        (optional)
+Executor: codex/<model>/medium
 ```
+
+The Executor line is optional and overrides `roles.executor`.
 
 Status is `planned`, `in-progress`, `done` or `retired`; free cards use the id `free-<slug>`.
 Acceptance is one command, run from the repo root, that executes the ACs; Gherkin is recommended.
@@ -98,7 +104,7 @@ Acceptance is one command, run from the repo root, that executes the ACs; Gherki
 | `sprint_cap` | Advised stories per sprint |
 | `debt_budget` | Maximum share of a sprint spent on debt |
 | `codex_sandbox` | Sandbox for Codex agents: `danger-full-access` (default) or `workspace-write` |
-| `roles` | `lead`, `planner`, `executor`, `reviewer`, each `harness/model[/effort]`; pick a reviewer from a different model family than the executor |
+| `roles` | `lead`, `planner`, `executor`, `reviewer`, each `harness/model[/effort]`; pick a reviewer from a different model family than the executor. Optional `plan-reviewer` takes the slate and plan reviews, so review load can be split across harnesses |
 
 ## Where state lives
 

@@ -13,7 +13,7 @@ a minute; broader tests at pre-push; the release suite in the `sprint` hook;
 `nightly` if the project wants one); `version_files` and `roles` in the config,
 with a reviewer from a different model family than the executor; `.xp/system.md`,
 especially Surfaces & acceptance; and `.xp/constraints.md`. Every harness the
-roles name needs this plugin installed for that harness. Then `/create-sprint`.
+roles name needs its binary on PATH; only the lead's harness needs the plugin. Then `/create-sprint`.
 
 ```
 python3 <plugin root>/scripts/xp.py setup

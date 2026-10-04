@@ -85,6 +85,7 @@ def story(data, card_id):
 def test_single_file_card_skips_planning(repo):
     assert xp.main(["story", "story-002"]) == 0
     assert sorted(p.name for p in story(repo, "story-002").iterdir()) == [
+        "card.md",
         "handback.md",
         "review-1.md",
     ]
@@ -94,7 +95,7 @@ def test_single_file_card_skips_planning(repo):
 def test_full_walk_then_rerun_is_a_noop(repo, capsys):
     assert xp.main(["story", "story-001"]) == 0
     sdir = story(repo, "story-001")
-    names = {"plan.md", "plan-review.md", "handback.md", "review-1.md"}
+    names = {"card.md", "plan.md", "plan-review.md", "handback.md", "review-1.md"}
     assert {p.name for p in sdir.iterdir()} == names
     assert "[in-progress]" in (repo / "plan.md").read_text().splitlines()[1]
     wt = repo / "worktrees" / "story-001"
@@ -171,21 +172,48 @@ def roles(data):
     return roles_run
 
 
-def age(path, seconds=10):
-    past = path.stat().st_mtime - seconds
-    os.utime(path, (past, past))
-
-
 def test_a_lead_commit_after_review_reruns_only_the_reviewer(repo):
     assert xp.main(["story", "story-001"]) == 0
     assert roles(repo) == ["planner", "plan-reviewer", "executor", "reviewer"]
     sdir, wt = story(repo, "story-001"), repo / "worktrees" / "story-001"
-    age(sdir / "review-1.md")
+    review = sdir / "review-1.md"
+    head = git("rev-parse", "HEAD", cwd=wt).stdout.strip()
+    assert review.read_text().endswith(f"reviewed: {head}\n")
     (wt / "lead.txt").write_text("lead\n")
     git("add", "-A", cwd=wt)
     git("commit", "-qm", "lead fix", cwd=wt)
+    # The lead annotates the review after committing: a newer file covers nothing new.
+    review.write_text(review.read_text() + "lead: fixed it\n")
+    os.utime(review, (4_000_000_000, 4_000_000_000))
     assert xp.main(["story", "story-001"]) == 0
     assert roles(repo) == ["reviewer"] and (sdir / "review-2.md").is_file()
+
+
+def test_a_handback_without_commits_reruns_the_executor(repo, monkeypatch, capsys):
+    assert xp.main(["story", "story-002"]) == 0
+    monkeypatch.setenv("GIT_COMMITTER_DATE", "@2000000000 +0000")  # not the reviewed commit
+    roles(repo)
+    git("reset", "-q", "--hard", "sprint-001", cwd=repo / "worktrees" / "story-002")
+    capsys.readouterr()
+    assert xp.main(["story", "story-002", "--dry-run"]) == 0
+    assert "would run executor, reviewer" in capsys.readouterr().out
+    assert xp.main(["story", "story-002"]) == 0
+    assert roles(repo) == ["executor", "reviewer"]
+
+
+def test_the_reviewer_sees_the_card_as_spawned_and_as_it_is_now(repo):
+    assert xp.main(["story", "story-002"]) == 0
+    spawned = (story(repo, "story-002") / "card.md").read_text()
+    assert spawned.startswith("#### story-002 — One file   [in-progress]\nFiles: a.py")
+    assert "## Card changes since spawn\n(none)" in (repo / "reviewer.prompt").read_text()
+    plan = repo / "plan.md"
+    plan.write_text(plan.read_text().replace("Files: a.py\n", "Files: a.py\nAC: less.\n"))
+    assert xp.main(["story", "review", "story-002"]) == 0
+    prompt = (repo / "reviewer.prompt").read_text()
+    assert "## Card changes since spawn\n--- card as spawned\n+++ card now\n" in prompt
+    assert "\n+AC: less.\n" in prompt
+    assert xp.main(["story", "story-002"]) == 0
+    assert (story(repo, "story-002") / "card.md").read_text() == spawned
 
 
 def test_a_deleted_plan_replans_and_rereviews_the_plan(repo):

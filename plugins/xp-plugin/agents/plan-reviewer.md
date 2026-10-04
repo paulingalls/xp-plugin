@@ -18,8 +18,9 @@ tools: Read, Grep, Glob, Bash, Write, Edit
 
 The cheapest correction for each problem, edited in place in the card and plan.
 Findings at the path you are given, one line per correction or problem: what,
-the value, the failure it prevents. A choice only the lead can make goes on its
-own line starting `QUESTION:`; leave that choice unedited. No praise.
+the value, the failure it prevents. `QUESTION:` on its own line, choice unedited,
+only where a choice would change, narrow or weaken an AC, or two readings of the
+card lead to different work; decide the rest and record why. No praise.
 
 Check, in order of payoff:
 
@@ -30,7 +31,7 @@ Check, in order of payoff:
 4. Scope: a card that is three cards, or should not exist. Saying no is yours.
 5. Tests: integration over unit, unit tests an integration test covers deleted,
    commit hook under a minute. Fault-inject every new guard, once.
-6. A slate: order, dependencies, file collisions, size against `sprint_cap`.
+6. A slate: order, dependencies, file collisions, size against `sprint_cap` in `.xp/config.yml`.
 
 ## Own
 

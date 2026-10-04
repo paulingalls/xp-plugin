@@ -11,7 +11,7 @@ review, and the project's own tests are the whole process; everything that certi
 relationships between them is gone: ready credentials and card digests, plan acceptance
 receipts, handoff checkpoints and resume, Verify logs and receipts, acknowledge-validation,
 salvage and repair, finding-triage ledgers, tier legs and coverage pins, overlap refusals,
-timing, the card refresher and the four sprint-review seats. Shipped Python 13,486 → 2,003.
+timing, the card refresher and the four sprint-review seats. Shipped Python 13,486 → 2,194; tests 48,473 → 1,855.
 
 Breaking, and no state migrates. Finish any in-flight sprint on 0.36.x before installing.
 
@@ -27,7 +27,8 @@ under a dollar.
   next action.
 - A story is an idempotent walk over `<data>/stories/<id>/`: planner, plan reviewer,
   executor, reviewer run only when their file is missing. Re-run after any edit; delete a
-  stage's file to repeat it. A `QUESTION:` from the plan reviewer stops the story.
+  stage's file to repeat it. A `QUESTION:` from the plan reviewer stops the story until the lead answers it
+  in the card and deletes the line.
 - Agents edit the card and plan in place. No lock but the plan.md append lock.
 - `Acceptance:` replaces `Verify:` on the card: one command, Gherkin recommended.
 - Hooks own every test. `.xp/config.yml` has no `tests:`; the scaffolded hooks carry
@@ -36,6 +37,14 @@ under a dollar.
   `sprint` hook (once at sprint land; again at post-merge only if the merged tree differs).
 - A lead commit after a review never forces another review. Land lists it as unreviewed;
   the sprint review is the net.
+- The card as spawned is kept at `stories/<id>/card.md`; the reviewer and land show the
+  diff against it and the merge body names the fields that changed. Nothing refuses on it.
+- A review records the commit it covered (`reviewed: <sha>`); a later commit reruns only
+  the reviewer and lands listed as unreviewed, whatever happens to the review file.
+- Post-merge accepts squash- and rebase-merged PRs and says so; merge commits are
+  preferred. A post-merge interrupted after its tag finishes on rerun.
+- The sprint hook runs with every `LEFTHOOK*` variable stripped, so the lead's shell
+  cannot make lefthook skip the release suite.
 - Four roles: lead, planner, executor, reviewer. Four charters of three sections each.
 - `templates/constraints.md` is eight items; the three new ones cap test growth: test at the
   outermost boundary once, tests cost what code costs, fault-inject a guard once.

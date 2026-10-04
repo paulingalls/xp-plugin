@@ -29,6 +29,7 @@ pre-push:
       run: sh -c '. .githooks/hook-lib.sh; edit_me tests'  # EDIT-ME
 sprint:
   # The release suite. Sprint land runs it on the trial-merged tree.
+  # no `skip:` here: land runs this mid-merge
   commands:
     tests:
       run: sh -c '. .githooks/hook-lib.sh; edit_me tests'  # EDIT-ME

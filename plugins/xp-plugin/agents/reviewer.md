@@ -8,7 +8,7 @@ description: Fresh-context adversarial review of a commit range.
 ## Read
 
 - The commit range you are given: every hunk and its whole enclosing routine.
-- The card or cards, and each `<data>/stories/<id>/handback.md` that exists.
+- The cards now and as spawned, and each `<data>/stories/<id>/handback.md`.
 - `.xp/constraints.md` and `.xp/system.md`.
 - An angle file, when given: read the whole range under that one question.
 
@@ -26,7 +26,8 @@ Check, in order of payoff:
    mutation that proves it.
 2. Correctness: who writes, reads and clears each stored value; what each removed
    line guaranteed; callers of every changed contract; inverted conditions.
-3. Scope honesty: the card claims what the diff does, ACs met in spirit.
+3. Scope honesty: the card claims what the diff does, ACs met in spirit, and no
+   card change since spawn narrows an AC or weakens Acceptance.
 4. Constraints: quote the item.
 5. Tests: integration over unit, unit tests an integration test covers deleted,
    commit hook under a minute.

@@ -95,12 +95,15 @@ roles:                     # harness/model[/effort]; a card's Executor: line ove
   planner: claude/sonnet
   executor: claude/sonnet
   reviewer: claude/opus    # plan and diff reviews; pick a different family from executor
+  # plan-reviewer: codex/...  # optional: slate and plan reviews on another harness
 ```
+
+`codex_sandbox` stays (decided during the build): a project has no other way to state a
+Codex posture, and a role suffix would have to be repeated per role.
 
 Gone: `release:` (stories land on the sprint branch, free patches on trunk; nothing else),
 `tests:`, `full_legs`, `tier_coverage`, `tier_coverage_pins`, `preflight`,
-`lifecycle_command`, `profile_target`, `constraints_chars_cap`, `codex_sandbox` (becomes a
-role suffix if a project needs it), `teardown_timeout`, `review.verify_batches`, the seven
+`lifecycle_command`, `profile_target`, `constraints_chars_cap`, `teardown_timeout`, `review.verify_batches`, the seven
 extra role seats.
 
 ## 6. Tests and acceptance
@@ -155,7 +158,7 @@ action. There is no `amend`, `ready`, `resume`, `acknowledge-validation`, `salva
 
 **Idempotence replaces resume.** `xp.py story <id>` looks at `stories/<id>/`: no plan.md →
 run the planner; no plan-review.md (or one older than plan.md) → run the plan reviewer; no
-handback.md → run the executor; no review-N.md at least as new as HEAD → run the reviewer;
+handback.md → run the executor; no review-N.md recording HEAD as reviewed → run the reviewer;
 otherwise print what exists and stop. A lead commit after a review reruns only the reviewer. A lead who edits the card and runs it again gets exactly the stages that are
 missing. A lead who wants a stage re-run deletes its file.
 

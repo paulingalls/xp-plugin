@@ -135,3 +135,13 @@ def test_run_agent_codex_takes_last_message_and_widens(project, tmp_path, capsys
     assert argv[-3:] == ["--add-dir", str((project / ".git").resolve()), "-"]
     assert "codex sandbox: danger-full-access" in capsys.readouterr().err
     assert "(not written yet)" in (tmp_path / "data" / "logs" / "x.log").read_text()
+
+
+def test_run_agent_survives_bytes_that_are_not_utf8(project, tmp_path):
+    (tmp_path / "bin" / "claude").write_text(
+        f"#!{sys.executable}\nimport sys\nsys.stdin.read()\n"
+        "sys.stdout.buffer.write(b'tool output \\xff\\xfe\\n')\n"
+        """print('{"type": "result", "result": "done"}')\n"""
+    )
+    proc = launch.run_agent("executor", "go", project, "bad-bytes")
+    assert proc.returncode == 0 and proc.stdout == "done"

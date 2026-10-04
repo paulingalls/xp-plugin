@@ -103,3 +103,30 @@ def test_is_ancestor(repo):
     commit(repo, "b.txt", "two\n", "add b")
     assert gitx.is_ancestor(base, "HEAD", repo) and gitx.is_ancestor("HEAD", "HEAD", repo)
     assert not gitx.is_ancestor("HEAD", base, repo)
+
+
+def branch_with_two_commits(repo):
+    sh(repo, "switch", "-qc", "s")
+    commit(repo, "b.txt", "two\n", "add b")
+    commit(repo, "c.txt", "three\n", "add c")
+    sh(repo, "switch", "-q", "main")
+    commit(repo, "d.txt", "four\n", "trunk moved")
+
+
+def test_merged_how_tells_merge_squash_and_unmerged_apart(repo):
+    branch_with_two_commits(repo)
+    assert gitx.merged_how("s", "HEAD", repo) == ""
+    sh(repo, "merge", "-q", "--squash", "s")
+    sh(repo, "commit", "-qm", "squashed")
+    assert gitx.merged_how("s", "HEAD", repo) == "squash"
+    sh(repo, "reset", "-q", "--hard", "HEAD~")
+    sh(repo, "merge", "-q", "--no-ff", "s", "-m", "merged")
+    assert gitx.merged_how("s", "HEAD", repo) == "merge"
+
+
+def test_merged_how_sees_a_rebase_merge_and_a_half_applied_branch(repo):
+    branch_with_two_commits(repo)
+    sh(repo, "cherry-pick", "s~")
+    assert gitx.merged_how("s", "HEAD", repo) == ""
+    sh(repo, "cherry-pick", "s")
+    assert gitx.merged_how("s", "HEAD", repo) == "squash"

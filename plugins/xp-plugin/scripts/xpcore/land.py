@@ -9,7 +9,7 @@ from pathlib import Path
 
 from xpcore import cards, gitx, hooks, release
 from xpcore.config import data_root, fail, refuse, sprint_branch, trunk
-from xpcore.story import reviews, story_dir, worktree
+from xpcore.story import card_changes, last_reviewed, reviews, story_dir, worktree
 
 
 def lead_tree() -> Path:
@@ -33,16 +33,25 @@ def worktree_of(card: cards.Card) -> tuple[Path, str]:
 
 
 def merge_body(card: cards.Card, branch: str, base: str, cwd) -> str:
-    found = [p for _, p in reviews(story_dir(card.id))]
+    sdir = story_dir(card.id)
     lines = [f"{card.id}: {card.title}", ""]
-    lines += [f"- {p.name}" for p in found] or ["- no review files"]
-    since = max((p.stat().st_mtime for p in found), default=0.0)
-    commits = gitx.git("log", "--reverse", "--format=%H %ct", f"{base}..{branch}", cwd=cwd)
-    late = [sha for sha, ct in (c.split() for c in commits.splitlines()) if int(ct) > since]
-    if late:
+    lines += [f"- {p.name}" for _, p in reviews(sdir)] or ["- no review files"]
+    if fields := card_changes(card)[1]:
+        lines.append(f"- card changed since spawn: {', '.join(fields)}")
+    seen = last_reviewed(sdir)
+    since = seen if seen and gitx.ref_exists(seen, cwd) else base
+    if gitx.git("rev-list", branch, f"^{base}", f"^{since}", cwd=cwd):
         tip = gitx.git("rev-parse", branch, cwd=cwd)
-        lines += ["", f"unreviewed: {late[0][:10]}^..{tip[:10]}"]
+        lines += ["", f"unreviewed: {since[:10]}..{tip[:10]}"]
     return "\n".join(lines) + "\n"
+
+
+def merged_by(branch: str, target: str, cwd) -> str:
+    """The merge on `target` whose later parent is `branch`'s tip, or "". Not mere ancestry:
+    a branch with no commits is an ancestor of its target too."""
+    tip = gitx.git("rev-parse", branch, cwd=cwd)
+    merges = gitx.git("rev-list", "--merges", "--parents", f"{tip}..{target}", cwd=cwd)
+    return next((m[0] for m in map(str.split, merges.splitlines()) if tip in m[2:]), "")
 
 
 def warn_overlap(branch: str, target: str, cwd) -> None:
@@ -82,14 +91,15 @@ def fetched_trunk(target: str, path: Path) -> str:
 
 
 def close(card: cards.Card, merge: str, path: Path, branch: str, lead: Path) -> None:
-    cards.set_status(card.id, "done")
+    # The worktree before the branch: git will not delete a branch a worktree has out.
+    gitx.worktree_remove(path, cwd=lead)
+    gitx.git("branch", "-D", branch, cwd=lead)
     date = datetime.now(timezone.utc).date().isoformat()
     with open(data_root() / "closes.jsonl", "a") as out:
         out.write(json.dumps({"id": card.id, "title": card.title, "merge": merge, "date": date}))
         out.write("\n")
-    # The worktree before the branch: git will not delete a branch a worktree has out.
-    gitx.worktree_remove(path, cwd=lead)
-    gitx.git("branch", "-D", branch, cwd=lead)
+    # Last, so a close that failed above leaves the card in progress and a rerun finishes it.
+    cards.set_status(card.id, "done")
 
 
 def land(card_id: str, target: str, *, pr: bool, dry_run: bool) -> int:
@@ -109,6 +119,8 @@ def land(card_id: str, target: str, *, pr: bool, dry_run: bool) -> int:
     into = fetched_trunk(target, path) if pr and not dry_run else target
     base = gitx.fork_point(branch, into, path)
     if gitx.head(path) == base:
+        if not pr and (merge := merged_by(branch, target, lead)):
+            return finish(card, merge, path, branch, lead, dry_run)
         again = f"free {card.id.removeprefix('free-')}" if pr else f"story {card.id}"
         refuse(f"{card.id} has no commits on {branch}; run xp.py {again}")
     if pr:
@@ -121,6 +133,8 @@ def land(card_id: str, target: str, *, pr: bool, dry_run: bool) -> int:
     sha = gitx.git("rev-parse", into, cwd=path)
     accept(card, path, branch, into, sha)
     body = merge_body(card, branch, base, lead)
+    if diff := card_changes(card)[0]:
+        print(f"{card.id}: card changed since spawn:\n{diff}")
     if pr:
         after = f"after it merges, pull {target} and run `xp.py free post-merge {card.id}`"
         return pull_request(branch, target, path, after, title=card.title, body=body)
@@ -133,6 +147,15 @@ def land(card_id: str, target: str, *, pr: bool, dry_run: bool) -> int:
         fail(f"{exc}; {target} is as it was, fix that and run xp.py story land {card.id} again")
     close(card, gitx.head(lead), path, branch, lead)
     print(f"{card.id} landed on {target}:\n{body}", end="")
+    return 0
+
+
+def finish(card: cards.Card, merge: str, path: Path, branch: str, lead: Path, dry: bool) -> int:
+    if dry:
+        print(f"would finish a previous land of {card.id}: close it after merge {merge[:10]}")
+        return 0
+    close(card, merge, path, branch, lead)
+    print(f"finished a previous land of {card.id}: merge {merge[:10]} was in; closed it")
     return 0
 
 
@@ -170,16 +193,26 @@ def cmd_free_post_merge(args) -> int:
     lead, main = lead_tree(), trunk()
     if gitx.current_branch(lead) != main or gitx.is_dirty(lead):
         refuse(f"{lead} must be on {main} and clean; switch to {main} and pull")
-    if not gitx.is_ancestor(branch, "HEAD", lead):
-        refuse(f"{branch} is not merged into {main}; merge its PR, pull {main}, run again")
-    version = release.version_wall("patch")
+    how = gitx.merged_how(branch, "HEAD", lead)
+    if not how:
+        refuse(
+            f"{branch} is not merged into {main}; merge its PR, pull {main}, run again; if the"
+            f" PR was squash- or rebase-merged, its commits are not on {main}; this plugin"
+            " supports that but prefers merge commits"
+        )
+    if how == "squash":
+        print(f"{card.id} was squash-merged; its history is not on {main}; prefer merge commits")
+    # A rerun after the tag but before close finished: the tag is this release's.
+    tagged = release.tag_at_head(lead)
+    version = tagged.removeprefix("v") if tagged else release.version_wall("patch")
     if args.dry_run:
         print(f"would run `{card.acceptance}` on {main}, tag v{version}, close {card.id}")
         return 0
     where = f"{main} at {gitx.head(lead)[:10]}"
     then = f"commit the fix on {branch}, merge it to {main}, then run xp.py free post-merge"
     acceptance(card, lead, f"{card.id}-post-merge", where, f"{then} {args.id} again")
-    release.tag(version)
+    if not tagged:
+        release.tag(version)
     close(card, gitx.head(lead), path, branch, lead)
     print(f"{card.id} closed; tagged v{version}. Push the tag: git push origin v{version}")
     return 0

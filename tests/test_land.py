@@ -4,7 +4,7 @@ import os
 import subprocess
 
 import pytest
-from xpcore import cards, hooks, land
+from xpcore import cards, gitx, hooks, land, release
 
 CONFIG = "trunk: main\nversion_files: package.json\nroles:\n  reviewer: claude/opus\n"
 CHECK = "import pathlib, sys\nsys.exit(pathlib.Path('merged.txt').read_text() != 'ok\\n')\n"
@@ -66,12 +66,13 @@ def story(tmp_path, monkeypatch):
     (data / "sprint_branch").write_text("sprint-001\n")
     wt = data / "worktrees" / "story-001"
     git(root, "worktree", "add", "-q", "-b", "story-001-thing", str(wt))
-    commit(wt, {"check.py": CHECK}, "add check", when=1_000_000_000)
+    seen = commit(wt, {"check.py": CHECK}, "add check")
     review = data / "stories" / "story-001" / "review-1.md"
     review.parent.mkdir(parents=True)
-    review.write_text("no findings\n")
-    os.utime(review, (1_500_000_000, 1_500_000_000))
-    late = commit(wt, {"later.txt": "x\n"}, "after the review", when=2_000_000_000)
+    review.write_text(f"no findings\nreviewed: {seen}\n")
+    late = commit(wt, {"later.txt": "x\n"}, "after the review")
+    # The lead annotates the review after its commit; the file's age must not cover that.
+    os.utime(review, (4_000_000_000, 4_000_000_000))
     return root, data, wt, late
 
 
@@ -81,7 +82,8 @@ def test_green_acceptance_on_the_merged_tree_lands_and_closes(story):
     commit(root, {"merged.txt": "ok\n"}, "sprint work")
     assert land.cmd_story_land(ns("story-001")) == 0
     body = git(root, "log", "-1", "--format=%B")
-    assert "review-1.md" in body and f"unreviewed: {late[:10]}^.." in body
+    seen = git(root, "rev-parse", f"{late}^")
+    assert "review-1.md" in body and f"unreviewed: {seen[:10]}..{late[:10]}" in body
     assert git(root, "rev-parse", "HEAD^2") == late
     assert cards.find_card("story-001").status == "done"
     closed = json.loads((data / "closes.jsonl").read_text())
@@ -253,3 +255,61 @@ def test_free_post_merge_runs_acceptance_on_trunk_before_tagging(tmp_path, monke
     assert "then run xp.py free post-merge fix again" in err
     assert git(root, "tag", "--list", "v1.1.1") == ""
     assert cards.find_card("free-fix").status == "in-progress" and wt.exists()
+
+
+def test_a_card_changed_since_spawn_is_shown_and_named_never_refused(story, capsys):
+    root, data = story[0], story[1]
+    (data / "stories" / "story-001" / "card.md").write_text(CARD.split("\n", 2)[2])
+    (data / "plan.md").write_text(CARD.replace("check.py\n", "check.py\nAC: less.\n"))
+    commit(root, {"merged.txt": "ok\n"}, "sprint work")
+    assert land.cmd_story_land(ns("story-001")) == 0
+    assert "card changed since spawn: AC" in git(root, "log", "-1", "--format=%B")
+    assert "+AC: less." in capsys.readouterr().out
+
+
+def test_a_land_whose_close_failed_finishes_on_rerun(story, monkeypatch, capsys):
+    root, data, wt, _ = story
+    commit(root, {"merged.txt": "ok\n"}, "sprint work")
+    remove = gitx.worktree_remove
+
+    def locked(*_, **__):
+        raise gitx.GitError("git worktree remove: locked")
+
+    monkeypatch.setattr(gitx, "worktree_remove", locked)
+    with pytest.raises(gitx.GitError):
+        land.cmd_story_land(ns("story-001"))
+    merged = git(root, "rev-parse", "HEAD")
+    monkeypatch.setattr(gitx, "worktree_remove", remove)
+    assert land.cmd_story_land(ns("story-001")) == 0
+    assert "finished a previous land of story-001" in capsys.readouterr().out
+    assert cards.find_card("story-001").status == "done" and not wt.exists()
+    assert json.loads((data / "closes.jsonl").read_text())["merge"] == merged
+
+
+def test_free_post_merge_accepts_a_squash_merge_and_discourages_it(tmp_path, monkeypatch, capsys):
+    root, _, wt = free_patch(tmp_path, monkeypatch)
+    git(root, "merge", "-q", "--squash", "free-fix-x")
+    git(root, "commit", "-qm", "squashed PR")
+    assert land.cmd_free_post_merge(ns("fix")) == 0
+    assert "free-fix was squash-merged; its history is not on main" in capsys.readouterr().out
+    assert git(root, "cat-file", "-t", "v1.1.1") == "tag" and not wt.exists()
+
+
+def test_free_post_merge_unmerged_names_squash_merges(tmp_path, monkeypatch, capsys):
+    free_patch(tmp_path, monkeypatch)
+    with pytest.raises(SystemExit):
+        land.cmd_free_post_merge(ns("fix"))
+    assert "if the PR was squash- or rebase-merged" in capsys.readouterr().err
+
+
+def test_free_post_merge_rerun_after_its_tag_finishes_without_tagging(tmp_path, monkeypatch):
+    root, _, wt = free_patch(tmp_path, monkeypatch)
+    git(root, "merge", "-q", "--no-ff", "free-fix-x", "-m", "PR")
+    git(root, "tag", "-a", "v1.1.1", "-m", "v1.1.1")
+
+    def no_second_tag(_):
+        raise AssertionError("tagged twice")
+
+    monkeypatch.setattr(release, "tag", no_second_tag)
+    assert land.cmd_free_post_merge(ns("fix")) == 0
+    assert cards.find_card("free-fix").status == "done" and not wt.exists()

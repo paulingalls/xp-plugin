@@ -35,13 +35,13 @@ def split_commands(line: str) -> list[list[str]]:
     return commands
 
 
-def stream(argv: list[str], cwd, log) -> int:
+def stream(argv: list[str], cwd, log, env: dict[str, str] | None = None) -> int:
     """Echo live and tee verbatim; the log is what the refusal points at."""
     log.write(f"$ {shlex.join(argv)}\n")
     log.flush()
     try:
         proc = subprocess.Popen(
-            argv, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True
+            argv, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, env=env
         )
     except OSError as exc:
         log.write(f"{exc}\n")
@@ -82,6 +82,9 @@ def sprint_hook(root: Path) -> list[str]:
 
 
 def run_sprint_hook(root: Path, log_id: str) -> int:
+    """LEFTHOOK=0 or LEFTHOOK_EXCLUDE in the lead's shell makes lefthook exit 0 having run
+    nothing; the release suite must not inherit either."""
     argv = sprint_hook(root)
+    env = {k: v for k, v in os.environ.items() if not k.startswith("LEFTHOOK")}
     with open(log_path(log_id), "a") as log:
-        return stream(argv, root, log)
+        return stream(argv, root, log, env)

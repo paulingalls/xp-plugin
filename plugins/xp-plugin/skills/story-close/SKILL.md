@@ -7,7 +7,9 @@ description: Judge a story's review findings and land it on the sprint branch.
 
 `xp.py story <id>` ends by printing the review's findings. Judge every one under
 JUDGMENT: fix it with a commit in the story worktree, drop it with a reason, or
-file debt under both bars. Unmet ACs and anything the lead reserves are yours,
+file debt under both bars. The reviewer may have committed fixes: read those
+commits as you read the findings; they are yours to accept, change or revert in
+the story worktree. Unmet ACs and anything the lead reserves are yours,
 with the human where needed. Another review after your fixes is optional; land
 lists commits after the last review as unreviewed, and the sprint review covers
 them. Land, then rewrite `session.md`: intent, surprises, next step, under 30 lines.

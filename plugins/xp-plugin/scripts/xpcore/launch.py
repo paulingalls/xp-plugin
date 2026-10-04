@@ -224,6 +224,7 @@ def run_agent(
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
+            errors="replace",  # one bad byte must not kill the agent mid-run
             env=child_env,
             start_new_session=True,  # Ctrl-C stays ours; kill_group gets a group of its own
         )
