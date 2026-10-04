@@ -4,6 +4,16 @@ Release notes started at v0.6.0; earlier entries are summarized from their
 tag and merge messages. Full detail lives in the merge history and the
 per-sprint review reports.
 
+## v1.0.1
+
+README now gives existing 0.x projects an ordered upgrade path for both harnesses,
+configuration, hooks, open cards and constraints. The Configuration table marks
+`versioning` as required instead of calling `off` the default.
+
+- Fix: `story land` and `free land` crashed with `KeyError: 'id'` in any data root a 0.x
+  plugin had used, because both wrote `closes.jsonl` in different shapes. v1 now records
+  landed stories in `landed.jsonl` and never reads the 0.x file.
+
 ## v1.0.0 — the light touch
 
 A rewrite by deletion. The card, an implementing agent, Git, independent fresh-context

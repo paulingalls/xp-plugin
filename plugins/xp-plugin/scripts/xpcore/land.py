@@ -90,9 +90,10 @@ def fetched_trunk(target: str, path: Path) -> str:
 
 
 def recorded_close(card_id: str) -> str:
-    """The merge closes.jsonl recorded for `card_id`, or "": a close that got that far and
-    then failed to flip the card has no worktree left for a rerun to find."""
-    path = data_root() / "closes.jsonl"
+    """The merge landed.jsonl recorded for `card_id`, or "": a close that got that far and
+    then failed to flip the card has no worktree left for a rerun to find. Not closes.jsonl:
+    0.x wrote that name in the same data root, in another shape."""
+    path = data_root() / "landed.jsonl"
     lines = path.read_text().splitlines() if path.is_file() else []
     return next((r["merge"] for r in map(json.loads, lines) if r["id"] == card_id), "")
 
@@ -108,7 +109,7 @@ def close(card: cards.Card, merge: str, path: Path, branch: str, lead: Path) -> 
     gitx.worktree_remove(path, cwd=lead)
     gitx.git("branch", "-D", branch, cwd=lead)
     date = datetime.now(timezone.utc).date().isoformat()
-    with open(data_root() / "closes.jsonl", "a") as out:
+    with open(data_root() / "landed.jsonl", "a") as out:
         out.write(json.dumps({"id": card.id, "title": card.title, "merge": merge, "date": date}))
         out.write("\n")
     # Last, so a close that failed above leaves the card in progress and a rerun finishes it.

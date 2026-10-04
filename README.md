@@ -39,6 +39,49 @@ hooks and an empty plan, and refuses if `.xp/` already exists. Then fill in:
 - **`.xp/system.md`.** Describe the product, especially Surfaces & acceptance.
 - **`.xp/constraints.md`.** Keep the project's rules, at most ten, which reviewers cite.
 
+## Upgrading from 0.x
+
+1. Finish in-flight work on 0.36.x before installing v1; no state migrates. Edit the
+   existing `.xp/` in place: setup is for fresh repositories and refuses an existing one.
+2. Update each installed harness:
+
+   ```bash
+   # Claude Code
+   claude plugin marketplace update xp-plugin
+   claude plugin update xp-plugin@xp-plugin
+
+   # Codex
+   codex plugin marketplace upgrade xp-plugin
+   codex plugin add xp-plugin@xp-plugin
+   ```
+
+   Restart to load the update. In Codex, re-approve plugin hooks with `/hooks`.
+3. Edit `.xp/config.yml` against [Configuration](#configuration) and the
+   [config template](plugins/xp-plugin/templates/config.yml). Explicitly choose
+   `versioning: on` or `off`; with `on`, set `version_files`, and add a `CHANGELOG.md`
+   whose first `## ` heading names the current version if the project has none. Remove `tests`, `sprint_cap`,
+   `release`, `lifecycle_command`, `preflight`, `constraints_chars_cap`, `profile_target`,
+   `teardown_timeout` and `review`: unused keys are silently ignored. Remove the `finder`,
+   `verifier` and `closer` seats; `angle-reviewer` replaces the sprint review seats and
+   falls back to `reviewer`. Keep the required seats; Configuration lists the optional ones.
+4. Move test commands into the project's existing hooks: quick checks at pre-commit,
+   broader checks at pre-push, the release suite at `sprint`, optional expensive checks at
+   nightly. Add lefthook `sprint:` or an executable `.githooks/sprint`, according to the
+   existing routing. Adapt the [lefthook template](plugins/xp-plugin/templates/lefthook.yml)
+   or [plain sprint hook](plugins/xp-plugin/templates/githooks-sprint); preserve existing hooks.
+   Delete hook steps that read a removed key (`tests`, `constraints_chars_cap`) or call a
+   0.x plugin script: with the key gone they refuse every commit.
+5. Convert open cards from `Verify:` to `Acceptance:`; retire cards about removed 0.x
+   machinery. Preserve applicable acceptance obligations. Re-file each open 0.x bug or debt
+   with `xp.py bug` / `xp.py debt` (falsifier included), or drop it with a reason: v1 reads
+   only its own record headings, so 0.x records remain in `<data>/work.md` as history and
+   never appear as open in `xp.py recover`.
+6. Apply the [constraints template](plugins/xp-plugin/templates/constraints.md) items to
+   the project's constraints.
+7. Rewrite the project's own agent instructions (CLAUDE.md, AGENTS.md, process notes) that
+   name 0.x commands such as `spawn.py`, `close.py` or `Verify:`. Agents read them every
+   session, and they outrank what they remember of the plugin.
+
 ## The cycle
 
 Every scope runs plan, review the plan, do, review the diff, land.
@@ -101,7 +144,7 @@ recommended. Falsifiers are shell lines too, run once when a record is filed or 
 | Key | Meaning |
 |---|---|
 | `trunk` | Release branch, only when it is not the default branch |
-| `versioning` | `off` (the default): the project owns versions and tags; `on`: every sprint and free patch is tagged |
+| `versioning` | Required: `off`: the project owns versions and tags; `on`: every sprint and free patch is tagged |
 | `version_files` | With versioning on: comma-separated JSON manifests whose version the tag must match, or `none` |
 | `debt_budget` | Maximum share of a sprint spent on debt |
 | `codex_sandbox` | Sandbox for Codex agents: `danger-full-access` (default) or `workspace-write` |
