@@ -164,6 +164,11 @@ def tee(lines: Iterable[str], log, out, harness: str, cwd: Path) -> dict | None:
     return result
 
 
+def _echo(line: str) -> None:
+    # Flushed: a lead reads this through a redirect, where block buffering hides it.
+    print(line, flush=True)
+
+
 def kill_group(proc: subprocess.Popen) -> None:
     """The whole session, not the leader: the agent's children hold the stdout pipe too."""
     try:
@@ -236,7 +241,7 @@ def run_agent(
         feeder.start()
         try:
             assert proc.stdout is not None
-            result = tee(proc.stdout, log, print, harness, Path(cwd))
+            result = tee(proc.stdout, log, _echo, harness, Path(cwd))
         except BaseException:
             kill_group(proc)
             raise
