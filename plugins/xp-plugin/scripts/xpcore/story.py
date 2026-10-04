@@ -60,11 +60,11 @@ def committed(wt: Path, base: str) -> bool:
     return bool(gitx.log_range(gitx.fork_point("HEAD", base, cwd=wt), "HEAD", cwd=wt))
 
 
-def card_changes(card: cards.Card) -> tuple[str, list[str]]:
-    """The card's diff against its text at spawn, and the fields that changed. A change is
-    shown to the reviewer and the merge, never refused; deleting card.md re-baselines."""
+def card_changes(card: cards.Card) -> str:
+    """The card's diff against its text at spawn. A change is shown to the reviewer and the
+    merge, never refused; deleting card.md re-baselines."""
     spawned = story_dir(card.id) / "card.md"
-    return cards.changes(spawned.read_text(), card.text) if spawned.is_file() else ("", [])
+    return cards.changes(spawned.read_text(), card.text) if spawned.is_file() else ""
 
 
 def questions(sdir: Path) -> list[str]:
@@ -194,7 +194,7 @@ def review_round(card: cards.Card, sdir: Path, wt: Path, base: str) -> Path:
     extra = (
         f"{gitx.range_map(fork, head, wt)}"
         f"\n\n## Handback\n{_read(sdir / 'handback.md') or '(none)'}"
-        f"\n\n## Card changes since spawn\n{card_changes(card)[0] or '(none)'}"
+        f"\n\n## Card changes since spawn\n{card_changes(card) or '(none)'}"
     )
     text = bundle.prompt(
         "reviewer",

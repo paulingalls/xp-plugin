@@ -30,7 +30,9 @@ under a dollar.
   stage's file to repeat it. A `QUESTION:` from the plan reviewer stops the story until the lead answers it
   in the card and deletes the line.
 - Agents edit the card and plan in place. No lock but the plan.md append lock.
-- `Acceptance:` replaces `Verify:` on the card: one command, Gherkin recommended.
+- `Acceptance:` replaces `Verify:` on the card: one shell line, Gherkin recommended. A
+  falsifier is a shell line too, run once at filing and once at resolve; the plugin never
+  reruns the set. A line that exits 127 is a typo, not a red.
 - Hooks own every test. `.xp/config.yml` has no `tests:`; the scaffolded hooks carry
   pre-commit, pre-push, `sprint` and `nightly` commands, and refuse while one reads EDIT-ME.
   The plugin runs only a card's Acceptance (on the trial-merged tree at land) and the

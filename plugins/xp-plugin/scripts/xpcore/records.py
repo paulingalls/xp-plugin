@@ -2,7 +2,6 @@
 
 import hashlib
 import re
-import shlex
 import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
@@ -28,17 +27,23 @@ def _one_line(text: str) -> str:
 
 
 def _falsify(command: str) -> tuple[int, str]:
-    argv = shlex.split(command)
-    if not argv:
+    """A shell line, run once from the repo root, now; the plugin never reruns the set."""
+    if not command.strip():
         refuse("the falsifier is empty; pass a command whose exit code proves the claim")
     try:
         proc = subprocess.run(
-            argv, cwd=repo_root(), capture_output=True, text=True, errors="replace", timeout=TIMEOUT
+            ["sh", "-c", command],
+            cwd=repo_root(),
+            capture_output=True,
+            text=True,
+            errors="replace",
+            timeout=TIMEOUT,
         )
-    except FileNotFoundError:
-        refuse(f"falsifier {argv[0]!r} is not on PATH; pass a runnable command")
     except subprocess.TimeoutExpired:
         refuse(f"falsifier ran past {TIMEOUT}s; pass a narrower command")
+    if proc.returncode in (126, 127):
+        # A typo is not a red: the shell says not found or not executable.
+        refuse(f"falsifier exited {proc.returncode} (not found or not executable); fix it")
     output = (proc.stdout + proc.stderr)[-OUTPUT_CAP:]
     # Indented, so the falsifier's own output cannot mint a record heading.
     return proc.returncode, "\n".join(f"    {ln}" for ln in output.splitlines())

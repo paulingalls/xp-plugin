@@ -36,8 +36,8 @@ def merge_body(card: cards.Card, branch: str, base: str, cwd) -> str:
     sdir = story_dir(card.id)
     lines = [f"{card.id}: {card.title}", ""]
     lines += [f"- {p.name}" for _, p in reviews(sdir)] or ["- no review files"]
-    if fields := card_changes(card)[1]:
-        lines.append(f"- card changed since spawn: {', '.join(fields)}")
+    if card_changes(card):
+        lines.append("- card changed since spawn")
     seen = last_reviewed(sdir)
     since = seen if seen and gitx.ref_exists(seen, cwd) else base
     if gitx.git("rev-list", branch, f"^{base}", f"^{since}", cwd=cwd):
@@ -62,13 +62,12 @@ def warn_overlap(branch: str, target: str, cwd) -> None:
 
 
 def acceptance(card: cards.Card, cwd: Path, log_id: str, where: str, then: str) -> None:
-    if rc := hooks.run_acceptance(hooks.split_commands(card.acceptance), cwd, log_id):
+    if rc := hooks.run_acceptance(card.acceptance, cwd, log_id):
         refuse(f"Acceptance exited {rc} on {where}; read {hooks.log_path(log_id)}, {then}")
 
 
 def accept(card: cards.Card, path: Path, branch: str, target: str, sha: str) -> None:
     """Acceptance on `branch` with `sha`, the target's tip as land found it, merged in."""
-    hooks.split_commands(card.acceptance)  # an unsafe line refuses before anything merges
     try:
         if conflict := gitx.trial_merge(path, sha):
             refuse(
@@ -149,7 +148,7 @@ def land(card_id: str, target: str, *, pr: bool, dry_run: bool) -> int:
     sha = gitx.git("rev-parse", into, cwd=path)
     accept(card, path, branch, into, sha)
     body = merge_body(card, branch, base, lead)
-    if diff := card_changes(card)[0]:
+    if diff := card_changes(card):
         print(f"{card.id}: card changed since spawn:\n{diff}")
     if pr:
         after = f"after it merges, pull {target} and run `xp.py free post-merge {card.id}`"

@@ -13,20 +13,11 @@ def _read(path: Path) -> str:
     return path.read_text().strip() if path.is_file() else ""
 
 
-def charter(role: str, paths: dict[str, str]) -> tuple[str, dict[str, str]]:
-    """The role's charter with `{NAME}` placeholders filled; returns the paths it never named."""
+def charter(role: str) -> str:
     path = config.plugin_root() / "agents" / f"{role}.md"
     if not path.is_file():
         config.refuse(f"no charter {path} for role {role}; reinstall the plugin")
-    text = FRONTMATTER.sub("", path.read_text()).strip()
-    unused = {}
-    for name, value in paths.items():
-        token = "{" + name + "}"
-        if token in text:
-            text = text.replace(token, value)
-        else:
-            unused[name] = value
-    return text, unused
+    return FRONTMATTER.sub("", path.read_text()).strip()
 
 
 def prompt(
@@ -41,10 +32,10 @@ def prompt(
     paths: dict[str, str] | None = None,
 ) -> str:
     """`card` is a cards.Card or its text; `slate` is a sprint's section of plan.md. `paths`
-    maps placeholder names such as PLAN_PATH, FINDINGS_PATH, HANDBACK_PATH, CARD_ID to
-    values; DATA is always set."""
+    names such as PLAN_PATH, FINDINGS_PATH, HANDBACK_PATH, CARD_ID are listed for the agent;
+    DATA is always among them."""
     root, project = config.plugin_root(), config.repo_root() / ".xp"
-    body, unused = charter(role, {"DATA": str(config.data_root()), **(paths or {})})
+    body, named = charter(role), {"DATA": str(config.data_root()), **(paths or {})}
     parts = (
         ("Values", _read(root / "VALUES.md")),
         ("Judgment", _read(root / "JUDGMENT.md")),
@@ -57,6 +48,6 @@ def prompt(
         ("Findings", findings.strip()),
         ("Angle", angle.strip()),
         ("Context", extra.strip()),
-        ("Paths (<data> is DATA)", "\n".join(f"- {k}: {v}" for k, v in unused.items())),
+        ("Paths (<data> is DATA)", "\n".join(f"- {k}: {v}" for k, v in named.items())),
     )
     return "\n\n".join(f"===== {title} =====\n{text}" for title, text in parts if text) + "\n"

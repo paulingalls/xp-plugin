@@ -38,13 +38,10 @@ def test_missing_sprint_hook_refuses_rather_than_passing(root, capsys):
     assert exit_.value.code == 2 and "no sprint hook" in capsys.readouterr().err
 
 
-def test_missing_binary_is_red(root):
-    assert hooks.run_acceptance([["no-such-binary-xp"]], root, "acc") == 127
-
-
-def test_and_chain_splits_and_its_first_failure_wins(root):
-    assert hooks.split_commands("a && b") == [["a"], ["b"]]
-    assert hooks.run_acceptance([["false"], ["true"]], root, "x") != 0
+def test_acceptance_is_a_shell_line_and_its_exit_code_is_the_verdict(root):
+    assert hooks.run_acceptance("no-such-binary-xp", root, "acc") == 127
+    assert hooks.run_acceptance("false && true", root, "x") != 0
+    assert hooks.run_acceptance("echo ok | grep -q ok", root, "y") == 0
 
 
 def test_sprint_hook_ignores_lefthook_switches_in_the_leads_env(root, tmp_path, monkeypatch):

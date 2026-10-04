@@ -14,7 +14,6 @@ from xpcore.config import data_root, refuse
 STATUSES = ("planned", "in-progress", "done", "retired")
 HEADING = re.compile(r"#### (\S+) — (.*?)\s+\[([\w-]+)\]\s*")
 SECTION = re.compile(r"(#{1,4}) ")
-FIELD = re.compile(r"([A-Z][A-Za-z ]*):")
 
 
 @dataclass
@@ -184,22 +183,7 @@ def mint_free(card_id: str, heading: str) -> bool:
     return True
 
 
-def _fields(lines: list[str]) -> list[str]:
-    """Each line's field: the last `Name:` line at or above it; the heading is Title."""
-    named, current = [], "Title"
-    for line in lines:
-        if match := FIELD.match(line):
-            current = match[1]
-        named.append(current)
-    return named
-
-
-def changes(old: str, new: str) -> tuple[str, list[str]]:
-    """A unified diff of a card's two texts and the fields whose lines changed."""
+def changes(old: str, new: str) -> str:
+    """A unified diff of a card's two texts; empty when they agree."""
     a, b = old.splitlines(), new.splitlines()
-    diff = difflib.unified_diff(a, b, "card as spawned", "card now", lineterm="")
-    fields_a, fields_b, changed = _fields(a), _fields(b), {}
-    for tag, i1, i2, j1, j2 in difflib.SequenceMatcher(None, a, b).get_opcodes():
-        if tag != "equal":
-            changed.update(dict.fromkeys(fields_a[i1:i2] + fields_b[j1:j2]))
-    return "\n".join(diff), list(changed)
+    return "\n".join(difflib.unified_diff(a, b, "card as spawned", "card now", lineterm=""))

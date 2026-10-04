@@ -32,12 +32,12 @@ def test_prompt_assembles_every_part_and_appends_paths(repo, tmp_path):
     assert f"- DATA: {tmp_path / 'data'}" in text and "- FINDINGS_PATH: /d/review-1.md" in text
 
 
-def test_placeholders_are_substituted_not_appended(repo, tmp_path, monkeypatch):
+def test_frontmatter_is_dropped_and_every_path_is_listed(repo, tmp_path, monkeypatch):
     (tmp_path / "agents").mkdir()
-    (tmp_path / "agents" / "x.md").write_text("---\nname: x\n---\nWrite {PLAN_PATH}.\n")
+    (tmp_path / "agents" / "x.md").write_text("---\nname: x\n---\nWrite the plan.\n")
     monkeypatch.setattr(config, "plugin_root", lambda: tmp_path)
     text = bundle.prompt("x", card="slate", paths={"PLAN_PATH": "/p.md", "CARD_ID": "s-1"})
-    assert "Write /p.md." in text and "PLAN_PATH" not in text and "- CARD_ID: s-1" in text
+    assert "Write the plan." in text and "- PLAN_PATH: /p.md" in text and "- CARD_ID: s-1" in text
     assert "name: x" not in text and "===== Card =====\nslate" in text
 
 

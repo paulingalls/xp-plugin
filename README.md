@@ -93,7 +93,8 @@ Executor: codex/<model>/medium
 The Executor line is optional and overrides `roles.executor`.
 
 Status is `planned`, `in-progress`, `done` or `retired`; free cards use the id `free-<slug>`.
-Acceptance is one command, run from the repo root, that executes the ACs; Gherkin is recommended.
+Acceptance is one shell line, run from the repo root, that executes the ACs; Gherkin is
+recommended. Falsifiers are shell lines too, run once when a record is filed or resolved.
 
 ## Configuration
 

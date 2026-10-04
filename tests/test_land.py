@@ -106,14 +106,6 @@ def test_red_acceptance_refuses_and_leaves_everything_unmerged(story, capsys):
     assert (data / "logs" / "story-001-acceptance.log").is_file()
 
 
-def test_unsafe_acceptance_refuses_before_merging(story, capsys):
-    data = story[1]
-    (data / "plan.md").write_text(CARD.replace("python3 check.py", "python3 check.py | cat"))
-    with pytest.raises(SystemExit):
-        land.cmd_story_land(ns("story-001"))
-    assert "only `&&` chains" in capsys.readouterr().err
-
-
 def test_overlap_warns_and_never_refuses(story, capsys):
     root = story[0]
     commit(root, {"merged.txt": "ok\n", "later.txt": "x\n"}, "sprint work")
@@ -265,7 +257,7 @@ def test_a_card_changed_since_spawn_is_shown_and_named_never_refused(story, caps
     (data / "plan.md").write_text(CARD.replace("check.py\n", "check.py\nAC: less.\n"))
     commit(root, {"merged.txt": "ok\n"}, "sprint work")
     assert land.cmd_story_land(ns("story-001")) == 0
-    assert "card changed since spawn: AC" in git(root, "log", "-1", "--format=%B")
+    assert "- card changed since spawn" in git(root, "log", "-1", "--format=%B")
     assert "+AC: less." in capsys.readouterr().out
 
 

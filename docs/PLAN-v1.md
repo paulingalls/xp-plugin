@@ -119,7 +119,7 @@ extra role seats.
   differs. This is the release boundary and the only suite the plugin ever starts.
 - **nightly**: a named hook the project wires to its own scheduler for the expensive tier.
   The plugin never runs it.
-- **Acceptance** replaces `Verify:` on the card. It is one command, run from the repo root,
+- **Acceptance** replaces `Verify:` on the card. It is one shell line, run from the repo root,
   that executes the card's acceptance criteria. Gherkin is the recommended form: the card's
   ACs are the scenarios, the feature file is the test, the Acceptance line runs it with the
   project's runner. A project without a runner names a test command. The executor runs it

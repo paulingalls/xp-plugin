@@ -100,6 +100,8 @@ def test_debt_with_an_empty_bar_refuses(repo, capsys, big, important):
     assert "must clear both bars" in err and not records.work_path().exists()
 
 
-def test_falsifier_not_on_path_refuses(repo, capsys):
+def test_falsifier_not_found_refuses_rather_than_filing_a_red(repo, capsys):
     err = refused(capsys, ["bug", "--claim", "c", "--falsifier", "no-such-binary-xp"])
-    assert "'no-such-binary-xp' is not on PATH" in err and not records.work_path().exists()
+    assert "exited 127" in err and "not found" in err and not records.work_path().exists()
+    err = refused(capsys, ["bug", "--claim", "c", "--falsifier", "   "])
+    assert "falsifier is empty" in err

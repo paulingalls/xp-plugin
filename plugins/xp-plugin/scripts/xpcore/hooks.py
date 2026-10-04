@@ -8,32 +8,6 @@ from pathlib import Path
 
 from xpcore.config import LEFTHOOK_CONFIGS, data_root, refuse
 
-PUNCTUATION = "();<>|&"
-
-
-def split_commands(line: str) -> list[list[str]]:
-    """`a && b` into argvs. No shell: anything else a shell would interpret is refused."""
-    lexer = shlex.shlex(line, posix=True, punctuation_chars=PUNCTUATION)
-    lexer.whitespace_split = True
-    try:
-        tokens = list(lexer)
-    except ValueError as exc:
-        refuse(f"Acceptance {line!r} does not parse ({exc}); fix the card's Acceptance: line")
-    commands: list[list[str]] = [[]]
-    for token in tokens:
-        if token == "&&":
-            commands.append([])
-        elif token and set(token) <= set(PUNCTUATION):
-            refuse(
-                f"Acceptance {line!r} uses {token!r}; only `&&` chains commands here,"
-                " so put anything else in a script and name the script"
-            )
-        else:
-            commands[-1].append(token)
-    if not all(commands):
-        refuse(f"Acceptance {line!r} has an empty command; fix the card's Acceptance: line")
-    return commands
-
 
 def stream(argv: list[str], cwd, log, env: dict[str, str] | None = None) -> int:
     """Echo live and tee verbatim; the log is what the refusal points at."""
@@ -61,12 +35,11 @@ def log_path(log_id: str) -> Path:
     return path
 
 
-def run_acceptance(commands: list[list[str]], cwd, log_id: str) -> int:
+def run_acceptance(line: str, cwd, log_id: str) -> int:
+    """The card's line, as a shell would run it from the repo root; its exit code is the
+    verdict. The agents that write cards have that shell already."""
     with open(log_path(log_id), "a") as log:
-        for argv in commands:
-            if rc := stream(argv, cwd, log):
-                return rc
-    return 0
+        return stream(["sh", "-c", line], cwd, log)
 
 
 def sprint_hook(root: Path) -> list[str]:
