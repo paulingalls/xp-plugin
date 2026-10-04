@@ -10,7 +10,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "spawn"))
 import close
 import review
 from bookkeep import fork_point
-from completion import inputs
+from completion import inputs, validate
 from handoff import _write, handoff_state
 from work import data_root
 
@@ -19,6 +19,7 @@ def load(story_id):
     state = handoff_state(data_root(), story_id)
     if state is None:
         raise ValueError("unreadable handoff; restore its preserved bytes")
+    validate(story_id, state or {}, check_repository=False)
     return (state or {}).get("checkpoint", {}).get("review_sequence")
 
 
@@ -52,7 +53,7 @@ def save(story_id, sequence):
     checkpoint = state.setdefault(
         "checkpoint",
         {
-            "version": 1,
+            "version": 2,
             "story_id": story_id,
             "repository": str(Path.cwd().resolve()),
             "results": {},
@@ -66,15 +67,11 @@ def save(story_id, sequence):
 
 
 def measure(story_id, card, *, declaration_checked=False):
-    tree = close.git("write-tree", check=False)
-    if tree.returncode:
-        raise ValueError(
-            f"could not write reviewed tree: {tree.stderr.strip()}; clear it and retry"
-        )
+    snapshot = inputs(story_id, card, declaration_checked=declaration_checked)
     return {
-        "head": close.git("rev-parse", "HEAD").stdout.strip(),
-        "tree": tree.stdout.strip(),
-        "inputs": inputs(story_id, card, declaration_checked=declaration_checked),
+        "head": snapshot["work"]["head"],
+        "tree": snapshot["work"]["tree"],
+        "inputs": snapshot,
     }
 
 
@@ -97,6 +94,29 @@ def check_reports(sequence):
             raise ValueError(f"{name} report changed; restore its bound bytes at {stage['path']}")
 
 
+def fixer_motion(story_id, card, before, after, marker, digest):
+    if close.git("status", "--porcelain").stdout.strip():
+        return "fixer left uncommitted work; inspect and commit the retained tree"
+    if before["head"] == after["head"]:
+        return "fixer committed no correction"
+    if close.git(
+        "merge-base", "--is-ancestor", before["head"], after["head"], check=False
+    ).returncode:
+        return "fixer rewrote the solution ancestry"
+    if review.marker_digest(marker) != digest or review.card_now(story_id) != card:
+        return "fixer changed its card or close marker"
+    from completion import committed_contents
+    from review_scope import declared_files
+
+    committed_contents()
+    touched = close.git(
+        "diff", "--name-only", "--no-renames", before["head"], after["head"]
+    ).stdout.splitlines()
+    if any(path.startswith(".xp/") and path not in declared_files(card) for path in touched):
+        return "fixer committed an undeclared .xp path; lead must inspect the retained commit"
+    return ""
+
+
 def stage(story_id, card, sequence, name, correction=False):
     previous = sequence["stages"].get(name, {})
     attempt = previous.get("attempt", 0) + 1
@@ -111,6 +131,9 @@ def stage(story_id, card, sequence, name, correction=False):
         attempt += 1
         path = root / f"{story_id}.round-{sequence['round']}.{name}-{attempt}.json"
     before = measure(story_id, card)
+    from git_source import tracked_state
+
+    boundary = tracked_state()
     marker = close.marker_path(story_id)
     digest = review.marker_digest(marker)
     item = {
@@ -119,6 +142,7 @@ def stage(story_id, card, sequence, name, correction=False):
         "path": str(path),
         "log": str(data_root() / "logs" / (path.stem + ".log")),
         "before": before,
+        "marker_identity": digest,
         "prior_attempts": previous.get("prior_attempts", []) + ([previous] if previous else []),
     }
     sequence["stages"][name] = item
@@ -155,20 +179,25 @@ def stage(story_id, card, sequence, name, correction=False):
             "nonempty finding, ref, too_big and too_important strings."
         )
         prompt = f"## Your charter\n{charter}\n## Story card\n{card}\n"
-        prompt += "## Completed solution findings and fix evidence\n" + json.dumps(
-            sequence["stages"]
-        )
+        prompt += "## Completed solution findings and fix evidence\n"
+        for role, evidence in sequence["stages"].items():
+            if evidence["status"] == "completed":
+                prompt += f"{role}: {json.dumps(evidence['report'])}\n"
+                prompt += f"Report: {evidence['path']}\nLog: {evidence['log']}\n"
         prompt += f"\nREPORT_PATH: {path}\n"
         for title, authority in close.review_authority_sections():
             prompt += f"\n## {title}\n{authority}\n"
-        prompt += f"\n## Fix diff\n{close.git('diff', sequence['start']['head'], 'HEAD').stdout}"
+        base = sequence["base"] if name == "fixer" else sequence["start"]["head"]
+        prompt += f"\n## Relevant Git diff\n{close.git('diff', base, 'HEAD').stdout}"
     if correction:
+        prior_report = Path(previous["path"])
+        retained = prior_report.read_text() if prior_report.exists() else "No report was written."
         prompt += (
             "\nCorrect only the incomplete report using retained work and logs. "
             "Do not edit or commit again.\nMeasured refusal:\n"
             + sequence["problem"]
-            + "\nPrior producer attempt:\n"
-            + json.dumps(previous)
+            + f"\nPrior report: {previous['path']}\nPrior log: {previous['log']}\n"
+            + retained
         )
     prompt += f"\nSTAGE: {name}\n"
     from review_cancel import card_changed
@@ -205,30 +234,10 @@ def stage(story_id, card, sequence, name, correction=False):
     sequence["output"] = after
     if name != "fixer" or correction:
         motion = review.check_reviewer_motion(before["head"], marker, digest, card, story_id)
-        if after != before:
+        if after != before or tracked_state() != boundary:
             motion = motion or "read-only stage changed its tracked source/index/HEAD inputs"
     else:
-        motion = ""
-        if close.git("status", "--porcelain").stdout.strip():
-            motion = "fixer left uncommitted work; inspect and commit the retained tree"
-        elif before["head"] == after["head"]:
-            motion = "fixer committed no correction"
-        elif close.git(
-            "merge-base", "--is-ancestor", before["head"], after["head"], check=False
-        ).returncode:
-            motion = "fixer rewrote the solution ancestry"
-        elif review.marker_digest(marker) != digest or review.card_now(story_id) != card:
-            motion = "fixer changed its card or close marker"
-    if name == "fixer" and not correction and not motion:
-        from completion import committed_contents
-        from review_scope import declared_files
-
-        committed_contents()
-        touched = close.git(
-            "diff", "--name-only", "--no-renames", before["head"], after["head"]
-        ).stdout.splitlines()
-        if any(path.startswith(".xp/") and path not in declared_files(card) for path in touched):
-            motion = "fixer committed an undeclared .xp path; lead must inspect the retained commit"
+        motion = fixer_motion(story_id, card, before, after, marker, digest)
     if motion or error:
         item["status"] = "failed"
         return problem(story_id, sequence, name, motion or error)
@@ -259,10 +268,50 @@ def run(story_id, card, trunk, dry_run=False, explicit=True):
         return close.fail(error) if error else 0
     current = measure(story_id, card)
     sequence = load(story_id)
+    if sequence:
+        interrupted = next(
+            (name for name, item in sequence["stages"].items() if item["status"] == "running"), None
+        )
+        if interrupted:
+            item = sequence["stages"][interrupted]
+            before = item["before"]
+            marker = close.marker_path(story_id)
+            if card != sequence["card"] or review.marker_digest(marker) != item["marker_identity"]:
+                return problem(story_id, sequence, interrupted, "interrupted stage authority moved")
+            if not current["inputs"]["work"]["clean"]:
+                return problem(
+                    story_id,
+                    sequence,
+                    interrupted,
+                    "interrupted stage has dirty work; lead must inspect",
+                )
+            if interrupted == "fixer":
+                if motion := fixer_motion(
+                    story_id, card, before, current, marker, item["marker_identity"]
+                ):
+                    return problem(story_id, sequence, interrupted, motion)
+            elif current != before or not before["inputs"]["work"]["clean"]:
+                return problem(
+                    story_id, sequence, interrupted, "interrupted read-only stage inputs moved"
+                )
+            sequence["output"] = current
+            item["status"] = "incomplete"
+            return problem(
+                story_id,
+                sequence,
+                interrupted,
+                "interrupted producer; inspect its report and retained work",
+                "incomplete",
+            )
+    if sequence and not sequence["output"]["inputs"]["work"]["clean"] and not explicit:
+        return close.fail(
+            "refused: dirty reviewed baseline needs explicit lead review; work and reports retained"
+        )
     reuse = (
         sequence
         and sequence["card"] == card
         and sequence["output"] == current
+        and current["inputs"]["work"]["clean"]
         and not (explicit and sequence["status"] == "completed")
     )
     if reuse:

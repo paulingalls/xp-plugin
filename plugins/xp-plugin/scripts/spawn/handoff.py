@@ -251,8 +251,8 @@ def inheritance(
     for path in sorted((root / "plans").glob(f"{story_id}.confirmation-*.md")):
         if path.stem.rsplit("-", 1)[-1].isdecimal():
             parts.append(("Confirmation findings", f"Read {path.resolve()}"))
-    for manifest in state.get("predecessors", []):
-        parts.append(("Immutable predecessor artifacts", f"Read {manifest}"))
+    for directory in state.get("predecessors", []):
+        parts.append(("Prior plan and review artifacts", f"Read files in {directory}"))
     records = state.get("records", [])
     if records:
         parts.append(("Predecessor escalation records", f"{', '.join(records)}.{READ_THEM}"))

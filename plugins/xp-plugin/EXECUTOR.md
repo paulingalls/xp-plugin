@@ -36,4 +36,6 @@ extend Files, and report the deviation.
   Attribute inherited commits and tests honestly. If the inherited implementation
   already satisfies the card, hand it back with the current checks; no empty commit
   is required. Historical lead recovery directions are evidence, while your assignment
-  is implementation. Story close, review, and land belong to the lead.
+  is implementation. Inspect relevant untracked/ignored work, dependencies, Git
+  hiding flags and environment yourself; compact recovery does not judge relevance.
+  Story close, review, and land belong to the lead.

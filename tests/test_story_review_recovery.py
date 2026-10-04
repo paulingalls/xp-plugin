@@ -166,35 +166,9 @@ def test_bad_output_preserves_original_bytes_and_producer(tmp_path, output):
 
 
 def test_terminal_red_survives_interruption_before_checkpoint_publication(tmp_path, monkeypatch):
-    from contextlib import chdir
+    from story_review_helpers import terminal_validation_interruption
 
-    import close
-    import review_validation
-    import verify_receipt
-
-    gate = tmp_path / "gate"
-    gate.write_text("#!/bin/sh\necho ORIGINAL-RED >&2\nexit 9\n")
-    gate.chmod(0o755)
-    repo, env, _git, key, events, _hooks = flow_repo(tmp_path, verify=str(gate))
-    original = verify_receipt.record
-
-    def interrupted(*args):
-        assert original(*args)
-        raise KeyboardInterrupt
-
-    for name, value in env.items():
-        monkeypatch.setenv(name, value)
-    with chdir(repo), monkeypatch.context() as patch:
-        patch.setattr(review_validation.verify_receipt, "record", interrupted)
-        with pytest.raises(KeyboardInterrupt):
-            close.cmd_review(key)
-    state = checkpoint(env, key)
-    assert state["status"] == "validation" and not state["validation"]
-    gate.write_text("#!/bin/sh\necho GREEN\n")
-    result = invoke(repo, env, key)
-    assert result.returncode == 2, result.stderr
-    assert checkpoint(env, key)["status"] == "awaiting-disposition"
-    assert events.read_text().splitlines() == ["solution"]
+    terminal_validation_interruption(tmp_path, monkeypatch)
 
 
 @pytest.mark.parametrize("fault", ["no-green", "findings"])
@@ -443,3 +417,61 @@ def test_fixed_object_correction_preserves_committed_work(tmp_path, harness, pro
         else ["solution", "fixer", "closer", "closer"]
     )
     assert after["status"] == "completed"
+
+
+def test_interrupted_unstarted_fixer_cannot_publish_completion(tmp_path, monkeypatch):
+    from contextlib import chdir
+
+    import close
+    import review_sequence
+
+    repo, env, git, key, events, hooks = flow_repo(tmp_path, scenario="fixed")
+    save = review_sequence.save
+
+    def interrupted(story, sequence):
+        save(story, sequence)
+        if sequence["stages"].get("fixer", {}).get("status") == "running":
+            raise KeyboardInterrupt
+
+    for name, value in env.items():
+        monkeypatch.setenv(name, value)
+    with chdir(repo), monkeypatch.context() as patch:
+        patch.setattr(review_sequence, "save", interrupted)
+        with pytest.raises(KeyboardInterrupt):
+            close.cmd_review(key)
+    head = git("rev-parse", "HEAD").stdout
+    sequence = checkpoint(env, key)
+    report = Path(sequence["stages"]["solution"]["path"])
+    saved = report.read_bytes()
+    result = invoke(repo, env, key)
+    assert result.returncode == 2 and "committed no correction" in result.stderr
+    assert checkpoint(env, key)["status"] == "blocked"
+    assert git("rev-parse", "HEAD").stdout == head
+    assert report.read_bytes() == saved and events.read_text().splitlines() == ["solution"]
+    assert not hooks.exists()
+
+
+@pytest.mark.parametrize("mutant", [False, pytest.param(True, marks=pytest.mark.meta)])
+def test_terminal_green_recovers_without_repeating_validation(tmp_path, monkeypatch, mutant):
+    import shutil
+
+    from close_helpers import PLUGIN
+    from story_review_helpers import terminal_validation_interruption
+
+    if not mutant:
+        terminal_validation_interruption(tmp_path, monkeypatch, "green")
+        return
+    control = tmp_path / "control"
+    control.mkdir()
+    terminal_validation_interruption(control, monkeypatch, "green")
+    installed = tmp_path / "installed"
+    shutil.copytree(PLUGIN, installed)
+    path = installed / "scripts/close/review_validation.py"
+    path.write_text(
+        path.read_text().replace('error = "" if reusable else', 'error = "" if False else')
+    )
+    monkeypatch.setenv("XP_FLOW_TEST_CLOSE", str(installed / "scripts/close.py"))
+    broken = tmp_path / "broken"
+    broken.mkdir()
+    with pytest.raises(AssertionError):
+        terminal_validation_interruption(broken, monkeypatch, "green")

@@ -316,7 +316,12 @@ if boundary=='thread-start':
         return original_start(self,*a,**k)
     verify_log.threading.Thread.start=start
 if boundary=='directory':
-    def mkdir(*a,**k): fault('directory fault')
+    original_mkdtemp=verify_log.tempfile.mkdtemp
+    def mkdir(*a,**k):
+        prefix=k.get('prefix',a[1] if len(a)>1 else '')
+        if prefix.startswith(('xp-source-', 'xp-execution-')):
+            return original_mkdtemp(*a,**k)
+        fault('directory fault')
     verify_log.tempfile.mkdtemp=mkdir
 original_open=Path.open
 class Output:

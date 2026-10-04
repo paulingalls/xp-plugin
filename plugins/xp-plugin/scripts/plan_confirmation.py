@@ -1,6 +1,5 @@
-"""Immutable plan artifacts and accepted-round bindings."""
+"""Readable predecessor copies and accepted-round bindings."""
 
-import hashlib
 import json
 from pathlib import Path
 
@@ -9,46 +8,49 @@ from work import data_root
 
 
 def preserve(story_id, plan_file):
-    """Copy before any writer; identical retries reuse immutable snapshots."""
+    import shutil
+
     parent = data_root() / "plans"
     paths = {Path(plan_file)} | {
         p for p in parent.glob(f"{story_id}.*") if p.is_file() and p.suffix != ".part"
     }
-    entries, contents = [], {}
+    names = {}
     for path in sorted(paths):
-        if not path.exists():
-            entries.append({"source": str(path), "state": "missing"})
-            continue
-        body = path.read_bytes()
-        digest = hashlib.sha256(body).hexdigest()
-        entries.append({"source": str(path), "identity": digest, "state": "preserved"})
-        contents[digest] = body
-    key = hashlib.sha256(json.dumps(entries, sort_keys=True).encode()).hexdigest()
-    target = parent / f"{story_id}.predecessors" / key
-    target.mkdir(parents=True, exist_ok=True)
-    for digest, body in contents.items():
-        path = target / digest
-        if path.exists():
-            if path.read_bytes() != body:
-                raise ValueError(f"predecessor snapshot changed: restore {path}")
-        else:
-            with path.open("xb") as handle:
-                handle.write(body)
-    manifest = target / "manifest.json"
-    for entry in entries:
-        if entry["state"] == "preserved":
-            entry["snapshot"] = str(target / entry["identity"])
-    if manifest.exists():
-        if json.loads(manifest.read_text()) != entries:
-            raise ValueError(f"predecessor manifest changed: restore {manifest}")
-    else:
-        manifest.write_text(json.dumps(entries))
+        name = path.name
+        if name in names:
+            name = "draft-" + name
+        if name in names:
+            raise ValueError(
+                "predecessor filenames collide; give the external draft a distinct name"
+            )
+        names[name] = path
+    archive = parent / f"{story_id}.predecessors"
+    archive.mkdir(parents=True, exist_ok=True)
+    number = 1
+    while (archive / f"attempt-{number}").exists() or (
+        archive / f"attempt-{number}.copying"
+    ).exists():
+        number += 1
+    target = archive / f"attempt-{number}.copying"
+    target.mkdir()
+    for name, path in names.items():
+        try:
+            with path.open("rb") as source, (target / name).open("xb") as destination:
+                shutil.copyfileobj(source, destination)
+        except FileNotFoundError:
+            if path.exists():
+                raise
+    completed = archive / f"attempt-{number}"
+    target.rename(completed)
     from handoff import _write, handoff_state
 
-    state = handoff_state(data_root(), story_id) or {}
-    state["predecessors"] = list(dict.fromkeys([*state.get("predecessors", []), str(manifest)]))
+    state = handoff_state(data_root(), story_id)
+    if state is None:
+        raise ValueError("unreadable handoff; restore its preserved bytes")
+    state = state or {}
+    state["predecessors"] = [*state.get("predecessors", []), str(completed)]
     _write(data_root(), story_id, state)
-    return manifest
+    return completed
 
 
 def prior_binding(record, plan_file):

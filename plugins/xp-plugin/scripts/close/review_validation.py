@@ -47,7 +47,20 @@ def validate(story_id, card, sequence):
     sequence["status"] = "validation"
     save(story_id, sequence)
     raw, commands = close.verify_commands(story_id, card)
-    error = verify_receipt.record(story_id, card, raw, commands)
+    from git_source import tracked_state
+
+    boundary = tracked_state()
+    reusable = (
+        sequence["validation"]
+        and not sequence["validation"][-1]["error"]
+        and verify_receipt.decide(story_id, card, raw, commands, sequence["output"]["tree"])[0]
+    )
+    error = "" if reusable else verify_receipt.record(story_id, card, raw, commands)
+    if tracked_state() != boundary:
+        error = (
+            error or "refused: validation changed tracked source/index/HEAD; inspect retained work"
+        )
+
     attempts = sorted(set(root.glob(verify_log.prefix(story_id) + "*")) - before)
     for path in attempts:
         sequence["validation"].append(

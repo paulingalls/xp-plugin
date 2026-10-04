@@ -153,9 +153,10 @@ def test_runtime_guard_faults(tmp_path, monkeypatch, stage):
         old = "    return {"
         name = ".pytest_cache/v/cache/nodeids" if stage == "review" else "node_modules/runtime.bin"
         new = (
-            f"    runtime = root / {name!r}\n    if runtime.exists():\n"
+            f"    runtime = Path.cwd() / {name!r}\n    if runtime.exists():\n"
             "        runtime.lstat()\n"
-            "        modules['faulty_runtime'] = runtime.read_bytes().hex()\n" + old
+            "        if runtime.read_bytes() not in (b'before', b'[]'):\n"
+            "            raise ValueError('faulty runtime policy')\n" + old
         )
     text = path.read_text()
     assert old in text

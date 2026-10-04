@@ -51,13 +51,29 @@ def pytest_collection_modifyitems(session, config, items):
     cost, so a slow-LIST could never have bought the gate back; only a threshold
     can. Hand marks stay: they are deliberate and cheap to keep."""
     slow = pytest.mark.slow
-    ids = set(json.loads(_SLOW.read_text())["ids"])
+    ids = _slow_ids()
     for item in items:
         if item.nodeid in ids:
             item.add_marker(slow)
 
     if _full_suite_selected(config):
         _validate_slow_registry(session, ids, {item.nodeid for item in items})
+
+
+def _slow_ids():
+    try:
+        registry = json.loads(_SLOW.read_text())
+        if "ids" in registry:
+            return set(registry["ids"])
+        shards = registry["shards"]
+        if not shards:
+            raise ValueError("empty shard list")
+        ids = {node for name in shards for node in json.loads((_SLOW.parent / name).read_text())}
+        if len(ids) != registry["count"]:
+            raise ValueError(f"{len(ids)} IDs, expected {registry['count']}")
+        return ids
+    except (OSError, ValueError, KeyError) as error:
+        raise pytest.UsageError(f"Unreadable slow registry: {error}; restore its shards") from error
 
 
 def _full_suite_selected(config):

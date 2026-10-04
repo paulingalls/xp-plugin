@@ -15,7 +15,7 @@ FAULTS = {
     ),
     "work": (
         "scripts/spawn/completion.py",
-        "if after_work != before_work or any(\n"
+        "if not same_work or any(\n"
         '        current[key] != baseline[key] for key in ("review", "scope")\n    ):',
         "if False:",
         "external",
@@ -45,7 +45,7 @@ FAULTS = {
     ),
     "tier-motion": (
         "scripts/spawn/execution.py",
-        "if not same_inputs(before, after):",
+        "if not same_inputs(before, after) or moved:",
         "if False:",
         "motion",
         None,
