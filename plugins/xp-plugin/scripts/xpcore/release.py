@@ -69,11 +69,20 @@ def latest_tag() -> str:
     return max(tags, key=key, default="")
 
 
-def tag_at_head(root) -> str:
-    """The highest vX.Y.Z tag on HEAD, or "": a release that already tagged this commit."""
+def tag_at_head(root, version: str) -> str:
+    """`vX` when THIS release's tag already points at HEAD, else "". Only its own version
+    counts: another release (a free patch after a sprint, or the reverse) may tag the same
+    commit, and that tag must not stand in for this one's wall, hook or tag."""
+    if not version:
+        return ""
     tags = gitx.git("tag", "--points-at", "HEAD", cwd=root).split()
-    tags = [t for t in tags if t.startswith("v") and SEMVER.fullmatch(t)]
-    return max(tags, key=lambda t: key(t.removeprefix("v")), default="")
+    return f"v{version}" if f"v{version}" in tags else ""
+
+
+def tree_version(root) -> str:
+    """The version `root`'s manifests name, or under `version_files: none` the latest tag."""
+    files = version_files()
+    return manifest_version(files[0], root) if files else latest_tag()
 
 
 def bump(version: str, part: str) -> str:

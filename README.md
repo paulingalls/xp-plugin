@@ -64,13 +64,13 @@ xp.py sprint plan <id>          fresh review of the slate
 xp.py sprint open <id>          on branch sprint-NNN (sprint 7 is sprint-007), cut from trunk by you
 xp.py sprint review <id>        one reviewer per angle over the sprint, one fix pass
 xp.py sprint land <id>          version check, trial merge, sprint hook, PR
-xp.py sprint post-merge <id>    on trunk after the PR merges: tag and record
+xp.py sprint post-merge <id>    on trunk after the PR merges: record, and tag under versioning: on
 xp.py story <id>                plan, plan review, execute, review; only missing stages
 xp.py story review <id>         one more diff review
 xp.py story land <id>           trial merge, Acceptance on the merged tree, merge
 xp.py free <slug>               mint the card; run again to walk it as a story cut from trunk
 xp.py free land <slug>          PR against trunk
-xp.py free post-merge <slug>    patch tag
+xp.py free post-merge <slug>    close the patch; tag it under versioning: on
 xp.py bug | debt | note | resolve    records with a falsifier command
 ```
 

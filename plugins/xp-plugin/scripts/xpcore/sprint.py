@@ -46,7 +46,7 @@ def cmd_sprint_plan(args) -> int:
     slate, root = cards.sprint_slate(args.id), repo_root()
     out = sprint_dir(args.id) / "slate-review.md"
     if args.dry_run:
-        print(f"would run the plan reviewer over Sprint {args.id}'s slate into {out}")
+        print(f"would run the slate reviewer over Sprint {args.id}'s slate into {out}")
         return 0
     out.unlink(missing_ok=True)
     text = bundle.prompt("slate-reviewer", slate=slate, paths={"FINDINGS_PATH": str(out)})
@@ -191,9 +191,10 @@ def cmd_sprint_post_merge(args) -> int:
     land_json = sprint_dir(args.id) / "land.json"
     if not land_json.is_file():
         refuse(f"no {land_json}; run `xp.py sprint land {args.id}` first")
-    tested = json.loads(land_json.read_text())["tested_tree"]
+    landed = json.loads(land_json.read_text())
+    tested = landed["tested_tree"]
     # A rerun after the tag: the hook passed and the wall held before it was made.
-    tagged = release.tag_at_head(root) if release.versioning() else ""
+    tagged = release.tag_at_head(root, landed.get("version", "")) if release.versioning() else ""
     version = tagged.removeprefix("v") or release.version_wall("minor")
     changed = not tagged and gitx.git("rev-parse", "HEAD^{tree}", cwd=root) != tested
     if args.dry_run:

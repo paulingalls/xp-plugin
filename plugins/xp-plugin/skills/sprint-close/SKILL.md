@@ -12,7 +12,8 @@ read the review files and the handback it prints; judge what the fix pass left
 open: fix, drop with a reason, or debt under both JUDGMENT bars. Unmet ACs and release blockers are not
 waivable. Write the retro from the plugin's `templates/retro.md` with the human,
 into the sprint's data directory. Land opens the release PR; after it merges, run
-post-merge on trunk to tag and record the release. Rewrite `session.md`.
+post-merge on trunk to record the release and, under `versioning: on`, tag it.
+Rewrite `session.md`.
 
 ```
 xp.py sprint review <id>

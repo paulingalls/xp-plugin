@@ -1,7 +1,7 @@
 # System
 
 **Product**: xp-plugin, a light-touch XP process plugin for coding agents on Claude
-Code and Codex. One entry point (`xp.py`), four agent charters, the project's own
+Code and Codex. One entry point (`xp.py`), seven agent charters, the project's own
 git hooks for tests. This repo runs under the plugin it ships.
 
 **Stack**: Python 3.11+, stdlib only in shipped code. Markdown for all prose. Dev
@@ -17,7 +17,8 @@ every shipped path is walked by hand in a scratch consumer before a release.
 - `plugins/xp-plugin/scripts/xp.py` — the dispatcher; `xpcore/` holds one module
   per concern (config, cards, gitx, launch, bundle, story, land, sprint, release,
   records, session, setup, hooks)
-- `plugins/xp-plugin/agents/` — planner, plan-reviewer, executor, reviewer charters
+- `plugins/xp-plugin/agents/` — one charter per artifact: planner, plan-reviewer,
+  slate-reviewer, executor, reviewer, angle-reviewer, fixer
 - `plugins/xp-plugin/angles/` — one file per sprint-review angle
 - `plugins/xp-plugin/skills/` — the five skills; `.claude/` symlinks them for dogfooding
 - `plugins/xp-plugin/templates/` — what `xp.py setup` scaffolds into a consumer

@@ -327,3 +327,46 @@ def test_free_patch_with_versioning_off_lands_and_closes_untagged(tmp_path, monk
     assert git(root, "tag", "--list") == "" and not wt.exists()
     assert cards.find_card("free-fix").status == "done"
     assert "versioning: off" in capsys.readouterr().out
+
+
+def test_free_post_merge_ignores_a_sprint_tag_at_head(tmp_path, monkeypatch, capsys):
+    root, _, _ = free_patch(tmp_path, monkeypatch)
+    git(root, "merge", "-q", "--no-ff", "free-fix-x", "-m", "PR")
+    git(root, "tag", "-a", "v1.2.0", "-m", "a sprint's tag")
+    with pytest.raises(SystemExit) as exit_:
+        land.cmd_free_post_merge(ns("fix"))
+    assert exit_.value.code == 2 and "not after the latest tag v1.2.0" in capsys.readouterr().err
+    assert cards.find_card("free-fix").status == "in-progress"
+
+
+def test_a_close_that_failed_after_the_worktree_finishes_on_rerun(story, monkeypatch, capsys):
+    root, data, wt, _ = story
+    commit(root, {"merged.txt": "ok\n"}, "sprint work")
+    with monkeypatch.context() as m:
+        m.setattr(cards, "set_status", lambda *_: 1 / 0)
+        with pytest.raises(ZeroDivisionError):
+            land.cmd_story_land(ns("story-001"))
+    assert not wt.exists() and cards.find_card("story-001").status == "in-progress"
+    assert land.cmd_story_land(ns("story-001")) == 0
+    assert "finished a previous land of story-001" in capsys.readouterr().out
+    assert cards.find_card("story-001").status == "done"
+    assert len((data / "closes.jsonl").read_text().splitlines()) == 1
+
+
+def test_an_empty_branch_beside_a_landed_sibling_still_refuses(tmp_path, monkeypatch, capsys):
+    """merged_by matches the branch tip as a merge parent, not any commit it is an ancestor of."""
+    root, data = make_project(tmp_path, monkeypatch)
+    (data / "plan.md").write_text(CARD)
+    git(root, "switch", "-qc", "sprint-001")
+    (data / "sprint_branch").write_text("sprint-001\n")
+    wt = data / "worktrees" / "story-001"
+    git(root, "worktree", "add", "-q", "-b", "story-001-thing", str(wt))
+    git(root, "branch", "-q", "sibling")
+    git(root, "switch", "-q", "sibling")
+    commit(root, {"s.txt": "s\n"}, "sibling work")
+    git(root, "switch", "-q", "sprint-001")
+    git(root, "merge", "-q", "--no-ff", "sibling", "-m", "sibling landed")
+    with pytest.raises(SystemExit) as exit_:
+        land.cmd_story_land(ns("story-001"))
+    assert exit_.value.code == 2 and "has no commits on story-001-thing" in capsys.readouterr().err
+    assert cards.find_card("story-001").status == "in-progress" and wt.exists()

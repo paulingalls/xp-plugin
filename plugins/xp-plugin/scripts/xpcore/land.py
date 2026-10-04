@@ -90,6 +90,20 @@ def fetched_trunk(target: str, path: Path) -> str:
     return f"origin/{target}"
 
 
+def recorded_close(card_id: str) -> str:
+    """The merge closes.jsonl recorded for `card_id`, or "": a close that got that far and
+    then failed to flip the card has no worktree left for a rerun to find."""
+    path = data_root() / "closes.jsonl"
+    lines = path.read_text().splitlines() if path.is_file() else []
+    return next((r["merge"] for r in map(json.loads, lines) if r["id"] == card_id), "")
+
+
+def finish_recorded(card: cards.Card) -> int:
+    cards.set_status(card.id, "done")
+    print(f"finished a previous land of {card.id}: it was recorded as closed; marked done")
+    return 0
+
+
 def close(card: cards.Card, merge: str, path: Path, branch: str, lead: Path) -> None:
     # The worktree before the branch: git will not delete a branch a worktree has out.
     gitx.worktree_remove(path, cwd=lead)
@@ -106,6 +120,8 @@ def land(card_id: str, target: str, *, pr: bool, dry_run: bool) -> int:
     card = cards.find_card(card_id)
     if card.status != "in-progress":
         refuse(f"{card.id} is [{card.status}], not [in-progress]; only spawned work lands")
+    if recorded_close(card.id):
+        return finish_recorded(card)
     path, branch = worktree_of(card)
     if gitx.is_dirty(path):
         refuse(f"{path} has uncommitted changes; commit or discard them, then land")
@@ -187,6 +203,8 @@ def cmd_free_post_merge(args) -> int:
     card = cards.find_card(free_id(args.id))
     if card.status != "in-progress":
         refuse(f"{card.id} is [{card.status}], not [in-progress]; it was closed already")
+    if recorded_close(card.id):
+        return finish_recorded(card)
     path, branch = worktree_of(card)
     if gitx.is_dirty(path):
         refuse(f"{path} has uncommitted changes; commit or discard them, then run again")
@@ -203,7 +221,7 @@ def cmd_free_post_merge(args) -> int:
     if how == "squash":
         print(f"{card.id} was squash-merged; its history is not on {main}; prefer merge commits")
     # A rerun after the tag but before close finished: the tag is this release's.
-    tagged = release.tag_at_head(lead) if release.versioning() else ""
+    tagged = release.tag_at_head(lead, release.tree_version(lead)) if release.versioning() else ""
     version = tagged.removeprefix("v") if tagged else release.version_wall("patch")
     if args.dry_run:
         make = f"tag v{version}, " if version and not tagged else ""

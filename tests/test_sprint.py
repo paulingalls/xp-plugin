@@ -104,7 +104,9 @@ def test_post_merge_rerun_after_the_tag_finishes_without_tagging_again(repo, mon
     merge_on_trunk(root)
     (data / "sprints" / "1").mkdir(parents=True)
     tree = git(root, "rev-parse", "HEAD^{tree}")
-    (data / "sprints" / "1" / "land.json").write_text(json.dumps({"tested_tree": tree}))
+    (data / "sprints" / "1" / "land.json").write_text(
+        json.dumps({"tested_tree": tree, "version": "1.2.0"})
+    )
     with monkeypatch.context() as m:
         m.setattr(release, "write_release_record", lambda *a: 1 / 0)
         with pytest.raises(ZeroDivisionError):
@@ -207,3 +209,19 @@ def test_versioning_off_releases_without_a_wall_or_a_tag(repo, tmp_path, monkeyp
     record = json.loads((data / "sprints" / "1" / "release.json").read_text())
     assert record["version"] == "" and record["tag"] == ""
     assert "versioning: off" in capsys.readouterr().out
+
+
+def test_post_merge_ignores_another_release_tag_at_head(repo, capsys):
+    """A free patch tagged trunk's head; the sprint's own release still walls, hooks and tags."""
+    root, data, hooklog = repo
+    merge_on_trunk(root)
+    git(root, "tag", "-a", "v1.1.1", "-m", "a free patch's tag")
+    (data / "sprints" / "1").mkdir(parents=True)
+    (data / "sprints" / "1" / "land.json").write_text(
+        json.dumps({"tested_tree": "x", "version": "1.2.0"})
+    )
+    assert sprint.cmd_sprint_post_merge(ns("1")) == 0
+    assert hooklog.read_text() == "ran\n"  # the tree differed from what land tested
+    assert "v1.2.0" in git(root, "tag", "--points-at", "HEAD").split()
+    assert json.loads((data / "sprints" / "1" / "release.json").read_text())["version"] == "1.2.0"
+    assert "already marks" not in capsys.readouterr().out

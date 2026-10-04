@@ -16,7 +16,7 @@ every unfinished card, open records. What is on disk wins over memory.
 
 **Sprint.**
 1. `/create-sprint`: write the slate in the plan, then `xp.py sprint plan <id>`.
-   A fresh plan reviewer reads the slate. Judge its findings and correct cards.
+   A fresh slate reviewer reads the slate. Judge its findings and correct cards.
 2. `git switch -c sprint-NNN` from trunk (sprint 7 is `sprint-007`), then
    `xp.py sprint open <id>`.
 3. Each story: `xp.py story <id>`, then `/story-close`.
@@ -41,7 +41,7 @@ unreviewed; the sprint review is their net.
 **Free patch.** `xp.py free <slug>` mints the card; fill it in and run it again
 for a story cut from trunk. `/free-close`:
 `xp.py free land <slug>` opens a PR; after it merges,
-`xp.py free post-merge <slug>` tags the patch.
+`xp.py free post-merge <slug>` closes the patch, tagging it under `versioning: on`.
 
 **Judging.** Every finding gets fix, drop with a reason, or debt under both
 JUDGMENT bars. Unmet ACs and release blockers are not waivable.

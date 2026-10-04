@@ -137,7 +137,7 @@ work.py and session_start.py's command surface.
 xp.py setup                       scaffold .xp/ and the hooks; refuses if .xp/ exists
 xp.py recover                     print digest, card statuses, open records (SessionStart prints the command)
 
-xp.py sprint plan <id>            fresh plan reviewer reads the slate, writes sprints/<id>/slate-review.md
+xp.py sprint plan <id>            fresh slate reviewer reads the slate, writes sprints/<id>/slate-review.md
 xp.py sprint open <id>            cut sprint-<id>, record it
 xp.py sprint review <id>          diff reviewers (one per angle) over trunk..sprint; one executor fix pass
 xp.py sprint land <id>            version wall, trial merge, `sprint` hook, PR
