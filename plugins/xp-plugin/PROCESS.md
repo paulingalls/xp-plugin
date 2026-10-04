@@ -39,7 +39,9 @@ and marks the card done. Commits after the last review land listed as
 unreviewed; the sprint review is their net.
 
 **Small changes.** A change too small for a card is the lead's: commit it on
-the sprint branch through the hooks. The sprint review is its net.
+the sprint branch through the hooks, or outside a sprint open a PR against trunk
+by hand. The sprint review or the human at the PR is its net; the plugin keeps
+no record of it.
 
 **Free patch.** `xp.py free <slug>` mints the card; fill it in and run it again
 for a story cut from trunk. `/free-close`:

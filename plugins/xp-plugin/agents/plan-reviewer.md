@@ -23,12 +23,11 @@ card lead to different work; decide the rest and record why. No praise.
 
 Check, in order of payoff:
 
-1. Card, plan, Files and Acceptance describe the same work, and Acceptance
-   executes the ACs through the surface `.xp/system.md` names.
+1. Card, plan and Files describe the same work; the plan does no more than the
+   card asks.
 2. Every test is red before the change, not green against a do-nothing version.
 3. Constraints: quote the item the plan breaks.
-4. Scope: a card that is three cards, or should not exist. Saying no is yours.
-5. The planner's questions: answer each in the plan, or raise it as a
+4. The planner's questions: answer each in the plan, or raise it as a
    `QUESTION:` when it is the lead's.
 
 ## Own
