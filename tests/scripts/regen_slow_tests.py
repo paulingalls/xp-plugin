@@ -46,6 +46,11 @@ def main(argv: list[str]) -> int:
     sha = subprocess.run(
         ["git", "rev-parse", "--short", "HEAD"], capture_output=True, text=True
     ).stdout.strip()
+    shards = []
+    for offset in range(0, max(1, len(ids)), 400):
+        name = f"slow_tests-{len(shards) + 1}.json"
+        (OUT.parent / name).write_text(json.dumps(ids[offset : offset + 400], indent=2) + "\n")
+        shards.append(name)
     OUT.write_text(
         json.dumps(
             {
@@ -55,7 +60,8 @@ def main(argv: list[str]) -> int:
                 "measured_on": date.today().isoformat(),
                 "census": f"{len(per)} tests with timed rows, {sum(per.values()):.0f}s CPU"
                 " (pytest hides rows under --durations-min, so this is NOT the suite size)",
-                "ids": ids,
+                "shards": shards,
+                "count": len(ids),
             },
             indent=1,
         )

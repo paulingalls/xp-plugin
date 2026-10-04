@@ -82,7 +82,7 @@ def _drop_stash(git, entry: str) -> bool:
 
 def run_planner(story_id: str, card: str, tree: Path, handoff: str) -> tuple[int, str]:
     import review
-    from handback import tree_state
+    from git_source import tracked_state
     from handoff import draft_path
     from spawn import PLUGIN_ROOT, build_prompt, data_root, teammate_sections
 
@@ -94,14 +94,14 @@ def run_planner(story_id: str, card: str, tree: Path, handoff: str) -> tuple[int
     from work import plan_path
 
     own_card = story_card(plan_path().read_text(), story_id)[0]
-    head = tree_state(tree)
+    head = tracked_state(root=tree, include_untracked=True)
     _result, error = review.run(build_prompt(sections), tree, name="planner", card=card)
     after = draft.read_bytes() if draft.is_file() else None
     if error:
         return 2, f"the planner stage stopped: {error}"
     if story_card(plan_path().read_text(), story_id)[0] != own_card:
         return 2, "the planner changed the story card; it owns only the external plan"
-    if tree_state(tree) != head:
+    if tracked_state(root=tree, include_untracked=True) != head:
         return 2, "the planner changed the repository; it owns only the external plan"
     if not after or not after.strip():
         return 2, f"the planner did not write a non-empty plan at {draft}"
