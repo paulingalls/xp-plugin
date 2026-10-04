@@ -107,8 +107,15 @@ def changed_files(base: str, head: str, cwd=None) -> list[str]:
     return git("diff", "--name-only", f"{base}..{head}", cwd=cwd).splitlines()
 
 
-def diff_range(base: str, head: str, cwd=None) -> str:
-    return git("diff", f"{base}..{head}", cwd=cwd)
+def range_map(base: str, head: str, cwd) -> str:
+    """What a reviewer gets instead of the hunks: the range, where to diff it, the log and
+    the file map. It reads the diff per file itself, at the size it chooses."""
+    return (
+        f"## Commit range {base}..{head} in {cwd}\n"
+        f"Run `git diff {base}..{head}` there, per file as you need it.\n\n"
+        f"### Log\n{git('log', '--format=%h %s', f'{base}..{head}', cwd=cwd)}\n\n"
+        f"### Files\n{git('diff', '--stat=120', f'{base}..{head}', cwd=cwd)}"
+    )
 
 
 def log_range(base: str, head: str, cwd=None) -> str:

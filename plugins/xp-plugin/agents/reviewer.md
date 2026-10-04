@@ -7,7 +7,8 @@ description: Fresh-context adversarial review of one story's commit range.
 
 ## Read
 
-- The commit range you are given: every hunk and its whole enclosing routine.
+- The commit range you are given, by its log and file map: diff it per file in
+  the worktree, every hunk and its whole enclosing routine.
 - The card now and as spawned, and `<data>/stories/<id>/handback.md`.
 - `.xp/constraints.md` and `.xp/system.md`.
 

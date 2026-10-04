@@ -205,7 +205,11 @@ def test_the_reviewer_sees_the_card_as_spawned_and_as_it_is_now(repo):
     assert xp.main(["story", "story-002"]) == 0
     spawned = (story(repo, "story-002") / "card.md").read_text()
     assert spawned.startswith("#### story-002 — One file   [in-progress]\nFiles: a.py")
-    assert "## Card changes since spawn\n(none)" in (repo / "reviewer.prompt").read_text()
+    prompt = (repo / "reviewer.prompt").read_text()
+    assert "## Card changes since spawn\n(none)" in prompt
+    # A map and the command, not the hunks: the reviewer pulls the diff per file itself.
+    assert "### Files\n" in prompt and " feature.txt " in prompt and "`git diff " in prompt
+    assert "\n+" not in prompt.split("### Files")[1].split("## Handback")[0]
     plan = repo / "plan.md"
     plan.write_text(plan.read_text().replace("Files: a.py\n", "Files: a.py\nAC: less.\n"))
     assert xp.main(["story", "review", "story-002"]) == 0

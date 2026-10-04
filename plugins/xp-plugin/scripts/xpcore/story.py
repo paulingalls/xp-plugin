@@ -192,10 +192,9 @@ def review_round(card: cards.Card, sdir: Path, wt: Path, base: str) -> Path:
     review, log_id = sdir / f"review-{number}.md", f"{card.id}-reviewer-{number}"
     fork, head = gitx.fork_point("HEAD", base, cwd=wt), gitx.head(wt)
     extra = (
-        f"Commit range {fork}..{head} in {wt}\n\n## Log\n{gitx.log_range(fork, head, cwd=wt)}"
+        f"{gitx.range_map(fork, head, wt)}"
         f"\n\n## Handback\n{_read(sdir / 'handback.md') or '(none)'}"
         f"\n\n## Card changes since spawn\n{card_changes(card)[0] or '(none)'}"
-        f"\n\n## Diff\n{gitx.diff_range(fork, head, cwd=wt)}"
     )
     text = bundle.prompt(
         "reviewer",

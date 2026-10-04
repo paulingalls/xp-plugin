@@ -51,7 +51,10 @@ def test_fork_point_and_ranges(repo):
     commit(repo, "c.txt", "three\n", "add c")
     assert gitx.fork_point("story", "main", repo) == base
     assert gitx.log_range(base, "story", repo).endswith(" add b")
-    assert "+two" in gitx.diff_range(base, "story", repo)
+    assert gitx.range_map(base, "story", repo).startswith("## Commit range ")
+    assert " b.txt " in gitx.range_map(base, "story", repo) and "+two" not in gitx.range_map(
+        base, "story", repo
+    )
     assert gitx.changed_files(base, "story", repo) == ["b.txt"]
 
 
