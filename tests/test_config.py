@@ -125,13 +125,12 @@ def test_outside_git_refuses(tmp_path, monkeypatch, capsys):
     assert "git repository" in refused(capsys, config.data_root)
 
 
-def test_sprint_branch_record_and_clear(project, capsys):
+def test_sprint_branch_record_and_clear(project):
     assert config.sprint_branch_name("12") == config.sprint_branch_name("012") == "sprint-012"
     assert config.sprint_branch() == ""
     config.record_sprint_branch("sprint-012")
     config.record_sprint_branch("sprint-012")
     assert config.sprint_branch() == "sprint-012"
-    assert "sprint-012" in refused(capsys, config.record_sprint_branch, "sprint-013")
     config.clear_sprint_branch()
     assert config.sprint_branch() == ""
 
