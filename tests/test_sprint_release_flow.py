@@ -177,6 +177,8 @@ def test_prepared_pr_is_not_a_released_sprint(tmp_path):
     "change",
     [
         "equal-tree",
+        "informational-metadata",
+        "stale-duplicate",
         "changed-tree",
         "changed-command",
         "changed-legs",
@@ -191,8 +193,12 @@ def test_shipping_receipt_reuse_requires_matching_tree_and_commands(tmp_path, ch
     events = tmp_path / "tier-events"
     command = f"git rev-parse HEAD^{{tree}} >> '{events}'"
     repo, env, g = make_repo(tmp_path, config=CONFIG.replace("full: true", f"full: {command}"))
+    from test_full_tier_consumers import publishing
+
     record_reviews(tmp_path, repo, env)
-    assert sprint(repo, env, "land").returncode == 2
+    publishing(tmp_path, repo, env, g)
+    result = sprint(repo, env, "land")
+    assert result.returncode == 0, result.stdout + result.stderr
     assert events.is_file()
     state = json.loads(marker_path(tmp_path).read_text())
     measured_head = state["full_tier"]["head"]
@@ -202,6 +208,10 @@ def test_shipping_receipt_reuse_requires_matching_tree_and_commands(tmp_path, ch
         state["full_tier"] = "corrupt receipt"
     elif change == "latest-failure":
         state["full_tier_history"].append(dict(state["full_tier_history"][-1], outcome="failed"))
+    if change == "informational-metadata":
+        from test_full_tier_consumers import information
+
+        information(state, "malformed-timing")
     marker_path(tmp_path).write_text(json.dumps(state))
     g("checkout", "-q", "main")
     assert g("merge", "--no-ff", "sprint-002", "-m", "merged release").returncode == 0
@@ -218,13 +228,23 @@ def test_shipping_receipt_reuse_requires_matching_tree_and_commands(tmp_path, ch
             )
         assert g("commit", "-qam", "new shipping command").returncode == 0
 
+    elif change == "stale-duplicate":
+        config = repo / ".xp/config.yml"
+        config.write_text(
+            config.read_text().replace(f"full: {command}", "full: false")
+            + f"full_legs:\n  checks: {command}\n"
+        )
+        assert g("commit", "-qam", "authoritative legs").returncode == 0
+
     result = sprint(repo, env, "post-merge")
 
     assert result.returncode == 0, result.stdout + result.stderr
-    assert len(events.read_text().splitlines()) == (1 if change == "equal-tree" else 2)
+    assert len(events.read_text().splitlines()) == (
+        1 if change in ("equal-tree", "informational-metadata") else 2
+    )
     assert events.read_text().splitlines()[-1] == g("rev-parse", "HEAD^{tree}").stdout.strip()
     assert json.loads(marker_path(tmp_path).read_text())["full_tier"]["reused"] == (
-        change == "equal-tree"
+        change in ("equal-tree", "informational-metadata")
     )
 
 

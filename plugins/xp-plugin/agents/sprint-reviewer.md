@@ -74,7 +74,7 @@ merely dislike, no re-derivation of what earlier stages already settled.
 Finding nothing is the expected result and a legitimate one: write
 `{"blocking": []}` and stop.
 
-When a blocker's sole remaining remediation is the configured `tests.full`
+When a blocker's sole remaining remediation is the configured full-tier
 gate, you may also name that exact blocker in an optional `"clearable_by_full"`
 string list. It is symbolic: it carries no shell, argv, command, or alternate
 gate.

@@ -39,36 +39,46 @@ def declared() -> tuple[list[tuple[str, str]] | None, str]:
     legs = [(name, values[name]) for name in names]
     if any(not command for _, command in legs):
         return [], "refused: full_legs command is empty"
-    joined = " && ".join(command for _, command in legs)
-    tier = config_block_value("tests", "full")
-    if joined != tier:
-        return [], f"refused: full_legs join mismatch: tests.full={tier!r}; joined={joined!r}"
     return legs, ""
 
 
-def inspect(ref: str, pending: bool) -> tuple[list[tuple[str, str]] | None, str]:
-    current = Path(".xp/config.yml")
-    if not pending and not current.exists():
-        return None, ""
-    if pending:
-        local = current.read_text(errors="replace") if current.exists() else ""
-        incoming = git("show", f"{ref}:.xp/config.yml", check=False).stdout
-        if not any(
-            strip_comment(line).rstrip() == "full_legs:"
-            for line in (local + "\n" + incoming).splitlines()
-        ):
-            return None, ""
-        # git refuses to merge over staged or overlapping edits, which would read as a conflict
-        if dirty := git("status", "--porcelain", "--untracked-files=no").stdout.strip():
-            return None, (
-                f"refused: the working tree is dirty — full_legs is read from a trial merge"
+def compose(legs) -> str:
+    return " && ".join(f"({command})" for _, command in legs)
+
+
+def full_command(legs) -> str:
+    return compose(legs) if legs is not None else config_block_value("tests", "full")
+
+
+def command_cli() -> int:
+    import sys
+
+    legs, error = declared()
+    command = full_command(legs) if not error else ""
+    if error or not command or command == "EDIT-ME":
+        print(error or "refused: configure full_legs or tests.full, then retry", file=sys.stderr)
+        return 2
+    print(command)
+    return 0
+
+
+def inspect(ref: str, pending: bool) -> tuple[list[tuple[str, str]] | None, str, str]:
+    # git refuses to merge over staged or overlapping edits, which would read as a conflict
+    if pending and (dirty := git("status", "--porcelain", "--untracked-files=no").stdout.strip()):
+        return (
+            None,
+            "",
+            (
+                f"refused: the working tree is dirty — the full tier is read from a trial merge"
                 f" with {ref}, and git will not stage one over these:\n  {dirty}"
-            )
+            ),
+        )
     staged = git("merge", "--no-commit", "--no-ff", ref, check=False) if pending else None
     try:
         if staged is not None and staged.returncode:
-            return None, f"refused: merging {ref} here conflicts. Resolve and review again"
-        return declared()
+            return None, "", f"refused: merging {ref} here conflicts. Resolve and review again"
+        legs, error = declared()
+        return legs, full_command(legs) if not error else "", error
     finally:
         if staged is not None:
             git("merge", "--abort", check=False)

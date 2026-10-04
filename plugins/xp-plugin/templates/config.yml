@@ -37,9 +37,9 @@ roles:               # harness/model[/effort]; the lead overrides per story in p
 tests:
   fast: EDIT-ME      # pre-commit: seconds, not minutes
   story: EDIT-ME     # pre-push + story close: the suite you trust before a merge
-  full: EDIT-ME      # sprint close: everything incl. e2e
+  # full: EDIT-ME    # legacy full tier when full_legs is absent
 
-# full_legs:          # optional ordered name: command lines; tests.full must join commands with ` && `
+# full_legs:          # optional ordered name: command lines; authoritative full tier when declared
 #   unit: ./run-unit-suite
 #   integration: ./run-integration-suite
 #                    # legs share no shell state; whitespace followed by # starts a comment

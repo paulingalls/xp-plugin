@@ -13,10 +13,11 @@ The plan is NOT in the repo — it is per clone, in the state root.
    output rather than assuming.
 2. With the human, fill in what the scaffold cannot know:
    - `.xp/constraints.md`, seeded from the plugin template
-   - `tests.fast/story/full` in `.xp/config.yml` — the wall reads these at run
+   - `tests.fast/story` in `.xp/config.yml` — the wall reads these at run
      time, so this is the only place tiers live
-   - `full_legs:` in `.xp/config.yml` — split the full tier into named legs so a
-     failed sprint land reruns only legs not green on that tree
+   - `full_legs:` in `.xp/config.yml` — ordered commands own the full tier; a
+     failed sprint land reruns only legs not green on that tree. Without legs,
+     configure the legacy `tests.full` command
    - `preflight:` in `.xp/config.yml` — optional seconds-scale environment check
      before expensive gates; it runs every time without a receipt
    - `.xp/system.md`, especially **Surfaces & acceptance**: every surface the

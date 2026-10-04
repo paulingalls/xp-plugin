@@ -9,7 +9,6 @@ import tier_legs
 from close import config_flat, default_branch, git
 from env import sprint_branch, sprint_branch_name
 from review_report import normalize_report, validate_clearable
-from work import config_block_value
 
 
 def inputs():
@@ -20,7 +19,7 @@ def inputs():
         "head": git("rev-parse", "HEAD").stdout.strip(),
         "tree": git("rev-parse", "HEAD^{tree}").stdout.strip(),
         "branch": git("branch", "--show-current").stdout.strip(),
-        "full": config_block_value("tests", "full"),
+        "full": tier_legs.full_command(legs),
         "legs": legs,
         "owner": sprint_branch(),
         "config": config_flat(lifecycle.KEY),
@@ -75,8 +74,7 @@ def coverage_refusal(release_id, state):
 
 
 def validation_refusal(state, receipt, before):
-    names = tuple(name for name, _ in before["legs"] or [])
-    history, error = sprint_state.read_tier_history(state, names)
+    history, error = sprint_state.read_tier_history(state)
     if error or history is None:
         return error or "missing validation history — remeasure the shipping tree"
     if before["legs"] is None:
@@ -99,7 +97,7 @@ def finish(release_id, publish):
     except (ValueError, OSError) as exc:
         return str(exc)
     names = tuple(name for name, _ in before["legs"] or [])
-    history, error = sprint_state.read_tier_history(state, names)
+    history, error = sprint_state.read_tier_history(state)
     if error:
         return f"{error} — repair the marker before post-merge"
 

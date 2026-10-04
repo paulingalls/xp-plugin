@@ -5,6 +5,27 @@
 # at a whitespace-preceded `#`. Cutting at any `#` truncated `p#ss` mid-password
 # into a bare VAR=value — a valid command that assigns, exits 0, and runs no test.
 tier_cmd() {
+  if [ "$1" = full ]; then
+    adapter="$(python3 - <<'PYTHON'
+import hashlib, json, os, subprocess, sys
+from pathlib import Path
+try:
+    data = os.environ.get("XP_DATA")
+    if not data:
+        common = subprocess.check_output(["git", "rev-parse", "--git-common-dir"], text=True).strip()
+        project = hashlib.sha256(os.path.realpath(common).encode()).hexdigest()[:12]
+        data = Path.home() / ".xp/data" / project
+    recorded = json.loads((Path(data).expanduser() / "env.json").read_text())
+    sys.path.insert(0, str(Path(recorded["plugin_root"]) / "scripts"))
+    from env import plugin_root
+    print(plugin_root() / "scripts/work.py")
+except (OSError, ValueError, KeyError, TypeError, ImportError) as exc:
+    sys.exit(f"refused: cannot resolve full tier: {exc} — run installed scripts/setup.py or refresh the lead session")
+PYTHON
+)" || return $?
+    python3 "$adapter" tier full
+    return $?
+  fi
   sed -n "/^tests:/,/^[^ ]/p" .xp/config.yml \
     | sed -n "s/^[[:space:]][[:space:]]*$1:\(.*\)/\1/p" | head -1 \
     | sed "s/[[:space:]][[:space:]]*#.*$//" \
@@ -110,7 +131,7 @@ run_tier() {
   # `git merge` never fires pre-commit at all. Measured before this line moved:
   # `run_tier story` exited 0 on a 5,000-char constraints.md against a cap of 10.
   constraints_size
-  cmd="$(tier_cmd "$1")"
+  cmd="$(tier_cmd "$1")" || return $?
   if [ -z "$cmd" ] || [ "$cmd" = "EDIT-ME" ]; then
     echo "refused: tests.$1 is unset or still EDIT-ME in .xp/config.yml — no test tier ran. Set tests.$1 to your suite's command, then retry" >&2
     exit 1

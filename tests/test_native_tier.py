@@ -66,14 +66,16 @@ def policy(tmp_path, monkeypatch):
         ini = "\n".join(line for line in ini.splitlines() if not line.startswith("addopts"))
     monkeypatch.chdir(ROOT)
     commands = dict(config_block_value("tests"))
-    commands.update({f"leg-{k}": v for k, v in config_block_value("full_legs").items()})
+    legs = config_block_value("full_legs")
+    commands["full"] = tier_legs.full_command(list(legs.items()))
+    commands.update({f"leg-{k}": v for k, v in legs.items()})
     if mode.startswith("routine-"):
         key = mode.removeprefix("routine-")
         commands[key] = commands[key].replace(" and not native", "")
     if mode == "native":
         commands["native"] = commands["native"].replace("-m native", '-m "not native"')
-    if mode == "full-join":
-        source = source.replace("  full: ", "  full: false && ")
+    if mode == "full-native":
+        source = source.replace('"not slow and not meta and not native"', '"not slow and not meta"')
     (root / ".xp/config.yml").write_text(source)
     (root / "pytest.ini").write_text(ini)
     tests = root / "tests"
@@ -108,7 +110,12 @@ def test_routine_tiers_exclude_native_bodies(policy, tier):
 
 def collect(root, command):
     nodes = set()
-    for leg in command.split(" && "):
+    legs = (
+        list(config_block_value("full_legs").values())
+        if command == tier_legs.full_command(list(config_block_value("full_legs").items()))
+        else command.split(" && ")
+    )
+    for leg in legs:
         result = run(root, shlex.join([*shlex.split(leg), "--collect-only"]))
         successful(result)
         nodes.update(
@@ -167,7 +174,7 @@ def test_full_legs_remain_routine(policy, monkeypatch):
     legs, refusal = tier_legs.declared()
     assert not refusal, refusal
     assert legs
-    assert events(policy, config_block_value("tests", "full")) == ORDINARY
+    assert events(policy, tier_legs.full_command(legs)) == ORDINARY
 
 
 MUTATIONS = [
@@ -179,7 +186,7 @@ MUTATIONS = [
     ("native", "test_native_tier_runs_only_native_bodies"),
     ("acceptance-marker", "test_actual_acceptance_collection"),
     ("ordinary-deselection", "test_actual_acceptance_collection"),
-    ("full-join", "test_full_legs_remain_routine"),
+    ("full-native", "test_full_legs_remain_routine"),
 ]
 
 
