@@ -1,0 +1,136 @@
+import argparse
+import json
+import os
+import subprocess
+
+import pytest
+from xpcore import cards, land
+
+CONFIG = "trunk: main\nversion_files: package.json\nroles:\n  reviewer: claude/opus\n"
+CHECK = "import pathlib, sys\nsys.exit(pathlib.Path('merged.txt').read_text() != 'ok\\n')\n"
+CARD = "## Sprint 1 — s\n\n#### story-001 — add   [in-progress]\nAcceptance: python3 check.py\n"
+
+
+def git(cwd, *args, env=None, check=True):
+    proc = subprocess.run(["git", *args], cwd=cwd, capture_output=True, text=True, env=env)
+    assert proc.returncode == 0 or not check, proc.stderr
+    return proc.stdout.strip() if check else proc.returncode
+
+
+def commit(cwd, files, message, when=None):
+    for name, text in files.items():
+        (cwd / name).parent.mkdir(parents=True, exist_ok=True)
+        (cwd / name).write_text(text)
+    git(cwd, "add", "-A")
+    env = os.environ | ({"GIT_COMMITTER_DATE": f"@{when} +0000"} if when else {})
+    git(cwd, "commit", "-qm", message, env=env)
+    return git(cwd, "rev-parse", "HEAD")
+
+
+def manifest(version):
+    return {"package.json": json.dumps({"version": version}), "CHANGELOG.md": f"## {version}\n"}
+
+
+def ns(identifier, dry_run=False):
+    return argparse.Namespace(id=identifier, dry_run=dry_run)
+
+
+def make_project(tmp_path, monkeypatch, config=CONFIG):
+    origin, root, data = tmp_path / "origin.git", tmp_path / "repo", tmp_path / "data"
+    git(tmp_path, "init", "-q", "--bare", "-b", "main", str(origin))
+    git(tmp_path, "clone", "-q", str(origin), str(root))
+    git(root, "config", "user.email", "t@example.com")
+    git(root, "config", "user.name", "t")
+    commit(root, {".xp/config.yml": config, **manifest("1.1.0")}, "init")
+    git(root, "push", "-q", "-u", "origin", "main")
+    data.mkdir()
+    monkeypatch.setenv("XP_DATA", str(data))
+    monkeypatch.chdir(root)
+    return root, data
+
+
+def fake_gh(tmp_path, monkeypatch):
+    (bin_ := tmp_path / "bin").mkdir()
+    log = tmp_path / "gh.log"
+    (bin_ / "gh").write_text(f'#!/bin/sh\necho "$@" >> {log}\n')
+    (bin_ / "gh").chmod(0o755)
+    monkeypatch.setenv("PATH", f"{bin_}{os.pathsep}{os.environ['PATH']}")
+    return log
+
+
+@pytest.fixture
+def story(tmp_path, monkeypatch):
+    root, data = make_project(tmp_path, monkeypatch)
+    (data / "plan.md").write_text(CARD)
+    git(root, "switch", "-qc", "sprint-001")
+    (data / "sprint_branch").write_text("sprint-001\n")
+    wt = data / "worktrees" / "story-001"
+    git(root, "worktree", "add", "-q", "-b", "story-001-thing", str(wt))
+    commit(wt, {"check.py": CHECK}, "add check", when=1_000_000_000)
+    review = data / "stories" / "story-001" / "review-1.md"
+    review.parent.mkdir(parents=True)
+    review.write_text("no findings\n")
+    os.utime(review, (1_500_000_000, 1_500_000_000))
+    late = commit(wt, {"later.txt": "x\n"}, "after the review", when=2_000_000_000)
+    return root, data, wt, late
+
+
+def test_green_acceptance_on_the_merged_tree_lands_and_closes(story):
+    root, data, wt, late = story
+    # check.py reads merged.txt, which only the sprint branch has: green needs the trial merge.
+    commit(root, {"merged.txt": "ok\n"}, "sprint work")
+    assert land.cmd_story_land(ns("story-001")) == 0
+    body = git(root, "log", "-1", "--format=%B")
+    assert "review-1.md" in body and f"unreviewed: {late[:10]}^.." in body
+    assert git(root, "rev-parse", "HEAD^2") == late
+    assert cards.find_card("story-001").status == "done"
+    closed = json.loads((data / "closes.jsonl").read_text())
+    assert closed["id"] == "story-001" and closed["merge"] == git(root, "rev-parse", "HEAD")
+    assert not wt.exists() and git(root, "branch", "--list", "story-001-thing") == ""
+
+
+def test_red_acceptance_refuses_and_leaves_everything_unmerged(story, capsys):
+    root, data, wt, _ = story
+    before = commit(root, {"merged.txt": "bad\n"}, "sprint work")
+    with pytest.raises(SystemExit) as exit_:
+        land.cmd_story_land(ns("story-001"))
+    assert exit_.value.code == 2 and "Acceptance exited 1" in capsys.readouterr().err
+    assert git(wt, "status", "--porcelain") == "" and not (wt / "merged.txt").exists()
+    assert git(wt, "rev-parse", "-q", "--verify", "MERGE_HEAD", check=False) != 0
+    assert git(root, "rev-parse", "HEAD") == before
+    assert cards.find_card("story-001").status == "in-progress"
+    assert (data / "logs" / "story-001-acceptance.log").is_file()
+
+
+def test_unsafe_acceptance_refuses_before_merging(story, capsys):
+    data = story[1]
+    (data / "plan.md").write_text(CARD.replace("python3 check.py", "python3 check.py | cat"))
+    with pytest.raises(SystemExit):
+        land.cmd_story_land(ns("story-001"))
+    assert "only `&&` chains" in capsys.readouterr().err
+
+
+def test_overlap_warns_and_never_refuses(story, capsys):
+    root = story[0]
+    commit(root, {"merged.txt": "ok\n", "later.txt": "x\n"}, "sprint work")
+    assert land.cmd_story_land(ns("story-001")) == 0
+    assert "warning: sprint-001 also changed later.txt" in capsys.readouterr().out
+
+
+def test_free_patch_lands_by_pr_then_tags_after_the_merge(tmp_path, monkeypatch, capsys):
+    root, data = make_project(tmp_path, monkeypatch)
+    gh = fake_gh(tmp_path, monkeypatch)
+    (data / "plan.md").write_text("#### free-fix — f   [in-progress]\nAcceptance: python3 -c 1\n")
+    wt = data / "worktrees" / "free-fix"
+    git(root, "worktree", "add", "-q", "-b", "free-fix-x", str(wt))
+    commit(wt, manifest("1.1.1"), "fix")
+    assert land.cmd_free_land(ns("fix")) == 0
+    assert "pr create --base main --head free-fix-x --fill" in gh.read_text()
+    assert git(root, "ls-remote", "origin", "free-fix-x")
+    with pytest.raises(SystemExit):
+        land.cmd_free_post_merge(ns("fix"))
+    assert "is not merged into main" in capsys.readouterr().err
+    git(root, "merge", "-q", "--no-ff", "free-fix-x", "-m", "PR")
+    assert land.cmd_free_post_merge(ns("fix")) == 0
+    assert git(root, "cat-file", "-t", "v1.1.1") == "tag"
+    assert cards.find_card("free-fix").status == "done" and not wt.exists()

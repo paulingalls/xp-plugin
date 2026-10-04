@@ -1,45 +1,12 @@
-# xp project config — EDIT the tiers for your stack, then re-run your first commit
-release: sprint      # sprint = stories integrate on a sprint branch, sprint close PRs trunk
-# codex_sandbox: danger-full-access  # Codex only: workspace-write | danger-full-access
-# trunk: develop       # UNCOMMENT where releases do NOT land on git's DEFAULT branch;
-#                      # they land and tag here, any develop -> main cut stays yours
-# lifecycle_command: ./scripts/xp-lifecycle "fixed value"  # argv prefix, no shell
-#                    # receives sprint-open/story-close/sprint-close and the id
-# preflight: ./scripts/check-environment  # seconds-scale check before expensive gates; no receipt
-sprint_cap: 6        # story-count guidance for the lead
-debt_budget: 0.2     # maximum share of scheduled debt; no allocation to fill
-constraints_chars_cap: 4500  # hard character ceiling; retire or shorten a rule
-profile_target: 806  # story-card token allowance; also the default when absent
-# versioning: off     # disables XP versions and tags; version_files is then ignored
-# version_files: path/to/manifest.json  # REQUIRED before your first release:
-#                      # comma-separated JSON manifests whose version the tag must match.
-#                      # `none` releases WITHOUT that wall — say it deliberately, because
-#                      # unset refuses: a tag no file declares is the failure this prevents.
-# teardown_timeout: 60  # seconds before close kills worktree teardown
-# review:
-#   verify_batches: 2   # sprint-close verifier AGENTS per round. Bounds the
-#                       # spend: candidates are batched across this many, never
-#                       # one agent per candidate.
-
-roles:               # harness/model[/effort]; the lead overrides per story in plan.md
+# trunk: develop           # only when releases do not land on the default branch
+# version_files: package.json   # REQUIRED before the first release: comma-separated JSON
+#                                # manifests whose "version" the tag must match; `none`
+#                                # releases without that wall, deliberately
+sprint_cap: 6
+debt_budget: 0.2
+# codex_sandbox: danger-full-access   # workspace-write | danger-full-access
+roles:                     # harness/model[/effort]; a card's Executor: line overrides
   lead: claude/opus
-  planner: claude/sonnet/medium  # falls back to `executor` when absent in an older config
-  executor: claude/sonnet/medium
-  reviewer: claude/opus
-  slate-reviewer: claude/opus  # falls back to `reviewer` when absent in an older config
-  plan-reviewer: claude/opus   # spawn's own stage; no agent ever starts a review
-
-  finder: claude/opus     # the four round-1 stages of `xp.py sprint <id> review`;
-  verifier: claude/opus   # each falls back to `reviewer` when its key is absent, so
-  fixer: claude/opus      # an older config keeps working untouched
-  closer: claude/opus
-
-tests:
-  fast: EDIT-ME      # pre-commit: seconds, not minutes
-  story: EDIT-ME     # pre-push + story close: the suite you trust before a merge
-  # full: EDIT-ME    # legacy full tier when full_legs is absent
-
-# full_legs:          # optional ordered name: command lines; authoritative full tier when declared
-#   unit: ./run-unit-suite
-#   integration: ./run-integration-suite
-#                    # legs share no shell state; whitespace followed by # starts a comment
+  planner: claude/sonnet
+  executor: claude/sonnet
+  reviewer: claude/opus    # plan and diff reviews; pick a different family from executor

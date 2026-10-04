@@ -1,30 +1,26 @@
 # Constraints
 
-Reversing one of these makes it a different project. Cap: 15 items; adding over
-the cap requires retiring one. Reviewers enforce these — cite the item.
+Reversing one of these makes it a different project. Cap: 10 items; adding one
+retires one. Reviewers enforce these and cite the item. A rule a hook or the
+plugin already enforces is a second copy: delete it.
 
-1. **Fault-inject every guard.** A check that cannot red against its target
-   defect is vacuous and worse than no check — it certifies.
-2. **Small files: target 300 lines, hard cap 500 — tests included, because
-   tests ARE production code**: same review bar, never skipped for test-only
-   changes. At or before the cap, extraction needs no separate approval:
-   before/after collection counts match and every collected test passes. Large
-   files eat agent context; extract, do not squeeze or scroll.
-3. **Comments exist only for what neither a test nor a name can carry** — the
-   why, an external constraint, a rejected design. Restates the code → delete.
-   Narrates history → delete (git holds it). Checkable claim → make it a test.
-4. **Fail fast, fail loud** — raise instead of returning None/empty when
-   something is wrong; no fallback that masks a defect.
-5. **Test at boundaries** — validate at system edges (input, APIs, I/O); trust
-   internal logic.
-6. **Require independent challenge**: a check or review must be capable of
-   disagreeing with the premise it examines, not merely repeat its author.
-7. **Walk shipped paths**: a substitute does not verify a user-facing or
-   instructed path. Execute each changed path end to end before release.
-8. **Check behavior claims first**: read or run existing behavior before a
-   plan, review, or decision relies on a claim about it.
-9. **Name one release version**: before publication, the tag, package or
-   manifest metadata, and release notes must name the same version.
-10. **Keep states distinct**: never infer one state only from another's
-    absence. Represent active and terminal states, and test refusal boundaries
-    between them.
+1. **Test behavior at the outermost boundary that reaches it, once.** When an
+   integration or acceptance test covers a behavior, delete the unit tests that
+   duplicate it. Unit tests are TDD scaffolding, not a permanent asset.
+2. **Tests cost what code costs.** Test lines stay at or below the lines they
+   test. The commit hook finishes in under a minute; everything slower runs at
+   push, at sprint close, or nightly. A slow test is a defect in the test.
+3. **A guard is fault-injected once, when it is added, in its own test file,
+   and only if its failure would be silent or corrupting.** No tests of tests,
+   no meta-tests of gates, no proof that a check's corpus is non-empty. A loud
+   failure needs no guard at all.
+4. **Small files: target 300 lines, hard cap 500, tests included.** Extract,
+   do not scroll.
+5. **Comments carry only what a test or a name cannot**: the why, an external
+   constraint, a rejected design. Restates the code or narrates history: delete.
+6. **Fail fast, fail loud.** Raise instead of returning None or empty; no
+   fallback that masks a defect.
+7. **Run it before you write it down.** A plan, card, review or decision that
+   claims what code does has read or executed that code first.
+8. **Walk every shipped path before release.** A test fixture does not verify
+   a user-facing or agent-instructed path; execute it end to end.

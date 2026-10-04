@@ -1,34 +1,9 @@
-# xp-plugin project config (dogfood instance)
-release: sprint
-codex_sandbox: danger-full-access  # Codex only: workspace-write | danger-full-access
-sprint_cap: 6          # story-count guidance for the lead
-debt_budget: 0.2       # max share of sprint stories that are scheduled debt
-constraints_chars_cap: 4500  # hard character ceiling; retire or shorten a rule
-profile_target: 1209  # this project's measured story-card token allowance
 version_files: plugins/xp-plugin/.claude-plugin/plugin.json
-
-# Temporary all-Codex roles; original mapping: .xp/roles-before-temporary-codex.yml
-roles:                 # harness/model[/effort]; lead overrides per story in plan.md
-  lead: codex/gpt-6.1-sol/medium
+sprint_cap: 6
+debt_budget: 0.2
+codex_sandbox: danger-full-access
+roles:                 # harness/model[/effort]; a card's Executor: line overrides
+  lead: claude/opus
   planner: codex/gpt-6.1-sol/medium
   executor: codex/gpt-6.1-sol/medium
-  reviewer: codex/gpt-6.1-sol/medium
-  slate-reviewer: codex/gpt-6.1-sol/medium
-  card-refresher: codex/gpt-6.1-sol/medium
-  plan-reviewer: codex/gpt-6.1-sol/medium
-  finder: codex/gpt-6-astra/medium
-  verifier: codex/gpt-6.1-sol/medium
-  fixer: codex/gpt-6.1-sol/medium
-  closer: codex/gpt-6.1-sol/medium
-
-# Commit, handback, story land and push recheck the cheap product floor.
-# Slow product checks and test machinery run only at sprint land.
-tests:
-  fast: pytest -q -n 4 -m "not slow and not meta and not native"
-  story: pytest -q -n 4 -m "not slow and not meta and not native"
-  native: pytest -q -n 4 -m native
-
-full_legs:
-  fast: pytest -q -n 6 -m "not slow and not meta and not native"
-  slow: pytest -q -n 6 -m "slow and not meta and not native"
-  meta: pytest -q -n 6 -m "meta and not native"
+  reviewer: claude/opus

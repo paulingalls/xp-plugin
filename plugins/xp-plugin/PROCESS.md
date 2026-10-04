@@ -1,11 +1,49 @@
 # Process
-`/xp-setup` once; exact `recover:` command after reload or resuming; first region next; artifacts win.
-Every review is named for the artifact it reads:
-**slate review** → **execution plan review** → **diff review**.
-Background long legs. No timeout.
-1. **Slate review** — `/create-sprint`; `sprint_cap` advises the lead. Apply authorized corrections; escalate human-only questions. Mid-sprint: record, never schedule. `[sprint-direct]`: sprint branch and review; free: ship now.
-2. **Story** — `spawn.py <story-id>`; red → green → refactor; small commits. Carded/free work stays in its worktree; data root proves spawn, not authorship. Done: surface ACs.
-3. **Story close** — `/story-close`; one full review.
-4. **Sprint close** — `/sprint-close`: judge delivered integration and unresolved obligations with the human; keep retro narrative; validate and release the shipping tree.
-5. **Free** — `xp.py free <slug> start`, then `/free-close`: slotless; ship now.
-Close replaces ≤30-line session digest.
+
+Every scope runs one cycle: plan, review the plan, do, review the diff, land.
+
+| Scope | Plan | Do | Diff reviewed | Lands on |
+|---|---|---|---|---|
+| story | one card | executor in a worktree | story branch since fork | sprint branch |
+| sprint | the slate | its stories | sprint branch since trunk | trunk, tagged |
+| free | one card | executor in a worktree | branch since trunk | trunk, patch tag |
+
+`xp.py` is the absolute path the session banner prints. Every subcommand answers
+`--help`; every refusal names the next action. Background long legs, no timeout.
+
+**Session start.** Run the `recover` command the banner prints: `session.md`,
+every unfinished card, open records. What is on disk wins over memory.
+
+**Sprint.**
+1. `/create-sprint`: write the slate in the plan, then `xp.py sprint plan <id>`.
+   A fresh plan reviewer reads the slate. Judge its findings and correct cards.
+2. `git switch -c sprint-<id>` from trunk, then `xp.py sprint open <id>`.
+3. Each story: `xp.py story <id>`, then `/story-close`.
+4. `/sprint-close`: `xp.py sprint review <id>`, judge, `xp.py sprint land <id>`;
+   after the PR merges, `xp.py sprint post-merge <id>` on trunk.
+
+**Story.** `xp.py story <id>` plans, reviews the plan, executes and reviews the
+diff. It runs only the stages whose files are missing under the story's data
+directory: re-run it after any edit, delete a stage's file to repeat that stage.
+A `QUESTION:` from the plan reviewer stops the story; answer it in the card and
+run again. `xp.py story review <id>` buys one more review when you want one.
+`xp.py story land <id>` trial-merges, runs Acceptance on the merged tree, merges
+and marks the card done. Commits after the last review land listed as
+unreviewed; the sprint review is their net.
+
+**Free patch.** `xp.py free <slug>` is a story cut from trunk. `/free-close`:
+`xp.py free land <slug>` opens a PR; after it merges,
+`xp.py free post-merge <slug>` tags the patch.
+
+**Judging.** Every finding gets fix, drop with a reason, or debt under both
+JUDGMENT bars. Unmet ACs and release blockers are not waivable.
+
+**Records.** `xp.py bug | debt | note | resolve`, per JUDGMENT. Mid-sprint,
+record; never schedule.
+
+**Hooks own the tests.** pre-commit and pre-push run the project's tests; the
+`sprint` hook runs at sprint land; `nightly` is the project's own. The plugin
+runs only a card's Acceptance and the `sprint` hook. Never bypass a hook.
+
+**Close.** At every close, rewrite `session.md` in the data root: intent,
+surprises, next step, under 30 lines.

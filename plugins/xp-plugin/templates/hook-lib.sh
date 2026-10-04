@@ -1,52 +1,26 @@
-# shared by the scaffolded hooks — tiers come from .xp/config.yml AT RUN TIME
-# so config stays declared-once (editing tiers never means editing hooks)
-# $1 = fast|story|full — trim with sed, never xargs (xargs eats quotes).
-# Take the WHOLE value, then strip only what YAML calls a comment: one that opens
-# at a whitespace-preceded `#`. Cutting at any `#` truncated `p#ss` mid-password
-# into a bare VAR=value — a valid command that assigns, exits 0, and runs no test.
-tier_cmd() {
-  if [ "$1" = full ]; then
-    adapter="$(python3 - <<'PYTHON'
-import hashlib, json, os, subprocess, sys
-from pathlib import Path
-try:
-    data = os.environ.get("XP_DATA")
-    if not data:
-        common = subprocess.check_output(["git", "rev-parse", "--git-common-dir"], text=True).strip()
-        project = hashlib.sha256(os.path.realpath(common).encode()).hexdigest()[:12]
-        data = Path.home() / ".xp/data" / project
-    recorded = json.loads((Path(data).expanduser() / "env.json").read_text())
-    sys.path.insert(0, str(Path(recorded["plugin_root"]) / "scripts"))
-    from env import plugin_root
-    print(plugin_root() / "scripts/work.py")
-except (OSError, ValueError, KeyError, TypeError, ImportError) as exc:
-    sys.exit(f"refused: cannot resolve full tier: {exc} — run installed scripts/setup.py or refresh the lead session")
-PYTHON
-)" || return $?
-    python3 "$adapter" tier full
-    return $?
-  fi
-  sed -n "/^tests:/,/^[^ ]/p" .xp/config.yml \
-    | sed -n "s/^[[:space:]][[:space:]]*$1:\(.*\)/\1/p" | head -1 \
-    | sed "s/[[:space:]][[:space:]]*#.*$//" \
-    | sed "s/^[[:space:]]*//;s/[[:space:]]*$//"
+# Shared by the scaffolded hooks. The scanners refuse rather than warn: a hook
+# that passes having scanned nothing makes the commit look scanned.
+
+edit_me() {
+  echo "refused: the $1 command in this hook is still EDIT-ME — put your project's command in its place, then retry" >&2
+  exit 1
 }
-# The scanners below REFUSE rather than warn. A gate that reports green having run
-# nothing is worse than no gate: the commit it passes looks scanned and tested.
+
 secrets_require_gitleaks() {
   if ! command -v gitleaks >/dev/null 2>&1; then
-    echo "xp wall: gitleaks not installed — refusing to pass a Git path nothing scanned." >&2
-    echo "  Install it (brew install gitleaks, or github.com/gitleaks/gitleaks), then retry." >&2
+    echo "refused: gitleaks is not installed, so nothing scanned this — install it (brew install gitleaks), then retry" >&2
     return 1
   fi
 }
+
 secrets_scan_index() {
   secrets_require_gitleaks || return 1
   if ! gitleaks protect --staged --no-banner --redact; then
-    echo "xp wall: remove the secret from staged content, re-stage, and retry." >&2
+    echo "refused: a secret is staged — remove it, re-stage, then retry" >&2
     return 1
   fi
 }
+
 secrets_scan_push() {
   secrets_require_gitleaks || return 1
   push_remote="$1"
@@ -55,86 +29,28 @@ secrets_scan_push() {
     refs=$((refs + 1))
     case "$local_sha" in
       ""|*[!0]*) ;;
-      *) echo "xp wall: ref deletion ($local_ref); no outgoing commits to scan." >&2; continue;;
+      *) continue;;
     esac
     case "$remote_sha" in
       ""|*[!0]*)
-        # gitleaks EXITS 0 on a range git cannot resolve (measured on 8.30.1: a
-        # force-push over unfetched remote motion printed `Invalid revision
-        # range` and `no leaks found`, and the push landed unscanned), so the
-        # range has to be proved resolvable HERE or the wall passes what it
-        # never read.
+        # gitleaks exits 0 on a range git cannot resolve, so prove it resolves here.
         if ! git rev-parse --quiet --verify "$remote_sha^{commit}" >/dev/null 2>&1; then
-          echo "xp wall: $remote_ref is at $remote_sha, which this clone does not have —" >&2
-          echo "  nothing could be scanned. Run \`git fetch\`, then retry." >&2
+          echo "refused: $remote_ref is at $remote_sha, which this clone lacks, so nothing was scanned — run git fetch, then retry" >&2
           return 1
         fi
         scan_range="$remote_sha..$local_sha";;
       *)
         if [ -z "$push_remote" ]; then
-          echo "xp wall: the destination remote did not reach the pre-push scanner — refusing." >&2
-          echo "  Pass Git's pre-push remote name to secrets_scan_push, then retry." >&2
+          echo "refused: the pre-push remote name did not reach secrets_scan_push — pass \"\$1\" to it, then retry" >&2
           return 1
         fi
         scan_range="$local_sha --not --remotes=$push_remote";;
     esac
     if ! gitleaks git --log-opts="$scan_range" --no-banner --redact --verbose </dev/null; then
-      echo "xp wall: rewrite the outgoing history to remove the secret, then retry." >&2
+      echo "refused: an outgoing commit carries a secret — rewrite that history, then retry" >&2
       return 1
     fi
   done
-  # Zero ref lines is `nothing to push` AND `stdin never arrived`; the second is a
-  # wall that greens having read nothing, so the state gets named rather than
-  # inferred from the silence.
-  [ "$refs" -gt 0 ] || echo "xp wall: git sent no ref updates — nothing to push, or stdin never reached this hook." >&2
-}
-constraints_size() {
-  cap="$(sed -n 's/^constraints_chars_cap:[[:space:]]*//p' .xp/config.yml | head -1 | sed 's/[[:space:]][[:space:]]*#.*$//')"
-  if [ -z "$cap" ]; then
-    echo "xp wall: constraints_chars_cap is missing in .xp/config.yml — refusing." >&2
-    echo "  Add \`constraints_chars_cap: 4500\` to .xp/config.yml, then retry." >&2
-    exit 1
-  fi
-  case "$cap" in *[!0-9]*|0)
-    echo "xp wall: constraints_chars_cap '$cap' is invalid in .xp/config.yml — use a positive integer." >&2
-    exit 1;;
-  esac
-  if [ ! -f .xp/constraints.md ]; then
-    echo "xp wall: .xp/constraints.md is missing — refusing." >&2
-    exit 1
-  fi
-  if ! command -v python3 >/dev/null 2>&1; then
-    echo "xp wall: python3 not installed — refusing to pass a commit nothing measured." >&2
-    echo "  Install python3 (every xp script needs it), then retry." >&2
-    exit 1
-  fi
-  # encoding PINNED: read_text defaults to the LOCALE's encoding, so under a C
-  # locale with PEP 538 coercion off every non-ASCII BYTE decodes to its own
-  # replacement char and the count becomes the byte length (measured: 11 chars
-  # counted 44). A cap that changes with $LC_ALL is not a cap.
-  count="$(python3 -c 'from pathlib import Path; print(len(Path(".xp/constraints.md").read_text(encoding="utf-8", errors="replace")))')"
-  # An EMPTY count is `[ "" -gt N ]`, which errors and reads as "under cap": the
-  # measurement failing must refuse, not pass (the rule this file opens with).
-  case "$count" in ""|*[!0-9]*)
-    echo "xp wall: could not measure .xp/constraints.md — refusing to pass a commit nothing measured." >&2
-    echo "  The error above is python3's: make .xp/constraints.md readable, then retry." >&2
-    exit 1;;
-  esac
-  if [ "$count" -gt "$cap" ]; then
-    echo "xp wall: .xp/constraints.md is $count characters against constraints_chars_cap $cap." >&2
-    echo "  retire or shorten a constraint, then retry." >&2
-    exit 1
-  fi
-}
-run_tier() {
-  # EVERY tier, not just fast: pre-push RE-CHECKS what pre-commit checked, and
-  # `git merge` never fires pre-commit at all. Measured before this line moved:
-  # `run_tier story` exited 0 on a 5,000-char constraints.md against a cap of 10.
-  constraints_size
-  cmd="$(tier_cmd "$1")" || return $?
-  if [ -z "$cmd" ] || [ "$cmd" = "EDIT-ME" ]; then
-    echo "refused: tests.$1 is unset or still EDIT-ME in .xp/config.yml — no test tier ran. Set tests.$1 to your suite's command, then retry" >&2
-    exit 1
-  fi
-  sh -c "$cmd"
+  # No ref lines means nothing to push, or stdin never reached this hook; say which could be true.
+  [ "$refs" -gt 0 ] || echo "xp hooks: git sent no ref updates — nothing to push, or stdin never reached this hook" >&2
 }

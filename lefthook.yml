@@ -30,6 +30,9 @@ pre-merge-commit:
 pre-push:
   piped: true
   jobs:
+    - script: secrets
+      runner: sh
+      use_stdin: true
     - name: lint
       run: ruff check .
     - name: tests

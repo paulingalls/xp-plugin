@@ -9,7 +9,6 @@ from pathlib import Path
 from typing import NoReturn
 
 HARNESSES = ("claude", "codex")
-RELEASE_MODES = ("sprint", "story")
 # The shipped config names one reviewer seat for plan and diff reviews alike.
 ROLE_FALLBACK = {"plan-reviewer": "reviewer"}
 SETUP = "run `python3 <plugin>/scripts/xp.py setup` in the repo root"
@@ -113,13 +112,6 @@ def trunk() -> str:
     if proc.returncode == 0 and proc.stdout.strip():
         return proc.stdout.strip().removeprefix("origin/")
     return "main"
-
-
-def release_mode() -> str:
-    mode = str(load_config().get("release", "sprint"))
-    if mode not in RELEASE_MODES:
-        refuse(f"release: {mode!r} in .xp/config.yml; set it to sprint or story")
-    return mode
 
 
 def sprint_branch_name(identifier) -> str:

@@ -1,22 +1,19 @@
 ---
 name: story-close
-description: Close the current story with independent review, one conditional fix and closure, and landing.
+description: Judge a story's review findings and land it on the sprint branch.
 ---
 
 # Story Close
 
-Read the completed review sequence and its retained reports from spawn; judge every finding under JUDGMENT.md: fix by default, explicitly drop with a reason, or
-retain exceptional debt with a real record reference and both bars. Reserved choices
-and unmet ACs belong to the lead; dispositions cannot waive release blockers.
+`xp.py story <id>` ends by printing the review's findings. Judge every one under
+JUDGMENT: fix it with a commit in the story worktree, drop it with a reason, or
+file debt under both bars. Unmet ACs and anything the lead reserves are yours,
+with the human where needed. Another review after your fixes is optional; land
+lists commits after the last review as unreviewed, and the sprint review covers
+them. Land, then rewrite `session.md`: intent, surprises, next step, under 30 lines.
 
-If correction changes the solution, commit it and run `xp.py story <id> review`
-to explicitly authorize a new sequence. For incomplete producer output, the same
-command corrects that producer while retaining completed stages and commits.
-`spawn.py resume <id>` resumes interrupted validation. A green same-tree retry still
-needs `xp.py story <id> acknowledge-validation --reason '<observed cause>'` from
-the lead before completion. Inspect the retained red and green evidence first.
-
-Run `xp.py story <id> land` from the story worktree after the sequence completes.
-It runs deterministic gates and moves refs. Replace the session digest (≤30 lines) with intent,
-surprises and the next step. Automatic reviewer/fixer/closer retry and separate
-repair/salvage routes do not exist.
+```
+xp.py story review <id>        # optional, one more review
+xp.py story land <id>
+xp.py debt --help              # when a finding becomes debt
+```

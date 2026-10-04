@@ -1,41 +1,23 @@
 ---
 name: create-sprint
-description: Author a sprint slate before story slots are spent.
+description: Write a sprint slate, have it reviewed, and open the sprint.
 ---
 
 # Create Sprint
 
-`templates/plan.md` owns card shape; setup already copied it to the per-clone
-plan path `/xp-setup` prints.
+Write the sprint's cards in the plan file `recover` names, in the shape the
+plugin's `templates/plan.md` shows. Carry unfinished cards forward first. Each
+card's Acceptance is one command, run from the repository root, that executes its
+ACs; a Gherkin feature run by the project's runner is the recommended form.
+`sprint_cap` advises size; `debt_budget` caps the share of debt. Order
+prerequisites first and split cards that collide on files. Then run the slate
+review, judge every finding in the slate review file it names (correct the card,
+drop with a reason, or file debt under both JUDGMENT bars), answer each
+`QUESTION:` with the human, and open the sprint. Addressed findings need no
+second review.
 
-Before writing:
-
-- Carry every open card named by session recovery unchanged into the new sprint,
-  before slate review.
-- Use `sprint_cap` as size advice, not a quota or exception ceremony. The lead
-  chooses a coherent slate; `debt_budget` bounds the share spent
-  on scheduled debt; it is a ceiling, never an obligation to fill it.
-- Put prerequisites first in merge order. Find file collisions between cards;
-  order or split them before execution.
-- Write each `Verify:` as argv executed from the repo root: unquoted `&&` may
-  chain commands; every other shell metacharacter is refused, as are `cd` and an
-  argv[0] absent from PATH.
-
-## Open
-
-When the slate is complete, `slate_review.py <id>` gives a fresh `slate-reviewer`
-the full proposed slate, `sprint_cap`, VALUES, JUDGMENT, constraints and system
-context; do not give it the author's conclusions. Check EVERY returned per-card
-and slate result. Fix authorized corrections, record a one-line reasoned drop in
-the slate judgment, or retain exceptional debt with a real record reference and
-both JUDGMENT bars. Escalate human/scope choices; do not extend ACs automatically.
-Keep discoveries and value tradeoffs in notes, leaving corrected cards only.
-Addressed findings need no automatic second slate review. Then
-`git switch -c sprint-<id>`, the id stripped of leading zeros and zero-padded to three characters (`sprint-007`, `sprint-2b-11`), and
-`python3 ${CLAUDE_PLUGIN_ROOT}/scripts/xp.py sprint <id> open`. Opening runs only the
-sprint-open lifecycle and records the sprint.
-
-## Done
-
-Do not launch a story until the review and sprint
-open are complete.
+```
+xp.py sprint plan <id>
+git switch -c sprint-<id>      # from trunk; sprint 7 is sprint-007
+xp.py sprint open <id>
+```

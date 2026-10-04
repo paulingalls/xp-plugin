@@ -28,6 +28,7 @@ def handler(module: str, name: str):
     def run(args) -> int:
         return getattr(importlib.import_module(f"xpcore.{module}"), name)(args)
 
+    run.target = f"xpcore.{module}.{name}"
     return run
 
 
@@ -36,7 +37,7 @@ def scoped(sub, name: str, actions: dict, spawn: str, help_text: str) -> None:
     p.add_argument("first", metavar="ACTION|ID", help=f"{' | '.join(actions)}, or the id")
     p.add_argument("id", nargs="?", help="the id, after an action")
     p.add_argument("--dry-run", action="store_true", help="print what would run")
-    p.set_defaults(scope=name, actions=actions, spawn=spawn)
+    p.set_defaults(actions=actions, spawn=spawn)
 
 
 def build() -> argparse.ArgumentParser:
@@ -55,7 +56,6 @@ def build() -> argparse.ArgumentParser:
     sp.add_argument("action", choices=SPRINT_ACTIONS)
     sp.add_argument("id", help="sprint id, e.g. 12")
     sp.add_argument("--dry-run", action="store_true", help="print what would run")
-    sp.set_defaults(scope="sprint")
     scoped(
         sub, "story", STORY_ACTIONS, "cmd_story", "run a story's missing stages, review, or land"
     )
@@ -87,13 +87,13 @@ def route(p: argparse.ArgumentParser, args) -> None:
         if args.first in args.actions:
             if not args.id:
                 p.error(f"{args.command} {args.first} needs an id")
-            module = "land" if args.first in ("land", "post-merge") else args.scope
+            module = "land" if args.first in ("land", "post-merge") else "story"
             args.run = handler(module, args.actions[args.first])
         elif args.id:
             p.error(f"unknown {args.command} action {args.first!r}")
         else:
             args.id = args.first
-            args.run = handler(args.scope, args.spawn)
+            args.run = handler("story", args.spawn)
     elif args.command == "note":
         args.text = " ".join(args.text)
 

@@ -96,12 +96,6 @@ def test_trunk_prefers_config_then_origin_head_then_main(project, tmp_path):
     assert config.trunk() == "release"
 
 
-def test_release_mode_rejects_unknown(project, capsys):
-    assert config.release_mode() == "story"
-    (project / ".xp" / "config.yml").write_text("release: weekly\n")
-    assert "sprint or story" in refused(capsys, config.release_mode)
-
-
 def test_data_root_hashes_common_dir_shared_by_worktrees(tmp_path, monkeypatch):
     monkeypatch.delenv("XP_DATA", raising=False)
     monkeypatch.setenv("HOME", str(tmp_path / "home"))
