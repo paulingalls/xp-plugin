@@ -15,6 +15,12 @@ timing, the card refresher and the four sprint-review seats. Shipped Python 13,4
 
 Breaking, and no state migrates. Finish any in-flight sprint on 0.36.x before installing.
 
+Walked before release in a scratch project: a full sprint (slate review, open, a two-file
+story with a QUESTION stop and resume, story land, three-angle sprint review with a fix
+pass, sprint land, post-merge tag) on Claude Sonnet and again on Codex, then a free patch
+through its patch tag, and every record command. One story cost four agent launches and
+under a dollar.
+
 - One entry point, `xp.py`: `setup | recover | sprint plan|open|review|land|post-merge |
   story <id> | story review|land <id> | free <slug> | free land|post-merge <slug> |
   bug | debt | note | resolve`. Every subcommand answers `--help`; every refusal names the
