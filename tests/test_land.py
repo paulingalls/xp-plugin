@@ -88,7 +88,7 @@ def test_green_acceptance_on_the_merged_tree_lands_and_closes(story):
     assert "review-1.md" in body and f"unreviewed: {seen[:10]}..{late[:10]}" in body
     assert git(root, "rev-parse", "HEAD^2") == late
     assert cards.find_card("story-001").status == "done"
-    closed = json.loads((data / "closes.jsonl").read_text())
+    closed = json.loads((data / "landed.jsonl").read_text())
     assert closed["id"] == "story-001" and closed["merge"] == git(root, "rev-parse", "HEAD")
     assert not wt.exists() and git(root, "branch", "--list", "story-001-thing") == ""
 
@@ -277,7 +277,7 @@ def test_a_land_whose_close_failed_finishes_on_rerun(story, monkeypatch, capsys)
     assert land.cmd_story_land(ns("story-001")) == 0
     assert "finished a previous land of story-001" in capsys.readouterr().out
     assert cards.find_card("story-001").status == "done" and not wt.exists()
-    assert json.loads((data / "closes.jsonl").read_text())["merge"] == merged
+    assert json.loads((data / "landed.jsonl").read_text())["merge"] == merged
 
 
 def test_free_post_merge_accepts_a_squash_merge_and_discourages_it(tmp_path, monkeypatch, capsys):
@@ -342,7 +342,7 @@ def test_a_close_that_failed_after_the_worktree_finishes_on_rerun(story, monkeyp
     assert land.cmd_story_land(ns("story-001")) == 0
     assert "finished a previous land of story-001" in capsys.readouterr().out
     assert cards.find_card("story-001").status == "done"
-    assert len((data / "closes.jsonl").read_text().splitlines()) == 1
+    assert len((data / "landed.jsonl").read_text().splitlines()) == 1
 
 
 def test_an_empty_branch_beside_a_landed_sibling_still_refuses(tmp_path, monkeypatch, capsys):

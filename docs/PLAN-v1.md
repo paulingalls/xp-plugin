@@ -73,7 +73,7 @@ lefthook.yml (or .githooks/)   pre-commit, pre-push, sprint, nightly — the pro
   plan.md            milestones, sprints, cards with [status]
   work.md            bug / debt / note records, append-only
   session.md         the lead's digest, written at every close
-  closes.jsonl       one line per landed story
+  landed.jsonl       one line per landed story
   stories/<id>/      plan.md, plan-review.md, review-N.md, agent logs
   sprints/<id>/      slate-review.md, review-N.md, release.json
   worktrees/<id>/
@@ -144,7 +144,7 @@ xp.py sprint post-merge <id>      on trunk: sprint hook if tree differs, tag, re
 
 xp.py story <id>                  worktree, planner, plan reviewer, executor, diff reviewer; idempotent
 xp.py story review <id>           one more diff review, on request
-xp.py story land <id>             trial merge, Acceptance on merged tree, merge, [done], closes.jsonl
+xp.py story land <id>             trial merge, Acceptance on merged tree, merge, [done], landed.jsonl
 
 xp.py free <slug>                 branch from trunk, mint the card, then same as story
 xp.py free land <slug>            as story land, target trunk, PR
@@ -206,7 +206,7 @@ and card-refresher stages do not exist.
 One function, three targets. Story and free: refuse to merge into the wrong target or with
 a dirty tree; trial-merge the target in; run Acceptance on the merged tree; merge with the
 reviews in the body, and any commits after the last review listed as "unreviewed:"; flip the
-card to `[done]`; append closes.jsonl; remove the worktree. Sprint: version wall (tag,
+card to `[done]`; append landed.jsonl; remove the worktree. Sprint: version wall (tag,
 manifest and CHANGELOG name one version), trial merge of trunk, `sprint` hook, PR. Post-merge
 on trunk: rerun the sprint hook only if the merged tree differs from what land tested, tag,
 `sprints/<id>/release.json`, clear the branch record.
