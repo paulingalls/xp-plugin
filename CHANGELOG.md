@@ -4,6 +4,64 @@ Release notes started at v0.6.0; earlier entries are summarized from their
 tag and merge messages. Full detail lives in the merge history and the
 per-sprint review reports.
 
+## v1.0.0 — the light touch
+
+A rewrite by deletion. The card, an implementing agent, Git, independent fresh-context
+review, and the project's own tests are the whole process; everything that certified the
+relationships between them is gone: ready credentials and card digests, plan acceptance
+receipts, handoff checkpoints and resume, Verify logs and receipts, acknowledge-validation,
+salvage and repair, finding-triage ledgers, tier legs and coverage pins, overlap refusals,
+timing, the card refresher and the four sprint-review seats. Shipped Python 13,486 → 2,194; tests 48,473 → 1,855.
+
+Breaking, and no state migrates. Finish any in-flight sprint on 0.36.x before installing.
+
+Walked before release in a scratch project: a full sprint (slate review, open, a two-file
+story with a QUESTION stop and resume, story land, three-angle sprint review with a fix
+pass, sprint land, post-merge tag) on Claude Sonnet and again on Codex, then a free patch
+through its patch tag, and every record command. One story cost four agent launches and
+under a dollar.
+
+- One entry point, `xp.py`: `setup | recover | sprint plan|open|review|land|post-merge |
+  story <id> | story review|land <id> | free <slug> | free land|post-merge <slug> |
+  bug | debt | note | resolve`. Every subcommand answers `--help`; every refusal names the
+  next action.
+- A story is an idempotent walk over `<data>/stories/<id>/`: planner, plan reviewer,
+  executor, reviewer run only when their file is missing. Re-run after any edit; delete a
+  stage's file to repeat it. A `QUESTION:` from the plan reviewer stops the story until the lead answers it
+  in the card and deletes the line.
+- Agents edit the card and plan in place. No lock but the plan.md append lock.
+- `Acceptance:` replaces `Verify:` on the card: one shell line, Gherkin recommended. A
+  falsifier is a shell line too, run once at filing and once at resolve; the plugin never
+  reruns the set. A line that exits 127 is a typo, not a red.
+- Hooks own every test. `.xp/config.yml` has no `tests:`; the scaffolded hooks carry
+  pre-commit, pre-push, `sprint` and `nightly` commands, and refuse while one reads EDIT-ME.
+  The plugin runs only a card's Acceptance (on the trial-merged tree at land) and the
+  `sprint` hook (once at sprint land; again at post-merge only if the merged tree differs).
+- A lead commit after a review never forces another review. Land lists it as unreviewed;
+  the sprint review is the net.
+- The card as spawned is kept at `stories/<id>/card.md`; the reviewer and land show the
+  diff against it and the merge body names the fields that changed. Nothing refuses on it.
+- A review records the commit it covered (`reviewed: <sha>`); a later commit reruns only
+  the reviewer and lands listed as unreviewed, whatever happens to the review file.
+- Post-merge accepts squash- and rebase-merged PRs and says so; merge commits are
+  preferred. A post-merge interrupted after its tag finishes on rerun.
+- The sprint hook runs with every `LEFTHOOK*` variable stripped, so the lead's shell
+  cannot make lefthook skip the release suite.
+- Four required seats (lead, planner, executor, reviewer) and four optional ones that fall
+  back to their family (plan-reviewer, slate-reviewer, angle-reviewer, fixer). Seven
+  charters of three sections each, one artifact per charter. Agents launch without the
+  plugin dir and with `XP_AGENT` set, so the session-start injection stays silent for them
+  and the bundle carries the prose once, on both harnesses.
+- `templates/constraints.md` is eight items; the three new ones cap test growth: test at the
+  outermost boundary once, tests cost what code costs, fault-inject a guard once.
+- `versioning: on | off` is required and `off` is the template default: the project owns
+  its versions and tags. `on` keeps the version wall and the tag; `version_files` is read
+  only then. A consumer that tags today adds `versioning: on` as part of its first card.
+- A sprint is sized by releasability, not a count: `sprint_cap` is gone.
+- Removed config keys: `release`, `tests`, `full_legs`, `tier_coverage`, `tier_coverage_pins`,
+  `preflight`, `lifecycle_command`, `profile_target`, `constraints_chars_cap`,
+  `teardown_timeout`, `review`, and the seven extra role seats.
+
 ## v0.36.0 — lighter recovery and ordinary card corrections
 
 - Store compact Git facts in recovery checkpoints and use readable numbered predecessor copies. Fixer and closer prompts carry relevant reports and diffs instead of serialized checkpoint inventories.

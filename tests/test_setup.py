@@ -1,480 +1,97 @@
-"""story-006: /xp-setup scaffold. Verify: pytest -q tests/test_setup.py"""
-
-import json
 import shutil
-import stat
 import subprocess
-import sys
-from pathlib import Path
 
 import pytest
+from xpcore import config, setup
 
-SCRIPTS = Path(__file__).parent.parent / "plugins" / "xp-plugin" / "scripts"
-sys.path.insert(0, str(SCRIPTS))
-from close import config_flat, story_card  # noqa: E402
-from work import config_block_value  # noqa: E402
-
-SHIPPED_TEMPLATES = Path(__file__).parent.parent / "plugins" / "xp-plugin" / "templates"
+REAL_WHICH = shutil.which
 
 
-def bare_repo(tmp_path, with_fake_lefthook=False):
-    repo = tmp_path / "repo"
-    repo.mkdir()
+@pytest.fixture
+def repo(tmp_path, monkeypatch):
+    monkeypatch.setenv("XP_DATA", str(tmp_path / "data"))
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", "/dev/null")
+    root = tmp_path / "r"
+    subprocess.run(["git", "init", "-q", str(root)], check=True)
+    monkeypatch.chdir(root)
+    return root
+
+
+@pytest.fixture
+def lefthook(tmp_path, monkeypatch):
+    """A stand-in lefthook on PATH that records how it was called."""
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
-    env = {"PATH": f"{bin_dir}:/usr/bin:/bin", "HOME": str(tmp_path)}
-    if with_fake_lefthook:
-        fake = bin_dir / "lefthook"
-        fake.write_text(f'#!/bin/sh\necho "$@" >> "{tmp_path}/lefthook.calls"\n')
-        fake.chmod(fake.stat().st_mode | stat.S_IEXEC)
-    subprocess.run(["git", "init", "-q"], cwd=repo, env=env, check=True)
-    return repo, env
+    fake = bin_dir / "lefthook"
+    fake.write_text(f'#!/bin/sh\necho "$@" > {tmp_path / "lefthook.called"}\n')
+    fake.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{bin_dir}:{__import__('os').environ['PATH']}")
+    return tmp_path / "lefthook.called"
 
 
-def plant(tmp_path, name, body):
-    exe = tmp_path / "bin" / name
-    exe.write_text(body)
-    exe.chmod(exe.stat().st_mode | stat.S_IEXEC)
-    return exe
+def test_refuses_when_xp_exists(repo, capsys):
+    (repo / ".xp").mkdir()
+    with pytest.raises(SystemExit) as exc:
+        setup.cmd_setup(None)
+    assert exc.value.code == 2 and "edit the files there" in capsys.readouterr().err
+    assert not (repo / ".githooks").exists()
 
 
-def run_setup(repo, env, *args):
-    return subprocess.run(
-        [sys.executable, str(SCRIPTS / "setup.py"), *args],
-        cwd=repo,
-        env=env,
-        capture_output=True,
-        text=True,
-    )
+def test_scaffolds_lefthook_when_no_routing(repo, lefthook, capsys):
+    assert setup.cmd_setup(None) == 0
+    for name in ("config.yml", "system.md", "constraints.md"):
+        assert (repo / ".xp" / name).is_file()
+    assert (repo / "lefthook.yml").is_file() and (repo / ".githooks" / "hook-lib.sh").is_file()
+    assert (repo / ".githooks" / "pre-push" / "secrets").stat().st_mode & 0o111
+    assert lefthook.read_text().strip() == "install"
+    assert (config.data_root() / "plan.md").is_file()
+    out = capsys.readouterr().out
+    assert "recover: python3 " in out and out.rstrip().endswith("then /create-sprint")
 
 
-class TestScaffold:
-    def test_help_explains_rather_than_scaffolding(self, tmp_path):
-        """setup.py parsed no args, so an agent orienting with --help SCAFFOLDED
-        the repo instead of being told what the command does. Corrupting, not
-        loud: it creates state nobody asked for and then reports success. The
-        fixture is a BARE repo — in this one, .xp/ already exists and the refusal
-        masks the bug entirely."""
-        repo, env = bare_repo(tmp_path)
-        r = run_setup(repo, env, "--help")
-        assert r.returncode == 0, r.stderr
-        assert not (repo / ".xp").exists(), "--help scaffolded the repo"
-        assert "scaffold" in r.stdout.lower(), r.stdout
-
-    def test_bare_repo_gets_seeded_xp(self, tmp_path, monkeypatch):
-        repo, env = bare_repo(tmp_path)
-        r = run_setup(repo, env)
-        assert r.returncode == 0, r.stderr
-        constraints = (repo / ".xp" / "constraints.md").read_text()
-        assert "300" in constraints and "500" in constraints  # small-files seed
-        assert "comment" in constraints.lower()  # comment rubric seed
-        assert "fault-inject" in constraints.lower()
-        monkeypatch.chdir(repo)
-        assert config_flat("release") == "sprint"
-        assert "EDIT-ME" in config_block_value("tests", "story")  # tiers are placeholders
-        cfg = (repo / ".xp" / "config.yml").read_text()
-        assert "sprint_cap" in cfg and "debt_budget" in cfg and "constraints_chars_cap" in cfg
-        assert "constraints_cap:" not in cfg  # its 15 is already in the seed constraints.md
-        # AC3: the plan scaffolds into the CLONE's state root, and .xp/ keeps only
-        # what three parallel streams must share. XP_DATA is unset here and
-        # HOME is tmp_path, so data_root() really hashes and nothing touches the
-        # developer's own ~/.xp.
-        assert {f.name for f in (repo / ".xp").iterdir()} == {
-            "config.yml",
-            "constraints.md",
-            "system.md",
-        }
-        roots = list((tmp_path / ".xp" / "data").glob("*/plan.md"))
-        assert len(roots) == 1, f"expected one state-root plan, found {roots}"
-        plan = roots[0].read_text()
-        assert plan == (SHIPPED_TEMPLATES / "plan.md").read_text(), "not the seeded template"
-        card, status = story_card(plan, "story-000")  # template parses with the real parser
-        # SEEDED [planned], not [ready]: a scaffolded project's first card must not
-        # be spawnable before its plan review. Both sprint-003 misses were forgetting,
-        # and a state nothing defaults to cannot catch forgetting.
-        assert status == "planned" and "Verify: EDIT-ME" in card
-
-    def test_an_existing_state_root_plan_refuses_and_leaves_no_half_made_xp(self, tmp_path):
-        """F10: the check must sit with the OTHER preflight, before .xp/.mkdir().
-        Below it, a refusal would leave the directory behind — setup's own
-        'never overwrites' promise inverted."""
-        repo, env = bare_repo(tmp_path)
-        first = run_setup(repo, env)
-        assert first.returncode == 0, first.stderr
-        shutil.rmtree(repo / ".xp")
-        second = run_setup(repo, env)
-        assert second.returncode != 0 and "never overwrites" in second.stderr
-        assert not (repo / ".xp").exists(), "a refusal left a half-made .xp/ behind"
-
-    def test_existing_xp_refused_untouched(self, tmp_path):
-        repo, env = bare_repo(tmp_path)
-        (repo / ".xp").mkdir()
-        (repo / ".xp" / "constraints.md").write_text("MINE\n")
-        r = run_setup(repo, env)
-        assert r.returncode == 2 and ".xp" in r.stderr
-        assert (repo / ".xp" / "constraints.md").read_text() == "MINE\n"
-        assert not (repo / ".xp" / "config.yml").exists()
-
-    def test_not_a_git_repo_refused(self, tmp_path):
-        plain = tmp_path / "plain"
-        plain.mkdir()
-        r = subprocess.run(
-            [sys.executable, str(SCRIPTS / "setup.py")],
-            cwd=plain,
-            env={"PATH": "/usr/bin:/bin", "HOME": str(tmp_path)},
-            capture_output=True,
-            text=True,
-        )
-        assert r.returncode == 2 and "git" in r.stderr
+def test_without_lefthook_writes_githooks_and_sets_hooks_path(repo, monkeypatch):
+    monkeypatch.setattr(shutil, "which", lambda n: None if n == "lefthook" else REAL_WHICH(n))
+    assert setup.cmd_setup(None) == 0
+    for hook in setup.GITHOOKS:
+        assert (repo / ".githooks" / hook).stat().st_mode & 0o111
+    hooks_path = subprocess.run(["git", "config", "core.hooksPath"], capture_output=True, text=True)
+    assert hooks_path.stdout.strip() == ".githooks" and not (repo / "lefthook.yml").exists()
 
 
-class TestHookWall:
-    def test_lefthook_present_writes_config_and_installs(self, tmp_path):
-        repo, env = bare_repo(tmp_path, with_fake_lefthook=True)
-        r = run_setup(repo, env)
-        assert r.returncode == 0, r.stderr
-        assert (repo / "lefthook.yml").exists()
-        assert "install" in (tmp_path / "lefthook.calls").read_text()
-
-    def test_no_lefthook_scaffolds_executable_githooks(self, tmp_path):
-        repo, env = bare_repo(tmp_path)
-        run_setup(repo, env)
-        pre = repo / ".githooks" / "pre-commit"
-        assert pre.exists() and pre.stat().st_mode & stat.S_IEXEC
-        assert (repo / ".githooks" / "pre-push").exists()
-        merge = repo / ".githooks" / "pre-merge-commit"
-        assert merge.exists() and merge.stat().st_mode & stat.S_IEXEC
-        hooks_path = subprocess.run(
-            ["git", "config", "core.hooksPath"],
-            cwd=repo,
-            env=env,
-            capture_output=True,
-            text=True,
-        ).stdout.strip()
-        assert hooks_path == ".githooks"
-
-    def test_wall_executes_config_tier_at_run_time(self, tmp_path):
-        # declared-once: edit config AFTER scaffold; the hook must use the new command
-        repo, env = bare_repo(tmp_path)
-        run_setup(repo, env)
-        cfg = repo / ".xp" / "config.yml"
-        plant(tmp_path, "gitleaks", "#!/bin/sh\nexit 0\n")
-        cfg.write_text(cfg.read_text().replace("fast: EDIT-ME", "fast: false"))
-        r = subprocess.run(
-            ["sh", ".githooks/pre-commit"], cwd=repo, env=env, capture_output=True, text=True
-        )
-        assert r.returncode != 0  # red tier reds the hook, no re-scaffold needed
-        cfg.write_text(cfg.read_text().replace("fast: false", "fast: true"))
-        r = subprocess.run(
-            ["sh", ".githooks/pre-commit"], cwd=repo, env=env, capture_output=True, text=True
-        )
-        assert r.returncode == 0, r.stderr
-
-    def test_wall_runs_gitleaks_when_present_and_refuses_when_absent(self, tmp_path):
-        """A missing scanner must RED the wall, not warn past it. DESIGN §7 puts
-        the secrets scan in the enforcement floor, and a floor with a skip in it
-        is not one: the commit it passes looks scanned and was not."""
-        repo, env = bare_repo(tmp_path)
-        run_setup(repo, env)
-        cfg = repo / ".xp" / "config.yml"
-        cfg.write_text(cfg.read_text().replace("fast: EDIT-ME", "fast: true"))
-        fake = plant(tmp_path, "gitleaks", "#!/bin/sh\nexit 1\n")
-        r = subprocess.run(
-            ["sh", ".githooks/pre-commit"], cwd=repo, env=env, capture_output=True, text=True
-        )
-        assert r.returncode != 0  # failing gitleaks reds the wall
-        fake.unlink()
-        r = subprocess.run(
-            ["sh", ".githooks/pre-commit"], cwd=repo, env=env, capture_output=True, text=True
-        )
-        assert r.returncode != 0, "a missing scanner passed the wall"
-        assert "gitleaks" in r.stderr  # and the refusal carries the install line
-
-    def test_setup_never_points_at_a_hook_it_declined_to_write(self, tmp_path):
-        """Step 3 said "add your linter to the pre-commit hook" unconditionally,
-        so on a repo whose routing setup deliberately left alone it named a file
-        that does not exist. The real task there is the one the field report had
-        to work out by hand: point the tiers at the existing wall's own commands,
-        so two walls cannot drift into different definitions of "fast"."""
-        repo, env = bare_repo(tmp_path)
-        (repo / "lefthook.toml").write_text("# theirs\n")
-        r = run_setup(repo, env)
-        assert r.returncode == 0, r.stderr
-        assert "add your linter" not in r.stdout, r.stdout
-        assert "tiers at that wall" in r.stdout, r.stdout  # names the real task instead
-        assert ";." not in r.stdout, "the dropped step left a dangling separator"
-
-    def test_setup_reports_unenforced_cap_when_existing_routing_is_preserved(self, tmp_path):
-        repo, env = bare_repo(tmp_path)
-        routing = repo / "lefthook.toml"
-        routing.write_text("# theirs\n")
-        before = routing.read_bytes()
-        result = run_setup(repo, env)
-        assert result.returncode == 0, result.stderr
-        assert routing.read_bytes() == before
-        assert not (repo / ".githooks").exists() and not (repo / "lefthook.yml").exists()
-        summary = result.stdout
-        assert "constraints_chars_cap" in summary
-        assert "constraints_size" in summary
-        assert "add" in summary.lower() and "existing wall" in summary.lower()
-        # the named enforcer has no referent in THIS tree — the message must say so
-        assert "hook-lib.sh" in summary and not (repo / ".githooks" / "hook-lib.sh").exists()
-
-    def test_preexisting_routing_left_untouched(self, tmp_path):
-        repo, env = bare_repo(tmp_path)
-        (repo / "lefthook.toml").write_text("# theirs\n")
-        r = run_setup(repo, env)
-        assert r.returncode == 0
-        assert (repo / ".xp").is_dir()  # xp scaffolded
-        assert not (repo / ".githooks").exists() and not (repo / "lefthook.yml").exists()
-        assert "existing" in (r.stdout + r.stderr).lower()
-
-    def test_preexisting_hookspath_left_untouched(self, tmp_path):
-        repo, env = bare_repo(tmp_path)
-        subprocess.run(["git", "config", "core.hooksPath", ".husky"], cwd=repo, env=env)
-        r = run_setup(repo, env)
-        assert r.returncode == 0
-        hooks_path = subprocess.run(
-            ["git", "config", "core.hooksPath"],
-            cwd=repo,
-            env=env,
-            capture_output=True,
-            text=True,
-        ).stdout.strip()
-        assert hooks_path == ".husky"
-        assert not (repo / ".githooks").exists()
+def test_skips_the_wall_when_lefthook_yml_exists(repo, lefthook, capsys):
+    (repo / "lefthook.yml").write_text("pre-commit: {}\n")
+    assert setup.cmd_setup(None) == 0
+    assert (repo / "lefthook.yml").read_text() == "pre-commit: {}\n"
+    assert not (repo / ".githooks").exists() and not lefthook.exists()
+    out = capsys.readouterr().out
+    assert "wall skipped: lefthook.yml" in out and "`sprint`" in out
+    assert (repo / ".xp" / "config.yml").is_file()
 
 
-class TestCloseReviewFindings:
-    def test_live_git_hooks_dir_counts_as_routing(self, tmp_path):
-        repo, env = bare_repo(tmp_path)
-        hooks_dir = repo / ".git" / "hooks"
-        planted = hooks_dir / "pre-commit"
-        planted.write_text("#!/bin/sh\nexit 0\n")
-        planted.chmod(planted.stat().st_mode | stat.S_IEXEC)
-        r = run_setup(repo, env)
-        assert r.returncode == 0 and "existing" in (r.stdout + r.stderr).lower()
-        assert planted.exists() and not planted.with_suffix(".old").exists()
-        hooks_path = subprocess.run(
-            ["git", "config", "core.hooksPath"],
-            cwd=repo,
-            env=env,
-            capture_output=True,
-            text=True,
-        ).stdout.strip()
-        assert hooks_path == ""  # the user's live hook keeps firing
-
-    def test_failed_lefthook_install_reported_loudly(self, tmp_path):
-        repo, env = bare_repo(tmp_path, with_fake_lefthook=True)
-        fake = tmp_path / "bin" / "lefthook"
-        fake.write_text("#!/bin/sh\nexit 1\n")
-        r = run_setup(repo, env)
-        out = r.stdout + r.stderr
-        assert "FAILED" in out or "failed" in out
-        assert "installed" not in out.split("fail")[0].split("FAIL")[0] or "install" in out
-
-    def test_quoted_tier_command_survives_extraction(self, tmp_path):
-        repo, env = bare_repo(tmp_path)
-        run_setup(repo, env)
-        cfg = repo / ".xp" / "config.yml"
-        plant(tmp_path, "gitleaks", "#!/bin/sh\nexit 0\n")
-        quoted = 'fast: test "not slow" = "not slow"'
-        cfg.write_text(cfg.read_text().replace("fast: EDIT-ME", quoted))
-        r = subprocess.run(
-            ["sh", ".githooks/pre-commit"], cwd=repo, env=env, capture_output=True, text=True
-        )
-        assert r.returncode == 0, (r.stdout, r.stderr)  # quotes intact -> test passes
-        assert "unset" not in (r.stdout + r.stderr)  # and no lying diagnostic
-
-    def test_a_hash_inside_a_word_is_not_a_yaml_comment(self, tmp_path):
-        """YAML opens a comment only at a WHITESPACE-preceded `#`, so `p#ss` is one
-        scalar to every other reader of config.yml and was a truncation point only
-        to us. The field case: a tier carrying an inline env var whose password
-        holds a `#` truncated to a bare `VAR=value` — a syntactically valid shell
-        command that assigns, exits 0, and runs no test. The same false green as
-        the two legs above, reached from the parser instead of the guard.
-
-        Trailing-comment stripping stays covered by the tier tests around this one:
-        the shipped template comments every tier line, and they only ever replace
-        the value, so each of them runs a command with a real `  # ...` after it.
-        """
-        repo, env = bare_repo(tmp_path)
-        run_setup(repo, env)
-        plant(tmp_path, "gitleaks", "#!/bin/sh\nexit 0\n")
-        cfg = repo / ".xp" / "config.yml"
-        cfg.write_text(
-            cfg.read_text().replace(
-                "fast: EDIT-ME", "fast: DB=postgres://u:p#ss@h/db touch ran-a && touch ran-b"
-            )
-        )
-        r = subprocess.run(
-            ["sh", ".githooks/pre-commit"], cwd=repo, env=env, capture_output=True, text=True
-        )
-        assert r.returncode == 0, (r.stdout, r.stderr)
-        assert (repo / "ran-a").exists(), "the tier truncated to a bare assignment and ran nothing"
-        assert (repo / "ran-b").exists(), "the tier ran only part of the command"
-
-    def test_reindented_config_still_read(self, tmp_path):
-        repo, env = bare_repo(tmp_path)
-        run_setup(repo, env)
-        cfg = repo / ".xp" / "config.yml"
-        plant(tmp_path, "gitleaks", "#!/bin/sh\nexit 0\n")
-        cfg.write_text(cfg.read_text().replace("  fast: EDIT-ME", "    fast: true"))
-        r = subprocess.run(
-            ["sh", ".githooks/pre-commit"], cwd=repo, env=env, capture_output=True, text=True
-        )
-        assert r.returncode == 0 and "unset" not in (r.stdout + r.stderr)
-
-    def test_fresh_scaffold_edit_me_reds_rather_than_greening(self, tmp_path):
-        """The worst arm of the same shape, because it fires on a JUST-scaffolded
-        repo: setup writes EDIT-ME as the tier default, so the first commit after
-        setup passed a wall that had run no test — invisible during exactly the
-        window where the user assumes setup worked."""
-        repo, env = bare_repo(tmp_path)
-        run_setup(repo, env)
-        plant(tmp_path, "gitleaks", "#!/bin/sh\nexit 0\n")
-        r = subprocess.run(
-            ["sh", ".githooks/pre-commit"], cwd=repo, env=env, capture_output=True, text=True
-        )
-        assert r.returncode != 0, "an unedited tier passed the wall having run nothing"
-        assert "tests.fast" in r.stderr and ".xp/config.yml" in r.stderr
-
-    @pytest.mark.parametrize("tier_line", ["", "  story: EDIT-ME\n"], ids=["missing", "unedited"])
-    def test_story_hook_refuses_the_same_invalid_tiers_as_land(self, tmp_path, tier_line):
-        repo, env = bare_repo(tmp_path)
-        run_setup(repo, env)
-        plant(tmp_path, "gitleaks", "#!/bin/sh\nexit 0\n")
-        config = repo / ".xp" / "config.yml"
-        kept = [ln for ln in config.read_text().splitlines(True) if "story:" not in ln]
-        # UNDER `tests:`, never appended: at EOF this constructs EDIT-ME only while
-        # that block stays last, and silently becomes the unset case the day it does not.
-        kept.insert(kept.index("tests:\n") + 1, tier_line)
-        config.write_text("".join(kept))
-        result = subprocess.run(
-            ["sh", ".githooks/pre-push"], cwd=repo, env=env, capture_output=True, text=True
-        )
-        assert result.returncode != 0
-        # the LAST line, not the whole stream: this hook's secrets stage speaks first
-        # (it is handed no ref lines here), and the tier refusal is what is pinned.
-        assert result.stderr.splitlines()[-1] == (
-            "refused: tests.story is unset or still EDIT-ME in .xp/config.yml — no test tier"
-            " ran. Set tests.story to your suite's command, then retry"
-        )
+def test_skips_the_wall_for_live_git_hooks(repo, capsys):
+    hook = repo / ".git" / "hooks" / "pre-commit"
+    hook.write_text("#!/bin/sh\n")
+    assert setup.cmd_setup(None) == 0
+    assert "wall skipped: live hooks in .git/hooks (pre-commit)" in capsys.readouterr().out
 
 
-class TestEnvFile:
-    """story-027 AC1: the data root records the plugin root that scaffolded it, so
-    a codex lead's scripts — spawned by nothing, holding no ${CLAUDE_PLUGIN_ROOT} —
-    can find the install. In THIS repo the plugin is in-tree and the gap is invisible."""
+def test_hooks_path_skips_the_wall_and_writes_nothing(repo, lefthook, capsys):
+    subprocess.run(["git", "config", "core.hooksPath", "my-hooks"], check=True)
+    assert setup.cmd_setup(None) == 0
+    assert "wall skipped: core.hooksPath=my-hooks" in capsys.readouterr().out
+    assert not (repo / ".githooks").exists() and not (repo / "lefthook.yml").exists()
+    assert not lefthook.exists()
+    hooks_path = subprocess.run(["git", "config", "core.hooksPath"], capture_output=True, text=True)
+    assert hooks_path.stdout.strip() == "my-hooks"
 
-    def test_setup_seeds_the_env_file_with_its_own_root_and_version(self, tmp_path):
-        """XP_DATA unset, as in the AC3 arm above: data_root() really hashes and the
-        developer's own ~/.xp is never written."""
-        repo, env = bare_repo(tmp_path)
-        r = run_setup(repo, env)
-        assert r.returncode == 0, r.stderr
-        found = list((tmp_path / ".xp" / "data").glob("*/env.json"))
-        assert len(found) == 1, f"expected one state-root env file, found {found}"
-        recorded = json.loads(found[0].read_text())
-        manifest = json.loads((SCRIPTS.parent / ".claude-plugin" / "plugin.json").read_text())
-        assert recorded["plugin_root"] == str(SCRIPTS.parent)
-        assert recorded["plugin_version"] == manifest["version"]
-        assert str(found[0]) in r.stdout, "the summary never says where it landed"
 
-    def test_setup_preserves_existing_non_plugin_keys(self, tmp_path):
-        repo, env = bare_repo(tmp_path)
-        data = tmp_path / "state"
-        data.mkdir()
-        env["XP_DATA"] = str(data)
-        (data / "env.json").write_text(json.dumps({"consumer": {"keep": True}}))
-
-        r = run_setup(repo, env)
-
-        assert r.returncode == 0, r.stderr
-        recorded = json.loads((data / "env.json").read_text())
-        manifest = json.loads((SCRIPTS.parent / ".claude-plugin" / "plugin.json").read_text())
-        assert recorded == {
-            "consumer": {"keep": True},
-            "plugin_root": str(SCRIPTS.parent),
-            "plugin_version": manifest["version"],
-        }
-
-    def test_an_invalid_env_refuses_before_scaffolding(self, tmp_path):
-        repo, env = bare_repo(tmp_path)
-        data = tmp_path / "state"
-        data.mkdir()
-        env["XP_DATA"] = str(data)
-        invalid = '{"consumer": '
-        (data / "env.json").write_text(invalid)
-
-        r = run_setup(repo, env)
-
-        assert r.returncode != 0 and "env.json" in r.stderr, r.stderr
-        assert not (repo / ".xp").exists(), "a failed env seed left a partial scaffold"
-        assert not (data / "plan.md").exists(), "a failed env seed left a partial plan"
-        assert (data / "env.json").read_text() == invalid
-
-    def test_an_install_without_a_version_refuses_before_scaffolding(self, tmp_path):
-        install = shutil.copytree(SCRIPTS.parent, tmp_path / "install")
-        (install / ".claude-plugin" / "plugin.json").unlink()
-        repo, env = bare_repo(tmp_path)
-        data = tmp_path / "state"
-        env["XP_DATA"] = str(data)
-
-        r = subprocess.run(
-            [sys.executable, str(install / "scripts" / "setup.py")],
-            cwd=repo,
-            env=env,
-            capture_output=True,
-            text=True,
-        )
-
-        assert r.returncode != 0 and "plugin.json" in r.stderr, r.stderr
-        assert not (repo / ".xp").exists(), "an invalid install scaffolded the repo"
-        assert not (data / "plan.md").exists(), "an invalid install seeded the plan"
-        assert not (data / "env.json").exists(), "an invalid version was recorded"
-
-    def test_the_concurrent_writer_that_replaces_last_wins(self, tmp_path):
-        data = tmp_path / "state"
-        data.mkdir()
-        (data / "env.json").write_text(json.dumps({"consumer": "keep"}))
-        writer = """
-import os, sys, time
-from pathlib import Path
-sys.path.insert(0, sys.argv[1])
-from env import write_env
-replace = Path.replace
-def rendezvous(self, target):
-    (Path(os.environ["XP_DATA"]) / f"ready.{os.getpid()}").touch()
-    deadline = time.monotonic() + 10
-    while len(list(Path(os.environ["XP_DATA"]).glob("ready.*"))) < 2:
-        if time.monotonic() > deadline:
-            raise TimeoutError("the other writer never reached replace")
-        time.sleep(0.01)
-    swapped = Path(os.environ["XP_DATA"]) / "first-swapped"
-    if sys.argv[3] == "1.0.0":
-        while not swapped.exists():
-            if time.monotonic() > deadline:
-                raise TimeoutError("the first writer never replaced")
-            time.sleep(0.01)
-        return replace(self, target)
-    result = replace(self, target)
-    swapped.touch()
-    return result
-Path.replace = rendezvous
-write_env(Path(sys.argv[2]), sys.argv[3])
-"""
-        env = {"PATH": "/usr/bin:/bin", "XP_DATA": str(data)}
-        writers = [
-            subprocess.Popen(
-                [sys.executable, "-c", writer, str(SCRIPTS), str(tmp_path / root), version],
-                env=env,
-            )
-            for root, version in (("install-a", "1.0.0"), ("install-b", "2.0.0"))
-        ]
-
-        assert [process.wait(15) for process in writers] == [0, 0]
-        recorded = json.loads((data / "env.json").read_text())
-        assert recorded["consumer"] == "keep"
-        assert recorded["plugin_root"] == str(tmp_path / "install-a")
-        assert recorded["plugin_version"] == "1.0.0"
+def test_existing_githooks_is_never_written_into(repo, monkeypatch, capsys):
+    monkeypatch.setattr(shutil, "which", lambda n: None if n == "lefthook" else REAL_WHICH(n))
+    (repo / ".githooks").mkdir()
+    (repo / ".githooks" / "pre-commit").write_text("mine\n")
+    assert setup.cmd_setup(None) == 0
+    assert "wall skipped: .githooks/" in capsys.readouterr().out
+    assert [p.name for p in (repo / ".githooks").iterdir()] == ["pre-commit"]
+    assert (repo / ".githooks" / "pre-commit").read_text() == "mine\n"
+    hooks_path = subprocess.run(["git", "config", "core.hooksPath"], capture_output=True, text=True)
+    assert hooks_path.stdout.strip() == ""

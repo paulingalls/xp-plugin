@@ -1,0 +1,122 @@
+"""Git, spoken through one helper so every failure carries the command that failed."""
+
+import subprocess
+from pathlib import Path
+
+
+class GitError(Exception):
+    pass
+
+
+def _run(args: tuple[str, ...], cwd) -> subprocess.CompletedProcess:
+    return subprocess.run(["git", *args], cwd=cwd, capture_output=True, text=True)
+
+
+def git(*args: str, cwd=None, check: bool = True) -> str:
+    """Stdout without surrounding newlines; leading spaces survive, porcelain status needs them."""
+    proc = _run(args, cwd)
+    if check and proc.returncode != 0:
+        detail = (proc.stderr.strip() or proc.stdout.strip()).splitlines()
+        raise GitError(f"git {' '.join(args)}: {detail[-1] if detail else f'rc {proc.returncode}'}")
+    return proc.stdout.strip("\n")
+
+
+def head(cwd=None) -> str:
+    return git("rev-parse", "HEAD", cwd=cwd)
+
+
+def current_branch(cwd=None) -> str:
+    """Empty when HEAD is detached."""
+    return git("branch", "--show-current", cwd=cwd)
+
+
+def is_dirty(cwd=None, *, untracked: bool = True) -> bool:
+    mode = "--untracked-files=normal" if untracked else "--untracked-files=no"
+    return bool(git("status", "--porcelain", mode, cwd=cwd))
+
+
+def branch_exists(name: str, cwd=None) -> bool:
+    return _run(("show-ref", "--verify", "--quiet", f"refs/heads/{name}"), cwd).returncode == 0
+
+
+def ref_exists(ref: str, cwd=None) -> bool:
+    return _run(("rev-parse", "--verify", "--quiet", f"{ref}^{{commit}}"), cwd).returncode == 0
+
+
+def is_ancestor(ancestor: str, descendant: str, cwd=None) -> bool:
+    return _run(("merge-base", "--is-ancestor", ancestor, descendant), cwd).returncode == 0
+
+
+def _applied(trunk_head: str, branch: str, cwd) -> bool:
+    lines = git("cherry", trunk_head, branch, cwd=cwd).splitlines()
+    return bool(lines) and not any(line.startswith("+") for line in lines)
+
+
+def merged_how(branch: str, trunk_head: str, cwd) -> str:
+    """ "merge" when `branch` is in `trunk_head`'s history; "squash" when it is not but its
+    changes are: every commit's patch is (a rebase merge), or the whole branch's patch is."""
+    if is_ancestor(branch, trunk_head, cwd):
+        return "merge"
+    base = _run(("merge-base", trunk_head, branch), cwd)
+    if base.returncode:
+        return ""
+    if _applied(trunk_head, branch, cwd):
+        return "squash"
+    probe = ("-c", "user.name=xp", "-c", "user.email=xp@localhost", "commit-tree")
+    whole = git(*probe, f"{branch}^{{tree}}", "-p", base.stdout.strip(), "-m", "probe", cwd=cwd)
+    return "squash" if _applied(trunk_head, whole, cwd) else ""
+
+
+def fork_point(branch: str, base: str, cwd=None) -> str:
+    return git("merge-base", base, branch, cwd=cwd)
+
+
+def trial_merge(cwd, ref: str) -> str:
+    """ "" when `ref` merges cleanly, else the conflict text. The caller aborts in a finally."""
+    proc = _run(("merge", "--no-commit", "--no-ff", ref), cwd)
+    if proc.returncode == 0:
+        return ""
+    conflicted = git("diff", "--name-only", "--diff-filter=U", cwd=cwd, check=False)
+    text = (proc.stdout + proc.stderr).strip()
+    return text + (f"\nconflicted files:\n{conflicted}" if conflicted else "")
+
+
+def abort_merge(cwd) -> None:
+    if _run(("rev-parse", "--verify", "--quiet", "MERGE_HEAD"), cwd).returncode == 0:
+        git("merge", "--abort", cwd=cwd)
+
+
+def worktree_add(path, branch: str, start: str, cwd=None) -> None:
+    Path(path).parent.mkdir(parents=True, exist_ok=True)
+    if branch_exists(branch, cwd):
+        git("worktree", "add", str(path), branch, cwd=cwd)
+    else:
+        git("worktree", "add", "-b", branch, str(path), start, cwd=cwd)
+
+
+def worktree_remove(path, cwd=None) -> None:
+    # --force because ignored build output blocks a plain remove; callers refuse dirt first.
+    git("worktree", "remove", "--force", str(path), cwd=cwd)
+
+
+def common_dir(cwd=None) -> Path:
+    return Path(git("rev-parse", "--path-format=absolute", "--git-common-dir", cwd=cwd))
+
+
+def changed_files(base: str, head: str, cwd=None) -> list[str]:
+    return git("diff", "--name-only", f"{base}..{head}", cwd=cwd).splitlines()
+
+
+def range_map(base: str, head: str, cwd) -> str:
+    """What a reviewer gets instead of the hunks: the range, where to diff it, the log and
+    the file map. It reads the diff per file itself, at the size it chooses."""
+    return (
+        f"## Commit range {base}..{head} in {cwd}\n"
+        f"Run `git diff {base}..{head}` there, per file as you need it.\n\n"
+        f"### Log\n{git('log', '--format=%h %s', f'{base}..{head}', cwd=cwd)}\n\n"
+        f"### Files\n{git('diff', '--stat=120', f'{base}..{head}', cwd=cwd)}"
+    )
+
+
+def log_range(base: str, head: str, cwd=None) -> str:
+    return git("log", "--format=%h %s", f"{base}..{head}", cwd=cwd)

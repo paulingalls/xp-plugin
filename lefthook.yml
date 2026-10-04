@@ -1,5 +1,5 @@
-# The unforgeable floor (DESIGN.md §7): cheap checks at commit/push; full at sprint land.
-# piped: rewriters run before readers; first failure aborts (single clear error).
+# This repo's wall: lint, secrets and the quick tests at commit; the whole suite at push.
+# Hooks own the test commands (docs/PLAN-v1.md §6); nothing restates them in config.
 source_dir: .lefthook
 pre-commit:
   piped: true
@@ -17,44 +17,30 @@ pre-commit:
     secrets:
       priority: 3
       run: sh -c '. plugins/xp-plugin/templates/hook-lib.sh; secrets_scan_index'
-    constraints-size:
+    tests:
       priority: 4
-      run: sh -c '. plugins/xp-plugin/templates/hook-lib.sh; constraints_size'
-    fast-tests:
-      priority: 5
-      # exit 5 = no tests collected — legal while the suite is growing
-      run: sh -c '. plugins/xp-plugin/templates/hook-lib.sh; run_tier fast; s=$?; [ $s -eq 5 ] && exit 0; exit $s'
+      # exit 5 = nothing collected, legal while the suite is being rebuilt
+      run: sh -c 'pytest -q -n 4; s=$?; [ $s -eq 5 ] && exit 0; exit $s'
 
 pre-merge-commit:
   commands:
     secrets:
       run: sh -c '. plugins/xp-plugin/templates/hook-lib.sh; secrets_scan_index'
 
-# pre-push RE-CHECKS what pre-commit checked, over outgoing commits rather than
-# staged files. A `--no-verify` or `core.hooksPath` bypass leaves no trace in the
-# commit, so the ACT is unverifiable after the fact — but every commit-stage gate
-# here is a pure function of the tree, so the OUTCOME still is (a8195145).
 pre-push:
-  # piped, for the same reason pre-commit is, plus one this hook learned the hard
-  # way: unpiped, lefthook runs ruff over the whole tree, gitleaks over every
-  # commit, and `pytest -n auto` — which already saturates the CPU — all at once.
-  # Measured at the sprint-7 land: two pushes of
-  # a green tree failed on two DIFFERENT wall-clock tests, both passing alone and
-  # in a direct full tier. A wall that manufactures the contention that reds its
-  # own timing tests teaches the lead to re-run until green, which is how
-  # --no-verify becomes tempting (debt 15aec3fc's risk, arriving sideways).
   piped: true
-  # secrets FIRST: the jobs list preserves the declared order; the old command
-  # route measured this scan running last, 5m21s behind the tier it guards.
   jobs:
     - script: secrets
       runner: sh
       use_stdin: true
     - name: lint
       run: ruff check .
-    - name: constraints-size
-      run: sh -c '. plugins/xp-plugin/templates/hook-lib.sh; constraints_size'
-    - name: story-tests
-      run: sh -c '. plugins/xp-plugin/templates/hook-lib.sh; run_tier story; s=$?; [ $s -eq 5 ] && exit 0; exit $s'
-    - name: falsifier-node-ids
-      run: python3 tests/scripts/check_falsifier_node_ids.py --skip-script-audit
+    - name: tests
+      run: sh -c 'pytest -q -n 4; s=$?; [ $s -eq 5 ] && exit 0; exit $s'
+
+sprint:
+  commands:
+    tests:
+      run: pytest -q -n 6
+    ratchet:
+      run: python3 tests/scripts/ratchet.py

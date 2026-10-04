@@ -1,0 +1,6 @@
+#!/bin/sh
+# The release suite. Sprint land runs it on the trial-merged tree.
+set -e
+cd "$(git rev-parse --show-toplevel)"
+. .githooks/hook-lib.sh
+edit_me tests    # EDIT-ME

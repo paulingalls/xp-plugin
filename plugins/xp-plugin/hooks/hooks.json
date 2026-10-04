@@ -1,5 +1,5 @@
 {
-  "description": "xp-plugin SessionStart: shared role profile and durable environment recovery for both harnesses.",
+  "description": "xp-plugin SessionStart: inject the process and print the recover command.",
   "hooks": {
     "SessionStart": [
       {
@@ -7,7 +7,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 -c 'import os\nimport sys\nfrom pathlib import Path\nroot = Path(sys.argv[1])\nname = sys.argv[2]\nscript = root / \"scripts\" / name\nif script.is_file():\n    os.execv(sys.executable, [sys.executable, str(script)])\nif root.exists():\n    print(f\"hook script missing: {script}; pinned root exists\", file=sys.stderr)\n    sys.exit(0)\ntry:\n    siblings = [p for p in root.parent.iterdir() if p.is_dir() and p.name.split(\".\") and all(x.isdecimal() for x in p.name.split(\".\")) and (p / \"scripts\" / name).is_file()]\nexcept OSError as error:\n    print(f\"hook root missing: {root}; sibling lookup failed: {error}\", file=sys.stderr)\n    sys.exit(0)\nif not siblings:\n    print(f\"hook root missing: {root}; no sibling has {name}\", file=sys.stderr)\n    sys.exit(0)\nchosen = max(siblings, key=lambda p: tuple(int(x) for x in p.name.split(\".\")))\nprint(f\"hook root missing: {root}; running {chosen}\", file=sys.stderr)\nos.execv(sys.executable, [sys.executable, str(chosen / \"scripts\" / name)])' \"${CLAUDE_PLUGIN_ROOT}\" session_start.py",
+            "command": "r=\"${CLAUDE_PLUGIN_ROOT}\"; [ -f \"$r/scripts/xp.py\" ] || r=$(ls -d \"$(dirname \"$r\")\"/[0-9]*/ 2>/dev/null | sort -V | tail -1); [ -f \"${r%/}/scripts/xp.py\" ] || { echo \"xp-plugin: no scripts/xp.py under ${CLAUDE_PLUGIN_ROOT} or a sibling version\" >&2; exit 0; }; exec python3 \"${r%/}/scripts/xp.py\" session-start",
             "timeout": 10
           }
         ]

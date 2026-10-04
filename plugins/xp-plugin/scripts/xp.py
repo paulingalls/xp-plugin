@@ -1,109 +1,114 @@
 #!/usr/bin/env python3
-"""Open, review, integrate and release work through the existing lifecycle owners."""
+"""XP process for coding agents: plan, review the plan, do, review the diff, land.
+
+xp.py setup | session-start | recover
+xp.py sprint plan|open|review|land|post-merge <id>
+xp.py story <id> | story review <id> | story land <id>
+xp.py free <slug> | free land <slug> | free post-merge <slug>
+xp.py bug | debt | note | resolve ...
+"""
 
 import argparse
-import os
+import importlib
 import sys
 from pathlib import Path
 
-sys.path[:0] = [str(Path(__file__).parent), str(Path(__file__).parent / "close")]
-from close import cmd_land, cmd_review, default_branch, fail, integration_target  # noqa: E402
-from work import chdir_repo_root  # noqa: E402
-
-
-def main(argv=None, *, legacy=False) -> int:
-    argv = sys.argv[1:] if argv is None else argv
-    if len(argv) >= 3 and argv[0] in ("story", "free") and argv[2] in ("repair", "salvage"):
-        return fail(
-            f"refused: {argv[0]} {argv[2]} is retired; inspect preserved work, then "
-            f"explicitly run `xp.py {argv[0]} {argv[1]} review`; "
-            "use `spawn.py resume <story-id>` when execution remains unfinished"
-        )
-    p = argparse.ArgumentParser(prog="xp.py", description=__doc__)
-    sub = p.add_subparsers(dest="kind", required=True)
-    sp = sub.add_parser("sprint")
-    sp.add_argument("sprint_id")
-    sp.add_argument(
-        "action",
-        choices=["open", "review", "salvage", "land", "post-merge", "milestone-done"]
-        + (["start"] if legacy else []),
+if sys.version_info < (3, 11):
+    sys.exit(
+        f"refused: xp.py needs Python 3.11+, found {sys.version.split()[0]}; use a newer python3"
     )
-    sp.add_argument("--dry-run", action="store_true")
-    f = sub.add_parser("free")
-    f.add_argument("slug")
-    f.add_argument(
-        "action", choices=["start", "review", "acknowledge-validation", "land", "post-merge"]
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+STORY_ACTIONS = {"review": "cmd_story_review", "land": "cmd_story_land"}
+FREE_ACTIONS = {"land": "cmd_free_land", "post-merge": "cmd_free_post_merge"}
+SPRINT_ACTIONS = ("plan", "open", "review", "land", "post-merge")
+
+
+def handler(module: str, name: str):
+    def run(args) -> int:
+        return getattr(importlib.import_module(f"xpcore.{module}"), name)(args)
+
+    run.target = f"xpcore.{module}.{name}"
+    return run
+
+
+def scoped(sub, name: str, actions: dict, spawn: str, help_text: str) -> None:
+    p = sub.add_parser(name, help=help_text, description=help_text)
+    p.add_argument("first", metavar="ACTION|ID", help=f"{' | '.join(actions)}, or the id")
+    p.add_argument("id", nargs="?", help="the id, after an action")
+    p.add_argument("--dry-run", action="store_true", help="print what would run")
+    p.set_defaults(actions=actions, spawn=spawn)
+
+
+def build() -> argparse.ArgumentParser:
+    p = argparse.ArgumentParser(
+        prog="xp.py", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
-    f.add_argument("--dry-run", action="store_true")
-    f.add_argument("--reason", default="")
-    s = sub.add_parser("story")
-    s.add_argument("story_id")
-    s.add_argument("action", choices=["review", "acknowledge-validation", "land"])
-    # Derived: PR mode cannot integrate into a recorded sprint branch.
-    s.add_argument("--merge-mode", choices=["pr", "local"], default=None)
-    s.add_argument("--dry-run", action="store_true")
-    s.add_argument("--reason", default="")
-    a = p.parse_args(argv)
-    if a.dry_run:
-        os.environ["GIT_OPTIONAL_LOCKS"] = "0"
-    # Unknown roles fail safe; this bounds the injected close path, not forged env.
-    role = os.environ.get("XP_ROLE", "lead")
-    if role != "lead":
-        return fail(
-            f"refused: XP_ROLE={role!r} — only the lead may run lifecycle actions. "
-            "Hand back a green Verify; the lead owns the judgment gap and the merge"
-        )
-    if not chdir_repo_root():
-        return fail("refused: not inside a git repository")
-    if a.kind == "free":
-        import free
+    sub = p.add_subparsers(dest="command", required=True, metavar="COMMAND")
+    for name, module, fn, text in (
+        ("setup", "setup", "cmd_setup", "scaffold .xp/ and the git hooks"),
+        ("session-start", "session", "cmd_session_start", "SessionStart hook injection"),
+        ("recover", "session", "cmd_recover", "print digest, open cards, open records"),
+    ):
+        sub.add_parser(name, help=text, description=text).set_defaults(run=handler(module, fn))
 
-        if a.action == "start":
-            return free.cmd_start(a.slug, a.dry_run)
-        if a.action == "review":
-            return free.cmd_review(a.slug, a.dry_run)
-        if a.action == "acknowledge-validation" and a.dry_run:
-            return fail(
-                "refused: validation disposition cannot be previewed; run without --dry-run"
-            )
-        if a.action == "acknowledge-validation":
-            from review_validation import acknowledge
+    sp = sub.add_parser("sprint", help="plan|open|review|land|post-merge a sprint")
+    sp.add_argument("action", choices=SPRINT_ACTIONS)
+    sp.add_argument("id", help="sprint id, e.g. 12")
+    sp.add_argument("--dry-run", action="store_true", help="print what would run")
+    scoped(
+        sub, "story", STORY_ACTIONS, "cmd_story", "run a story's missing stages, review, or land"
+    )
+    scoped(sub, "free", FREE_ACTIONS, "cmd_free", "start, land, or tag a free patch")
 
-            key, _, error = free.current_free(a.slug)
-            return fail(error) if error else acknowledge(key, a.reason)
-        if a.action == "land":
-            return free.cmd_land(a.slug, a.dry_run)
-        return free.cmd_post_merge(a.slug, a.dry_run)
-    if a.kind == "sprint":
-        import sprint_close
+    for name, text in (("bug", "file a bug (red falsifier)"), ("debt", "file debt (green)")):
+        r = sub.add_parser(name, help=text, description=text)
+        r.add_argument("--claim", required=True, help="what is wrong")
+        r.add_argument("--falsifier", required=True, help="command whose polarity is checked")
+        r.add_argument("--files", default="", help="comma-separated paths")
+        if name == "debt":
+            r.add_argument("--too-big", required=True, help="why it is too big to fix now")
+            r.add_argument("--too-important", required=True, help="why dropping it is wrong")
+        r.set_defaults(run=handler("records", f"cmd_{name}"))
+    n = sub.add_parser("note", help="record a note", description="record a note")
+    n.add_argument("text", nargs="+")
+    n.set_defaults(run=handler("records", "cmd_note"))
+    r = sub.add_parser("resolve", help="resolve a record with a green falsifier")
+    r.add_argument("--ref", required=True, help="record id")
+    r.add_argument("--falsifier", required=True, help="command that must now pass")
+    r.set_defaults(run=handler("records", "cmd_resolve"))
+    return p
 
-        if a.action == "open":
-            from open_sprint import cmd_open
 
-            return cmd_open(a.sprint_id, a.dry_run)
-        if a.action == "start":
-            return sprint_close.cmd_start(a.sprint_id, a.dry_run)
-        if a.action == "review":
-            import sprint_review
+def route(p: argparse.ArgumentParser, args) -> None:
+    if args.command == "sprint":
+        args.run = handler("sprint", f"cmd_sprint_{args.action.replace('-', '_')}")
+    elif args.command in ("story", "free"):
+        if args.first in args.actions:
+            if not args.id:
+                p.error(f"{args.command} {args.first} needs an id")
+            module = "land" if args.first in ("land", "post-merge") else "story"
+            args.run = handler(module, args.actions[args.first])
+        elif args.id:
+            p.error(f"unknown {args.command} action {args.first!r}")
+        else:
+            args.id = args.first
+            args.run = handler("story", args.spawn)
+    elif args.command == "note":
+        args.text = " ".join(args.text)
 
-            return sprint_review.cmd_review(a.sprint_id, a.dry_run)
-        if a.action == "salvage":
-            return sprint_close.cmd_salvage(a.sprint_id, a.dry_run)
-        if a.action == "land":
-            return sprint_close.cmd_land(a.sprint_id, a.dry_run)
-        if a.action == "milestone-done":
-            return sprint_close.milestone.cmd_done(a.sprint_id, a.dry_run)
-        return sprint_close.cmd_post_merge(a.sprint_id, a.dry_run)
-    if a.action == "review":
-        return cmd_review(a.story_id, a.dry_run)
-    if a.action == "acknowledge-validation" and a.dry_run:
-        return fail("refused: validation disposition cannot be previewed; run without --dry-run")
-    if a.action == "acknowledge-validation":
-        from review_validation import acknowledge
 
-        return acknowledge(a.story_id, a.reason)
-    mode = a.merge_mode or ("local" if integration_target() != default_branch() else "pr")
-    return cmd_land(a.story_id, mode, a.dry_run)
+def main(argv=None) -> int:
+    p = build()
+    args = p.parse_args(argv)
+    route(p, args)
+    from xpcore.gitx import GitError
+
+    try:
+        return args.run(args)
+    except GitError as exc:
+        print(f"failed: {exc}", file=sys.stderr)
+        return 1
 
 
 if __name__ == "__main__":

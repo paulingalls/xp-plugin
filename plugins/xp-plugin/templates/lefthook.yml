@@ -1,5 +1,4 @@
-# xp wall (lefthook variant) — tiers read from .xp/config.yml at run time
-# via .githooks/hook-lib.sh (written by setup alongside this file)
+# The project's checks. Test commands live here and nowhere else.
 source_dir: .githooks
 pre-commit:
   piped: true
@@ -7,9 +6,13 @@ pre-commit:
     secrets:
       priority: 1
       run: sh -c '. .githooks/hook-lib.sh; secrets_scan_index'
-    fast-tier:
+    lint:
       priority: 2
-      run: sh -c '. .githooks/hook-lib.sh; run_tier fast'
+      run: sh -c '. .githooks/hook-lib.sh; edit_me lint'  # EDIT-ME: your linter, or delete
+    tests:
+      # Quick tests. Keep this under a minute: it runs on every commit.
+      priority: 3
+      run: sh -c '. .githooks/hook-lib.sh; edit_me tests'  # EDIT-ME
 pre-merge-commit:
   commands:
     secrets:
@@ -17,8 +20,21 @@ pre-merge-commit:
 pre-push:
   piped: true
   jobs:
+    # A script, not a command: lefthook can skip a pre-push command by file matching.
     - script: secrets
       runner: sh
       use_stdin: true
-    - name: story-tier
-      run: sh -c '. .githooks/hook-lib.sh; run_tier story'
+    - name: tests
+      # Broader tests: what must pass before work leaves this machine.
+      run: sh -c '. .githooks/hook-lib.sh; edit_me tests'  # EDIT-ME
+sprint:
+  # The release suite. Sprint land runs it on the trial-merged tree.
+  # no `skip:` here: land runs this mid-merge
+  commands:
+    tests:
+      run: sh -c '. .githooks/hook-lib.sh; edit_me tests'  # EDIT-ME
+nightly:
+  # The expensive tests. Wire `lefthook run nightly` to your own scheduler.
+  commands:
+    tests:
+      run: sh -c '. .githooks/hook-lib.sh; edit_me tests'  # EDIT-ME

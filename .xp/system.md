@@ -1,32 +1,35 @@
-# System Context — xp-plugin
+# System
 
-**Product**: a lightweight XP process plugin for coding agents, targeting Claude Code
-and Codex. Successor to xp-agents (see docs/AUDIT.md, docs/DESIGN.md). The product is
-mostly prose (skills, agent charters, guides) plus a small Python core.
+**Product**: xp-plugin, a light-touch XP process plugin for coding agents on Claude
+Code and Codex. One entry point (`xp.py`), seven agent charters, the project's own
+git hooks for tests. This repo runs under the plugin it ships.
 
-**Stack**: Python 3.11+, stdlib only — zero external packages, the predecessor's
-strongest property. Markdown for all prose. lefthook for git hooks (dev of this repo);
-pytest-xdist (-n auto) as a DEV-ONLY dep — the stdlib-only rule governs shipped code;
-the plugin *scaffolds* equivalent hooks into consuming projects.
+**Stack**: Python 3.11+, stdlib only in shipped code. Markdown for all prose. Dev
+only: pytest with pytest-xdist (`pytest -q -n 4`), ruff, lefthook, gitleaks.
 
-**Layout (target)**:
-- `plugins/xp-plugin/` — the shipped plugin: .claude-plugin/plugin.json, skills/, agents/, hooks/ (one file, both harnesses), scripts/; root .claude-plugin/marketplace.json makes the repo a git marketplace
-- `.xp/` — this repo's own instance of the state the plugin manages (we dogfood)
-- `docs/` — audit, design
-- shipped prose (VALUES.md, JUDGMENT.md, PROCESS.md, EXECUTOR.md) lives in plugins/xp-plugin/ and is injected from there; agents/ holds directly invocable read-only role charters, while the root EXECUTOR.md is consumed by the isolated worktree spawn; .claude/ symlinks the skills and agent charters for dogfooding
+**Surfaces & acceptance**: CLI (`plugins/xp-plugin/scripts/xp.py` and its
+subcommands) and the SessionStart hook. The harness is the pytest suite under
+`tests/`, driving the CLI in scratch git repositories with `XP_DATA` set: exit
+codes, stdout, and the files and refs left behind. Agent launches are not tested;
+every shipped path is walked by hand in a scratch consumer before a release.
 
-**Surfaces & acceptance**: CLI (the scripts). Acceptance harness = the pytest suites
-driving them as subprocesses (tests/test_*.py) — exit codes, stdout, filesystem effects.
-Story ACs must be executed by a test named in the story's Verify.
+**Layout**:
+- `plugins/xp-plugin/scripts/xp.py` — the dispatcher; `xpcore/` holds one module
+  per concern (config, cards, gitx, launch, bundle, story, land, sprint, release,
+  records, session, setup, hooks)
+- `plugins/xp-plugin/agents/` — one charter per artifact: planner, plan-reviewer,
+  slate-reviewer, executor, reviewer, angle-reviewer, fixer
+- `plugins/xp-plugin/angles/` — one file per sprint-review angle
+- `plugins/xp-plugin/skills/` — the five skills; `.claude/` symlinks them for dogfooding
+- `plugins/xp-plugin/templates/` — what `xp.py setup` scaffolds into a consumer
+- `plugins/xp-plugin/{VALUES,JUDGMENT,PROCESS}.md` — injected at session start
+- `docs/PLAN-v1.md` — the design authority; `docs/history/` — what came before
+- `tests/scripts/ratchet.py` — the size wall the sprint hook runs
+
+**Worktree setup**: none (stdlib only, no install step).
 
 **Conventions**:
-- Component and density totals are review guidance; structural file and
-  measurement guards still refuse.
-- **Worktree bootstrap**: none needed (stdlib only, no install step).
-- **Concurrency**: at most two review streams — a sprint review's finders, and then its
-  verifiers, each run all at once as one stream — and one `pytest -n auto` gate. Reviews
-  have no wall-clock limit; rejoin instead of relaunching.
-- **Triage**: name any tier that still covers a dropped debt; without coverage, the
-  drop is final.
-- **Lanes**: `docs/DESIGN.md` is shared by every card and never separates lanes; use
-  the other files instead (measured twice in Sprint 9).
+- Nothing under `plugins/xp-plugin/` names this repo, its caps or any consumer.
+- Prose that instructs an agent to run something is a shipped path: run it first.
+- Plugin changes are not live until tagged and installed from the marketplace
+  cache; run repo scripts by path to exercise the tree.

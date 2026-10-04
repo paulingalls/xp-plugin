@@ -1,14 +1,18 @@
 # Judgment
-- See red; never fake it. No-red commit: why. Never bypass hooks.
-- **Comments** — restatement/history → delete · WHAT → rename · claim → test. Keep why/external constraints/rejected designs.
-- **Review** — responsibilities/boundaries: co-change, interference, exposed internals; contracts/authoritative knowledge: caller promises, rule owners, copies; necessary complexity: required behavior/callers/repeated change. Findings: code, cost/failure now, XP value, cheapest sufficient fix. Principles ≠ proof. Like lines need not duplicate knowledge; no imagined use/mandatory split. Red → green → refactor; prep only if safer/simpler here, behavior preserved: named existing checks unchanged, green before/after. Generalization/uncovered behavior/resolved conflict: round if silent or corrupting (false green, corrupted record, unreviewed merge); loud does not.
-- **New information** — restate purpose; no drift.
-Fix; reasoned drop or debt under BOTH bars. Drop too-big loud.
-Escalate reserved choices; ACs/blockers unwaivable. LLMs judge; hooks validate.
-## Records (`work.py` only)
-- **bug** — claim + red falsifier + files; fix now. No red: judge.
-- **debt** — claim + green falsifier + files; BOTH too big (doubles card/crosses concern/separate design) AND too important (silent/corrupting/privacy/user harm). `debt`/renewed `keep --ref ID`: restate reasons via `--too-big`/`--too-important`.
-- **resolve** — green replacement evidence; lead only, close, landed tree. Suite owns regression; only open claims recur.
-- **note** — tradeoff/discovery, never deferred findings; promote/archive at close; next-story: card.
-- **Polarity** — debt: green=still OK; red=materialised; green from flaw=inverted.
-Telemetry: remeasure; never record.
+
+- See red; never fake it. A commit with no red says why in its body. Never bypass hooks.
+- **Comments**: restatement or history, delete; WHAT, rename; claim, test. Keep the why, external constraints, rejected designs.
+- **Findings** name the code, the cost or failure now, the XP value, and the cheapest sufficient fix. Principles are not proof. Like lines need not duplicate knowledge; no imagined use, no mandatory split.
+- **The bar**: a finding earns work when its failure is silent or corrupting: a false green, a corrupted record, an unreviewed merge. A loud failure does not.
+- **Design lenses**: responsibilities and boundaries (co-change, interference, exposed internals); contracts and authoritative knowledge (caller promises, rule owners, copies); necessary complexity (required behavior, callers, repeated change).
+- **Disposition**: fix by default; drop with a reason; or debt under BOTH bars. Drop a too-big loud finding.
+- **Red, green, refactor.** A preparatory change only if safer or simpler here, behavior preserved, existing checks green before and after.
+- **Tests**: at the outermost boundary that reaches the behavior, integration over unit; delete the unit tests an integration test covers. Commit-hook tests finish in under a minute; slower ones go to push, sprint or nightly. Fault-inject a new guard once, only if its failure would be silent or corrupting.
+- **New information**: restate the purpose; no drift.
+- Escalate choices reserved to the lead. Unmet ACs and release blockers are not waivable. Agents judge; hooks validate.
+
+## Records (`xp.py bug | debt | note | resolve`)
+- **bug**: claim, red falsifier, files. Fix now.
+- **debt**: claim, green falsifier, files, and BOTH bars: too big (doubles the card, crosses a concern, needs its own design) AND too important (silent, corrupting, privacy, user harm).
+- **resolve**: a green falsifier replaces the record's; the lead, at close, on the landed tree.
+- **note**: a tradeoff or discovery, never a deferred finding.

@@ -1,7 +1,8 @@
 #!/bin/sh
-# xp wall: secrets + fast tier (tiers read from .xp/config.yml at run time)
 set -e
 cd "$(git rev-parse --show-toplevel)"
 . .githooks/hook-lib.sh
 secrets_scan_index
-run_tier fast
+edit_me lint     # EDIT-ME: your linter, or delete this line if you have none
+# Quick tests. Keep this under a minute: it runs on every commit.
+edit_me tests    # EDIT-ME
