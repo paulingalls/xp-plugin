@@ -75,8 +75,8 @@ def test_retained_guard_detects_fault(tmp_path, monkeypatch, guard):
         ),
         "post-merge-false-green": (
             "scripts/close/free.py",
-            "before_publish=validate_current_verify,",
-            "before_publish=None,",
+            "publish_guard=publish_current_card,",
+            "publish_guard=None,",
         ),
         "stale": (
             "scripts/plan_writer.py",

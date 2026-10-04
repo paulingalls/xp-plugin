@@ -266,7 +266,7 @@ def cmd_post_merge(
     retire_sprint: bool = True,
     dry_run: bool = False,
     recorded_head: str = "",
-    before_publish=None,
+    publish_guard=None,
 ) -> int:
     try:
         safe_release_id(release_id)
@@ -342,7 +342,7 @@ def cmd_post_merge(
                 )
             print(VERSIONING_OFF_TEXT)
             return 0
-        if before_publish and (red := before_publish()):
+        if publish_guard and (red := publish_guard(lambda: "")):
             return fail(red)
         if retire_sprint:
             import shipping
@@ -390,9 +390,6 @@ def cmd_post_merge(
         print(f"dry run: would tag {version}{after}; {walled_text(checked, version)}")
         return 0
 
-    if before_publish and (red := before_publish()):
-        return fail(red)
-
     def publish_versioned():
         nonlocal cycle
         if retire_sprint:
@@ -425,7 +422,7 @@ def cmd_post_merge(
 
         if red := shipping.finish(release_id, publish_versioned):
             return fail(f"refused: {red}")
-    elif red := publish_versioned():
+    elif red := (publish_guard(publish_versioned) if publish_guard else publish_versioned()):
         return fail(red)
     suffix = "; sprint branch cleared" if retire_sprint else ""
     walled = walled_text(checked, version)
