@@ -13,6 +13,7 @@ from xpcore.config import (
     record_sprint_branch,
     refuse,
     repo_root,
+    sprint_branch,
     sprint_branch_name,
     trunk,
 )
@@ -67,6 +68,10 @@ def cmd_sprint_open(args) -> int:
     if args.dry_run:
         print(f"would record {branch} as the open sprint branch")
         return 0
+    recorded = sprint_branch()
+    if recorded and recorded != branch:
+        refuse(f"sprint branch {recorded} is still open; land it (xp.py sprint post-merge) first")
+    hooks.lifecycle("sprint-open", args.id, root)
     record_sprint_branch(branch)
     print(f"Sprint {args.id} open on {branch}; spawn its stories with `xp.py story <id>`")
     return 0
@@ -207,6 +212,8 @@ def cmd_sprint_post_merge(args) -> int:
         green_hook(root, f"{branch}-sprint-hook")
     else:
         print("the merged tree is the one land tested; the sprint hook does not rerun")
+    if not tagged:
+        hooks.lifecycle("sprint-close", args.id, root)
     if version and not tagged:
         release.tag(version)
     if not (sprint_dir(args.id) / "release.json").is_file():

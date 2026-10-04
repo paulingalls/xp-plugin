@@ -88,6 +88,7 @@ def test_single_file_card_skips_planning(repo):
         "card.md",
         "handback.md",
         "review-1.md",
+        "setup.ok",
     ]
     assert not (repo / "logs" / "story-002-planner.log").exists()
 
@@ -95,7 +96,7 @@ def test_single_file_card_skips_planning(repo):
 def test_full_walk_then_rerun_is_a_noop(repo, capsys):
     assert xp.main(["story", "story-001"]) == 0
     sdir = story(repo, "story-001")
-    names = {"card.md", "plan.md", "plan-review.md", "handback.md", "review-1.md"}
+    names = {"card.md", "plan.md", "plan-review.md", "handback.md", "review-1.md", "setup.ok"}
     assert {p.name for p in sdir.iterdir()} == names
     assert "[in-progress]" in (repo / "plan.md").read_text().splitlines()[1]
     wt = repo / "worktrees" / "story-001"

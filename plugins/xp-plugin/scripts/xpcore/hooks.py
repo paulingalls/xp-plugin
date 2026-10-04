@@ -1,4 +1,4 @@
-"""The two commands the plugin runs for a project: a card's Acceptance and the sprint hook."""
+"""Project commands at worktree, lifecycle, Acceptance and release boundaries."""
 
 import os
 import shlex
@@ -6,7 +6,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from xpcore.config import LEFTHOOK_CONFIGS, data_root, refuse
+from xpcore.config import LEFTHOOK_CONFIGS, data_root, load_config, refuse
 
 
 def stream(argv: list[str], cwd, log, env: dict[str, str] | None = None) -> int:
@@ -61,3 +61,21 @@ def run_sprint_hook(root: Path, log_id: str) -> int:
     env = {k: v for k, v in os.environ.items() if not k.startswith("LEFTHOOK")}
     with open(log_path(log_id), "a") as log:
         return stream(argv, root, log, env)
+
+
+def project_command(key: str, cwd: Path, log_id: str, *args: str) -> tuple[str, int]:
+    line = str(load_config().get(key) or "")
+    if not line:
+        return "", 0
+    command = f"{line} {shlex.join(args)}" if args else line
+    return line, run_acceptance(command, cwd, log_id)
+
+
+def lifecycle(event: str, identity: str, cwd: Path) -> None:
+    log_id = f"{identity}-{event}"
+    line, rc = project_command("lifecycle_command", cwd, log_id, event, identity)
+    if rc:
+        refuse(
+            f"lifecycle_command {event} `{line}` exited {rc}; read {log_path(log_id)},"
+            " fix the command and run again"
+        )

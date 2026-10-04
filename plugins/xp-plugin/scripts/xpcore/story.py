@@ -5,7 +5,7 @@ import os
 import re
 from pathlib import Path
 
-from xpcore import bundle, cards, config, gitx, launch
+from xpcore import bundle, cards, config, gitx, hooks, launch
 from xpcore.config import fail
 from xpcore.launch import log_path
 
@@ -73,7 +73,9 @@ def questions(sdir: Path) -> list[str]:
 
 
 def stages(card: cards.Card, sdir: Path, wt: Path, base: str) -> list[str]:
-    todo = [] if wt.is_dir() else ["worktree"]
+    # The worktree counts as made only once setup has passed in it: a killed setup
+    # leaves the directory behind, and agents must not start in an unbootstrapped checkout.
+    todo = [] if (sdir / "setup.ok").is_file() and wt.is_dir() else ["worktree"]
     if len(card.files) > 1:  # a single-file card's net is the diff review alone
         if not (sdir / "plan.md").is_file():
             todo.append("planner")
@@ -255,7 +257,24 @@ def walk(card: cards.Card, base: str, dry: bool) -> int:
         if stage == "worktree":
             s = slug(card.title)
             branch = card.id if card.id.endswith(s) else f"{card.id}-{s}"
-            gitx.worktree_add(wt, branch, base, cwd=root)
+            existed = gitx.branch_exists(branch, root)
+            # An existing worktree (a killed setup, or one made before setup was set) may
+            # hold uncommitted work: a red setup removes only what this attempt made.
+            made = not wt.is_dir()
+            if made:
+                gitx.worktree_add(wt, branch, base, cwd=root)
+            log_id = f"{card.id}-worktree-setup"
+            line, rc = hooks.project_command("worktree_setup", wt, log_id)
+            if rc:
+                if made:
+                    gitx.worktree_remove(wt, cwd=root)
+                if made and not existed:
+                    gitx.git("branch", "-D", branch, cwd=root)
+                config.refuse(
+                    f"worktree_setup `{line}` exited {rc} in {wt}{'; removed it' if made else ''};"
+                    f" read {hooks.log_path(log_id)}, fix the command and run {rerun} again"
+                )
+            (sdir / "setup.ok").touch()
             print(f"{card.id}: worktree {wt} on {branch} from {base}")
         elif stage == "planner":
             plan_stage(card, sdir, wt)

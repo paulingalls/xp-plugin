@@ -105,6 +105,13 @@ def finish_recorded(card: cards.Card) -> int:
 
 
 def close(card: cards.Card, merge: str, path: Path, branch: str, lead: Path) -> None:
+    log_id = f"{card.id}-worktree-teardown"
+    line, rc = hooks.project_command("worktree_teardown", path, log_id)
+    if rc:
+        print(
+            f"warning: worktree_teardown `{line}` exited {rc}; read {hooks.log_path(log_id)};"
+            " the merge landed, continuing cleanup"
+        )
     # The worktree before the branch: git will not delete a branch a worktree has out.
     gitx.worktree_remove(path, cwd=lead)
     gitx.git("branch", "-D", branch, cwd=lead)
@@ -156,6 +163,7 @@ def land(card_id: str, target: str, *, pr: bool, dry_run: bool) -> int:
         return pull_request(branch, target, path, after, title=card.title, body=body)
     if gitx.git("rev-parse", target, cwd=lead) != sha:
         refuse(f"{target} moved during land; run xp.py story land {card.id} again")
+    hooks.lifecycle("story-close", card.id, path)
     try:
         gitx.git("merge", "--no-ff", branch, "-m", body, cwd=lead)
     except gitx.GitError as exc:

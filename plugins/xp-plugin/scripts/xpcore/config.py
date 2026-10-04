@@ -153,9 +153,6 @@ def sprint_branch() -> str:
 
 
 def record_sprint_branch(branch: str) -> None:
-    recorded = sprint_branch()
-    if recorded and recorded != branch:
-        refuse(f"sprint branch {recorded} is still open; land it (xp.py sprint post-merge) first")
     path = _sprint_branch_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(branch + "\n")

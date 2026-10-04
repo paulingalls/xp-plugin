@@ -4,6 +4,21 @@ Release notes started at v0.6.0; earlier entries are summarized from their
 tag and merge messages. Full detail lives in the merge history and the
 per-sprint review reports.
 
+## v1.0.3
+
+Restore optional project commands in `.xp/config.yml`: `worktree_setup` before agents,
+`worktree_teardown` before cleanup, and `lifecycle_command` at sprint open, story close
+and sprint close. Failed setup rolls back its worktree and new branch; failed teardown
+warns and still cleans up; failed lifecycle commands refuse before the guarded step.
+Free patches keep their worktrees until post-merge and emit no lifecycle events.
+
+Upgraders: move system.md's Worktree bootstrap/teardown lines into the config keys.
+Keep lifecycle_command as a shell line; move preflight to the start of the sprint hook.
+Projects bound their own commands and make them tolerate retries.
+A setup killed mid-run reruns in its worktree before any agent starts; a red setup
+removes only a worktree it created. Hooks that scan no secrets should adopt the
+template's gitleaks jobs: setup adds them only to new repositories.
+
 ## v1.0.2
 
 Codex SessionStart now has room for a whole constraints file up to the 4,500-byte

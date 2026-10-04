@@ -102,9 +102,22 @@ roles:                     # harness/model[/effort]; a card's Executor: line ove
 `codex_sandbox` stays (decided during the build): a project has no other way to state a
 Codex posture, and a role suffix would have to be repeated per role.
 
+Optional `worktree_setup` and `worktree_teardown` shell lines run inside the worktree at
+creation (before agents) and removal. Setup failure removes the worktree and only a branch
+created by that attempt; teardown failure warns and cleanup continues after the landed merge.
+`free land` keeps its worktree; `free post-merge` removes it.
+
+Optional `lifecycle_command` runs with `sh -c`, appending the shell-quoted event and id:
+`sprint-open` before recording the sprint, `story-close` after green Acceptance before the
+merge, `sprint-close` before the post-merge tag/release record. Sprint events run in the
+invoking repository root, story-close in the story worktree; free patches emit none.
+A nonzero status refuses the guarded step. Config comes from the invoking checkout;
+unset/empty keys disable commands, projects bound their scripts and tolerate retries.
+Tagged sprint-close retries skip the event. Dry-runs and free-card minting run none.
+
 Gone: `release:` (stories land on the sprint branch, free patches on trunk; nothing else),
 `tests:`, `full_legs`, `tier_coverage`, `tier_coverage_pins`, `preflight`,
-`lifecycle_command`, `profile_target`, `constraints_chars_cap`, `teardown_timeout`, `review.verify_batches`, the seven
+`profile_target`, `constraints_chars_cap`, `teardown_timeout`, `review.verify_batches`, the seven
 extra role seats.
 
 ## 6. Tests and acceptance
