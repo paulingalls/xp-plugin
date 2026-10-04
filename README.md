@@ -71,7 +71,10 @@ hooks and an empty plan, and refuses if `.xp/` already exists. Then fill in:
    Delete hook steps that read a removed key (`tests`, `constraints_chars_cap`) or call a
    0.x plugin script: with the key gone they refuse every commit.
 5. Convert open cards from `Verify:` to `Acceptance:`; retire cards about removed 0.x
-   machinery. Preserve applicable acceptance obligations.
+   machinery. Preserve applicable acceptance obligations. Re-file each open 0.x bug or debt
+   with `xp.py bug` / `xp.py debt` (falsifier included), or drop it with a reason: v1 reads
+   only its own record headings, so 0.x records remain in `<data>/work.md` as history and
+   never appear as open in `xp.py recover`.
 6. Apply the [constraints template](plugins/xp-plugin/templates/constraints.md) items to
    the project's constraints.
 
