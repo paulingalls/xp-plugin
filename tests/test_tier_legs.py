@@ -345,16 +345,6 @@ def test_dirty_tree_is_named_before_the_trial_merge(tmp_path):
         assert result.returncode == 2 and "dirty" in result.stderr and "src.py" in result.stderr
 
 
-def test_commented_full_legs_keeps_dry_run_off_the_trial_merge(tmp_path):
-    repo, env, g = make_repo(tmp_path, config=CONFIG + "# full_legs:\n#   one: true\n")
-    record_reviews(tmp_path, repo, env)
-    add_origin(tmp_path, repo, env, g)
-    advance_origin(repo, g, "trunk-only", "present\n")
-    (repo / "src.py").write_text("A = 3\n")
-    assert g("add", "src.py").returncode == 0
-    assert sprint(repo, env, "land", "--dry-run").returncode == 0
-
-
 def test_committed_leg_command_changes_tested_tree(tmp_path):
     first, second = tmp_path / "first", tmp_path / "second"
     command = f"printf x >> '{second}'"

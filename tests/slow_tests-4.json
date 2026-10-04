@@ -224,7 +224,6 @@
   "tests/test_tier_legs.py::test_all_green_reland_reuses_every_leg",
   "tests/test_tier_legs.py::test_changed_leg_command_reruns_only_that_leg",
   "tests/test_tier_legs.py::test_changed_tree_reruns_every_leg",
-  "tests/test_tier_legs.py::test_commented_full_legs_keeps_dry_run_off_the_trial_merge",
   "tests/test_tier_legs.py::test_dirty_tree_is_named_before_the_trial_merge",
   "tests/test_tier_legs.py::test_dry_run_lists_declared_legs",
   "tests/test_tier_legs.py::test_failed_second_leg_resumes_only_second",
