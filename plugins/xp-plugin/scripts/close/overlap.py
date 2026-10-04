@@ -225,11 +225,13 @@ def run_checks(
 
 
 def _receipt_matches(receipt: object, tier: str, tree: str) -> tuple[bool, str]:
+    from tier_legs import compose
+
     if receipt is MISSING_RECEIPT:
         return False, "missing"
     valid = (
         isinstance(receipt, dict)
-        and set(receipt) in (_RECEIPT_KEYS, _RECEIPT_KEYS | {"components"})
+        and set(receipt) >= _RECEIPT_KEYS
         and receipt.get("tier") == "full"
         and all(
             isinstance(receipt.get(key), str) and receipt[key]
@@ -245,13 +247,14 @@ def _receipt_matches(receipt: object, tier: str, tree: str) -> tuple[bool, str]:
                 and bool(receipt["components"])
                 and all(
                     isinstance(c, dict)
-                    and set(c) == {"leg", "command", "status", "head"}
+                    and {"leg", "command", "status", "head"} <= set(c)
                     and all(isinstance(c[k], str) and c[k] for k in ("leg", "command", "head"))
                     and c["status"] in ("ran", "reused")
                     for c in receipt["components"]
                 )
                 and len({c["leg"] for c in receipt["components"]}) == len(receipt["components"])
-                and " && ".join(c["command"] for c in receipt["components"]) == receipt["command"]
+                and compose([(c["leg"], c["command"]) for c in receipt["components"]])
+                == receipt["command"]
                 and receipt["reused"] == all(c["status"] == "reused" for c in receipt["components"])
             )
         )
@@ -313,14 +316,15 @@ def gates(
                 None,
             )
         where = f" on the tree merged with {ref}" if pending else ""
-        tier = config_block_value("tests", tier_key)
-        if legs is not None:
-            from tier_legs import declared
+        if tier_key == "full":
+            from tier_legs import declared, full_command
 
-            staged_legs, error = declared()
+            legs, error = declared()
             if error:
                 return error, None
-            legs = staged_legs
+            tier = full_command(legs)
+        else:
+            tier = config_block_value("tests", tier_key)
         if refusal := tier_refusal(tier, tier_key):
             return refusal, None
         if prior_receipt is _NO_RECEIPT and story_verify is None:

@@ -343,6 +343,9 @@ def main() -> int:
     sub.add_parser("show").add_argument("ref")
     sub.add_parser("compact")
     sub.add_parser("env", help="print the installed plugin root recorded in the data root")
+    sub.add_parser("tier", help="print the effective full-tier command").add_argument(
+        "tier", choices=("full",)
+    )
     a = sub.add_parser("archive")
     a.add_argument("--ref", required=True, help="record id from `list`")
     a.add_argument("--disposition", required=True, help="why: promoted, superseded, dropped")
@@ -366,6 +369,11 @@ def main() -> int:
         return edit_card_command(args)
     if args.kind == "card-snapshot":
         return card_snapshot_command(args)
+    if args.kind == "tier":
+        sys.path.insert(0, str(Path(__file__).parent / "close"))
+        from tier_legs import command_cli
+
+        return command_cli()
     if args.kind == "env":
         print(plugin_root())
         return 0

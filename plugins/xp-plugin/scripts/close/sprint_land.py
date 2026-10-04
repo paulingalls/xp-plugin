@@ -30,7 +30,7 @@ from sprint_close import (
 from sprint_coverage import _covered_gate_files
 from sprint_coverage import coverage_refusal as _coverage_refusal
 from sprint_state import append_tier_evidence, read_tier_history, write_sprint_state
-from work import config_block_value, plan_path
+from work import plan_path
 
 # GitHub's own ceiling on a pull request body; gh rejects a longer --body-file.
 PR_BODY_LIMIT = 65_536
@@ -203,7 +203,7 @@ def cmd_land(sprint_id: str, dry_run: bool) -> int:
         preflight_raw, _commands, error = pf.prepare(config_flat("preflight"))
         if error:
             return fail(error)
-        full = config_block_value("tests", "full")
+        full = tier_legs.full_command(legs)
         if refusal := overlap.tier_refusal(full, "full"):
             return fail(_clearance_failure(refusal, bound) if bound else refusal)
         if preflight_raw:
@@ -245,7 +245,7 @@ def cmd_land(sprint_id: str, dry_run: bool) -> int:
         return fail(error)
     prior = state.get("full_tier", overlap.MISSING_RECEIPT)
     declared_names = tuple(name for name, _ in legs) if legs is not None else ()
-    history, history_error = read_tier_history(state, declared_names)
+    history, history_error = read_tier_history(state)
     if history_error:
         return fail(
             f"refused: {history_error} in sprint marker {marker} — repair or delete"

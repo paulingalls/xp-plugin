@@ -39,11 +39,27 @@ def declared() -> tuple[list[tuple[str, str]] | None, str]:
     legs = [(name, values[name]) for name in names]
     if any(not command for _, command in legs):
         return [], "refused: full_legs command is empty"
-    joined = " && ".join(command for _, command in legs)
-    tier = config_block_value("tests", "full")
-    if joined != tier:
-        return [], f"refused: full_legs join mismatch: tests.full={tier!r}; joined={joined!r}"
     return legs, ""
+
+
+def compose(legs) -> str:
+    return " && ".join(f"({command})" for _, command in legs)
+
+
+def full_command(legs) -> str:
+    return compose(legs) if legs is not None else config_block_value("tests", "full")
+
+
+def command_cli() -> int:
+    import sys
+
+    legs, error = declared()
+    command = full_command(legs) if not error else ""
+    if error or not command or command == "EDIT-ME":
+        print(error or "refused: configure full_legs or tests.full, then retry", file=sys.stderr)
+        return 2
+    print(command)
+    return 0
 
 
 def inspect(ref: str, pending: bool) -> tuple[list[tuple[str, str]] | None, str]:

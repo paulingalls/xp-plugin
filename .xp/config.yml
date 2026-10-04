@@ -26,7 +26,6 @@ roles:                 # harness/model[/effort]; lead overrides per story in pla
 tests:
   fast: pytest -q -n 4 -m "not slow and not meta and not native"
   story: pytest -q -n 4 -m "not slow and not meta and not native"
-  full: pytest -q -n 6 -m "not slow and not meta and not native" && pytest -q -n 6 -m "slow and not meta and not native" && pytest -q -n 6 -m "meta and not native"
   native: pytest -q -n 4 -m native
 
 full_legs:

@@ -166,7 +166,7 @@ def main() -> int:
         f"plan scaffolded at {plan_path()} — PER CLONE, outside the repo\n"
         f"env.json seeded at {env_path()} — where anything NOT spawned from the plugin"
         f" reads its root\n{wall}\n"
-        "Edit next: (1) tests.fast/story/full in .xp/config.yml — the wall reads them"
+        "Edit next: (1) tests.fast/story and full_legs (or legacy tests.full) in .xp/config.yml"
         f" at run time; (2) .xp/system.md{third or '.'}"
     )
     return 0
