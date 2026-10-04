@@ -68,6 +68,8 @@ hooks and an empty plan, and refuses if `.xp/` already exists. Then fill in:
    nightly. Add lefthook `sprint:` or an executable `.githooks/sprint`, according to the
    existing routing. Adapt the [lefthook template](plugins/xp-plugin/templates/lefthook.yml)
    or [plain sprint hook](plugins/xp-plugin/templates/githooks-sprint); preserve existing hooks.
+   Delete hook steps that read a removed key (`tests`, `constraints_chars_cap`) or call a
+   0.x plugin script: with the key gone they refuse every commit.
 5. Convert open cards from `Verify:` to `Acceptance:`; retire cards about removed 0.x
    machinery. Preserve applicable acceptance obligations.
 6. Apply the [constraints template](plugins/xp-plugin/templates/constraints.md) items to
