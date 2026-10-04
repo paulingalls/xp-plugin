@@ -9,8 +9,8 @@ Write the sprint's cards in the plan file `recover` names, in the shape the
 plugin's `templates/plan.md` shows. Carry unfinished cards forward first. Each
 card's Acceptance is one command, run from the repository root, that executes its
 ACs; a Gherkin feature run by the project's runner is the recommended form.
-A sprint is one release: self-contained and releasable on its own, whether that
-is three cards or eight; `debt_budget` caps the share of debt. Order
+A sprint is the smallest set of cards releasable on its own: fewer cannot ship,
+more makes a diff no review can hold. `debt_budget` caps the share of debt. Order
 prerequisites first and split cards that collide on files. Then run the slate
 review, judge every finding in the slate review file it names (correct the card,
 drop with a reason, or file debt under both JUDGMENT bars), answer each

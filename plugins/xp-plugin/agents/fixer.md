@@ -16,8 +16,6 @@ description: Fixes the merged sprint-review findings on the sprint branch.
 - One commit per finding you fix, on the branch you are on, through the
   project's hooks: a red test first where a test can show the defect, then the
   fix. Never bypass a hook.
-- Fault-inject every guard you add, once, if its failure would be silent or
-  corrupting.
 - The handback at the path you are given: per finding, `fixed` with its commit,
   `dropped (reason)` when the finding is wrong or its failure is loud, or
   `lead` when it needs a choice that is not yours. Short.

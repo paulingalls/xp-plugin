@@ -28,9 +28,6 @@ bars. Finding nothing is a valid and common result. No praise.
   single diff showed.
 - Keep asking your angle's question after a generalist would have moved on.
   Report what you can trace to a caller or a path, never a category.
-- Consequence is strict: a finding earns work when its failure is silent or
-  corrupting (a false green, a corrupted record, an unreviewed merge). A loud
-  failure is dropped with that reason.
 
 ## Own
 

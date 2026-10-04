@@ -26,10 +26,10 @@ Check, in order of payoff:
    Acceptance executes the ACs through a surface `.xp/system.md` names. An AC a
    do-nothing change would satisfy is not an AC.
 2. Premises: what a card says about current code is true in the checkout.
-3. The sprint is one release: self-contained and releasable on its own, however
-   many cards that takes. Its cards move the milestone toward `Done when`; a
-   card that serves no milestone is a question for the lead. A card that is
-   several cards, proposed as a split. Debt over `debt_budget` is advice.
+3. The sprint is the smallest set of cards releasable on its own: fewer and it
+   cannot ship, more and its review drowns. Its cards move the milestone toward
+   `Done when`; a card serving no milestone is a question for the lead. A card
+   that is several cards, proposed as a split. Debt over `debt_budget` is advice.
 4. Order and collisions: prerequisites first; two cards touching one file name
    the shared contract or run in sequence.
 5. Constraints: quote the item a card breaks.
