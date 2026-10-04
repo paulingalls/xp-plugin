@@ -164,13 +164,34 @@ def cmd_post_merge(slug: str, dry_run: bool = False) -> int:
     if identity_error:
         return fail(f"refused: {identity_error} in {matches[0]}")
 
+    from git_source import tracked_state
+
+    shipping_source = tracked_state()
+    shipping_branch = git("branch", "--show-current").stdout.strip()
+
+    def shipping_motion():
+        if (
+            tracked_state() != shipping_source
+            or git("branch", "--show-current").stdout.strip() != shipping_branch
+        ):
+            invalidation = verify_receipt.invalidate(key)
+            return (
+                "refused: shipping validation changed tracked source/index/HEAD/branch; "
+                "inspect retained work before retrying"
+                + (f"; {invalidation}" if invalidation else "")
+            )
+        return ""
+
     def validate_current_verify():
+        if any(shipping_source[name] for name in ("status", "staged", "worktree")):
+            return "refused: shipping source is dirty; inspect retained work before retrying"
         from close import verify_commands
 
         raw, commands = verify_commands(key, card)
         tree = git("rev-parse", "HEAD^{tree}").stdout.strip()
         reusable, _reason = verify_receipt.decide(key, card, raw, commands, tree)
-        return "" if reusable else verify_receipt.record(key, card, raw, commands)
+        error = "" if reusable else verify_receipt.record(key, card, raw, commands)
+        return shipping_motion() or error
 
     result = release.cmd_post_merge(
         key,
@@ -189,6 +210,8 @@ def cmd_post_merge(slug: str, dry_run: bool = False) -> int:
             f" and delete {branch} and this close's markers"
         )
         return 0
+    if motion := shipping_motion():
+        return fail(motion)
     tree, spawned_branch, failed = bookkeep.story_worktree(spawn.worktree_path(key))
     if not flip_card(key, "in-progress", "done"):
         failed.append(f"flip {key} to [done] in {plan_path()}")

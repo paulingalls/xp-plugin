@@ -117,12 +117,11 @@ def test_adjusted_report_correction_preserves_committed_work(tmp_path, harness, 
         tmp_path, harness, scenario="malformed-" + producer
     )
     binary = tmp_path / "bin" / harness
-    binary.write_text(
-        binary.read_text().replace(
-            "if stage=='fixer':",
-            "if stage=='fixer' and 'Correct only the incomplete report' not in prompt:",
-        )
-    )
+    import json
+
+    from story_review_helpers import evidence_correction
+
+    evidence_correction(binary, producer)
     assert invoke(repo, env, key).returncode == 2
     before = checkpoint(env, key)
     saved = {s["path"]: Path(s["path"]).read_bytes() for s in before["stages"].values()}
@@ -142,10 +141,12 @@ def test_adjusted_report_correction_preserves_committed_work(tmp_path, harness, 
     tree = worktree(repo, env, git, key)
     result = command(repo, env, "spawn.py", "resume", key)
     assert result.returncode == 2 and events.read_bytes() == count
-    binary.write_text(binary.read_text().replace("'malformed-" + producer + "'", "'fixed'"))
     result = invoke(tree, env, key)
     assert result.returncode == 0, result.stderr
     after = checkpoint(env, key)
+    assert after["stages"][producer]["report"]["fixed"] == [
+        json.loads(saved[before["stages"][producer]["path"]])["blocking"]
+    ]
     assert after["id"] == before["id"]
     assert after["start"] == before["start"]
     assert all(Path(p).read_bytes() == data for p, data in saved.items())
@@ -161,6 +162,7 @@ def test_adjusted_report_correction_preserves_committed_work(tmp_path, harness, 
     assert sentinel.exists()
     prompt = Path(str(events) + "." + producer + ".prompt").read_text()
     assert "corrected obligations" in prompt and "reviewed" in prompt
+    assert before["problem"] in prompt
 
 
 @pytest.mark.parametrize("state", ["completed", "validation-red"])

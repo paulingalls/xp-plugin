@@ -259,3 +259,115 @@ def test_adjusted_post_merge_validates_current_verify(tmp_path, exit_code):
         assert marker_file(tmp_path, key).exists()
         assert "[in-progress]" in (Path(env["XP_DATA"]) / "plan.md").read_text()
         assert branch in g("branch", "--list").stdout
+
+
+@pytest.mark.parametrize("motion", ["worktree", "index", "head", "branch"])
+def test_post_merge_verify_motion_preserves_unreviewed_work(tmp_path, motion):
+    import re
+
+    from card_adjustment_support import command
+
+    fixture = TestFreePostMerge()
+    repo, env, g, branch = fixture.reviewed(tmp_path)
+    fixture.merge_pr(g, branch)
+    key = branch.split("/", 1)[1]
+    merged = g("rev-parse", "HEAD").stdout.strip()
+    candidate = Path(env["XP_DATA"]) / "candidate.md"
+    snapshot = command(repo, env, "work.py", "card-snapshot", key, str(candidate))
+    assert snapshot.returncode == 0, snapshot.stderr
+    digest = re.search(r"^digest: (\w+)$", snapshot.stdout, re.M).group(1)
+    hooks = tmp_path / "shipping-hooks"
+    hook = repo / ".git/hooks/pre-commit"
+    hook.write_text(f"#!/bin/sh\necho hook >> {hooks}\n")
+    hook.chmod(0o755)
+    gate = tmp_path / "moving-verify"
+    gate.write_text(
+        "#!/bin/sh\nset -e\n"
+        + (
+            "git checkout -q -b unreviewed-shipping\n"
+            if motion == "branch"
+            else "echo 'UNREVIEWED = 99' >> src/thing.py\n"
+            + ("git add src/thing.py\n" if motion in ("index", "head") else "")
+            + ("git commit -qm 'unreviewed Verify change'\n" if motion == "head" else "")
+        )
+    )
+    gate.chmod(0o755)
+    candidate.write_text(candidate.read_text().replace("Verify: true", f"Verify: {gate}"))
+    edited = command(
+        repo,
+        env,
+        "work.py",
+        "edit-card",
+        key,
+        "--context",
+        "card-edit",
+        "--digest",
+        digest,
+        "--status",
+        "in-progress",
+        str(candidate),
+    )
+    assert edited.returncode == 0, edited.stderr
+    marker = marker_file(tmp_path, key)
+    saved = marker.read_bytes()
+    result = free(repo, env, "fix-typo", "post-merge")
+    assert result.returncode == 2, result.stdout + result.stderr
+    assert "inspect retained work" in result.stderr
+    assert "v0.2.1" not in g("tag").stdout.split()
+    assert marker.read_bytes() == saved
+    assert not (Path(env["XP_DATA"]) / "markers" / f"{key}.verify.json").exists()
+    assert "[in-progress]" in (Path(env["XP_DATA"]) / "plan.md").read_text()
+    assert branch in g("branch", "--list").stdout
+    if motion == "branch":
+        assert g("branch", "--show-current").stdout.strip() == "unreviewed-shipping"
+    else:
+        assert "UNREVIEWED = 99" in (repo / "src/thing.py").read_text()
+        assert (g("rev-parse", "HEAD").stdout.strip() != merged) == (motion == "head")
+        if motion == "index":
+            assert "UNREVIEWED = 99" in g("diff", "--cached").stdout
+        if motion == "head":
+            assert hooks.read_text().splitlines() == ["hook"]
+
+
+def test_post_merge_requires_clean_shipping_source(tmp_path):
+    fixture = TestFreePostMerge()
+    repo, env, g, branch = fixture.reviewed(tmp_path)
+    fixture.merge_pr(g, branch)
+    key = branch.split("/", 1)[1]
+    marker = marker_file(tmp_path, key)
+    saved = marker.read_bytes()
+    source = repo / "src/thing.py"
+    source.write_text(source.read_text() + "UNREVIEWED = 99\n")
+    result = free(repo, env, "fix-typo", "post-merge")
+    assert result.returncode == 2, result.stdout + result.stderr
+    assert "inspect retained work" in result.stderr
+    assert "v0.2.1" not in g("tag").stdout.split()
+    assert source.read_text().endswith("UNREVIEWED = 99\n")
+    assert marker.read_bytes() == saved
+    assert "[in-progress]" in (Path(env["XP_DATA"]) / "plan.md").read_text()
+
+
+def test_post_merge_motion_after_publication_preserves_cleanup_credentials(tmp_path):
+    fixture = TestFreePostMerge()
+    repo, env, g, branch = fixture.reviewed(tmp_path)
+    fixture.merge_pr(g, branch)
+    key = branch.split("/", 1)[1]
+    merged = g("rev-parse", "HEAD").stdout.strip()
+    marker = marker_file(tmp_path, key)
+    saved = marker.read_bytes()
+    wrapper = tmp_path / "bin/git"
+    wrapper.write_text(
+        '#!/bin/sh\n/usr/bin/git "$@"\nresult=$?\n'
+        'if [ "$1" = tag ] && [ "$2" = v0.2.1 ] && [ "$result" = 0 ]; then\n'
+        "  echo 'UNREVIEWED = 99' >> src/thing.py\nfi\nexit $result\n"
+    )
+    wrapper.chmod(0o755)
+    result = free(repo, env, "fix-typo", "post-merge")
+    assert result.returncode == 2, result.stdout + result.stderr
+    assert "inspect retained work" in result.stderr
+    assert marker.read_bytes() == saved
+    assert "[in-progress]" in (Path(env["XP_DATA"]) / "plan.md").read_text()
+    assert branch in g("branch", "--list").stdout
+    assert not (Path(env["XP_DATA"]) / "markers" / f"{key}.verify.json").exists()
+    assert "UNREVIEWED = 99" in (repo / "src/thing.py").read_text()
+    assert g("rev-list", "-n1", "v0.2.1").stdout.strip() == merged

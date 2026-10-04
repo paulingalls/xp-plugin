@@ -115,12 +115,44 @@ def checkpoint(env, key):
     ]["review_sequence"]
 
 
+def evidence_correction(binary, producer="fixer"):
+    scenario = repr("malformed-" + producer)
+    script = binary.read_text().replace(
+        "if stage=='fixer':",
+        "if stage=='fixer' and 'Correct only the incomplete report' not in prompt:",
+    )
+    script = script.replace(
+        "if " + scenario + "=='malformed-'+stage: report.pop('blocking')",
+        r"""if SCENARIO=='malformed-'+stage:
+    if 'Correct only the incomplete report' not in prompt:
+        report['blocking']='A must equal 3'
+    else:
+        match=re.search(r'^Prior report: (.+)$',prompt,re.M)
+        if match:
+            prior_path=match.group(1)
+        else:
+            attempt=prompt.split('Prior producer attempt:\n',1)[1].split('\nSTAGE:',1)[0]
+            prior_path=json.loads(attempt)['path']
+        prior=json.loads(Path(prior_path).read_text())
+        refusal=prompt.split('Measured refusal:\n',1)[1].split('\n',1)[0]
+        assert prior_path in refusal and 'blocking' in refusal
+        finding=prior['blocking']
+        assert isinstance(finding,str) and finding
+        report={'blocking':[finding]}
+        if Path('src/thing.py').read_text()=='A = 3\n':
+            report={'blocking':[], 'fixed':[finding]}""".replace("SCENARIO", scenario),
+    )
+    binary.write_text(script)
+
+
 def measured_flow(root, plugin, scenario="fixed", extra=0):
     import json
     from pathlib import Path
 
     root.mkdir()
     repo, env, git, key, events, hooks = flow_repo(root, scenario=scenario)
+    if scenario.startswith("malformed"):
+        evidence_correction(root / "bin/claude")
     seed_clean_files(repo, git, hooks, extra)
     import pytest
 
@@ -132,16 +164,12 @@ def measured_flow(root, plugin, scenario="fixed", extra=0):
             prior = checkpoint(env, key)
             report = Path(prior["stages"]["fixer"]["path"])
             saved = report.read_bytes()
-            binary = root / "bin/claude"
-            binary.write_text(
-                binary.read_text()
-                .replace("'malformed-fixer'", "'fixed'")
-                .replace(
-                    "if stage=='fixer':",
-                    "if stage=='fixer' and 'Correct only the incomplete report' not in prompt:",
-                )
-            )
-            assert invoke(repo, env, key).returncode == 0
+            result = invoke(repo, env, key)
+            assert result.returncode == 0, result.stderr
+            corrected = checkpoint(env, key)["stages"]["fixer"]["report"]
+            assert corrected["fixed"] == [json.loads(saved)["blocking"]]
+            prompt = Path(str(events) + ".fixer.prompt").read_text()
+            assert prior["problem"] in prompt
             assert report.read_bytes() == saved
         sequence = checkpoint(env, key)
     assert (repo / "src/thing.py").read_text() == "A = 3\n"
