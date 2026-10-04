@@ -7,8 +7,8 @@ plugin already enforces is a second copy: delete it.
 1. **Test behavior at the outermost boundary that reaches it, once.** When an
    integration or acceptance test covers a behavior, delete the unit tests that
    duplicate it. Unit tests are TDD scaffolding, not a permanent asset.
-2. **Tests cost what code costs.** Test lines stay at or below the lines they
-   test. The commit hook finishes in under a minute; everything slower runs at
+2. **Tests cost what code costs.** Test lines stay at or below twice the lines
+   they test. The commit hook finishes in under a minute; everything slower runs at
    push, at sprint close, or nightly. A slow test is a defect in the test.
 3. **A guard is fault-injected once, when it is added, in its own test file,
    and only if its failure would be silent or corrupting.** No tests of tests,
