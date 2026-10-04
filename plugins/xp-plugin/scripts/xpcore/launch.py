@@ -46,14 +46,8 @@ def agent_argv(harness: str, model: str, effort: str, sandbox: str = "") -> list
         return argv + ["--model", model] + (["--effort", effort] if effort else [])
     if harness != "codex":
         config.refuse(f"unknown harness {harness!r}; use claude or codex in the role")
-    argv = ["codex", "exec", "--json"]
-    # The plugin's env (XP_ROLE, XP_STORY_ID) must reach the agent's shell, and any of
-    # these three ~/.codex/config.toml keys can strip it. Default excludes stay: they
-    # drop *KEY*/*SECRET*/*TOKEN*, none of which we need.
-    for pin in ("inherit=all", "exclude=[]", "include_only=[]"):
-        argv += ["-c", f"shell_environment_policy.{pin}"]
-    argv += ["--sandbox", sandbox or "danger-full-access", "--add-dir", str(config.data_root())]
-    argv += ["-m", model]
+    argv = ["codex", "exec", "--json", "--sandbox", sandbox or "danger-full-access"]
+    argv += ["--add-dir", str(config.data_root()), "-m", model]
     if effort:  # codex has no effort flag; the config key is the only spelling
         argv += ["-c", f"model_reasoning_effort={effort}"]
     return [*argv, "-"]  # `-` reads the prompt from stdin, keeping it out of `ps`
@@ -194,11 +188,14 @@ def _feed(proc: subprocess.Popen, prompt: str) -> None:
             proc.stdin.close()
 
 
+def log_path(log_id: str) -> Path:
+    return config.data_root() / "logs" / f"{log_id}.log"
+
+
 def run_agent(
-    role: str, prompt: str, cwd: Path, log_id: str, *, override: str = "", env=None
+    role: str, prompt: str, cwd: Path, log_id: str, *, override: str = ""
 ) -> subprocess.CompletedProcess:
-    """Run `role` to completion with no wall clock; `.stdout` is its final answer.
-    Log ids read `<story-id>-<role>[-suffix]`; XP_STORY_ID derives from that unless given."""
+    """Run `role` to completion with no wall clock; `.stdout` is its final answer."""
     harness, model, effort = config.role(role, override)
     if missing := missing_harness(harness):
         config.refuse(missing)
@@ -212,14 +209,8 @@ def run_agent(
         argv = [*argv[:-1], *codex_widening(cwd), argv[-1]]
     if posture := sandbox_line(argv):
         print(posture, file=sys.stderr)
-    extra = dict(env or {})
-    child_env = (CLAUDE_ENV if harness == "claude" else {}) | os.environ | extra
-    child_env |= {
-        "XP_ROLE": role,
-        "XP_STORY_ID": extra.get("XP_STORY_ID") or log_id.split(f"-{role}")[0],
-        "XP_HARNESS": harness,
-    }
-    path = config.data_root() / "logs" / f"{log_id}.log"
+    child_env = (CLAUDE_ENV if harness == "claude" else {}) | os.environ
+    path = log_path(log_id)
     path.parent.mkdir(parents=True, exist_ok=True)
     print(f"live log: {path}", file=sys.stderr)
     with open(path, "a") as log:

@@ -154,9 +154,9 @@ action. There is no `amend`, `ready`, `resume`, `acknowledge-validation`, `salva
 `repair`, `judge`, `keep`, `archive`, `card-snapshot`, `edit-card`, `milestone-done`.
 
 **Idempotence replaces resume.** `xp.py story <id>` looks at `stories/<id>/`: no plan.md →
-run the planner; no plan-review.md → run the plan reviewer; card not `[done]` and no
-review-N.md newer than HEAD → run the executor then the reviewer; otherwise print what exists
-and stop. A lead who edits the card and runs it again gets exactly the stages that are
+run the planner; no plan-review.md (or one older than plan.md) → run the plan reviewer; no
+handback.md → run the executor; no review-N.md at least as new as HEAD → run the reviewer;
+otherwise print what exists and stop. A lead commit after a review reruns only the reviewer. A lead who edits the card and runs it again gets exactly the stages that are
 missing. A lead who wants a stage re-run deletes its file.
 
 ## 8. The agents
@@ -217,7 +217,7 @@ in `work.py`), `card_text.py`, `bookkeep.py` except fork-point.
 
 Close pipeline: `close/verify_log.py`, `close/verify_receipt.py`, `close/review_validation.py`,
 `close/review_sequence.py`, `close/sprint_review_resume.py`, `close/review_artifacts.py`,
-`close/finding_triage.py`, `close/falsifier_batch.py` (sprint plan prints open records
+`close/finding_triage.py`, `close/falsifier_batch.py` (`recover` prints open records
 instead), `close/tier_legs.py`, `close/sprint_coverage.py`, `close/sprint_state.py`,
 `close/sprint_bundle.py`, `close/overlap.py` except the trial merge, `close/stages.py`,
 `close/milestone.py`, `close/lifecycle.py`, `close/preflight.py`, `close/session_detail.py`,

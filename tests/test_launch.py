@@ -13,7 +13,7 @@ prompt = sys.stdin.read()
 print(json.dumps({"type": "system", "subtype": "init", "session_id": "sess-1"}), flush=True)
 print("not json", flush=True)
 print(json.dumps({"type": "assistant", "message": {"content": [{"type": "text"}]}}), flush=True)
-env = {k: os.environ[k] for k in ("XP_ROLE", "XP_STORY_ID", "XP_HARNESS")}
+env = sorted(k for k in os.environ if k in ("XP_ROLE", "XP_STORY_ID", "XP_HARNESS"))
 if prompt != "silent":
     print(json.dumps({"type": "result", "num_turns": 2, "duration_ms": 3000,
                       "total_cost_usd": 0.5, "result": json.dumps([prompt, env])}))
@@ -66,8 +66,7 @@ def test_codex_argv(tmp_path, monkeypatch):
     monkeypatch.setenv("XP_DATA", str(tmp_path))
     argv = launch.agent_argv("codex", "gpt-6", "medium")
     joined = " ".join(argv)
-    for pin in ("inherit=all", "exclude=[]", "include_only=[]"):
-        assert f"-c shell_environment_policy.{pin}" in joined
+    assert "shell_environment_policy" not in joined
     assert f"--sandbox danger-full-access --add-dir {tmp_path}" in joined
     assert "-m gpt-6 -c model_reasoning_effort=medium" in joined and argv[-1] == "-"
     assert "workspace-write" in launch.sandbox_line(
@@ -113,7 +112,7 @@ def test_run_agent_claude_streams_tees_and_returns_result(project, tmp_path, cap
     assert proc.returncode == 0
     prompt, env = json.loads(proc.stdout)
     assert prompt == "do the thing"
-    assert env == {"XP_ROLE": "executor", "XP_STORY_ID": "story-007", "XP_HARNESS": "claude"}
+    assert env == []  # nothing reads them; the role is the prompt's charter
     out = capsys.readouterr().out
     assert "[system] init" in out and "[result] ok 2 turns 3s $0.50" in out
     log = (tmp_path / "data" / "logs" / "story-007-executor.log").read_text()
@@ -130,7 +129,7 @@ def test_run_agent_without_result_fails(project):
 def test_run_agent_codex_takes_last_message_and_widens(project, tmp_path, capsys):
     tree = tmp_path / "wt"
     subprocess.run(["git", "worktree", "add", "-q", "-b", "s", str(tree)], cwd=project, check=True)
-    proc = launch.run_agent("reviewer", "look", tree, "x", env={"XP_STORY_ID": "story-9"})
+    proc = launch.run_agent("reviewer", "look", tree, "x")
     prompt, argv = json.loads(proc.stdout)
     assert proc.returncode == 0 and prompt == "look"
     assert argv[-3:] == ["--add-dir", str((project / ".git").resolve()), "-"]

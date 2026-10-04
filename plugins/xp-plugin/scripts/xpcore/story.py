@@ -3,19 +3,15 @@ so a re-run does exactly what is missing and a deleted file re-runs its stage.""
 
 import os
 import re
-import sys
 from pathlib import Path
-from typing import NoReturn
 
 from xpcore import bundle, cards, config, gitx, launch
+from xpcore.config import fail
+from xpcore.launch import log_path
 
 REVIEW = re.compile(r"review-(\d+)\.md")
 SLUG = re.compile(r"[a-z0-9]+(-[a-z0-9]+)*")
-
-
-def fail(msg: str) -> NoReturn:
-    print(f"failed: {msg}", file=sys.stderr)
-    raise SystemExit(1)
+QUESTION = re.compile(r"\W*QUESTION:")
 
 
 def slug(title: str) -> str:
@@ -28,10 +24,6 @@ def story_dir(card_id: str) -> Path:
 
 def worktree(card_id: str) -> Path:
     return config.data_root() / "worktrees" / card_id
-
-
-def log_path(log_id: str) -> Path:
-    return config.data_root() / "logs" / f"{log_id}.log"
 
 
 def _read(path: Path | None) -> str:
@@ -53,7 +45,7 @@ def reviewed(sdir: Path, wt: Path) -> bool:
 
 def questions(sdir: Path) -> list[str]:
     lines = _read(sdir / "plan-review.md").splitlines()
-    return [ln.strip() for ln in lines if ln.lstrip().startswith("QUESTION:")]
+    return [ln.strip() for ln in lines if QUESTION.match(ln)]
 
 
 def stages(card: cards.Card, sdir: Path, wt: Path) -> list[str]:
@@ -61,13 +53,20 @@ def stages(card: cards.Card, sdir: Path, wt: Path) -> list[str]:
     if len(card.files) > 1:  # a single-file card's net is the diff review alone
         if not (sdir / "plan.md").is_file():
             todo.append("planner")
-        if not (sdir / "plan-review.md").is_file():
+        if not newer(sdir / "plan-review.md", sdir / "plan.md"):
             todo.append("plan-reviewer")
         elif questions(sdir):
             return [*todo, "question"]
+    if not (sdir / "handback.md").is_file():
+        todo.append("executor")
     if not reviewed(sdir, wt):
-        todo += ["executor", "reviewer"]
+        todo.append("reviewer")
     return todo
+
+
+def newer(path: Path, than: Path) -> bool:
+    """A review older than what it reviews is missing: the lead deleted plan.md to re-plan."""
+    return path.is_file() and (not than.is_file() or path.stat().st_mtime >= than.stat().st_mtime)
 
 
 def base_for(card_id: str) -> str:
@@ -88,13 +87,14 @@ def commands(card_id: str) -> tuple[str, str]:
 
 def run(role: str, card: cards.Card, text: str, wt: Path, log_id: str, override: str = ""):
     print(f"{card.id}: running {role} in {wt}")
-    proc = launch.run_agent(role, text, wt, log_id, override=override, env={"XP_STORY_ID": card.id})
+    proc = launch.run_agent(role, text, wt, log_id, override=override)
     if proc.returncode != 0:
         fail(
             f"{role} exited {proc.returncode}; read {log_path(log_id)}, then run "
             f"{commands(card.id)[0]} again"
         )
     print(f"{card.id}: {role} done; log {log_path(log_id)}")
+    return proc
 
 
 def expect(path: Path, role: str, log_id: str, card_id: str) -> None:
@@ -127,6 +127,7 @@ def plan_review_stage(card: cards.Card, sdir: Path, wt: Path) -> None:
     )
     run("plan-reviewer", card, text, wt, log_id)
     expect(review, "plan reviewer", log_id, card.id)
+    os.utime(review)  # it edits plan.md in place after writing; its findings cover that
     print(f"{card.id}: plan review at {review}")
 
 
@@ -141,19 +142,25 @@ def execute_stage(card: cards.Card, sdir: Path, wt: Path, base: str) -> None:
         findings=findings,
         paths=paths(card, HANDBACK_PATH=handback),
     )
-    run("executor", card, text, wt, log_id, override=card.executor)
+    try:
+        proc = run("executor", card, text, wt, log_id, override=card.executor)
+    except SystemExit:
+        handback.unlink(missing_ok=True)  # the file says the stage finished; it did not
+        raise
     if gitx.is_dirty(wt):
         config.refuse(
             f"the executor left uncommitted changes in {wt}; commit or discard them there"
-            f" (git -C {wt} status), then run xp.py story review {card.id}"
+            f" (git -C {wt} status), then run {commands(card.id)[0]} again"
         )
     if not gitx.log_range(gitx.fork_point("HEAD", base, cwd=wt), "HEAD", cwd=wt):
+        handback.unlink(missing_ok=True)
         fail(
             f"the executor committed nothing; read {log_path(log_id)}, then fix the card or"
             f" plan and run {commands(card.id)[0]} again"
         )
     if not handback.is_file():
-        print(f"warning: the executor wrote no {handback}; the reviewer reads the diff alone")
+        print(f"warning: the executor wrote no {handback}; its final answer stands in")
+        handback.write_text((proc.stdout or "(the executor wrote no handback)").rstrip() + "\n")
 
 
 def review_round(card: cards.Card, sdir: Path, wt: Path, base: str) -> Path:
@@ -207,6 +214,8 @@ def walk(card: cards.Card, base: str, dry: bool) -> int:
     ran = []
     while todo := stages(card, sdir, wt):
         stage = todo[0]
+        if stage in ran:
+            fail(f"{stage} ran and its file is still missing or stale in {sdir}; read its log")
         if stage == "question":
             print(f"{card.id}: the plan reviewer asked ({sdir / 'plan-review.md'}):")
             print("\n".join(f"  {q}" for q in questions(sdir)))
@@ -225,8 +234,9 @@ def walk(card: cards.Card, base: str, dry: bool) -> int:
             plan_stage(card, sdir, wt)
         elif stage == "plan-reviewer":
             plan_review_stage(card, sdir, wt)
-        else:
+        elif stage == "executor":
             execute_stage(card, sdir, wt, base)
+        else:
             review_round(card, sdir, wt, base)
         ran.append(stage)
         card = cards.find_card(card.id)  # agents edit the card in place
@@ -249,7 +259,12 @@ def cmd_story_review(args) -> int:
     wt = worktree(card.id)
     if card.status != "in-progress" or not wt.is_dir():
         config.refuse(f"{card.id} has no story in flight; run {commands(card.id)[0]} first")
-    review = review_round(card, story_dir(card.id), wt, base_for(card.id))
+    base = base_for(card.id)
+    if args.dry_run:
+        fork = gitx.fork_point("HEAD", base, cwd=wt)
+        print(f"{card.id}: would run the reviewer over {fork}..{gitx.head(wt)} in {wt}")
+        return 0
+    review = review_round(card, story_dir(card.id), wt, base)
     print(f"next: judge {review}, then {commands(card.id)[1]}")
     return 0
 
@@ -263,28 +278,8 @@ def cmd_free(args) -> int:
     if args.dry_run and card_id not in {c.id for c in cards.read_cards()}:
         print(f"{card_id}: would mint `{heading}` under ## Free in {cards.plan_path()}")
         return walk(cards.Card(card_id, name, "planned", [heading]), config.trunk(), True)
-    if mint(card_id, heading):
+    if cards.mint_free(card_id, heading):
+        print(f"{card_id}: minted under ## Free in {cards.plan_path()}")
         print(f"next: write Context, AC, Files and Acceptance under it, then run xp.py free {name}")
         return 0
     return walk(cards.find_card(card_id), config.trunk(), args.dry_run)
-
-
-def mint(card_id: str, heading: str) -> bool:
-    """True when the card was just created: a bare card has nothing an executor can build."""
-    with cards.plan_lock():
-        if card_id in {c.id for c in cards.read_cards()}:
-            return False
-        lines = cards.plan_path().read_text().rstrip("\n").splitlines()
-        if "## Free" not in lines:
-            lines += ["", "## Free"]
-        start = lines.index("## Free")
-        end = next(
-            (j for j in range(start + 1, len(lines)) if re.match(r"#{1,3} ", lines[j])),
-            len(lines),
-        )
-        while not lines[end - 1].strip():
-            end -= 1
-        lines[end:end] = ["", heading]
-        cards._write_plan("\n".join(lines) + "\n")
-    print(f"{card_id}: minted under ## Free in {cards.plan_path()}")
-    return True

@@ -132,3 +132,11 @@ def test_plan_lock_serializes_two_writers(tmp_path, monkeypatch):
     for thread in threads:
         thread.join()
     assert counter.read_text() == "50"
+
+
+def test_mint_free_appends_under_free_once(plan):
+    assert cards.mint_free("free-x", "#### free-x — x   [planned]") is True
+    assert cards.mint_free("free-x", "#### free-x — x   [planned]") is False
+    text = plan.read_text()
+    assert text.count("free-x") == 1
+    assert text.endswith("Files: d.py\n\n## Free\n\n#### free-x — x   [planned]\n")

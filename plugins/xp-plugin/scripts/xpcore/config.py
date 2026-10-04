@@ -14,9 +14,25 @@ ROLE_FALLBACK = {"plan-reviewer": "reviewer"}
 SETUP = "run `python3 <plugin>/scripts/xp.py setup` in the repo root"
 
 
+LEFTHOOK_CONFIGS = (
+    "lefthook.yml",
+    ".lefthook.yml",
+    "lefthook.yaml",
+    "lefthook.toml",
+    "lefthook.json",
+)
+
+
 def refuse(msg: str) -> NoReturn:
+    """A precondition the lead can fix; the message ends by naming the next action."""
     print(f"refused: {msg}", file=sys.stderr)
     raise SystemExit(2)
+
+
+def fail(msg: str) -> NoReturn:
+    """Something ran and went wrong; the message names where to read."""
+    print(f"failed: {msg}", file=sys.stderr)
+    raise SystemExit(1)
 
 
 def _git_value(*args: str) -> str:

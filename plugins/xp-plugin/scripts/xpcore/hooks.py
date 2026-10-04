@@ -6,7 +6,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from xpcore.config import data_root, refuse
+from xpcore.config import LEFTHOOK_CONFIGS, data_root, refuse
 
 PUNCTUATION = "();<>|&"
 
@@ -70,13 +70,13 @@ def run_acceptance(commands: list[list[str]], cwd, log_id: str) -> int:
 
 
 def sprint_hook(root: Path) -> list[str]:
-    if (root / "lefthook.yml").is_file():
+    if any((root / name).is_file() for name in LEFTHOOK_CONFIGS):
         return ["lefthook", "run", "sprint"]
     script = root / ".githooks" / "sprint"
     if script.is_file() and os.access(script, os.X_OK):
         return [str(script)]
     refuse(
-        f"no sprint hook in {root}: neither lefthook.yml (`lefthook run sprint`) nor an"
+        f"no sprint hook in {root}: neither a lefthook config (`lefthook run sprint`) nor an"
         " executable .githooks/sprint; run xp.py setup, or add one of them"
     )
 

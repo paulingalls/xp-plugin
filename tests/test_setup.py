@@ -73,3 +73,25 @@ def test_skips_the_wall_for_live_git_hooks(repo, capsys):
     hook.write_text("#!/bin/sh\n")
     assert setup.cmd_setup(None) == 0
     assert "wall skipped: live hooks in .git/hooks (pre-commit)" in capsys.readouterr().out
+
+
+def test_hooks_path_skips_the_wall_and_writes_nothing(repo, lefthook, capsys):
+    subprocess.run(["git", "config", "core.hooksPath", "my-hooks"], check=True)
+    assert setup.cmd_setup(None) == 0
+    assert "wall skipped: core.hooksPath=my-hooks" in capsys.readouterr().out
+    assert not (repo / ".githooks").exists() and not (repo / "lefthook.yml").exists()
+    assert not lefthook.exists()
+    hooks_path = subprocess.run(["git", "config", "core.hooksPath"], capture_output=True, text=True)
+    assert hooks_path.stdout.strip() == "my-hooks"
+
+
+def test_existing_githooks_is_never_written_into(repo, monkeypatch, capsys):
+    monkeypatch.setattr(shutil, "which", lambda n: None if n == "lefthook" else REAL_WHICH(n))
+    (repo / ".githooks").mkdir()
+    (repo / ".githooks" / "pre-commit").write_text("mine\n")
+    assert setup.cmd_setup(None) == 0
+    assert "wall skipped: .githooks/" in capsys.readouterr().out
+    assert [p.name for p in (repo / ".githooks").iterdir()] == ["pre-commit"]
+    assert (repo / ".githooks" / "pre-commit").read_text() == "mine\n"
+    hooks_path = subprocess.run(["git", "config", "core.hooksPath"], capture_output=True, text=True)
+    assert hooks_path.stdout.strip() == ""

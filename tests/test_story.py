@@ -9,16 +9,30 @@ FAKE = """\
 import json, os, re, subprocess, sys
 prompt = sys.stdin.read()
 paths = dict(re.findall(r"^- ([A-Z_]+): (.+)$", prompt, re.M))
-role = os.environ["XP_ROLE"]
+role = re.search(r"^===== Your charter: (\\S+) =====$", prompt, re.M)[1]
+data = os.environ["XP_DATA"]
+with open(os.path.join(data, "roles.txt"), "a") as out:
+    out.write(role + "\\n")
+with open(os.path.join(data, f"{role}.prompt"), "w") as out:
+    out.write(prompt)
 key = {"planner": "PLAN_PATH", "executor": "HANDBACK_PATH"}.get(role, "FINDINGS_PATH")
 extra = os.environ.get("FAKE_QUESTION", "") if role == "plan-reviewer" else ""
 with open(paths[key], "w") as out:
     out.write(f"{role} wrote this\\n{extra}\\n")
-if role == "executor":
+if role == "plan-reviewer":  # it edits the card and plan in place, after its findings
+    with open(paths["PLAN_PATH"], "a") as out:
+        out.write("corrected\\n")
+    if files := os.environ.get("FAKE_FILES"):
+        card = os.path.join(data, "plan.md")
+        text = open(card).read().replace("Files: a.py, b.py", files)
+        open(card, "w").write(text)
+if role == "executor" and not os.environ.get("FAKE_NO_COMMIT"):
     with open("feature.txt", "a") as out:
         out.write("x\\n")
     subprocess.run(["git", "add", "-A"], check=True)
     subprocess.run(["git", "commit", "-qm", "feat"], check=True)
+if role == "executor" and os.environ.get("FAKE_EXIT"):
+    sys.exit(1)
 print(json.dumps({"type": "result", "result": "done"}))
 """
 PLAN = """\
@@ -148,3 +162,72 @@ def test_free_mints_its_card_then_stops_for_the_lead(repo, capsys):
     assert git("branch", "--show-current", cwd=wt).stdout.strip() == "free-fix-typo"
     assert git("log", "--format=%s", "main..HEAD", cwd=wt).stdout.split() == ["feat"]
     assert (story(repo, "free-fix-typo") / "review-1.md").is_file()
+
+
+def roles(data):
+    path = data / "roles.txt"
+    roles_run = path.read_text().split() if path.exists() else []
+    path.unlink(missing_ok=True)
+    return roles_run
+
+
+def age(path, seconds=10):
+    past = path.stat().st_mtime - seconds
+    os.utime(path, (past, past))
+
+
+def test_a_lead_commit_after_review_reruns_only_the_reviewer(repo):
+    assert xp.main(["story", "story-001"]) == 0
+    assert roles(repo) == ["planner", "plan-reviewer", "executor", "reviewer"]
+    sdir, wt = story(repo, "story-001"), repo / "worktrees" / "story-001"
+    age(sdir / "review-1.md")
+    (wt / "lead.txt").write_text("lead\n")
+    git("add", "-A", cwd=wt)
+    git("commit", "-qm", "lead fix", cwd=wt)
+    assert xp.main(["story", "story-001"]) == 0
+    assert roles(repo) == ["reviewer"] and (sdir / "review-2.md").is_file()
+
+
+def test_a_deleted_plan_replans_and_rereviews_the_plan(repo):
+    assert xp.main(["story", "story-001"]) == 0
+    roles(repo)
+    (story(repo, "story-001") / "plan.md").unlink()
+    assert xp.main(["story", "story-001"]) == 0
+    assert roles(repo) == ["planner", "plan-reviewer"]
+
+
+@pytest.mark.parametrize("line", ["- QUESTION: which store?", "**QUESTION:** which store?"])
+def test_a_decorated_question_stops_the_story(repo, monkeypatch, capsys, line):
+    monkeypatch.setenv("FAKE_QUESTION", line)
+    assert xp.main(["story", "story-001"]) == 3
+    assert "which store?" in capsys.readouterr().out
+    assert not (story(repo, "story-001") / "handback.md").exists()
+
+
+def test_story_review_dry_run_launches_nothing(repo, capsys):
+    assert xp.main(["story", "story-002"]) == 0
+    roles(repo)
+    capsys.readouterr()
+    assert xp.main(["story", "review", "story-002", "--dry-run"]) == 0
+    out = capsys.readouterr().out
+    assert "would run the reviewer over " in out and "..HEAD" not in out
+    assert roles(repo) == [] and not (story(repo, "story-002") / "review-2.md").exists()
+
+
+@pytest.mark.parametrize(
+    ("env", "said"), [("FAKE_NO_COMMIT", "committed nothing"), ("FAKE_EXIT", "exited 1")]
+)
+def test_a_failed_executor_names_its_log_and_reruns(repo, monkeypatch, capsys, env, said):
+    monkeypatch.setenv(env, "1")
+    with pytest.raises(SystemExit) as exc:
+        xp.main(["story", "story-002"])
+    err = capsys.readouterr().err
+    assert exc.value.code == 1 and said in err
+    assert str(repo / "logs" / "story-002-executor.log") in err
+    assert not (story(repo, "story-002") / "handback.md").exists()
+
+
+def test_each_stage_reads_the_card_as_the_last_stage_left_it(repo, monkeypatch):
+    monkeypatch.setenv("FAKE_FILES", "Files: a.py, b.py, c.py")
+    assert xp.main(["story", "story-001"]) == 0
+    assert "Files: a.py, b.py, c.py" in (repo / "executor.prompt").read_text()

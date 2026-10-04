@@ -4,10 +4,11 @@ import json
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-from xpcore import cards, gitx, hooks, launch, release
+from xpcore import bundle, cards, gitx, hooks, launch, release
 from xpcore.config import (
     clear_sprint_branch,
     data_root,
+    fail,
     plugin_root,
     record_sprint_branch,
     refuse,
@@ -15,13 +16,7 @@ from xpcore.config import (
     sprint_branch_name,
     trunk,
 )
-from xpcore.land import is_ancestor, pull_request
-
-
-def prompt(role: str, **parts) -> str:
-    from xpcore.bundle import prompt as build
-
-    return build(role, **parts)
+from xpcore.land import pull_request
 
 
 def sprint_dir(sprint_id) -> Path:
@@ -41,7 +36,7 @@ def agent(role: str, text: str, root: Path, log_id: str, out: Path) -> Path:
     out.parent.mkdir(parents=True, exist_ok=True)
     result = launch.run_agent(role, text, root, log_id)
     if result.returncode:
-        raise SystemExit(f"failed: {role} exited {result.returncode}; read {result.stderr}")
+        fail(f"{role} exited {result.returncode}; read {launch.log_path(log_id)}")
     if not out.is_file():
         out.write_text(result.stdout.rstrip() + "\n")
     return out
@@ -54,7 +49,7 @@ def cmd_sprint_plan(args) -> int:
         print(f"would run the plan reviewer over Sprint {args.id}'s slate into {out}")
         return 0
     out.unlink(missing_ok=True)
-    text = prompt(
+    text = bundle.prompt(
         "plan-reviewer",
         card=slate,
         extra="Review this sprint slate as a whole: the cards together, not one card.",
@@ -106,7 +101,9 @@ def cmd_sprint_review(args) -> int:
     def review(angle: Path) -> Path:
         extra = f"Commits:\n{log}\n\nDiff {main}..{branch}:\n{diff}"
         out = {"FINDINGS_PATH": str(outs[angle])}
-        text = prompt("reviewer", card=slate, angle=angle.read_text(), extra=extra, paths=out)
+        text = bundle.prompt(
+            "reviewer", card=slate, angle=angle.read_text(), extra=extra, paths=out
+        )
         return agent("reviewer", text, root, f"{branch}-reviewer-{n}-{angle.stem}", outs[angle])
 
     with ThreadPoolExecutor(max_workers=len(angles)) as pool:
@@ -117,15 +114,18 @@ def cmd_sprint_review(args) -> int:
             raise
     findings = "\n\n".join(f"## {p.name}\n\n{p.read_text()}" for p in written)
     extra = f"You are on {branch} at {root}. Fix what these findings warrant and commit."
-    text = prompt("executor", card=slate, findings=findings, extra=extra)
-    result = launch.run_agent("executor", text, root, f"{branch}-executor-{n}")
+    handback, log_id = folder / f"handback-{n}.md", f"{branch}-executor-{n}"
+    paths = {"HANDBACK_PATH": str(handback)}
+    text = bundle.prompt("executor", card=slate, findings=findings, extra=extra, paths=paths)
+    result = launch.run_agent("executor", text, root, log_id)
     for path in written:
         body = [ln for ln in path.read_text().splitlines() if ln.strip()]
         print(f"{path}: {len(body)} lines; {body[0] if body else 'empty'}")
+    print(f"handback: {handback}{'' if handback.is_file() else ' (not written)'}")
     if result.returncode:
-        print(f"failed: the executor exited {result.returncode}; read {result.stderr}")
+        print(f"failed: the executor exited {result.returncode}; read {launch.log_path(log_id)}")
         return 1
-    print(f"executor done; judge the findings, then `xp.py sprint land {args.id}`")
+    print(f"executor done; judge what it left open, then `xp.py sprint land {args.id}`")
     return 0
 
 
@@ -146,9 +146,16 @@ def trial_hook(root: Path, main: str, log_id: str) -> str:
     return tree
 
 
+def no_open_cards(sprint_id) -> None:
+    slate = cards.read_cards(cards.sprint_slate(sprint_id))
+    if open_cards := [c.id for c in slate if c.status == "in-progress"]:
+        refuse(f"{', '.join(open_cards)} still in-progress; land or retire them, then run again")
+
+
 def cmd_sprint_land(args) -> int:
     branch, root, main = sprint_branch_name(args.id), repo_root(), trunk()
     on_branch(branch, root)
+    no_open_cards(args.id)
     version = release.version_wall("minor")
     hooks.sprint_hook(root)
     if args.dry_run:
@@ -159,18 +166,19 @@ def cmd_sprint_land(args) -> int:
     land_json.parent.mkdir(parents=True, exist_ok=True)
     land_json.write_text(json.dumps({"tested_tree": tree, "version": version}) + "\n")
     after = f"v{version} is ready; after it merges, pull {main} and run"
-    return pull_request(branch, main, root, f"{after} `xp.py sprint post-merge {args.id}`")
+    reviews = sorted(p.name for p in sprint_dir(args.id).glob("review-*.md"))
+    body = f"Release v{version}.\n\nReviews:\n" + "".join(f"- {r}\n" for r in reviews)
+    after += f" `xp.py sprint post-merge {args.id}`"
+    pull_request(branch, main, root, after, title=f"Sprint {args.id}", body=body)
+    return 0
 
 
 def cmd_sprint_post_merge(args) -> int:
     branch, root, main = sprint_branch_name(args.id), repo_root(), trunk()
     on_branch(main, root)
-    if not gitx.branch_exists(branch, root) or not is_ancestor(branch, root):
+    if not gitx.branch_exists(branch, root) or not gitx.is_ancestor(branch, "HEAD", root):
         refuse(f"{branch} is not merged into {main}; merge its PR, pull {main}, run again")
-    slate = cards.read_cards(cards.sprint_slate(args.id))
-    open_cards = [c.id for c in slate if c.status == "in-progress"]
-    if open_cards:
-        refuse(f"{', '.join(open_cards)} still in-progress; land or retire them, then run again")
+    no_open_cards(args.id)
     land_json = sprint_dir(args.id) / "land.json"
     if not land_json.is_file():
         refuse(f"no {land_json}; run `xp.py sprint land {args.id}` first")

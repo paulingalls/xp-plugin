@@ -4,7 +4,7 @@ import os
 import subprocess
 
 import pytest
-from xpcore import cards, land
+from xpcore import cards, hooks, land
 
 CONFIG = "trunk: main\nversion_files: package.json\nroles:\n  reviewer: claude/opus\n"
 CHECK = "import pathlib, sys\nsys.exit(pathlib.Path('merged.txt').read_text() != 'ok\\n')\n"
@@ -117,15 +117,25 @@ def test_overlap_warns_and_never_refuses(story, capsys):
     assert "warning: sprint-001 also changed later.txt" in capsys.readouterr().out
 
 
-def test_free_patch_lands_by_pr_then_tags_after_the_merge(tmp_path, monkeypatch, capsys):
+def free_patch(tmp_path, monkeypatch, acceptance="python3 -c 1", files=None):
     root, data = make_project(tmp_path, monkeypatch)
-    gh = fake_gh(tmp_path, monkeypatch)
-    (data / "plan.md").write_text("#### free-fix — f   [in-progress]\nAcceptance: python3 -c 1\n")
+    card = f"#### free-fix — f   [in-progress]\nAcceptance: {acceptance}\n"
+    (data / "plan.md").write_text(card)
     wt = data / "worktrees" / "free-fix"
     git(root, "worktree", "add", "-q", "-b", "free-fix-x", str(wt))
-    commit(wt, manifest("1.1.1"), "fix")
+    commit(wt, manifest("1.1.1") if files is None else files, "fix")
+    return root, data, wt
+
+
+def test_free_patch_lands_by_pr_then_tags_after_the_merge(tmp_path, monkeypatch, capsys):
+    gh = fake_gh(tmp_path, monkeypatch)
+    root, data, wt = free_patch(tmp_path, monkeypatch)
+    (data / "stories" / "free-fix").mkdir(parents=True)
+    (data / "stories" / "free-fix" / "review-1.md").write_text("ok\n")
     assert land.cmd_free_land(ns("fix")) == 0
-    assert "pr create --base main --head free-fix-x --fill" in gh.read_text()
+    called = gh.read_text()
+    assert "pr create --base main --head free-fix-x --title f --body free-fix: f" in called
+    assert "review-1.md" in called and "--fill" not in called
     assert git(root, "ls-remote", "origin", "free-fix-x")
     with pytest.raises(SystemExit):
         land.cmd_free_post_merge(ns("fix"))
@@ -134,3 +144,112 @@ def test_free_patch_lands_by_pr_then_tags_after_the_merge(tmp_path, monkeypatch,
     assert land.cmd_free_post_merge(ns("fix")) == 0
     assert git(root, "cat-file", "-t", "v1.1.1") == "tag"
     assert cards.find_card("free-fix").status == "done" and not wt.exists()
+
+
+def test_target_moving_during_land_refuses_before_the_merge(story, monkeypatch, capsys):
+    root = story[0]
+    commit(root, {"merged.txt": "ok\n"}, "sprint work")
+
+    def advance(*_):
+        commit(root, {"other.txt": "x\n"}, "landed meanwhile")
+        return 0
+
+    monkeypatch.setattr(hooks, "run_acceptance", advance)
+    with pytest.raises(SystemExit) as exit_:
+        land.cmd_story_land(ns("story-001"))
+    err = capsys.readouterr().err
+    assert exit_.value.code == 2
+    assert "sprint-001 moved during land; run xp.py story land story-001 again" in err
+    assert git(root, "log", "-1", "--format=%s") == "landed meanwhile"
+    assert cards.find_card("story-001").status == "in-progress"
+
+
+def test_branch_without_commits_refuses(story, capsys):
+    wt = story[2]
+    git(wt, "reset", "-q", "--hard", "main")
+    with pytest.raises(SystemExit) as exit_:
+        land.cmd_story_land(ns("story-001"))
+    assert exit_.value.code == 2 and (
+        "story-001 has no commits on story-001-thing; run xp.py story story-001"
+        in capsys.readouterr().err
+    )
+    assert cards.find_card("story-001").status == "in-progress"
+
+
+@pytest.mark.parametrize(
+    "spoil, named",
+    [
+        (lambda root, wt: git(root, "switch", "-q", "main"), "must be on sprint-001"),
+        (lambda root, wt: (wt / "stray.txt").write_text("x"), "has uncommitted changes"),
+    ],
+)
+def test_wrong_lead_branch_or_dirty_worktree_refuses(story, capsys, spoil, named):
+    root, _, wt, _ = story
+    commit(root, {"merged.txt": "ok\n"}, "sprint work")
+    spoil(root, wt)
+    before = git(root, "rev-parse", "sprint-001")
+    with pytest.raises(SystemExit) as exit_:
+        land.cmd_story_land(ns("story-001"))
+    assert exit_.value.code == 2 and named in capsys.readouterr().err
+    assert git(root, "rev-parse", "sprint-001") == before
+    assert cards.find_card("story-001").status == "in-progress"
+
+
+def test_missing_acceptance_binary_is_red(story, capsys):
+    data = story[1]
+    (data / "plan.md").write_text(CARD.replace("python3 check.py", "no-such-binary-xp"))
+    with pytest.raises(SystemExit):
+        land.cmd_story_land(ns("story-001"))
+    assert "Acceptance exited 127" in capsys.readouterr().err
+    assert cards.find_card("story-001").status == "in-progress"
+
+
+def test_free_land_trial_merges_the_fetched_origin_trunk(tmp_path, monkeypatch):
+    gh = fake_gh(tmp_path, monkeypatch)
+    files = {**manifest("1.1.1"), "check.py": CHECK}
+    free_patch(tmp_path, monkeypatch, "python3 check.py", files)
+    other = tmp_path / "other"
+    git(tmp_path, "clone", "-q", str(tmp_path / "origin.git"), str(other))
+    git(other, "config", "user.email", "t@example.com")
+    git(other, "config", "user.name", "t")
+    commit(other, {"merged.txt": "ok\n"}, "pushed elsewhere")
+    git(other, "push", "-q", "origin", "main")
+    # Only a fetch brings merged.txt, so a green Acceptance proves origin/main was merged.
+    assert land.cmd_free_land(ns("fix")) == 0
+    assert "pr create" in gh.read_text()
+
+
+def test_free_land_without_origin_merges_local_trunk_and_says_so(tmp_path, monkeypatch, capsys):
+    gh = fake_gh(tmp_path, monkeypatch)
+    root, _, _ = free_patch(tmp_path, monkeypatch)
+    git(root, "remote", "remove", "origin")
+    assert land.cmd_free_land(ns("fix")) == 0
+    out = capsys.readouterr().out
+    assert "no remote named origin; trial-merging the local main" in out
+    assert "open the PR to main by hand" in out and not gh.exists()
+
+
+def test_free_land_walls_the_version_before_the_pr(tmp_path, monkeypatch, capsys):
+    gh = fake_gh(tmp_path, monkeypatch)
+    root, _, _ = free_patch(tmp_path, monkeypatch, files={"fix.txt": "x\n"})
+    git(root, "tag", "v1.1.0")
+    with pytest.raises(SystemExit) as exit_:
+        land.cmd_free_land(ns("fix"))
+    assert exit_.value.code == 2 and "tag v1.1.0 already exists" in capsys.readouterr().err
+    assert not gh.exists() and not git(root, "ls-remote", "origin", "free-fix-x")
+
+
+def test_free_post_merge_runs_acceptance_on_trunk_before_tagging(tmp_path, monkeypatch, capsys):
+    fake_gh(tmp_path, monkeypatch)
+    files = {**manifest("1.1.1"), "check.py": CHECK, "merged.txt": "ok\n"}
+    root, _, wt = free_patch(tmp_path, monkeypatch, "python3 check.py", files)
+    assert land.cmd_free_land(ns("fix")) == 0
+    git(root, "merge", "-q", "--no-ff", "free-fix-x", "-m", "PR")
+    commit(root, {"merged.txt": "bad\n"}, "trunk broke it")
+    with pytest.raises(SystemExit) as exit_:
+        land.cmd_free_post_merge(ns("fix"))
+    err = capsys.readouterr().err
+    assert exit_.value.code == 2 and "Acceptance exited 1 on main at " in err
+    assert "then run xp.py free post-merge fix again" in err
+    assert git(root, "tag", "--list", "v1.1.1") == ""
+    assert cards.find_card("free-fix").status == "in-progress" and wt.exists()

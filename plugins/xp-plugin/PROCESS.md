@@ -24,7 +24,10 @@ every unfinished card, open records. What is on disk wins over memory.
 
 **Story.** `xp.py story <id>` plans, reviews the plan, executes and reviews the
 diff. It runs only the stages whose files are missing under the story's data
-directory: re-run it after any edit, delete a stage's file to repeat that stage.
+directory: re-run it after any edit, delete plan.md or plan-review.md to repeat
+that stage. The executor runs only while `handback.md` is absent and the reviewer
+whenever no review is as new as the worktree's last commit, so a crashed review or
+a lead commit reruns only the reviewer; delete `handback.md` to execute again.
 A `QUESTION:` from the plan reviewer stops the story; answer it in the card and
 run again. `xp.py story review <id>` buys one more review when you want one.
 `xp.py story land <id>` trial-merges, runs Acceptance on the merged tree, merges

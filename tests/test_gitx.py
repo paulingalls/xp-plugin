@@ -96,3 +96,10 @@ def test_worktree_add_and_remove(repo, tmp_path):
     assert not tree.exists() and gitx.branch_exists("story-001-x", repo)
     gitx.worktree_add(tree, "story-001-x", "main", cwd=repo)
     assert gitx.current_branch(tree) == "story-001-x"
+
+
+def test_is_ancestor(repo):
+    base = gitx.head(repo)
+    commit(repo, "b.txt", "two\n", "add b")
+    assert gitx.is_ancestor(base, "HEAD", repo) and gitx.is_ancestor("HEAD", "HEAD", repo)
+    assert not gitx.is_ancestor("HEAD", base, repo)

@@ -20,8 +20,8 @@ def version_files() -> list[str]:
     return [] if raw == "none" else [p.strip() for p in raw.split(",") if p.strip()]
 
 
-def manifest_version(path: str) -> str:
-    full = repo_root() / path
+def manifest_version(path: str, root=None) -> str:
+    full = (root or repo_root()) / path
     if full.suffix != ".json":
         refuse(f"version file {path} is not JSON; list only JSON manifests in version_files")
     try:
@@ -34,8 +34,8 @@ def manifest_version(path: str) -> str:
     return version.removeprefix("v")
 
 
-def changelog_version() -> str:
-    path = repo_root() / "CHANGELOG.md"
+def changelog_version(root=None) -> str:
+    path = (root or repo_root()) / "CHANGELOG.md"
     if not path.is_file():
         refuse(f"no {path}; add one whose first `## ` heading names the release version")
     for line in path.read_text().splitlines():
@@ -66,19 +66,19 @@ def bump(version: str, part: str) -> str:
     }[part]
 
 
-def version_wall(part: str) -> str:
-    """The release version X. `part` only matters under `version_files: none`, where the
-    latest tag bumped by it is X, since no file pins one."""
+def version_wall(part: str, root=None) -> str:
+    """The release version X that `root`'s tree (default: this one) names. `part` only
+    matters under `version_files: none`, where the latest tag bumped by it is X."""
     files, latest = version_files(), latest_tag()
     if not files:
         return bump(latest or "0.0.0", part)
-    found = {path: manifest_version(path) for path in files}
+    found = {path: manifest_version(path, root) for path in files}
     version = found[files[0]]
     problems = []
     if len(set(found.values())) > 1:
         named = ", ".join(f"{p}={v}" for p, v in found.items())
         problems.append(f"manifests disagree ({named})")
-    if (named := changelog_version()) != version:
+    if (named := changelog_version(root)) != version:
         problems.append(f"CHANGELOG.md's first `## ` heading names {named}, not {version}")
     if gitx.ref_exists(f"refs/tags/v{version}", cwd=repo_root()):
         problems.append(f"tag v{version} already exists")

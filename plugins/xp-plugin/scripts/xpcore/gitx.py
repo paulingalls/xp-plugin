@@ -43,6 +43,10 @@ def ref_exists(ref: str, cwd=None) -> bool:
     return _run(("rev-parse", "--verify", "--quiet", f"{ref}^{{commit}}"), cwd).returncode == 0
 
 
+def is_ancestor(ancestor: str, descendant: str, cwd=None) -> bool:
+    return _run(("merge-base", "--is-ancestor", ancestor, descendant), cwd).returncode == 0
+
+
 def fork_point(branch: str, base: str, cwd=None) -> str:
     return git("merge-base", base, branch, cwd=cwd)
 

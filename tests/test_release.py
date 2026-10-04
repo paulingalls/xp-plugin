@@ -61,3 +61,12 @@ def test_non_json_manifest_refuses(root, capsys):
     with pytest.raises(SystemExit):
         release.version_wall("minor")
     assert "is not JSON" in capsys.readouterr().err
+
+
+def test_wall_reads_the_manifests_of_the_tree_it_is_given(root, tmp_path):
+    other = tmp_path / "other"
+    (other / ".xp").mkdir(parents=True)
+    for name, text in manifest("1.2.0").items():
+        (other / name).write_text(text)
+    assert release.version_wall("patch", other) == "1.2.0"
+    assert release.version_wall("patch") == "1.1.0"

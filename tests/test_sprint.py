@@ -1,11 +1,9 @@
 import json
 import subprocess
-import sys
-import types
 
 import pytest
 from test_land import commit, fake_gh, git, make_project, manifest, ns
-from xpcore import config, launch, sprint
+from xpcore import bundle, config, launch, sprint
 
 HOOK = "#!/bin/sh\ntest -f trunk.txt || exit 1\necho ran >> {log}\n"
 SLATE = "## Sprint 1 — s\n\n#### story-001 — a   [{status}]\nAcceptance: true\n"
@@ -48,9 +46,12 @@ def test_open_refuses_off_branch_then_records(tmp_path, monkeypatch, capsys):
 def test_land_tests_the_trial_merge_and_post_merge_skips_that_tree(repo, tmp_path, monkeypatch):
     root, data, hooklog = repo
     gh = fake_gh(tmp_path, monkeypatch)
+    (data / "sprints" / "1").mkdir(parents=True)
+    (data / "sprints" / "1" / "review-1.tests.md").write_text("finding\n")
     assert sprint.cmd_sprint_land(ns("1")) == 0
     assert hooklog.read_text() == "ran\n"  # the hook found trunk.txt: it ran on the merge
-    assert "--base main --head sprint-001 --fill" in gh.read_text()
+    assert "--base main --head sprint-001 --title Sprint 1 --body " in gh.read_text()
+    assert "v1.2.0" in gh.read_text() and "review-1.tests.md" in gh.read_text()
     assert not (root / "trunk.txt").exists()
     merge_on_trunk(root)
     assert sprint.cmd_sprint_post_merge(ns("1")) == 0
@@ -74,7 +75,7 @@ def test_post_merge_refuses_in_progress_then_reruns_a_changed_tree(repo, capsys)
     assert hooklog.read_text() == "ran\n"
 
 
-def test_review_runs_every_angle_then_one_executor_with_all_findings(repo, monkeypatch):
+def test_review_runs_every_angle_then_one_executor_with_all_findings(repo, monkeypatch, capsys):
     data = repo[1]
     calls = []
 
@@ -82,12 +83,61 @@ def test_review_runs_every_angle_then_one_executor_with_all_findings(repo, monke
         calls.append((role, prompt))
         return subprocess.CompletedProcess([], 0, f"finding from {log_id}", "")
 
-    bundle = types.SimpleNamespace(prompt=lambda role, **k: f"{role}\n{k.get('findings', '')}")
-    monkeypatch.setitem(sys.modules, "xpcore.bundle", bundle)
+    def prompt(role, **k):
+        return f"{role}\n{k.get('findings', '')}\n{k.get('paths', {})}"
+
+    monkeypatch.setattr(bundle, "prompt", prompt)
     monkeypatch.setattr(launch, "run_agent", run_agent)
     assert sprint.cmd_sprint_review(ns("1")) == 0
     angles = sorted(p.stem for p in (config.plugin_root() / "angles").glob("*.md"))
-    written = sorted(p.name for p in (data / "sprints" / "1").glob("review-1.*.md"))
+    folder = data / "sprints" / "1"
+    written = sorted(p.name for p in folder.glob("review-1.*.md"))
     assert written == [f"review-1.{a}.md" for a in angles] and len(calls) == len(angles) + 1
-    role, prompt = calls[-1]
-    assert role == "executor" and all(f"reviewer-1-{a}" in prompt for a in angles)
+    role, text = calls[-1]
+    assert role == "executor" and all(f"reviewer-1-{a}" in text for a in angles)
+    handback = folder / "handback-1.md"
+    assert f"'HANDBACK_PATH': '{handback}'" in text
+    out = capsys.readouterr().out
+    assert all(str(folder / name) in out for name in written) and str(handback) in out
+
+
+def test_review_failure_names_the_log(repo, monkeypatch, capsys):
+    def run_agent(role, prompt, cwd, log_id, **_):
+        return subprocess.CompletedProcess([], 1 if role == "executor" else 0, "f", "see x")
+
+    monkeypatch.setattr(bundle, "prompt", lambda role, **k: role)
+    monkeypatch.setattr(launch, "run_agent", run_agent)
+    assert sprint.cmd_sprint_review(ns("1")) == 1
+    log = repo[1] / "logs" / "sprint-001-executor-1.log"
+    assert f"read {log}" in capsys.readouterr().out
+
+
+def refused_land(capsys) -> str:
+    with pytest.raises(SystemExit) as exit_:
+        sprint.cmd_sprint_land(ns("1"))
+    assert exit_.value.code == 2
+    return capsys.readouterr().err
+
+
+def test_land_refuses_in_progress_cards(repo, tmp_path, monkeypatch, capsys):
+    gh = fake_gh(tmp_path, monkeypatch)
+    repo[1].joinpath("plan.md").write_text(SLATE.format(status="in-progress"))
+    assert "story-001 still in-progress" in refused_land(capsys)
+    assert not gh.exists()
+
+
+def test_land_refuses_a_failed_version_wall(repo, tmp_path, monkeypatch, capsys):
+    gh = fake_gh(tmp_path, monkeypatch)
+    commit(repo[0], {"CHANGELOG.md": "## 1.3.0\n"}, "changelog drifts")
+    assert "version wall" in refused_land(capsys)
+    assert not gh.exists() and not repo[2].exists()
+
+
+def test_land_refuses_a_red_sprint_hook_before_the_pr(repo, tmp_path, monkeypatch, capsys):
+    gh = fake_gh(tmp_path, monkeypatch)
+    lefthook = tmp_path / "bin" / "lefthook"
+    lefthook.write_text("#!/bin/sh\nexit 1\n")
+    lefthook.chmod(0o755)
+    commit(repo[0], {"lefthook.yml": "sprint:\n"}, "lefthook")
+    assert "the sprint hook exited 1" in refused_land(capsys)
+    assert not gh.exists() and not (repo[1] / "sprints" / "1" / "land.json").exists()

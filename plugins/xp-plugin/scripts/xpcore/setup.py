@@ -4,14 +4,12 @@ import shutil
 import subprocess
 from pathlib import Path
 
-from xpcore.config import data_root, plugin_root, refuse, repo_root
+from xpcore.config import LEFTHOOK_CONFIGS, data_root, plugin_root, refuse, repo_root
 from xpcore.gitx import git
 from xpcore.session import recover_command
 
 XP_FILES = ("config.yml", "system.md", "constraints.md")
 GITHOOKS = ("pre-commit", "pre-merge-commit", "pre-push", "sprint")
-LEFTHOOK_CONFIGS = ("lefthook.yml", ".lefthook.yml", "lefthook.yaml", "lefthook.toml")
-LEFTHOOK_CONFIGS += ("lefthook.json",)
 NEXT = (
     "next: fill .xp/config.yml roles and version_files, .xp/system.md, the hook test commands"
     " (every EDIT-ME); then /create-sprint"

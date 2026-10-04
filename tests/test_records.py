@@ -86,3 +86,20 @@ def test_free_text_and_output_cannot_mint_a_record(repo):
 def test_output_is_bounded(repo):
     bug(falsifier=f"{PY} -c 'print(\"x\" * 50000); raise SystemExit(1)'")
     assert len(records.work_path().read_text()) < records.OUTPUT_CAP + 500
+
+
+def test_resolve_of_an_unknown_id_refuses(repo, capsys):
+    err = refused(capsys, ["resolve", "--ref", "deadbeef", "--falsifier", GREEN])
+    assert "no bug or debt 'deadbeef'" in err and not records.work_path().exists()
+
+
+@pytest.mark.parametrize("big, important", [(" ", "i"), ("b", "")])
+def test_debt_with_an_empty_bar_refuses(repo, capsys, big, important):
+    argv = ["debt", "--claim", "c", "--falsifier", GREEN, "--too-big", big]
+    err = refused(capsys, [*argv, "--too-important", important])
+    assert "must clear both bars" in err and not records.work_path().exists()
+
+
+def test_falsifier_not_on_path_refuses(repo, capsys):
+    err = refused(capsys, ["bug", "--claim", "c", "--falsifier", "no-such-binary-xp"])
+    assert "'no-such-binary-xp' is not on PATH" in err and not records.work_path().exists()

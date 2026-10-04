@@ -160,3 +160,23 @@ def sprint_slate(sprint_id) -> str:
         )
         return "\n".join(lines[i:end]).rstrip() + "\n"
     refuse(f"no `## Sprint {sprint_id}` section in {plan_path()}; write the slate there first")
+
+
+def mint_free(card_id: str, heading: str) -> bool:
+    """Append `heading` at the end of `## Free`; False when the card already exists."""
+    with plan_lock():
+        if card_id in {c.id for c in read_cards()}:
+            return False
+        lines = _read_plan().rstrip("\n").splitlines()
+        if "## Free" not in lines:
+            lines += ["", "## Free"]
+        start = lines.index("## Free")
+        end = next(
+            (j for j in range(start + 1, len(lines)) if re.match(r"#{1,3} ", lines[j])),
+            len(lines),
+        )
+        while not lines[end - 1].strip():
+            end -= 1
+        lines[end:end] = ["", heading]
+        _write_plan("\n".join(lines) + "\n")
+    return True
