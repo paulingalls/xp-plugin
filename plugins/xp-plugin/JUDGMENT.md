@@ -4,7 +4,6 @@
 - **Comments**: restatement or history, delete; WHAT, rename; claim, test. Keep the why, external constraints, rejected designs.
 - **Findings** name the code, the cost or failure now, the XP value, and the cheapest sufficient fix. Principles are not proof. Like lines need not duplicate knowledge; no imagined use, no mandatory split.
 - **The bar**: a finding earns work when its failure is silent or corrupting: a false green, a corrupted record, an unreviewed merge. A loud failure does not.
-- **Design lenses**: responsibilities and boundaries (co-change, interference, exposed internals); contracts and authoritative knowledge (caller promises, rule owners, copies); necessary complexity (required behavior, callers, repeated change).
 - **Disposition**: fix by default; drop with a reason; or debt under BOTH bars. Drop a too-big loud finding.
 - **Red, green, refactor.** A preparatory change only if safer or simpler here, behavior preserved, existing checks green before and after.
 - **Tests**: at the outermost boundary that reaches the behavior, integration over unit; delete the unit tests an integration test covers. Commit-hook tests finish in under a minute; slower ones go to push, sprint or nightly. Fault-inject a new guard once, only if its failure would be silent or corrupting.
@@ -12,6 +11,7 @@
 - Escalate choices reserved to the lead. Unmet ACs and release blockers are not waivable. Agents judge; hooks validate.
 
 ## Records (`xp.py bug | debt | note | resolve`)
+Mid-sprint, record; never schedule.
 - **bug**: claim, red falsifier, files. Fix now.
 - **debt**: claim, green falsifier, files, and BOTH bars: too big (doubles the card, crosses a concern, needs its own design) AND too important (silent, corrupting, privacy, user harm).
 - **resolve**: a green falsifier replaces the record's; the lead, at close, on the landed tree.
