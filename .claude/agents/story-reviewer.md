@@ -1,1 +1,0 @@
-../../plugins/xp-plugin/agents/story-reviewer.md
