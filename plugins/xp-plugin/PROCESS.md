@@ -16,7 +16,8 @@
    `xp.py sprint land <id>`; after the PR merges, on updated trunk,
    `xp.py sprint post-merge <id>`.
 
-**Story.** Re-run after edits; follow the printed next step.
+**Story.** Re-run after edits; follow the printed next step. Delete `plan.md`
+or `handback.md` in the story's data directory to repeat that stage.
 
 **Free patch.** `xp.py free <slug>` mints the card; fill it in, run it again
 for a story from trunk. `/free-close`: judge the review, `xp.py free land <slug>`;
