@@ -87,6 +87,18 @@ def test_setup_killed_mid_run_reruns_before_agents(repo):
     assert (repo / "stories" / identity / "review-1.md").is_file()
 
 
+def test_red_setup_keeps_an_existing_worktrees_work(repo):
+    root = Path.cwd()
+    args, identity, branch, base = entry(repo, False)
+    wt = repo / "worktrees" / identity
+    git(root, "worktree", "add", "-q", "-b", branch, str(wt), base)
+    (wt / "wip.py").write_text("uncommitted\n")
+    setup_config(root, base, "exit 23")
+    with pytest.raises(SystemExit):
+        xp.main(args)
+    assert (wt / "wip.py").is_file() and git(root, "branch", "--list", branch)
+
+
 def test_setup_rollback_preserves_a_reused_branch_tip(repo):
     root = Path.cwd()
     args, identity, branch, base = entry(repo, False)

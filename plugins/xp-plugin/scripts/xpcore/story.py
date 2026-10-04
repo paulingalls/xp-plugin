@@ -258,16 +258,20 @@ def walk(card: cards.Card, base: str, dry: bool) -> int:
             s = slug(card.title)
             branch = card.id if card.id.endswith(s) else f"{card.id}-{s}"
             existed = gitx.branch_exists(branch, root)
-            if not wt.is_dir():
+            # An existing worktree (a killed setup, or one made before setup was set) may
+            # hold uncommitted work: a red setup removes only what this attempt made.
+            made = not wt.is_dir()
+            if made:
                 gitx.worktree_add(wt, branch, base, cwd=root)
             log_id = f"{card.id}-worktree-setup"
             line, rc = hooks.project_command("worktree_setup", wt, log_id)
             if rc:
-                gitx.worktree_remove(wt, cwd=root)
-                if not existed:
+                if made:
+                    gitx.worktree_remove(wt, cwd=root)
+                if made and not existed:
                     gitx.git("branch", "-D", branch, cwd=root)
                 config.refuse(
-                    f"worktree_setup `{line}` exited {rc}; removed {wt};"
+                    f"worktree_setup `{line}` exited {rc} in {wt}{'; removed it' if made else ''};"
                     f" read {hooks.log_path(log_id)}, fix the command and run {rerun} again"
                 )
             (sdir / "setup.ok").touch()
