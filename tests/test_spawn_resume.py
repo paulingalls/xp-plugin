@@ -302,27 +302,6 @@ class TestResume(BootstrapLeftTreeCases):
 
         assert result.returncode == 2 and "spawn.py resume story-042" in result.stderr
 
-    def test_card_drift_refuses_until_the_real_remint_route_runs(self, tmp_path):
-        repo, env, _g, tree, _marker = stopped_story(tmp_path)
-        plan = tmp_path / "data" / "plan.md"
-        plan.write_text(plan.read_text().replace("Context: demo.", "Context: answer added."))
-
-        refused = resume(repo, env)
-
-        assert refused.returncode == 2 and "edited after its plan review" in refused.stderr
-        assert "spawn.py amend story-042" in refused.stderr, refused.stderr
-        assert in_tree(tree, env, "rev-parse", "HEAD")
-
-        amended = spawn(
-            repo, env, "amend", "story-042", "--reason", "the answer changed during execution"
-        )
-        assert amended.returncode == 0, amended.stderr
-        from test_plan_findings_handoff import staged_harness
-
-        staged_harness(tmp_path)
-        assert resume(repo, env).returncode == 0
-        assert "[in-progress]" in plan.read_text()
-
     def test_inherited_commit_without_successor_commit_reaches_current_review(self, tmp_path):
         repo, env, _g, tree, _marker = stopped_story(tmp_path)
         predecessor = commit(tree, env)

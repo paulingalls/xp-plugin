@@ -148,6 +148,22 @@ def stage(story_id, card, sequence, name, correction=False):
     sequence["stages"][name] = item
     sequence["status"] = "running"
     save(story_id, sequence)
+    from ready import card_diff, credential
+    from work import ready_marker_path
+
+    retained = sequence.get("retained_card", sequence["card"])
+    minted = credential(ready_marker_path(story_id))
+    delta = card_diff(retained, card) or card_diff(minted["card"], card)
+    adjustment = (
+        (
+            "\n## Card adjustments since retained review\n"
+            + delta
+            + "\nLead owns approved scope. Judge current obligations "
+            "against retained work and reports.\n"
+        )
+        if delta
+        else ""
+    )
     if name == "solution":
         marker_state = json.loads(marker.read_text()) if marker.exists() else {}
         from bookkeep import render_prior_rounds
@@ -189,6 +205,7 @@ def stage(story_id, card, sequence, name, correction=False):
             prompt += f"\n## {title}\n{authority}\n"
         base = sequence["base"] if name == "fixer" else sequence["start"]["head"]
         prompt += f"\n## Relevant Git diff\n{close.git('diff', base, 'HEAD').stdout}"
+    prompt += adjustment
     if correction:
         prior_report = Path(previous["path"])
         retained = prior_report.read_text() if prior_report.exists() else "No report was written."
@@ -253,7 +270,7 @@ def stage(story_id, card, sequence, name, correction=False):
 
 
 def run(story_id, card, trunk, dry_run=False, explicit=True):
-    from review_validation import validate
+    from review_validation import recover_terminal, validate
 
     if dry_run:
         base, error = fork_point(trunk)
@@ -307,6 +324,19 @@ def run(story_id, card, trunk, dry_run=False, explicit=True):
         return close.fail(
             "refused: dirty reviewed baseline needs explicit lead review; work and reports retained"
         )
+    continued = (
+        sequence
+        and explicit
+        and sequence["status"] == "incomplete"
+        and current["inputs"]["work"]["clean"]
+        and all(
+            sequence["output"]["inputs"][key] == current["inputs"][key]
+            for key in ("work", "review", "scope", "tier")
+        )
+    )
+    if continued:
+        sequence.setdefault("retained_card", sequence["card"])
+        sequence.update(card=card, output=current)
     reuse = (
         sequence
         and sequence["card"] == card
@@ -338,6 +368,13 @@ def run(story_id, card, trunk, dry_run=False, explicit=True):
             return close.fail(
                 "refused: reviewed inputs moved; lead must explicitly review corrected work"
             )
+        if sequence and sequence["status"] in (
+            "validation",
+            "validation-red",
+            "awaiting-disposition",
+        ):
+            recover_terminal(story_id, sequence)
+            save(story_id, sequence)
         base, refusal = fork_point(trunk)
         if refusal:
             return close.fail(refusal)
@@ -354,7 +391,12 @@ def run(story_id, card, trunk, dry_run=False, explicit=True):
             "output": current,
             "round": len(rounds) + 1,
             "stages": {},
-            "validation": [],
+            "validation": (
+                [item for item in sequence["validation"] if item["error"]]
+                if sequence and sequence["output"]["head"] == current["head"]
+                else []
+            ),
+            "retained_card": sequence["card"] if sequence else card,
         }
         if dry_run:
             return (

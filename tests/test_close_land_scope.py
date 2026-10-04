@@ -146,7 +146,7 @@ class TestDeclaredLandScope:
         assert_report(g, tmp_path, ["old.py"])
         assert "src/renamed.py" not in g("log", "-1", "--format=%B", "main").stdout
 
-    def test_the_named_files_and_amend_route_then_land(self, tmp_path):
+    def test_declared_project_path_then_lands(self, tmp_path):
         repo, env, g = make_repo(tmp_path)
         commit(g, repo, ".xp/local.md", "protected\n", "change undeclared project artifact")
         assert close(repo, env, "review").returncode == 0
@@ -167,14 +167,10 @@ class TestDeclaredLandScope:
         plan.write_text(
             plan.read_text().replace("Files: src/thing.py", "Files: src/thing.py, .xp/local.md")
         )
-        drifted = close(repo, env, "land", "--dry-run")
-
-        amended = amend(repo, env, "story-042")
+        corrected = close(repo, env, "land", "--dry-run")
         landed = close(repo, env, "land")
 
-        assert drifted.returncode == 2 and "edited after its plan review" in drifted.stderr
-        assert amended.returncode == 0, amended.stderr
-        assert "card amended" in landed.stdout
+        assert corrected.returncode == 0, corrected.stderr
         assert landed.returncode == 0, landed.stderr
         assert g("rev-parse", "main").stdout.strip() != before
         assert g("show", "main:.xp/local.md").stdout == "protected\n"

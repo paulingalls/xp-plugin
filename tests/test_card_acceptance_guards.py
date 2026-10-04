@@ -181,7 +181,7 @@ def test_interruption_after_card_write_recovers_only_recorded_transition(tmp_pat
     assert "accepted plan changed" in acceptance.binding_problem("story-042")
 
 
-def test_accepted_snapshot_survives_later_files_growth(tmp_path, monkeypatch):
+def test_accepted_snapshot_survives_ordinary_correction(tmp_path, monkeypatch):
     import ready
 
     acceptance, plan, _marker, draft, out, candidate = acceptance_fixture(tmp_path, monkeypatch)
@@ -189,14 +189,17 @@ def test_accepted_snapshot_survives_later_files_growth(tmp_path, monkeypatch):
     acceptance.publish("story-042", record)
     grown = (
         record["after"]
-        .replace("src/b.py", "src/b.py, src/c.py (new)")
-        .replace("Verify: true", "Verify: true && true")
+        .replace("src/b.py", "src/c.py (corrected)")
+        .replace("Verify: true", "Verify: echo current")
     )
     plan.write_text(grown)
     assert ready.drift("story-042", grown) == ""
     assert acceptance.latest("story-042")["after"] == record["after"]
-    changed = grown.replace("Then refined", "Then unreviewed")
-    assert "edited after" in ready.drift("story-042", changed)
+    changed = grown.replace("Then refined", "Then corrected")
+    plan.write_text(changed)
+    assert ready.drift("story-042", changed) == ""
+    out.write_text(out.read_text() + "corrupted findings")
+    assert "accepted findings changed" in ready.drift("story-042", changed)
 
 
 @pytest.mark.parametrize("corruption", [None, {}, [{"digest": "invented"}], "dropped binding"])
@@ -348,7 +351,7 @@ def test_publication_rechecks_motion_under_plan_lock(tmp_path, monkeypatch, targ
     assert acceptance.latest("story-042") is None
 
 
-@pytest.mark.parametrize("fault", ["missing", "unreadable", "uncredentialed"])
+@pytest.mark.parametrize("fault", ["missing", "unreadable", "reserved"])
 def test_review_basis_refuses_before_recording_acceptance(tmp_path, monkeypatch, fault):
     import json
 
@@ -358,7 +361,7 @@ def test_review_basis_refuses_before_recording_acceptance(tmp_path, monkeypatch,
     elif fault == "unreadable":
         marker.write_text("not JSON")
     else:
-        other = CARD.replace("Then Y", "Then different authority")
+        other = CARD.replace("Decision: human choice.", "Decision: different authority.")
         marker.write_text(json.dumps({"card": other, "digest": card_digest(other)}))
     with pytest.raises(CardEditRefusal):
         acceptance.prepare("story-042", CARD, candidate, draft, out)

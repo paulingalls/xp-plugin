@@ -14,12 +14,16 @@ def test_failed_planned_launch_can_amend_captured_card(tmp_path):
     before = marker.read_bytes()
     card = tmp_path / "data/plan.md"
     assert "[planned]" in card.read_text()
-    card.write_text(card.read_text().replace("Context: demo.", "Context: corrected premise."))
+    card.write_text(
+        card.read_text().replace(
+            "Context: demo.", "Context: demo.\nDecision: lead changes the reserved choice."
+        )
+    )
     events = stub_stages(tmp_path)
     refused = spawn(repo, env, "story-042")
     assert refused.returncode == 2 and "amend" in refused.stderr
     assert marker.read_bytes() == before
-    amended = spawn(repo, env, "amend", "story-042", "--reason", "lead corrects premise")
+    amended = spawn(repo, env, "amend", "story-042", "--reason", "lead changes reserved choice")
     assert amended.returncode == 0, amended.stderr
     assert "[planned]" in card.read_text()
     launched = spawn(repo, env, "story-042")
@@ -31,7 +35,7 @@ def test_failed_planned_launch_can_amend_captured_card(tmp_path):
         "teammate",
         "reviewer",
     ]
-    assert "Context: corrected premise." in stages[0]["prompt"]
+    assert "Decision: lead changes the reserved choice." in stages[0]["prompt"]
 
 
 def test_planned_multifile_launch_uses_current_source(tmp_path):

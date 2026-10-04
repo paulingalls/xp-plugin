@@ -163,8 +163,23 @@ def cmd_post_merge(slug: str, dry_run: bool = False) -> int:
     recorded_head, identity_error = release.recorded_release_head(state)
     if identity_error:
         return fail(f"refused: {identity_error} in {matches[0]}")
+
+    def validate_current_verify():
+        from close import verify_commands
+
+        raw, commands = verify_commands(key, card)
+        tree = git("rev-parse", "HEAD^{tree}").stdout.strip()
+        reusable, _reason = verify_receipt.decide(key, card, raw, commands, tree)
+        return "" if reusable else verify_receipt.record(key, card, raw, commands)
+
     result = release.cmd_post_merge(
-        key, branch, "patch", False, dry_run, recorded_head=recorded_head
+        key,
+        branch,
+        "patch",
+        False,
+        dry_run,
+        recorded_head=recorded_head,
+        before_publish=validate_current_verify,
     )
     if result:
         return result

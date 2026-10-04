@@ -64,13 +64,10 @@ def prepare(
         raise CardEditRefusal(
             "the ready credential is unreadable; restore it before accepting this round"
         )
-    if minted["digest"] != card_digest(before):
-        from ready import card_growth
-
-        if not card_growth(minted["card"], before):
-            raise CardEditRefusal(
-                "the review read an uncredentialed declaration; amend before reviewing"
-            )
+    if protected(minted["card"]) != protected(before):
+        raise CardEditRefusal(
+            "the retained title, Executor or Decision changed; amend before reviewing"
+        )
     record = {
         "story_id": story_id,
         "before": before,

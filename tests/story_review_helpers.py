@@ -190,7 +190,7 @@ def installed_pair(tmp_path):
     return old, new
 
 
-def terminal_validation_interruption(tmp_path, monkeypatch, outcome="red"):
+def terminal_validation_interruption(tmp_path, monkeypatch, outcome="red", adjusted=False):
     from contextlib import chdir
 
     import close
@@ -219,10 +219,37 @@ def terminal_validation_interruption(tmp_path, monkeypatch, outcome="red"):
     state = checkpoint(env, key)
     assert state["status"] == "validation" and not state["validation"]
     gate.write_text(f"#!/bin/sh\necho checked >> {calls}\necho GREEN\n")
+    if adjusted:
+        from card_adjustment_support import adjust
+
+        adjust(
+            repo,
+            env,
+            [
+                (f"Verify: {gate}", "Verify: true"),
+                ("Context: demo.", "Context: corrected context."),
+            ],
+            "card-edit",
+        )
     result = invoke(repo, env, key)
     assert result.returncode == (2 if outcome == "red" else 0), result.stderr
     assert checkpoint(env, key)["status"] == (
         "awaiting-disposition" if outcome == "red" else "completed"
     )
-    assert calls.read_text().splitlines() == ["checked"] * (2 if outcome == "red" else 1)
-    assert events.read_text().splitlines() == ["solution"]
+    assert calls.read_text().splitlines() == ["checked"] * (
+        1 if adjusted else 2 if outcome == "red" else 1
+    )
+    assert events.read_text().splitlines() == ["solution"] * (2 if adjusted else 1)
+    if adjusted:
+        attempts = checkpoint(env, key)["validation"]
+        assert len(attempts) == 2 and attempts[0]["error"] and not attempts[1]["error"]
+        disposition = invoke(
+            repo,
+            env,
+            key,
+            "acknowledge-validation",
+            "--reason",
+            "corrected the Verify command after inspecting the retained red",
+        )
+        assert disposition.returncode == 0, disposition.stderr
+        assert checkpoint(env, key)["disposition"]["attempts"] == attempts
