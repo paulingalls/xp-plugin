@@ -5,7 +5,7 @@ import os
 import re
 from pathlib import Path
 
-from xpcore import bundle, cards, config, gitx, launch
+from xpcore import bundle, cards, config, gitx, hooks, launch
 from xpcore.config import fail
 from xpcore.launch import log_path
 
@@ -255,7 +255,18 @@ def walk(card: cards.Card, base: str, dry: bool) -> int:
         if stage == "worktree":
             s = slug(card.title)
             branch = card.id if card.id.endswith(s) else f"{card.id}-{s}"
+            existed = gitx.branch_exists(branch, root)
             gitx.worktree_add(wt, branch, base, cwd=root)
+            log_id = f"{card.id}-worktree-setup"
+            line, rc = hooks.project_command("worktree_setup", wt, log_id)
+            if rc:
+                gitx.worktree_remove(wt, cwd=root)
+                if not existed:
+                    gitx.git("branch", "-D", branch, cwd=root)
+                config.refuse(
+                    f"worktree_setup `{line}` exited {rc}; removed {wt};"
+                    f" read {hooks.log_path(log_id)}, fix the command and run {rerun} again"
+                )
             print(f"{card.id}: worktree {wt} on {branch} from {base}")
         elif stage == "planner":
             plan_stage(card, sdir, wt)
