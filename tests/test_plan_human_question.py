@@ -413,6 +413,17 @@ def test_mixed_corrections_wait_for_explicit_answer(tmp_path):
     draft = tmp_path / "data/plans/story-042.plan.md"
     preserved = draft.read_bytes()
     assert "REVIEWED-AC" in plan.read_text()
+    from card_adjustment_support import adjust
+
+    adjust(
+        repo,
+        env,
+        [
+            ("Context: demo.", "Context: corrected context."),
+            ("Files: src/thing.py, src/other.py", "Files: src/thing.py"),
+            ("Verify: true", "Verify: true && true"),
+        ],
+    )
     for _ in range(4):
         result = spawn(repo, env, "resume", "story-042")
         assert result.returncode != 0 and QUESTION in result.stderr

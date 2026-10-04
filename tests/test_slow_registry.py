@@ -23,6 +23,10 @@ def mutate(source, mode):
             continue
         if node.name == "_validate_slow_registry" and mode == "disabled":
             node.body = [ast.Pass()]
+        if node.name == "_slow_ids" and mode == "shard-count":
+            for branch in ast.walk(node):
+                if isinstance(branch, ast.If) and isinstance(branch.test, ast.Compare):
+                    branch.test = ast.Constant(False)
         if node.name == "_full_suite_selected" and mode in ("always", "never"):
             node.body = [ast.Return(ast.Constant(mode == "always"))]
         if node.name == "pytest_collection_modifyitems":
@@ -58,8 +62,13 @@ def suite(tmp_path):
     return root
 
 
-def run(root, *args, ids=IDS, cwd=None):
-    (root / "tests/slow_tests.json").write_text(json.dumps({"ids": ids}))
+def run(root, *args, ids=IDS, cwd=None, shards=False):
+    registry = {"ids": ids}
+    if shards:
+        registry = {"shards": ["slow_tests-1.json", "slow_tests-2.json"], "count": len(ids)}
+        for number, subset in enumerate((ids[:1], ids[1:]), 1):
+            (root / f"tests/slow_tests-{number}.json").write_text(json.dumps(subset))
+    (root / "tests/slow_tests.json").write_text(json.dumps(registry))
     for name in ("fast", "other", "slow"):
         (root / name).unlink(missing_ok=True)
     env = os.environ.copy()
@@ -178,6 +187,7 @@ def test_full_selection_path_spellings(suite, spelling):
         ("always", "test_last_failed_collection_is_partial"),
         ("unmarked", "test_full_collection_refuses_stale_ids_before_bodies"),
         ("late", "test_full_selection_checks_before_deselection"),
+        ("shard-count", "test_broken_shard_refuses_before_bodies"),
     ],
 )
 def test_diagnostics_reject_guard_mutations(mode, node):
@@ -193,3 +203,54 @@ def test_diagnostics_reject_guard_mutations(mode, node):
     assert result.returncode == 1, result.stdout + result.stderr
     if mode in ("disabled", "never"):
         assert "bodies ran:" in result.stdout, result.stdout
+
+
+def test_sharded_registry_preserves_selection_and_refusal(suite):
+    accepted(*run(suite, "-m", "slow", ids=[IDS[2]], shards=True), ["slow"])
+    refused(*run(suite, ids=[IDS[2], *STALE], shards=True))
+    accepted(*run(suite, IDS[0], ids=[IDS[2], *STALE], shards=True), ["fast"])
+
+
+@pytest.mark.parametrize("damage", ["missing", "unreadable", "omitted"])
+def test_broken_shard_refuses_before_bodies(suite, damage):
+    accepted(*run(suite, shards=True), ["fast", "other", "slow"])
+    shard = suite / "tests/slow_tests-2.json"
+    if damage == "missing":
+        shard.unlink()
+    elif damage == "unreadable":
+        shard.write_text("unreadable JSON")
+    else:
+        registry = suite / "tests/slow_tests.json"
+        manifest = json.loads(registry.read_text())
+        manifest["shards"].pop()
+        registry.write_text(json.dumps(manifest))
+    for name in ("fast", "other", "slow"):
+        (suite / name).unlink(missing_ok=True)
+    result = subprocess.run(
+        [sys.executable, "-m", "pytest", "-q"], cwd=suite, capture_output=True, text=True
+    )
+    assert result.returncode != 0, result.stdout + result.stderr
+    assert "slow registry" in result.stdout + result.stderr
+    assert not any((suite / name).exists() for name in ("fast", "other", "slow"))
+
+
+def test_registry_writer_emits_bounded_shards(tmp_path, monkeypatch):
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(
+        "regen", ROOT / "tests/scripts/regen_slow_tests.py"
+    )
+    regen = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(regen)
+    registry = tmp_path / "slow_tests.json"
+    registry.write_text(json.dumps({"_why": "measured", "threshold_seconds": 0.5}))
+    monkeypatch.setattr(regen, "OUT", registry)
+    census = tmp_path / "census"
+    ids = [f"tests/test_a.py::test_{i:04}" for i in range(801)]
+    census.write_text("\n".join(f"1.00s call {node}" for node in ids))
+    assert regen.main([str(census)]) == 0
+    manifest = json.loads(registry.read_text())
+    assert manifest["count"] == len(ids)
+    shards = [json.loads((tmp_path / name).read_text()) for name in manifest.get("shards", [])]
+    assert shards and all(len(shard) <= 400 for shard in shards)
+    assert [node for shard in shards for node in shard] == ids

@@ -58,7 +58,9 @@ explain each correction in `reasons`, naming the value and concrete failure prev
 Keep reasons in these findings; the plan describes implementation. Use `clean` or
 `edited` to describe the result, not to grant execution authority. Report loud
 findings in `summary` under JUDGMENT. A proposed change to approved behavior requires
-a lead decision; a syntactically valid candidate does not establish that authority.
+explicit lead scope amendment; a syntactically valid candidate does not establish
+that authority. Expose changed acceptance obligations in the findings for solution
+review; the lead judges whether corrections remain within approved scope.
 
 A choice only the human can make is not yours to resolve: leave that choice
 unedited and stop. Preserve independent justified edits and their reasons, and report loud

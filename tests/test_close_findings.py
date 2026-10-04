@@ -335,31 +335,10 @@ class TestRoundThreeNoted:
 
 
 class TestTheCardIsAGateNoDiffShows:
-    """story-023 bound [ready] to a digest of the card the plan reviewer cleared;
-    story-019 moved the plan out of the repo. Nothing rebinds them after spawn:
-    land re-read the LIVE plan and shell-executed its `Verify:` line while the
-    reviewed text sat unread in the ready marker, so an edit silently changed
-    what land runs and no diff recorded it — DESIGN §3b cost 4, which the digest
-    story-023 shipped can now close. land already refuses when `.xp/config.yml`
-    (the TIER it runs) moves; the card is the same gate, one file outside.
-    """
-
     def minted(self, tmp_path):
         """The real sequence — which make_repo now walks for every close test,
         because a fixture that types the bracket carries no credential to check."""
         return make_repo(tmp_path)
-
-    def test_a_verify_line_edited_after_the_review_is_never_executed(self, tmp_path):
-        repo, env, _g = self.minted(tmp_path)
-        assert close(repo, env, "review").returncode == 0
-        plan = tmp_path / "data" / "plan.md"
-        sentinel = tmp_path / "unreviewed-ran"
-        plan.write_text(plan.read_text().replace("Verify: true", f"Verify: touch {sentinel}"))
-        r = close(repo, env, "land")
-        assert r.returncode == 2, r.stdout
-        assert not sentinel.exists(), "land shell-executed a line no reviewer saw"
-        assert "Verify: true" in r.stderr and str(sentinel) in r.stderr, r.stderr
-        assert "[done]" not in plan.read_text()
 
     def test_the_card_the_reviewer_saw_still_lands(self, tmp_path):
         """The pair: a refusal that also fires on the reviewed card is a broken

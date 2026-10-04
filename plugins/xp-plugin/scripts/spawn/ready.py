@@ -7,7 +7,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from close import fail, story_card, verify_commands
 from handoff import marker_path as handoff_marker_path
-from review_scope import FIELD_START, declared_files
+from review_scope import declared_files
 from verify_receipt import reads as verify_reads
 from work import (
     card_digest,
@@ -83,57 +83,6 @@ def card_diff(reviewed: str, card: str) -> str:
     )
 
 
-def card_growth(reviewed: str, card: str) -> str:
-    old, new = card_lines(reviewed), card_lines(card)
-
-    def fields(lines):
-        files = [i for i, line in enumerate(lines) if line.startswith("Files:")]
-        verify = [i for i, line in enumerate(lines) if line.startswith("Verify:")]
-        if len(files) != 1 or len(verify) != 1:
-            return None
-        start = files[0]
-        end = next(
-            (i for i in range(start + 1, len(lines)) if FIELD_START.match(lines[i])),
-            len(lines),
-        )
-        return set(range(start, end)), verify[0]
-
-    before, after = fields(old), fields(new)
-    if before is None or after is None:
-        return ""
-    old_files, old_verify = before
-    new_files, new_verify = after
-
-    def fixed(lines, files, verify):
-        return [
-            "<Files>" if i == min(files) else "<Verify>" if i == verify else line
-            for i, line in enumerate(lines)
-            if i not in files or i == min(files)
-        ]
-
-    if fixed(old, old_files, old_verify) != fixed(new, new_files, new_verify):
-        return ""
-    try:
-        prior, current = declared_files(reviewed), declared_files(card)
-    except ValueError:
-        return ""
-    added = current - prior
-    files_changed = [old[i] for i in sorted(old_files)] != [new[i] for i in sorted(new_files)]
-    if files_changed and (not prior < current or any(p.startswith(".xp/") for p in added)):
-        return ""
-    old_line, new_line = old[old_verify], new[new_verify]
-    extended = new_line.startswith(old_line + " && ")
-    if new_line != old_line and not extended:
-        return ""
-    verify_added = new_line.removeprefix(old_line + " && ") if extended else ""
-    if not files_changed and not verify_added:
-        return ""
-    parts = [f"Files: {path}" for path in sorted(added)]
-    if verify_added:
-        parts.append(f"Verify: {verify_added}")
-    return "; ".join(parts)
-
-
 def drift(sid: str, card: str) -> str:
     marker = ready_marker_path(sid)
     recovery = (AMEND if progressed(sid) else REMINT).format(sid)
@@ -148,15 +97,16 @@ def drift(sid: str, card: str) -> str:
         return problem
     if minted.get("digest") == card_digest(card):
         return ""
-    if growth := card_growth(minted["card"], card):
-        print(f"{sid} card grew — {growth}")
-        return ""
     from plan_acceptance import interrupted_problem
 
     if problem := interrupted_problem(sid, card, minted):
         return problem
-    diff = card_diff(minted["card"], card)
-    return f"refused: {sid} was edited after its plan review:\n{diff}\n{AMEND.format(sid)}"
+    from plan_acceptance import protected
+
+    if protected(minted["card"]) != protected(card):
+        diff = card_diff(minted["card"], card)
+        return f"refused: {sid} reserved declaration changed:\n{diff}\n{AMEND.format(sid)}"
+    return ""
 
 
 def amend(story_id: str, reason: str) -> int:

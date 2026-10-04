@@ -16,7 +16,12 @@ remaining problems belong to the lead.
 
 Read any current `Close review` instruction in the story card and the offered
 executor log when present. Implementation observations inform review; changes to
-approved behavior require a lead decision.
+approved behavior require explicit lead scope amendment. Read the retained-card
+delta and judge current acceptance obligations against retained work and reports;
+the lead owns scope judgment. Incomplete producer output remains lead-owned:
+`spawn.py resume STORY_ID` preserves work and stops;
+explicit `xp.py story STORY_ID review` corrects the
+report without repeating completed fixes.
 
 ## Checks, in order of payoff
 

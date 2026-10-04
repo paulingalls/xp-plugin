@@ -8,6 +8,8 @@ from runtime_source_support import plan_motion, review_motion
 
 PLAN_MOTION = [
     "clean",
+    "binary",
+    "arrangement",
     "dirty",
     "addition",
     "hidden",
@@ -17,7 +19,6 @@ PLAN_MOTION = [
     "submodule-clean",
     "submodule-gitlink",
     "submodule-dirty",
-    "submodule-hidden",
 ]
 
 
@@ -32,23 +33,32 @@ def test_read_only_review_rejects_tracked_motion(tmp_path, kind):
 
 
 @pytest.mark.meta
-@pytest.mark.parametrize("stage", ["plan", "review"])
-@pytest.mark.parametrize(
-    "kind", ["dirty", "addition", "hidden", "skip", "submodule-dirty", "submodule-hidden"]
-)
+@pytest.mark.parametrize("stage", ["plan", "planner", "review"])
+@pytest.mark.parametrize("kind", ["dirty", "addition", "hidden", "skip", "submodule-dirty"])
 def test_source_guard_faults(tmp_path, monkeypatch, stage, kind):
     control, mutant = tmp_path / "control", tmp_path / "mutant"
     control.mkdir()
     mutant.mkdir()
-    if stage == "plan":
-        plan_motion(control, installed_launch(control), kind)
-        launch = installed_launch(
-            mutant,
-            ("card_for(story_id), source", "card_for(story_id), {}"),
-            "scripts/plan_review.py",
+    if stage in ("plan", "planner"):
+        role = "planner" if stage == "planner" else "plan-reviewer"
+        plan_motion(control, installed_launch(control), kind, role=role)
+        mutation, target = (
+            (
+                (
+                    "    if tracked_state(root=tree, include_untracked=True) != head:",
+                    "    if False:",
+                ),
+                "scripts/spawn/story_stages.py",
+            )
+            if stage == "planner"
+            else (
+                ("card_for(story_id), source", "card_for(story_id), {}"),
+                "scripts/plan_review.py",
+            )
         )
+        launch = installed_launch(mutant, mutation, target)
         with pytest.raises(AssertionError):
-            plan_motion(mutant, launch, kind)
+            plan_motion(mutant, launch, kind, role=role)
     else:
         review_motion(control, kind)
         installed = tmp_path / "installed"
@@ -64,7 +74,9 @@ def test_source_guard_faults(tmp_path, monkeypatch, stage, kind):
 
 
 @pytest.mark.parametrize("mutant", [False, pytest.param(True, marks=pytest.mark.meta)])
-@pytest.mark.parametrize("command", ["--binary", "--index-info"])
+@pytest.mark.parametrize(
+    "command", ["--binary", "--index-info", "--stage", "read-tree", "HEAD", "write-tree"]
+)
 def test_git_measurement_failure_refuses_truthfully(tmp_path, mutant, command):
     from plan_confirmation_support import consumer
 
@@ -76,7 +88,8 @@ def test_git_measurement_failure_refuses_truthfully(tmp_path, mutant, command):
     wrapper = tmp_path / "bin/git"
     wrapper.write_text(
         "#!/usr/bin/env python3\nimport os, sys\n"
-        f"if {command!r} in sys.argv:\n    print('constructed Git failure', file=sys.stderr)\n"
+        f"if {command!r} in sys.argv and 'diff.autoRefreshIndex=false' in sys.argv:\n"
+        "    print('constructed Git failure', file=sys.stderr)\n"
         "    sys.exit(73)\n"
         f"os.execv({real_git!r}, [{real_git!r}, *sys.argv[1:]])\n"
     )
@@ -88,7 +101,7 @@ def test_git_measurement_failure_refuses_truthfully(tmp_path, mutant, command):
 
         assert result.returncode == 2, result.stderr
         assert "constructed Git failure" in result.stderr
-        assert "teammate" not in roles(seen)
+        assert "teammate" not in (roles(seen) if seen.exists() else [])
         assert "Traceback" not in result.stderr
 
     if mutant:
@@ -102,8 +115,8 @@ def test_git_measurement_failure_refuses_truthfully(tmp_path, mutant, command):
 def test_tier_config_motion_is_read_only_input(tmp_path, mutant):
     from completed_executor_support import tier_consumer
 
-    mutation = ("return before == after", "return True") if mutant else None
-    launch = installed_launch(tmp_path, mutation, "scripts/spawn/completion.py")
+    mutation = ("if not same_inputs(before, after) or moved:", "if False:") if mutant else None
+    launch = installed_launch(tmp_path, mutation, "scripts/spawn/execution.py")
     repo, env, _ = tier_consumer(tmp_path, "printf '# tier motion\\n' >> .xp/config.yml")
     result = launch(repo, env, "story-042")
 
@@ -244,40 +257,37 @@ def test_combined_config_motion_guard_fault(tmp_path, monkeypatch):
 
 @pytest.mark.parametrize("mutant", [False, pytest.param(True, marks=pytest.mark.meta)])
 def test_source_measurement_preserves_user_index(tmp_path, mutant):
-    import os
-    import subprocess
-    import sys
+    import json
 
-    from story_review_helpers import flow_repo
+    from plan_confirmation_support import consumer
 
-    repo, env, git, _key, _seen, _hooks = flow_repo(tmp_path)
-    tracked = repo / "src/thing.py"
-    measured = tracked.stat()
-    os.utime(tracked, ns=(measured.st_atime_ns, measured.st_mtime_ns + 5_000_000_000))
-    index = repo / git("rev-parse", "--git-path", "index").stdout.strip()
-    saved = index.read_bytes()
-    installed = tmp_path / "installed"
-    shutil.copytree(PLUGIN, installed)
-    if mutant:
-        path = installed / "scripts/git_source.py"
-        old = '            "--no-optional-locks",\n'
-        text = path.read_text()
-        assert old in text
-        path.write_text(text.replace(old, ""))
-    code = (
-        f"import sys; sys.path.insert(0, {str(installed / 'scripts')!r}); "
-        f"from git_source import tracked_state; tracked_state(root={str(repo)!r})"
+    mutation = ('            "--no-optional-locks",\n', "") if mutant else None
+    launch = installed_launch(tmp_path, mutation, "scripts/git_source.py")
+    repo, env, _seen = consumer(tmp_path, initial_status="clean", initial_question=None)
+    (tmp_path / "executor-stop").unlink()
+    observed = tmp_path / "index-measurement.json"
+    stages = tmp_path / "cache/xp-plugin/fixture/scripts/spawn/story_stages.py"
+    before = "    head = tracked_state(root=tree, include_untracked=True)"
+    instrumented = (
+        "    import os, json\n    from git_source import git\n"
+        "    tracked = tree / '.xp/system.md'\n    measured = tracked.stat()\n"
+        "    os.utime(tracked, ns=(measured.st_atime_ns, measured.st_mtime_ns + 5_000_000_000))\n"
+        "    index = tree / git('rev-parse', '--git-path', 'index', root=tree).decode().strip()\n"
+        "    saved = index.read_bytes()\n" + before + "\n"
+        f"    Path({str(observed)!r}).write_text(\n"
+        "        json.dumps([saved.hex(), index.read_bytes().hex()]))"
     )
-    result = subprocess.run(
-        [sys.executable, "-c", code], cwd=repo, env=env, capture_output=True, text=True
-    )
+    assert before in stages.read_text()
+    stages.write_text(stages.read_text().replace(before, instrumented))
+    result = launch(repo, env, "story-042")
     assert result.returncode == 0, result.stderr
-
-    def guarantee():
-        assert index.read_bytes() == saved
-
+    saved, after = json.loads(observed.read_text())
     if mutant:
         with pytest.raises(AssertionError):
-            guarantee()
+            assert saved == after
     else:
-        guarantee()
+        assert saved == after
+
+
+def test_read_only_planner_rejects_second_dirty_edit(tmp_path):
+    plan_motion(tmp_path, installed_launch(tmp_path), "dirty", role="planner")

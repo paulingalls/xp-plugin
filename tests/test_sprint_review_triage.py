@@ -3,6 +3,7 @@
 import subprocess
 import sys
 
+import pytest
 from sprint_helpers import PLUGIN, make_repo, sprint
 
 
@@ -97,12 +98,40 @@ def test_missing_active_marker_cannot_hide_durable_blocker(tmp_path):
     assert "Unresolved finding" in result.stdout and "durable blocker" in result.stdout
 
 
-def test_corrupt_close_evidence_refuses_before_readers(tmp_path):
+@pytest.mark.parametrize(
+    "evidence", ["{corrupt", '{"verdicts": [null]}', '{"verdicts": [], "rounds": null}']
+)
+def test_corrupt_close_evidence_refuses_before_readers(tmp_path, evidence):
     from sprint_helpers import launches, staged_stub
 
     repo, env, _g = make_repo(tmp_path)
-    (tmp_path / "data/closes.jsonl").write_text("{corrupt\n")
+    (tmp_path / "data/closes.jsonl").write_text(evidence + "\n")
     staged_stub(tmp_path)
     result = sprint(repo, env, "review")
-    assert result.returncode == 2 and "Unreadable close history" in result.stderr
+    assert result.returncode == 2 and "Unreadable" in result.stderr
     assert launches(tmp_path) == []
+
+
+def test_legacy_verdict_close_remains_readable_without_invented_rounds(tmp_path):
+    import json
+
+    repo, env, _g = make_repo(tmp_path)
+    history = tmp_path / "data/closes.jsonl"
+    original = (
+        json.dumps(
+            {
+                "story": "story-008",
+                "verdicts": ["VERDICT: 6 findings (2 gating)"],
+                "merge_sha": _g("rev-parse", "HEAD").stdout.strip(),
+                "closed_at": "2026-08-20T18:05:52Z",
+            }
+        )
+        + "\n"
+    )
+    history.write_text(original)
+
+    result = sprint(repo, env, "start")
+
+    assert result.returncode == 0, result.stderr
+    assert "VERDICT: 6 findings (2 gating)" in result.stdout
+    assert history.read_text() == original

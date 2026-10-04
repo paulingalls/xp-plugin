@@ -200,7 +200,7 @@ def changed_after(*args):
     record = plan_acceptance.latest(args[0])
     if {target!r} == 'card':
         path = Path(os.environ['XP_DATA']) / 'plan.md'
-        text = path.read_text().replace('REVIEWED-AC', 'unreviewed')
+        text = path.read_text().replace('Context: demo.', 'Context: demo.\\nDecision: new choice')
     else:
         path = Path(record[{target!r}])
         text = path.read_text() + 'unreviewed'

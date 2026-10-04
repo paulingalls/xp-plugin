@@ -54,6 +54,7 @@ if 'plugin' in sys.argv[1:]:
 prompt=sys.stdin.read()
 stage=re.search(r'^STAGE: (.+)$',prompt,re.M)
 stage=stage.group(1) if stage else 'solution'
+Path(EVENTS+'.'+stage+'.prompt').write_text(prompt)
 with open(EVENTS,'a') as f: f.write(stage+'\\n')
 report={'blocking':[]}
 if stage=='solution': report['actionable']=[] if SCENARIO=='clean' else ['A must equal 3']
@@ -112,3 +113,171 @@ def checkpoint(env, key):
     return json.loads((Path(env["XP_DATA"]) / "plans" / f"{key}.handoff.json").read_text())[
         "checkpoint"
     ]["review_sequence"]
+
+
+def evidence_correction(binary, producer="fixer"):
+    scenario = repr("malformed-" + producer)
+    script = binary.read_text().replace(
+        "if stage=='fixer':",
+        "if stage=='fixer' and 'Correct only the incomplete report' not in prompt:",
+    )
+    script = script.replace(
+        "if " + scenario + "=='malformed-'+stage: report.pop('blocking')",
+        r"""if SCENARIO=='malformed-'+stage:
+    if 'Correct only the incomplete report' not in prompt:
+        report['blocking']='A must equal 3'
+    else:
+        match=re.search(r'^Prior report: (.+)$',prompt,re.M)
+        if match:
+            prior_path=match.group(1)
+        else:
+            attempt=prompt.split('Prior producer attempt:\n',1)[1].split('\nSTAGE:',1)[0]
+            prior_path=json.loads(attempt)['path']
+        prior=json.loads(Path(prior_path).read_text())
+        refusal=prompt.split('Measured refusal:\n',1)[1].split('\n',1)[0]
+        assert prior_path in refusal and 'blocking' in refusal
+        finding=prior['blocking']
+        assert isinstance(finding,str) and finding
+        report={'blocking':[finding]}
+        if Path('src/thing.py').read_text()=='A = 3\n':
+            report={'blocking':[], 'fixed':[finding]}""".replace("SCENARIO", scenario),
+    )
+    binary.write_text(script)
+
+
+def measured_flow(root, plugin, scenario="fixed", extra=0):
+    import json
+    from pathlib import Path
+
+    root.mkdir()
+    repo, env, git, key, events, hooks = flow_repo(root, scenario=scenario)
+    if scenario.startswith("malformed"):
+        evidence_correction(root / "bin/claude")
+    seed_clean_files(repo, git, hooks, extra)
+    import pytest
+
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setenv("XP_FLOW_TEST_CLOSE", str(plugin / "scripts/close.py"))
+        result = invoke(repo, env, key)
+        assert result.returncode == (2 if scenario.startswith("malformed") else 0), result.stderr
+        if scenario.startswith("malformed"):
+            prior = checkpoint(env, key)
+            report = Path(prior["stages"]["fixer"]["path"])
+            saved = report.read_bytes()
+            result = invoke(repo, env, key)
+            assert result.returncode == 0, result.stderr
+            corrected = checkpoint(env, key)["stages"]["fixer"]["report"]
+            assert corrected["fixed"] == [json.loads(saved)["blocking"]]
+            prompt = Path(str(events) + ".fixer.prompt").read_text()
+            assert prior["problem"] in prompt
+            assert report.read_bytes() == saved
+        sequence = checkpoint(env, key)
+    assert (repo / "src/thing.py").read_text() == "A = 3\n"
+    assert hooks.read_text().splitlines() == ["hook"]
+    handoff = Path(env["XP_DATA"]) / "plans" / f"{key}.handoff.json"
+    sizes = {
+        "handoff": len(handoff.read_bytes()),
+        "checkpoint": len(json.dumps(json.loads(handoff.read_text())["checkpoint"]).encode()),
+        "sequence": len(json.dumps(sequence).encode()),
+    }
+    for stage in ("solution", "fixer", "closer"):
+        sizes[stage] = len(Path(str(events) + "." + stage + ".prompt").read_bytes())
+    return sizes
+
+
+def seed_clean_files(repo, git, hooks, extra):
+    branch = git("branch", "--show-current").stdout.strip()
+    assert git("checkout", "-q", "main").returncode == 0
+    for index in range(extra):
+        (repo / f"unrelated-{index:03}.bin").write_bytes(bytes(range(256)) * 10)
+    (repo / "asset.bin").write_bytes(bytes(range(256)))
+    assert git("add", ".").returncode == 0
+    assert git("commit", "-qm", "tracked fixture base").returncode == 0
+    assert git("checkout", "-q", branch).returncode == 0
+    assert git("merge", "-qm", "fixture base", "main").returncode == 0
+    (repo / "asset.bin").write_bytes(bytes(reversed(range(256))))
+    assert git("commit", "-qam", "binary story change").returncode == 0
+    hooks.unlink()
+
+
+def installed_pair(tmp_path):
+    import io
+    import shutil
+    import subprocess
+    import tarfile
+
+    from plan_review_install import PLUGIN
+
+    archive = subprocess.check_output(["git", "archive", "62d4034", "plugins/xp-plugin"])
+    old = tmp_path / "old-copy"
+    with tarfile.open(fileobj=io.BytesIO(archive)) as exported:
+        exported.extractall(old, filter="data")
+    old = old / "plugins/xp-plugin"
+    new = tmp_path / "new-copy/plugins/xp-plugin"
+    shutil.copytree(PLUGIN, new)
+    return old, new
+
+
+def terminal_validation_interruption(tmp_path, monkeypatch, outcome="red", adjusted=False):
+    from contextlib import chdir
+
+    import close
+    import pytest
+    import review_validation
+    import verify_receipt
+
+    gate = tmp_path / "gate"
+    calls = tmp_path / "validation-calls"
+    gate.write_text(f"#!/bin/sh\necho checked >> {calls}\nexit {9 if outcome == 'red' else 0}\n")
+    gate.chmod(0o755)
+    repo, env, _git, key, events, _hooks = flow_repo(tmp_path, verify=str(gate))
+    original = verify_receipt.record
+
+    def interrupted(*args):
+        result = original(*args)
+        assert bool(result) == (outcome == "red")
+        raise KeyboardInterrupt
+
+    for name, value in env.items():
+        monkeypatch.setenv(name, value)
+    with chdir(repo), monkeypatch.context() as patch:
+        patch.setattr(review_validation.verify_receipt, "record", interrupted)
+        with pytest.raises(KeyboardInterrupt):
+            close.cmd_review(key)
+    state = checkpoint(env, key)
+    assert state["status"] == "validation" and not state["validation"]
+    gate.write_text(f"#!/bin/sh\necho checked >> {calls}\necho GREEN\n")
+    if adjusted:
+        from card_adjustment_support import adjust
+
+        adjust(
+            repo,
+            env,
+            [
+                (f"Verify: {gate}", "Verify: true"),
+                ("Context: demo.", "Context: corrected context."),
+            ],
+            "card-edit",
+        )
+    result = invoke(repo, env, key)
+    assert result.returncode == (2 if outcome == "red" else 0), result.stderr
+    assert checkpoint(env, key)["status"] == (
+        "awaiting-disposition" if outcome == "red" else "completed"
+    )
+    assert calls.read_text().splitlines() == ["checked"] * (
+        1 if adjusted else 2 if outcome == "red" else 1
+    )
+    assert events.read_text().splitlines() == ["solution"] * (2 if adjusted else 1)
+    if adjusted:
+        attempts = checkpoint(env, key)["validation"]
+        assert len(attempts) == 2 and attempts[0]["error"] and not attempts[1]["error"]
+        disposition = invoke(
+            repo,
+            env,
+            key,
+            "acknowledge-validation",
+            "--reason",
+            "corrected the Verify command after inspecting the retained red",
+        )
+        assert disposition.returncode == 0, disposition.stderr
+        assert checkpoint(env, key)["disposition"]["attempts"] == attempts

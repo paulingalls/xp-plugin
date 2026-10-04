@@ -30,7 +30,7 @@ def test_completed_executor_preview_matches_live_resume(tmp_path, harness, inval
     assert roles(seen)[count:] == (["teammate", "reviewer"] if invalidated else [])
 
 
-@pytest.mark.parametrize("damage", ["binding", "result", "evidence"])
+@pytest.mark.parametrize("damage", ["binding", "result", "evidence", "version", "repository"])
 def test_invalid_checkpoint_preview_and_live_refuse_without_launch(tmp_path, damage):
     launch = installed_launch(tmp_path)
     repo, env, seen = completed(tmp_path, launch)
@@ -38,6 +38,10 @@ def test_invalid_checkpoint_preview_and_live_refuse_without_launch(tmp_path, dam
     state = json.loads(marker.read_text())
     if damage == "binding":
         state["checkpoint"]["story_id"] = "story-999"
+    elif damage == "version":
+        state["checkpoint"]["version"] = 1
+    elif damage == "repository":
+        state["checkpoint"]["repository"] = str(tmp_path / "another-project")
     elif damage == "result":
         state["checkpoint"]["results"]["executor"]["result"] = "imagined-success"
     else:

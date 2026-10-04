@@ -135,13 +135,22 @@ def test_card_snapshot_route_is_locked_and_rejects_stale_candidate(tmp_path):
         "ready",
         str(candidate),
     ]
+    plan = tmp_path / "data/plan.md"
+    sibling = "#### story-043 — sibling [done]\nContext: concurrent correction.\n"
+    plan.write_text(plan.read_text() + sibling)
     edited = subprocess.run(command, cwd=repo, env=env, capture_output=True, text=True)
     assert edited.returncode == 0, edited.stderr
     plan = tmp_path / "data/plan.md"
+    assert plan.read_text().endswith(sibling)
     assert "Files: src/thing.py, src/other.py" in plan.read_text()
     assert "Verify: true && true" in plan.read_text()
+    from card_adjustment_support import adjust
+
+    adjust(repo, env, [("Context: demo.", "Context: concurrent target correction.")])
+    preserved = plan.read_bytes()
     stale = subprocess.run(command, cwd=repo, env=env, capture_output=True, text=True)
     assert stale.returncode == 2 and "changed after" in stale.stderr
+    assert plan.read_bytes() == preserved
     assert "Verify: true && true" in plan.read_text()
 
 

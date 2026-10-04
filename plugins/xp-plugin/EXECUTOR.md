@@ -14,9 +14,10 @@ extend Files, and report the deviation.
   behavior require a lead decision. Fix authorized work by default, append a one-line
   reasoned drop in the handback, or retain exceptional debt with both JUDGMENT bars
   and a real record reference. Escalate reserved choices to the lead.
-  Run diagnostic tests named by the reviewed plan. Add
-  touched paths to Files and append each repeatable automated AC check to the end
-  of Verify as ` && <command>`, leaving the existing command unchanged, then run the
+  Run diagnostic tests named by the reviewed plan. Correct context and Files and
+  keep Verify to the smallest AC-complete current checks within approved intent.
+  Report changed acceptance obligations for solution review; the lead judges scope.
+  Changes to approved behavior require explicit lead scope amendment. Run the
   resulting exact Verify before handback. The card is `{CARD_PATH}`. For a locked
   edit, choose a new candidate path and run
   `python3 {PLUGIN_ROOT}/scripts/work.py card-snapshot STORY_ID /absolute/candidate.md`,
@@ -36,4 +37,6 @@ extend Files, and report the deviation.
   Attribute inherited commits and tests honestly. If the inherited implementation
   already satisfies the card, hand it back with the current checks; no empty commit
   is required. Historical lead recovery directions are evidence, while your assignment
-  is implementation. Story close, review, and land belong to the lead.
+  is implementation. Inspect relevant untracked/ignored work, dependencies, Git
+  hiding flags and environment yourself; compact recovery does not judge relevance.
+  Story close, review, and land belong to the lead.

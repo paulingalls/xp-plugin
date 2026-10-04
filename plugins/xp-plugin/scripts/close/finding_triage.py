@@ -68,6 +68,14 @@ def render_triage(root, refusals=None) -> str:
         for number, line in enumerate(lines, 1):
             try:
                 record = json.loads(line)
+                if (
+                    isinstance(record, dict)
+                    and "rounds" not in record
+                    and isinstance(record.get("verdicts"), list)
+                    and all(isinstance(value, str) for value in record["verdicts"])
+                ):
+                    out.append(f"Legacy close evidence ({log}:{number}): {line}")
+                    continue
                 histories.append((f"{log.resolve()}:{number}", record["rounds"]))
             except (ValueError, KeyError, TypeError):
                 problem(f"Unreadable close history at {log}:{number} — repair before judging")

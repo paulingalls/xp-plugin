@@ -87,18 +87,114 @@ def test_all_green_reland_reuses_every_leg(tmp_path):
 
 
 @pytest.mark.parametrize("dry", [False, True])
-def test_join_mismatch_refuses_before_history(tmp_path, dry):
-    first = tmp_path / "first"
-    repo, env, _g = configured(tmp_path, [("one", f"touch {first}")])
-    cfg = repo / ".xp/config.yml"
-    cfg.write_text(cfg.read_text().replace(f"full: touch {first}", "full: true"))
-    marker = marker_path(tmp_path)
-    saved = state(tmp_path)
-    saved["full_tier_history"] = "bad"
-    marker.write_text(json.dumps(saved))
+@pytest.mark.parametrize("red", [False, True])
+def test_full_legs_override_stale_full_at_land(tmp_path, dry, red):
+    from test_full_tier_consumers import publishing
+
+    event = tmp_path / "event"
+    command = f"printf x >> '{event}'; {'false' if red else 'true'}"
+    repo, env, g = configured(tmp_path, [("one", command)])
+    path = repo / ".xp/config.yml"
+    path.write_text(
+        path.read_text().replace(f"full: {command}", f"full: {'true' if red else 'false'}")
+    )
+    assert g("commit", "-qam", "stale duplicate").returncode == 0
+    record_reviews(tmp_path, repo, env)
+    publishing(tmp_path, repo, env, g)
     result = sprint(repo, env, "land", *(("--dry-run",) if dry else ()))
-    assert result.returncode == 2 and "join mismatch" in result.stderr
-    assert "tests.full='true'" in result.stderr and not first.exists()
+    assert result.returncode == (2 if red and not dry else 0), result.stdout + result.stderr
+    if dry:
+        assert command in result.stdout and not event.exists()
+    else:
+        assert event.read_text() == "x"
+        if not red:
+            assert state(tmp_path)["full_tier"]["command"] == f"({command})"
+
+
+@pytest.mark.parametrize("dry", [False, True])
+def test_legs_only_land_and_preview(tmp_path, dry):
+    from test_full_tier_consumers import publishing
+
+    repo, env, g = configured(tmp_path, [("one", "true")])
+    path = repo / ".xp/config.yml"
+    path.write_text(path.read_text().replace("  full: true\n", ""))
+    assert g("commit", "-qam", "legs only").returncode == 0
+    record_reviews(tmp_path, repo, env)
+    publishing(tmp_path, repo, env, g)
+    result = sprint(repo, env, "land", *(("--dry-run",) if dry else ()))
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "(true)" in result.stdout
+
+
+@pytest.mark.parametrize(
+    "case", ["stale-pass", "stale-red", "legs-only", "legacy-full", "compound"]
+)
+def test_shell_full_uses_authoritative_commands(tmp_path, case):
+    from test_full_tier_consumers import shell_full
+    from test_setup import bare_repo, run_setup
+
+    repo, env = bare_repo(tmp_path)
+    assert run_setup(repo, env).returncode == 0
+    events = tmp_path / "events with spaces"
+    first = (
+        f"printf p#ss >> '{events}'; {'false' if case in ('stale-pass', 'compound') else 'true'}"
+    )
+    second = f"printf second >> '{events}'; true"
+    duplicate = "true" if case == "stale-pass" else "false"
+    config = "constraints_chars_cap: 4500\ntests:\n"
+    if case == "legacy-full":
+        config += f"  full: {first}\n"
+    else:
+        if case != "legs-only":
+            config += f"  full: {duplicate}\n"
+        config += f"full_legs:\n  first: {first}  # information\n  second: {second}\n"
+    (repo / ".xp/config.yml").write_text(config)
+    result = shell_full(repo, env)
+    red = case in ("stale-pass", "compound")
+    assert result.returncode == (1 if red else 0), result.stderr
+    assert events.read_text() == ("p#ss" if red or case == "legacy-full" else "p#sssecond")
+
+
+@pytest.mark.parametrize("dry", [False, True])
+@pytest.mark.parametrize("transition", ["incoming-legs", "legs-to-legacy", "stale-to-legacy"])
+def test_pending_merge_uses_incoming_full_authority(tmp_path, dry, transition):
+    from test_full_tier_consumers import publishing
+
+    config = CONFIG
+    if transition != "incoming-legs":
+        config = config.replace(
+            "  full: true\n", "" if transition == "legs-to-legacy" else "  full: false\n"
+        )
+        config += "full_legs:\n  local: true\n"
+    repo, env, g = make_repo(tmp_path, config=config)
+    record_reviews(tmp_path, repo, env)
+    publishing(tmp_path, repo, env, g)
+    event = tmp_path / "incoming"
+    command = f"printf incoming >> '{event}'"
+    assert g("checkout", "-q", "main").returncode == 0
+    path = repo / ".xp/config.yml"
+    if transition == "incoming-legs":
+        incoming = (
+            config.replace("full: true", "full: false") + f"full_legs:\n  incoming: {command}\n"
+        )
+    else:
+        incoming = CONFIG.replace("full: true", f"full: {command}")
+    path.write_text(incoming)
+    assert g("commit", "-qam", "incoming legs").returncode == 0
+    assert g("push", "origin", "main").returncode == 0
+    assert g("checkout", "-q", "sprint-002").returncode == 0
+    before = g("rev-parse", "HEAD").stdout
+    index_before = g("write-tree").stdout
+    result = sprint(repo, env, "land", *(("--dry-run",) if dry else ()))
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert command in result.stdout
+    if dry:
+        assert not event.exists()
+        assert g("rev-parse", "HEAD").stdout == before
+        assert g("write-tree").stdout == index_before
+        assert not g("status", "--porcelain").stdout
+    else:
+        assert event.read_text() == "incoming"
 
 
 def test_dry_run_lists_declared_legs(tmp_path):
@@ -142,16 +238,17 @@ def test_signal_records_no_second_event(tmp_path):
     assert first.read_text() == "x"
 
 
-def test_undeclared_history_leg_refuses_with_remedy(tmp_path):
-    repo, env, _g = configured(tmp_path, [("one", "true")])
+def test_retired_history_leg_cannot_certify_current_leg(tmp_path):
+    event = tmp_path / "event"
+    repo, env, _g = configured(tmp_path, [("one", f"printf x >> '{event}'")])
     assert sprint(repo, env, "land").returncode == 2
     marker = marker_path(tmp_path)
     saved = state(tmp_path)
     saved["full_tier_history"][0]["leg"] = "removed"
     marker.write_text(json.dumps(saved))
     result = sprint(repo, env, "land")
-    assert result.returncode == 2 and "full_tier_history" in result.stderr
-    assert "repair or delete" in result.stderr
+    assert "unreadable" not in result.stderr
+    assert event.read_text() == "xx"
 
 
 def test_changed_tree_reruns_every_leg(tmp_path):
@@ -220,10 +317,11 @@ def test_leg_reuse_append_rechecks_latest_outcome_under_lock(tmp_path, monkeypat
 
 def test_receipt_components_must_join_to_the_command():
     overlap = importlib.import_module("overlap")
-    component = {"leg": "one", "command": "a", "status": "ran", "head": "h"}
+    component = {"leg": "one", "command": "a", "status": "ran", "head": "h", "info": None}
     receipt = {
         "tier": "full",
-        "command": "a && b",
+        "command": "(a) && (b)",
+        "info": {"runner": "anything"},
         "tree": "t",
         "head": "h",
         "verdict": "passed",
@@ -231,9 +329,9 @@ def test_receipt_components_must_join_to_the_command():
         "reused": False,
         "components": [component, dict(component, leg="two", command="b")],
     }
-    assert overlap._receipt_matches(receipt, "a && b", "t") == (True, "reused")
+    assert overlap._receipt_matches(receipt, "(a) && (b)", "t") == (True, "reused")
     receipt["components"][1]["command"] = "c"
-    assert overlap._receipt_matches(receipt, "a && b", "t") == (False, "unreadable")
+    assert overlap._receipt_matches(receipt, "(a) && (b)", "t") == (False, "unreadable")
 
 
 def test_dirty_tree_is_named_before_the_trial_merge(tmp_path):
@@ -247,11 +345,14 @@ def test_dirty_tree_is_named_before_the_trial_merge(tmp_path):
         assert result.returncode == 2 and "dirty" in result.stderr and "src.py" in result.stderr
 
 
-def test_commented_full_legs_keeps_dry_run_off_the_trial_merge(tmp_path):
-    repo, env, g = make_repo(tmp_path, config=CONFIG + "# full_legs:\n#   one: true\n")
+def test_committed_leg_command_changes_tested_tree(tmp_path):
+    first, second = tmp_path / "first", tmp_path / "second"
+    command = f"printf x >> '{second}'"
+    repo, env, g = configured(tmp_path, [("one", f"printf x >> '{first}'"), ("two", command)])
+    assert sprint(repo, env, "land").returncode == 2
+    path = repo / ".xp/config.yml"
+    path.write_text(path.read_text().replace(command, command + " && true"))
+    assert g("commit", "-qam", "change actual leg command").returncode == 0
     record_reviews(tmp_path, repo, env)
-    add_origin(tmp_path, repo, env, g)
-    advance_origin(repo, g, "trunk-only", "present\n")
-    (repo / "src.py").write_text("A = 3\n")
-    assert g("add", "src.py").returncode == 0
-    assert sprint(repo, env, "land", "--dry-run").returncode == 0
+    assert sprint(repo, env, "land").returncode == 2
+    assert first.read_text() == second.read_text() == "xx"

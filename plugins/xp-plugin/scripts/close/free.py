@@ -13,7 +13,7 @@ import bookkeep
 import spawn
 import verify_receipt
 from close import config_flat, default_branch, fail, git, leg, marker_path, story_card
-from work import data_root, flip_card, plan_path, ready_marker_path, slugify, user_ns
+from work import data_root, edit_plan, flip_status, plan_path, ready_marker_path, slugify, user_ns
 
 FREE = re.compile(r"[^/]+/free-(\d{4}-\d\d-\d\d-(.+))")
 
@@ -163,8 +163,67 @@ def cmd_post_merge(slug: str, dry_run: bool = False) -> int:
     recorded_head, identity_error = release.recorded_release_head(state)
     if identity_error:
         return fail(f"refused: {identity_error} in {matches[0]}")
+
+    from git_source import tracked_state
+
+    shipping_source = tracked_state()
+    shipping_branch = git("branch", "--show-current").stdout.strip()
+
+    def shipping_motion():
+        if (
+            tracked_state() != shipping_source
+            or git("branch", "--show-current").stdout.strip() != shipping_branch
+        ):
+            invalidation = verify_receipt.invalidate(key)
+            return (
+                "refused: shipping validation changed tracked source/index/HEAD/branch; "
+                "inspect retained work before retrying"
+                + (f"; {invalidation}" if invalidation else "")
+            )
+        return ""
+
+    def validate_current_verify():
+        if any(shipping_source[name] for name in ("status", "staged", "worktree")):
+            return "refused: shipping source is dirty; inspect retained work before retrying"
+        from close import verify_commands
+
+        raw, commands = verify_commands(key, card)
+        tree = git("rev-parse", "HEAD^{tree}").stdout.strip()
+        reusable, _reason = verify_receipt.decide(key, card, raw, commands, tree)
+        error = "" if reusable else verify_receipt.record(key, card, raw, commands)
+        return shipping_motion() or error
+
+    def current_card_action(action, complete=False):
+        error = ""
+
+        def update(text):
+            nonlocal error
+            if story_card(text, key)[0] != card:
+                raise ValueError("card changed during release; validate the current card")
+            error = action()
+            return (
+                flip_status(text, f"#### {key} ", "in-progress", "done")
+                if complete and not error
+                else text
+            )
+
+        try:
+            edit_plan(update)
+        except (OSError, ValueError, KeyError) as exc:
+            return f"refused: {exc}; work and release credentials retained"
+        return error
+
+    def publish_current_card(publish):
+        return validate_current_verify() or current_card_action(publish)
+
     result = release.cmd_post_merge(
-        key, branch, "patch", False, dry_run, recorded_head=recorded_head
+        key,
+        branch,
+        "patch",
+        False,
+        dry_run,
+        recorded_head=recorded_head,
+        publish_guard=publish_current_card,
     )
     if result:
         return result
@@ -174,9 +233,11 @@ def cmd_post_merge(slug: str, dry_run: bool = False) -> int:
             f" and delete {branch} and this close's markers"
         )
         return 0
+    if motion := shipping_motion():
+        return fail(motion)
     tree, spawned_branch, failed = bookkeep.story_worktree(spawn.worktree_path(key))
-    if not flip_card(key, "in-progress", "done"):
-        failed.append(f"flip {key} to [done] in {plan_path()}")
+    if error := current_card_action(lambda: "", complete=True):
+        return fail(error)
     failed += bookkeep.remove_story_checkout(tree, spawned_branch, config_flat("teardown_timeout"))
     failed += bookkeep.delete_story_branch(branch)
     ready_marker_path(key).unlink(missing_ok=True)

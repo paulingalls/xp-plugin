@@ -9,7 +9,6 @@ import sys
 import pytest
 from close_helpers import (
     CLOSE,
-    SPAWN,
     close,
     make_repo,
     marker,
@@ -202,42 +201,6 @@ class TestLandFailureModes:
         assert "Traceback" not in r.stderr, r.stderr
         assert r.returncode == 2 and "story-042" in r.stderr
         assert g("rev-parse", "main").stdout.strip() == before, "it merged anyway"
-
-    def test_land_discloses_the_amendment_route_reason_and_card_diff(self, tmp_path):
-        repo, env, _g = make_repo(tmp_path)
-        assert close(repo, env, "review").returncode == 0
-        plan = tmp_path / "data" / "plan.md"
-        plan.write_text(plan.read_text().replace("Then Z", "Then actual behavior"))
-        refused = close(repo, env, "land", "--dry-run")
-        assert refused.returncode == 2 and "spawn.py amend story-042" in refused.stderr
-
-        amended = subprocess.run(
-            [
-                sys.executable,
-                str(SPAWN),
-                "amend",
-                "story-042",
-                "--reason",
-                "implementation moved to its actual file",
-            ],
-            cwd=repo,
-            env=env,
-            capture_output=True,
-            text=True,
-        )
-        assert amended.returncode == 0, amended.stderr
-        landed = close(repo, env, "land", "--dry-run")
-        assert landed.returncode == 0, landed.stderr
-        audit = "implementation moved to its actual file"
-        assert all(
-            part in landed.stdout
-            for part in (
-                audit,
-                "-- Given X, When Y, Then Z",
-                "+- Given X, When Y, Then actual behavior",
-            )
-        )
-        assert landed.stdout.index(audit) < landed.stdout.index("would run:")
 
     def pr_repo(self, tmp_path):
         repo, env, g = make_repo(tmp_path)

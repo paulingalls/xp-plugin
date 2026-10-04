@@ -55,7 +55,10 @@ def run(
             if problem := api.handoff_io.archive_replanned_rounds(story_id, prior):
                 return stop(problem, 0)
         api.mark_stage(api.data_root(), story_id, "planner", "running")
-        rc, why = api.stages.run_planner(story_id, card, tree, handoff)
+        try:
+            rc, why = api.stages.run_planner(story_id, card, tree, handoff)
+        except (OSError, ValueError) as error:
+            rc, why = 2, f"cannot check planner source: {error}; inspect retained work and resume"
         if rc:
             api.mark_stage(api.data_root(), story_id, "planner", "failed")
             return stop(why, 0)
@@ -189,10 +192,16 @@ def execute(
             stage = "story-tier"
         if stage == "story-tier":
             before = snapshot()
+            from git_source import tracked_state
+
+            with api.contextlib.chdir(tree):
+                boundary = tracked_state()
             publish("story-tier", "running", before)
             result, command, output = api.story_tier(tree)
             after = snapshot()
-            if not same_inputs(before, after):
+            with api.contextlib.chdir(tree):
+                moved = tracked_state() != boundary
+            if not same_inputs(before, after) or moved:
                 publish("story-tier", "failed", after)
                 return stop("story tier inputs moved while it ran; inspect work and resume", 0)
             if result == "unavailable":
