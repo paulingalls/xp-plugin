@@ -28,9 +28,7 @@ Check, in order of payoff:
    line guaranteed; callers of every changed contract; inverted conditions.
 3. Scope honesty: the card claims what the diff does, ACs met in spirit, and no
    card change since spawn narrows an AC or weakens Acceptance.
-4. Constraints: quote the item.
-5. Tests: integration over unit, unit tests an integration test covers deleted,
-   commit hook under a minute.
+4. Constraints, and JUDGMENT's test rules: quote the item.
 
 ## Own
 

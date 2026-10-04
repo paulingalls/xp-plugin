@@ -28,8 +28,8 @@ Check, in order of payoff:
 2. Every test is red before the change, not green against a do-nothing version.
 3. Constraints: quote the item the plan breaks.
 4. Scope: a card that is three cards, or should not exist. Saying no is yours.
-5. Tests: integration over unit, unit tests an integration test covers deleted,
-   commit hook under a minute. Fault-inject every new guard, once.
+5. The planner's questions: answer each in the plan, or raise it as a
+   `QUESTION:` when it is the lead's.
 
 ## Own
 

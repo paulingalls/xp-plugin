@@ -38,6 +38,9 @@ The reviewer sees the card as spawned and as it is now.
 and marks the card done. Commits after the last review land listed as
 unreviewed; the sprint review is their net.
 
+**Small changes.** A change too small for a card is the lead's: commit it on
+the sprint branch through the hooks. The sprint review is its net.
+
 **Free patch.** `xp.py free <slug>` mints the card; fill it in and run it again
 for a story cut from trunk. `/free-close`:
 `xp.py free land <slug>` opens a PR; after it merges,

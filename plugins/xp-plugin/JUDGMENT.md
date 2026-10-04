@@ -7,6 +7,7 @@
 - **Design lenses**: responsibilities and boundaries (co-change, interference, exposed internals); contracts and authoritative knowledge (caller promises, rule owners, copies); necessary complexity (required behavior, callers, repeated change).
 - **Disposition**: fix by default; drop with a reason; or debt under BOTH bars. Drop a too-big loud finding.
 - **Red, green, refactor.** A preparatory change only if safer or simpler here, behavior preserved, existing checks green before and after.
+- **Tests**: at the outermost boundary that reaches the behavior, integration over unit; delete the unit tests an integration test covers. Commit-hook tests finish in under a minute; slower ones go to push, sprint or nightly. Fault-inject a new guard once, only if its failure would be silent or corrupting.
 - **New information**: restate the purpose; no drift.
 - Escalate choices reserved to the lead. Unmet ACs and release blockers are not waivable. Agents judge; hooks validate.
 

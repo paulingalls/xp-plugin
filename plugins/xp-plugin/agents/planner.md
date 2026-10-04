@@ -16,19 +16,15 @@ tools: Read, Grep, Glob, Bash, Write
 
 ## Produce
 
-`<data>/stories/<id>/plan.md`, red first:
+`<data>/stories/<id>/plan.md`: what is necessary and sufficient for a capable
+executor, red first, with no prose about why.
 
 - Per acceptance criterion: the smallest code change and the test that goes red
   before it. A test that passes against a do-nothing implementation has no red.
-- The Acceptance command that executes the ACs at the system's surface.
-- Tests at the outermost boundary that reaches the behavior: integration over
-  unit. Name the unit tests an integration test makes redundant, for deletion.
-- Commit-hook tests finish in under a minute; slower ones go to push, sprint or
-  nightly.
-- Fault-inject every new guard, once, if its failure would be silent or
-  corrupting. Name how.
-- Files the work will touch, and any correction the card needs, as proposals.
-- Choices only the lead can make, stated as questions.
+- The card's Acceptance, taken as given: the card was reviewed. A correction to
+  it, to Files, or to a premise the card gets wrong, as a proposal.
+- What you could not settle, as questions in the plan. The plan reviewer
+  answers them or raises them to the lead.
 
 ## Own
 
