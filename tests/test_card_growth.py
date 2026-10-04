@@ -321,3 +321,9 @@ def test_agent_adjustment_instructions_execute(tmp_path, harness):
     assert events.read_text().splitlines() == ["solution", "fixer", "fixer", "closer"]
     for script in ("work.py", "spawn.py", "xp.py"):
         assert command(repo, env, script, "--help").returncode == 0
+
+
+def test_adjusted_terminal_red_requires_disposition(tmp_path, monkeypatch):
+    from story_review_helpers import terminal_validation_interruption
+
+    terminal_validation_interruption(tmp_path, monkeypatch, adjusted=True)

@@ -21,6 +21,8 @@ from close_helpers import PLUGIN
         "reserved",
         "completed-fix-replay",
         "red-history",
+        "terminal-red-history",
+        "post-merge-false-green",
     ],
 )
 def test_retained_guard_detects_fault(tmp_path, monkeypatch, guard):
@@ -33,7 +35,13 @@ def test_retained_guard_detects_fault(tmp_path, monkeypatch, guard):
 
     def guarantee(root):
         root.mkdir()
-        if guard in ("stale", "sibling"):
+        if guard == "terminal-red-history":
+            cases.test_adjusted_terminal_red_requires_disposition(root, monkeypatch)
+        elif guard == "post-merge-false-green":
+            from test_close_free_post_merge import test_adjusted_post_merge_validates_current_verify
+
+            test_adjusted_post_merge_validates_current_verify(root, 7)
+        elif guard in ("stale", "sibling"):
             cards.test_card_snapshot_route_is_locked_and_rejects_stale_candidate(root)
         elif guard == "atomic":
             with monkeypatch.context() as patch:
@@ -60,6 +68,16 @@ def test_retained_guard_detects_fault(tmp_path, monkeypatch, guard):
     installed = tmp_path / "installed"
     shutil.copytree(PLUGIN, installed)
     mutations = {
+        "terminal-red-history": (
+            "scripts/close/review_sequence.py",
+            "            recover_terminal(story_id, sequence)",
+            "            pass",
+        ),
+        "post-merge-false-green": (
+            "scripts/close/free.py",
+            "before_publish=validate_current_verify,",
+            "before_publish=None,",
+        ),
         "stale": (
             "scripts/plan_writer.py",
             "if card_digest(current) != expected_digest or (",
@@ -124,6 +142,10 @@ def test_retained_guard_detects_fault(tmp_path, monkeypatch, guard):
         "close",
         lambda repo, env, *args: close(repo, env, *args, close=installed / "scripts/close.py"),
     )
+    if guard == "post-merge-false-green":
+        import close_helpers
+
+        monkeypatch.setattr(close_helpers, "CLOSE", installed / "scripts/close.py")
     if guard == "atomic":
         import plan_writer
 

@@ -214,3 +214,48 @@ class TestFreePostMerge:
         assert "Traceback" not in result.stderr and str(path) in result.stderr
         assert "v0.2.1" not in g("tag").stdout.split()
         assert "[in-progress]" in (Path(env["XP_DATA"]) / "plan.md").read_text()
+
+
+@pytest.mark.parametrize("exit_code", [7, 0])
+def test_adjusted_post_merge_validates_current_verify(tmp_path, exit_code):
+    import re
+
+    from card_adjustment_support import command
+
+    fixture = TestFreePostMerge()
+    repo, env, g, branch = fixture.reviewed(tmp_path)
+    fixture.merge_pr(g, branch)
+    key = branch.split("/", 1)[1]
+    candidate = Path(env["XP_DATA"]) / "candidate.md"
+    snapshot = command(repo, env, "work.py", "card-snapshot", key, str(candidate))
+    assert snapshot.returncode == 0, snapshot.stderr
+    digest = re.search(r"^digest: (\w+)$", snapshot.stdout, re.M).group(1)
+    sentinel = tmp_path / "current-verify"
+    gate = tmp_path / "gate"
+    gate.write_text(f"#!/bin/sh\ntouch {sentinel}\nexit {exit_code}\n")
+    gate.chmod(0o755)
+    candidate.write_text(candidate.read_text().replace("Verify: true", f"Verify: {gate}"))
+    edited = command(
+        repo,
+        env,
+        "work.py",
+        "edit-card",
+        key,
+        "--context",
+        "card-edit",
+        "--digest",
+        digest,
+        "--status",
+        "in-progress",
+        str(candidate),
+    )
+    assert edited.returncode == 0, edited.stderr
+    result = free(repo, env, "fix-typo", "post-merge")
+    assert result.returncode == (2 if exit_code else 0), result.stderr
+    assert sentinel.exists()
+    assert ("v0.2.1" in g("tag").stdout.split()) == (exit_code == 0)
+    if exit_code:
+        assert "Verify evidence:" in result.stderr
+        assert marker_file(tmp_path, key).exists()
+        assert "[in-progress]" in (Path(env["XP_DATA"]) / "plan.md").read_text()
+        assert branch in g("branch", "--list").stdout

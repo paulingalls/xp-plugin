@@ -270,7 +270,7 @@ def stage(story_id, card, sequence, name, correction=False):
 
 
 def run(story_id, card, trunk, dry_run=False, explicit=True):
-    from review_validation import validate
+    from review_validation import recover_terminal, validate
 
     if dry_run:
         base, error = fork_point(trunk)
@@ -368,6 +368,13 @@ def run(story_id, card, trunk, dry_run=False, explicit=True):
             return close.fail(
                 "refused: reviewed inputs moved; lead must explicitly review corrected work"
             )
+        if sequence and sequence["status"] in (
+            "validation",
+            "validation-red",
+            "awaiting-disposition",
+        ):
+            recover_terminal(story_id, sequence)
+            save(story_id, sequence)
         base, refusal = fork_point(trunk)
         if refusal:
             return close.fail(refusal)

@@ -266,6 +266,7 @@ def cmd_post_merge(
     retire_sprint: bool = True,
     dry_run: bool = False,
     recorded_head: str = "",
+    before_publish=None,
 ) -> int:
     try:
         safe_release_id(release_id)
@@ -341,6 +342,8 @@ def cmd_post_merge(
                 )
             print(VERSIONING_OFF_TEXT)
             return 0
+        if before_publish and (red := before_publish()):
+            return fail(red)
         if retire_sprint:
             import shipping
 
@@ -386,6 +389,9 @@ def cmd_post_merge(
         )
         print(f"dry run: would tag {version}{after}; {walled_text(checked, version)}")
         return 0
+
+    if before_publish and (red := before_publish()):
+        return fail(red)
 
     def publish_versioned():
         nonlocal cycle

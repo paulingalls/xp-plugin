@@ -12,17 +12,10 @@ from review_sequence import binding, check_reports, load, locked, measure, save
 from work import data_root
 
 
-def validate(story_id, card, sequence):
-    check_reports(sequence)
-    if measure(story_id, card) != sequence["output"]:
-        return close.fail(
-            "refused: validation inputs moved; lead must explicitly review corrected work"
-        )
-    if review.marker_digest(close.marker_path(story_id)) != sequence["marker_identity"]:
-        return close.fail("refused: close marker changed after completed review")
+def recover_terminal(story_id, sequence):
     root = data_root() / "logs/verify"
     before = set(root.glob(verify_log.prefix(story_id) + "*")) if root.exists() else set()
-    baseline = sequence.setdefault("validation_baseline", sorted(str(p) for p in before))
+    baseline = sequence.get("validation_baseline", [])
     known = {attempt["path"] for attempt in sequence["validation"]} | set(baseline)
     for path in sorted(before):
         if str(path) in known:
@@ -44,6 +37,20 @@ def validate(story_id, card, sequence):
         sequence["validation"].append(
             {"path": str(path), "identity": binding(path / "run.json"), "error": error}
         )
+
+
+def validate(story_id, card, sequence):
+    check_reports(sequence)
+    if measure(story_id, card) != sequence["output"]:
+        return close.fail(
+            "refused: validation inputs moved; lead must explicitly review corrected work"
+        )
+    if review.marker_digest(close.marker_path(story_id)) != sequence["marker_identity"]:
+        return close.fail("refused: close marker changed after completed review")
+    root = data_root() / "logs/verify"
+    before = set(root.glob(verify_log.prefix(story_id) + "*")) if root.exists() else set()
+    sequence.setdefault("validation_baseline", sorted(str(p) for p in before))
+    recover_terminal(story_id, sequence)
     sequence["status"] = "validation"
     save(story_id, sequence)
     raw, commands = close.verify_commands(story_id, card)
