@@ -1,8 +1,9 @@
 # Constraints
 
-Reversing one of these makes it a different project. Cap: 10 items; adding one
-retires one. Reviewers enforce these and cite the item. A rule a hook or the
-plugin already enforces is a second copy: delete it.
+Reversing one of these makes it a different project. Cap the entire UTF-8 file at
+4,500 bytes to fit Codex's 10,000-byte SessionStart hook limit. Reviewers enforce
+these and cite the item. A rule a hook or the plugin already enforces is a second
+copy: delete it.
 
 1. **Test behavior at the outermost boundary that reaches it, once.** When an
    integration or acceptance test covers a behavior, delete the unit tests that

@@ -18,6 +18,8 @@ description: Fresh-context review of a whole sprint range under one angle.
 
 ## Produce
 
+- **Design lenses**: responsibilities and boundaries (co-change, interference, exposed internals); contracts and authoritative knowledge (caller promises, rule owners, copies); necessary complexity (required behavior, callers, repeated change).
+
 Findings at the path you are given. Each names the code, the concrete failure,
 the value, and one disposition: `fix` with the cheapest sufficient fix,
 `drop (reason)`, or `debt (too big: …; too important: …)` under both JUDGMENT

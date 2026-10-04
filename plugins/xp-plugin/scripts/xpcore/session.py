@@ -10,8 +10,8 @@ from xpcore import cards, records
 from xpcore.config import data_root, plugin_root, sprint_branch
 from xpcore.gitx import git
 
-# Codex keeps only the first 10,000 bytes of hook output; 500 spare keeps the fence intact.
-BUDGET = 9_500
+# Codex's measured hook-output bound is 10,000 bytes; leave a 100-byte margin.
+BUDGET = 9_900
 BEGIN, END = "--- BEGIN project content ---", "--- END project content ---"
 PROSE = ("VALUES.md", "JUDGMENT.md", "PROCESS.md")
 STAGES = ("plan.md", "plan-review.md", "handback.md")

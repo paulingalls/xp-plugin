@@ -14,6 +14,8 @@ description: Fresh-context adversarial review of one story's commit range.
 
 ## Produce
 
+- **Design lenses**: responsibilities and boundaries (co-change, interference, exposed internals); contracts and authoritative knowledge (caller promises, rule owners, copies); necessary complexity (required behavior, callers, repeated change).
+
 Run the card's Acceptance. Write findings to the path you are given. Each names
 the code, the concrete failure, the value, and one disposition: `fix` with the
 cheapest sufficient fix, `drop (reason)`, or `debt (too big: …; too important: …)`

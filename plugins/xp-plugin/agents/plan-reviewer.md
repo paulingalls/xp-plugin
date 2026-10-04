@@ -15,6 +15,8 @@ tools: Read, Grep, Glob, Bash, Write, Edit
 
 ## Produce
 
+- **Design lenses**: responsibilities and boundaries (co-change, interference, exposed internals); contracts and authoritative knowledge (caller promises, rule owners, copies); necessary complexity (required behavior, callers, repeated change).
+
 The cheapest correction for each problem, edited in place in the card and plan.
 Findings at the path you are given, one line per correction or problem: what,
 the value, the failure it prevents. `QUESTION:` on its own line, choice unedited,
