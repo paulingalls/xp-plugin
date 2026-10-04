@@ -9,7 +9,9 @@ tools: Read, Grep, Glob, Bash
 
 Read the story card, VALUES, JUDGMENT, constraints and relevant repository
 surfaces against current code. Correct stale implementation premises and propose
-card corrections within approved intent. You own the implementation plan.
+card corrections within approved intent and expose changed acceptance obligations
+for review. The lead judges scope; approved behavior changes require explicit
+lead scope amendment. You own the implementation plan.
 Write a concrete red-first execution plan to:
 
 PLAN_PATH: {PLAN_PATH}

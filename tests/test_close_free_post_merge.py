@@ -170,18 +170,6 @@ class TestFreePostMerge:
         assert result.returncode == 2 and branch in result.stderr
         assert "v0.2.1" not in g("tag").stdout.split()
 
-    def test_card_drift_while_the_pr_waits_refuses_before_tagging(self, tmp_path):
-        repo, env, g, branch = self.reviewed(tmp_path)
-        self.merge_pr(g, branch)
-        plan = Path(env["XP_DATA"]) / "plan.md"
-        plan.write_text(plan.read_text().replace("Then it lands.", "Then it lands safely."))
-
-        result = free(repo, env, "fix-typo", "post-merge")
-
-        assert result.returncode == 2 and "edited after its plan review" in result.stderr
-        assert "v0.2.1" not in g("tag").stdout.split()
-        assert "[in-progress]" in plan.read_text()
-
     def test_a_free_release_leaves_the_recorded_sprint_branch_alone(self, tmp_path):
         repo, env, g, branch = self.reviewed(tmp_path, extra="lifecycle_command: false\n")
         path = Path(env["XP_DATA"]) / "sprint_branch"

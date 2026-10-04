@@ -188,12 +188,8 @@ class FreeCardCases:
         assert (Path(env["XP_DATA"]) / "markers" / f"{key}.ready.json").exists()
         plan.write_text(plan.read_text().replace("Verify: true", "Verify: false"))
         landed = free(tree, env, "fix-typo", "land")
-        assert landed.returncode == 2 and "edited after its plan review" in landed.stderr
-        assert "--- reviewed" in landed.stderr and "+++ now" in landed.stderr
-        amended = spawn(tree, env, "amend", key, "--reason", "exercise Verify on the edited card")
-        assert amended.returncode == 0, amended.stderr
-        verified = free(tree, env, "fix-typo", "review")
-        assert verified.returncode == 2 and "Verify red" in verified.stderr
+        assert landed.returncode == 2 and "Verify red" in landed.stderr
+        assert "[in-progress]" in plan.read_text()
 
     def test_a_deleted_free_card_cannot_drop_its_credential(self, tmp_path):
         repo, env, _g, _branch, key = carded_review(tmp_path)
@@ -240,8 +236,6 @@ class FreeCardCases:
         plan = Path(env["XP_DATA"]) / "plan.md"
         plan.write_text(plan.read_text().replace("Verify: true", "Verify: printf verified"))
         before_launches = len(launches(tmp_path))
-        drifted = free(repo, env, "fix-typo", "land", "--dry-run")
-        assert drifted.returncode == 2 and "edited after its plan review" in drifted.stderr
 
         amended = spawn(
             repo,

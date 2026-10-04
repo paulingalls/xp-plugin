@@ -149,6 +149,8 @@ def next_stage(story_id, prior, current):
         ),
         executor["output"],
     )
+    if sequence and sequence["status"] == "completed":
+        baseline = sequence["output"]["inputs"]
     before_work, after_work = baseline["work"], current["work"]
     from git_source import git
 
