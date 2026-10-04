@@ -61,13 +61,16 @@ hooks and an empty plan, and refuses if `.xp/` already exists. Then fill in:
    [config template](plugins/xp-plugin/templates/config.yml). Explicitly choose
    `versioning: on` or `off`; with `on`, set `version_files`, and add a `CHANGELOG.md`
    whose first `## ` heading names the current version if the project has none. Remove `tests`, `sprint_cap`,
-   `release`, `lifecycle_command`, `preflight`, `constraints_chars_cap`, `profile_target`,
+   `release`, `preflight`, `constraints_chars_cap`, `profile_target`,
    `teardown_timeout` and `review`: unused keys are silently ignored. Remove the `finder`,
    `verifier` and `closer` seats; `angle-reviewer` replaces the sprint review seats and
    falls back to `reviewer`. Keep the required seats; Configuration lists the optional ones.
+   Keep `lifecycle_command` as a shell line (v0.36 ran an argv). Move `.xp/system.md`'s
+   Worktree bootstrap and teardown commands into `worktree_setup` and `worktree_teardown`;
+   remove those labelled lines from system.md.
 4. Move test commands into the project's existing hooks: quick checks at pre-commit,
    broader checks at pre-push, the release suite at `sprint`, optional expensive checks at
-   nightly. Add lefthook `sprint:` or an executable `.githooks/sprint`, according to the
+   nightly. Move the old `preflight` command to the start of the `sprint` hook. Add lefthook `sprint:` or an executable `.githooks/sprint`, according to the
    existing routing. Adapt the [lefthook template](plugins/xp-plugin/templates/lefthook.yml)
    or [plain sprint hook](plugins/xp-plugin/templates/githooks-sprint); preserve existing hooks.
    Delete hook steps that read a removed key (`tests`, `constraints_chars_cap`) or call a
@@ -147,9 +150,18 @@ recommended. Falsifiers are shell lines too, run once when a record is filed or 
 | `trunk` | Release branch, only when it is not the default branch |
 | `versioning` | Required: `off`: the project owns versions and tags; `on`: every sprint and free patch is tagged |
 | `version_files` | With versioning on: comma-separated JSON manifests whose version the tag must match, or `none` |
+| `worktree_setup` | Optional shell line in a new story/free worktree, before any agent. Nonzero refuses and removes the worktree and any branch created by that attempt |
+| `worktree_teardown` | Optional shell line inside the worktree before `story land` or `free post-merge` removes it. Nonzero warns and cleanup continues: the merge has landed. `free land` keeps the worktree |
+| `lifecycle_command` | Optional shell line with two appended, shell-quoted arguments: event and id. `sprint-open <id>` runs in the invoking repo root before recording the open sprint; `story-close <card-id>` in the story worktree after green Acceptance and before merge; `sprint-close <id>` in the invoking repo root during post-merge before the tag/release record. Nonzero refuses the guarded step. Free patches emit no lifecycle events |
 | `debt_budget` | Maximum share of a sprint spent on debt |
 | `codex_sandbox` | Sandbox for Codex agents: `danger-full-access` (default) or `workspace-write` |
 | `roles` | Seats, each `harness/model[/effort]`. Required: `lead`, `planner`, `executor`, `reviewer`; pick a reviewer from a different model family than the executor. Optional, falling back to their family when unset: `plan-reviewer` (one card's plan; falls back to `reviewer`), `slate-reviewer` (the slate; falls back to `plan-reviewer`), `angle-reviewer` (sprint review; falls back to `reviewer`), `fixer` (the sprint fix pass; falls back to `executor`). Each is its own charter under `agents/` |
+
+Project commands run with `sh -c`; unset or empty keys disable them. Configuration comes
+from the invoking checkout. Output streams live and logs stay under `<data>/logs/`.
+Projects bound their own scripts and make them tolerate retries: failed lifecycle steps
+and teardown cleanup may rerun. A sprint-close retry after its release tag skips the event.
+Setup runs only when the worktree is created; dry-runs and free-card minting run no commands.
 
 ## Where state lives
 

@@ -146,6 +146,13 @@ def test_sprint_open_event_precedes_record_and_red_retries(tmp_path, monkeypatch
     (data / "plan.md").write_text("## Sprint 2 — s\n")
     lifecycle(root, data, f"test ! -f {data / 'sprint_branch'}", status)
     git(root, "switch", "-qc", "sprint-002")
+    if not status:
+        (data / "sprint_branch").write_text("sprint-001\n")
+        with pytest.raises(SystemExit):
+            xp.main(["sprint", "open", "002"])
+        assert "still open" in capsys.readouterr().err
+        assert not (data / "events").exists()
+        (data / "sprint_branch").unlink()
     if status:
         with pytest.raises(SystemExit) as exc:
             xp.main(["sprint", "open", "002"])
