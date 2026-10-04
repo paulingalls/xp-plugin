@@ -4,6 +4,18 @@ Release notes started at v0.6.0; earlier entries are summarized from their
 tag and merge messages. Full detail lives in the merge history and the
 per-sprint review reports.
 
+## v0.36.0 — lighter recovery and ordinary card corrections
+
+- Store compact Git facts in recovery checkpoints and use readable numbered predecessor copies. Fixer and closer prompts carry relevant reports and diffs instead of serialized checkpoint inventories.
+- Allow ordinary card corrections to continue completed work without a planning restart. Remove append-only Verify instructions; keep the smallest checks that cover current acceptance criteria. Explicit scope amendments remain separate.
+- Use ordered `full_legs` as the full-test command authority, with `tests.full` retained for configurations without legs. Python and shell consumers share the resolver. Timing metadata is informational rather than a release gate.
+- Preserve current Verify at free post-merge and interrupted failed-validation evidence across card corrections. Read legacy verdict-only close history without requiring invented review rounds.
+
+Finish active story runs with their starting runtime. The repository's legs-only
+configuration needs this version's full-command reader. This release does not
+remove every repeated test run, review round or explicit-amendment restart; the
+broader orchestration redesign remains separate.
+
 ## v0.35.2 — remove runtime scans
 
 - Remove repository-wide runtime fingerprinting from planning, execution checkpoints, review and land. Ignored dependencies, generated output and test caches no longer replay completed work or block clean reviews; agents judge environmental relevance.
