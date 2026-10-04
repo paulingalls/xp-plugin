@@ -58,7 +58,8 @@ hooks and an empty plan, and refuses if `.xp/` already exists. Then fill in:
    Restart to load the update. In Codex, re-approve plugin hooks with `/hooks`.
 3. Edit `.xp/config.yml` against [Configuration](#configuration) and the
    [config template](plugins/xp-plugin/templates/config.yml). Explicitly choose
-   `versioning: on` or `off`; with `on`, set `version_files`. Remove `tests`, `sprint_cap`,
+   `versioning: on` or `off`; with `on`, set `version_files`, and add a `CHANGELOG.md`
+   whose first `## ` heading names the current version if the project has none. Remove `tests`, `sprint_cap`,
    `release`, `lifecycle_command`, `preflight`, `constraints_chars_cap`, `profile_target`,
    `teardown_timeout` and `review`: unused keys are silently ignored. Remove the `finder`,
    `verifier` and `closer` seats; `angle-reviewer` replaces the sprint review seats and
@@ -77,6 +78,9 @@ hooks and an empty plan, and refuses if `.xp/` already exists. Then fill in:
    never appear as open in `xp.py recover`.
 6. Apply the [constraints template](plugins/xp-plugin/templates/constraints.md) items to
    the project's constraints.
+7. Rewrite the project's own agent instructions (CLAUDE.md, AGENTS.md, process notes) that
+   name 0.x commands such as `spawn.py`, `close.py` or `Verify:`. Agents read them every
+   session, and they outrank what they remember of the plugin.
 
 ## The cycle
 
