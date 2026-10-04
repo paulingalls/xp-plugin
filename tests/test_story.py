@@ -136,13 +136,15 @@ def test_dry_run_names_stages_and_touches_nothing(repo, capsys):
     assert not (repo / "worktrees").exists() and "[planned]" in (repo / "plan.md").read_text()
 
 
-def test_free_mints_its_card_and_branches_from_trunk(repo):
+def test_free_mints_its_card_then_stops_for_the_lead(repo, capsys):
     assert xp.main(["free", "fix-typo"]) == 0
     plan = (repo / "plan.md").read_text()
-    assert plan.endswith("## Free\n\n#### free-fix-typo — fix-typo   [in-progress]\n")
+    assert plan.endswith("## Free\n\n#### free-fix-typo — fix-typo   [planned]\n")
+    assert "write Context, AC, Files and Acceptance" in capsys.readouterr().out
+    assert not (repo / "worktrees" / "free-fix-typo").exists()
+    assert xp.main(["free", "free-fix-typo"]) == 0
+    assert (repo / "plan.md").read_text().count("free-fix-typo") == 1
     wt = repo / "worktrees" / "free-fix-typo"
     assert git("branch", "--show-current", cwd=wt).stdout.strip() == "free-fix-typo"
     assert git("log", "--format=%s", "main..HEAD", cwd=wt).stdout.split() == ["feat"]
     assert (story(repo, "free-fix-typo") / "review-1.md").is_file()
-    assert xp.main(["free", "free-fix-typo"]) == 0
-    assert (repo / "plan.md").read_text().count("free-fix-typo") == 1

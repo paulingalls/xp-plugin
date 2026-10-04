@@ -263,14 +263,17 @@ def cmd_free(args) -> int:
     if args.dry_run and card_id not in {c.id for c in cards.read_cards()}:
         print(f"{card_id}: would mint `{heading}` under ## Free in {cards.plan_path()}")
         return walk(cards.Card(card_id, name, "planned", [heading]), config.trunk(), True)
-    mint(card_id, heading)
+    if mint(card_id, heading):
+        print(f"next: write Context, AC, Files and Acceptance under it, then run xp.py free {name}")
+        return 0
     return walk(cards.find_card(card_id), config.trunk(), args.dry_run)
 
 
-def mint(card_id: str, heading: str) -> None:
+def mint(card_id: str, heading: str) -> bool:
+    """True when the card was just created: a bare card has nothing an executor can build."""
     with cards.plan_lock():
         if card_id in {c.id for c in cards.read_cards()}:
-            return
+            return False
         lines = cards.plan_path().read_text().rstrip("\n").splitlines()
         if "## Free" not in lines:
             lines += ["", "## Free"]
@@ -284,3 +287,4 @@ def mint(card_id: str, heading: str) -> None:
         lines[end:end] = ["", heading]
         cards._write_plan("\n".join(lines) + "\n")
     print(f"{card_id}: minted under ## Free in {cards.plan_path()}")
+    return True
