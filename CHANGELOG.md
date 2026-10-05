@@ -4,6 +4,12 @@ Release notes started at v0.6.0; earlier entries are summarized from their
 tag and merge messages. Full detail lives in the merge history and the
 per-sprint review reports.
 
+## v1.0.4
+
+`free post-merge` reruns the card's Acceptance only when trunk's tree differs from the
+tree `free land` tested, as `sprint post-merge` already did with the sprint hook. A
+patch landed before 1.0.4 has no recorded tree and still reruns.
+
 ## v1.0.3
 
 Restore optional project commands in `.xp/config.yml`: `worktree_setup` before agents,
