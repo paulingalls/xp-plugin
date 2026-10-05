@@ -251,6 +251,18 @@ def test_free_post_merge_runs_acceptance_on_trunk_before_tagging(tmp_path, monke
     assert cards.find_card("free-fix").status == "in-progress" and wt.exists()
 
 
+def test_free_post_merge_skips_acceptance_on_the_tree_land_tested(tmp_path, monkeypatch, capsys):
+    fake_gh(tmp_path, monkeypatch)
+    trace = tmp_path / "runs"
+    root, _, _ = free_patch(tmp_path, monkeypatch, f"echo run >> {trace}")
+    assert land.cmd_free_land(ns("fix")) == 0
+    git(root, "merge", "-q", "--no-ff", "free-fix-x", "-m", "PR")
+    assert land.cmd_free_post_merge(ns("fix")) == 0
+    assert trace.read_text().splitlines() == ["run"]
+    assert "the merged tree is the one land tested" in capsys.readouterr().out
+    assert git(root, "cat-file", "-t", "v1.1.1") == "tag"
+
+
 def test_a_card_changed_since_spawn_is_shown_and_named_never_refused(story, capsys):
     root, data = story[0], story[1]
     (data / "stories" / "story-001" / "card.md").write_text(CARD.split("\n", 2)[2])
