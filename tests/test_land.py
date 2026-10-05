@@ -200,6 +200,18 @@ def test_missing_acceptance_binary_is_red(story, capsys):
     assert cards.find_card("story-001").status == "in-progress"
 
 
+def test_a_refused_push_shows_the_hook_output_that_names_the_red(tmp_path, monkeypatch, capfd):
+    fake_gh(tmp_path, monkeypatch)
+    root, _, _ = free_patch(tmp_path, monkeypatch)
+    hook = root / ".git" / "hooks" / "pre-push"
+    hook.write_text("#!/bin/sh\necho 'typecheck: 1 error in pacing.py' >&2\nexit 1\n")
+    hook.chmod(0o755)
+    with pytest.raises(SystemExit):
+        land.cmd_free_land(ns("fix"))
+    assert "typecheck: 1 error in pacing.py" in capfd.readouterr().err
+    assert not git(root, "ls-remote", "origin", "free-fix-x")
+
+
 def test_free_land_trial_merges_the_fetched_origin_trunk(tmp_path, monkeypatch):
     gh = fake_gh(tmp_path, monkeypatch)
     files = {**manifest("1.1.1"), "check.py": CHECK}

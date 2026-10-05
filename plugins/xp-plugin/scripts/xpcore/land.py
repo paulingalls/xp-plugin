@@ -192,7 +192,9 @@ def pull_request(branch: str, target: str, cwd, after: str, *, title=None, body=
     if "origin" not in gitx.git("remote", cwd=cwd).split():
         print(f"no remote named origin; push {branch}, open the PR to {target} by hand, {after}")
         return 0
-    gitx.git("push", "-u", "origin", branch, cwd=cwd)
+    # Uncaptured: a refusing pre-push hook's own output is what names the red job.
+    if rc := subprocess.run(["git", "push", "-u", "origin", branch], cwd=cwd).returncode:
+        fail(f"git push exited {rc}; the hook output above names why. Fix, commit, land again")
     argv = ["gh", "pr", "create", "--base", target, "--head", branch]
     argv += ["--fill"] if title is None else ["--title", title, "--body", body or ""]
     if not shutil.which("gh"):
