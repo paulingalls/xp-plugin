@@ -66,8 +66,9 @@ def acceptance(card: cards.Card, cwd: Path, log_id: str, where: str, then: str) 
         refuse(f"Acceptance exited {rc} on {where}; read {hooks.log_path(log_id)}, {then}")
 
 
-def accept(card: cards.Card, path: Path, branch: str, target: str, sha: str) -> None:
-    """Acceptance on `branch` with `sha`, the target's tip as land found it, merged in."""
+def accept(card: cards.Card, path: Path, branch: str, target: str, sha: str) -> str:
+    """Acceptance on `branch` with `sha`, the target's tip as land found it, merged in;
+    returns the tree it tested."""
     try:
         if conflict := gitx.trial_merge(path, sha):
             refuse(
@@ -76,6 +77,7 @@ def accept(card: cards.Card, path: Path, branch: str, target: str, sha: str) -> 
             )
         where, then = f"{branch} merged with {target}", "fix it on the branch, then land again"
         acceptance(card, path, f"{card.id}-acceptance", where, then)
+        return gitx.git("write-tree", cwd=path)
     finally:
         gitx.abort_merge(path)
 
@@ -154,7 +156,10 @@ def land(card_id: str, target: str, *, pr: bool, dry_run: bool) -> int:
         print(f"would trial-merge {into} into {branch}, run `{card.acceptance}`, then {how}")
         return 0
     sha = gitx.git("rev-parse", into, cwd=path)
-    accept(card, path, branch, into, sha)
+    tree = accept(card, path, branch, into, sha)
+    if pr:
+        story_dir(card.id).mkdir(parents=True, exist_ok=True)
+        (story_dir(card.id) / "tested_tree").write_text(tree + "\n")
     body = merge_body(card, branch, base, lead)
     if diff := card_changes(card):
         print(f"{card.id}: card changed since spawn:\n{diff}")
@@ -237,7 +242,12 @@ def cmd_free_post_merge(args) -> int:
         return 0
     where = f"{main} at {gitx.head(lead)[:10]}"
     then = f"commit the fix on {branch}, merge it to {main}, then run xp.py free post-merge"
-    acceptance(card, lead, f"{card.id}-post-merge", where, f"{then} {args.id} again")
+    tested = story_dir(card.id) / "tested_tree"
+    tree = gitx.git("rev-parse", "HEAD^{tree}", cwd=lead)
+    if tested.is_file() and tested.read_text().strip() == tree:
+        print(f"the merged tree is the one land tested; {card.id}'s Acceptance does not rerun")
+    else:
+        acceptance(card, lead, f"{card.id}-post-merge", where, f"{then} {args.id} again")
     if version and not tagged:
         release.tag(version)
     close(card, gitx.head(lead), path, branch, lead)
