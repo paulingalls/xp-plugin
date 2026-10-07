@@ -17,7 +17,7 @@ from xpcore.config import (
     sprint_branch_name,
     trunk,
 )
-from xpcore.land import pull_request
+from xpcore.land import fetched_trunk, pull_request
 
 
 def sprint_dir(sprint_id) -> Path:
@@ -156,12 +156,13 @@ def cmd_sprint_land(args) -> int:
     branch, root, main = sprint_branch_name(args.id), repo_root(), trunk()
     on_branch(branch, root)
     no_open_cards(args.id)
+    into = main if args.dry_run else fetched_trunk(main, root)  # before the wall reads tags
     version = release.version_wall("minor")
     hooks.sprint_hook(root)
     if args.dry_run:
         print(f"would trial-merge {main}, run the sprint hook, push {branch}, open a PR")
         return 0
-    tree = trial_hook(root, main, f"{branch}-sprint-hook")
+    tree = trial_hook(root, into, f"{branch}-sprint-hook")
     land_json = sprint_dir(args.id) / "land.json"
     land_json.parent.mkdir(parents=True, exist_ok=True)
     land_json.write_text(json.dumps({"tested_tree": tree, "version": version}) + "\n")
