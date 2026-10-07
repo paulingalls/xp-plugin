@@ -16,7 +16,8 @@ description: Fresh-context adversarial review of one story's commit range.
 
 - **Design lenses**: responsibilities and boundaries (co-change, interference, exposed internals); contracts and authoritative knowledge (caller promises, rule owners, copies); necessary complexity (required behavior, callers, repeated change).
 
-Run the card's Acceptance. Write findings to the path you are given. Each names
+Do not run the card's whole Acceptance: land runs it on the merged tree. Run what
+confirms a finding. Write findings to the path you are given. Each names
 the code, the concrete failure, the value, and one disposition: `fix` with the
 cheapest sufficient fix, `drop (reason)`, or `debt (too big: …; too important: …)`
 under both JUDGMENT bars. Finding nothing is a valid result. No praise.

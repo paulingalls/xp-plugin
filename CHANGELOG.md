@@ -4,6 +4,17 @@ Release notes started at v0.6.0; earlier entries are summarized from their
 tag and merge messages. Full detail lives in the merge history and the
 per-sprint review reports.
 
+## v1.0.6
+
+- An edit to a story's `plan.md` after its review (an executor's deviation notes, a lead's
+  QUESTION answer) no longer schedules a second plan review or fails `xp.py story` after a
+  green execution. Re-planning works as before: the planner deletes the old review.
+- The reviewer no longer runs the card's whole Acceptance. `story land` and `free land`
+  already run it on the merged tree; the reviewer runs what confirms a finding.
+- `sprint land` trial-merges `origin/<trunk>`, fetched at the start of land, instead of
+  the clone's local trunk, so a release a sibling clone already pushed is in the tested
+  tree, or refused as a conflict before the sprint hook runs.
+
 ## v1.0.5
 
 `free land` and `sprint land` run `git push` uncaptured, so a refusing pre-push hook's own

@@ -31,6 +31,9 @@ if role == "executor" and not os.environ.get("FAKE_NO_COMMIT"):
         out.write("x\\n")
     subprocess.run(["git", "add", "-A"], check=True)
     subprocess.run(["git", "commit", "-qm", "feat"], check=True)
+if role == "executor" and os.environ.get("FAKE_EXEC_PLAN"):  # a deviations note
+    with open(os.path.join(os.path.dirname(paths[key]), "plan.md"), "a") as out:
+        out.write("deviation\\n")
 if role == "executor" and os.environ.get("FAKE_EXIT"):
     sys.exit(1)
 print(json.dumps({"type": "result", "result": "done"}))
@@ -227,6 +230,12 @@ def test_a_deleted_plan_replans_and_rereviews_the_plan(repo):
     (story(repo, "story-001") / "plan.md").unlink()
     assert xp.main(["story", "story-001"]) == 0
     assert roles(repo) == ["planner", "plan-reviewer"]
+
+
+def test_an_executor_edit_to_the_plan_does_not_rereview_it(repo, monkeypatch):
+    monkeypatch.setenv("FAKE_EXEC_PLAN", "1")
+    assert xp.main(["story", "story-001"]) == 0
+    assert roles(repo) == ["planner", "plan-reviewer", "executor", "reviewer"]
 
 
 @pytest.mark.parametrize("line", ["- QUESTION: which store?", "**QUESTION:** which store?"])

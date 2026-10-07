@@ -3,7 +3,13 @@ version_files: plugins/xp-plugin/.claude-plugin/plugin.json
 debt_budget: 0.2
 codex_sandbox: danger-full-access
 roles:                 # harness/model[/effort]; a card's Executor: line overrides
+  # Each leg that argues with work sits in the other family from the leg that wrote it:
+  # a reviewer sharing the author's priors agrees for the same reasons.
   lead: claude/opus
   planner: codex/gpt-6.1-sol/medium
   executor: codex/gpt-6.1-sol/medium
   reviewer: claude/opus
+  plan-reviewer: claude/opus/high      # the plan is written on codex
+  slate-reviewer: codex/gpt-6.1-sol/medium   # the lead writes the slate on claude
+  angle-reviewer: claude/opus          # the sprint diff is codex's
+  fixer: codex/gpt-6.1-sol/medium

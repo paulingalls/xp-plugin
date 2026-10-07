@@ -23,6 +23,7 @@ def repo(tmp_path, monkeypatch):
     commit(root, manifest("1.2.0"), "sprint work")
     git(root, "switch", "-q", "main")
     commit(root, {"trunk.txt": "t\n"}, "trunk moved")
+    git(root, "push", "-q", "origin", "main")
     git(root, "switch", "-q", "sprint-001")
     return root, data, hooklog
 
@@ -68,6 +69,14 @@ def test_land_tests_the_trial_merge_and_post_merge_skips_that_tree(
     assert git(root, "cat-file", "-t", "v1.2.0") == "tag"
     assert json.loads((data / "sprints" / "1" / "release.json").read_text())["version"] == "1.2.0"
     assert config.sprint_branch() == "" and git(root, "branch", "--list", "sprint-001") == ""
+
+
+def test_land_trial_merges_the_fetched_origin_trunk(repo, tmp_path, monkeypatch):
+    root, _, hooklog = repo
+    fake_gh(tmp_path, monkeypatch)
+    git(root, "branch", "-f", "main", "main~1")  # a sibling clone moved origin; this clone is stale
+    assert sprint.cmd_sprint_land(ns("1")) == 0
+    assert hooklog.read_text() == "ran\n"
 
 
 def test_post_merge_refuses_in_progress_then_reruns_a_changed_tree(repo, capsys):

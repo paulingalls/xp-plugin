@@ -171,7 +171,8 @@ action. There is no `amend`, `ready`, `resume`, `acknowledge-validation`, `salva
 `repair`, `judge`, `keep`, `archive`, `card-snapshot`, `edit-card`, `milestone-done`.
 
 **Idempotence replaces resume.** `xp.py story <id>` looks at `stories/<id>/`: no plan.md →
-run the planner; no plan-review.md (or one older than plan.md) → run the plan reviewer; no
+run the planner; no plan-review.md → run the plan reviewer (the planner deletes
+the old one); no
 handback.md → run the executor; no review-N.md recording HEAD as reviewed → run the reviewer;
 otherwise print what exists and stop. A lead commit after a review reruns only the reviewer. A lead who edits the card and runs it again gets exactly the stages that are
 missing. A lead who wants a stage re-run deletes its file.
