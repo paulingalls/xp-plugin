@@ -1,7 +1,6 @@
 """A story's stages as an idempotent walk: the files under <data>/stories/<id>/ are the state,
 so a re-run does exactly what is missing and a deleted file re-runs its stage."""
 
-import os
 import re
 from pathlib import Path
 
@@ -79,7 +78,7 @@ def stages(card: cards.Card, sdir: Path, wt: Path, base: str) -> list[str]:
     if len(card.files) > 1:  # a single-file card's net is the diff review alone
         if not (sdir / "plan.md").is_file():
             todo.append("planner")
-        if not newer(sdir / "plan-review.md", sdir / "plan.md"):
+        if not (sdir / "plan-review.md").is_file():
             todo.append("plan-reviewer")
         elif questions(sdir):
             return [*todo, "question"]
@@ -88,11 +87,6 @@ def stages(card: cards.Card, sdir: Path, wt: Path, base: str) -> list[str]:
     if not reviewed(sdir, wt):
         todo.append("reviewer")
     return todo
-
-
-def newer(path: Path, than: Path) -> bool:
-    """A review older than what it reviews is missing: the lead deleted plan.md to re-plan."""
-    return path.is_file() and (not than.is_file() or path.stat().st_mtime >= than.stat().st_mtime)
 
 
 def base_for(card_id: str) -> str:
@@ -137,6 +131,8 @@ def paths(card: cards.Card, **named: Path) -> dict[str, str]:
 
 def plan_stage(card: cards.Card, sdir: Path, wt: Path) -> None:
     plan, log_id = sdir / "plan.md", f"{card.id}-planner"
+    # A new plan voids the old review. Not mtimes: executors and leads edit plan.md too.
+    (sdir / "plan-review.md").unlink(missing_ok=True)
     text = bundle.prompt("planner", card=card, paths=paths(card, PLAN_PATH=plan))
     run("planner", card, text, wt, log_id)
     expect(plan, "planner", log_id, card.id)
@@ -153,7 +149,6 @@ def plan_review_stage(card: cards.Card, sdir: Path, wt: Path) -> None:
     )
     run("plan-reviewer", card, text, wt, log_id)
     expect(review, "plan reviewer", log_id, card.id)
-    os.utime(review)  # it edits plan.md in place after writing; its findings cover that
     print(f"{card.id}: plan review at {review}")
 
 
