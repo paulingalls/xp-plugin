@@ -4,6 +4,11 @@ Release notes started at v0.6.0; earlier entries are summarized from their
 tag and merge messages. Full detail lives in the merge history and the
 per-sprint review reports.
 
+## v1.0.5
+
+`free land` and `sprint land` run `git push` uncaptured, so a refusing pre-push hook's own
+output (the red job and its error) reaches the lead instead of only "failed to push some refs".
+
 ## v1.0.4
 
 `free post-merge` reruns the card's Acceptance only when trunk's tree differs from the
