@@ -88,15 +88,16 @@ def cmd_sprint_review(args) -> int:
     angles = sorted((plugin_root() / "angles").glob("*.md"))
     if not angles:
         refuse(f"no angle files in {plugin_root() / 'angles'}; reinstall the plugin")
-    if not gitx.changed_files(main, "HEAD", root):
-        refuse(f"{branch} has no changes since {main}; land stories on it first")
+    base = gitx.fork_point("HEAD", fetched_trunk(main, root), root)
+    if not gitx.changed_files(base, "HEAD", root):
+        refuse(f"{branch} has no changes since {base}; land stories on it first")
     folder = sprint_dir(args.id)
     n = next_round(folder)
     outs = {a: folder / f"review-{n}.{a.stem}.md" for a in angles}
     if args.dry_run:
-        print(f"would review {main}..{branch} by {', '.join(a.stem for a in angles)}, then fix")
+        print(f"would review {base}..{branch} by {', '.join(a.stem for a in angles)}, then fix")
         return 0
-    slate, extra = cards.sprint_slate(args.id), gitx.range_map(main, "HEAD", root)
+    slate, extra = cards.sprint_slate(args.id), gitx.range_map(base, "HEAD", root)
 
     def review(angle: Path) -> Path:
         out = {"FINDINGS_PATH": str(outs[angle])}

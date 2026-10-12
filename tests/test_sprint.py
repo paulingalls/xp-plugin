@@ -248,3 +248,63 @@ def test_post_merge_ignores_another_release_tag_at_head(repo, capsys):
     assert "v1.2.0" in git(root, "tag", "--points-at", "HEAD").split()
     assert json.loads((data / "sprints" / "1" / "release.json").read_text())["version"] == "1.2.0"
     assert "already marks" not in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("origin", [True, False])
+@pytest.mark.parametrize("work", [True, False])
+def test_review_reads_the_trunk_merge_base(tmp_path, monkeypatch, capsys, origin, work):
+    root, data = make_project(tmp_path, monkeypatch)
+    (data / "plan.md").write_text("## Sprint range — s\n")
+    stale = git(root, "rev-parse", "main")
+    git(root, "switch", "-qc", "sprint-range")
+    if work:
+        commit(root, {"sprint.txt": "own\n"}, "sprint work")
+    git(root, "switch", "-q", "main")
+    base = commit(root, {"trunk.txt": "peer\n"}, "peer work")
+    git(root, "switch", "-q", "sprint-range")
+    git(root, "merge", "-q", "--no-ff", "main", "-m", "backmerge")
+    git(root, "switch", "-q", "main")
+    latest = commit(root, {"peer-later.txt": "later\n"}, "later peer work")
+    git(root, "push", "-q", "origin", "main")
+    git(root, "switch", "-q", "sprint-range")
+    if origin:
+        git(root, "branch", "-f", "main", stale)
+        git(root, "update-ref", "refs/remotes/origin/main", stale)
+    else:
+        git(root, "remote", "remove", "origin")
+    local = git(root, "rev-parse", "main")
+    calls = []
+
+    def run_agent(role, prompt, *a, **k):
+        calls.append((role, prompt))
+        return subprocess.CompletedProcess([], 0, "no findings", "")
+
+    monkeypatch.setattr(launch, "run_agent", run_agent)
+    if not work:
+        with pytest.raises(SystemExit) as exit_:
+            xp.main(["sprint", "review", "range", "--dry-run"])
+        assert exit_.value.code == 2
+        assert f"no changes since {base}" in capsys.readouterr().err
+    else:
+        assert xp.main(["sprint", "review", "range", "--dry-run"]) == 0
+        output = capsys.readouterr().out
+        contaminated = git(root, "diff", "--name-only", "main..HEAD")
+        assert f"{base}..sprint-range" in output, f"{output}\nold range files:\n{contaminated}"
+    assert not calls and git(root, "rev-parse", "main") == local
+    if origin:
+        assert git(root, "rev-parse", "origin/main") == latest
+    if not work:
+        return
+    if origin:
+        git(root, "update-ref", "refs/remotes/origin/main", stale)
+    assert xp.main(["sprint", "review", "range"]) == 0
+    reviews = [prompt for role, prompt in calls if role == "angle-reviewer"]
+    assert reviews
+    for prompt in reviews:
+        assert f"## Commit range {base}..HEAD" in prompt
+        files = prompt.split("### Files\n")[1].split("===== Paths")[0]
+        assert "sprint.txt" in files
+        assert "trunk.txt" not in files and "peer-later.txt" not in files
+    assert git(root, "rev-parse", "main") == local
+    if origin:
+        assert git(root, "rev-parse", "origin/main") == latest

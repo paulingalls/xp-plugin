@@ -85,7 +85,7 @@ def accept(card: cards.Card, path: Path, branch: str, target: str, sha: str) -> 
 def fetched_trunk(target: str, path: Path) -> str:
     """The ref a PR will merge into: origin's trunk, fetched now, or the local one."""
     if "origin" not in gitx.git("remote", cwd=path).split():
-        print(f"no remote named origin; trial-merging the local {target}")
+        print(f"no remote named origin; using the local {target}")
         return target
     gitx.git("fetch", "origin", target, cwd=path)
     return f"origin/{target}"

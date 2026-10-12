@@ -233,7 +233,7 @@ def test_free_land_without_origin_merges_local_trunk_and_says_so(tmp_path, monke
     git(root, "remote", "remove", "origin")
     assert land.cmd_free_land(ns("fix")) == 0
     out = capsys.readouterr().out
-    assert "no remote named origin; trial-merging the local main" in out
+    assert "no remote named origin; using the local main" in out
     assert "open the PR to main by hand" in out and not gh.exists()
 
 
