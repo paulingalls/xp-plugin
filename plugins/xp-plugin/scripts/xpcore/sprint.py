@@ -219,7 +219,7 @@ def cmd_sprint_post_merge(args) -> int:
     if version and not tagged:
         release.tag(version)
     if not (sprint_dir(args.id) / "release.json").is_file():
-        release.write_release_record(sprint_dir(args.id).name, version, gitx.head(root))
+        release.write_release_record(args.id, version, gitx.head(root))
     clear_sprint_branch()
     gitx.git("branch", "-D", branch, cwd=root)
     print(f"Sprint {args.id} released{release.tag_note(version)}")
