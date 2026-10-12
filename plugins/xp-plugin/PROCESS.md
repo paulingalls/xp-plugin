@@ -8,7 +8,7 @@
 **Sprint**, in order; skills hold the details:
 1. `/create-sprint`: write the slate, `xp.py sprint plan <id>`, judge the slate
    review and correct cards.
-2. From trunk, `git switch -c sprint-<NNN>` (7 is `sprint-007`), then
+2. From trunk, `git switch -c sprint-<id>`, then
    `xp.py sprint open <id>`.
 3. Each story: `xp.py story <id>`, then `/story-close`: judge the review,
    `xp.py story land <id>` onto the sprint branch.

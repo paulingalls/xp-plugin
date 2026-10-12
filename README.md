@@ -110,7 +110,7 @@ finds the branch in trunk's history; squash and rebase merges work, and post-mer
 xp.py setup                     scaffold .xp/ and the hooks
 xp.py recover                   session digest, unfinished cards, open records
 xp.py sprint plan <id>          fresh review of the slate
-xp.py sprint open <id>          on branch sprint-NNN (sprint 7 is sprint-007), cut from trunk by you
+xp.py sprint open <id>          on branch sprint-<id> (e.g. sprint-auth-cleanup), cut from trunk by you
 xp.py sprint review <id>        one reviewer per angle over the sprint, one fix pass
 xp.py sprint land <id>          version check, trial merge, sprint hook, PR
 xp.py sprint post-merge <id>    on trunk after the PR merges: record, and tag under versioning: on
@@ -122,6 +122,10 @@ xp.py free land <slug>          PR against trunk
 xp.py free post-merge <slug>    close the patch; tag it under versioning: on
 xp.py bug | debt | note | resolve    records with a falsifier command
 ```
+
+Sprint ids are slugs used verbatim in the slate, branch and data directory. Numeric ids
+are valid too: `078` and `78` name different sprints. Review reads the merge base with
+fetched `origin/<trunk>`, or local trunk when origin is absent. Dry-run review fetches too.
 
 Every subcommand answers `--help`, and every refusal names the next action.
 

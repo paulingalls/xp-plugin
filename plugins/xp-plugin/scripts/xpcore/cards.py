@@ -144,11 +144,11 @@ def replace_card(card_id: str, new_text: str) -> None:
 
 def sprint_slate(sprint_id) -> str:
     """The `## Sprint <id>` section: its heading down to the next heading at its level or above."""
-    wanted = str(sprint_id).lstrip("0") or "0"
+    wanted = str(sprint_id)
     lines = _read_plan().splitlines()
     for i, line in enumerate(lines):
-        match = re.match(r"(#{2,3}) Sprint 0*(\d+)\b", line)
-        if not match or (match[2].lstrip("0") or "0") != wanted:
+        match = re.match(r"(#{2,3}) Sprint (\S+)(?:\s|$)", line)
+        if not match or match[2] != wanted:
             continue
         level = len(match[1])
         end = next(

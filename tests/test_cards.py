@@ -98,11 +98,14 @@ def test_replace_card_requires_a_heading(plan, capsys):
     refused(capsys, cards.replace_card, "free-typo", "Files: x\n")
 
 
-def test_sprint_slate_is_one_section(plan):
-    slate = cards.sprint_slate("012")
-    assert slate.startswith("## Sprint 12 — the slate")
-    assert "free-typo" in slate and "story-013" not in slate
-    assert cards.sprint_slate(13).endswith("Files: d.py\n")
+def test_sprint_slate_is_one_section(plan, capsys):
+    plan.write_text(
+        "## Sprint 12\nother\n## Sprint 2-extra — neighbour\nextra\n"
+        "## Sprint 2\nwanted\n## Sprint 3\nlast\n"
+    )
+    assert cards.sprint_slate("2") == "## Sprint 2\nwanted\n"
+    assert "Sprint 02" in refused(capsys, cards.sprint_slate, "02")
+    assert cards.sprint_slate(3) == "## Sprint 3\nlast\n"
 
 
 def test_sprint_slate_missing_refuses(plan, capsys):

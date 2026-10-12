@@ -168,7 +168,7 @@ def lifecycle(root, data, guard, status):
 @pytest.mark.parametrize("status", [0, 25])
 def test_sprint_open_event_precedes_record_and_red_retries(tmp_path, monkeypatch, capsys, status):
     root, data = make_project(tmp_path, monkeypatch)
-    (data / "plan.md").write_text("## Sprint 2 — s\n")
+    (data / "plan.md").write_text("## Sprint 002 — s\n")
     lifecycle(root, data, f"test ! -f {data / 'sprint_branch'}", status)
     git(root, "switch", "-qc", "sprint-002")
     if not status:
@@ -247,8 +247,8 @@ def test_sprint_close_before_tag_and_record(tmp_path, monkeypatch, capsys, statu
         if status
         else "trunk: main\nversioning: on\nversion_files: package.json\n",
     )
-    (data / "plan.md").write_text("## Sprint 1 — s\n")
-    guard = f'test ! -f {data / "sprints/1/release.json"}\ntest -z "$(git tag --list v1.2.0)"'
+    (data / "plan.md").write_text("## Sprint 001 — s\n")
+    guard = f'test ! -f {data / "sprints/001/release.json"}\ntest -z "$(git tag --list v1.2.0)"'
     lifecycle(root, data, guard, status)
     git(root, "switch", "-qc", "sprint-001")
     (data / "sprint_branch").write_text("sprint-001\n")
@@ -269,7 +269,7 @@ def test_sprint_close_before_tag_and_record(tmp_path, monkeypatch, capsys, statu
         assert config.sprint_branch() == "sprint-001" and git(
             root, "branch", "--list", "sprint-001"
         )
-        assert not (data / "sprints/1/release.json").exists() and not git(root, "tag", "--list")
+        assert not (data / "sprints/001/release.json").exists() and not git(root, "tag", "--list")
         commit(
             root,
             {"lifecycle.sh": (root / "lifecycle.sh").read_text().replace("exit 25", "exit 0")},
@@ -280,6 +280,6 @@ def test_sprint_close_before_tag_and_record(tmp_path, monkeypatch, capsys, statu
         2 if status else 1
     )
     assert not config.sprint_branch() and not git(root, "branch", "--list", "sprint-001")
-    assert (data / "sprints/1/release.json").is_file()
+    assert (data / "sprints/001/release.json").is_file()
     if not status:
         assert git(root, "cat-file", "-t", "v1.2.0") == "tag"

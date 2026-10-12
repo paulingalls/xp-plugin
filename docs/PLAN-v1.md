@@ -79,6 +79,9 @@ lefthook.yml (or .githooks/)   pre-commit, pre-push, sprint, nightly — the pro
   worktrees/<id>/
 ```
 
+Sprint ids are slugs used verbatim in slate headings, branches and data directories;
+`078` and `78` are distinct ids.
+
 Deleted from the current tree: `markers/`, `evidence/` as a plugin concept, `reports/`,
 `plans/*.round-N.*`, `*.handoff.json`, `*.ready.json`, `*.verify.json`, `runtimes/`,
 `timing.jsonl`, `env.json` beyond the plugin root pointer.
@@ -151,7 +154,7 @@ xp.py recover                     print digest, card statuses, open records (Ses
 
 xp.py sprint plan <id>            fresh slate reviewer reads the slate, writes sprints/<id>/slate-review.md
 xp.py sprint open <id>            cut sprint-<id>, record it
-xp.py sprint review <id>          diff reviewers (one per angle) over trunk..sprint; one executor fix pass
+xp.py sprint review <id>          diff reviewers (one per angle) over fetched-trunk merge base..sprint; one executor fix pass
 xp.py sprint land <id>            version wall, trial merge, `sprint` hook, PR
 xp.py sprint post-merge <id>      on trunk: sprint hook if tree differs, tag, release.json, clear branch
 
@@ -210,6 +213,10 @@ harnesses. constraints.md and system.md are passed in the bundle too.
 - **fixer** reads the merged angle findings; produces one commit per fix on the sprint
   branch and a handback naming each finding fixed, dropped or left to the lead; owns only
   the fixes it is sure of. Seat falls back to executor.
+
+Sprint review fetches origin and uses the merge base of HEAD with `origin/<trunk>`;
+without origin it uses the merge base with local trunk. Dry-run fetches too and prints
+the same range.
 
 Sprint review is one angle reviewer per angle file, run in parallel; findings are merged;
 the fixer gets one pass on the sprint branch; the lead judges. The finder, verifier, closer
