@@ -54,7 +54,7 @@ def build() -> argparse.ArgumentParser:
 
     sp = sub.add_parser("sprint", help="plan|open|review|land|post-merge a sprint")
     sp.add_argument("action", choices=SPRINT_ACTIONS)
-    sp.add_argument("id", help="sprint id, e.g. 12")
+    sp.add_argument("id", help="sprint slug, e.g. auth-cleanup")
     sp.add_argument("--dry-run", action="store_true", help="print what would run")
     scoped(
         sub, "story", STORY_ACTIONS, "cmd_story", "run a story's missing stages, review, or land"

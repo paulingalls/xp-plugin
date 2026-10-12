@@ -5,6 +5,9 @@ description: Write a sprint slate, have it reviewed, and open the sprint.
 
 # Create Sprint
 
+Choose a descriptive sprint slug, such as `auth-cleanup`. Use it verbatim in the
+`## Sprint <id>` slate heading and `sprint-<id>` branch.
+
 Write the sprint's cards in the plan file `recover` names, in the shape the
 plugin's `templates/plan.md` shows. Carry unfinished cards forward first. Each
 card's Acceptance is one command, run from the repository root, that executes its
@@ -19,6 +22,6 @@ second review.
 
 ```
 xp.py sprint plan <id>
-git switch -c sprint-<id>      # from trunk; sprint 7 is sprint-007
+git switch -c sprint-<id>      # from trunk
 xp.py sprint open <id>
 ```

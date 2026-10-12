@@ -4,6 +4,16 @@ Release notes started at v0.6.0; earlier entries are summarized from their
 tag and merge messages. Full detail lives in the merge history and the
 per-sprint review reports.
 
+## v1.1.0
+
+- Sprint ids are slugs used verbatim in slate headings, branches and data directories,
+  such as `auth-cleanup`. Numeric ids remain valid; `078` and `78` are distinct ids.
+- Sprint review uses the merge base with fetched `origin/<trunk>` so stale local trunk
+  and later peer work do not contaminate the review range. Dry-run fetches too. Without
+  origin, review uses the merge base with local trunk.
+- Before upgrading, land every open sprint using your installed version. Then upgrade
+  to 1.1.0; existing sprint ids and branches are not migrated.
+
 ## v1.0.6
 
 - An edit to a story's `plan.md` after its review (an executor's deviation notes, a lead's
