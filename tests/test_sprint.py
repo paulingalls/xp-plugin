@@ -2,6 +2,7 @@ import json
 import subprocess
 
 import pytest
+import xp
 from test_land import commit, fake_gh, git, make_project, manifest, ns
 from xpcore import bundle, config, launch, release, sprint
 
@@ -10,13 +11,17 @@ SLATE = "## Sprint 1 — s\n\n#### story-001 — a   [{status}]\nAcceptance: tru
 
 
 @pytest.fixture
-def repo(tmp_path, monkeypatch):
-    """sprint-001 carries the hook and the bump; trunk moved since, adding trunk.txt."""
+def repo(tmp_path, monkeypatch, request):
+    identifier = getattr(request, "param", "1")
+    branch = f"sprint-{identifier}"
     root, data = make_project(tmp_path, monkeypatch)
-    (data / "plan.md").write_text(SLATE.format(status="done"))
+    (data / "plan.md").write_text(
+        SLATE.format(status="done").replace("Sprint 1", f"Sprint {identifier}")
+    )
     hooklog = tmp_path / "hook.log"
-    git(root, "switch", "-qc", "sprint-001")
-    (data / "sprint_branch").write_text("sprint-001\n")
+    git(root, "switch", "-qc", branch)
+    assert xp.main(["sprint", "open", identifier]) == 0
+    assert config.sprint_branch() == branch
     (root / ".githooks").mkdir()
     (root / ".githooks" / "sprint").write_text(HOOK.format(log=hooklog))
     (root / ".githooks" / "sprint").chmod(0o755)
@@ -24,13 +29,13 @@ def repo(tmp_path, monkeypatch):
     git(root, "switch", "-q", "main")
     commit(root, {"trunk.txt": "t\n"}, "trunk moved")
     git(root, "push", "-q", "origin", "main")
-    git(root, "switch", "-q", "sprint-001")
+    git(root, "switch", "-q", branch)
     return root, data, hooklog
 
 
-def merge_on_trunk(root):
+def merge_on_trunk(root, branch="sprint-1"):
     git(root, "switch", "-q", "main")
-    git(root, "merge", "-q", "--no-ff", "sprint-001", "-m", "PR")
+    git(root, "merge", "-q", "--no-ff", branch, "-m", "PR")
 
 
 def test_open_refuses_off_branch_then_records(tmp_path, monkeypatch, capsys):
@@ -38,37 +43,46 @@ def test_open_refuses_off_branch_then_records(tmp_path, monkeypatch, capsys):
     (data / "plan.md").write_text("## Sprint 2 — s\n")
     with pytest.raises(SystemExit) as exit_:
         sprint.cmd_sprint_open(ns("2"))
-    assert exit_.value.code == 2 and "not sprint-002" in capsys.readouterr().err
-    git(root, "switch", "-qc", "sprint-002")
+    assert exit_.value.code == 2 and "not sprint-2" in capsys.readouterr().err
+    git(root, "switch", "-qc", "sprint-2")
     assert sprint.cmd_sprint_open(ns("2")) == 0
-    assert config.sprint_branch() == "sprint-002"
+    assert config.sprint_branch() == "sprint-2"
 
 
+@pytest.mark.parametrize("repo", ["auth-cleanup", "078", "78"], indirect=True)
 def test_land_tests_the_trial_merge_and_post_merge_skips_that_tree(
     repo, tmp_path, monkeypatch, capsys
 ):
     root, data, hooklog = repo
+    branch = git(root, "branch", "--show-current")
+    identifier = branch.removeprefix("sprint-")
+    folder = data / "sprints" / identifier
     gh = fake_gh(tmp_path, monkeypatch)
-    (data / "sprints" / "1").mkdir(parents=True)
-    (data / "sprints" / "1" / "review-1.tests.md").write_text("finding\n")
-    assert sprint.cmd_sprint_land(ns("1")) == 0
-    assert hooklog.read_text() == "ran\n"  # the hook found trunk.txt: it ran on the merge
-    assert "--base main --head sprint-001 --title Sprint 1 --body " in gh.read_text()
-    assert "v1.2.0" in gh.read_text() and "review-1.tests.md" in gh.read_text()
+    monkeypatch.setattr(
+        launch, "run_agent", lambda *a, **k: subprocess.CompletedProcess([], 0, "finding", "")
+    )
+    assert xp.main(["sprint", "review", identifier]) == 0
+    assert list(folder.glob("review-1.*.md"))
+    assert xp.main(["sprint", "land", identifier]) == 0
+    assert hooklog.read_text() == "ran\n"
+    assert f"--base main --head {branch} --title Sprint {identifier} --body " in gh.read_text()
+    assert "v1.2.0" in gh.read_text() and "review-1.test-vacuity.md" in gh.read_text()
+    assert json.loads((folder / "land.json").read_text())["tested_tree"]
     assert not (root / "trunk.txt").exists()
     git(root, "switch", "-q", "main")
     with pytest.raises(SystemExit):
-        sprint.cmd_sprint_post_merge(ns("1"))
+        xp.main(["sprint", "post-merge", identifier])
     err = capsys.readouterr().err
-    assert "sprint-001 is not merged into main" in err and "squash- or rebase-merged" in err
-    assert git(root, "tag", "--list", "v1.2.0") == "" and config.sprint_branch() == "sprint-001"
-    assert git(root, "branch", "--list", "sprint-001")
-    merge_on_trunk(root)
-    assert sprint.cmd_sprint_post_merge(ns("1")) == 0
+    assert f"{branch} is not merged into main" in err and "squash- or rebase-merged" in err
+    assert git(root, "tag", "--list", "v1.2.0") == "" and config.sprint_branch() == branch
+    assert git(root, "branch", "--list", branch)
+    merge_on_trunk(root, branch)
+    assert xp.main(["sprint", "post-merge", identifier]) == 0
     assert hooklog.read_text() == "ran\n"
     assert git(root, "cat-file", "-t", "v1.2.0") == "tag"
-    assert json.loads((data / "sprints" / "1" / "release.json").read_text())["version"] == "1.2.0"
-    assert config.sprint_branch() == "" and git(root, "branch", "--list", "sprint-001") == ""
+    record = json.loads((folder / "release.json").read_text())
+    assert record["version"] == "1.2.0" and record["sprint"] == identifier
+    assert config.sprint_branch() == "" and git(root, "branch", "--list", branch) == ""
 
 
 def test_land_trial_merges_the_fetched_origin_trunk(repo, tmp_path, monkeypatch):
@@ -100,12 +114,12 @@ def test_squash_merged_sprint_post_merges_and_says_merge_commits_are_preferred(
     fake_gh(tmp_path, monkeypatch)
     assert sprint.cmd_sprint_land(ns("1")) == 0
     git(root, "switch", "-q", "main")
-    git(root, "merge", "-q", "--squash", "sprint-001")
+    git(root, "merge", "-q", "--squash", "sprint-1")
     git(root, "commit", "-qm", "Sprint 1 (#1)")
     assert sprint.cmd_sprint_post_merge(ns("1")) == 0
     assert "squash-merged" in capsys.readouterr().out and hooklog.read_text() == "ran\n"
     assert git(root, "cat-file", "-t", "v1.2.0") == "tag"
-    assert config.sprint_branch() == "" and git(root, "branch", "--list", "sprint-001") == ""
+    assert config.sprint_branch() == "" and git(root, "branch", "--list", "sprint-1") == ""
 
 
 def test_post_merge_rerun_after_the_tag_finishes_without_tagging_again(repo, monkeypatch):
@@ -121,11 +135,11 @@ def test_post_merge_rerun_after_the_tag_finishes_without_tagging_again(repo, mon
         with pytest.raises(ZeroDivisionError):
             sprint.cmd_sprint_post_merge(ns("1"))
     assert git(root, "tag", "--points-at", "HEAD") == "v1.2.0"
-    assert config.sprint_branch() == "sprint-001"
+    assert config.sprint_branch() == "sprint-1"
     assert sprint.cmd_sprint_post_merge(ns("1")) == 0
     assert git(root, "tag", "--points-at", "HEAD") == "v1.2.0"
     assert json.loads((data / "sprints" / "1" / "release.json").read_text())["tag"] == "v1.2.0"
-    assert config.sprint_branch() == "" and git(root, "branch", "--list", "sprint-001") == ""
+    assert config.sprint_branch() == "" and git(root, "branch", "--list", "sprint-1") == ""
 
 
 def test_plan_names_the_branch_to_cut(repo, monkeypatch, capsys):
@@ -133,7 +147,7 @@ def test_plan_names_the_branch_to_cut(repo, monkeypatch, capsys):
     monkeypatch.setattr(bundle, "prompt", lambda role, **k: role)
     monkeypatch.setattr(launch, "run_agent", lambda *a, **k: run)
     assert sprint.cmd_sprint_plan(ns("1")) == 0
-    assert "`git switch -c sprint-001 main`" in capsys.readouterr().out
+    assert "`git switch -c sprint-1 main`" in capsys.readouterr().out
 
 
 def test_review_runs_every_angle_then_one_executor_with_all_findings(repo, monkeypatch, capsys):
@@ -170,7 +184,7 @@ def test_review_failure_names_the_log(repo, monkeypatch, capsys):
     monkeypatch.setattr(bundle, "prompt", lambda role, **k: role)
     monkeypatch.setattr(launch, "run_agent", run_agent)
     assert sprint.cmd_sprint_review(ns("1")) == 1
-    log = repo[1] / "logs" / "sprint-001-fixer-1.log"
+    log = repo[1] / "logs" / "sprint-1-fixer-1.log"
     assert f"read {log}" in capsys.readouterr().out
 
 

@@ -138,7 +138,7 @@ def trunk() -> str:
 
 
 def sprint_branch_name(identifier) -> str:
-    return f"sprint-{str(identifier).lstrip('0').zfill(3)}"
+    return f"sprint-{identifier}"
 
 
 def _sprint_branch_path() -> Path:

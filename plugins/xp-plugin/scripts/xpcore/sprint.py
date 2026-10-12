@@ -21,7 +21,7 @@ from xpcore.land import fetched_trunk, pull_request
 
 
 def sprint_dir(sprint_id) -> Path:
-    return data_root() / "sprints" / (str(sprint_id).lstrip("0") or "0")
+    return data_root() / "sprints" / str(sprint_id)
 
 
 def on_branch(branch: str, root: Path) -> None:
