@@ -344,3 +344,39 @@ def test_review_reads_the_trunk_merge_base(tmp_path, monkeypatch, capsys, origin
     assert git(root, "rev-parse", "main") == local
     if origin:
         assert git(root, "rev-parse", "origin/main") == latest
+
+
+def test_land_with_evidence_skips_hook_and_records_trial_tree(repo, tmp_path, monkeypatch, capsys):
+    root, data, hooklog = repo
+    gh = fake_gh(tmp_path, monkeypatch)
+    commit(root, {".githooks/sprint": f"#!/bin/sh\necho ran >> {hooklog}\nexit 1\n"}, "red hook")
+    folder = data / "sprints" / "1"
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / "review-1.test-vacuity.md").write_text("ok\n")
+    branch_tree = git(root, "rev-parse", "HEAD^{tree}")
+    assert xp.main(["sprint", "land", "1", "--tested-by", "r"]) == 0
+    assert not hooklog.exists() and not (data / "logs" / "sprint-1-sprint-hook.log").exists()
+    assert "Not hook-verified at land: r" in gh.read_text().splitlines()
+    assert "review-1.test-vacuity.md" in gh.read_text()
+    assert (
+        f"warning: skipped sprint hook `{root / '.githooks/sprint'}`: r" in capsys.readouterr().out
+    )
+    assert git(root, "status", "--porcelain") == "" and not (root / "trunk.txt").exists()
+    record = json.loads((folder / "land.json").read_text())
+    merge_on_trunk(root)
+    assert record["version"] == "1.2.0"
+    assert record["tested_tree"] == git(root, "rev-parse", "HEAD^{tree}") != branch_tree
+
+
+@pytest.mark.parametrize("override", [False, True])
+def test_land_conflict_still_refuses(repo, tmp_path, monkeypatch, capsys, override):
+    root, data, _ = repo
+    gh = fake_gh(tmp_path, monkeypatch)
+    before = commit(root, {"trunk.txt": "conflict\n"}, "conflict")
+    target = git(root, "rev-parse", "main")
+    with pytest.raises(SystemExit) as exc:
+        xp.main(["sprint", "land", "1", *(["--tested-by", "r"] if override else [])])
+    assert exc.value.code == 2 and "origin/main does not merge cleanly:" in capsys.readouterr().err
+    assert git(root, "status", "--porcelain") == "" and git(root, "rev-parse", "HEAD") == before
+    assert git(root, "rev-parse", "main") == target
+    assert not gh.exists() and not (data / "sprints" / "1" / "land.json").exists()
