@@ -159,7 +159,7 @@ def test_plan_refuses_invalid_acceptance_before_review(repo, monkeypatch, capsys
     with pytest.raises(SystemExit) as exit_:
         xp.main(["sprint", "plan", "1", *(["--dry-run"] if dry else [])])
     err = capsys.readouterr().err
-    assert exit_.value.code == 2 and "x" in err and "syntax error" in err.lower()
+    assert exit_.value.code == 2 and "x Acceptance:" in err and "syntax error" in err.lower()
     assert not calls and review.read_text() == "previous review\n"
 
 
