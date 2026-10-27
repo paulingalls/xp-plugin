@@ -223,10 +223,10 @@ def cmd_sprint_post_merge(args) -> int:
     if tagged:
         print(f"{tagged} already marks {main}'s head; finishing its release")
     elif changed:
-        print(f"{main}'s tree differs from what land tested; running the sprint hook")
+        print(f"{main}'s tree differs from what land recorded; running the sprint hook")
         green_hook(root, f"{branch}-sprint-hook")
     else:
-        print("the merged tree is the one land tested; the sprint hook does not rerun")
+        print("the merged tree is the one land recorded; the sprint hook does not rerun")
     if not tagged:
         hooks.lifecycle("sprint-close", args.id, root)
     if version and not tagged:

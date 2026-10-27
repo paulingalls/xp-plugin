@@ -278,7 +278,7 @@ def test_free_post_merge_skips_acceptance_on_the_tree_land_tested(tmp_path, monk
     git(root, "merge", "-q", "--no-ff", "free-fix-x", "-m", "PR")
     assert land.cmd_free_post_merge(ns("fix")) == 0
     assert trace.read_text().splitlines() == ["run"]
-    assert "the merged tree is the one land tested" in capsys.readouterr().out
+    assert "the merged tree is the one land recorded" in capsys.readouterr().out
     assert git(root, "cat-file", "-t", "v1.1.1") == "tag"
 
 

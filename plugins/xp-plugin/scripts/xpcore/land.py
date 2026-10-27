@@ -257,7 +257,7 @@ def cmd_free_post_merge(args) -> int:
     tested = story_dir(card.id) / "tested_tree"
     tree = gitx.git("rev-parse", "HEAD^{tree}", cwd=lead)
     if tested.is_file() and tested.read_text().strip() == tree:
-        print(f"the merged tree is the one land tested; {card.id}'s Acceptance does not rerun")
+        print(f"the merged tree is the one land recorded; {card.id}'s Acceptance does not rerun")
     else:
         acceptance(card, lead, f"{card.id}-post-merge", where, f"{then} {args.id} again")
     if version and not tagged:
