@@ -14,6 +14,9 @@ with the human where needed. Another review after your fixes is optional; land
 lists commits after the last review as unreviewed, and the sprint review covers
 them. Land, then rewrite `session.md`: intent, surprises, next step, under 30 lines.
 
+Before land, apply or reject each card change proposed in
+`<data>/stories/<id>/handback.md`, updating `<data>/plan.md` for accepted changes.
+
 ```
 xp.py story review <id>        # optional, one more review
 xp.py story land <id>

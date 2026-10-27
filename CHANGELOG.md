@@ -4,6 +4,14 @@ Release notes started at v0.6.0; earlier entries are summarized from their
 tag and merge messages. Full detail lives in the merge history and the
 per-sprint review reports.
 
+## v1.1.1
+
+- Executors read their supplied card and propose card changes in the handback for
+  the lead to apply or reject before land; they no longer edit the slate.
+- Sprint planning checks each selected card's Acceptance shell syntax before the
+  slate review. Story and free starts check it before any stage, including dry runs.
+  These checks parse without executing; missing Acceptance remains land's refusal.
+
 ## v1.1.0
 
 - Sprint ids are slugs used verbatim in slate headings, branches and data directories,

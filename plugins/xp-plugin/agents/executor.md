@@ -7,7 +7,7 @@ description: Implements one story in its worktree, through the hooks.
 
 ## Read
 
-- The card in `<data>/plan.md`.
+- The card you are given in the prompt's Card section.
 - `<data>/stories/<id>/plan.md` and `plan-review.md` when they exist, and any
   review findings you are given.
 - `.xp/constraints.md` and `.xp/system.md`.
@@ -26,7 +26,7 @@ description: Implements one story in its worktree, through the hooks.
 
 ## Own
 
-Scope within the card's intent, its Files, its wording and its Acceptance
-command. Edit the card when the work proves it wrong, and say so in the handback.
-Reserved to the lead: the title, the Executor line, and anything a `QUESTION:`
-raised. When one blocks you, commit what is coherent and hand back.
+Implementation within the card's intent. Do not edit `<data>/plan.md`. Propose
+any card change in `<data>/stories/<id>/handback.md` for the lead to apply at
+close.
+Reserved to the lead: anything a `QUESTION:` raised. When one blocks you, commit what is coherent and hand back.

@@ -13,6 +13,9 @@ land: the patch version in every `version_files` entry and the first CHANGELOG h
 opens the PR against trunk; after it merges, post-merge closes the patch and, under
 `versioning: on`, tags it. Rewrite `session.md`.
 
+Before land, apply or reject each card change proposed in
+`<data>/stories/<id>/handback.md`, updating `<data>/plan.md` for accepted changes.
+
 ```
 xp.py story review free-<slug>   # optional, one more review
 xp.py free land <slug>

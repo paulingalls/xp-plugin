@@ -35,6 +35,15 @@ def log_path(log_id: str) -> Path:
     return path
 
 
+def check_acceptance(card_id: str, line: str) -> None:
+    result = subprocess.run(["sh", "-n", "-c", line], capture_output=True, text=True)
+    if result.returncode:
+        refuse(
+            f"{card_id} Acceptance: {result.stderr.strip()};"
+            " fix the card's Acceptance: line in plan.md, then run again"
+        )
+
+
 def run_acceptance(line: str, cwd, log_id: str) -> int:
     """The card's line, as a shell would run it from the repo root; its exit code is the
     verdict. The agents that write cards have that shell already."""
