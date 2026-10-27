@@ -4,6 +4,13 @@ Release notes started at v0.6.0; earlier entries are summarized from their
 tag and merge messages. Full detail lives in the merge history and the
 per-sprint review reports.
 
+## v1.1.2
+
+- Story, free and sprint land accept `--tested-by "<reason>"` to skip the land-time
+  Acceptance or sprint hook on stated evidence. Land warns with the skipped command
+  and records the reason in the merge commit or PR body. Trial merges and all other
+  checks remain; free and sprint post-merge rerun proof when trunk's tree differs.
+
 ## v1.1.1
 
 - Executors read their supplied card and propose card changes in the handback for
