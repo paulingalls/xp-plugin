@@ -1,6 +1,7 @@
 """A sprint: review its slate, open its branch, review its diff by angle, land it, tag it."""
 
 import json
+import shlex
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
@@ -137,13 +138,18 @@ def green_hook(root: Path, log_id: str) -> None:
         refuse(f"the sprint hook exited {rc}; read {hooks.log_path(log_id)}, fix, run again")
 
 
-def trial_hook(root: Path, main: str, log_id: str) -> str:
+def trial_hook(root: Path, main: str, log_id: str, tested_by: str | None) -> str:
     """The sprint hook on trunk merged in; returns the tree it tested."""
     try:
         if conflict := gitx.trial_merge(root, main):
             refuse(f"{main} does not merge cleanly:\n{conflict}\nmerge {main} in, resolve, land")
         tree = gitx.git("write-tree", cwd=root)
-        green_hook(root, log_id)
+        if tested_by is not None:
+            print(
+                f"warning: skipped sprint hook `{shlex.join(hooks.sprint_hook(root))}`: {tested_by}"
+            )
+        else:
+            green_hook(root, log_id)
     finally:
         gitx.abort_merge(root)
     return tree
@@ -161,11 +167,14 @@ def cmd_sprint_land(args) -> int:
     no_open_cards(args.id)
     into = main if args.dry_run else fetched_trunk(main, root)  # before the wall reads tags
     version = release.version_wall("minor")
-    hooks.sprint_hook(root)
+    command = shlex.join(hooks.sprint_hook(root))
     if args.dry_run:
-        print(f"would trial-merge {main}, run the sprint hook, push {branch}, open a PR")
+        proof = "run the sprint hook"
+        if args.tested_by is not None:
+            proof = f"skip sprint hook `{command}`; Not hook-verified at land: {args.tested_by}"
+        print(f"would trial-merge {main}, {proof}, push {branch}, open a PR")
         return 0
-    tree = trial_hook(root, into, f"{branch}-sprint-hook")
+    tree = trial_hook(root, into, f"{branch}-sprint-hook", args.tested_by)
     land_json = sprint_dir(args.id) / "land.json"
     land_json.parent.mkdir(parents=True, exist_ok=True)
     land_json.write_text(json.dumps({"tested_tree": tree, "version": version}) + "\n")
@@ -173,6 +182,8 @@ def cmd_sprint_land(args) -> int:
     after = f"{name} is ready; after it merges, pull {main} and run"
     reviews = sorted(p.name for p in sprint_dir(args.id).glob("review-*.md"))
     body = f"{name}.\n\nReviews:\n" + "".join(f"- {r}\n" for r in reviews)
+    if args.tested_by is not None:
+        body += f"\nNot hook-verified at land: {args.tested_by}\n"
     after += f" `xp.py sprint post-merge {args.id}`"
     pull_request(branch, main, root, after, title=f"Sprint {args.id}", body=body)
     return 0

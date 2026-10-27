@@ -4,6 +4,7 @@ import os
 import subprocess
 
 import pytest
+import xp
 from xpcore import cards, gitx, hooks, land, release
 
 CONFIG = (
@@ -33,8 +34,8 @@ def manifest(version):
     return {"package.json": json.dumps({"version": version}), "CHANGELOG.md": f"## {version}\n"}
 
 
-def ns(identifier, dry_run=False):
-    return argparse.Namespace(id=identifier, dry_run=dry_run)
+def ns(identifier, dry_run=False, tested_by=None):
+    return argparse.Namespace(id=identifier, dry_run=dry_run, tested_by=tested_by)
 
 
 def make_project(tmp_path, monkeypatch, config=CONFIG):
@@ -78,12 +79,18 @@ def story(tmp_path, monkeypatch):
     return root, data, wt, late
 
 
-def test_green_acceptance_on_the_merged_tree_lands_and_closes(story):
+@pytest.mark.parametrize("override", [False, True])
+def test_green_acceptance_on_the_merged_tree_lands_and_closes(story, capsys, override):
     root, data, wt, late = story
     # check.py reads merged.txt, which only the sprint branch has: green needs the trial merge.
-    commit(root, {"merged.txt": "ok\n"}, "sprint work")
-    assert land.cmd_story_land(ns("story-001")) == 0
+    commit(root, {"merged.txt": "bad\n" if override else "ok\n"}, "sprint work")
+    assert xp.main(["story", "land", "story-001", *(["--tested-by", "r"] if override else [])]) == 0
+    output = capsys.readouterr().out
+    if override:
+        assert "warning: skipped Acceptance `python3 check.py`: r" in output
+    assert (data / "logs" / "story-001-acceptance.log").exists() != override
     body = git(root, "log", "-1", "--format=%B")
+    assert ("Not hook-verified at land: r" in body.splitlines()) == override
     seen = git(root, "rev-parse", f"{late}^")
     assert "review-1.md" in body and f"unreviewed: {seen[:10]}..{late[:10]}" in body
     assert git(root, "rev-parse", "HEAD^2") == late
@@ -386,3 +393,38 @@ def test_an_empty_branch_beside_a_landed_sibling_still_refuses(tmp_path, monkeyp
         land.cmd_story_land(ns("story-001"))
     assert exit_.value.code == 2 and "has no commits on story-001-thing" in capsys.readouterr().err
     assert cards.find_card("story-001").status == "in-progress" and wt.exists()
+
+
+def test_free_land_records_evidence_and_trial_tree(tmp_path, monkeypatch, capsys):
+    gh = fake_gh(tmp_path, monkeypatch)
+    trace = tmp_path / "acceptance-ran"
+    command = f"touch {trace}; exit 1"
+    root, data, wt = free_patch(tmp_path, monkeypatch, acceptance=command)
+    commit(root, {"trunk.txt": "t\n"}, "trunk moved")
+    git(root, "push", "-q", "origin", "main")
+    branch_tree = git(wt, "rev-parse", "HEAD^{tree}")
+    assert xp.main(["free", "land", "fix", "--tested-by", "legs green on abc"]) == 0
+    assert not trace.exists() and not (data / "logs" / "free-fix-acceptance.log").exists()
+    assert "Not hook-verified at land: legs green on abc" in gh.read_text().splitlines()
+    assert "pr create --base main --head free-fix-x --title f --body" in gh.read_text()
+    assert f"warning: skipped Acceptance `{command}`: legs green on abc" in capsys.readouterr().out
+    assert git(wt, "status", "--porcelain") == "" and not (wt / "trunk.txt").exists()
+    git(root, "merge", "-q", "--no-ff", "free-fix-x", "-m", "PR")
+    tree = (data / "stories" / "free-fix" / "tested_tree").read_text().strip()
+    assert tree == git(root, "rev-parse", "HEAD^{tree}") and tree != branch_tree
+
+
+@pytest.mark.parametrize("override", [False, True])
+def test_free_land_conflict_still_refuses(tmp_path, monkeypatch, capsys, override):
+    gh = fake_gh(tmp_path, monkeypatch)
+    root, data, wt = free_patch(tmp_path, monkeypatch)
+    before = commit(wt, {"collision": "patch\n"}, "patch")
+    target = commit(root, {"collision": "trunk\n"}, "trunk")
+    git(root, "push", "-q", "origin", "main")
+    with pytest.raises(SystemExit) as exc:
+        xp.main(["free", "land", "fix", *(["--tested-by", "r"] if override else [])])
+    assert exc.value.code == 2
+    assert "origin/main does not merge cleanly into free-fix-x" in capsys.readouterr().err
+    assert git(wt, "status", "--porcelain") == "" and git(wt, "rev-parse", "HEAD") == before
+    assert git(root, "rev-parse", "HEAD") == target
+    assert not gh.exists() and not (data / "stories" / "free-fix" / "tested_tree").exists()

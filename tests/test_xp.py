@@ -45,3 +45,39 @@ def test_routes(command):
     assert args.run.target == ROUTES[command]
     if command.split()[0] in ("story", "free", "sprint"):
         assert args.id == command.split()[-1]
+
+
+@pytest.mark.parametrize("scope", ["story", "free", "sprint"])
+@pytest.mark.parametrize("reason", ["", "  "])
+@pytest.mark.parametrize("dry", [False, True])
+def test_land_requires_nonblank_evidence(scope, reason, dry, tmp_path, monkeypatch, capsys):
+    import xp
+
+    monkeypatch.chdir(tmp_path)
+    with pytest.raises(SystemExit) as exc:
+        xp.main([scope, "land", "x", "--tested-by", reason, *(["--dry-run"] if dry else [])])
+    assert exc.value.code == 2
+    assert "--tested-by requires a nonblank reason" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "story x",
+        "story review x",
+        "free x",
+        "free post-merge x",
+        "sprint plan x",
+        "sprint open x",
+        "sprint review x",
+        "sprint post-merge x",
+    ],
+)
+def test_evidence_is_land_only(command, tmp_path, monkeypatch, capsys):
+    import xp
+
+    monkeypatch.chdir(tmp_path)
+    with pytest.raises(SystemExit) as exc:
+        xp.main([*command.split(), "--tested-by", "r"])
+    assert exc.value.code == 2
+    assert "--tested-by is land-only" in capsys.readouterr().err

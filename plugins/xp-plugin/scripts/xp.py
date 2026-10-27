@@ -37,6 +37,9 @@ def scoped(sub, name: str, actions: dict, spawn: str, help_text: str) -> None:
     p.add_argument("first", metavar="ACTION|ID", help=f"{' | '.join(actions)}, or the id")
     p.add_argument("id", nargs="?", help="the id, after an action")
     p.add_argument("--dry-run", action="store_true", help="print what would run")
+    p.add_argument(
+        "--tested-by", metavar="REASON", help="land-only: skip Acceptance on stated evidence"
+    )
     p.set_defaults(actions=actions, spawn=spawn)
 
 
@@ -56,6 +59,9 @@ def build() -> argparse.ArgumentParser:
     sp.add_argument("action", choices=SPRINT_ACTIONS)
     sp.add_argument("id", help="sprint slug, e.g. auth-cleanup")
     sp.add_argument("--dry-run", action="store_true", help="print what would run")
+    sp.add_argument(
+        "--tested-by", metavar="REASON", help="land-only: skip the sprint hook on stated evidence"
+    )
     scoped(
         sub, "story", STORY_ACTIONS, "cmd_story", "run a story's missing stages, review, or land"
     )
@@ -81,6 +87,12 @@ def build() -> argparse.ArgumentParser:
 
 
 def route(p: argparse.ArgumentParser, args) -> None:
+    if getattr(args, "tested_by", None) is not None:
+        action = args.action if args.command == "sprint" else args.first
+        if action != "land":
+            p.error("--tested-by is land-only")
+        if not args.tested_by.strip():
+            p.error("--tested-by requires a nonblank reason")
     if args.command == "sprint":
         args.run = handler("sprint", f"cmd_sprint_{args.action.replace('-', '_')}")
     elif args.command in ("story", "free"):

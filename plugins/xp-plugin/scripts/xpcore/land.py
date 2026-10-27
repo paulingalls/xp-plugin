@@ -66,7 +66,9 @@ def acceptance(card: cards.Card, cwd: Path, log_id: str, where: str, then: str) 
         refuse(f"Acceptance exited {rc} on {where}; read {hooks.log_path(log_id)}, {then}")
 
 
-def accept(card: cards.Card, path: Path, branch: str, target: str, sha: str) -> str:
+def accept(
+    card: cards.Card, path: Path, branch: str, target: str, sha: str, tested_by: str | None
+) -> str:
     """Acceptance on `branch` with `sha`, the target's tip as land found it, merged in;
     returns the tree it tested."""
     try:
@@ -76,7 +78,10 @@ def accept(card: cards.Card, path: Path, branch: str, target: str, sha: str) -> 
                 f" into {branch} in {path}, resolve, review again, then land"
             )
         where, then = f"{branch} merged with {target}", "fix it on the branch, then land again"
-        acceptance(card, path, f"{card.id}-acceptance", where, then)
+        if tested_by is not None:
+            print(f"warning: skipped Acceptance `{card.acceptance}`: {tested_by}")
+        else:
+            acceptance(card, path, f"{card.id}-acceptance", where, then)
         return gitx.git("write-tree", cwd=path)
     finally:
         gitx.abort_merge(path)
@@ -125,7 +130,7 @@ def close(card: cards.Card, merge: str, path: Path, branch: str, lead: Path) -> 
     cards.set_status(card.id, "done")
 
 
-def land(card_id: str, target: str, *, pr: bool, dry_run: bool) -> int:
+def land(card_id: str, target: str, *, pr: bool, dry_run: bool, tested_by: str | None) -> int:
     card = cards.find_card(card_id)
     if card.status != "in-progress":
         refuse(f"{card.id} is [{card.status}], not [in-progress]; only spawned work lands")
@@ -153,14 +158,19 @@ def land(card_id: str, target: str, *, pr: bool, dry_run: bool) -> int:
     warn_overlap(branch, into, path)
     if dry_run:
         how = f"push {branch} and open a PR to {target}" if pr else f"merge into {target}"
-        print(f"would trial-merge {into} into {branch}, run `{card.acceptance}`, then {how}")
+        proof = f"run `{card.acceptance}`"
+        if tested_by is not None:
+            proof = f"skip Acceptance `{card.acceptance}`; Not hook-verified at land: {tested_by}"
+        print(f"would trial-merge {into} into {branch}, {proof}, then {how}")
         return 0
     sha = gitx.git("rev-parse", into, cwd=path)
-    tree = accept(card, path, branch, into, sha)
+    tree = accept(card, path, branch, into, sha, tested_by)
     if pr:
         story_dir(card.id).mkdir(parents=True, exist_ok=True)
         (story_dir(card.id) / "tested_tree").write_text(tree + "\n")
     body = merge_body(card, branch, base, lead)
+    if tested_by is not None:
+        body += f"\nNot hook-verified at land: {tested_by}\n"
     if diff := card_changes(card):
         print(f"{card.id}: card changed since spawn:\n{diff}")
     if pr:
@@ -207,11 +217,11 @@ def pull_request(branch: str, target: str, cwd, after: str, *, title=None, body=
 
 
 def cmd_story_land(args) -> int:
-    return land(args.id, sprint_branch(), pr=False, dry_run=args.dry_run)
+    return land(args.id, sprint_branch(), pr=False, dry_run=args.dry_run, tested_by=args.tested_by)
 
 
 def cmd_free_land(args) -> int:
-    return land(free_id(args.id), trunk(), pr=True, dry_run=args.dry_run)
+    return land(free_id(args.id), trunk(), pr=True, dry_run=args.dry_run, tested_by=args.tested_by)
 
 
 def cmd_free_post_merge(args) -> int:
