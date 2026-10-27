@@ -273,3 +273,19 @@ def test_each_stage_reads_the_card_as_the_last_stage_left_it(repo, monkeypatch):
     monkeypatch.setenv("FAKE_FILES", "Files: a.py, b.py, c.py")
     assert xp.main(["story", "story-001"]) == 0
     assert "Files: a.py, b.py, c.py" in (repo / "executor.prompt").read_text()
+
+
+@pytest.mark.parametrize("command,card_id", [("story", "story-001"), ("free", "free-fix-syntax")])
+@pytest.mark.parametrize("dry", [False, True])
+def test_start_refuses_invalid_acceptance_before_any_stage(repo, capsys, command, card_id, dry):
+    plan = repo / "plan.md"
+    text = PLAN.replace("Acceptance: true", "Acceptance: true '(a' (b)")
+    if command == "free":
+        text += f"## Free\n#### {card_id} — fix-syntax   [planned]\nAcceptance: true '(a' (b)\n"
+    plan.write_text(text)
+    with pytest.raises(SystemExit) as exit_:
+        xp.main([command, card_id.removeprefix("free-"), *(["--dry-run"] if dry else [])])
+    err = capsys.readouterr().err
+    assert exit_.value.code == 2 and card_id in err and "syntax error" in err.lower()
+    assert roles(repo) == [] and not story(repo, card_id).exists()
+    assert not (repo / "worktrees").exists() and plan.read_text() == text

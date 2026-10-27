@@ -142,12 +142,48 @@ def test_post_merge_rerun_after_the_tag_finishes_without_tagging_again(repo, mon
     assert config.sprint_branch() == "" and git(root, "branch", "--list", "sprint-1") == ""
 
 
+@pytest.mark.parametrize("dry", [False, True])
+def test_plan_refuses_invalid_acceptance_before_review(repo, monkeypatch, capsys, dry):
+    data, calls = repo[1], []
+    (data / "plan.md").write_text(
+        SLATE.format(status="planned") + "#### x — broken   [planned]\nAcceptance: true '(a' (b)\n"
+    )
+    review = data / "sprints" / "1" / "slate-review.md"
+    review.parent.mkdir(parents=True)
+    review.write_text("previous review\n")
+    monkeypatch.setattr(
+        launch,
+        "run_agent",
+        lambda *a, **k: calls.append(a) or subprocess.CompletedProcess([], 0, "ok", ""),
+    )
+    with pytest.raises(SystemExit) as exit_:
+        xp.main(["sprint", "plan", "1", *(["--dry-run"] if dry else [])])
+    err = capsys.readouterr().err
+    assert exit_.value.code == 2 and "x" in err and "syntax error" in err.lower()
+    assert not calls and review.read_text() == "previous review\n"
+
+
 def test_plan_names_the_branch_to_cut(repo, monkeypatch, capsys):
-    run = subprocess.CompletedProcess([], 0, "slate ok", "")
-    monkeypatch.setattr(bundle, "prompt", lambda role, **k: role)
-    monkeypatch.setattr(launch, "run_agent", lambda *a, **k: run)
-    assert sprint.cmd_sprint_plan(ns("1")) == 0
+    marker = repo[0] / "marker"
+    (repo[1] / "plan.md").write_text(
+        SLATE.format(status="planned").replace(
+            "Acceptance: true", f"Acceptance: printf '%s' '(a)' > {marker}"
+        )
+        + "#### no-line — missing Acceptance   [planned]\n"
+        + "## Sprint 2 — later\n#### broken — later   [planned]\n"
+        + "Acceptance: true '(a' (b)\n"
+    )
+    calls = []
+    monkeypatch.setattr(
+        launch,
+        "run_agent",
+        lambda role, *a, **k: (
+            calls.append(role) or subprocess.CompletedProcess([], 0, "slate ok", "")
+        ),
+    )
+    assert xp.main(["sprint", "plan", "1"]) == 0
     assert "`git switch -c sprint-1 main`" in capsys.readouterr().out
+    assert calls == ["slate-reviewer"] and not marker.exists()
 
 
 def test_review_runs_every_angle_then_one_executor_with_all_findings(repo, monkeypatch, capsys):

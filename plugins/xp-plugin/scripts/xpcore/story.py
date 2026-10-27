@@ -215,6 +215,7 @@ def walk(card: cards.Card, base: str, dry: bool) -> int:
             f"{card.id} is [{card.status}]; only planned or in-progress cards run;"
             f" set its status in {cards.plan_path()} first"
         )
+    hooks.check_acceptance(card.id, card.acceptance)
     sdir, wt = story_dir(card.id), worktree(card.id)
     rerun, land = commands(card.id)
     if dry:
