@@ -28,6 +28,5 @@ description: Implements one story in its worktree, through the hooks.
 
 Implementation within the card's intent. Do not edit `<data>/plan.md`. Propose
 any card change in `<data>/stories/<id>/handback.md` for the lead to apply at
-story-close.
-Reserved to the lead: the title, the Executor line, and anything a `QUESTION:`
-raised. When one blocks you, commit what is coherent and hand back.
+close.
+Reserved to the lead: anything a `QUESTION:` raised. When one blocks you, commit what is coherent and hand back.
