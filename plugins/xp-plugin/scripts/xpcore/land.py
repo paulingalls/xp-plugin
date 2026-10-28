@@ -113,7 +113,16 @@ def release_commit(branch: str, root: Path, main: str) -> str:
             " prefer merge commits"
         )
         return sha
-    return merged_by(branch, into, root) or gitx.git("rev-parse", branch, cwd=root)
+    # The oldest commit on trunk's first-parent line that contains the tip: the PR merge,
+    # even when the remote branch gained commits the local tip lacks ("Update branch").
+    tip = gitx.git("rev-parse", branch, cwd=root)
+    span = f"{tip}..{into}"
+    # Not one rev-list: --first-parent cuts --ancestry-path at the merge's second parent.
+    holds = set(gitx.git("rev-list", "--ancestry-path", span, cwd=root).split())
+    line = gitx.git("rev-list", "--first-parent", "--reverse", span, cwd=root).split()
+    first = next((c for c in line if c in holds), tip)
+    # A fast-forward put the tip itself on that line.
+    return tip if first == tip or gitx.git("rev-parse", f"{first}^", cwd=root) == tip else first
 
 
 @contextmanager

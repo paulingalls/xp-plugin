@@ -205,3 +205,21 @@ def test_free_post_merge_ignores_a_sprint_tag_at_head(tmp_path, monkeypatch, cap
         land.cmd_free_post_merge(ns("fix"))
     assert exit_.value.code == 2 and "not after the latest tag v1.2.0" in capsys.readouterr().err
     assert cards.find_card("free-fix").status == "in-progress"
+
+
+def test_free_post_merge_tags_pr_merge_after_remote_branch_update(tmp_path, monkeypatch, capsys):
+    fake_gh(tmp_path, monkeypatch)
+    trace = tmp_path / "runs"
+    root, _, _ = free_patch(tmp_path, monkeypatch, f"echo run >> {trace}")
+    assert xp.main(["free", "land", "fix"]) == 0
+    commit(root, {"later": "later\n"}, "trunk moved")
+    git(root, "switch", "-q", "--detach", "free-fix-x")
+    git(root, "merge", "-q", "--no-ff", "main", "-m", "Update branch")
+    updated = git(root, "rev-parse", "HEAD")
+    git(root, "switch", "-q", "main")
+    git(root, "merge", "-q", "--no-ff", updated, "-m", "PR")
+    sha = git(root, "rev-parse", "HEAD")
+    git(root, "push", "-q", "origin", "main")
+    assert xp.main(["free", "post-merge", "fix"]) == 0
+    assert trace.read_text().splitlines() == ["run", "run"]
+    assert git(root, "rev-parse", "v1.1.1^{commit}") == sha
