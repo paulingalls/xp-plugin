@@ -111,7 +111,7 @@ def finish_recorded(card: cards.Card) -> int:
     return 0
 
 
-def close(card: cards.Card, merge: str, path: Path, branch: str, lead: Path) -> None:
+def teardown(card: cards.Card, path: Path) -> None:
     log_id = f"{card.id}-worktree-teardown"
     line, rc = hooks.project_command("worktree_teardown", path, log_id)
     if rc:
@@ -119,6 +119,10 @@ def close(card: cards.Card, merge: str, path: Path, branch: str, lead: Path) -> 
             f"warning: worktree_teardown `{line}` exited {rc}; read {hooks.log_path(log_id)};"
             " the merge landed, continuing cleanup"
         )
+
+
+def close(card: cards.Card, merge: str, path: Path, branch: str, lead: Path) -> None:
+    teardown(card, path)
     # The worktree before the branch: git will not delete a branch a worktree has out.
     gitx.worktree_remove(path, cwd=lead)
     gitx.git("branch", "-D", branch, cwd=lead)
@@ -175,7 +179,9 @@ def land(card_id: str, target: str, *, pr: bool, dry_run: bool, tested_by: str |
         print(f"{card.id}: card changed since spawn:\n{diff}")
     if pr:
         after = f"after it merges, pull {target} and run `xp.py free post-merge {card.id}`"
-        return pull_request(branch, target, path, after, title=card.title, body=body)
+        pull_request(branch, target, path, after, title=card.title, body=body)
+        teardown(card, path)
+        return 0
     if gitx.git("rev-parse", target, cwd=lead) != sha:
         refuse(f"{target} moved during land; run xp.py story land {card.id} again")
     hooks.lifecycle("story-close", card.id, path)
