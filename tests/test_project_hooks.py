@@ -119,7 +119,8 @@ def test_teardown_runs_before_removal_even_when_red(tmp_path, monkeypatch, capsy
         tmp_path, monkeypatch, "trunk: main\nversioning: on\nversion_files: package.json\n"
     )
     trace = data / "teardown"
-    line = f"test -f bootstrap || exit 99; pwd >> {trace}; exit {status}"
+    handoff = f"test -s {tmp_path / 'gh.log'} || exit 98; " if free else ""
+    line = f"{handoff}test -f bootstrap || exit 99; pwd >> {trace}; exit {status}"
     command(root, "worktree_teardown", line)
     command(
         root, "lifecycle_command", f"echo called >> {data / 'lifecycle'}; exit 25" if free else ""

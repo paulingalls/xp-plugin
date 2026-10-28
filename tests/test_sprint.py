@@ -452,7 +452,9 @@ def test_post_merge_proves_release_sha_and_preserves_lead(
     assert git(root, "rev-parse", "v1.2.0^{commit}") == sha
     record = json.loads((data / "sprints/1/release.json").read_text())
     assert record["merge"] == sha and record["version"] == "1.2.0"
-    assert record.get("tested_by") == ("r" if proof == "override" else None)
+    assert ("tested_by" in record) == (proof == "override")
+    if proof == "override":
+        assert record["tested_by"] == "r"
     if proof == "override":
         assert (
             f"warning: skipped sprint hook `{root / '.githooks/sprint'}`: r"
