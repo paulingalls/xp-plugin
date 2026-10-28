@@ -106,9 +106,12 @@ roles:                     # harness/model[/effort]; a card's Executor: line ove
 Codex posture, and a role suffix would have to be repeated per role.
 
 Optional `worktree_setup` and `worktree_teardown` shell lines run inside the worktree at
-creation (before agents) and removal. Setup failure removes the worktree and only a branch
-created by that attempt; teardown failure warns and cleanup continues after the landed merge.
-`free land` keeps its worktree; `free post-merge` removes it.
+creation (before agents) and removal. Setup must be safe to re-run in an existing
+worktree; teardown must be safe to run twice. Spawn setup failure removes only the
+worktree and branch created by that attempt; teardown failure warns and cleanup continues.
+Free land tears down after PR handoff but keeps the worktree and branch. Changed-tree
+free post-merge reruns setup before Acceptance; setup failure keeps the worktree and
+refuses the release. Close tears down again and removes the worktree.
 
 Optional `lifecycle_command` runs with `sh -c`, appending the shell-quoted event and id:
 `sprint-open` before recording the sprint, `story-close` after green Acceptance before the
@@ -156,7 +159,7 @@ xp.py sprint plan <id>            fresh slate reviewer reads the slate, writes s
 xp.py sprint open <id>            cut sprint-<id>, record it
 xp.py sprint review <id>          diff reviewers (one per angle) over fetched-trunk merge base..sprint; one executor fix pass
 xp.py sprint land <id>            version wall, trial merge, `sprint` hook, PR
-xp.py sprint post-merge <id>      on trunk: sprint hook if tree differs, tag, release.json, clear branch
+xp.py sprint post-merge <id> [--tested-by REASON]  fetched merge: proof if needed, tag, release.json, delete branch
 
 xp.py story <id>                  worktree, planner, plan reviewer, executor, diff reviewer; idempotent
 xp.py story review <id>           one more diff review, on request
@@ -164,7 +167,7 @@ xp.py story land <id>             trial merge, Acceptance on merged tree, merge,
 
 xp.py free <slug>                 branch from trunk, mint the card, then same as story
 xp.py free land <slug>            as story land, target trunk, PR
-xp.py free post-merge <slug>      patch tag
+xp.py free post-merge <slug> [--tested-by REASON]  fetched merge: setup/proof if needed, patch tag, close
 
 xp.py bug | debt | note | resolve records, with falsifier polarity run at filing
 ```
@@ -224,13 +227,36 @@ and card-refresher stages do not exist.
 
 ## 9. Land
 
-One function, three targets. Story and free: refuse to merge into the wrong target or with
-a dirty tree; trial-merge the target in; run Acceptance on the merged tree; merge with the
-reviews in the body, and any commits after the last review listed as "unreviewed:"; flip the
-card to `[done]`; append landed.jsonl; remove the worktree. Sprint: version wall (tag,
-manifest and CHANGELOG name one version), trial merge of trunk, `sprint` hook, PR. Post-merge
-on trunk: rerun the sprint hook only if the merged tree differs from what land tested, tag,
-`sprints/<id>/release.json`, clear the branch record.
+Story land trial-merges the sprint tip into the clean story worktree, runs Acceptance,
+then merges into the clean on-sprint lead checkout. Reviews and unreviewed commits are
+named in the body; close tears down, removes worktree and branch, records landed.jsonl,
+and marks the card done. Free land instead fetches trunk, tests the trial merge, opens
+a PR, records tested_tree, and tears down while retaining the worktree and branch.
+Sprint land walls the version, tests the trial merge of fetched trunk, records tested_tree
+and version in land.json, and opens a PR. Land accepts nonblank --tested-by evidence,
+warning and recording it in the story merge body or free/sprint PR body.
+
+Both post-merges fetch origin's trunk (local trunk without origin). Resolve the merge
+commit with the branch tip as a later parent; fast-forwards use the branch tip.
+Squash/rebase merges lack that merge commit: use the fetched tip and say so, accepting
+that it may include later work. Read the manifest and CHANGELOG at the selected SHA;
+create the local annotated tag at that SHA, independent of the invoking checkout's HEAD.
+
+When the selected tree differs from tested_tree, free post-merge detaches the patch
+worktree at the SHA, reruns worktree_setup, then Acceptance, and restores the branch.
+Red setup or proof keeps the worktree and refuses tagging and close. Before testing a
+review fix after land, rerun configured worktree_setup there, then commit, review and
+land again. Sprint post-merge reruns the sprint hook detached at the SHA only from a
+clean invoking checkout on trunk, restoring trunk afterward. Otherwise a changed-tree
+sprint release refuses naming --tested-by. Both accept --tested-by "<reason>" to skip
+proof (and free's setup), warn naming the skipped command, and record tested_by in
+landed.jsonl or release.json. Empty evidence refuses. Dry-runs fetch but run no project commands.
+
+Unchanged trees or evidence allow post-merge from a dirty checkout on another branch.
+Sprint post-merge requires leaving the sprint branch so deletion can succeed. It runs
+sprint-close in the invoking checkout, tags, writes release.json, deletes the branch,
+then clears the branch record; tagged retries skip sprint-close. Free close tears down,
+removes the worktree and branch, records the selected SHA and marks done.
 
 Trunk overlap is a warning naming the files, never a refusal. Gate-file edits are nothing
 special because there are no gate files: the hooks read the tree they run on.

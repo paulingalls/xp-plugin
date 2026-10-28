@@ -147,7 +147,7 @@ def teardown(card: cards.Card, path: Path) -> None:
     if rc:
         print(
             f"warning: worktree_teardown `{line}` exited {rc}; read {hooks.log_path(log_id)};"
-            " the merge landed, continuing cleanup"
+            " continuing"
         )
 
 
