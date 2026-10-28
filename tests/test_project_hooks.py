@@ -143,6 +143,7 @@ def test_teardown_runs_before_removal_even_when_red(tmp_path, monkeypatch, capsy
         assert cards.find_card(identity).status == "in-progress"
         assert trace.read_text().splitlines() == [str(wt)]
         git(root, "merge", "-q", "--no-ff", branch, "-m", "PR")
+        git(root, "push", "-q", "origin", "main")
         assert xp.main(["free", "post-merge", "fix"]) == 0
         assert git(root, "cat-file", "-t", "v1.1.1") == "tag"
         assert not (data / "lifecycle").exists()
@@ -264,6 +265,7 @@ def test_sprint_close_before_tag_and_record(tmp_path, monkeypatch, capsys, statu
     assert xp.main(["sprint", "land", "001"]) == 0
     git(root, "switch", "-q", "main")
     git(root, "merge", "-q", "--no-ff", "sprint-001", "-m", "PR")
+    git(root, "push", "-q", "origin", "main")
     if status:
         with pytest.raises(SystemExit):
             xp.main(["sprint", "post-merge", "001"])

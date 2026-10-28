@@ -144,6 +144,7 @@ def test_free_patch_lands_by_pr_then_tags_after_the_merge(tmp_path, monkeypatch,
         land.cmd_free_post_merge(ns("fix"))
     assert "is not merged into main" in capsys.readouterr().err
     git(root, "merge", "-q", "--no-ff", "free-fix-x", "-m", "PR")
+    git(root, "push", "-q", "origin", "main")
     assert land.cmd_free_post_merge(ns("fix")) == 0
     assert git(root, "cat-file", "-t", "v1.1.1") == "tag"
     assert cards.find_card("free-fix").status == "done" and not wt.exists()
@@ -331,6 +332,7 @@ def test_free_land_records_evidence_and_trial_tree(tmp_path, monkeypatch, capsys
     assert f"warning: skipped Acceptance `{command}`: legs green on abc" in capsys.readouterr().out
     assert git(wt, "status", "--porcelain") == "" and not (wt / "trunk.txt").exists()
     git(root, "merge", "-q", "--no-ff", "free-fix-x", "-m", "PR")
+    git(root, "push", "-q", "origin", "main")
     tree = (data / "stories" / "free-fix" / "tested_tree").read_text().strip()
     assert tree == git(root, "rev-parse", "HEAD^{tree}") and tree != branch_tree
 

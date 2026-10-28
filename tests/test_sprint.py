@@ -36,6 +36,7 @@ def repo(tmp_path, monkeypatch, request):
 def merge_on_trunk(root, branch="sprint-1"):
     git(root, "switch", "-q", "main")
     git(root, "merge", "-q", "--no-ff", branch, "-m", "PR")
+    git(root, "push", "-q", "origin", "main")
 
 
 def test_open_refuses_off_branch_then_records(tmp_path, monkeypatch, capsys):
@@ -116,6 +117,7 @@ def test_squash_merged_sprint_post_merges_and_says_merge_commits_are_preferred(
     git(root, "switch", "-q", "main")
     git(root, "merge", "-q", "--squash", "sprint-1")
     git(root, "commit", "-qm", "Sprint 1 (#1)")
+    git(root, "push", "-q", "origin", "main")
     assert sprint.cmd_sprint_post_merge(ns("1")) == 0
     assert "squash-merged" in capsys.readouterr().out and hooklog.read_text() == "ran\n"
     assert git(root, "cat-file", "-t", "v1.2.0") == "tag"
@@ -380,3 +382,80 @@ def test_land_conflict_still_refuses(repo, tmp_path, monkeypatch, capsys, overri
     assert git(root, "status", "--porcelain") == "" and git(root, "rev-parse", "HEAD") == before
     assert git(root, "rev-parse", "main") == target
     assert not gh.exists() and not (data / "sprints" / "1" / "land.json").exists()
+
+
+@pytest.mark.parametrize("proof", ["same", "override", "off-branch", "dirty", "rerun"])
+def test_post_merge_proves_release_sha_and_preserves_lead(
+    repo, tmp_path, monkeypatch, capsys, proof
+):
+    from test_free_post_merge import lead_state, park_lead
+
+    root, data, hooklog = repo
+    fake_gh(tmp_path, monkeypatch)
+    events = data / "events"
+    hookred = data / "hook-red"
+    command = (
+        f"set -e\ntest ! -f {data / 'sprints/1/release.json'}\n"
+        'test -z "$(git tag --list v1.2.0)"\n'
+        f'echo "$PWD $1 $2" >> {events}'
+    )
+    commit(
+        root,
+        {
+            ".xp/config.yml": (root / ".xp/config.yml").read_text()
+            + "lifecycle_command: sh lifecycle.sh\n",
+            "lifecycle.sh": command,
+        },
+        "close event",
+    )
+    commit(
+        root,
+        {".githooks/sprint": f"#!/bin/sh\ngit rev-parse HEAD >> {hooklog}\ntest ! -f {hookred}\n"},
+        "trace SHA",
+    )
+    assert xp.main(["sprint", "land", "1"]) == 0
+    hooklog.unlink()
+    git(root, "switch", "-q", "main")
+    if proof != "same":
+        commit(root, {"peer": "before merge"}, "trunk changed")
+    merge_on_trunk(root)
+    sha = git(root, "rev-parse", "HEAD")
+    later = commit(root, manifest("1.3.0"), "later release")
+    git(root, "push", "-q", "origin", "main")
+    if proof in ("same", "override", "off-branch"):
+        before = park_lead(root)
+    elif proof == "dirty":
+        (root / "untracked").write_text("keep")
+    args = ["sprint", "post-merge", "1"]
+    if proof == "override":
+        hookred.touch()
+        args += ["--tested-by", "r"]
+    if proof in ("off-branch", "dirty"):
+        with pytest.raises(SystemExit) as exc:
+            xp.main(args)
+        assert exc.value.code == 2 and "--tested-by" in capsys.readouterr().err
+        assert not hooklog.exists() and not git(root, "tag", "--list")
+        assert not events.exists()
+        assert config.sprint_branch() == "sprint-1"
+        assert not (data / "sprints/1/release.json").exists()
+        return
+    assert xp.main([*args, "--dry-run"]) == 0
+    assert not events.exists() and not hooklog.exists() and not git(root, "tag", "--list")
+    assert xp.main(args) == 0
+    if proof == "rerun":
+        assert hooklog.read_text().splitlines() == [sha]
+        assert git(root, "rev-parse", "HEAD") == later
+        assert git(root, "branch", "--show-current") == "main"
+    else:
+        assert not hooklog.exists() and lead_state(root) == before
+    assert events.read_text().splitlines() == [f"{root} sprint-close 1"]
+    assert git(root, "rev-parse", "v1.2.0^{commit}") == sha
+    record = json.loads((data / "sprints/1/release.json").read_text())
+    assert record["merge"] == sha and record["version"] == "1.2.0"
+    assert record.get("tested_by") == ("r" if proof == "override" else None)
+    if proof == "override":
+        assert (
+            f"warning: skipped sprint hook `{root / '.githooks/sprint'}`: r"
+            in capsys.readouterr().out
+        )
+    assert not config.sprint_branch() and not git(root, "branch", "--list", "sprint-1")

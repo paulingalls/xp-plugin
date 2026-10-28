@@ -18,7 +18,7 @@ from xpcore.config import (
     sprint_branch_name,
     trunk,
 )
-from xpcore.land import fetched_trunk, pull_request
+from xpcore.land import detached, fetched_trunk, pull_request, release_commit
 
 
 def sprint_dir(sprint_id) -> Path:
@@ -179,7 +179,7 @@ def cmd_sprint_land(args) -> int:
     land_json.parent.mkdir(parents=True, exist_ok=True)
     land_json.write_text(json.dumps({"tested_tree": tree, "version": version}) + "\n")
     name = f"Release v{version}" if version else f"Sprint {args.id}"
-    after = f"{name} is ready; after it merges, pull {main} and run"
+    after = f"{name} is ready; after it merges, switch to any other branch and run"
     reviews = sorted(p.name for p in sprint_dir(args.id).glob("review-*.md"))
     body = f"{name}.\n\nReviews:\n" + "".join(f"- {r}\n" for r in reviews)
     if args.tested_by is not None:
@@ -189,51 +189,61 @@ def cmd_sprint_land(args) -> int:
     return 0
 
 
-def merged(branch: str, root: Path, main: str) -> None:
-    how = gitx.merged_how(branch, "HEAD", root) if gitx.branch_exists(branch, root) else ""
-    if not how:
-        refuse(
-            f"{branch} is not merged into {main}; if the PR was squash- or rebase-merged, its"
-            f" commits are not on {main}; this plugin supports that but prefers merge commits."
-            f" Merge its PR, pull {main}, run again"
-        )
-    if how == "squash":
-        print(f"{branch} was squash-merged; merge commits are preferred, so history shows it")
-
-
 def cmd_sprint_post_merge(args) -> int:
     branch, root, main = sprint_branch_name(args.id), repo_root(), trunk()
-    on_branch(main, root)
-    merged(branch, root, main)
+    if gitx.current_branch(root) == branch:
+        refuse(f"{root} has {branch} checked out; switch to any other branch, run again")
+    sha = release_commit(branch, root, main)
     no_open_cards(args.id)
     land_json = sprint_dir(args.id) / "land.json"
     if not land_json.is_file():
         refuse(f"no {land_json}; run `xp.py sprint land {args.id}` first")
     landed = json.loads(land_json.read_text())
     tested = landed["tested_tree"]
-    # A rerun after the tag: the hook passed and the wall held before it was made.
-    tagged = release.tag_at_head(root, landed.get("version", "")) if release.versioning() else ""
-    version = tagged.removeprefix("v") or release.version_wall("minor")
-    changed = not tagged and gitx.git("rev-parse", "HEAD^{tree}", cwd=root) != tested
+    tagged = ""
+    if release.versioning():
+        named = (
+            release.tree_version(root, sha)
+            if release.version_files()
+            else landed.get("version", "")
+        )
+        tagged = release.tag_at_head(root, named, sha)
+    version = tagged.removeprefix("v") or release.version_wall("minor", root, sha)
+    changed = not tagged and gitx.git("rev-parse", f"{sha}^{{tree}}", cwd=root) != tested
+    if (
+        changed
+        and args.tested_by is None
+        and (gitx.current_branch(root) != main or gitx.is_dirty(root))
+    ):
+        refuse(
+            f"the merged tree changed; rerunning the sprint hook needs {root} on {main}"
+            ' and clean, or supply --tested-by "<reason>" with external evidence'
+        )
+    if args.tested_by is not None:
+        print(
+            f"warning: skipped sprint hook `{shlex.join(hooks.sprint_hook(root))}`: "
+            f"{args.tested_by}"
+        )
     if args.dry_run:
-        rerun = "rerun the sprint hook, " if changed else ""
+        rerun = "rerun the sprint hook, " if changed and args.tested_by is None else ""
         make = f"tag v{version}, " if version and not tagged else ""
         print(f"would {rerun}{make}write release.json, delete {branch}")
         return 0
     if tagged:
-        print(f"{tagged} already marks {main}'s head; finishing its release")
-    elif changed:
+        print(f"{tagged} already marks merge {sha[:10]}; finishing its release")
+    elif changed and args.tested_by is None:
         print(f"{main}'s tree differs from what land recorded; running the sprint hook")
-        green_hook(root, f"{branch}-sprint-hook")
-    else:
+        with detached(root, sha):
+            green_hook(root, f"{branch}-sprint-hook")
+    elif args.tested_by is None:
         print("the merged tree is the one land recorded; the sprint hook does not rerun")
     if not tagged:
         hooks.lifecycle("sprint-close", args.id, root)
     if version and not tagged:
-        release.tag(version)
+        release.tag(version, sha)
     if not (sprint_dir(args.id) / "release.json").is_file():
-        release.write_release_record(args.id, version, gitx.head(root))
-    clear_sprint_branch()
+        release.write_release_record(args.id, version, sha, args.tested_by)
     gitx.git("branch", "-D", branch, cwd=root)
+    clear_sprint_branch()
     print(f"Sprint {args.id} released{release.tag_note(version)}")
     return 0
