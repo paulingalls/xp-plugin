@@ -102,7 +102,9 @@ The lead judges every finding: fix it, drop it with a reason, or file debt. The 
 `/create-sprint`, `/story-close`, `/sprint-close` and `/free-close` guide each step.
 
 Merge a PR any way your host allows. Merge commits are preferred, because post-merge then
-finds the branch in trunk's history; squash and rebase merges work, and post-merge says so.
+finds the merge commit in fetched `origin/<trunk>`. Squash and rebase merges use the
+fetched tip instead, which may include later work; post-merge names that fallback.
+Without origin, post-merge uses local trunk. Tags stay local until you push them.
 
 ## Commands
 
@@ -113,13 +115,13 @@ xp.py sprint plan <id>          fresh review of the slate
 xp.py sprint open <id>          on branch sprint-<id> (e.g. sprint-auth-cleanup), cut from trunk by you
 xp.py sprint review <id>        one reviewer per angle over the sprint, one fix pass
 xp.py sprint land <id> [--tested-by REASON]  version check, trial merge, sprint hook, PR
-xp.py sprint post-merge <id>    on trunk after the PR merges: record, and tag under versioning: on
+xp.py sprint post-merge <id> [--tested-by REASON]  release the fetched PR merge
 xp.py story <id>                plan, plan review, execute, review; only missing stages
 xp.py story review <id>         one more diff review
 xp.py story land <id> [--tested-by REASON]   trial merge, Acceptance on the merged tree, merge
 xp.py free <slug>               mint the card; run again to walk it as a story cut from trunk
 xp.py free land <slug> [--tested-by REASON]  PR against trunk
-xp.py free post-merge <slug>    close the patch; tag it under versioning: on
+xp.py free post-merge <slug> [--tested-by REASON]  release the fetched PR merge; close the patch
 xp.py bug | debt | note | resolve    records with a falsifier command
 ```
 
@@ -127,8 +129,17 @@ The three land commands accept `--tested-by "<reason>"` with nonblank evidence t
 skip Acceptance (story/free) or the sprint hook (sprint). Land warns with the skipped
 command and records `Not hook-verified at land: <reason>` in the story merge commit
 or free/sprint PR body. The trial merge and all other checks still run. Free and
-sprint land record the trial-merge tree; post-merge reruns the proof if trunk's tree
-differs from that record.
+sprint land record the trial-merge tree. Post-merge reads the version from the selected
+commit and tags that commit. If its tree differs, free post-merge reruns `worktree_setup`
+and Acceptance detached at that SHA in the patch worktree. Setup or Acceptance failure
+keeps the worktree and refuses tagging and close. Sprint post-merge reruns its hook at
+that SHA only when the invoking checkout is on trunk and clean, then restores its branch.
+
+Free and sprint post-merge also accept `--tested-by "<reason>"`: warn with the skipped
+command and record `tested_by` in `landed.jsonl` or `release.json`. Free skips setup too.
+With unchanged trees or this override, post-merge works from another branch, even dirty.
+Sprint post-merge runs `sprint-close` in the invoking checkout; switch away from the
+sprint branch before running it so it can delete that branch.
 
 Sprint ids are slugs used verbatim in the slate, branch and data directory. Numeric ids
 are valid too: `078` and `78` name different sprints. Review reads the merge base with
@@ -163,8 +174,8 @@ recommended. Falsifiers are shell lines too, run once when a record is filed or 
 | `trunk` | Release branch, only when it is not the default branch |
 | `versioning` | Required: `off`: the project owns versions and tags; `on`: every sprint and free patch is tagged |
 | `version_files` | With versioning on: comma-separated JSON manifests whose version the tag must match, or `none` |
-| `worktree_setup` | Optional shell line in a new story/free worktree, before any agent. Nonzero refuses and removes the worktree and any branch created by that attempt. Agents start only after it passes; a run killed mid-setup reruns it in the same worktree, so it must tolerate a rerun |
-| `worktree_teardown` | Optional shell line inside the worktree before `story land` or `free post-merge` removes it. Nonzero warns and cleanup continues: the merge has landed. `free land` keeps the worktree |
+| `worktree_setup` | Optional shell line before agents and before changed-tree free post-merge Acceptance. Must be safe to re-run in an existing worktree. Nonzero refuses: a failed spawn removes only the worktree and branch it created; post-merge keeps the worktree |
+| `worktree_teardown` | Optional shell line after `free land` hands off the PR, and before `story land` or `free post-merge` removes the worktree. Must be safe to run twice. Nonzero warns and cleanup continues. Free land retains the worktree and branch |
 | `lifecycle_command` | Optional shell line with two appended, shell-quoted arguments: event and id. `sprint-open <id>` runs in the invoking repo root before recording the open sprint; `story-close <card-id>` in the story worktree after green Acceptance and before merge; `sprint-close <id>` in the invoking repo root during post-merge before the tag/release record. Nonzero refuses the guarded step. Free patches emit no lifecycle events |
 | `debt_budget` | Maximum share of a sprint spent on debt |
 | `codex_sandbox` | Sandbox for Codex agents: `danger-full-access` (default) or `workspace-write` |
@@ -174,7 +185,7 @@ Project commands run with `sh -c`; unset or empty keys disable them. Configurati
 from the invoking checkout. Output streams live and logs stay under `<data>/logs/`.
 Projects bound their own scripts and make them tolerate retries: failed lifecycle steps
 and teardown cleanup may rerun. A sprint-close retry after its release tag skips the event.
-Setup runs only when the worktree is created; dry-runs and free-card minting run no commands.
+Dry-runs and free-card minting run no project commands. Post-merge dry-runs fetch too.
 
 ## Where state lives
 

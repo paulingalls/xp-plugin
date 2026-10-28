@@ -4,6 +4,20 @@ Release notes started at v0.6.0; earlier entries are summarized from their
 tag and merge messages. Full detail lives in the merge history and the
 per-sprint review reports.
 
+## v1.2.0
+
+- Free land releases worktree test resources after PR handoff while retaining its
+  worktree and branch. Setup must be safe to re-run; teardown safe to run twice.
+  Rerun setup before testing review fixes after land. Changed-tree free post-merge
+  reruns setup and Acceptance at the merge SHA in the patch worktree; failure keeps it.
+- Free and sprint post-merge fetch trunk and release the PR merge commit with its
+  committed manifest version, even from a dirty lead checkout on another branch.
+  Squash/rebase merges use the fetched tip, which can include later work. Tags stay local.
+- Both post-merges accept nonblank `--tested-by "<reason>"`, warn with the skipped
+  proof command, and record `tested_by` in landed.jsonl or release.json. Without
+  evidence, changed-tree sprint proof still needs clean trunk and runs at the merge SHA.
+  Sprint-close runs in the invoking checkout; leave the sprint branch before close.
+
 ## v1.1.2
 
 - Story, free and sprint land accept `--tested-by "<reason>"` to skip the land-time

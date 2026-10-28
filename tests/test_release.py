@@ -12,7 +12,7 @@ def root(tmp_path, monkeypatch):
 
 def test_agreeing_manifest_changelog_and_free_tag_pass(root):
     assert release.version_wall("minor") == "1.1.0"
-    release.tag("1.1.0")
+    release.tag("1.1.0", git(root, "rev-parse", "HEAD"))
     assert git(root, "cat-file", "-t", "v1.1.0") == "tag"
     path = release.write_release_record("3", "1.1.0", "abc")
     assert json.loads(path.read_text())["tag"] == "v1.1.0"
@@ -67,23 +67,11 @@ def test_non_json_manifest_refuses(root, capsys):
     assert "is not JSON" in capsys.readouterr().err
 
 
-def test_wall_reads_the_manifests_of_the_tree_it_is_given(root, tmp_path):
-    other = tmp_path / "other"
-    (other / ".xp").mkdir(parents=True)
-    for name, text in manifest("1.2.0").items():
-        (other / name).write_text(text)
-    assert release.version_wall("patch", other) == "1.2.0"
-    assert release.version_wall("patch") == "1.1.0"
-
-
-def test_tag_at_head_names_only_this_release_tag(root):
-    assert release.tag_at_head(root, "1.10.0") == ""
-    for name in ("v1.0.0", "v1.10.0", "not-a-release"):
-        git(root, "tag", name)
-    assert release.tag_at_head(root, "1.10.0") == "v1.10.0"
-    assert release.tag_at_head(root, "1.9.0") == "" and release.tag_at_head(root, "") == ""
-    commit(root, {"x.txt": "x\n"}, "past the tags")
-    assert release.tag_at_head(root, "1.10.0") == ""
+def test_wall_reads_the_manifests_of_the_commit_it_is_given(root):
+    sha = commit(root, manifest("1.2.0"), "release")
+    commit(root, manifest("1.3.0"), "later")
+    (root / "package.json").write_text("dirty")
+    assert release.version_wall("patch", root, sha) == "1.2.0"
 
 
 def test_versioning_off_skips_the_wall_and_an_unset_key_refuses(root, capsys):

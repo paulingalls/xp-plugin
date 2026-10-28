@@ -47,15 +47,17 @@ def test_routes(command):
         assert args.id == command.split()[-1]
 
 
-@pytest.mark.parametrize("scope", ["story", "free", "sprint"])
+@pytest.mark.parametrize(
+    "command", ["story land", "free land", "sprint land", "free post-merge", "sprint post-merge"]
+)
 @pytest.mark.parametrize("reason", ["", "  "])
 @pytest.mark.parametrize("dry", [False, True])
-def test_land_requires_nonblank_evidence(scope, reason, dry, tmp_path, monkeypatch, capsys):
+def test_land_requires_nonblank_evidence(command, reason, dry, tmp_path, monkeypatch, capsys):
     import xp
 
     monkeypatch.chdir(tmp_path)
     with pytest.raises(SystemExit) as exc:
-        xp.main([scope, "land", "x", "--tested-by", reason, *(["--dry-run"] if dry else [])])
+        xp.main([*command.split(), "x", "--tested-by", reason, *(["--dry-run"] if dry else [])])
     assert exc.value.code == 2
     assert "--tested-by requires a nonblank reason" in capsys.readouterr().err
 
@@ -66,18 +68,16 @@ def test_land_requires_nonblank_evidence(scope, reason, dry, tmp_path, monkeypat
         "story x",
         "story review x",
         "free x",
-        "free post-merge x",
         "sprint plan x",
         "sprint open x",
         "sprint review x",
-        "sprint post-merge x",
     ],
 )
-def test_evidence_is_land_only(command, tmp_path, monkeypatch, capsys):
+def test_evidence_rejected_outside_proof_commands(command, tmp_path, monkeypatch, capsys):
     import xp
 
     monkeypatch.chdir(tmp_path)
     with pytest.raises(SystemExit) as exc:
         xp.main([*command.split(), "--tested-by", "r"])
     assert exc.value.code == 2
-    assert "--tested-by is land-only" in capsys.readouterr().err
+    assert "--tested-by is only for land or free/sprint post-merge" in capsys.readouterr().err

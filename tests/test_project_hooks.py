@@ -119,7 +119,8 @@ def test_teardown_runs_before_removal_even_when_red(tmp_path, monkeypatch, capsy
         tmp_path, monkeypatch, "trunk: main\nversioning: on\nversion_files: package.json\n"
     )
     trace = data / "teardown"
-    line = f"test -f bootstrap || exit 99; pwd >> {trace}; exit {status}"
+    handoff = f"test -s {tmp_path / 'gh.log'} || exit 98; " if free else ""
+    line = f"{handoff}test -f bootstrap || exit 99; pwd >> {trace}; exit {status}"
     command(root, "worktree_teardown", line)
     command(
         root, "lifecycle_command", f"echo called >> {data / 'lifecycle'}; exit 25" if free else ""
@@ -136,16 +137,20 @@ def test_teardown_runs_before_removal_even_when_red(tmp_path, monkeypatch, capsy
     tip = commit(wt, manifest("1.1.1"), "fix")
     (wt / "bootstrap").touch()
     if free:
-        fake_gh(tmp_path, monkeypatch)
+        gh = fake_gh(tmp_path, monkeypatch)
         assert xp.main(["free", "land", "fix"]) == 0
-        assert wt.exists() and not trace.exists()
+        assert gh.exists() and wt.exists()
+        assert git(root, "branch", "--list", branch)
+        assert cards.find_card(identity).status == "in-progress"
+        assert trace.read_text().splitlines() == [str(wt)]
         git(root, "merge", "-q", "--no-ff", branch, "-m", "PR")
+        git(root, "push", "-q", "origin", "main")
         assert xp.main(["free", "post-merge", "fix"]) == 0
         assert git(root, "cat-file", "-t", "v1.1.1") == "tag"
         assert not (data / "lifecycle").exists()
     else:
         assert xp.main(["story", "land", identity]) == 0
-    assert trace.read_text().splitlines() == [str(wt)]
+    assert trace.read_text().splitlines() == [str(wt)] * (2 if free else 1)
     assert not wt.exists() and not git(root, "branch", "--list", branch)
     assert git(root, "rev-parse", "HEAD^2") == tip
     assert cards.find_card(identity).status == "done"
@@ -261,6 +266,7 @@ def test_sprint_close_before_tag_and_record(tmp_path, monkeypatch, capsys, statu
     assert xp.main(["sprint", "land", "001"]) == 0
     git(root, "switch", "-q", "main")
     git(root, "merge", "-q", "--no-ff", "sprint-001", "-m", "PR")
+    git(root, "push", "-q", "origin", "main")
     if status:
         with pytest.raises(SystemExit):
             xp.main(["sprint", "post-merge", "001"])

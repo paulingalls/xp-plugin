@@ -32,12 +32,12 @@ def version_files() -> list[str]:
     return [] if raw == "none" else [p.strip() for p in raw.split(",") if p.strip()]
 
 
-def manifest_version(path: str, root=None) -> str:
+def manifest_version(path: str, root=None, ref: str | None = None) -> str:
     full = (root or repo_root()) / path
     if full.suffix != ".json":
         refuse(f"version file {path} is not JSON; list only JSON manifests in version_files")
     try:
-        data = json.loads(full.read_text())
+        data = json.loads(gitx.git("show", f"{ref}:{path}", cwd=root) if ref else full.read_text())
     except (OSError, ValueError) as exc:
         refuse(f"cannot read {full} as JSON ({exc}); fix it or drop it from version_files")
     version = data.get("version") if isinstance(data, dict) else None
@@ -46,11 +46,12 @@ def manifest_version(path: str, root=None) -> str:
     return version.removeprefix("v")
 
 
-def changelog_version(root=None) -> str:
+def changelog_version(root=None, ref: str | None = None) -> str:
     path = (root or repo_root()) / "CHANGELOG.md"
-    if not path.is_file():
+    if not ref and not path.is_file():
         refuse(f"no {path}; add one whose first `## ` heading names the release version")
-    for line in path.read_text().splitlines():
+    text = gitx.git("show", f"{ref}:CHANGELOG.md", cwd=root) if ref else path.read_text()
+    for line in text.splitlines():
         if line.startswith("## "):
             if match := SEMVER.search(line):
                 return match[0].removeprefix("v")
@@ -69,20 +70,20 @@ def latest_tag() -> str:
     return max(tags, key=key, default="")
 
 
-def tag_at_head(root, version: str) -> str:
-    """`vX` when THIS release's tag already points at HEAD, else "". Only its own version
+def tag_at_head(root, version: str, sha: str) -> str:
+    """`vX` when THIS release's tag already points at `sha`, else "". Only its own version
     counts: another release (a free patch after a sprint, or the reverse) may tag the same
     commit, and that tag must not stand in for this one's wall, hook or tag."""
     if not version:
         return ""
-    tags = gitx.git("tag", "--points-at", "HEAD", cwd=root).split()
+    tags = gitx.git("tag", "--points-at", sha, cwd=root).split()
     return f"v{version}" if f"v{version}" in tags else ""
 
 
-def tree_version(root) -> str:
+def tree_version(root, ref: str | None = None) -> str:
     """The version `root`'s manifests name, or under `version_files: none` the latest tag."""
     files = version_files()
-    return manifest_version(files[0], root) if files else latest_tag()
+    return manifest_version(files[0], root, ref) if files else latest_tag()
 
 
 def bump(version: str, part: str) -> str:
@@ -94,7 +95,7 @@ def bump(version: str, part: str) -> str:
     }[part]
 
 
-def version_wall(part: str, root=None) -> str:
+def version_wall(part: str, root=None, ref: str | None = None) -> str:
     """The release version X that `root`'s tree (default: this one) names, or "" under
     `versioning: off`. `part` only matters under `version_files: none`, where the latest
     tag bumped by it is X."""
@@ -103,13 +104,13 @@ def version_wall(part: str, root=None) -> str:
     files, latest = version_files(), latest_tag()
     if not files:
         return bump(latest or "0.0.0", part)
-    found = {path: manifest_version(path, root) for path in files}
+    found = {path: manifest_version(path, root, ref) for path in files}
     version = found[files[0]]
     problems = []
     if len(set(found.values())) > 1:
         named = ", ".join(f"{p}={v}" for p, v in found.items())
         problems.append(f"manifests disagree ({named})")
-    if (named := changelog_version(root)) != version:
+    if (named := changelog_version(root, ref)) != version:
         problems.append(f"CHANGELOG.md's first `## ` heading names {named}, not {version}")
     if gitx.ref_exists(f"refs/tags/v{version}", cwd=repo_root()):
         problems.append(f"tag v{version} already exists")
@@ -129,14 +130,16 @@ def tag_note(version: str) -> str:
     return f" as v{version}. Push the tag: git push origin v{version}"
 
 
-def tag(version: str) -> None:
-    gitx.git("tag", "-a", f"v{version}", "-m", f"v{version}", cwd=repo_root())
+def tag(version: str, sha: str) -> None:
+    gitx.git("tag", "-a", f"v{version}", sha, "-m", f"v{version}", cwd=repo_root())
 
 
-def write_release_record(sprint_id, version: str, merge_sha: str):
+def write_release_record(sprint_id, version: str, merge_sha: str, tested_by: str | None = None):
     path = data_root() / "sprints" / str(sprint_id) / "release.json"
     path.parent.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now(timezone.utc).isoformat(timespec="seconds")
     record = {"sprint": str(sprint_id), "version": version, "tag": f"v{version}" if version else ""}
+    if tested_by is not None:
+        record["tested_by"] = tested_by
     path.write_text(json.dumps(record | {"merge": merge_sha, "date": stamp}, indent=2) + "\n")
     return path
