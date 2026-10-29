@@ -113,6 +113,7 @@ def route(p: argparse.ArgumentParser, args) -> None:
 
 
 def main(argv=None) -> int:
+    sys.stdout.reconfigure(line_buffering=True)
     p = build()
     args = p.parse_args(argv)
     route(p, args)

@@ -2,6 +2,8 @@ import argparse
 import json
 import os
 import subprocess
+import sys
+from pathlib import Path
 
 import pytest
 import xp
@@ -128,6 +130,30 @@ def free_patch(tmp_path, monkeypatch, acceptance="python3 -c 1", files=None):
     git(root, "worktree", "add", "-q", "-b", "free-fix-x", str(wt))
     commit(wt, manifest("1.1.1") if files is None else files, "fix")
     return root, data, wt
+
+
+def test_free_land_redirected_output_preserves_execution_order(tmp_path, monkeypatch):
+    fake_gh(tmp_path, monkeypatch)
+    root, _, _ = free_patch(tmp_path, monkeypatch, acceptance="printf 'acceptance-marker\\n'")
+    hook = root / ".git" / "hooks" / "pre-push"
+    hook.write_text("#!/bin/sh\necho pre-push-marker >&2\n")
+    hook.chmod(0o755)
+    env = os.environ.copy()
+    env.pop("PYTHONUNBUFFERED", None)
+    path = tmp_path / "land.log"
+    with path.open("w") as log:
+        proc = subprocess.run(
+            [sys.executable, str(Path(xp.__file__).resolve()), "free", "land", "fix"],
+            cwd=root,
+            env=env,
+            stdout=log,
+            stderr=subprocess.STDOUT,
+        )
+    output = path.read_text()
+    assert proc.returncode == 0, output
+    assert output.count("acceptance-marker") == 1, output
+    assert output.count("pre-push-marker") == 1, output
+    assert output.index("acceptance-marker") < output.index("pre-push-marker"), output
 
 
 def test_free_patch_lands_by_pr_then_tags_after_the_merge(tmp_path, monkeypatch, capsys):

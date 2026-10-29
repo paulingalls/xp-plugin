@@ -4,6 +4,11 @@ Release notes started at v0.6.0; earlier entries are summarized from their
 tag and merge messages. Full detail lives in the merge history and the
 per-sprint review reports.
 
+## v1.2.1
+
+- CLI stdout is line-buffered so newline-terminated output keeps execution order
+  in redirected logs, including Acceptance output before pre-push output.
+
 ## v1.2.0
 
 - Free land releases worktree test resources after PR handoff while retaining its
