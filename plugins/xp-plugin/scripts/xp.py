@@ -51,7 +51,12 @@ def build() -> argparse.ArgumentParser:
     for name, module, fn, text in (
         ("setup", "setup", "cmd_setup", "scaffold .xp/ and the git hooks"),
         ("session-start", "session", "cmd_session_start", "SessionStart hook injection"),
-        ("recover", "session", "cmd_recover", "print digest, open cards, open records"),
+        (
+            "recover",
+            "session",
+            "cmd_recover",
+            "run milestone Measures, print digest, open cards, open records",
+        ),
     ):
         sub.add_parser(name, help=text, description=text).set_defaults(run=handler(module, fn))
 
