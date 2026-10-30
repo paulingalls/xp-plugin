@@ -8,7 +8,7 @@ from xpcore.config import LEFTHOOK_CONFIGS, data_root, plugin_root, refuse, repo
 from xpcore.gitx import git
 from xpcore.session import recover_command
 
-XP_FILES = ("config.yml", "system.md", "constraints.md")
+XP_FILES = ("config.yml", "system.md", "constraints.md", "milestones.md")
 GITHOOKS = ("pre-commit", "pre-merge-commit", "pre-push", "sprint")
 NEXT = (
     "next: fill .xp/config.yml roles and versioning, .xp/system.md, the hook test commands"
