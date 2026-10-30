@@ -71,7 +71,7 @@ def test_recover_measures_invoking_tree_first_without_writing(tmp_path, monkeypa
     [
         ("exit 1", "exit 1"),
         ("no-such-milestone-command-xp", "exit 127"),
-        ("sleep 2", "timed out"),
+        ("sleep 10", "timed out"),
     ],
 )
 def test_failed_measure_reports_output_and_continues(
