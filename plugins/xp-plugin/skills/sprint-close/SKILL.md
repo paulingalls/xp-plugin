@@ -19,7 +19,10 @@ other branch. A changed tree needs a clean checkout on trunk to rerun the sprint
 detached at the merge SHA, restoring trunk afterward; or supply `--tested-by "<reason>"`
 to skip the hook on external evidence. It warns and records `tested_by` in release.json.
 `sprint-close` runs in the invoking checkout before tagging and recording the release.
-Squash/rebase merges release the fetched trunk tip instead. Rewrite `session.md`.
+Squash/rebase merges release the fetched trunk tip instead.
+After post-merge, check out trunk and update it to the released merge, then run
+each milestone's Measure from the repo root and report it to the user.
+Rewrite `session.md`.
 
 ```
 xp.py sprint review <id>

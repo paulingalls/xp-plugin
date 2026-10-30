@@ -34,12 +34,21 @@ def test_banner_carries_version_and_absolute_recover_command(repo):
     assert "--- BEGIN project content ---" not in proc.stdout.decode()
 
 
-def test_big_constraints_are_truncated_inside_the_budget(repo):
-    (repo / ".xp" / "constraints.md").write_text("rule ünïcode line\n" * 1200)
-    out = start(repo).stdout
+@pytest.mark.parametrize("size", [4500, 24000])
+def test_constraints_inside_the_budget(repo, size):
+    constraints = "ü" * (size // 2 - 1) + "z\n"
+    assert len(constraints.encode()) == size
+    (repo / ".xp" / "constraints.md").write_text(constraints)
+    proc = start(repo)
+    assert proc.returncode == 0
+    out = proc.stdout
     assert len(out) <= session.BUDGET
     text = out.decode()
-    assert "[constraints.md truncated at " in text and "bytes; read the file]" in text
+    if size == 4500:
+        assert constraints in text and "truncated" not in text
+    else:
+        assert "[constraints.md truncated at " in text and "bytes; read the file]" in text
+    assert text.count("--- BEGIN project content ---") == 1
     assert text.rstrip().endswith("--- END project content ---")
     for name in session.PROSE:
         assert (config.plugin_root() / name).read_text() in text

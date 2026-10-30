@@ -4,13 +4,13 @@ so a re-run does exactly what is missing and a deleted file re-runs its stage.""
 import re
 from pathlib import Path
 
-from xpcore import bundle, cards, config, gitx, hooks, launch
+from xpcore import bundle, cards, config, gitx, hooks, launch, session
 from xpcore.config import fail
 from xpcore.launch import log_path
 
 REVIEW = re.compile(r"review-(\d+)\.md")
 SLUG = re.compile(r"[a-z0-9]+(-[a-z0-9]+)*")
-QUESTION = re.compile(r"\W*QUESTION:")
+QUESTION = re.compile(r"\W*QUESTION\b")
 REVIEWED = re.compile(r"^reviewed: ([0-9a-f]{40})\s*$", re.M)
 
 
@@ -66,9 +66,13 @@ def card_changes(card: cards.Card) -> str:
     return cards.changes(spawned.read_text(), card.text) if spawned.is_file() else ""
 
 
-def questions(sdir: Path) -> list[str]:
-    lines = _read(sdir / "plan-review.md").splitlines()
-    return [ln.strip() for ln in lines if QUESTION.match(ln)]
+def questions(sdir: Path) -> list[tuple[Path, str]]:
+    return [
+        (source, line.strip())
+        for source in (sdir / "plan.md", sdir / "plan-review.md")
+        for line in _read(source).splitlines()
+        if QUESTION.match(line)
+    ]
 
 
 def stages(card: cards.Card, sdir: Path, wt: Path, base: str) -> list[str]:
@@ -80,8 +84,8 @@ def stages(card: cards.Card, sdir: Path, wt: Path, base: str) -> list[str]:
             todo.append("planner")
         if not (sdir / "plan-review.md").is_file():
             todo.append("plan-reviewer")
-        elif questions(sdir):
-            return [*todo, "question"]
+    if "plan-reviewer" not in todo and questions(sdir):
+        return [*todo, "question"]
     if not (sdir / "handback.md").is_file() or not committed(wt, base):
         todo.append("executor")
     if not reviewed(sdir, wt):
@@ -242,12 +246,13 @@ def walk(card: cards.Card, base: str, dry: bool) -> int:
         if stage in ran:
             fail(f"{stage} ran and its file is still missing or stale in {sdir}; read its log")
         if stage == "question":
-            print(f"{card.id}: the plan reviewer asked ({sdir / 'plan-review.md'}):")
-            print("\n".join(f"  {q}" for q in questions(sdir)))
+            print(f"{card.id}: unanswered questions:")
+            print("\n".join(f"  {source}: {q}" for source, q in questions(sdir)))
             print(
-                f"next: answer it in the card, then delete the QUESTION line from"
-                f" {sdir / 'plan-review.md'} to execute, or the whole file to have the plan"
-                f" re-reviewed, and run {rerun} again"
+                "next: answer it in the card or in the file named with it, then delete the"
+                " QUESTION line from that file to execute, or delete"
+                f" {sdir / 'plan-review.md'} to have the plan re-reviewed,"
+                f" and run {rerun} again"
             )
             return 3
         if stage == "worktree":
@@ -322,6 +327,10 @@ def cmd_free(args) -> int:
         return walk(cards.Card(card_id, name, "planned", [heading]), config.trunk(), True)
     if cards.mint_free(card_id, heading):
         print(f"{card_id}: minted under ## Free in {cards.plan_path()}")
-        print(f"next: write Context, AC, Files and Acceptance under it, then run xp.py free {name}")
+        session.print_milestones()
+        print(
+            "next: write Context, Measure, AC, Files and Acceptance under it,"
+            f" then run xp.py free {name}"
+        )
         return 0
     return walk(cards.find_card(card_id), config.trunk(), args.dry_run)

@@ -67,10 +67,11 @@ repo/.xp/
   config.yml         versioning, trunk, roles, version_files, debt_budget
   system.md          the project: stack, surfaces, conventions
   constraints.md     the project's rules; the plan reviewer enforces them
+  milestones.md      committed goals, executable Measures, optional Candidates
 lefthook.yml (or .githooks/)   pre-commit, pre-push, sprint, nightly — the project's commands
 
 ~/.xp/data/<project>/
-  plan.md            milestones, sprints, cards with [status]
+  plan.md            sprints and cards with [status] and Measure readings
   work.md            bug / debt / note records, append-only
   session.md         the lead's digest, written at every close
   landed.jsonl       one line per landed story
@@ -153,7 +154,7 @@ work.py and session_start.py's command surface.
 
 ```
 xp.py setup                       scaffold .xp/ and the hooks; refuses if .xp/ exists
-xp.py recover                     print digest, card statuses, open records (SessionStart prints the command)
+xp.py recover                     show milestone Measures, print digest, card statuses, open records (SessionStart prints the command)
 
 xp.py sprint plan <id>            fresh slate reviewer reads the slate, writes sprints/<id>/slate-review.md
 xp.py sprint open <id>            cut sprint-<id>, record it
@@ -195,8 +196,8 @@ harnesses. constraints.md and system.md are passed in the bundle too.
 - **planner** reads the card, the code and the tests; produces `stories/<id>/plan.md`;
   owns the implementation approach. Read-only on the repo.
 - **plan reviewer** reads one card with its plan and the constraints; produces findings
-  and edits the card and plan in place; owns correctness within the approved intent. A line beginning `QUESTION:` in the findings stops the story until the lead
-  answers it in the card and deletes that line (or deletes the review file to have the plan
+  and edits the card and plan in place; owns correctness within the approved intent. A line beginning `QUESTION` in the plan or the findings stops the story until the lead
+  answers it in the card and deletes that line from its file (or deletes the review file to have the plan
   re-reviewed against the answer). Read-only on the repo. No second round.
 - **executor** reads the card, the plan, the findings; produces commits through the hooks;
   owns scope, Files, the card's wording and the Acceptance command. Runs Acceptance before
@@ -266,10 +267,14 @@ special because there are no gate files: the hooks read the tree they run on.
 - `bug` requires a red falsifier, `debt` a green one plus both JUDGMENT bars, `note` is
   free text, `resolve` substitutes a green falsifier. The polarity check runs the command.
   That is the whole of work.py.
-- The lead writes `session.md` at every close: intent, surprises, next step, under 30
-  lines. `xp.py recover` prints it, then every non-done card's title and status, then open
-  bugs and debts. That is the recovery block. Nothing else needs recovering because nothing
-  else is state.
+- The lead writes `session.md` at every close: intent, surprises, tack chosen, next step,
+  under 30 lines. `xp.py recover` shows each milestone's Measure first and never runs it
+  (a session start must not run a repo's shell unasked); story land and free mint run
+  them from the invoking checkout, with a 60-second timeout per command. Each reading names wall
+  seconds, branch, short SHA and dirty state. Failures print their status and output
+  and continue. Recover then prints the digest, every non-done card's title and status,
+  and open bugs and debts. That is the recovery block. Nothing else needs recovering
+  because nothing else is state.
 
 ## 11. What is deleted, by file
 

@@ -1,5 +1,6 @@
 import shutil
 import subprocess
+import sys
 
 import pytest
 from xpcore import config, setup
@@ -37,16 +38,32 @@ def test_refuses_when_xp_exists(repo, capsys):
     assert not (repo / ".githooks").exists()
 
 
-def test_scaffolds_lefthook_when_no_routing(repo, lefthook, capsys):
-    assert setup.cmd_setup(None) == 0
+def test_scaffolds_lefthook_when_no_routing(repo, lefthook):
+    proc = subprocess.run(
+        [sys.executable, str(config.plugin_root() / "scripts" / "xp.py"), "setup"],
+        capture_output=True,
+        text=True,
+    )
+    assert proc.returncode == 0, proc.stderr
     for name in ("config.yml", "system.md", "constraints.md"):
         assert (repo / ".xp" / name).is_file()
+    assert (repo / ".xp" / "milestones.md").is_file()
+    assert (repo / ".xp" / "milestones.md").read_bytes() == (
+        config.plugin_root() / "templates" / "milestones.md"
+    ).read_bytes()
     assert (repo / "lefthook.yml").is_file() and (repo / ".githooks" / "hook-lib.sh").is_file()
     assert (repo / ".githooks" / "pre-push" / "secrets").stat().st_mode & 0o111
     assert lefthook.read_text().strip() == "install"
     assert (config.data_root() / "plan.md").is_file()
-    out = capsys.readouterr().out
+    out = proc.stdout
     assert "recover: python3 " in out and out.rstrip().endswith("then /create-sprint")
+    recovered = subprocess.run(
+        [sys.executable, str(config.plugin_root() / "scripts" / "xp.py"), "recover"],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert "free-<slug>" not in recovered.stdout
 
 
 def test_without_lefthook_writes_githooks_and_sets_hooks_path(repo, monkeypatch):

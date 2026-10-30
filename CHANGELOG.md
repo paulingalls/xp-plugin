@@ -4,6 +4,19 @@ Release notes started at v0.6.0; earlier entries are summarized from their
 tag and merge messages. Full detail lives in the merge history and the
 per-sprint review reports.
 
+## v1.3.0
+
+- Successful story land and free mint run each milestone's Measure and print
+  distances, elapsed seconds, and the measured checkout's branch, short SHA and
+  dirty state. Recover shows each Measure first but never runs it: it runs at
+  every session start in any clone, so a repo's own shell must not run unasked. Failed or timed-out Measures print
+  their output and status, then continue; each command has a 60-second wait.
+- Existing consumers: copy `templates/milestones.md` into `.xp/milestones.md`,
+  replace the placeholder with your goals and Measures, and move goals out of
+  plan.md milestone blocks. Setup refuses an existing `.xp/`.
+- After free or sprint post-merge, check out trunk, update it to the released
+  merge, run each milestone's Measure from the repo root, and report it to the user.
+
 ## v1.2.1
 
 - CLI stdout is line-buffered so newline-terminated output keeps execution order

@@ -5,6 +5,12 @@ Background long legs, no timeout.
 
 **Session start.** Run the banner's `recover`. Disk wins over memory.
 
+**Goals.** A user's goal or complaint about effort becomes a milestone, not
+memory. Report progress in its Measure, not card ids. Flat across lands is a
+stall: choose continue (say what differs), change tack (delete what did not move
+it), or ask; tell the user after. Ask before spending money or altering what
+users see.
+
 **Sprint:**
 1. `/create-sprint`: write the slate, `xp.py sprint plan <id>`, judge and correct.
 2. From trunk, `git switch -c sprint-<id>`, then `xp.py sprint open <id>`.
@@ -16,7 +22,7 @@ Background long legs, no timeout.
 **Story.** Re-run after edits. Delete `plan.md` or
 `handback.md` in the story data directory to repeat that stage.
 
-**Free patch.** `xp.py free <slug>` mints a card; fill it in, run again.
+**Free patch.** `xp.py free <slug>` mints a card; fill it, including `Measure:`, run again.
 `/free-close`: judge, `xp.py free land <slug>`; after the PR merges,
 `xp.py free post-merge <slug>`. Land tears down; the worktree stays until close.
 
@@ -28,4 +34,4 @@ skips proof and records evidence. Unchanged trees allow a busy lead checkout.
 open a PR to trunk by hand.
 
 **Judgment and records:** JUDGMENT. **Hooks own tests:** Acceptance and `sprint`.
-**Close.** Rewrite `session.md`: intent, surprises, next step; <30 lines.
+**Close.** Rewrite `session.md`: intent, surprises, tack chosen, next; <30 lines.

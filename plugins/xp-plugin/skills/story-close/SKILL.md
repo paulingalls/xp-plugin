@@ -12,7 +12,7 @@ commits as you read the findings; they are yours to accept, change or revert in
 the story worktree. Unmet ACs and anything the lead reserves are yours,
 with the human where needed. Another review after your fixes is optional; land
 lists commits after the last review as unreviewed, and the sprint review covers
-them. Land, then rewrite `session.md`: intent, surprises, next step, under 30 lines.
+them. Land, then rewrite `session.md`: intent, surprises, tack chosen, next step, under 30 lines.
 
 Before land, apply or reject each card change proposed in
 `<data>/stories/<id>/handback.md`, updating `<data>/plan.md` for accepted changes.
