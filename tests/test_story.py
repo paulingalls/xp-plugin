@@ -16,7 +16,8 @@ with open(os.path.join(data, "roles.txt"), "a") as out:
 with open(os.path.join(data, f"{role}.prompt"), "w") as out:
     out.write(prompt)
 key = {"planner": "PLAN_PATH", "executor": "HANDBACK_PATH"}.get(role, "FINDINGS_PATH")
-extra = os.environ.get("FAKE_QUESTION", "") if role == "plan-reviewer" else ""
+env = {"planner": "FAKE_PLAN_QUESTION", "plan-reviewer": "FAKE_QUESTION"}.get(role, "")
+extra = os.environ.get(env, "")
 with open(paths[key], "w") as out:
     out.write(f"{role} wrote this\\n{extra}\\n")
 if role == "plan-reviewer":  # it edits the card and plan in place, after its findings
@@ -114,21 +115,30 @@ def test_full_walk_then_rerun_is_a_noop(repo, capsys):
     assert not (sdir / "review-2.md").exists()
 
 
-def test_question_stops_until_the_line_is_answered(repo, monkeypatch, capsys):
-    monkeypatch.setenv("FAKE_QUESTION", "QUESTION: which store?")
+@pytest.mark.parametrize(
+    "filename,env", [("plan.md", "FAKE_PLAN_QUESTION"), ("plan-review.md", "FAKE_QUESTION")]
+)
+def test_question_stops_until_the_line_is_answered(repo, monkeypatch, capsys, filename, env):
+    monkeypatch.setenv(env, "QUESTION: which store?")
     assert xp.main(["story", "story-001"]) == 3
     out = capsys.readouterr().out
-    assert "QUESTION: which store?" in out and "answer it in the card" in out
     sdir = story(repo, "story-001")
+    source = sdir / filename
+    assert f"{source}: QUESTION: which store?" in out
+    assert "answer it in the card or in the file named with it" in out
+    assert "delete the QUESTION line from that file" in out
+    assert f"delete {sdir / 'plan-review.md'}" in out
+    assert roles(repo) == ["planner", "plan-reviewer"]
     assert not (sdir / "handback.md").exists()
     assert xp.main(["story", "story-001"]) == 3
+    assert roles(repo) == [] and not (sdir / "handback.md").exists()
 
     plan = repo / "plan.md"
     plan.write_text(plan.read_text().replace("Context: c.", "Context: c. Store: sqlite."))
-    review = sdir / "plan-review.md"
-    review.write_text(review.read_text().replace("QUESTION: which store?", ""))
+    source.write_text(source.read_text().replace("QUESTION: which store?", ""))
     assert xp.main(["story", "story-001"]) == 0
-    assert (sdir / "review-1.md").is_file()
+    assert roles(repo) == ["executor", "reviewer"]
+    assert (sdir / "handback.md").is_file() and (sdir / "review-1.md").is_file()
     log = (repo / "logs" / "story-001-plan-reviewer.log").read_text()
     assert log.count("===== story-001-plan-reviewer") == 1
 
@@ -238,12 +248,27 @@ def test_an_executor_edit_to_the_plan_does_not_rereview_it(repo, monkeypatch):
     assert roles(repo) == ["planner", "plan-reviewer", "executor", "reviewer"]
 
 
-@pytest.mark.parametrize("line", ["- QUESTION: which store?", "**QUESTION:** which store?"])
-def test_a_decorated_question_stops_the_story(repo, monkeypatch, capsys, line):
-    monkeypatch.setenv("FAKE_QUESTION", line)
+def test_questions_in_both_sources_block_independently(repo, monkeypatch, capsys):
+    monkeypatch.setenv("FAKE_PLAN_QUESTION", "- QUESTION: which store?")
+    monkeypatch.setenv("FAKE_QUESTION", "**QUESTION:** which region?")
     assert xp.main(["story", "story-001"]) == 3
-    assert "which store?" in capsys.readouterr().out
-    assert not (story(repo, "story-001") / "handback.md").exists()
+    sdir = story(repo, "story-001")
+    plan, review = sdir / "plan.md", sdir / "plan-review.md"
+    out = capsys.readouterr().out
+    assert f"{plan}: - QUESTION: which store?" in out
+    assert f"{review}: **QUESTION:** which region?" in out
+    assert roles(repo) == ["planner", "plan-reviewer"]
+    assert not (sdir / "handback.md").exists()
+
+    review.write_text(review.read_text().replace("**QUESTION:** which region?", ""))
+    assert xp.main(["story", "story-001"]) == 3
+    out = capsys.readouterr().out
+    assert f"{plan}: - QUESTION: which store?" in out and "which region?" not in out
+    assert roles(repo) == [] and not (sdir / "handback.md").exists()
+
+    plan.write_text(plan.read_text().replace("- QUESTION: which store?", ""))
+    assert xp.main(["story", "story-001"]) == 0
+    assert roles(repo) == ["executor", "reviewer"]
 
 
 def test_story_review_dry_run_launches_nothing(repo, capsys):
