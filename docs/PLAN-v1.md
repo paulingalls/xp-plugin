@@ -195,8 +195,8 @@ harnesses. constraints.md and system.md are passed in the bundle too.
 - **planner** reads the card, the code and the tests; produces `stories/<id>/plan.md`;
   owns the implementation approach. Read-only on the repo.
 - **plan reviewer** reads one card with its plan and the constraints; produces findings
-  and edits the card and plan in place; owns correctness within the approved intent. A line beginning `QUESTION:` in the findings stops the story until the lead
-  answers it in the card and deletes that line (or deletes the review file to have the plan
+  and edits the card and plan in place; owns correctness within the approved intent. A line beginning `QUESTION` in the plan or the findings stops the story until the lead
+  answers it in the card and deletes that line from its file (or deletes the review file to have the plan
   re-reviewed against the answer). Read-only on the repo. No second round.
 - **executor** reads the card, the plan, the findings; produces commits through the hooks;
   owns scope, Files, the card's wording and the Acceptance command. Runs Acceptance before

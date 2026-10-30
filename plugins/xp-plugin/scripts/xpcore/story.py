@@ -10,7 +10,7 @@ from xpcore.launch import log_path
 
 REVIEW = re.compile(r"review-(\d+)\.md")
 SLUG = re.compile(r"[a-z0-9]+(-[a-z0-9]+)*")
-QUESTION = re.compile(r"\W*QUESTION:")
+QUESTION = re.compile(r"\W*QUESTION\b")
 REVIEWED = re.compile(r"^reviewed: ([0-9a-f]{40})\s*$", re.M)
 
 

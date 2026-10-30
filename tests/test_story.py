@@ -249,13 +249,13 @@ def test_an_executor_edit_to_the_plan_does_not_rereview_it(repo, monkeypatch):
 
 
 def test_questions_in_both_sources_block_independently(repo, monkeypatch, capsys):
-    monkeypatch.setenv("FAKE_PLAN_QUESTION", "- QUESTION: which store?")
+    monkeypatch.setenv("FAKE_PLAN_QUESTION", "- QUESTION (lead): which store?")
     monkeypatch.setenv("FAKE_QUESTION", "**QUESTION:** which region?")
     assert xp.main(["story", "story-001"]) == 3
     sdir = story(repo, "story-001")
     plan, review = sdir / "plan.md", sdir / "plan-review.md"
     out = capsys.readouterr().out
-    assert f"{plan}: - QUESTION: which store?" in out
+    assert f"{plan}: - QUESTION (lead): which store?" in out
     assert f"{review}: **QUESTION:** which region?" in out
     assert roles(repo) == ["planner", "plan-reviewer"]
     assert not (sdir / "handback.md").exists()
@@ -263,10 +263,10 @@ def test_questions_in_both_sources_block_independently(repo, monkeypatch, capsys
     review.write_text(review.read_text().replace("**QUESTION:** which region?", ""))
     assert xp.main(["story", "story-001"]) == 3
     out = capsys.readouterr().out
-    assert f"{plan}: - QUESTION: which store?" in out and "which region?" not in out
+    assert f"{plan}: - QUESTION (lead): which store?" in out and "which region?" not in out
     assert roles(repo) == [] and not (sdir / "handback.md").exists()
 
-    plan.write_text(plan.read_text().replace("- QUESTION: which store?", ""))
+    plan.write_text(plan.read_text().replace("- QUESTION (lead): which store?", ""))
     assert xp.main(["story", "story-001"]) == 0
     assert roles(repo) == ["executor", "reviewer"]
 
