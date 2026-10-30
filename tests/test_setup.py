@@ -57,6 +57,7 @@ def test_scaffolds_lefthook_when_no_routing(repo, lefthook):
     assert (config.data_root() / "plan.md").is_file()
     out = proc.stdout
     assert "recover: python3 " in out and out.rstrip().endswith("then /create-sprint")
+    assert "goals and Measures in .xp/milestones.md" in out
     recovered = subprocess.run(
         [sys.executable, str(config.plugin_root() / "scripts" / "xp.py"), "recover"],
         capture_output=True,
