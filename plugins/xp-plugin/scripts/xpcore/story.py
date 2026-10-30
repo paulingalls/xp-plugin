@@ -328,6 +328,9 @@ def cmd_free(args) -> int:
     if cards.mint_free(card_id, heading):
         print(f"{card_id}: minted under ## Free in {cards.plan_path()}")
         session.print_milestones()
-        print(f"next: write Context, AC, Files and Acceptance under it, then run xp.py free {name}")
+        print(
+            "next: write Context, Measure, AC, Files and Acceptance under it,"
+            f" then run xp.py free {name}"
+        )
         return 0
     return walk(cards.find_card(card_id), config.trunk(), args.dry_run)

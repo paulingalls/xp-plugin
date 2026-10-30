@@ -174,7 +174,7 @@ def test_free_mints_its_card_then_stops_for_the_lead(repo, capsys):
     assert xp.main(["free", "fix-typo"]) == 0
     plan = (repo / "plan.md").read_text()
     assert plan.endswith("## Free\n\n#### free-fix-typo — fix-typo   [planned]\n")
-    assert "write Context, AC, Files and Acceptance" in capsys.readouterr().out
+    assert "write Context, Measure, AC, Files and Acceptance" in capsys.readouterr().out
     assert not (repo / "worktrees" / "free-fix-typo").exists()
     assert xp.main(["free", "free-fix-typo"]) == 0
     assert (repo / "plan.md").read_text().count("free-fix-typo") == 1
