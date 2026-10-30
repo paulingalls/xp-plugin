@@ -28,7 +28,7 @@ FILES = {
 
 
 def label(root, dirty=False):
-    branch = git(root, "branch", "--show-current") or "detached HEAD"
+    branch = git(root, "branch", "--show-current")
     sha = git(root, "rev-parse", "HEAD")[:7]
     return rf"\(\d+\.\d+s; {branch} @{sha}{', dirty' if dirty else ''}\)$"
 
