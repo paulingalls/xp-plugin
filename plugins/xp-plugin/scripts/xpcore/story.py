@@ -4,7 +4,7 @@ so a re-run does exactly what is missing and a deleted file re-runs its stage.""
 import re
 from pathlib import Path
 
-from xpcore import bundle, cards, config, gitx, hooks, launch
+from xpcore import bundle, cards, config, gitx, hooks, launch, session
 from xpcore.config import fail
 from xpcore.launch import log_path
 
@@ -327,6 +327,7 @@ def cmd_free(args) -> int:
         return walk(cards.Card(card_id, name, "planned", [heading]), config.trunk(), True)
     if cards.mint_free(card_id, heading):
         print(f"{card_id}: minted under ## Free in {cards.plan_path()}")
+        session.print_milestones()
         print(f"next: write Context, AC, Files and Acceptance under it, then run xp.py free {name}")
         return 0
     return walk(cards.find_card(card_id), config.trunk(), args.dry_run)

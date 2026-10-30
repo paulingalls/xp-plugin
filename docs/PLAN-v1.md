@@ -154,7 +154,7 @@ work.py and session_start.py's command surface.
 
 ```
 xp.py setup                       scaffold .xp/ and the hooks; refuses if .xp/ exists
-xp.py recover                     print digest, card statuses, open records (SessionStart prints the command)
+xp.py recover                     run milestone Measures, print digest, card statuses, open records (SessionStart prints the command)
 
 xp.py sprint plan <id>            fresh slate reviewer reads the slate, writes sprints/<id>/slate-review.md
 xp.py sprint open <id>            cut sprint-<id>, record it
@@ -268,9 +268,12 @@ special because there are no gate files: the hooks read the tree they run on.
   free text, `resolve` substitutes a green falsifier. The polarity check runs the command.
   That is the whole of work.py.
 - The lead writes `session.md` at every close: intent, surprises, tack chosen, next step,
-  under 30 lines. `xp.py recover` prints it, then every non-done card's title and status, then open
-  bugs and debts. That is the recovery block. Nothing else needs recovering because nothing
-  else is state.
+  under 30 lines. `xp.py recover` runs each milestone's Measure from the invoking
+  checkout first, with a 60-second timeout per command. Each reading names wall
+  seconds, branch, short SHA and dirty state. Failures print their status and output
+  and continue. It then prints the digest, every non-done card's title and status,
+  and open bugs and debts. That is the recovery block. Nothing else needs recovering
+  because nothing else is state.
 
 ## 11. What is deleted, by file
 

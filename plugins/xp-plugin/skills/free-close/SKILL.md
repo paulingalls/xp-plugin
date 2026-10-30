@@ -16,6 +16,8 @@ checkout may be busy on another branch. A changed merge tree reruns worktree_set
 then Acceptance detached at the merge SHA in the patch worktree; failure keeps it.
 `--tested-by "<reason>"` skips that setup and proof, warns, and records `tested_by`
 in landed.jsonl. Squash/rebase merges release the fetched trunk tip instead.
+After post-merge, check out trunk and update it to the released merge, then run
+`xp.py recover` and report each milestone's measure to the user.
 Rewrite `session.md`.
 
 Free land runs worktree_teardown but keeps the worktree and branch. Before testing

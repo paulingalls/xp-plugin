@@ -112,7 +112,7 @@ Without origin, post-merge uses local trunk. Tags stay local until you push them
 
 ```
 xp.py setup                     scaffold .xp/ and the hooks
-xp.py recover                   session digest, unfinished cards, open records
+xp.py recover                   run milestone Measures, then digest, unfinished cards, open records
 xp.py sprint plan <id>          fresh review of the slate
 xp.py sprint open <id>          on branch sprint-<id> (e.g. sprint-auth-cleanup), cut from trunk by you
 xp.py sprint review <id>        one reviewer per angle over the sprint, one fix pass
