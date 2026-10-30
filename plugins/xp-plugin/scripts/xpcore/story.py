@@ -84,8 +84,8 @@ def stages(card: cards.Card, sdir: Path, wt: Path, base: str) -> list[str]:
             todo.append("planner")
         if not (sdir / "plan-review.md").is_file():
             todo.append("plan-reviewer")
-        elif questions(sdir):
-            return [*todo, "question"]
+    if "plan-reviewer" not in todo and questions(sdir):
+        return [*todo, "question"]
     if not (sdir / "handback.md").is_file() or not committed(wt, base):
         todo.append("executor")
     if not reviewed(sdir, wt):

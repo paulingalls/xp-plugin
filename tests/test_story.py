@@ -118,7 +118,12 @@ def test_full_walk_then_rerun_is_a_noop(repo, capsys):
 @pytest.mark.parametrize(
     "filename,env", [("plan.md", "FAKE_PLAN_QUESTION"), ("plan-review.md", "FAKE_QUESTION")]
 )
-def test_question_stops_until_the_line_is_answered(repo, monkeypatch, capsys, filename, env):
+@pytest.mark.parametrize("narrowed", [False, True])
+def test_question_stops_until_the_line_is_answered(
+    repo, monkeypatch, capsys, filename, env, narrowed
+):
+    if narrowed:
+        monkeypatch.setenv("FAKE_FILES", "Files: a.py")
     monkeypatch.setenv(env, "QUESTION: which store?")
     assert xp.main(["story", "story-001"]) == 3
     out = capsys.readouterr().out
