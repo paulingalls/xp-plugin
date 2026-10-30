@@ -5,6 +5,13 @@ description: Write a sprint slate, have it reviewed, and open the sprint.
 
 # Create Sprint
 
+Read `.xp/milestones.md`. If missing in an existing `.xp/`, copy the plugin's
+`templates/milestones.md` there and fill goals and runnable Measures with the
+human. Start from applicable Candidates. Run the milestone's Measure from the
+repo root; put `Measure: <reading now>; this moves it by <what>, and deletes
+<what>` under the sprint heading, or `Measure: touches no milestone: <the user's
+words>`. Compare the previous slate's reading.
+
 Choose a descriptive sprint slug, such as `auth-cleanup`. Use it verbatim in the
 `## Sprint <id>` slate heading and `sprint-<id>` branch.
 
@@ -17,7 +24,8 @@ more makes a diff no review can hold. `debt_budget` caps the share of debt. Orde
 prerequisites first and split cards that collide on files. Then run the slate
 review, judge every finding in the slate review file it names (correct the card,
 drop with a reason, or file debt under both JUDGMENT bars), answer each
-`QUESTION:` with the human, and open the sprint. Addressed findings need no
+`QUESTION:` with the human, except a flat reading, which PROCESS Goals leaves to
+you, and open the sprint. Addressed findings need no
 second review.
 
 ```

@@ -67,10 +67,11 @@ repo/.xp/
   config.yml         versioning, trunk, roles, version_files, debt_budget
   system.md          the project: stack, surfaces, conventions
   constraints.md     the project's rules; the plan reviewer enforces them
+  milestones.md      committed goals, executable Measures, optional Candidates
 lefthook.yml (or .githooks/)   pre-commit, pre-push, sprint, nightly — the project's commands
 
 ~/.xp/data/<project>/
-  plan.md            milestones, sprints, cards with [status]
+  plan.md            sprints and cards with [status] and Measure readings
   work.md            bug / debt / note records, append-only
   session.md         the lead's digest, written at every close
   landed.jsonl       one line per landed story
@@ -266,8 +267,8 @@ special because there are no gate files: the hooks read the tree they run on.
 - `bug` requires a red falsifier, `debt` a green one plus both JUDGMENT bars, `note` is
   free text, `resolve` substitutes a green falsifier. The polarity check runs the command.
   That is the whole of work.py.
-- The lead writes `session.md` at every close: intent, surprises, next step, under 30
-  lines. `xp.py recover` prints it, then every non-done card's title and status, then open
+- The lead writes `session.md` at every close: intent, surprises, tack chosen, next step,
+  under 30 lines. `xp.py recover` prints it, then every non-done card's title and status, then open
   bugs and debts. That is the recovery block. Nothing else needs recovering because nothing
   else is state.
 
