@@ -8,7 +8,7 @@ from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 
-from xpcore import cards, gitx, hooks, release
+from xpcore import cards, gitx, hooks, release, session
 from xpcore.config import data_root, fail, refuse, sprint_branch, trunk
 from xpcore.story import card_changes, last_reviewed, reviews, story_dir, worktree
 
@@ -272,7 +272,12 @@ def pull_request(branch: str, target: str, cwd, after: str, *, title=None, body=
 
 
 def cmd_story_land(args) -> int:
-    return land(args.id, sprint_branch(), pr=False, dry_run=args.dry_run, tested_by=args.tested_by)
+    result = land(
+        args.id, sprint_branch(), pr=False, dry_run=args.dry_run, tested_by=args.tested_by
+    )
+    if result == 0 and not args.dry_run:
+        session.print_milestones()
+    return result
 
 
 def cmd_free_land(args) -> int:

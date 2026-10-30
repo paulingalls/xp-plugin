@@ -2,11 +2,14 @@
 
 import json
 import os
+import re
+import subprocess
 import sys
+import time
 import traceback
 from pathlib import Path
 
-from xpcore import cards, records
+from xpcore import cards, gitx, records
 from xpcore.config import data_root, plugin_root, sprint_branch
 from xpcore.gitx import git
 
@@ -15,6 +18,7 @@ BUDGET = 9_900
 BEGIN, END = "--- BEGIN project content ---", "--- END project content ---"
 PROSE = ("VALUES.md", "JUDGMENT.md", "PROCESS.md")
 STAGES = ("plan.md", "plan-review.md", "handback.md")
+MEASURE_TIMEOUT = 60
 
 
 def _version() -> str:
@@ -89,7 +93,47 @@ def _stage_files(card_id: str) -> str:
     return ", ".join(found) or "none yet"
 
 
+def _output(text: str | bytes | None) -> str:
+    return text.decode(errors="replace") if isinstance(text, bytes) else text or ""
+
+
+def print_milestones() -> None:
+    root = _repo()
+    if root is None or not (path := root / ".xp" / "milestones.md").is_file():
+        return
+    text = re.sub(r"<!--.*?-->", "", path.read_text(errors="replace"), flags=re.S)
+    sections = re.split(r"^##[ \t]+(.+)$", text, flags=re.M)
+    for title, body in zip(sections[1::2], sections[2::2], strict=True):
+        measure = re.search(r"^Measure:[ \t]*(.*)$", body, flags=re.M)
+        if not measure or not (command := measure[1].strip()):
+            print(f"{title.strip()} — no Measure")
+            continue
+        branch = gitx.current_branch(root) or "detached HEAD"
+        sha = git("rev-parse", "--verify", "--quiet", "HEAD", cwd=root, check=False)[:7]
+        tree = f"{branch} @{sha or 'no commits'}" + (", dirty" if gitx.is_dirty(root) else "")
+        started = time.monotonic()
+        try:
+            proc = subprocess.run(
+                ["sh", "-c", command],
+                cwd=root,
+                stdin=subprocess.DEVNULL,
+                capture_output=True,
+                text=True,
+                errors="replace",
+                timeout=MEASURE_TIMEOUT,
+            )
+            output = proc.stdout + " " + proc.stderr
+            status = f"exit {proc.returncode}" if proc.returncode else ""
+        except subprocess.TimeoutExpired as exc:
+            output = _output(exc.stdout) + " " + _output(exc.stderr)
+            status = "timed out"
+        elapsed = time.monotonic() - started
+        result = " ".join((output + " " + status).split())
+        print(f"{title.strip()} — {result} ({elapsed:.2f}s; {tree})")
+
+
 def cmd_recover(args) -> int:
+    print_milestones()
     digest = data_root() / "session.md"
     print(digest.read_text().rstrip() if digest.is_file() else "no session digest yet")
     print("\n## cards")
