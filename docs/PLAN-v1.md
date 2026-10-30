@@ -67,10 +67,11 @@ repo/.xp/
   config.yml         versioning, trunk, roles, version_files, debt_budget
   system.md          the project: stack, surfaces, conventions
   constraints.md     the project's rules; the plan reviewer enforces them
+  milestones.md      committed goals, executable Measures, optional Candidates
 lefthook.yml (or .githooks/)   pre-commit, pre-push, sprint, nightly — the project's commands
 
 ~/.xp/data/<project>/
-  plan.md            milestones, sprints, cards with [status]
+  plan.md            sprints and cards with [status] and Measure readings
   work.md            bug / debt / note records, append-only
   session.md         the lead's digest, written at every close
   landed.jsonl       one line per landed story

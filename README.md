@@ -29,12 +29,14 @@ codex plugin add xp-plugin@xp-plugin
 ## Set up a repository
 
 Run `/xp-setup`, or `xp.py setup` directly. The session banner prints the absolute path
-to `xp.py`. Setup writes `.xp/config.yml`, `.xp/constraints.md`, `.xp/system.md`, the git
+to `xp.py`. Setup writes `.xp/config.yml`, `.xp/constraints.md`, `.xp/system.md`, `.xp/milestones.md`, the git
 hooks and an empty plan, and refuses if `.xp/` already exists. Then fill in:
 
 - **Every `EDIT-ME` in the hooks.** pre-commit runs lint and quick tests in under a minute.
   pre-push runs the broader tests. The `sprint` hook is the release suite. `nightly` is
   optional and wired to your own scheduler. Test commands live only here.
+- **`.xp/milestones.md`.** Fill goals in the user's words and runnable Measures.
+  For an existing `.xp/`, copy the plugin's `templates/milestones.md` there first.
 - **`.xp/config.yml`.** Set `versioning`, `version_files` if it is on, and `roles` (below).
 - **`.xp/system.md`.** Describe the product, especially Surfaces & acceptance.
 - **`.xp/constraints.md`.** Keep the project's rules, which reviewers cite. Cap the entire

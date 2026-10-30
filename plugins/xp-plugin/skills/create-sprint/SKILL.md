@@ -5,6 +5,13 @@ description: Write a sprint slate, have it reviewed, and open the sprint.
 
 # Create Sprint
 
+Read `.xp/milestones.md`. If missing in an existing `.xp/`, copy the plugin's
+`templates/milestones.md` there and fill goals and runnable Measures with the
+human. Start from applicable Candidates. Run the milestone's Measure from the
+repo root; put `Measure: <reading now>; this moves it by <what>, and deletes
+<what>` under the sprint heading, or `Measure: touches no milestone: <the user's
+words>`. Compare the previous slate's reading.
+
 Choose a descriptive sprint slug, such as `auth-cleanup`. Use it verbatim in the
 `## Sprint <id>` slate heading and `sprint-<id>` branch.
 
