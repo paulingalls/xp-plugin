@@ -54,11 +54,11 @@ def test_recover_measures_invoking_tree_first_without_writing(tmp_path, monkeypa
     assert xp.main(["recover"]) == 0
     lines = capsys.readouterr().out.splitlines()
     for line, title, result in zip(
-        lines[:2], ("First", "Second"), ("distance=2", "distance=3"), strict=True
+        lines[1:3], ("First", "Second"), ("distance=2", "distance=3"), strict=True
     ):
         assert line.startswith(f"{title} — {result} ")
         assert re.search(label(root, dirty), line)
-    assert lines[2:4] == ["Unmeasured — no Measure", "distinct digest"]
+    assert lines[3:6] == ["Unmeasured — no Measure", session.END, "distinct digest"]
     assert "hidden" not in "\n".join(lines)
     assert snapshot(root, data) == before
     (root / ".xp/milestones.md").unlink()
@@ -95,10 +95,10 @@ def test_failed_measure_reports_output_and_continues(
     assert xp.main(["recover"]) == 0
     assert time.monotonic() - started < 5
     lines = capsys.readouterr().out.splitlines()
-    assert all(text in lines[0] for text in ("Failing —", "partial", "diagnostic", status))
-    assert lines[1].startswith("Following — remaining ")
-    assert all(re.search(label(root), line) for line in lines[:2])
-    assert lines[2] == "digest"
+    assert all(text in lines[1] for text in ("Failing —", "partial", "diagnostic", status))
+    assert lines[2].startswith("Following — remaining ")
+    assert all(re.search(label(root), line) for line in lines[1:3])
+    assert lines[4] == "digest"
 
 
 def test_recover_outside_repo_and_before_first_commit(tmp_path, monkeypatch, capsys):
@@ -116,7 +116,13 @@ def test_recover_outside_repo_and_before_first_commit(tmp_path, monkeypatch, cap
     monkeypatch.chdir(root)
     assert xp.main(["recover"]) == 0
     out = capsys.readouterr().out
-    assert re.match(r"New — distance \(\d+\.\d+s; main @no commits, dirty\)\ndigest\n", out)
+    assert re.match(
+        re.escape(session.BEGIN)
+        + r"\nNew — distance \(\d+\.\d+s; main @no commits, dirty\)\n"
+        + re.escape(session.END)
+        + "\ndigest\n",
+        out,
+    )
 
 
 def test_story_land_measures_new_merge_in_invoking_checkout(story, capsys):
@@ -161,7 +167,7 @@ def test_free_post_merge_measures_only_on_recover(tmp_path, monkeypatch, capsys)
     assert git(root, "rev-parse", "v1.1.1^{commit}") == git(root, "rev-parse", "HEAD")
     assert xp.main(["recover"]) == 0
     lines = capsys.readouterr().out.splitlines()
-    assert lines[0].startswith("First — distance=2") and re.search(label(root), lines[0])
+    assert lines[1].startswith("First — distance=2") and re.search(label(root), lines[1])
 
 
 def test_sprint_post_merge_measures_only_on_recover(repo, tmp_path, monkeypatch, capsys):
@@ -179,4 +185,4 @@ def test_sprint_post_merge_measures_only_on_recover(repo, tmp_path, monkeypatch,
     assert git(root, "rev-parse", "v1.2.0^{commit}") == git(root, "rev-parse", "HEAD")
     assert xp.main(["recover"]) == 0
     lines = capsys.readouterr().out.splitlines()
-    assert lines[0].startswith("First — distance=2") and re.search(label(root), lines[0])
+    assert lines[1].startswith("First — distance=2") and re.search(label(root), lines[1])

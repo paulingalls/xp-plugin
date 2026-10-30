@@ -103,10 +103,11 @@ def print_milestones() -> None:
         return
     text = re.sub(r"<!--.*?-->", "", path.read_text(errors="replace"), flags=re.S)
     sections = re.split(r"^##[ \t]+(.+)$", text, flags=re.M)
+    readings = []
     for title, body in zip(sections[1::2], sections[2::2], strict=True):
         measure = re.search(r"^Measure:[ \t]*(.*)$", body, flags=re.M)
         if not measure or not (command := measure[1].strip()):
-            print(f"{title.strip()} — no Measure")
+            readings.append(f"{title.strip()} — no Measure")
             continue
         branch = gitx.current_branch(root) or "detached HEAD"
         sha = git("rev-parse", "--verify", "--quiet", "HEAD", cwd=root, check=False)[:7]
@@ -129,7 +130,11 @@ def print_milestones() -> None:
             status = "timed out"
         elapsed = time.monotonic() - started
         result = " ".join((output + " " + status).split())
-        print(f"{title.strip()} — {result} ({elapsed:.2f}s; {tree})")
+        readings.append(f"{title.strip()} — {result} ({elapsed:.2f}s; {tree})")
+    if readings:
+        print(BEGIN)
+        print("\n".join(readings).replace(END, "[fence marker removed]"))
+        print(END)
 
 
 def cmd_recover(args) -> int:
