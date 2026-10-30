@@ -267,8 +267,8 @@ special because there are no gate files: the hooks read the tree they run on.
 - `bug` requires a red falsifier, `debt` a green one plus both JUDGMENT bars, `note` is
   free text, `resolve` substitutes a green falsifier. The polarity check runs the command.
   That is the whole of work.py.
-- The lead writes `session.md` at every close: intent, surprises, next step, under 30
-  lines. `xp.py recover` prints it, then every non-done card's title and status, then open
+- The lead writes `session.md` at every close: intent, surprises, tack chosen, next step,
+  under 30 lines. `xp.py recover` prints it, then every non-done card's title and status, then open
   bugs and debts. That is the recovery block. Nothing else needs recovering because nothing
   else is state.
 

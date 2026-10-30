@@ -24,7 +24,8 @@ more makes a diff no review can hold. `debt_budget` caps the share of debt. Orde
 prerequisites first and split cards that collide on files. Then run the slate
 review, judge every finding in the slate review file it names (correct the card,
 drop with a reason, or file debt under both JUDGMENT bars), answer each
-`QUESTION:` with the human, and open the sprint. Addressed findings need no
+`QUESTION:` with the human, except a flat reading, which PROCESS Goals leaves to
+you, and open the sprint. Addressed findings need no
 second review.
 
 ```

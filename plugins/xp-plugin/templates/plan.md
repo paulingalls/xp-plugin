@@ -4,7 +4,7 @@
      Files: comma-separated paths the story touches; the executor extends them.
      Acceptance: one command, run from the repo root, that executes the ACs.
      A Gherkin feature is the recommended form: the ACs are its scenarios.
-     A sprint or free card may instead use:
+     A sprint heading or free card may instead use:
      Measure: touches no milestone: <the user's words>
      Optional `Executor: harness/model[/effort]` overrides roles.executor. -->
 
