@@ -4,6 +4,11 @@ Release notes started at v0.6.0; earlier entries are summarized from their
 tag and merge messages. Full detail lives in the merge history and the
 per-sprint review reports.
 
+## v1.3.1
+
+- Setup's next step names `.xp/milestones.md`, and free mint says to copy
+  `templates/milestones.md` when the file is missing.
+
 ## v1.3.0
 
 - Successful story land and free mint run each milestone's Measure and print

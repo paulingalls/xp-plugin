@@ -328,6 +328,9 @@ def cmd_free(args) -> int:
     if cards.mint_free(card_id, heading):
         print(f"{card_id}: minted under ## Free in {cards.plan_path()}")
         session.print_milestones()
+        if not (config.repo_root() / ".xp" / "milestones.md").is_file():
+            template = config.plugin_root() / "templates" / "milestones.md"
+            print(f"no .xp/milestones.md: copy {template} there; fill goals and Measures")
         print(
             "next: write Context, Measure, AC, Files and Acceptance under it,"
             f" then run xp.py free {name}"

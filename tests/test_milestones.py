@@ -147,6 +147,16 @@ def test_free_mint_measures_before_next_instruction(tmp_path, monkeypatch, capsy
             assert re.search(label(root), line)
 
 
+def test_free_mint_without_milestones_says_to_copy_the_template(tmp_path, monkeypatch, capsys):
+    _, data = make_project(tmp_path, monkeypatch)
+    (data / "plan.md").write_text("# Plan\n")
+    assert xp.main(["free", "first-patch"]) == 0
+    out = capsys.readouterr().out
+    template = session.plugin_root() / "templates" / "milestones.md"
+    assert f"no .xp/milestones.md: copy {template} there" in out
+    assert out.index("no .xp/milestones.md") < out.index("next: write Context")
+
+
 def test_free_post_merge_measures_nothing(tmp_path, monkeypatch, capsys):
     from test_free_post_merge import publish_merge
     from test_land import fake_gh, free_patch

@@ -12,7 +12,7 @@ XP_FILES = ("config.yml", "system.md", "constraints.md", "milestones.md")
 GITHOOKS = ("pre-commit", "pre-merge-commit", "pre-push", "sprint")
 NEXT = (
     "next: fill .xp/config.yml roles and versioning, .xp/system.md, the hook test commands"
-    " (every EDIT-ME); then /create-sprint"
+    " (every EDIT-ME), goals and Measures in .xp/milestones.md; then /create-sprint"
 )
 
 
