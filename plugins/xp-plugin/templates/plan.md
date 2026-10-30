@@ -6,7 +6,16 @@
      A Gherkin feature is the recommended form: the ACs are its scenarios.
      A sprint heading or free card may instead use:
      Measure: touches no milestone: <the user's words>
-     Optional `Executor: harness/model[/effort]` overrides roles.executor. -->
+     Optional `Executor: harness/model[/effort]` overrides roles.executor.
+
+     #### free-<slug> — <title>   [planned]
+     Context: <what changes, for whom, and why now>
+     Measure: <reading now>; this moves it by <what>, and deletes <what>
+     AC:
+     - Given <state>, When <action>, Then <observable outcome>
+     Files: <paths>
+     Acceptance: <one command executing the ACs>
+-->
 
 ## Sprint 1 — <title>
 Measure: <reading now>; this moves it by <what>, and deletes <what>
@@ -20,11 +29,3 @@ Files: src/cart.py, features/cart.feature
 Acceptance: <your runner> features/cart.feature
 
 ## Free
-
-#### free-<slug> — <title>   [planned]
-Context: <what changes, for whom, and why now>
-Measure: <reading now>; this moves it by <what>, and deletes <what>
-AC:
-- Given <state>, When <action>, Then <observable outcome>
-Files: <paths>
-Acceptance: <one command executing the ACs>

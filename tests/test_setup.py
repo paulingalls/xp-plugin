@@ -57,6 +57,13 @@ def test_scaffolds_lefthook_when_no_routing(repo, lefthook):
     assert (config.data_root() / "plan.md").is_file()
     out = proc.stdout
     assert "recover: python3 " in out and out.rstrip().endswith("then /create-sprint")
+    recovered = subprocess.run(
+        [sys.executable, str(config.plugin_root() / "scripts" / "xp.py"), "recover"],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert "free-<slug>" not in recovered.stdout
 
 
 def test_without_lefthook_writes_githooks_and_sets_hooks_path(repo, monkeypatch):
