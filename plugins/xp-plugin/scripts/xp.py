@@ -55,7 +55,7 @@ def build() -> argparse.ArgumentParser:
             "recover",
             "session",
             "cmd_recover",
-            "run milestone Measures, print digest, open cards, open records",
+            "show milestone Measures, print digest, open cards, open records",
         ),
     ):
         sub.add_parser(name, help=text, description=text).set_defaults(run=handler(module, fn))

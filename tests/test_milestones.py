@@ -33,37 +33,40 @@ def label(root, dirty=False):
     return rf"\(\d+\.\d+s; {branch} @{sha}{', dirty' if dirty else ''}\)$"
 
 
-def snapshot(root, data):
-    return (
-        git(root, "rev-parse", "HEAD"),
-        git(root, "status", "--porcelain"),
-        {str(p.relative_to(data)): p.read_bytes() for p in data.rglob("*") if p.is_file()},
-    )
+def snapshot(root):
+    return git(root, "rev-parse", "HEAD"), git(root, "status", "--porcelain")
+
+
+def readings(capsys, slug):
+    """Free mint is a deliberate command, so it runs the Measures; recover only shows them."""
+    assert xp.main(["free", slug]) == 0
+    out = capsys.readouterr().out.splitlines()
+    if session.BEGIN not in out:
+        return []
+    return out[out.index(session.BEGIN) + 1 : out.index(session.END)]
 
 
 @pytest.mark.parametrize("dirty", [False, True])
-def test_recover_measures_invoking_tree_first_without_writing(tmp_path, monkeypatch, capsys, dirty):
+def test_mint_measures_invoking_tree_without_writing(tmp_path, monkeypatch, capsys, dirty):
     root, data = make_project(tmp_path, monkeypatch)
+    (data / "plan.md").write_text("# Plan\n")
     commit(root, FILES, "goals")
-    (data / "session.md").write_text("distinct digest\n")
     (root / "nested").mkdir()
     if dirty:
         (root / "untracked").touch()
-    before = snapshot(root, data)
+    before = snapshot(root)
     monkeypatch.chdir(root / "nested")
-    assert xp.main(["recover"]) == 0
-    lines = capsys.readouterr().out.splitlines()
+    lines = readings(capsys, "first")
     for line, title, result in zip(
-        lines[1:3], ("First", "Second"), ("distance=2", "distance=3"), strict=True
+        lines[:2], ("First", "Second"), ("distance=2", "distance=3"), strict=True
     ):
         assert line.startswith(f"{title} — {result} ")
         assert re.search(label(root, dirty), line)
-    assert lines[3:6] == ["Unmeasured — no Measure", session.END, "distinct digest"]
+    assert lines[2:] == ["Unmeasured — no Measure"]
     assert "hidden" not in "\n".join(lines)
-    assert snapshot(root, data) == before
+    assert snapshot(root) == before
     (root / ".xp/milestones.md").unlink()
-    assert xp.main(["recover"]) == 0
-    assert capsys.readouterr().out.startswith("distinct digest\n\n## cards")
+    assert readings(capsys, "second") == []
 
 
 @pytest.mark.parametrize(
@@ -88,17 +91,15 @@ def test_failed_measure_reports_output_and_continues(
         },
         "goals",
     )
-    (data / "session.md").write_text("digest\n")
+    (data / "plan.md").write_text("# Plan\n")
     if status == "timed out":
         monkeypatch.setattr(session, "MEASURE_TIMEOUT", 0.1, raising=False)
     started = time.monotonic()
-    assert xp.main(["recover"]) == 0
+    lines = readings(capsys, "patch")
     assert time.monotonic() - started < 5
-    lines = capsys.readouterr().out.splitlines()
-    assert all(text in lines[1] for text in ("Failing —", "partial", "diagnostic", status))
-    assert lines[2].startswith("Following — remaining ")
-    assert all(re.search(label(root), line) for line in lines[1:3])
-    assert lines[4] == "digest"
+    assert all(text in lines[0] for text in ("Failing —", "partial", "diagnostic", status))
+    assert lines[1].startswith("Following — remaining ")
+    assert all(re.search(label(root), line) for line in lines)
 
 
 def test_recover_outside_repo_and_before_first_commit(tmp_path, monkeypatch, capsys):
@@ -116,13 +117,7 @@ def test_recover_outside_repo_and_before_first_commit(tmp_path, monkeypatch, cap
     monkeypatch.chdir(root)
     assert xp.main(["recover"]) == 0
     out = capsys.readouterr().out
-    assert re.match(
-        re.escape(session.BEGIN)
-        + r"\nNew — distance \(\d+\.\d+s; main @no commits, dirty\)\n"
-        + re.escape(session.END)
-        + "\ndigest\n",
-        out,
-    )
+    assert out.startswith(f"{session.BEGIN}\nNew — not run: echo distance\n{session.END}\ndigest\n")
 
 
 def test_story_land_measures_new_merge_in_invoking_checkout(story, capsys):
@@ -152,7 +147,7 @@ def test_free_mint_measures_before_next_instruction(tmp_path, monkeypatch, capsy
             assert re.search(label(root), line)
 
 
-def test_free_post_merge_measures_only_on_recover(tmp_path, monkeypatch, capsys):
+def test_free_post_merge_measures_nothing(tmp_path, monkeypatch, capsys):
     from test_free_post_merge import publish_merge
     from test_land import fake_gh, free_patch
 
@@ -166,11 +161,10 @@ def test_free_post_merge_measures_only_on_recover(tmp_path, monkeypatch, capsys)
     assert "distance=" not in capsys.readouterr().out
     assert git(root, "rev-parse", "v1.1.1^{commit}") == git(root, "rev-parse", "HEAD")
     assert xp.main(["recover"]) == 0
-    lines = capsys.readouterr().out.splitlines()
-    assert lines[1].startswith("First — distance=2") and re.search(label(root), lines[1])
+    assert capsys.readouterr().out.splitlines()[1] == "First — not run: cat first.txt"
 
 
-def test_sprint_post_merge_measures_only_on_recover(repo, tmp_path, monkeypatch, capsys):
+def test_sprint_post_merge_measures_nothing(repo, tmp_path, monkeypatch, capsys):
     from test_land import fake_gh
     from test_sprint import merge_on_trunk
 
@@ -184,5 +178,4 @@ def test_sprint_post_merge_measures_only_on_recover(repo, tmp_path, monkeypatch,
     assert "distance=" not in capsys.readouterr().out
     assert git(root, "rev-parse", "v1.2.0^{commit}") == git(root, "rev-parse", "HEAD")
     assert xp.main(["recover"]) == 0
-    lines = capsys.readouterr().out.splitlines()
-    assert lines[1].startswith("First — distance=2") and re.search(label(root), lines[1])
+    assert capsys.readouterr().out.splitlines()[1] == "First — not run: cat first.txt"

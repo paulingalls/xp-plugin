@@ -21,7 +21,7 @@ to skip the hook on external evidence. It warns and records `tested_by` in relea
 `sprint-close` runs in the invoking checkout before tagging and recording the release.
 Squash/rebase merges release the fetched trunk tip instead.
 After post-merge, check out trunk and update it to the released merge, then run
-`xp.py recover` and report each milestone's measure to the user.
+each milestone's Measure from the repo root and report it to the user.
 Rewrite `session.md`.
 
 ```

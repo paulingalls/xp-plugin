@@ -97,7 +97,9 @@ def _output(text: str | bytes | None) -> str:
     return text.decode(errors="replace") if isinstance(text, bytes) else text or ""
 
 
-def print_milestones() -> None:
+def print_milestones(run: bool = True) -> None:
+    """`run` only from a command the lead chose to run here: recover runs at every session
+    start, in any clone, so there a repo's Measure is shown, never executed."""
     root = _repo()
     if root is None or not (path := root / ".xp" / "milestones.md").is_file():
         return
@@ -108,6 +110,9 @@ def print_milestones() -> None:
         measure = re.search(r"^Measure:[ \t]*(.*)$", body, flags=re.M)
         if not measure or not (command := measure[1].strip()):
             readings.append(f"{title.strip()} — no Measure")
+            continue
+        if not run:
+            readings.append(f"{title.strip()} — not run: {command}")
             continue
         branch = gitx.current_branch(root) or "detached HEAD"
         sha = git("rev-parse", "--verify", "--quiet", "HEAD", cwd=root, check=False)[:7]
@@ -138,7 +143,7 @@ def print_milestones() -> None:
 
 
 def cmd_recover(args) -> int:
-    print_milestones()
+    print_milestones(run=False)
     digest = data_root() / "session.md"
     print(digest.read_text().rstrip() if digest.is_file() else "no session digest yet")
     print("\n## cards")
