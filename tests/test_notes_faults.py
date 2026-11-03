@@ -1,7 +1,7 @@
 import pytest
 import xp
 from test_land import commit, fake_gh, git
-from test_notes import NOTE, branch_project, pending, project, race_hook
+from test_notes import CONFIG, NOTE, branch_project, pending, project, race_hook
 from xpcore import cards
 
 
@@ -36,6 +36,7 @@ def test_post_merge_refuses_malformed_pending_note(tmp_path, monkeypatch, capsys
     )
     git(root, "merge", "-q", "--no-ff", branch, "-m", "PR")
     git(root, "push", "-q", "origin", "main")
+    commit(root, {".xp/config.yml": CONFIG.replace("notes", "off")}, "stale local mode")
     with pytest.raises(SystemExit) as exc:
         xp.main([kind, "post-merge", identifier, "--tested-by", "external proof"])
     err = capsys.readouterr().err
