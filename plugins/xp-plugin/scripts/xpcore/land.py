@@ -78,14 +78,17 @@ def accept(
                 f"{target} does not merge cleanly into {branch}:\n{conflict}\nmerge {target}"
                 f" into {branch} in {path}, resolve, review again, then land"
             )
-        where, then = f"{branch} merged with {target}", "fix it on the branch, then land again"
-        if tested_by is not None:
-            print(f"warning: skipped Acceptance `{card.acceptance}`: {tested_by}")
-        else:
-            acceptance(card, path, f"{card.id}-acceptance", where, then)
-        return gitx.git("write-tree", cwd=path)
+        tree = gitx.git("write-tree", cwd=path)
     finally:
         gitx.abort_merge(path)
+    if tested_by is not None:
+        print(f"warning: skipped Acceptance `{card.acceptance}`: {tested_by}")
+    else:
+        probe = gitx.probe_commit(tree, gitx.head(path), sha, cwd=path)
+        with detached(path, probe):
+            where, then = f"{branch} merged with {target}", "fix it on the branch, then land again"
+            acceptance(card, path, f"{card.id}-acceptance", where, then)
+    return tree
 
 
 def fetched_trunk(target: str, path: Path) -> str:

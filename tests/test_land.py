@@ -16,6 +16,19 @@ CHECK = "import pathlib, sys\nsys.exit(pathlib.Path('merged.txt').read_text() !=
 CARD = "## Sprint 1 — s\n\n#### story-001 — add   [in-progress]\nAcceptance: python3 check.py\n"
 
 
+def proof_check(trace):
+    return (
+        "import subprocess as s\nfrom pathlib import Path\n"
+        "def git(*args): return s.check_output(['git', *args], text=True).strip('\\n')\n"
+        f"Path({str(trace)!r}).write_text(git('status', '--porcelain') + '\\n' + "
+        "git('branch', '--show-current') + '\\n' + git('rev-parse', 'HEAD', 'HEAD^{tree}') + "
+        "'\\n' + git('show', '-s', '--format=%P', 'HEAD') + '\\n')\n"
+        "assert git('status', '--porcelain') == ''\n"
+        "assert git('branch', '--show-current') == ''\n"
+        "assert Path('merged.txt').read_text() == 'ok\\n'\n"
+    )
+
+
 def git(cwd, *args, env=None, check=True):
     proc = subprocess.run(["git", *args], cwd=cwd, capture_output=True, text=True, env=env)
     assert proc.returncode == 0 or not check, proc.stderr
@@ -82,10 +95,12 @@ def story(tmp_path, monkeypatch):
 
 
 @pytest.mark.parametrize("override", [False, True])
-def test_green_acceptance_on_the_merged_tree_lands_and_closes(story, capsys, override):
+def test_green_acceptance_on_the_merged_clean_tree_lands_and_closes(story, capsys, override):
     root, data, wt, late = story
-    # check.py reads merged.txt, which only the sprint branch has: green needs the trial merge.
-    commit(root, {"merged.txt": "bad\n" if override else "ok\n"}, "sprint work")
+    trace = data / "proof"
+    if not override:
+        late = commit(wt, {"check.py": proof_check(trace)}, "check clean merged tree")
+    target = commit(root, {"merged.txt": "bad\n" if override else "ok\n"}, "sprint work")
     assert xp.main(["story", "land", "story-001", *(["--tested-by", "r"] if override else [])]) == 0
     output = capsys.readouterr().out
     if override:
@@ -93,7 +108,12 @@ def test_green_acceptance_on_the_merged_tree_lands_and_closes(story, capsys, ove
     assert (data / "logs" / "story-001-acceptance.log").exists() != override
     body = git(root, "log", "-1", "--format=%B")
     assert ("Not hook-verified at land: r" in body.splitlines()) == override
-    seen = git(root, "rev-parse", f"{late}^")
+    if not override:
+        status, branch, probe, tree, parents = trace.read_text().splitlines()
+        assert status == branch == "" and parents == f"{late} {target}" and probe != late
+        assert tree == git(root, "rev-parse", "HEAD^{tree}")
+    review = (data / "stories" / "story-001" / "review-1.md").read_text()
+    seen = review.split("reviewed: ")[1].strip()
     assert "review-1.md" in body and f"unreviewed: {seen[:10]}..{late[:10]}" in body
     assert git(root, "rev-parse", "HEAD^2") == late
     assert cards.find_card("story-001").status == "done"
@@ -104,10 +124,18 @@ def test_green_acceptance_on_the_merged_tree_lands_and_closes(story, capsys, ove
 
 def test_red_acceptance_refuses_and_leaves_everything_unmerged(story, capsys):
     root, data, wt, _ = story
+    trace = data / "red-proof"
+    tip = commit(wt, {"check.py": proof_check(trace)}, "trace red proof")
+    tree = git(wt, "rev-parse", "HEAD^{tree}")
     before = commit(root, {"merged.txt": "bad\n"}, "sprint work")
     with pytest.raises(SystemExit) as exit_:
         land.cmd_story_land(ns("story-001"))
     assert exit_.value.code == 2 and "Acceptance exited 1" in capsys.readouterr().err
+    status, branch, probe, tested, parents = trace.read_text().splitlines()
+    assert status == branch == "" and parents == f"{tip} {before}" and probe != tip
+    assert tested != tree
+    assert git(wt, "branch", "--show-current") == "story-001-thing"
+    assert git(wt, "rev-parse", "HEAD", "HEAD^{tree}").splitlines() == [tip, tree]
     assert git(wt, "status", "--porcelain") == "" and not (wt / "merged.txt").exists()
     assert git(wt, "rev-parse", "-q", "--verify", "MERGE_HEAD", check=False) != 0
     assert git(root, "rev-parse", "HEAD") == before
@@ -246,19 +274,28 @@ def test_a_refused_push_shows_the_hook_output_that_names_the_red(tmp_path, monke
     assert not git(root, "ls-remote", "origin", "free-fix-x")
 
 
-def test_free_land_trial_merges_the_fetched_origin_trunk(tmp_path, monkeypatch):
+def test_free_land_trial_merges_the_fetched_origin_trunk_clean_tree(tmp_path, monkeypatch):
     gh = fake_gh(tmp_path, monkeypatch)
-    files = {**manifest("1.1.1"), "check.py": CHECK}
-    free_patch(tmp_path, monkeypatch, "python3 check.py", files)
+    trace = tmp_path / "proof"
+    files = {**manifest("1.1.1"), "check.py": proof_check(trace)}
+    _, data, wt = free_patch(tmp_path, monkeypatch, "python3 check.py", files)
+    tip = git(wt, "rev-parse", "HEAD")
+    tree = git(wt, "rev-parse", "HEAD^{tree}")
     other = tmp_path / "other"
     git(tmp_path, "clone", "-q", str(tmp_path / "origin.git"), str(other))
     git(other, "config", "user.email", "t@example.com")
     git(other, "config", "user.name", "t")
     commit(other, {"merged.txt": "ok\n"}, "pushed elsewhere")
     git(other, "push", "-q", "origin", "main")
-    # Only a fetch brings merged.txt, so a green Acceptance proves origin/main was merged.
     assert land.cmd_free_land(ns("fix")) == 0
     assert "pr create" in gh.read_text()
+    status, branch, probe, tested, parents = trace.read_text().splitlines()
+    assert status == branch == "" and probe != tip
+    assert parents == f"{tip} {git(other, 'rev-parse', 'HEAD')}"
+    assert tested == (data / "stories" / "free-fix" / "tested_tree").read_text().strip()
+    assert tested != tree and git(wt, "status", "--porcelain") == ""
+    assert git(wt, "branch", "--show-current") == "free-fix-x"
+    assert git(wt, "rev-parse", "HEAD", "HEAD^{tree}").splitlines() == [tip, tree]
 
 
 def test_free_land_without_origin_merges_local_trunk_and_says_so(tmp_path, monkeypatch, capsys):

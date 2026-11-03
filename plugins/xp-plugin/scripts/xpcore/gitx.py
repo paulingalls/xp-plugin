@@ -62,9 +62,15 @@ def merged_how(branch: str, trunk_head: str, cwd) -> str:
         return ""
     if _applied(trunk_head, branch, cwd):
         return "squash"
-    probe = ("-c", "user.name=xp", "-c", "user.email=xp@localhost", "commit-tree")
-    whole = git(*probe, f"{branch}^{{tree}}", "-p", base.stdout.strip(), "-m", "probe", cwd=cwd)
+    whole = probe_commit(f"{branch}^{{tree}}", base.stdout.strip(), cwd=cwd)
     return "squash" if _applied(trunk_head, whole, cwd) else ""
+
+
+def probe_commit(tree: str, *parents: str, cwd=None) -> str:
+    args = ["-c", "user.name=xp", "-c", "user.email=xp@localhost", "commit-tree", tree]
+    for parent in parents:
+        args += ["-p", parent]
+    return git(*args, "-m", "probe", cwd=cwd)
 
 
 def fork_point(branch: str, base: str, cwd=None) -> str:

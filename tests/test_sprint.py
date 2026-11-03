@@ -6,7 +6,13 @@ import xp
 from test_land import commit, fake_gh, git, make_project, manifest, ns
 from xpcore import bundle, config, launch, release, sprint
 
-HOOK = "#!/bin/sh\ntest -f trunk.txt || exit 1\necho ran >> {log}\n"
+HOOK = (
+    '#!/bin/sh\ntest -z "$(git status --porcelain)" || exit 1\n'
+    "test -f trunk.txt || exit 1\necho ran >> {log}\n"
+    'printf "%s\\n" "$(git branch --show-current)" > {log}.head\n'
+    "git rev-parse HEAD HEAD^{{tree}} >> {log}.head\n"
+    "git show -s --format=%P HEAD >> {log}.head\n"
+)
 SLATE = "## Sprint 1 — s\n\n#### story-001 — a   [{status}]\nAcceptance: true\n"
 
 
@@ -51,7 +57,7 @@ def test_open_refuses_off_branch_then_records(tmp_path, monkeypatch, capsys):
 
 
 @pytest.mark.parametrize("repo", ["auth-cleanup", "078", "78"], indirect=True)
-def test_land_tests_the_trial_merge_and_post_merge_skips_that_tree(
+def test_land_tests_the_clean_tree_trial_merge_and_post_merge_skips_that_tree(
     repo, tmp_path, monkeypatch, capsys
 ):
     root, data, hooklog = repo
@@ -64,11 +70,19 @@ def test_land_tests_the_trial_merge_and_post_merge_skips_that_tree(
     )
     assert xp.main(["sprint", "review", identifier]) == 0
     assert list(folder.glob("review-1.*.md"))
+    before = git(root, "rev-parse", "HEAD")
+    target = git(root, "rev-parse", "origin/main")
+    branch_tree = git(root, "rev-parse", "HEAD^{tree}")
     assert xp.main(["sprint", "land", identifier]) == 0
     assert hooklog.read_text() == "ran\n"
     assert f"--base main --head {branch} --title Sprint {identifier} --body " in gh.read_text()
     assert "v1.2.0" in gh.read_text() and "review-1.test-vacuity.md" in gh.read_text()
-    assert json.loads((folder / "land.json").read_text())["tested_tree"]
+    tree = json.loads((folder / "land.json").read_text())["tested_tree"]
+    detached, probe, tested, parents = hooklog.with_suffix(".log.head").read_text().splitlines()
+    assert detached == "" and parents == f"{before} {target}"
+    assert tested == tree != branch_tree and probe != before
+    assert git(root, "branch", "--show-current") == branch
+    assert git(root, "rev-parse", "HEAD") == before and git(root, "status", "--porcelain") == ""
     assert not (root / "trunk.txt").exists()
     git(root, "switch", "-q", "main")
     with pytest.raises(SystemExit):
@@ -78,6 +92,7 @@ def test_land_tests_the_trial_merge_and_post_merge_skips_that_tree(
     assert git(root, "tag", "--list", "v1.2.0") == "" and config.sprint_branch() == branch
     assert git(root, "branch", "--list", branch)
     merge_on_trunk(root, branch)
+    assert git(root, "rev-parse", "HEAD^{tree}") == tree
     assert xp.main(["sprint", "post-merge", identifier]) == 0
     assert hooklog.read_text() == "ran\n"
     assert git(root, "cat-file", "-t", "v1.2.0") == "tag"
@@ -250,10 +265,23 @@ def test_land_refuses_a_failed_version_wall(repo, tmp_path, monkeypatch, capsys)
 def test_land_refuses_a_red_sprint_hook_before_the_pr(repo, tmp_path, monkeypatch, capsys):
     gh = fake_gh(tmp_path, monkeypatch)
     lefthook = tmp_path / "bin" / "lefthook"
-    lefthook.write_text("#!/bin/sh\nexit 1\n")
+    trace = tmp_path / "red-head"
+    lefthook.write_text(
+        f"#!/bin/sh\ngit status --porcelain > {trace}\n"
+        f'printf "%s\\n" "$(git branch --show-current)" >> {trace}\n'
+        f"git rev-parse HEAD HEAD^{{tree}} >> {trace}\nexit 1\n"
+    )
     lefthook.chmod(0o755)
-    commit(repo[0], {"lefthook.yml": "sprint:\n"}, "lefthook")
+    root = repo[0]
+    before = commit(root, {"lefthook.yml": "sprint:\n"}, "lefthook")
+    tree = git(root, "rev-parse", "HEAD^{tree}")
     assert "the sprint hook exited 1" in refused_land(capsys)
+    observed = trace.read_text().splitlines()
+    assert observed[0] == "" and len(observed) == 3
+    assert git(root, "branch", "--show-current") == "sprint-1"
+    assert git(root, "rev-parse", "HEAD", "HEAD^{tree}").splitlines() == [before, tree]
+    assert git(root, "status", "--porcelain") == "" and not (root / "trunk.txt").exists()
+    assert git(root, "rev-parse", "-q", "--verify", "MERGE_HEAD", check=False) != 0
     assert not gh.exists() and not (repo[1] / "sprints" / "1" / "land.json").exists()
 
 
