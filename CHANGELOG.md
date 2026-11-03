@@ -4,6 +4,12 @@ Release notes started at v0.6.0; earlier entries are summarized from their
 tag and merge messages. Full detail lives in the merge history and the
 per-sprint review reports.
 
+## v1.3.2
+
+- Sprint land and free/story land run proof on a clean, detached commit of the
+  trial merge so content-keyed runners can record greens. The original branch
+  and tree are restored after proof, including when proof fails.
+
 ## v1.3.1
 
 - Setup's next step names `.xp/milestones.md`, and free mint says to copy
