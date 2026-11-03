@@ -4,6 +4,10 @@ Release notes started at v0.6.0; earlier entries are summarized from their
 tag and merge messages. Full detail lives in the merge history and the
 per-sprint review reports.
 
+## v1.4.2
+
+- Failed captured git commands report complete stdout and stderr, including hook reasons.
+
 ## v1.4.1
 
 - Stop story and free walks before review when handback.md contains a QUESTION;

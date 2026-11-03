@@ -43,6 +43,16 @@ def test_basic_queries(repo):
     assert gitx.git("status", "--porcelain", "--untracked-files=no", cwd=repo) == " M a.txt"
 
 
+def test_git_error_keeps_both_complete_stripped_streams(repo):
+    alias = "alias.fail=!printf '  o1\\no2\\n\\n'; printf '\\n e1\\ne2  \\n' >&2; exit 1"
+    args = ("-c", alias, "fail")
+    with pytest.raises(gitx.GitError) as exc:
+        gitx.git(*args, cwd=repo)
+    prefix = f"git {' '.join(args)}: "
+    assert str(exc.value).startswith(prefix)
+    assert str(exc.value)[len(prefix) :] == "o1\no2\ne1\ne2"
+
+
 def test_fork_point_and_ranges(repo):
     base = gitx.head(repo)
     sh(repo, "switch", "-qc", "story")
