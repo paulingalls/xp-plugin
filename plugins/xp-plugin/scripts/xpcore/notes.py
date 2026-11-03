@@ -4,7 +4,7 @@ import json
 import re
 
 from xpcore import gitx, release
-from xpcore.config import refuse
+from xpcore.config import refuse, repo_root, trunk
 
 
 def parse(path, text):
@@ -68,32 +68,13 @@ def remote_state(root, main):
 
 
 def replace_version(path, original, version):
-    data = json.loads(original)
-    decoder = json.JSONDecoder()
-    pos = original.index("{") + 1
-    found = []
-    while True:
-        pos = re.compile(r"\s*").match(original, pos).end()
-        if original[pos] == "}":
-            break
-        name, pos = decoder.raw_decode(original, pos)
-        pos = re.compile(r"\s*:\s*").match(original, pos).end()
-        start = pos
-        _, pos = decoder.raw_decode(original, pos)
-        if name == "version":
-            found.append((start, pos))
-        pos = re.compile(r"\s*").match(original, pos).end()
-        if original[pos] == ",":
-            pos += 1
-        else:
-            break
-    if len(found) != 1:
-        refuse(f"{path}: require exactly one top-level version value; fix the manifest")
-    start, end = found[0]
-    updated = original[:start] + json.dumps(version) + original[end:]
-    if json.loads(updated) != data | {"version": version}:
-        refuse(f"{path}: cannot replace root version; fix the manifest")
-    return updated
+    """`original` with only its top-level version changed, every other byte kept."""
+    want = json.loads(original) | {"version": version}
+    for match in re.finditer(r'("version"\s*:\s*)("(?:[^"\\]|\\.)*")', original):
+        updated = original[: match.start(2)] + json.dumps(version) + original[match.end(2) :]
+        if json.loads(updated) == want:
+            return updated
+    refuse(f"{path}: cannot replace root version; fix the manifest")
 
 
 def prepare(root, tags):
@@ -140,8 +121,6 @@ def prepare(root, tags):
 
 
 def cmd_stamp(args):
-    from xpcore.config import repo_root, trunk
-
     if release.versioning() != "notes":
         refuse("release stamp requires versioning: notes in .xp/config.yml; set it before stamping")
     root, main = repo_root(), trunk()
