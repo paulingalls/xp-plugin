@@ -143,6 +143,22 @@ def test_red_acceptance_refuses_and_leaves_everything_unmerged(story, capsys):
     assert (data / "logs" / "story-001-acceptance.log").is_file()
 
 
+def test_refused_merge_reports_hook_reason_and_restores_target(story, capsys):
+    root, _, wt, _ = story
+    before = commit(root, {"merged.txt": "ok\n"}, "sprint work")
+    hook = root / ".git" / "hooks" / "pre-merge-commit"
+    hook.write_text("#!/bin/sh\necho 'HOOK REASON'\nexit 1\n")
+    hook.chmod(0o755)
+    with pytest.raises(SystemExit) as exc:
+        xp.main(["story", "land", "story-001"])
+    assert exc.value.code == 1
+    assert git(root, "rev-parse", "HEAD") == before
+    assert git(root, "status", "--porcelain") == ""
+    assert git(root, "rev-parse", "-q", "--verify", "MERGE_HEAD", check=False) != 0
+    assert wt.exists() and cards.find_card("story-001").status == "in-progress"
+    assert "HOOK REASON" in capsys.readouterr().err
+
+
 def test_overlap_warns_and_never_refuses(story, capsys):
     root = story[0]
     commit(root, {"merged.txt": "ok\n", "later.txt": "x\n"}, "sprint work")

@@ -16,8 +16,10 @@ def git(*args: str, cwd=None, check: bool = True) -> str:
     """Stdout without surrounding newlines; leading spaces survive, porcelain status needs them."""
     proc = _run(args, cwd)
     if check and proc.returncode != 0:
-        detail = (proc.stderr.strip() or proc.stdout.strip()).splitlines()
-        raise GitError(f"git {' '.join(args)}: {detail[-1] if detail else f'rc {proc.returncode}'}")
+        detail = "\n".join(
+            stream.strip() for stream in (proc.stdout, proc.stderr) if stream.strip()
+        )
+        raise GitError(f"git {' '.join(args)}: {detail or f'rc {proc.returncode}'}")
     return proc.stdout.strip("\n")
 
 
