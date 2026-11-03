@@ -91,8 +91,9 @@ Deleted from the current tree: `markers/`, `evidence/` as a plugin concept, `rep
 
 ```yaml
 # trunk: develop           # only when releases do not land on the default branch
-versioning: off            # off: the project owns versions and tags; on: each release tagged
-# version_files: package.json   # with versioning on; `none` tags without the wall
+versioning: off            # off: project owns versions/tags; on: tag each release;
+                           # notes: branches carry notes, stamp after merge
+# version_files: package.json   # with versioning on or notes; `none` writes no manifest
 debt_budget: 0.2
 roles:                     # harness/model[/effort]; a card's Executor: line overrides
   lead: claude/opus
@@ -154,6 +155,7 @@ work.py and session_start.py's command surface.
 
 ```
 xp.py setup                       scaffold .xp/ and the hooks; refuses if .xp/ exists
+xp.py release stamp               publish merged change notes; push trunk and tag
 xp.py recover                     show milestone Measures, print digest, card statuses, open records (SessionStart prints the command)
 
 xp.py sprint plan <id>            fresh slate reviewer reads the slate, writes sprints/<id>/slate-review.md
@@ -233,15 +235,16 @@ then merges into the clean on-sprint lead checkout. Reviews and unreviewed commi
 named in the body; close tears down, removes worktree and branch, records landed.jsonl,
 and marks the card done. Free land instead fetches trunk, tests the trial merge, opens
 a PR, records tested_tree, and tears down while retaining the worktree and branch.
-Sprint land walls the version, tests the trial merge of fetched trunk, records tested_tree
-and version in land.json, and opens a PR. Land accepts nonblank --tested-by evidence,
+Sprint land tests the trial merge of fetched trunk, records tested_tree and version in
+land.json, and opens a PR. With versioning on, it first walls the version. Land accepts nonblank --tested-by evidence,
 warning and recording it in the story merge body or free/sprint PR body.
 
 Both post-merges fetch origin's trunk (local trunk without origin). Resolve the merge
 commit with the branch tip as a later parent; fast-forwards use the branch tip.
 Squash/rebase merges lack that merge commit: use the fetched tip and say so, accepting
-that it may include later work. Read the manifest and CHANGELOG at the selected SHA;
-create the local annotated tag at that SHA, independent of the invoking checkout's HEAD.
+that it may include later work. With versioning on, read the manifest and CHANGELOG
+at the selected SHA; create the local annotated tag there, independent of the invoking
+checkout's HEAD.
 
 When the selected tree differs from tested_tree, free post-merge detaches the patch
 worktree at the SHA, reruns worktree_setup, then Acceptance, and restores the branch.
@@ -255,12 +258,30 @@ landed.jsonl or release.json. Empty evidence refuses. Dry-runs fetch but run no 
 
 Unchanged trees or evidence allow post-merge from a dirty checkout on another branch.
 Sprint post-merge requires leaving the sprint branch so deletion can succeed. It runs
-sprint-close in the invoking checkout, tags, writes release.json, deletes the branch,
-then clears the branch record; tagged retries skip sprint-close. Free close tears down,
+sprint-close in the invoking checkout, tags under versioning on, writes release.json,
+deletes the branch, then clears the branch record; tagged retries skip sprint-close. Free close tears down,
 removes the worktree and branch, records the selected SHA and marks done.
 
 Trunk overlap is a warning naming the files, never a refusal. Gate-file edits are nothing
 special because there are no gate files: the hooks read the tree they run on.
+
+With `versioning: notes`, free and sprint land require an added
+`changes/<actual-git-branch>.md` (nested for `/`), exactly one required
+`Bump: major|minor|patch` line, a user body and a required `Release steps:` line
+(`none.` or a list). They refuse CHANGELOG.md or configured manifest version edits
+before any hook. Other manifest fields may change. No version wall runs; post-merge
+tags nothing and prints `next: xp.py release stamp`. On/off keep their existing behavior.
+
+Run `xp.py release stamp` on clean trunk equal to fetched origin. Pending notes are
+recursive changes/*.md except changes/README.md. Highest Bump against the highest
+exact origin vX.Y.Z tag determines the version. The stamp changes only the root
+version value in each configured JSON manifest (`version_files: none` writes none),
+inserts one CHANGELOG section with note bodies in adding-commit timestamp/path order,
+and deletes the notes. Bump lines are removed; Release steps remain generic text.
+It commits `release: X.Y.Z`, creates an annotated tag and pushes directly to trunk,
+atomically with the tag. A protected trunk needs a bypass for that push. Publication
+is CHANGELOG only. A concurrent stamp is accepted after fetch when notes are gone;
+remaining notes get one retry. Changed local state refuses destructive recovery.
 
 ## 10. Records and session memory
 

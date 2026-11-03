@@ -73,8 +73,6 @@ def tag_at_head(root, version: str, sha: str) -> str:
     """`vX` when THIS release's tag already points at `sha`, else "". Only its own version
     counts: another release (a free patch after a sprint, or the reverse) may tag the same
     commit, and that tag must not stand in for this one's wall, hook or tag."""
-    if not version and versioning() == "notes":
-        return "; next: xp.py release stamp (run on clean, updated trunk)"
     if not version:
         return ""
     tags = gitx.git("tag", "--points-at", sha, cwd=root).split()

@@ -33,3 +33,15 @@ xp.py story review free-<slug>   # optional, one more review
 xp.py free land <slug>
 xp.py free post-merge <slug>
 ```
+
+With `versioning: notes`, add `changes/<actual-git-branch>.md` before land, with
+exactly one required `Bump: major|minor|patch` line, a user-facing body and a required
+`Release steps:` line (`none.` or a list). Leave CHANGELOG.md and configured manifest
+versions unchanged. Post-merge tags nothing and nudges to `xp.py release stamp`.
+Run that command on clean trunk equal to origin after fetch. It consumes pending
+notes in adding order, uses their highest Bump against the latest origin vX.Y.Z tag,
+writes manifests and one CHANGELOG section, and creates the release commit and
+annotated tag. The stamp pushes directly to trunk, atomically with the tag; a
+protected trunk needs a bypass for that push. Publication is CHANGELOG only;
+Release steps remain generic text. With `versioning: off`, the project owns versions
+and tags.
