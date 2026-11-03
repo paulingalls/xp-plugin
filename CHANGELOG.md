@@ -4,6 +4,11 @@ Release notes started at v0.6.0; earlier entries are summarized from their
 tag and merge messages. Full detail lives in the merge history and the
 per-sprint review reports.
 
+## v1.4.3
+
+- Free and sprint land use the merge target’s committed release mode to validate change notes.
+- Free and sprint post-merge use the merge commit’s release mode and refuse malformed pending notes before closing.
+
 ## v1.4.2
 
 - Failed captured git commands report complete stdout and stderr, including hook reasons.
