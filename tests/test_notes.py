@@ -208,7 +208,9 @@ def test_stamp_merges_notes_without_conflicts_and_pushes_one_version(
     assert git(root, "cat-file", "-t", f"v{version}") == "tag"
     assert git(root, "rev-parse", f"v{version}^{{commit}}") == sha
     remote = git(root, "ls-remote", "origin", f"refs/heads/{main}", f"refs/tags/v{version}^{{}}")
-    assert len(remote.splitlines()) == 2 and all(l.startswith(sha) for l in remote.splitlines())
+    assert len(remote.splitlines()) == 2 and all(
+        line.startswith(sha) for line in remote.splitlines()
+    )
     assert len(log.read_text().splitlines()) == 3 and log.read_text().count("END") == 1
     assert f"refs/heads/{main}" in log.read_text() and f"refs/tags/v{version}" in log.read_text()
     text = (root / "CHANGELOG.md").read_text()
@@ -224,3 +226,53 @@ def test_stamp_merges_notes_without_conflicts_and_pushes_one_version(
         "1.1.0" if none else version
     )
     assert not git(root, "status", "--porcelain")
+
+
+def race_hook(tmp_path, root, peer_action, extra=""):
+    import shlex
+    import sys
+
+    peer = tmp_path / "peer"
+    git(tmp_path, "clone", "-q", str(tmp_path / "origin.git"), str(peer))
+    git(peer, "config", "user.name", "Peer")
+    git(peer, "config", "user.email", "peer@example.com")
+    if peer_action == "stamp":
+        command = f"{shlex.quote(sys.executable)} {shlex.quote(xp.__file__)} release stamp"
+    else:
+        command = (
+            "mkdir -p changes; printf 'Bump: patch\\nPeer change.\\n"
+            "Release steps: none.\\n' > changes/peer.md\n"
+            "git add changes/peer.md\ngit commit -qm peer\ngit push -q origin main"
+        )
+    marker = tmp_path / "once"
+    hook = root / ".git/hooks/pre-push"
+    hook.write_text(f"""#!/bin/sh
+if test ! -f {shlex.quote(str(marker))}; then
+  touch {shlex.quote(str(marker))}
+  (unset GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR GIT_INDEX_FILE
+   cd {shlex.quote(str(peer))}
+   {command}
+  ) || exit 1
+  {extra}
+fi
+""")
+    hook.chmod(0o755)
+    return peer
+
+
+@pytest.mark.parametrize("peer_action", ["stamp", "note"])
+def test_stamp_recovers_concurrent_publication(tmp_path, monkeypatch, capsys, peer_action):
+    root, _ = project(tmp_path, monkeypatch)
+    pending(root)
+    race_hook(tmp_path, root, peer_action)
+    assert xp.main(["release", "stamp"]) == 0
+    if peer_action == "stamp":
+        assert "already stamped as v1.2.0" in capsys.readouterr().out
+    else:
+        text = (root / "CHANGELOG.md").read_text()
+        assert "Peer change." in text and "A user change." in text
+    assert git(root, "rev-parse", "HEAD") == git(root, "rev-parse", "origin/main")
+    assert git(root, "log", "--format=%s", "--grep=release:").splitlines() == ["release: 1.2.0"]
+    assert not git(root, "status", "--porcelain")
+    tags = git(root, "ls-remote", "--tags", "origin", "refs/tags/v*")
+    assert len(tags.splitlines()) == 4

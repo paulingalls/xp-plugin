@@ -36,3 +36,166 @@ def land_version(part, root, branch, base):
         if release.manifest_version(path, root) != release.manifest_version(path, root, base):
             refuse(f"leave {path} version to xp.py release stamp; revert its version edit")
     return ""
+
+
+def pending(root):
+    return [
+        p
+        for p in gitx.git("ls-tree", "-r", "--name-only", "HEAD", cwd=root).splitlines()
+        if p.startswith("changes/") and p.endswith(".md") and p != "changes/README.md"
+    ]
+
+
+def remote_state(root, main):
+    gitx.git(
+        "fetch", "--no-tags", "origin", f"+refs/heads/{main}:refs/remotes/origin/{main}", cwd=root
+    )
+    tags = {}
+    for line in gitx.git("ls-remote", "--tags", "origin", "refs/tags/v*", cwd=root).splitlines():
+        sha, ref = line.split()
+        name = ref.removeprefix("refs/tags/")
+        if re.fullmatch(r"v\d+\.\d+\.\d+", name):
+            tags[name] = sha
+    if not tags:
+        refuse(
+            "no exact vX.Y.Z tag on origin; git tag -a vX.Y.Z -m vX.Y.Z && git push origin vX.Y.Z"
+        )
+    return gitx.git("rev-parse", f"refs/remotes/origin/{main}", cwd=root), tags
+
+
+def replace_version(path, original, version):
+    import json
+
+    data = json.loads(original)
+    decoder = json.JSONDecoder()
+    pos = original.index("{") + 1
+    found = []
+    while True:
+        pos = re.compile(r"\s*").match(original, pos).end()
+        if original[pos] == "}":
+            break
+        name, pos = decoder.raw_decode(original, pos)
+        pos = re.compile(r"\s*:\s*").match(original, pos).end()
+        start = pos
+        _, pos = decoder.raw_decode(original, pos)
+        if name == "version":
+            found.append((start, pos))
+        pos = re.compile(r"\s*").match(original, pos).end()
+        if original[pos] == ",":
+            pos += 1
+        else:
+            break
+    if len(found) != 1:
+        refuse(f"{path}: require exactly one top-level version value; fix the manifest")
+    start, end = found[0]
+    updated = original[:start] + json.dumps(version) + original[end:]
+    if json.loads(updated) != data | {"version": version}:
+        refuse(f"{path}: cannot replace root version; fix the manifest")
+    return updated
+
+
+def prepare(root, tags):
+    paths, bodies, bumps = pending(root), [], []
+    if not paths:
+        refuse("no pending change notes; add changes/<branch>.md before stamping")
+    for path in paths:
+        part, body = parse(path, (root / path).read_text())
+        added = gitx.git(
+            "log", "-m", "--diff-filter=A", "--format=%ct", "--", path, cwd=root
+        ).split()
+        if not added:
+            refuse(f"{path}: adding commit unavailable; fetch its history")
+        bodies.append((int(added[-1]), path, body))
+        bumps.append(part)
+    latest = max(tags, key=release.key)
+    version = release.bump(latest, max(bumps, key=["patch", "minor", "major"].index))
+    if gitx.ref_exists(f"refs/tags/v{version}", root):
+        refuse(
+            f"local tag v{version} exists; inspect and remove the unpublished tag before stamping"
+        )
+    text = (root / "CHANGELOG.md").read_text()
+    heading = re.search(r"^## ", text, re.M)
+    if not heading:
+        refuse("CHANGELOG.md: add an existing ## X.Y.Z heading before stamping")
+    if re.search(rf"^## v?{re.escape(version)}(?:\s|$)", text, re.M):
+        refuse(f"CHANGELOG.md already names {version}; inspect and push its missing tag")
+    files = {}
+    for path in release.version_files():
+        release.manifest_version(path, root)
+        files[path] = replace_version(path, (root / path).read_bytes().decode("utf-8"), version)
+    files["CHANGELOG.md"] = (
+        text[: heading.start()]
+        + f"## {version}\n\n"
+        + "\n\n".join(body for _, _, body in sorted(bodies))
+        + "\n\n"
+        + text[heading.start() :]
+    )
+    for path, content in files.items():
+        (root / path).write_bytes(content.encode("utf-8"))
+    gitx.git("add", "--", *files, cwd=root)
+    gitx.git("rm", "--", *paths, cwd=root)
+    return version
+
+
+def cmd_stamp(args):
+    from xpcore.config import repo_root, trunk
+
+    if release.versioning() != "notes":
+        refuse("release stamp requires versioning: notes in .xp/config.yml; set it before stamping")
+    root, main = repo_root(), trunk()
+    if gitx.current_branch(root) != main:
+        refuse(f"release stamp runs on trunk; git switch {main}, then run again")
+    if gitx.is_dirty(root):
+        refuse("dirty tree; commit or discard changes before release stamp")
+    if "origin" not in gitx.git("remote", cwd=root).split():
+        refuse("release stamp needs origin; add the trunk remote first")
+    base = gitx.head(root)
+    remote, tags = remote_state(root, main)
+    if base != remote:
+        refuse(
+            f"{main} differs from origin/{main}; fast-forward or reconcile trunk before stamping"
+        )
+    for attempt in range(2):
+        try:
+            version = prepare(root, tags)
+        except (OSError, ValueError) as exc:
+            refuse(f"cannot prepare release: {exc}; repair the release files and run again")
+        gitx.git("commit", "-m", f"release: {version}", cwd=root)
+        commit = gitx.head(root)
+        release.tag(version, commit)
+        tag = f"refs/tags/v{version}"
+        tag_object = gitx.git("rev-parse", tag, cwd=root)
+        try:
+            gitx.git("push", "--atomic", "origin", main, tag, cwd=root)
+        except gitx.GitError as exc:
+            remote, tags = remote_state(root, main)
+            if remote == commit:
+                if tags.get(f"v{version}") != tag_object:
+                    refuse("origin commit landed without matching annotated tag; inspect origin")
+                print(f"stamped v{version} on origin")
+                return 0
+            if (
+                gitx.head(root) != commit
+                or gitx.is_dirty(root)
+                or gitx.current_branch(root) != main
+                or gitx.git("rev-parse", tag, cwd=root, check=False) != tag_object
+            ):
+                refuse("local state changed during push; inspect before retrying release stamp")
+            if not gitx.is_ancestor(base, remote, root):
+                refuse(f"origin/{main} diverged; inspect before retrying release stamp")
+            gitx.git("tag", "-d", f"v{version}", cwd=root)
+            gitx.git("reset", "--hard", remote, cwd=root)
+            if remote == base:
+                refuse(
+                    f"{exc}; push rejected without concurrent publication; "
+                    "fix the push error and rerun release stamp"
+                )
+            if not pending(root):
+                print(f"already stamped as {max(tags, key=release.key)}")
+                return 0
+            if attempt:
+                refuse(f"{exc}; second push rejected; inspect origin and rerun release stamp")
+            base = remote
+        else:
+            print(f"stamped v{version} on origin")
+            return 0
