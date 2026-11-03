@@ -17,8 +17,11 @@ def project(tmp_path, monkeypatch):
     return root, data
 
 
-def branch_project(tmp_path, monkeypatch, kind, existing=False):
+def branch_project(tmp_path, monkeypatch, kind, existing=False, mode="notes"):
     root, data = project(tmp_path, monkeypatch)
+    if mode != "notes":
+        commit(root, {".xp/config.yml": CONFIG.replace("notes", mode)}, "policy")
+        git(root, "push", "-q", "origin", "main")
     if existing:
         branch = "free-fix-x" if kind == "free" else "sprint-1"
         commit(root, {f"changes/{branch}.md": NOTE + "Old text\n"}, "existing note")
@@ -283,3 +286,45 @@ def test_stamp_recovers_concurrent_publication(tmp_path, monkeypatch, capsys, pe
     assert not git(root, "status", "--porcelain")
     tags = git(root, "ls-remote", "--tags", "origin", "refs/tags/v*")
     assert len(tags.splitlines()) == 4
+
+
+@pytest.mark.parametrize("kind", ["free", "sprint"])
+def test_land_uses_fetched_target_mode(tmp_path, monkeypatch, capsys, kind):
+    gh = fake_gh(tmp_path, monkeypatch)
+    root, data, tree, branch, identifier, trace = branch_project(
+        tmp_path, monkeypatch, kind, mode="off"
+    )
+    if kind == "sprint":
+        git(root, "add", ".githooks/sprint")
+        git(root, "commit", "-qm", "sprint hook")
+    stale = git(root, "rev-parse", "main")
+    if kind == "sprint":
+        git(root, "switch", "-q", "main")
+    commit(root, {".xp/config.yml": CONFIG}, "enable notes on trunk")
+    git(root, "push", "-q", "origin", "main")
+    if kind == "sprint":
+        git(root, "switch", "-q", branch)
+        git(root, "branch", "-f", "main", stale)
+    else:
+        git(root, "reset", "--hard", stale)
+    git(root, "update-ref", "refs/remotes/origin/main", stale)
+    monkeypatch.chdir(tree)
+    note = f"changes/{branch}.md"
+    commit(tree, {note: "A change.\nRelease steps: none.\n"}, "invalid note")
+    args = [kind, "land", identifier]
+    with pytest.raises(SystemExit) as exc:
+        xp.main(args)
+    err = capsys.readouterr().err
+    assert exc.value.code == 2 and note in err and "Bump:" in err
+    assert not trace.exists() and not gh.exists()
+    assert not git(root, "ls-remote", "--heads", "origin", branch)
+    if kind == "free":
+        assert cards.find_card("free-fix").status == "in-progress"
+        record = data / "stories/free-fix/tested_tree"
+    else:
+        record = data / "sprints/1/land.json"
+    assert not record.exists()
+    commit(tree, {note: NOTE}, "correct note")
+    assert xp.main(args) == 0
+    assert trace.read_text() == "ran\n" and gh.exists() and record.is_file()
+    assert git(root, "ls-remote", "--heads", "origin", branch)

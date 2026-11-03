@@ -10,9 +10,10 @@ from xpcore.config import data_root, load_config, refuse, repo_root
 SEMVER = re.compile(r"v?(\d+)\.(\d+)\.(\d+)")
 
 
-def versioning() -> str:
+def versioning(config=None) -> str:
     """Unset refuses: an upgrading consumer must choose its publication policy."""
-    raw = str(load_config().get("versioning") or "").strip().lower()
+    config = load_config() if config is None else config
+    raw = str(config.get("versioning") or "").strip().lower()
     if raw not in ("on", "off", "notes"):
         refuse(
             "set versioning: on or off (or notes) in .xp/config.yml; on tags each release from"
@@ -95,11 +96,9 @@ def bump(version: str, part: str) -> str:
 
 
 def version_wall(part: str, root=None, ref: str | None = None) -> str:
-    """The release version X that `root`'s tree (default: this one) names, or "" under
-    `versioning: off` or `notes`. `part` only matters under `version_files: none`, where the latest
-    tag bumped by it is X."""
-    if versioning() != "on":
-        return ""
+    """The release version X that `root`'s tree (default: this one) names.
+    `part` only matters under `version_files: none`, where the latest tag bumped by it is X.
+    """
     files, latest = version_files(), latest_tag()
     if not files:
         return bump(latest or "0.0.0", part)

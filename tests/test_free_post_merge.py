@@ -189,6 +189,8 @@ def test_free_patch_with_versioning_off_lands_and_closes_untagged(tmp_path, monk
     fake_gh(tmp_path, monkeypatch)
     off = "trunk: main\nversioning: off\nroles:\n  reviewer: claude/opus\n"
     root, _, wt = free_patch(tmp_path, monkeypatch, files={".xp/config.yml": off, "f.txt": "x\n"})
+    commit(root, {".xp/config.yml": off}, "trunk off")
+    git(root, "push", "-q", "origin", "main")
     assert land.cmd_free_land(ns("fix")) == 0
     publish_merge(root)
     assert land.cmd_free_post_merge(ns("fix")) == 0

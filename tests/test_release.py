@@ -74,11 +74,8 @@ def test_wall_reads_the_manifests_of_the_commit_it_is_given(root):
     assert release.version_wall("patch", root, sha) == "1.2.0"
 
 
-def test_versioning_off_skips_the_wall_and_an_unset_key_refuses(root, capsys):
-    (root / "CHANGELOG.md").write_text("## v0.0.1 — wrong on purpose\n")
-    (root / ".xp" / "config.yml").write_text("versioning: off\nversion_files: package.json\n")
-    assert release.version_wall("minor") == ""
+def test_unset_versioning_refuses(root, capsys):
     (root / ".xp" / "config.yml").write_text("version_files: package.json\n")
     with pytest.raises(SystemExit) as exit_:
-        release.version_wall("minor")
+        release.versioning()
     assert exit_.value.code == 2 and "set versioning: on or off" in capsys.readouterr().err
