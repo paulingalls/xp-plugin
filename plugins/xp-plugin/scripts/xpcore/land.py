@@ -210,7 +210,9 @@ def land(card_id: str, target: str, *, pr: bool, dry_run: bool, tested_by: str |
         again = f"free {card.id.removeprefix('free-')}" if pr else f"story {card.id}"
         refuse(f"{card.id} has no commits on {branch}; run xp.py {again}")
     if pr:
-        release.version_wall("patch", path)
+        from xpcore.notes import land_version
+
+        land_version("patch", path, branch, base)
     warn_overlap(branch, into, path)
     if dry_run:
         how = f"push {branch} and open a PR to {target}" if pr else f"merge into {target}"
@@ -300,10 +302,14 @@ def cmd_free_post_merge(args) -> int:
     sha = release_commit(branch, lead, main)
     tagged = (
         release.tag_at_head(lead, release.tree_version(lead, sha), sha)
-        if release.versioning()
+        if release.versioning() == "on"
         else ""
     )
-    version = tagged.removeprefix("v") or release.version_wall("patch", lead, sha)
+    version = (
+        (tagged.removeprefix("v") or release.version_wall("patch", lead, sha))
+        if release.versioning() == "on"
+        else ""
+    )
     tested = story_dir(card.id) / "tested_tree"
     tree = gitx.git("rev-parse", f"{sha}^{{tree}}", cwd=lead)
     changed = not tested.is_file() or tested.read_text().strip() != tree

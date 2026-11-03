@@ -37,7 +37,7 @@ hooks and an empty plan, and refuses if `.xp/` already exists. Then fill in:
   optional and wired to your own scheduler. Test commands live only here.
 - **`.xp/milestones.md`.** Fill goals in the user's words and runnable Measures.
   For an existing `.xp/`, copy the plugin's `templates/milestones.md` there first.
-- **`.xp/config.yml`.** Set `versioning`, `version_files` if it is on, and `roles` (below).
+- **`.xp/config.yml`.** Set `versioning`, `version_files` if it is on or notes, and `roles` (below).
 - **`.xp/system.md`.** Describe the product, especially Surfaces & acceptance.
 - **`.xp/constraints.md`.** Keep the project's rules, which reviewers cite. Cap the entire
   UTF-8 file at 4,500 bytes to fit Codex's 10,000-byte SessionStart hook limit.
@@ -61,7 +61,8 @@ hooks and an empty plan, and refuses if `.xp/` already exists. Then fill in:
    Restart to load the update. In Codex, re-approve plugin hooks with `/hooks`.
 3. Edit `.xp/config.yml` against [Configuration](#configuration) and the
    [config template](plugins/xp-plugin/templates/config.yml). Explicitly choose
-   `versioning: on` or `off`; with `on`, set `version_files`, and add a `CHANGELOG.md`
+   `versioning: on`, `off` or `notes`; with `on` or `notes`, set `version_files` and
+   add a `CHANGELOG.md`
    whose first `## ` heading names the current version if the project has none. Remove `tests`, `sprint_cap`,
    `release`, `preflight`, `constraints_chars_cap`, `profile_target`,
    `teardown_timeout` and `review`: unused keys are silently ignored. Remove the `finder`,
@@ -106,12 +107,14 @@ The lead judges every finding: fix it, drop it with a reason, or file debt. The 
 Merge a PR any way your host allows. Merge commits are preferred, because post-merge then
 finds the merge commit in fetched `origin/<trunk>`. Squash and rebase merges use the
 fetched tip instead, which may include later work; post-merge names that fallback.
-Without origin, post-merge uses local trunk. Tags stay local until you push them.
+Without origin, post-merge uses local trunk. With `versioning: on`, tags stay local
+until you push them.
 
 ## Commands
 
 ```
 xp.py setup                     scaffold .xp/ and the hooks
+xp.py release stamp             publish merged change notes and push trunk plus tag
 xp.py recover                   show milestone Measures, then digest, unfinished cards, open records
 xp.py sprint plan <id>          fresh review of the slate
 xp.py sprint open <id>          on branch sprint-<id> (e.g. sprint-auth-cleanup), cut from trunk by you
@@ -174,8 +177,8 @@ recommended. Falsifiers are shell lines too, run once when a record is filed or 
 | Key | Meaning |
 |---|---|
 | `trunk` | Release branch, only when it is not the default branch |
-| `versioning` | Required: `off`: the project owns versions and tags; `on`: every sprint and free patch is tagged |
-| `version_files` | With versioning on: comma-separated JSON manifests whose version the tag must match, or `none` |
+| `versioning` | Required: `off`: the project owns versions and tags; `on`: every sprint and free patch is tagged; `notes`: branches carry change notes, stamped after merge |
+| `version_files` | With versioning on or notes: comma-separated JSON manifests whose version the tag must match, or `none` for no manifest |
 | `worktree_setup` | Optional shell line before agents and before changed-tree free post-merge Acceptance. Must be safe to re-run in an existing worktree. Nonzero refuses: a failed spawn removes only the worktree and branch it created; post-merge keeps the worktree |
 | `worktree_teardown` | Optional shell line after `free land` hands off the PR, and before `story land` or `free post-merge` removes the worktree. Must be safe to run twice. Nonzero warns and cleanup continues. Free land retains the worktree and branch |
 | `lifecycle_command` | Optional shell line with two appended, shell-quoted arguments: event and id. `sprint-open <id>` runs in the invoking repo root before recording the open sprint; `story-close <card-id>` in the story worktree after green Acceptance and before merge; `sprint-close <id>` in the invoking repo root during post-merge before the tag/release record. Nonzero refuses the guarded step. Free patches emit no lifecycle events |
@@ -188,6 +191,30 @@ from the invoking checkout. Output streams live and logs stay under `<data>/logs
 Projects bound their own scripts and make them tolerate retries: failed lifecycle steps
 and teardown cleanup may rerun. A sprint-close retry after its release tag skips the event.
 Dry-runs and free-card minting run no project commands. Post-merge dry-runs fetch too.
+
+## Change notes
+
+Choose `versioning: notes` to keep release versions out of parallel branches.
+Before free or sprint land, add `changes/<actual-git-branch>.md` (nested for `/`):
+
+```markdown
+Bump: patch
+Describe the change in user terms.
+
+Release steps: none.
+```
+
+Exactly one `Bump: major|minor|patch` line and a `Release steps:` line are required.
+Release steps may hold a list; they remain generic text. Leave CHANGELOG.md and
+configured manifest versions to the stamp. Land validates the note before proof;
+post-merge closes without tagging and prints the next command.
+
+On clean trunk equal to origin after fetch, run `xp.py release stamp`. It bumps the
+highest exact origin `vX.Y.Z` tag by the highest Bump among pending notes, writes
+configured manifests (`version_files: none` writes none), inserts one CHANGELOG
+section in note adding order, and deletes consumed notes. It commits `release: X.Y.Z`,
+creates an annotated tag and pushes directly to trunk, atomically with the tag.
+A protected trunk needs a bypass for that push. Publication is CHANGELOG only.
 
 ## Where state lives
 

@@ -10,16 +10,15 @@ from xpcore.config import data_root, load_config, refuse, repo_root
 SEMVER = re.compile(r"v?(\d+)\.(\d+)\.(\d+)")
 
 
-def versioning() -> bool:
-    """`versioning: on` tags each release from version_files; `off` leaves versions and
-    tags to the project. Unset refuses: a consumer upgrading must say which it wants."""
+def versioning() -> str:
+    """Unset refuses: an upgrading consumer must choose its publication policy."""
     raw = str(load_config().get("versioning") or "").strip().lower()
-    if raw not in ("on", "off"):
+    if raw not in ("on", "off", "notes"):
         refuse(
-            "set versioning: on or off in .xp/config.yml; on tags each release from"
+            "set versioning: on or off (or notes) in .xp/config.yml; on tags each release from"
             " version_files, off leaves versions and tags to the project"
         )
-    return raw == "on"
+    return raw
 
 
 def version_files() -> list[str]:
@@ -97,9 +96,9 @@ def bump(version: str, part: str) -> str:
 
 def version_wall(part: str, root=None, ref: str | None = None) -> str:
     """The release version X that `root`'s tree (default: this one) names, or "" under
-    `versioning: off`. `part` only matters under `version_files: none`, where the latest
+    `versioning: off` or `notes`. `part` only matters under `version_files: none`, where the latest
     tag bumped by it is X."""
-    if not versioning():
+    if versioning() != "on":
         return ""
     files, latest = version_files(), latest_tag()
     if not files:
@@ -125,6 +124,8 @@ def version_wall(part: str, root=None, ref: str | None = None) -> str:
 
 
 def tag_note(version: str) -> str:
+    if not version and versioning() == "notes":
+        return "; next: xp.py release stamp (run on clean, updated trunk)"
     if not version:
         return "; versions and tags are the project's (versioning: off)"
     return f" as v{version}. Push the tag: git push origin v{version}"

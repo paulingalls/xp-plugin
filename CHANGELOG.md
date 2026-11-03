@@ -4,6 +4,13 @@ Release notes started at v0.6.0; earlier entries are summarized from their
 tag and merge messages. Full detail lives in the merge history and the
 per-sprint review reports.
 
+## v1.4.0
+
+- Add `versioning: notes`: branches carry required Bump and Release steps notes;
+  free and sprint post-merge close without claiming a version.
+- `xp.py release stamp` publishes merged notes to CHANGELOG, updates manifests,
+  and atomically pushes the release commit on trunk and its annotated tag.
+
 ## v1.3.2
 
 - Sprint land and free/story land run proof on a clean, detached commit of the
