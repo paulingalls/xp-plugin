@@ -10,16 +10,16 @@ from xpcore.config import data_root, load_config, refuse, repo_root
 SEMVER = re.compile(r"v?(\d+)\.(\d+)\.(\d+)")
 
 
-def versioning() -> bool:
+def versioning() -> str:
     """`versioning: on` tags each release from version_files; `off` leaves versions and
     tags to the project. Unset refuses: a consumer upgrading must say which it wants."""
     raw = str(load_config().get("versioning") or "").strip().lower()
-    if raw not in ("on", "off"):
+    if raw not in ("on", "off", "notes"):
         refuse(
-            "set versioning: on or off in .xp/config.yml; on tags each release from"
+            "set versioning: on or off (or notes) in .xp/config.yml; on tags each release from"
             " version_files, off leaves versions and tags to the project"
         )
-    return raw == "on"
+    return raw
 
 
 def version_files() -> list[str]:
@@ -74,6 +74,8 @@ def tag_at_head(root, version: str, sha: str) -> str:
     """`vX` when THIS release's tag already points at `sha`, else "". Only its own version
     counts: another release (a free patch after a sprint, or the reverse) may tag the same
     commit, and that tag must not stand in for this one's wall, hook or tag."""
+    if not version and versioning() == "notes":
+        return "; next: xp.py release stamp (run on clean, updated trunk)"
     if not version:
         return ""
     tags = gitx.git("tag", "--points-at", sha, cwd=root).split()
@@ -99,7 +101,7 @@ def version_wall(part: str, root=None, ref: str | None = None) -> str:
     """The release version X that `root`'s tree (default: this one) names, or "" under
     `versioning: off`. `part` only matters under `version_files: none`, where the latest
     tag bumped by it is X."""
-    if not versioning():
+    if versioning() != "on":
         return ""
     files, latest = version_files(), latest_tag()
     if not files:
@@ -125,6 +127,8 @@ def version_wall(part: str, root=None, ref: str | None = None) -> str:
 
 
 def tag_note(version: str) -> str:
+    if not version and versioning() == "notes":
+        return "; next: xp.py release stamp (run on clean, updated trunk)"
     if not version:
         return "; versions and tags are the project's (versioning: off)"
     return f" as v{version}. Push the tag: git push origin v{version}"

@@ -167,7 +167,9 @@ def cmd_sprint_land(args) -> int:
     on_branch(branch, root)
     no_open_cards(args.id)
     into = main if args.dry_run else fetched_trunk(main, root)  # before the wall reads tags
-    version = release.version_wall("minor")
+    from xpcore.notes import land_version
+
+    version = land_version("minor", root, branch, gitx.fork_point(branch, into, root))
     command = shlex.join(hooks.sprint_hook(root))
     if args.dry_run:
         proof = "run the sprint hook"
@@ -202,14 +204,18 @@ def cmd_sprint_post_merge(args) -> int:
     landed = json.loads(land_json.read_text())
     tested = landed["tested_tree"]
     tagged = ""
-    if release.versioning():
+    if release.versioning() == "on":
         named = (
             release.tree_version(root, sha)
             if release.version_files()
             else landed.get("version", "")
         )
         tagged = release.tag_at_head(root, named, sha)
-    version = tagged.removeprefix("v") or release.version_wall("minor", root, sha)
+    version = (
+        (tagged.removeprefix("v") or release.version_wall("minor", root, sha))
+        if release.versioning() == "on"
+        else ""
+    )
     changed = not tagged and gitx.git("rev-parse", f"{sha}^{{tree}}", cwd=root) != tested
     if (
         changed
