@@ -11,8 +11,7 @@ SEMVER = re.compile(r"v?(\d+)\.(\d+)\.(\d+)")
 
 
 def versioning() -> str:
-    """`versioning: on` tags each release from version_files; `off` leaves versions and
-    tags to the project. Unset refuses: a consumer upgrading must say which it wants."""
+    """Unset refuses: an upgrading consumer must choose its publication policy."""
     raw = str(load_config().get("versioning") or "").strip().lower()
     if raw not in ("on", "off", "notes"):
         refuse(
@@ -99,7 +98,7 @@ def bump(version: str, part: str) -> str:
 
 def version_wall(part: str, root=None, ref: str | None = None) -> str:
     """The release version X that `root`'s tree (default: this one) names, or "" under
-    `versioning: off`. `part` only matters under `version_files: none`, where the latest
+    `versioning: off` or `notes`. `part` only matters under `version_files: none`, where the latest
     tag bumped by it is X."""
     if versioning() != "on":
         return ""

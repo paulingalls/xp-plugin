@@ -1,5 +1,6 @@
 """Branch change notes and their publication after merge."""
 
+import json
 import re
 
 from xpcore import gitx, release
@@ -33,7 +34,10 @@ def land_version(part, root, branch, base):
     if "CHANGELOG.md" in changed:
         refuse("leave CHANGELOG.md to xp.py release stamp; revert its branch edits")
     for path in release.version_files():
-        if release.manifest_version(path, root) != release.manifest_version(path, root, base):
+        release.manifest_version(path, root)
+        release.manifest_version(path, root, base)
+        old = json.loads(gitx.git("show", f"{base}:{path}", cwd=root))["version"]
+        if json.loads((root / path).read_text())["version"] != old:
             refuse(f"leave {path} version to xp.py release stamp; revert its version edit")
     return ""
 
@@ -64,8 +68,6 @@ def remote_state(root, main):
 
 
 def replace_version(path, original, version):
-    import json
-
     data = json.loads(original)
     decoder = json.JSONDecoder()
     pos = original.index("{") + 1
@@ -113,7 +115,7 @@ def prepare(root, tags):
         refuse(
             f"local tag v{version} exists; inspect and remove the unpublished tag before stamping"
         )
-    text = (root / "CHANGELOG.md").read_text()
+    text = (root / "CHANGELOG.md").read_bytes().decode("utf-8")
     heading = re.search(r"^## ", text, re.M)
     if not heading:
         refuse("CHANGELOG.md: add an existing ## X.Y.Z heading before stamping")

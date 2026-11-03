@@ -17,8 +17,12 @@ def project(tmp_path, monkeypatch):
     return root, data
 
 
-def branch_project(tmp_path, monkeypatch, kind):
+def branch_project(tmp_path, monkeypatch, kind, existing=False):
     root, data = project(tmp_path, monkeypatch)
+    if existing:
+        branch = "free-fix-x" if kind == "free" else "sprint-1"
+        commit(root, {f"changes/{branch}.md": NOTE + "Old text\n"}, "existing note")
+        git(root, "push", "-q", "origin", "main")
     trace = tmp_path / "proof"
     if kind == "free":
         (data / "plan.md").write_text(
@@ -55,18 +59,18 @@ def branch_project(tmp_path, monkeypatch, kind):
 )
 def test_land_policy_and_post_merge(tmp_path, monkeypatch, capsys, kind, problem, fix):
     gh = fake_gh(tmp_path, monkeypatch)
-    root, data, tree, branch, identifier, trace = branch_project(tmp_path, monkeypatch, kind)
+    root, data, tree, branch, identifier, trace = branch_project(
+        tmp_path, monkeypatch, kind, problem == "missing"
+    )
     files = {f"changes/{branch}.md": NOTE, "package.json": '{"version":"1.1.0", "extra":true}'}
-    if problem == "missing":
-        files.pop(f"changes/{branch}.md")
-    elif problem == "steps":
+    if problem == "steps":
         files[f"changes/{branch}.md"] = "Bump: patch\nA change\n"
     elif problem == "bump":
         files[f"changes/{branch}.md"] = "A change\nRelease steps: none.\n"
     elif problem == "changelog":
         files["CHANGELOG.md"] = "## 2.0.0\n"
     elif problem == "version":
-        files["b.json"] = '{"version":"2.0.0"}'
+        files["b.json"] = '{"version":"v1.1.0"}'
     commit(tree, files, "work")
     args = [kind, "land", identifier]
     if problem != "valid":
@@ -79,7 +83,7 @@ def test_land_policy_and_post_merge(tmp_path, monkeypatch, capsys, kind, problem
     # A peer's release artifact edits must be compared against the branch's fork.
     if kind == "sprint":
         git(root, "switch", "-q", "main")
-    commit(root, {"peer": "peer\n"}, "peer")
+    commit(root, {"peer": "peer\n", "b.json": '{"version":"1.1.1"}'}, "peer")
     git(root, "push", "-q", "origin", "main")
     if kind == "sprint":
         git(root, "switch", "-q", branch)
@@ -134,6 +138,9 @@ def test_stamp_preconditions_change_nothing(tmp_path, monkeypatch, capsys, probl
     root, _ = project(tmp_path, monkeypatch)
     if problem != "empty":
         pending(root)
+    else:
+        commit(root, {"changes/README.md": "Instructions\n"}, "readme only")
+        git(root, "push", "-q", "origin", "main")
     if problem == "branch":
         git(root, "switch", "-qc", "other")
     elif problem == "dirty":
