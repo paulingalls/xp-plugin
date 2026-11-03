@@ -182,7 +182,7 @@ action. There is no `amend`, `ready`, `resume`, `acknowledge-validation`, `salva
 **Idempotence replaces resume.** `xp.py story <id>` looks at `stories/<id>/`: no plan.md →
 run the planner; no plan-review.md → run the plan reviewer (the planner deletes
 the old one); no
-handback.md → run the executor; no review-N.md recording HEAD as reviewed → run the reviewer;
+handback.md → run the executor; a QUESTION in handback.md → stop before review; no review-N.md recording HEAD as reviewed → run the reviewer;
 otherwise print what exists and stop. A lead commit after a review reruns only the reviewer. A lead who edits the card and runs it again gets exactly the stages that are
 missing. A lead who wants a stage re-run deletes its file.
 
@@ -198,9 +198,11 @@ harnesses. constraints.md and system.md are passed in the bundle too.
 - **planner** reads the card, the code and the tests; produces `stories/<id>/plan.md`;
   owns the implementation approach. Read-only on the repo.
 - **plan reviewer** reads one card with its plan and the constraints; produces findings
-  and edits the card and plan in place; owns correctness within the approved intent. A line beginning `QUESTION` in the plan or the findings stops the story until the lead
-  answers it in the card and deletes that line from its file (or deletes the review file to have the plan
-  re-reviewed against the answer). Read-only on the repo. No second round.
+  and edits the card and plan in place; owns correctness within the approved intent. A line beginning `QUESTION` in the plan, the findings or handback.md stops the story until the lead
+  answers it. For planning questions, answer in the card and delete the line, or delete
+  the plan review to re-review. For handback questions, clear the block and delete
+  handback.md to re-run unfinished work; delete only the line when the committed part
+  should be judged as it stands. Read-only on the repo. No second round.
 - **executor** reads the card, the plan, the findings; produces commits through the hooks;
   owns scope, Files, the card's wording and the Acceptance command. Runs Acceptance before
   handing back. Hands back with a short note: what changed, what deviated, what it could

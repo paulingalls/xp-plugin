@@ -16,7 +16,8 @@ with open(os.path.join(data, "roles.txt"), "a") as out:
 with open(os.path.join(data, f"{role}.prompt"), "w") as out:
     out.write(prompt)
 key = {"planner": "PLAN_PATH", "executor": "HANDBACK_PATH"}.get(role, "FINDINGS_PATH")
-env = {"planner": "FAKE_PLAN_QUESTION", "plan-reviewer": "FAKE_QUESTION"}.get(role, "")
+env = {"planner": "FAKE_PLAN_QUESTION", "plan-reviewer": "FAKE_QUESTION",
+       "executor": "FAKE_HANDBACK_QUESTION"}.get(role, "")
 extra = os.environ.get(env, "")
 with open(paths[key], "w") as out:
     out.write(f"{role} wrote this\\n{extra}\\n")
@@ -99,6 +100,8 @@ def test_single_file_card_skips_planning(repo):
 
 def test_full_walk_then_rerun_is_a_noop(repo, capsys):
     assert xp.main(["story", "story-001"]) == 0
+    initial_out = capsys.readouterr().out
+    assert_fix_next(initial_out, repo, "story-001")
     sdir = story(repo, "story-001")
     names = {"card.md", "plan.md", "plan-review.md", "handback.md", "review-1.md", "setup.ok"}
     assert {p.name for p in sdir.iterdir()} == names
@@ -106,12 +109,13 @@ def test_full_walk_then_rerun_is_a_noop(repo, capsys):
     wt = repo / "worktrees" / "story-001"
     assert git("branch", "--show-current", cwd=wt).stdout.strip() == "story-001-add-the-widget"
     assert git("log", "--format=%s", "sprint-001..HEAD", cwd=wt).stdout.split() == ["feat"]
-    out = capsys.readouterr().out
+    out = initial_out
     assert f"review at {sdir / 'review-1.md'}" in out and "reviewer wrote this" in out
 
     assert xp.main(["story", "story-001"]) == 0
     out = capsys.readouterr().out
-    assert "nothing missing" in out and "xp.py story land story-001" in out
+    assert "nothing missing" in out
+    assert_fix_next(out, repo, "story-001")
     assert not (sdir / "review-2.md").exists()
 
 
@@ -220,7 +224,7 @@ def test_a_handback_without_commits_reruns_the_executor(repo, monkeypatch, capsy
     assert roles(repo) == ["executor", "reviewer"]
 
 
-def test_the_reviewer_sees_the_card_as_spawned_and_as_it_is_now(repo):
+def test_the_reviewer_sees_the_card_as_spawned_and_as_it_is_now(repo, capsys):
     assert xp.main(["story", "story-002"]) == 0
     spawned = (story(repo, "story-002") / "card.md").read_text()
     assert spawned.startswith("#### story-002 — One file   [in-progress]\nFiles: a.py")
@@ -231,7 +235,9 @@ def test_the_reviewer_sees_the_card_as_spawned_and_as_it_is_now(repo):
     assert "\n+" not in prompt.split("### Files")[1].split("## Handback")[0]
     plan = repo / "plan.md"
     plan.write_text(plan.read_text().replace("Files: a.py\n", "Files: a.py\nAC: less.\n"))
+    capsys.readouterr()
     assert xp.main(["story", "review", "story-002"]) == 0
+    assert_fix_next(capsys.readouterr().out, repo, "story-002")
     prompt = (repo / "reviewer.prompt").read_text()
     assert "## Card changes since spawn\n--- card as spawned\n+++ card now\n" in prompt
     assert "\n+AC: less.\n" in prompt
@@ -319,3 +325,70 @@ def test_start_refuses_invalid_acceptance_before_any_stage(repo, capsys, command
     assert exit_.value.code == 2 and card_id in err and "syntax error" in err.lower()
     assert roles(repo) == [] and not story(repo, card_id).exists()
     assert not (repo / "worktrees").exists() and plan.read_text() == text
+
+
+def assert_fix_next(out, data, card_id):
+    next_line = next(line for line in out.splitlines() if line.startswith("next:"))
+    land = (
+        f"xp.py free land {card_id[5:]}"
+        if card_id.startswith("free-")
+        else f"xp.py story land {card_id}"
+    )
+    for phrase in (
+        "judge",
+        "fix findings with commits in",
+        str(data / "worktrees" / card_id),
+        land,
+        "commits after the review are listed as unreviewed",
+        "optional",
+        f"delete {story(data, card_id) / 'handback.md'}",
+        "re-run the executor",
+        "only for a finding needing a fresh implementation",
+    ):
+        assert phrase in next_line
+
+
+@pytest.mark.parametrize("command,name", [("story", "story-001"), ("free", "blocked")])
+def test_handback_question_stops_review_until_removed(repo, monkeypatch, capsys, command, name):
+    card_id = name if command == "story" else f"free-{name}"
+    if command == "free":
+        plan = repo / "plan.md"
+        plan.write_text(
+            plan.read_text() + f"\n## Free\n#### {card_id} — blocked   [planned]\n"
+            "Context: c.\nMeasure: m.\nAC: a.\nFiles: a.py\nAcceptance: true\n"
+        )
+    monkeypatch.setenv("FAKE_HANDBACK_QUESTION", "QUESTION: simulator unavailable")
+    assert xp.main([command, name]) == 3
+    sdir, wt = story(repo, card_id), repo / "worktrees" / card_id
+    handback = sdir / "handback.md"
+    out = capsys.readouterr().out
+    assert f"{handback}: QUESTION: simulator unavailable" in out
+    for phrase in (
+        "clear the block",
+        f"delete {handback}",
+        "re-run the executor",
+        "when the work is unfinished",
+        "delete the QUESTION line",
+        "committed part should be judged as it stands",
+        f"xp.py {command} {name}",
+    ):
+        assert phrase in out
+    assert roles(repo) == (
+        ["planner", "plan-reviewer", "executor"] if command == "story" else ["executor"]
+    )
+    assert not (sdir / "review-1.md").exists()
+    assert xp.main([command, name]) == 3
+    assert roles(repo) == [] and not (sdir / "review-1.md").exists()
+    handback.write_text(handback.read_text().replace("QUESTION: simulator unavailable", ""))
+    capsys.readouterr()
+    assert xp.main([command, name]) == 0
+    assert roles(repo) == ["reviewer"]
+    assert_fix_next(capsys.readouterr().out, repo, card_id)
+    head = git("rev-parse", "HEAD", cwd=wt).stdout.strip()
+    assert (sdir / "review-1.md").read_text().endswith(f"reviewed: {head}\n")
+    prompt = (repo / "reviewer.prompt").read_text()
+    assert " feature.txt " in prompt and "## Handback\nexecutor wrote this" in prompt
+    handback.unlink()
+    monkeypatch.delenv("FAKE_HANDBACK_QUESTION")
+    assert xp.main([command, name]) == 0
+    assert roles(repo) == ["executor", "reviewer"]

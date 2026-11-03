@@ -25,6 +25,14 @@ a review fix made after land, rerun the configured worktree_setup in the patch w
 Commit the fix, review it, and land again before merging the PR. Post-merge tears down
 again before removal.
 
+The walk can stop (exit 3) on a `QUESTION:` line in
+`<data>/stories/<id>/handback.md`. Clear the block, then delete handback.md to
+re-run the executor when the work is unfinished; or delete the QUESTION line to
+review only when the committed part should be judged as it stands.
+For review findings, fix with commits in the worktree, then land; commits after
+the review are listed as unreviewed, and another review is optional. Delete
+handback.md to re-run the executor only for a finding needing a fresh implementation.
+
 Before land, apply or reject each card change proposed in
 `<data>/stories/<id>/handback.md`, updating `<data>/plan.md` for accepted changes.
 

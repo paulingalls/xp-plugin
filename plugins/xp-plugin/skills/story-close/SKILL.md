@@ -14,6 +14,12 @@ with the human where needed. Another review after your fixes is optional; land
 lists commits after the last review as unreviewed, and the sprint review covers
 them. Land, then rewrite `session.md`: intent, surprises, tack chosen, next step, under 30 lines.
 
+The walk can stop (exit 3) on a `QUESTION:` line in
+`<data>/stories/<id>/handback.md`. Clear the block, then delete handback.md to
+re-run the executor when the work is unfinished; or delete the QUESTION line to
+review only when the committed part should be judged as it stands.
+Delete handback.md to re-run the executor only for a finding needing a fresh implementation.
+
 Before land, apply or reject each card change proposed in
 `<data>/stories/<id>/handback.md`, updating `<data>/plan.md` for accepted changes.
 

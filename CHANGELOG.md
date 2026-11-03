@@ -4,6 +4,13 @@ Release notes started at v0.6.0; earlier entries are summarized from their
 tag and merge messages. Full detail lives in the merge history and the
 per-sprint review reports.
 
+## v1.4.1
+
+- Stop story and free walks before review when handback.md contains a QUESTION;
+  name how to resume unfinished work or review the committed part as it stands.
+- After review, name the lead's default: fix findings with commits in the worktree,
+  then land; re-run the executor only for a finding needing a fresh implementation.
+
 ## v1.4.0
 
 - Add `versioning: notes`: branches carry required Bump and Release steps notes;

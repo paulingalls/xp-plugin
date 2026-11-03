@@ -29,4 +29,8 @@ description: Implements one story in its worktree, through the hooks.
 Implementation within the card's intent. Do not edit `<data>/plan.md`. Propose
 any card change in `<data>/stories/<id>/handback.md` for the lead to apply at
 close.
-Reserved to the lead: anything a `QUESTION:` raised. When one blocks you, commit what is coherent and hand back.
+Reserved to the lead: anything a `QUESTION:` raised. When a host problem or a
+lead-reserved choice prevents finishing, commit coherent work through the hooks,
+write `QUESTION: <the block>` in handback.md, and hand back. With committed work,
+that line stops the walk before review. Start no other handback line with
+`QUESTION` (including bullets or emphasis).
