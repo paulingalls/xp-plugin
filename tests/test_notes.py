@@ -17,8 +17,11 @@ def project(tmp_path, monkeypatch):
     return root, data
 
 
-def branch_project(tmp_path, monkeypatch, kind, existing=False):
+def branch_project(tmp_path, monkeypatch, kind, existing=False, mode="notes"):
     root, data = project(tmp_path, monkeypatch)
+    if mode != "notes":
+        commit(root, {".xp/config.yml": CONFIG.replace("notes", mode)}, "policy")
+        git(root, "push", "-q", "origin", "main")
     if existing:
         branch = "free-fix-x" if kind == "free" else "sprint-1"
         commit(root, {f"changes/{branch}.md": NOTE + "Old text\n"}, "existing note")

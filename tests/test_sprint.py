@@ -289,6 +289,10 @@ def test_versioning_off_releases_without_a_wall_or_a_tag(repo, tmp_path, monkeyp
     root, data, _ = repo
     gh = fake_gh(tmp_path, monkeypatch)
     off = "trunk: main\nversioning: off\nroles:\n  reviewer: claude/opus\n"
+    git(root, "switch", "-q", "main")
+    commit(root, {".xp/config.yml": off}, "trunk off")
+    git(root, "push", "-q", "origin", "main")
+    git(root, "switch", "-q", "sprint-1")
     commit(root, {".xp/config.yml": off, "CHANGELOG.md": "## v0.0.1 — stale on purpose\n"}, "off")
     assert sprint.cmd_sprint_land(ns("1")) == 0
     assert "--title Sprint 1 --body Sprint 1." in gh.read_text() and "v1.2.0" not in gh.read_text()

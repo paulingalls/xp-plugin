@@ -169,7 +169,7 @@ def cmd_sprint_land(args) -> int:
     into = main if args.dry_run else fetched_trunk(main, root)  # before the wall reads tags
     from xpcore.notes import land_version
 
-    version = land_version("minor", root, branch, gitx.fork_point(branch, into, root))
+    version = land_version("minor", root, branch, gitx.fork_point(branch, into, root), into)
     command = shlex.join(hooks.sprint_hook(root))
     if args.dry_run:
         proof = "run the sprint hook"
@@ -197,6 +197,9 @@ def cmd_sprint_post_merge(args) -> int:
     if gitx.current_branch(root) == branch:
         refuse(f"{root} has {branch} checked out; switch to any other branch, run again")
     sha = release_commit(branch, root, main)
+    from xpcore.notes import post_merge_mode
+
+    mode = post_merge_mode(root, sha)
     no_open_cards(args.id)
     land_json = sprint_dir(args.id) / "land.json"
     if not land_json.is_file():
@@ -204,7 +207,7 @@ def cmd_sprint_post_merge(args) -> int:
     landed = json.loads(land_json.read_text())
     tested = landed["tested_tree"]
     tagged = ""
-    if release.versioning() == "on":
+    if mode == "on":
         named = (
             release.tree_version(root, sha)
             if release.version_files()
@@ -213,7 +216,7 @@ def cmd_sprint_post_merge(args) -> int:
         tagged = release.tag_at_head(root, named, sha)
     version = (
         (tagged.removeprefix("v") or release.version_wall("minor", root, sha))
-        if release.versioning() == "on"
+        if mode == "on"
         else ""
     )
     changed = not tagged and gitx.git("rev-parse", f"{sha}^{{tree}}", cwd=root) != tested

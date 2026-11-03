@@ -4,7 +4,7 @@ import json
 import re
 
 from xpcore import gitx, release
-from xpcore.config import refuse, repo_root, trunk
+from xpcore.config import parse_config, refuse, repo_root, trunk
 
 
 def parse(path, text):
@@ -17,8 +17,13 @@ def parse(path, text):
     return bumps[0].split()[1], body
 
 
-def land_version(part, root, branch, base):
-    mode = release.versioning()
+def committed_mode(root, ref):
+    source = f"{ref}:.xp/config.yml"
+    return release.versioning(parse_config(gitx.git("show", source, cwd=root), source), source)
+
+
+def land_version(part, root, branch, base, into):
+    mode = committed_mode(root, into)
     if mode == "on":
         return release.version_wall(part, root)
     if mode == "off":
@@ -42,12 +47,20 @@ def land_version(part, root, branch, base):
     return ""
 
 
-def pending(root):
+def pending(root, ref="HEAD"):
     return [
         p
-        for p in gitx.git("ls-tree", "-r", "--name-only", "HEAD", cwd=root).splitlines()
+        for p in gitx.git("ls-tree", "-r", "--name-only", ref, cwd=root).splitlines()
         if p.startswith("changes/") and p.endswith(".md") and p != "changes/README.md"
     ]
+
+
+def post_merge_mode(root, ref):
+    mode = committed_mode(root, ref)
+    if mode == "notes":
+        for path in pending(root, ref):
+            parse(path, gitx.git("show", f"{ref}:{path}", cwd=root))
+    return mode
 
 
 def remote_state(root, main):

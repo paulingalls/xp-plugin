@@ -212,7 +212,7 @@ def land(card_id: str, target: str, *, pr: bool, dry_run: bool, tested_by: str |
     if pr:
         from xpcore.notes import land_version
 
-        land_version("patch", path, branch, base)
+        land_version("patch", path, branch, base, into)
     warn_overlap(branch, into, path)
     if dry_run:
         how = f"push {branch} and open a PR to {target}" if pr else f"merge into {target}"
@@ -300,14 +300,13 @@ def cmd_free_post_merge(args) -> int:
         refuse(f"{path} has uncommitted changes; commit or discard them, then run again")
     lead, main = lead_tree(), trunk()
     sha = release_commit(branch, lead, main)
-    tagged = (
-        release.tag_at_head(lead, release.tree_version(lead, sha), sha)
-        if release.versioning() == "on"
-        else ""
-    )
+    from xpcore.notes import post_merge_mode
+
+    mode = post_merge_mode(lead, sha)
+    tagged = release.tag_at_head(lead, release.tree_version(lead, sha), sha) if mode == "on" else ""
     version = (
         (tagged.removeprefix("v") or release.version_wall("patch", lead, sha))
-        if release.versioning() == "on"
+        if mode == "on"
         else ""
     )
     tested = story_dir(card.id) / "tested_tree"
