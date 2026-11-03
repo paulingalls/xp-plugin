@@ -140,18 +140,19 @@ def green_hook(root: Path, log_id: str) -> None:
 
 def trial_hook(root: Path, main: str, log_id: str, tested_by: str | None) -> str:
     """The sprint hook on trunk merged in; returns the tree it tested."""
+    sha = gitx.git("rev-parse", main, cwd=root)
     try:
-        if conflict := gitx.trial_merge(root, main):
+        if conflict := gitx.trial_merge(root, sha):
             refuse(f"{main} does not merge cleanly:\n{conflict}\nmerge {main} in, resolve, land")
         tree = gitx.git("write-tree", cwd=root)
-        if tested_by is not None:
-            print(
-                f"warning: skipped sprint hook `{shlex.join(hooks.sprint_hook(root))}`: {tested_by}"
-            )
-        else:
-            green_hook(root, log_id)
     finally:
         gitx.abort_merge(root)
+    if tested_by is not None:
+        print(f"warning: skipped sprint hook `{shlex.join(hooks.sprint_hook(root))}`: {tested_by}")
+    else:
+        probe = gitx.probe_commit(tree, gitx.head(root), sha, cwd=root)
+        with detached(root, probe):
+            green_hook(root, log_id)
     return tree
 
 
