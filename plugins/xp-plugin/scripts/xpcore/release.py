@@ -10,13 +10,13 @@ from xpcore.config import data_root, load_config, refuse, repo_root
 SEMVER = re.compile(r"v?(\d+)\.(\d+)\.(\d+)")
 
 
-def versioning(config=None) -> str:
+def versioning(config=None, source=".xp/config.yml") -> str:
     """Unset refuses: an upgrading consumer must choose its publication policy."""
     config = load_config() if config is None else config
     raw = str(config.get("versioning") or "").strip().lower()
     if raw not in ("on", "off", "notes"):
         refuse(
-            "set versioning: on or off (or notes) in .xp/config.yml; on tags each release from"
+            f"set versioning: on or off (or notes) in {source}; on tags each release from"
             " version_files, off leaves versions and tags to the project"
         )
     return raw

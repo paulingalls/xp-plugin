@@ -19,7 +19,7 @@ def parse(path, text):
 
 def committed_mode(root, ref):
     source = f"{ref}:.xp/config.yml"
-    return release.versioning(parse_config(gitx.git("show", source, cwd=root), source))
+    return release.versioning(parse_config(gitx.git("show", source, cwd=root), source), source)
 
 
 def land_version(part, root, branch, base, into):
