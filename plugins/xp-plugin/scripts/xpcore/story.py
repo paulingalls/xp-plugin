@@ -69,7 +69,7 @@ def card_changes(card: cards.Card) -> str:
 def questions(sdir: Path) -> list[tuple[Path, str]]:
     return [
         (source, line.strip())
-        for source in (sdir / "plan.md", sdir / "plan-review.md")
+        for source in (sdir / "plan.md", sdir / "plan-review.md", sdir / "handback.md")
         for line in _read(source).splitlines()
         if QUESTION.match(line)
     ]
@@ -221,7 +221,7 @@ def walk(card: cards.Card, base: str, dry: bool) -> int:
         )
     hooks.check_acceptance(card.id, card.acceptance)
     sdir, wt = story_dir(card.id), worktree(card.id)
-    rerun, land = commands(card.id)
+    rerun, _ = commands(card.id)
     if dry:
         print(f"{card.id}: would run {', '.join(stages(card, sdir, wt, base)) or 'nothing'}")
         if len(card.files) <= 1:
@@ -247,13 +247,22 @@ def walk(card: cards.Card, base: str, dry: bool) -> int:
             fail(f"{stage} ran and its file is still missing or stale in {sdir}; read its log")
         if stage == "question":
             print(f"{card.id}: unanswered questions:")
-            print("\n".join(f"  {source}: {q}" for source, q in questions(sdir)))
-            print(
-                "next: answer it in the card or in the file named with it, then delete the"
-                " QUESTION line from that file to execute, or delete"
-                f" {sdir / 'plan-review.md'} to have the plan re-reviewed,"
-                f" and run {rerun} again"
-            )
+            pending = questions(sdir)
+            print("\n".join(f"  {source}: {q}" for source, q in pending))
+            if any(source.name == "handback.md" for source, _ in pending):
+                print(
+                    f"next: clear the block, then delete {sdir / 'handback.md'} to re-run"
+                    " the executor when the work is unfinished; or delete the QUESTION line"
+                    " to review only when the committed part should be judged as it stands;"
+                    f" then run {rerun} again"
+                )
+            if any(source.name != "handback.md" for source, _ in pending):
+                print(
+                    "next: answer it in the card or in the file named with it, then delete the"
+                    " QUESTION line from that file to execute, or delete"
+                    f" {sdir / 'plan-review.md'} to have the plan re-reviewed,"
+                    f" and run {rerun} again"
+                )
             return 3
         if stage == "worktree":
             s = slug(card.title)
@@ -289,11 +298,17 @@ def walk(card: cards.Card, base: str, dry: bool) -> int:
         card = cards.find_card(card.id)  # agents edit the card in place
     done = ", ".join(p.name for p in sorted(sdir.iterdir())) or "nothing"
     print(f"{card.id}: {'ran ' + ', '.join(ran) if ran else 'nothing missing'}; on disk: {done}")
-    print(
-        f"next: judge the newest review in {sdir}, then {land};"
-        f" xp.py story review {card.id} runs another round"
-    )
+    review_next(card.id, f"the newest review in {sdir}")
     return 0
+
+
+def review_next(card_id: str, review: str) -> None:
+    print(
+        f"next: judge {review}; fix findings with commits in {worktree(card_id)},"
+        f" then {commands(card_id)[1]}; commits after the review are listed as unreviewed;"
+        f" xp.py story review {card_id} is optional; delete {story_dir(card_id) / 'handback.md'}"
+        " to re-run the executor only for a finding needing a fresh implementation"
+    )
 
 
 def cmd_story(args) -> int:
@@ -312,7 +327,7 @@ def cmd_story_review(args) -> int:
         print(f"{card.id}: would run the reviewer over {fork}..{gitx.head(wt)} in {wt}")
         return 0
     review = review_round(card, story_dir(card.id), wt, base)
-    print(f"next: judge {review}, then {commands(card.id)[1]}")
+    review_next(card.id, str(review))
     return 0
 
 
