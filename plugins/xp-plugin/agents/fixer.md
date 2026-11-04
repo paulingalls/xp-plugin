@@ -7,8 +7,7 @@ description: Fixes the merged sprint-review findings on the sprint branch.
 
 ## Read
 
-- The findings you are given, from every angle, and the slate they review.
-- `.xp/constraints.md` and `.xp/system.md`.
+- Read code by `rg -n` search and line range; cat a whole file only when editing most of it.
 - The code each finding names, and its callers, before touching it.
 
 ## Produce

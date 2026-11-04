@@ -4,6 +4,12 @@ Release notes started at v0.6.0; earlier entries are summarized from their
 tag and merge messages. Full detail lives in the merge history and the
 per-sprint review reports.
 
+## v1.4.5
+
+- Agent charters stop requesting sources already bundled in their prompts; each prompt opens with an instruction to use those copies.
+- Plan and slate reviewers locate cards by search and read only their line ranges for targeted edits.
+- Executors and fixers read code by search and line range, reserving whole-file reads for editing most of a file.
+
 ## v1.4.4
 
 - Story and free land rerun worktree_setup at the trial merge before Acceptance; setup failure refuses land.

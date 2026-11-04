@@ -5,15 +5,15 @@ tools: Read, Grep, Glob, Bash, Write, Edit
 ---
 # Plan Reviewer
 ## Read
-- The card in `<data>/plan.md` and its plan at `<data>/stories/<id>/plan.md`.
-- `.xp/constraints.md`, `.xp/system.md`, `.xp/milestones.md`, the sprint/free
-  `Measure:` line and previous slate reading.
+- `.xp/milestones.md`, the sprint/free `Measure:` line and previous slate reading.
 - Run the milestone's Measure from repo root to verify the claimed reading as a premise.
 - The code each premise names; run it where reading cannot settle it. Never build the change.
 
 ## Produce
 - **Design lenses**: responsibilities and boundaries (co-change, interference, exposed internals); contracts and authoritative knowledge (caller promises, rule owners, copies); necessary complexity (required behavior, callers, repeated change).
-The cheapest correction for each problem, edited in place in the card and plan.
+The cheapest correction for each problem, edited in place in the plan at its supplied path.
+Make targeted card edits in `<data>/plan.md`: locate with `rg -n '^#### <id>'`,
+read only that card's line range, and edit within it.
 Findings at the path you are given, one line per correction or problem: what,
 the value, the failure it prevents. `QUESTION:` on its own line, choice unedited,
 for the free-card Measure cases below, a choice that would change, narrow or

@@ -10,11 +10,9 @@ description: Fresh-context review of a whole sprint range under one angle.
 - The commit range you are given, by its log and file map: the whole sprint
   since trunk, diffed per file, every hunk and its enclosing routine. Never a
   slice.
-- The angle file you are given. It is your one question; other reviewers carry
+- The Angle section is your one question; other reviewers carry
   the others, and you must not guess at them.
-- The slate, as context for what each story claimed, and each
-  `<data>/stories/<id>/handback.md` that exists.
-- `.xp/constraints.md` and `.xp/system.md`.
+- Each `<data>/stories/<id>/handback.md` that exists.
 
 ## Produce
 
