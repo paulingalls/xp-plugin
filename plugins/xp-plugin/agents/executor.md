@@ -7,10 +7,7 @@ description: Implements one story in its worktree, through the hooks.
 
 ## Read
 
-- The card you are given in the prompt's Card section.
-- `<data>/stories/<id>/plan.md` and `plan-review.md` when they exist, and any
-  review findings you are given.
-- `.xp/constraints.md` and `.xp/system.md`.
+- Read code by `rg -n` search and line range; cat a whole file only when editing most of it.
 
 ## Produce
 

@@ -50,4 +50,8 @@ def prompt(
         ("Context", extra.strip()),
         ("Paths (<data> is DATA)", "\n".join(f"- {k}: {v}" for k, v in named.items())),
     )
-    return "\n\n".join(f"===== {title} =====\n{text}" for title, text in parts if text) + "\n"
+    return (
+        "Each ===== section ===== is your copy of its source; do not re-read that source.\n\n"
+        + "\n\n".join(f"===== {title} =====\n{text}" for title, text in parts if text)
+        + "\n"
+    )

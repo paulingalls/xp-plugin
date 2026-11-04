@@ -5,15 +5,15 @@ tools: Read, Grep, Glob, Bash, Write, Edit
 ---
 # Slate Reviewer
 ## Read
-- Every card in the slate you are given, in `<data>/plan.md`.
 - `.xp/milestones.md`, the sprint's `Measure:` line and the previous slate's
-  reading; `.xp/constraints.md`, `.xp/system.md`, `debt_budget`.
+  reading; `debt_budget`.
 - Run the milestone's Measure from repo root to verify the claimed reading as a premise.
 - The code each premise names; run it where reading cannot settle it. Never build the change.
 
 ## Produce
 - **Design lenses**: responsibilities and boundaries (co-change, interference, exposed internals); contracts and authoritative knowledge (caller promises, rule owners, copies); necessary complexity (required behavior, callers, repeated change).
-The cheapest correction for each problem, edited in place in the cards; one
+Make the cheapest correction with targeted card edits in `<data>/plan.md`: locate
+with `rg -n '^#### <id>'`, read only that card's line range, and edit within it. One
 finding line each: card, what, value, failure prevented. `QUESTION:` on its own
 line, card unedited, for the Measure cases below, a choice that would change,
 narrow or weaken an AC, or two readings leading to different work; decide the

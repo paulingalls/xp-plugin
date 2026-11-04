@@ -8,8 +8,6 @@ tools: Read, Grep, Glob, Bash, Write
 
 ## Read
 
-- The story's card in `<data>/plan.md`.
-- `.xp/constraints.md` and `.xp/system.md`.
 - The code and tests the card touches, as they are now. Check every premise the
   card states about current code against that code; run it where reading cannot
   settle the premise.
