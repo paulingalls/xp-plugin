@@ -16,17 +16,34 @@ CHECK = "import pathlib, sys\nsys.exit(pathlib.Path('merged.txt').read_text() !=
 CARD = "## Sprint 1 — s\n\n#### story-001 — add   [in-progress]\nAcceptance: python3 check.py\n"
 
 
-def proof_check(trace):
+def proof_check(trace, setup=None):
     return (
         "import subprocess as s\nfrom pathlib import Path\n"
         "def git(*args): return s.check_output(['git', *args], text=True).strip('\\n')\n"
         f"Path({str(trace)!r}).write_text(git('status', '--porcelain') + '\\n' + "
         "git('branch', '--show-current') + '\\n' + git('rev-parse', 'HEAD', 'HEAD^{tree}') + "
         "'\\n' + git('show', '-s', '--format=%P', 'HEAD') + '\\n')\n"
-        "assert git('status', '--porcelain') == ''\n"
+        + (f"assert Path({str(setup)!r}).is_file()\n" if setup else "")
+        + "assert git('status', '--porcelain') == ''\n"
         "assert git('branch', '--show-current') == ''\n"
         "assert Path('merged.txt').read_text() == 'ok\\n'\n"
     )
+
+
+def setup_command(root, trace, exit_code=0):
+    command = f"python3 {str(root / 'setup.py')!r} && exit {exit_code}"
+    commit(
+        root,
+        {
+            ".xp/config.yml": CONFIG + f"worktree_setup: {command}\n",
+            "setup.py": "from pathlib import Path\nimport subprocess as s\n"
+            f"Path({str(trace)!r}).write_text(str(Path.cwd()) + '\\n' + "
+            "s.check_output(['git', 'branch', '--show-current'], text=True).strip() + '\\n' + "
+            "s.check_output(['git', 'rev-parse', 'HEAD', 'HEAD^{tree}'], text=True))\n",
+        },
+        "configure setup",
+    )
+    return command
 
 
 def git(cwd, *args, env=None, check=True):
@@ -98,8 +115,10 @@ def story(tmp_path, monkeypatch):
 def test_green_acceptance_on_the_merged_clean_tree_lands_and_closes(story, capsys, override):
     root, data, wt, late = story
     trace = data / "proof"
+    setup = data / "setup"
+    setup_command(root, setup)
     if not override:
-        late = commit(wt, {"check.py": proof_check(trace)}, "check clean merged tree")
+        late = commit(wt, {"check.py": proof_check(trace, setup)}, "check clean merged tree")
     target = commit(root, {"merged.txt": "bad\n" if override else "ok\n"}, "sprint work")
     assert xp.main(["story", "land", "story-001", *(["--tested-by", "r"] if override else [])]) == 0
     output = capsys.readouterr().out
@@ -112,6 +131,8 @@ def test_green_acceptance_on_the_merged_clean_tree_lands_and_closes(story, capsy
         status, branch, probe, tree, parents = trace.read_text().splitlines()
         assert status == branch == "" and parents == f"{late} {target}" and probe != late
         assert tree == git(root, "rev-parse", "HEAD^{tree}")
+        assert setup.read_text().splitlines() == [str(wt), "", probe, tree]
+    assert setup.exists() != override
     review = (data / "stories" / "story-001" / "review-1.md").read_text()
     seen = review.split("reviewed: ")[1].strip()
     assert "review-1.md" in body and f"unreviewed: {seen[:10]}..{late[:10]}" in body
@@ -122,25 +143,47 @@ def test_green_acceptance_on_the_merged_clean_tree_lands_and_closes(story, capsy
     assert not wt.exists() and git(root, "branch", "--list", "story-001-thing") == ""
 
 
-def test_red_acceptance_refuses_and_leaves_everything_unmerged(story, capsys):
+def test_land_reruns_setup_after_a_hand_merge_of_the_target(story):
+    root, data, wt, _ = story
+    setup, trace = data / "setup", data / "proof"
+    setup_command(root, setup)
+    target = commit(root, {"merged.txt": "ok\n"}, "sprint work")
+    git(wt, "merge", "-q", target, "-m", "update branch")
+    commit(wt, {"check.py": proof_check(trace, setup)}, "trace proof")
+    assert xp.main(["story", "land", "story-001"]) == 0
+    assert trace.is_file() and setup.is_file()
+
+
+@pytest.mark.parametrize("failing", ["acceptance", "setup"])
+def test_red_acceptance_refuses_and_leaves_everything_unmerged(story, capsys, failing):
     root, data, wt, _ = story
     trace = data / "red-proof"
+    setup = data / "setup"
+    command = setup_command(root, setup, 23 if failing == "setup" else 0)
     tip = commit(wt, {"check.py": proof_check(trace)}, "trace red proof")
     tree = git(wt, "rev-parse", "HEAD^{tree}")
-    before = commit(root, {"merged.txt": "bad\n"}, "sprint work")
+    before = commit(root, {"merged.txt": "ok\n" if failing == "setup" else "bad\n"}, "sprint work")
     with pytest.raises(SystemExit) as exit_:
-        land.cmd_story_land(ns("story-001"))
-    assert exit_.value.code == 2 and "Acceptance exited 1" in capsys.readouterr().err
-    status, branch, probe, tested, parents = trace.read_text().splitlines()
-    assert status == branch == "" and parents == f"{tip} {before}" and probe != tip
-    assert tested != tree
+        xp.main(["story", "land", "story-001"])
+    err = capsys.readouterr().err
+    assert exit_.value.code == 2
+    cwd, branch, probe, tested = setup.read_text().splitlines()
+    assert cwd == str(wt) and branch == "" and probe != tip and tested != tree
+    if failing == "setup":
+        log = data / "logs" / "story-001-land-setup.log"
+        assert f"worktree_setup `{command}` exited 23; read {log}" in err
+        assert log.is_file() and not trace.exists()
+    else:
+        assert "Acceptance exited 1" in err
+        assert trace.read_text().splitlines() == ["", "", probe, tested, f"{tip} {before}"]
     assert git(wt, "branch", "--show-current") == "story-001-thing"
     assert git(wt, "rev-parse", "HEAD", "HEAD^{tree}").splitlines() == [tip, tree]
     assert git(wt, "status", "--porcelain") == "" and not (wt / "merged.txt").exists()
     assert git(wt, "rev-parse", "-q", "--verify", "MERGE_HEAD", check=False) != 0
     assert git(root, "rev-parse", "HEAD") == before
     assert cards.find_card("story-001").status == "in-progress"
-    assert (data / "logs" / "story-001-acceptance.log").is_file()
+    assert (data / "logs" / "story-001-acceptance.log").is_file() == (failing == "acceptance")
+    assert not (data / "landed.jsonl").exists()
 
 
 def test_refused_merge_reports_hook_reason_and_restores_target(story, capsys):
@@ -293,8 +336,10 @@ def test_a_refused_push_shows_the_hook_output_that_names_the_red(tmp_path, monke
 def test_free_land_trial_merges_the_fetched_origin_trunk_clean_tree(tmp_path, monkeypatch):
     gh = fake_gh(tmp_path, monkeypatch)
     trace = tmp_path / "proof"
-    files = {**manifest("1.1.1"), "check.py": proof_check(trace)}
-    _, data, wt = free_patch(tmp_path, monkeypatch, "python3 check.py", files)
+    setup = tmp_path / "setup"
+    files = {**manifest("1.1.1"), "check.py": proof_check(trace, setup)}
+    root, data, wt = free_patch(tmp_path, monkeypatch, "python3 check.py", files)
+    setup_command(root, setup)
     tip = git(wt, "rev-parse", "HEAD")
     tree = git(wt, "rev-parse", "HEAD^{tree}")
     other = tmp_path / "other"
@@ -307,6 +352,7 @@ def test_free_land_trial_merges_the_fetched_origin_trunk_clean_tree(tmp_path, mo
     assert "pr create" in gh.read_text()
     status, branch, probe, tested, parents = trace.read_text().splitlines()
     assert status == branch == "" and probe != tip
+    assert setup.read_text().splitlines() == [str(wt), "", probe, tested]
     assert parents == f"{tip} {git(other, 'rev-parse', 'HEAD')}"
     assert tested == (data / "stories" / "free-fix" / "tested_tree").read_text().strip()
     assert tested != tree and git(wt, "status", "--porcelain") == ""

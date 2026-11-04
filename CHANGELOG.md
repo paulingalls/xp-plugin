@@ -4,6 +4,10 @@ Release notes started at v0.6.0; earlier entries are summarized from their
 tag and merge messages. Full detail lives in the merge history and the
 per-sprint review reports.
 
+## v1.4.4
+
+- Story and free land rerun worktree_setup at the trial merge before Acceptance; setup failure refuses land.
+
 ## v1.4.3
 
 - Free and sprint land use the merge target’s committed release mode to validate change notes.

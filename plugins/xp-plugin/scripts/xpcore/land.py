@@ -86,6 +86,14 @@ def accept(
     else:
         probe = gitx.probe_commit(tree, gitx.head(path), sha, cwd=path)
         with detached(path, probe):
+            # Always: a branch that merged its target by hand still has spawn-time resources.
+            log_id = f"{card.id}-land-setup"
+            line, rc = hooks.project_command("worktree_setup", path, log_id)
+            if rc:
+                refuse(
+                    f"worktree_setup `{line}` exited {rc}; read {hooks.log_path(log_id)};"
+                    " fix the command and land again"
+                )
             where, then = f"{branch} merged with {target}", "fix it on the branch, then land again"
             acceptance(card, path, f"{card.id}-acceptance", where, then)
     return tree
