@@ -111,9 +111,11 @@ Optional `worktree_setup` and `worktree_teardown` shell lines run inside the wor
 creation (before agents) and removal. Setup must be safe to re-run in an existing
 worktree; teardown must be safe to run twice. Spawn setup failure removes only the
 worktree and branch created by that attempt; teardown failure warns and cleanup continues.
-Free land tears down after PR handoff but keeps the worktree and branch. Changed-tree
-free post-merge reruns setup before Acceptance; setup failure keeps the worktree and
-refuses the release. Close tears down again and removes the worktree.
+Story and free land rerun setup before Acceptance when the trial-merge tree differs
+from the branch tree; setup failure refuses land. Free land tears down after PR handoff
+but keeps the worktree and branch. Changed-tree free post-merge reruns setup before
+Acceptance; setup failure keeps the worktree and refuses the release. Close tears down
+again and removes the worktree.
 
 Optional `lifecycle_command` runs with `sh -c`, appending the shell-quoted event and id:
 `sprint-open` before recording the sprint, `story-close` after green Acceptance before the
