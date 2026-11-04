@@ -6,7 +6,7 @@ per-sprint review reports.
 
 ## v1.4.4
 
-- Story and free land rerun worktree setup before Acceptance when the trial-merge tree differs from the branch tree; setup failure refuses land.
+- Story and free land rerun worktree_setup at the trial merge before Acceptance; setup failure refuses land.
 
 ## v1.4.3
 

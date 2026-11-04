@@ -143,17 +143,15 @@ def test_green_acceptance_on_the_merged_clean_tree_lands_and_closes(story, capsy
     assert not wt.exists() and git(root, "branch", "--list", "story-001-thing") == ""
 
 
-def test_land_skips_setup_when_branch_contains_target(story):
+def test_land_reruns_setup_after_a_hand_merge_of_the_target(story):
     root, data, wt, _ = story
     setup, trace = data / "setup", data / "proof"
     setup_command(root, setup)
     target = commit(root, {"merged.txt": "ok\n"}, "sprint work")
     git(wt, "merge", "-q", target, "-m", "update branch")
-    commit(wt, {"check.py": proof_check(trace)}, "trace proof")
-    assert git(wt, "merge-base", "--is-ancestor", target, "HEAD", check=False) == 0
+    commit(wt, {"check.py": proof_check(trace, setup)}, "trace proof")
     assert xp.main(["story", "land", "story-001"]) == 0
-    assert trace.is_file() and not setup.exists()
-    assert not (data / "logs" / "story-001-land-setup.log").exists()
+    assert trace.is_file() and setup.is_file()
 
 
 @pytest.mark.parametrize("failing", ["acceptance", "setup"])
