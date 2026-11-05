@@ -10,6 +10,7 @@ from xpcore.config import (
     clear_sprint_branch,
     data_root,
     fail,
+    load_config,
     plugin_root,
     record_sprint_branch,
     refuse,
@@ -40,7 +41,7 @@ def agent(role: str, text: str, root: Path, log_id: str, out: Path) -> Path:
     if result.returncode:
         fail(f"{role} exited {result.returncode}; read {launch.log_path(log_id)}")
     if not out.is_file():
-        out.write_text(result.stdout.rstrip() + "\n")
+        out.write_text(result.stdout + ("" if result.stdout.endswith("\n") else "\n"))
     return out
 
 
@@ -100,12 +101,30 @@ def cmd_sprint_review(args) -> int:
     if args.dry_run:
         print(f"would review {base}..{branch} by {', '.join(a.stem for a in angles)}, then fix")
         return 0
+    triage = (load_config().get("roles") or {}).get("angle-triage") or ""
     slate, extra = cards.sprint_slate(args.id), gitx.range_map(base, "HEAD", root)
 
     def review(angle: Path) -> Path:
+        context = extra
+        if triage and angle.stem == "security":
+            decision = folder / f"triage-{n}.security.md"
+            decision.unlink(missing_ok=True)
+            text = bundle.prompt(
+                "angle-triage",
+                slate=slate,
+                angle=angle.read_text(),
+                extra=extra,
+                paths={"FINDINGS_PATH": str(decision)},
+            )
+            agent("angle-triage", text, root, f"{branch}-triage-{n}-security", decision)
+            answer = decision.read_text()
+            if answer.split("\n", 1)[0] == "CLEAR":
+                decision.replace(outs[angle])
+                return outs[angle]
+            context += f"\n\n## Triage sites\n{answer}\n\nEnd triage sites."
         out = {"FINDINGS_PATH": str(outs[angle])}
         text = bundle.prompt(
-            "angle-reviewer", slate=slate, angle=angle.read_text(), extra=extra, paths=out
+            "angle-reviewer", slate=slate, angle=angle.read_text(), extra=context, paths=out
         )
         log_id = f"{branch}-reviewer-{n}-{angle.stem}"
         return agent("angle-reviewer", text, root, log_id, outs[angle])
