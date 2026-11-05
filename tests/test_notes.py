@@ -17,7 +17,7 @@ def project(tmp_path, monkeypatch):
     return root, data
 
 
-def branch_project(tmp_path, monkeypatch, kind, existing=False, mode="notes"):
+def branch_project(tmp_path, monkeypatch, kind, existing=False, mode="notes", seed_note=False):
     root, data = project(tmp_path, monkeypatch)
     if mode != "notes":
         commit(root, {".xp/config.yml": CONFIG.replace("notes", mode)}, "policy")
@@ -25,6 +25,9 @@ def branch_project(tmp_path, monkeypatch, kind, existing=False, mode="notes"):
     if existing:
         branch = "free-fix-x" if kind == "free" else "sprint-1"
         commit(root, {f"changes/{branch}.md": NOTE + "Old text\n"}, "existing note")
+        git(root, "push", "-q", "origin", "main")
+    if seed_note:
+        commit(root, {"changes/story-y.md": "Old change.\nRelease steps: none.\n"}, "seed note")
         git(root, "push", "-q", "origin", "main")
     trace = tmp_path / "proof"
     if kind == "free":
@@ -55,6 +58,8 @@ def branch_project(tmp_path, monkeypatch, kind, existing=False, mode="notes"):
         ("missing", "add changes/"),
         ("steps", "Release steps:"),
         ("bump", "Bump:"),
+        ("added-note", "changes/story-y.md: add exactly one Bump"),
+        ("modified-note", "changes/story-y.md: add exactly one Bump"),
         ("changelog", "CHANGELOG.md"),
         ("version", "b.json"),
         ("valid", ""),
@@ -63,7 +68,7 @@ def branch_project(tmp_path, monkeypatch, kind, existing=False, mode="notes"):
 def test_land_policy_and_post_merge(tmp_path, monkeypatch, capsys, kind, problem, fix):
     gh = fake_gh(tmp_path, monkeypatch)
     root, data, tree, branch, identifier, trace = branch_project(
-        tmp_path, monkeypatch, kind, problem == "missing"
+        tmp_path, monkeypatch, kind, problem == "missing", seed_note=problem == "modified-note"
     )
     files = {f"changes/{branch}.md": NOTE, "package.json": '{"version":"1.1.0", "extra":true}'}
     if problem == "steps":
@@ -74,6 +79,10 @@ def test_land_policy_and_post_merge(tmp_path, monkeypatch, capsys, kind, problem
         files["CHANGELOG.md"] = "## 2.0.0\n"
     elif problem == "version":
         files["b.json"] = '{"version":"v1.1.0"}'
+    elif problem in {"added-note", "modified-note"}:
+        files["changes/story-y.md"] = "A change.\nRelease steps: none.\n"
+    elif problem == "valid":
+        files.update({"changes/story-y.md": NOTE, "changes/README.md": "Instructions\n"})
     commit(tree, files, "work")
     args = [kind, "land", identifier]
     if problem != "valid":

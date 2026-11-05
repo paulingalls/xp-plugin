@@ -34,8 +34,10 @@ def land_version(part, root, branch, base, into):
     ).splitlines()
     if expected not in added:
         refuse(f"add {expected} with Bump: major|minor|patch and Release steps: before land")
-    parse(expected, (root / expected).read_text())
     changed = gitx.changed_files(base, "HEAD", root)
+    for path in pending(root):
+        if path in changed:
+            parse(path, (root / path).read_text())
     if "CHANGELOG.md" in changed:
         refuse("leave CHANGELOG.md to xp.py release stamp; revert its branch edits")
     for path in release.version_files():
