@@ -4,6 +4,11 @@ Release notes started at v0.6.0; earlier entries are summarized from their
 tag and merge messages. Full detail lives in the merge history and the
 per-sprint review reports.
 
+## v1.5.0
+
+- Add an optional security angle triage seat: exact CLEAR records its reasons and skips the full reviewer.
+- Escalation preserves the triage answer as starting sites for the security reviewer, with the full range map retained. Other angles always run.
+
 ## v1.4.5
 
 - Agent charters stop requesting sources already bundled in their prompts; each prompt opens with an instruction to use those copies.

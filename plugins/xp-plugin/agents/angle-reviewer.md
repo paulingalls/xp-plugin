@@ -7,9 +7,11 @@ description: Fresh-context review of a whole sprint range under one angle.
 
 ## Read
 
-- The commit range you are given, by its log and file map: the whole sprint
-  since trunk, diffed per file, every hunk and its enclosing routine. Never a
-  slice.
+- The commit range you are given, by its full log and file map. Given
+  `Triage sites` in Context, read those first; read other files to trace a
+  path or where the full range log points at the angle. Without triage, read
+  the whole sprint since trunk, diffed per file, every hunk and its enclosing
+  routine. Never a slice. Keep the full log and file map available.
 - The Angle section is your one question; other reviewers carry
   the others, and you must not guess at them.
 - Each `<data>/stories/<id>/handback.md` that exists.
