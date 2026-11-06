@@ -1,6 +1,7 @@
 """Land a story on its sprint branch, or a free patch on trunk through a PR."""
 
 import json
+import os
 import shlex
 import shutil
 import subprocess
@@ -180,6 +181,7 @@ def close(
     tested_by: str | None = None,
 ) -> None:
     teardown(card, path)
+    os.chdir(lead)
     # The worktree before the branch: git will not delete a branch a worktree has out.
     gitx.worktree_remove(path, cwd=lead)
     gitx.git("branch", "-D", branch, cwd=lead)
