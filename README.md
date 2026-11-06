@@ -11,9 +11,11 @@ Everything else is the agent's judgment, guided by [VALUES](plugins/xp-plugin/VA
 
 ## Install
 
-Requires Python 3.11+, git, [gitleaks](https://github.com/gitleaks/gitleaks), and `gh`
-for release PRs. [lefthook](https://github.com/evilmartians/lefthook) is optional; without
-it, setup writes plain `.githooks/`. Install the plugin for the harness you lead from; a
+Requires Python 3.11+, git, [gitleaks](https://github.com/gitleaks/gitleaks), and an
+authenticated `gh` CLI (`gh auth login`). Bug/debt filing and issue closing require
+`gh` and gitleaks; there is no local fallback. Release PRs also require `gh`.
+[lefthook](https://github.com/evilmartians/lefthook) is optional; without it, setup
+writes plain `.githooks/`. Install the plugin for the harness you lead from; a
 harness that only runs agents needs its binary on PATH.
 
 ```bash
@@ -127,7 +129,9 @@ xp.py story land <id> [--tested-by REASON]   trial merge, Acceptance on the merg
 xp.py free <slug>               mint the card; run again to walk it as a story cut from trunk
 xp.py free land <slug> [--tested-by REASON]  PR against trunk
 xp.py free post-merge <slug> [--tested-by REASON]  release the fetched PR merge; close the patch
-xp.py bug | debt | note | resolve    records with a falsifier command
+xp.py bug | debt                 file GitHub issues with a falsifier command
+xp.py resolve --ref 224 --falsifier "..."    close an issue with a green falsifier
+xp.py note "..."                 append a local note
 ```
 
 The three land commands accept `--tested-by "<reason>"` with nonblank evidence to
@@ -218,9 +222,26 @@ A protected trunk needs a bypass for that push. Publication is CHANGELOG only.
 
 ## Where state lives
 
-The repository holds `.xp/` and the hooks. Everything else lives in a per-clone data root,
-`~/.xp/data/<id>/` or `$XP_DATA`: the plan, records, session digest, story plans, reviews
-and handbacks, release records, agent logs and worktrees. Clones never share a plan.
+The repository holds `.xp/` and the hooks. Bug/debt records are GitHub issues in the
+project repository resolved by `gh` from the checkout, shared across clones. Other
+state lives in a per-clone data root, `~/.xp/data/<id>/` or `$XP_DATA`: the plan,
+local notes and legacy records, session digest, story plans, reviews and handbacks,
+release records, agent logs and worktrees. Clones never share a plan.
+
+## Migrating records to 1.6.0
+
+Release step: open an issue for each open legacy local bug/debt using `xp.py bug` or
+`xp.py debt` with its claim, falsifier and files (and both bars for debt). Then resolve
+its old local ID with a green falsifier whose output points at the created issue:
+
+```bash
+xp.py resolve --ref abcdefab --falsifier 'echo https://github.com/OWNER/REPO/issues/224'
+```
+
+Use the actual old ID and created issue URL. Numeric refs always mean GitHub issue
+numbers; nonnumeric refs resolve legacy local records. Notes and historical entries
+remain local. Recover lists shared open issues, then local open records under
+`local (filed before 1.6.0)`.
 
 ## Codex notes
 

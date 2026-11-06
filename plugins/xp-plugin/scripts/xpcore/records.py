@@ -223,11 +223,12 @@ def cmd_resolve(args) -> int:
     numeric = ref.isascii() and ref.isdigit()
     if numeric:
         _dependencies()
-    filed, resolved = _records()
-    if not numeric and ref not in filed:
-        refuse(f"no bug or debt {ref!r} in {work_path()}; run xp.py recover for the open ids")
-    if not numeric and ref in resolved:
-        refuse(f"{ref} is already resolved; nothing to do")
+    else:
+        filed, resolved = _records()
+        if ref not in filed:
+            refuse(f"no bug or debt {ref!r} in {work_path()}; run xp.py recover for the open ids")
+        if ref in resolved:
+            refuse(f"{ref} is already resolved; nothing to do")
     rc, output = _falsify(args.falsifier)
     if rc != 0:
         refuse(
