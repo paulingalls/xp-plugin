@@ -36,7 +36,9 @@ if args[:2] == ['auth', 'status']:
         store.write_text(json.dumps(state))
         sys.exit('authentication expired')
 elif args[:2] == ['label', 'list']:
-    print(json.dumps([{'name': x} for x in state['labels']]))
+    # gh 2.103 prints nothing, not [], when --search matches no label
+    names = [{'name': x} for x in state['labels'] if x == args[args.index('--search')+1]]
+    print(json.dumps(names) if names else '')
 elif args[:2] == ['label', 'create']:
     state['labels'].append(args[2])
 elif args[:2] == ['issue', 'create']:

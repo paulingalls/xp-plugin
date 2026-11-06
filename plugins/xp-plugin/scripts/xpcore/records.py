@@ -147,7 +147,7 @@ def _file(kind: str, args, extra: list[str]) -> int:
     except RuntimeError as exc:
         print(f"advisory search unavailable: {exc}")
     try:
-        labels = json.loads(_gh("label", "list", "--search", kind, "--json", "name"))
+        labels = json.loads(_gh("label", "list", "--search", kind, "--json", "name") or "[]")
         if not any(label["name"] == kind for label in labels):
             _gh("label", "create", kind)
         print(
@@ -241,7 +241,8 @@ def cmd_resolve(args) -> int:
         _scan(comment)
         _authenticate()
         try:
-            print(_gh("issue", "close", ref, "--comment", comment))
+            _gh("issue", "close", ref, "--comment", comment)
+            print(f"closed issue #{ref}")
         except RuntimeError as exc:
             refuse(f"GitHub close failed: {exc}; fix gh access and retry")
     else:
