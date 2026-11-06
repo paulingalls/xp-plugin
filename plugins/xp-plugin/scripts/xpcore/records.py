@@ -254,28 +254,27 @@ def issue_records() -> list[str]:
     if not git("rev-parse", "--show-toplevel", check=False):
         return ["GitHub open records unavailable: not inside a git repository"]
     try:
+        # Unfiltered: gh sends --search and --label through the search index, which
+        # lags a just-filed issue.
         issues = json.loads(
             _gh(
                 "issue",
                 "list",
                 "--state",
                 "open",
-                "--search",
-                "label:bug,debt",
                 "--json",
                 "number,title,labels",
                 "--limit",
-                "100",
+                "500",
             )
         )
         rows = []
         for issue in issues:
-            labels = ",".join(
-                label["name"] for label in issue["labels"] if label["name"] in ("bug", "debt")
-            )
-            rows.append(f"#{issue['number']} {labels} — {issue['title']}")
-        if len(issues) == 100:
-            rows.append("first 100 shown; gh issue list --label bug|debt for the rest")
+            kinds = [label["name"] for label in issue["labels"] if label["name"] in ("bug", "debt")]
+            if kinds:
+                rows.append(f"#{issue['number']} {','.join(kinds)} — {issue['title']}")
+        if len(issues) == 500:
+            rows.append("first 500 open issues read; gh issue list --label bug|debt for the rest")
         return rows
     except (RuntimeError, ValueError, KeyError, TypeError) as exc:
         return [f"GitHub open records unavailable: {exc}"]

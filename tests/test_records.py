@@ -49,7 +49,9 @@ elif args[:2] == ['issue', 'list']:
     if os.environ.get('GH_FAIL'):
         store.write_text(json.dumps(state))
         sys.exit('network unavailable')
-    print(json.dumps(state['issues']) if '--json' in args else '')
+    # gh routes --search and --label through the search index, which lags a new issue
+    stale = '--search' in args or '--label' in args
+    print(json.dumps([] if stale else state['issues']) if '--json' in args else '')
 elif args[:2] != ['issue', 'close']:
     sys.exit('unexpected gh command')
 store.write_text(json.dumps(state))
@@ -246,10 +248,10 @@ def test_recover_across_clones(repo, monkeypatch, capsys):
     )
     assert "old debt" in local and "old bug" not in local
     s = state(repo)
-    s["issues"] *= 50
+    s["issues"] *= 250
     (repo / "issues.json").write_text(json.dumps(s))
     assert xp.main(["recover"]) == 0
-    assert "first 100 shown" in capsys.readouterr().out
+    assert "first 500 open issues read" in capsys.readouterr().out
 
 
 @pytest.mark.parametrize("failure", ["missing", "network", "timeout"])
