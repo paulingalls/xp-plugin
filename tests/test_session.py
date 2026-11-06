@@ -80,7 +80,13 @@ PLAN = """\
 """
 
 
-def test_recover_lists_open_cards_with_their_stage_files(repo, capsys):
+def test_recover_lists_open_cards_with_their_stage_files(repo, capsys, monkeypatch):
+    binpath = repo / "bin"
+    binpath.mkdir()
+    gh = binpath / "gh"
+    gh.write_text(f"#!{sys.executable}\nprint('[]')\n")
+    gh.chmod(0o755)
+    monkeypatch.setenv("PATH", str(binpath) + os.pathsep + os.environ["PATH"])
     cards.plan_path().parent.mkdir(parents=True)
     cards.plan_path().write_text(PLAN)
     story = config.data_root() / "stories" / "story-001"
@@ -94,7 +100,8 @@ def test_recover_lists_open_cards_with_their_stage_files(repo, capsys):
     assert out.startswith("intent: ship")
     assert "story-001 — first [in-progress]\n  stages: plan.md, review-1.md" in out
     assert "story-002 — second [planned]" in out and "story-003" not in out
-    assert "## open records\nnone" in out and "## sprint\nsprint-001" in out
+    assert "## open records\nnone\n\n### local (filed before 1.6.0)\nnone" in out
+    assert "## sprint\nsprint-001" in out
 
 
 def test_an_agent_launch_gets_no_injection(repo):

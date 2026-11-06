@@ -1,15 +1,19 @@
-"""bug / debt / note / resolve: append-only records in <data>/work.md, each falsifier run once."""
+"""Shared issue records, local notes and legacy resolutions; each falsifier run once."""
 
 import hashlib
+import json
 import re
+import shutil
 import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 
 from xpcore.config import data_root, refuse, repo_root
+from xpcore.gitx import git
 
 OUTPUT_CAP = 2_000
 TIMEOUT = 600
+GH_TIMEOUT = 30
 HEADING = re.compile(r"^## (bug|debt|note|resolved) (\S+) \S+$")
 
 
@@ -57,10 +61,62 @@ def _append(kind: str, ident: str, ts: str, body: list[str]) -> None:
     print(f"{kind} {ident} recorded in {path}")
 
 
+def _dependencies() -> None:
+    if not shutil.which("gh"):
+        refuse("install gh and authenticate with gh auth login; records require GitHub")
+    if not shutil.which("gitleaks"):
+        refuse("install gitleaks; records require secret scanning")
+
+
+def _scan(*texts: str) -> None:
+    for text in texts:
+        try:
+            proc = subprocess.run(
+                ["gitleaks", "stdin", "--no-banner", "--redact"],
+                input=text,
+                cwd=repo_root(),
+                capture_output=True,
+                text=True,
+                timeout=GH_TIMEOUT,
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            refuse("gitleaks could not scan the payload; nothing sent to GitHub")
+        if proc.returncode:
+            refuse("gitleaks refused the payload; inspect it locally before filing")
+
+
+def _gh(*args: str, body: str | None = None) -> str:
+    try:
+        proc = subprocess.run(
+            ["gh", *args],
+            input=body if body is not None else "",
+            cwd=repo_root(),
+            capture_output=True,
+            text=True,
+            errors="replace",
+            timeout=GH_TIMEOUT,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError("gh timed out") from exc
+    except OSError as exc:
+        raise RuntimeError(f"gh unavailable: {exc}") from exc
+    if proc.returncode:
+        raise RuntimeError((proc.stderr + proc.stdout).strip() or f"gh exited {proc.returncode}")
+    return proc.stdout.strip()
+
+
+def _authenticate() -> None:
+    try:
+        _gh("auth", "status")
+    except RuntimeError as exc:
+        refuse(f"{exc}; run gh auth login")
+
+
 def _file(kind: str, args, extra: list[str]) -> int:
     claim = _one_line(args.claim)
     if not claim:
         refuse(f"a {kind} needs a --claim; say what is wrong")
+    _dependencies()
     rc, output = _falsify(args.falsifier)
     if kind == "bug" and rc == 0:
         refuse(
@@ -72,11 +128,43 @@ def _file(kind: str, args, extra: list[str]) -> int:
             f"the falsifier exited {rc} (red), so this is a defect; file as bug"
             " (xp.py bug), or pass a falsifier that passes on today's code"
         )
-    ts = _stamp()
-    ident = hashlib.sha256(f"{kind}{ts}{claim}".encode()).hexdigest()[:8]
+    common = Path(git("rev-parse", "--path-format=absolute", "--git-common-dir"))
     body = [f"Claim: {claim}", f"Falsifier: {_one_line(args.falsifier)}"]
-    body += [f"Files: {_one_line(args.files)}", *extra, f"Falsifier rc: {rc}", output]
-    _append(kind, ident, ts, body)
+    body += [
+        f"Files: {_one_line(args.files)}",
+        *extra,
+        f"Filer: {common.parent.name}",
+        f"Falsifier rc: {rc}",
+        output,
+    ]
+    payload = "\n".join(body)
+    query = " ".join(re.findall(r"[a-zA-Z0-9]+", claim)[:8])
+    _scan(claim, payload, query)
+    _authenticate()
+    print("Open issues matching claim terms:")
+    try:
+        print(_gh("issue", "list", "--state", "open", "--search", query) or "none")
+    except RuntimeError as exc:
+        print(f"advisory search unavailable: {exc}")
+    try:
+        labels = json.loads(_gh("label", "list", "--search", kind, "--json", "name"))
+        if not any(label["name"] == kind for label in labels):
+            _gh("label", "create", kind)
+        print(
+            _gh(
+                "issue",
+                "create",
+                "--title",
+                claim,
+                "--label",
+                kind,
+                "--body-file",
+                "-",
+                body=payload,
+            )
+        )
+    except (RuntimeError, ValueError, KeyError, TypeError) as exc:
+        refuse(f"GitHub filing failed: {exc}; fix gh access and retry")
     return 0
 
 
@@ -132,10 +220,13 @@ def open_records() -> list[str]:
 
 def cmd_resolve(args) -> int:
     ref = args.ref.strip()
+    numeric = ref.isascii() and ref.isdigit()
+    if numeric:
+        _dependencies()
     filed, resolved = _records()
-    if ref not in filed:
+    if not numeric and ref not in filed:
         refuse(f"no bug or debt {ref!r} in {work_path()}; run xp.py recover for the open ids")
-    if ref in resolved:
+    if not numeric and ref in resolved:
         refuse(f"{ref} is already resolved; nothing to do")
     rc, output = _falsify(args.falsifier)
     if rc != 0:
@@ -144,5 +235,45 @@ def cmd_resolve(args) -> int:
             " fix it first, or pass the command that proves it fixed"
         )
     body = [f"Falsifier: {_one_line(args.falsifier)}", f"Falsifier rc: {rc}", output]
-    _append("resolved", ref, _stamp(), body)
+    if numeric:
+        comment = "\n".join(body)
+        _scan(comment)
+        _authenticate()
+        try:
+            print(_gh("issue", "close", ref, "--comment", comment))
+        except RuntimeError as exc:
+            refuse(f"GitHub close failed: {exc}; fix gh access and retry")
+    else:
+        _append("resolved", ref, _stamp(), body)
     return 0
+
+
+def issue_records() -> list[str]:
+    if not git("rev-parse", "--show-toplevel", check=False):
+        return ["GitHub open records unavailable: not inside a git repository"]
+    try:
+        issues = json.loads(
+            _gh(
+                "issue",
+                "list",
+                "--state",
+                "open",
+                "--search",
+                "label:bug,debt",
+                "--json",
+                "number,title,labels",
+                "--limit",
+                "100",
+            )
+        )
+        rows = []
+        for issue in issues:
+            labels = ",".join(
+                label["name"] for label in issue["labels"] if label["name"] in ("bug", "debt")
+            )
+            rows.append(f"#{issue['number']} {labels} — {issue['title']}")
+        if len(issues) == 100:
+            rows.append("first 100 shown; gh issue list --label bug|debt for the rest")
+        return rows
+    except (RuntimeError, ValueError, KeyError, TypeError) as exc:
+        return [f"GitHub open records unavailable: {exc}"]

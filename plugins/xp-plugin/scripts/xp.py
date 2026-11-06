@@ -78,7 +78,10 @@ def build() -> argparse.ArgumentParser:
     )
     scoped(sub, "free", FREE_ACTIONS, "cmd_free", "start, land, or tag a free patch")
 
-    for name, text in (("bug", "file a bug (red falsifier)"), ("debt", "file debt (green)")):
+    for name, text in (
+        ("bug", "file a GitHub bug issue (red falsifier)"),
+        ("debt", "file a GitHub debt issue (green)"),
+    ):
         r = sub.add_parser(name, help=text, description=text)
         r.add_argument("--claim", required=True, help="what is wrong")
         r.add_argument("--falsifier", required=True, help="command whose polarity is checked")
@@ -90,8 +93,8 @@ def build() -> argparse.ArgumentParser:
     n = sub.add_parser("note", help="record a note", description="record a note")
     n.add_argument("text", nargs="+")
     n.set_defaults(run=handler("records", "cmd_note"))
-    r = sub.add_parser("resolve", help="resolve a record with a green falsifier")
-    r.add_argument("--ref", required=True, help="record id")
+    r = sub.add_parser("resolve", help="close an issue or legacy record with a green falsifier")
+    r.add_argument("--ref", required=True, help="issue number or legacy local record ID")
     r.add_argument("--falsifier", required=True, help="command that must now pass")
     r.set_defaults(run=handler("records", "cmd_resolve"))
     return p
