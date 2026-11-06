@@ -72,7 +72,7 @@ lefthook.yml (or .githooks/)   pre-commit, pre-push, sprint, nightly — the pro
 
 ~/.xp/data/<project>/
   plan.md            sprints and cards with [status] and Measure readings
-  work.md            bug / debt / note records, append-only
+  work.md            local notes and legacy resolutions, append-only
   session.md         the lead's digest, written at every close
   landed.jsonl       one line per landed story
   stories/<id>/      plan.md, plan-review.md, review-N.md, agent logs
@@ -291,7 +291,11 @@ remaining notes get one retry. Changed local state refuses destructive recovery.
 
 - `bug` requires a red falsifier, `debt` a green one plus both JUDGMENT bars, `note` is
   free text, `resolve` substitutes a green falsifier. The polarity check runs the command.
-  That is the whole of work.py.
+  Bug/debt become issues in the checkout's GitHub repository, requiring authenticated
+  gh and gitleaks scans of outbound record text. Numeric `resolve --ref` closes an
+  issue; nonnumeric refs resolve pre-1.6.0 local records. Notes stay in `work.md`.
+  Recover lists shared bug/debt issues and legacy local open records; a GitHub failure
+  is shown without stopping recovery.
 - The lead writes `session.md` at every close: intent, surprises, tack chosen, next step,
   under 30 lines. `xp.py recover` shows each milestone's Measure first and never runs it
   (a session start must not run a repo's shell unasked); story land and free mint run

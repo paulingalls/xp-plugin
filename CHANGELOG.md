@@ -4,6 +4,15 @@ Release notes started at v0.6.0; earlier entries are summarized from their
 tag and merge messages. Full detail lives in the merge history and the
 per-sprint review reports.
 
+## v1.6.0
+
+- Bug and debt records become shared GitHub issues; filing requires authenticated gh.
+- Scan outbound record text with gitleaks before any gh call; refuse without scanning.
+- Numeric resolve closes an issue with green falsifier output. Nonnumeric legacy IDs
+  and notes remain local; recover shows issues and legacy records, tolerating gh failure.
+- Release step: open an issue for each local open record, then resolve its old local ID
+  with a green falsifier pointing at that issue (see README migration commands).
+
 ## v1.5.2
 
 - Free post-merge and story land finish closing when invoked inside the worktree being removed.

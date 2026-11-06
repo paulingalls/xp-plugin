@@ -12,6 +12,7 @@
 
 ## Records (`xp.py bug | debt | note | resolve`)
 Mid-sprint, record; never schedule.
+Gitleaks checks secrets, not personal content.
 - **bug**: claim, red falsifier, files. Fix now.
 - **debt**: claim, green falsifier, files, and BOTH bars: too big (doubles the card, crosses a concern, needs its own design) AND too important (silent, corrupting, privacy, user harm).
 - **resolve**: a green falsifier replaces the record's; the lead, at close, on the landed tree.

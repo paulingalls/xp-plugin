@@ -158,6 +158,8 @@ def cmd_recover(args) -> int:
         if not live:
             print("none open")
     print("\n## open records")
+    print("\n".join(records.issue_records()) or "none")
+    print("\n### local (filed before 1.6.0)")
     print("\n".join(records.open_records()) or "none")
     print("\n## sprint")
     print(sprint_branch() or "none open")
