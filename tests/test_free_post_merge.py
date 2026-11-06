@@ -2,8 +2,9 @@ import json
 
 import pytest
 import xp
-from test_land import commit, fake_gh, free_patch, git, manifest, ns
+from test_land import commit, fake_gh, free_patch, git, make_project, manifest, ns
 from xpcore import cards, land, release
+from xpcore.config import data_root
 
 
 def park_lead(root):
@@ -41,6 +42,25 @@ def publish_merge(root, squash=False):
     sha = git(root, "rev-parse", "HEAD")
     git(root, "push", "-q", "origin", "main")
     return sha
+
+
+def test_free_post_merge_closes_from_inside_its_worktree(tmp_path, monkeypatch):
+    root, _ = make_project(tmp_path, monkeypatch)
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    monkeypatch.delenv("XP_DATA")
+    data = data_root()
+    data.mkdir(parents=True)
+    (data / "plan.md").write_text("#### free-fix — fix   [in-progress]\nAcceptance: python3 -c 1\n")
+    wt = data / "worktrees" / "free-fix"
+    git(root, "worktree", "add", "-q", "-b", "free-fix-x", str(wt))
+    commit(wt, manifest("1.1.1"), "fix")
+    sha = publish_merge(root)
+    monkeypatch.chdir(wt)
+    assert xp.main(["free", "post-merge", "fix"]) == 0
+    record = json.loads((data / "landed.jsonl").read_text())
+    assert record["id"] == "free-fix" and record["merge"] == sha
+    assert cards.find_card("free-fix").status == "done"
+    assert not wt.exists() and not git(root, "branch", "--list", "free-fix-x")
 
 
 def test_free_post_merge_releases_tested_merge_off_dirty_lead(tmp_path, monkeypatch, capsys):

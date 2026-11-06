@@ -4,6 +4,10 @@ Release notes started at v0.6.0; earlier entries are summarized from their
 tag and merge messages. Full detail lives in the merge history and the
 per-sprint review reports.
 
+## v1.5.2
+
+- Free post-merge and story land finish closing when invoked inside the worktree being removed.
+
 ## v1.5.1
 
 - Free and sprint land reject malformed added or modified change notes before opening a PR.
