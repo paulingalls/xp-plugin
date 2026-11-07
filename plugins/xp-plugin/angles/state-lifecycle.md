@@ -13,4 +13,4 @@ field), answer four questions and report where the answers disagree:
 
 Follow each value across files: the write and the contradicting read usually
 live apart. Report the state, the writer, the missing reader or clearer, and
-what a user sees when it bites. A loud error means this angle found nothing.
+what a user sees when it bites. A rare loud error means this angle found nothing.
