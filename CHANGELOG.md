@@ -4,6 +4,12 @@ Release notes started at v0.6.0; earlier entries are summarized from their
 tag and merge messages. Full detail lives in the merge history and the
 per-sprint review reports.
 
+## v1.6.1
+
+- Fix loud failures certain or likely on the ordinary production path; require
+  rare failures and too-big fixes for loudness-based drops, and reject deferred
+  production verification as a drop reason.
+
 ## v1.6.0
 
 - Bug and debt records become shared GitHub issues; filing requires authenticated gh.
