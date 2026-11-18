@@ -403,7 +403,7 @@ version wall). Delete both from the template.
 # Constraints
 
 Reversing one of these makes it a different project. Cap the entire UTF-8 file at
-4,500 bytes to fit Codex's 10,000-byte SessionStart hook limit. Reviewers enforce
+4,000 bytes to fit Codex's 10,000-byte SessionStart hook limit. Reviewers enforce
 these and cite the item. A rule a hook or the plugin already enforces is a second
 copy: delete it.
 

@@ -42,7 +42,7 @@ hooks and an empty plan, and refuses if `.xp/` already exists. Then fill in:
 - **`.xp/config.yml`.** Set `versioning`, `version_files` if it is on or notes, and `roles` (below).
 - **`.xp/system.md`.** Describe the product, especially Surfaces & acceptance.
 - **`.xp/constraints.md`.** Keep the project's rules, which reviewers cite. Cap the entire
-  UTF-8 file at 4,500 bytes to fit Codex's 10,000-byte SessionStart hook limit.
+  UTF-8 file at 4,000 bytes to fit Codex's 10,000-byte SessionStart hook limit.
 
 ## Upgrading from 0.x
 

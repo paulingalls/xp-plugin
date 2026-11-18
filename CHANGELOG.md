@@ -4,6 +4,14 @@ Release notes started at v0.6.0; earlier entries are summarized from their
 tag and merge messages. Full detail lives in the merge history and the
 per-sprint review reports.
 
+## v1.6.2
+
+- Land and post-merge read the release policy from the lead's on-disk
+  `.xp/config.yml` when `.xp/` is kept out of git; a config committed at the
+  target ref still wins, and a tracked config missing there still refuses (#228).
+- Lower the documented constraints.md cap to 4,000 bytes: at 4,500 a long
+  plugin or data path pushed the SessionStart banner past its budget (#229).
+
 ## v1.6.1
 
 - Fix loud failures certain or likely on the ordinary production path; require

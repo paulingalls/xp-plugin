@@ -5,6 +5,7 @@ import re
 
 from xpcore import gitx, release
 from xpcore.config import parse_config, refuse, repo_root, trunk
+from xpcore.land import lead_tree
 
 
 def parse(path, text):
@@ -19,6 +20,12 @@ def parse(path, text):
 
 def committed_mode(root, ref):
     source = f"{ref}:.xp/config.yml"
+    if not gitx.git("ls-tree", "--name-only", ref, "--", ".xp/config.yml", cwd=root):
+        lead = lead_tree()
+        if not gitx.git("ls-files", "--", ".xp/config.yml", cwd=lead):
+            path = lead / ".xp/config.yml"
+            source = str(path)
+            return release.versioning(parse_config(path.read_text(), source), source)
     return release.versioning(parse_config(gitx.git("show", source, cwd=root), source), source)
 
 
