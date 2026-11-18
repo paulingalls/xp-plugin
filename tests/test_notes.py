@@ -19,7 +19,13 @@ def project(tmp_path, monkeypatch):
 
 def branch_project(tmp_path, monkeypatch, kind, existing=False, mode="notes", seed_note=False):
     root, data = project(tmp_path, monkeypatch)
-    if mode != "notes":
+    if mode == "local":
+        (root / ".git/info/exclude").write_text("/.xp\n")
+        git(root, "rm", "-q", "--cached", ".xp/config.yml")
+        (root / ".xp/config.yml").write_text(CONFIG.replace("notes", "off"))
+        git(root, "commit", "-qm", "local-only .xp")
+        git(root, "push", "-q", "origin", "main")
+    elif mode != "notes":
         commit(root, {".xp/config.yml": CONFIG.replace("notes", mode)}, "policy")
         git(root, "push", "-q", "origin", "main")
     if existing:
@@ -114,6 +120,20 @@ def test_land_policy_and_post_merge(tmp_path, monkeypatch, capsys, kind, problem
     else:
         record = json.loads((data / "sprints/1/release.json").read_text())
         assert record["version"] == record["tag"] == ""
+
+
+@pytest.mark.parametrize("kind", ["free", "sprint"])
+def test_local_only_config_governs_land_and_post_merge(tmp_path, monkeypatch, kind):
+    fake_gh(tmp_path, monkeypatch)
+    root, _, tree, branch, identifier, trace = branch_project(
+        tmp_path, monkeypatch, kind, mode="local"
+    )
+    commit(tree, {"work": "work\n"}, "work")
+    assert xp.main([kind, "land", identifier]) == 0 and trace.read_text() == "ran\n"
+    git(root, "switch", "-q", "main")
+    git(root, "merge", "-q", "--no-ff", branch, "-m", "PR")
+    git(root, "push", "-q", "origin", "main")
+    assert xp.main([kind, "post-merge", identifier]) == 0
 
 
 def pending(root):

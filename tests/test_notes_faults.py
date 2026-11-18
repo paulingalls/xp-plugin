@@ -5,6 +5,17 @@ from test_notes import CONFIG, NOTE, branch_project, pending, project, race_hook
 from xpcore import cards
 
 
+def test_land_refuses_missing_tracked_config(tmp_path, monkeypatch, capsys):
+    root, _, tree, _, _, _ = branch_project(tmp_path, monkeypatch, "free")
+    git(root, "rm", "-q", ".xp/config.yml")
+    git(root, "commit", "-qm", "remove config")
+    git(root, "push", "-q", "origin", "main")
+    git(root, "reset", "-q", "--hard", "HEAD~1")
+    commit(tree, {"work": "work\n"}, "work")
+    assert xp.main(["free", "land", "fix"]) == 1
+    assert "git show origin/main:.xp/config.yml" in capsys.readouterr().err
+
+
 def test_local_changes_during_rejected_push_survive(tmp_path, monkeypatch, capsys):
     root, _ = project(tmp_path, monkeypatch)
     pending(root)
