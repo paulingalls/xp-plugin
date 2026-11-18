@@ -34,7 +34,7 @@ def test_banner_carries_version_and_absolute_recover_command(repo):
     assert "--- BEGIN project content ---" not in proc.stdout.decode()
 
 
-@pytest.mark.parametrize("size", [4500, 24000])
+@pytest.mark.parametrize("size", [4000, 24000])
 def test_constraints_inside_the_budget(repo, size):
     constraints = "ü" * (size // 2 - 1) + "z\n"
     assert len(constraints.encode()) == size
@@ -44,7 +44,7 @@ def test_constraints_inside_the_budget(repo, size):
     out = proc.stdout
     assert len(out) <= session.BUDGET
     text = out.decode()
-    if size == 4500:
+    if size == 4000:
         assert constraints in text and "truncated" not in text
     else:
         assert "[constraints.md truncated at " in text and "bytes; read the file]" in text
