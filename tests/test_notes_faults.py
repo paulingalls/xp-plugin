@@ -16,6 +16,16 @@ def test_land_refuses_missing_tracked_config(tmp_path, monkeypatch, capsys):
     assert "git show origin/main:.xp/config.yml" in capsys.readouterr().err
 
 
+def test_committed_config_outranks_untracked_lead(tmp_path, monkeypatch, capsys):
+    root, _, tree, _, _, _ = branch_project(tmp_path, monkeypatch, "free")
+    git(root, "rm", "-q", "--cached", ".xp/config.yml")
+    (root / ".xp/config.yml").write_text(CONFIG.replace("notes", "off"))
+    commit(tree, {"work": "work\n"}, "work")
+    with pytest.raises(SystemExit) as exc:
+        xp.main(["free", "land", "fix"])
+    assert exc.value.code == 2 and "changes/free-fix" in capsys.readouterr().err
+
+
 def test_local_changes_during_rejected_push_survive(tmp_path, monkeypatch, capsys):
     root, _ = project(tmp_path, monkeypatch)
     pending(root)
