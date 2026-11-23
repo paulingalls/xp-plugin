@@ -7,7 +7,7 @@ import sys
 
 import pytest
 import xp
-from xpcore import records
+from xpcore import records, shared
 
 PY = shlex.quote(sys.executable)
 RED = f"{PY} -c 'raise SystemExit(3)'"
@@ -263,7 +263,7 @@ def test_recover_failure(repo, monkeypatch, capsys, failure):
     elif failure == "network":
         monkeypatch.setenv("GH_FAIL", "1")
     else:
-        monkeypatch.setattr(records, "GH_TIMEOUT", 0.001)
+        monkeypatch.setattr(shared, "GH_TIMEOUT", 0.001)
         (repo / "bin" / "gh").write_text(f"#!{sys.executable}\nimport time\ntime.sleep(1)\n")
     assert xp.main(["recover"]) == 0
     out = capsys.readouterr().out.split("## open records")[1]
