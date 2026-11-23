@@ -22,6 +22,12 @@ def repo(tmp_path, monkeypatch):
     monkeypatch.setenv("GIT_CONFIG_GLOBAL", "/dev/null")
     subprocess.run(["git", "init", "-q", str(tmp_path / "r")], check=True)
     monkeypatch.chdir(tmp_path / "r")
+    (tmp_path / "r" / ".xp").mkdir()
+    (tmp_path / "r" / ".xp/config.yml").write_text("github_issues: on\ntrunk: main\n")
+    for key, value in [("user.name", "Test"), ("user.email", "test@example.test")]:
+        subprocess.run(["git", "config", key, value], check=True)
+    subprocess.run(["git", "add", ".xp/config.yml"], check=True)
+    subprocess.run(["git", "commit", "-qm", "fixture"], check=True)
     binpath = tmp_path / "bin"
     binpath.mkdir()
     gh = binpath / "gh"
@@ -258,7 +264,7 @@ def test_recover_across_clones(repo, monkeypatch, capsys):
     assert xp.main(["resolve", "--ref", "abcdefab", "--falsifier", GREEN]) == 0
     assert xp.main(["recover"]) == 0
     out = capsys.readouterr().out.split("## open records")[1]
-    remote, local = out.split("local (filed before 1.6.0)")
+    remote, local = out.split("local")
     assert (
         "224" in remote and "bug" in remote and "debt" in remote and "parser drops tabs" in remote
     )
@@ -286,4 +292,48 @@ def test_recover_failure(repo, monkeypatch, capsys, failure):
     assert {"missing": "gh", "network": "network unavailable", "timeout": "timed out"}[
         failure
     ] in out
-    assert "local (filed before 1.6.0)" in out and "old bug" in out and "## sprint" in out
+    assert "local" in out and "old bug" in out and "## sprint" in out
+
+
+@pytest.mark.parametrize("kind", ["bug", "debt"])
+@pytest.mark.parametrize("setting", ["", "github_issues: off\n"])
+def test_local_filing_lifecycle(repo, monkeypatch, capsys, kind, setting):
+    monkeypatch.setattr(socket, "gethostname", lambda: "fixed-host")
+    checkout = repo / "worktree"
+    subprocess.run(["git", "worktree", "add", "-qb", "local", str(checkout)], check=True)
+    (checkout / ".xp/config.yml").write_text(setting)
+    nested = checkout / "nested"
+    nested.mkdir()
+    monkeypatch.chdir(nested)
+    isolated = repo / "isolated"
+    isolated.mkdir()
+    for name in ["git", "sh"]:
+        (isolated / name).symlink_to(shutil.which(name))
+    monkeypatch.setenv("PATH", str(isolated))
+    script = 'from pathlib import Path; Path("once").open("a").write("x"); print("output"); '
+    command = f"{PY} -c " + shlex.quote(script + f"raise SystemExit({3 if kind == 'bug' else 0})")
+    assert xp.main(filing(kind, command)) == 0
+    ident = next(iter(records._records()[0]))
+    assert ident.startswith(kind + "-")
+    body = records.work_path().read_text()
+    for text in [
+        "Claim: parser drops tabs",
+        "Files: a.py",
+        "output",
+        "Filer: r@" + hashlib.sha256(b"fixed-host").hexdigest()[:6],
+        f"Falsifier rc: {3 if kind == 'bug' else 0}",
+    ]:
+        assert text in body
+    if kind == "debt":
+        assert "Too big: crosses concern" in body and "Too important: silent loss" in body
+    assert (checkout / "once").read_text() == "x"
+    capsys.readouterr()
+    assert xp.main(["recover"]) == 0
+    assert ident in capsys.readouterr().out
+    assert "exited 3" in refused(capsys, ["resolve", "--ref", ident, "--falsifier", RED])
+    assert xp.main(["resolve", "--ref", ident, "--falsifier", GREEN]) == 0
+    capsys.readouterr()
+    assert xp.main(["recover"]) == 0
+    assert ident not in capsys.readouterr().out
+    assert f"## resolved {ident}" in records.work_path().read_text()
+    assert body in records.work_path().read_text() and not state(repo)["calls"]

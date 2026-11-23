@@ -1,3 +1,4 @@
+github_issues: off
 # trunk: develop           # only when releases do not land on the default branch
 versioning: off            # off: project owns versions/tags; on: tag each release;
                            # notes: branches carry notes, stamp after merge

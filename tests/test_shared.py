@@ -7,7 +7,9 @@ import subprocess
 import pytest
 import xp
 from test_records import refused, repo, state  # noqa: F401
-from xpcore import cards
+from test_land import story, free_patch, fake_gh, git, ns  # noqa: F401
+from test_sprint import repo as sprint_repo  # noqa: F401
+from xpcore import cards, land
 
 CARD = """#### free-share — shared work   [planned]
 Context: private local detail
@@ -132,3 +134,76 @@ def test_publication_requires_scanning_on_create_and_edit(repo, monkeypatch, cap
         cards.plan_path().write_text(before.replace("Issue: #224\n", ""))
         assert "gitleaks" in refused(capsys, ["card", "publish", "free-share"])
         assert state(repo) == s
+
+
+@pytest.mark.parametrize("setting", ["", "github_issues: off\n", None])
+def test_issue_features_opt_in(repo, monkeypatch, capsys, setting):  # noqa: F811
+    plan()
+    config = repo / "r/.xp/config.yml"
+    if setting is None:
+        config.unlink()
+    else:
+        config.write_text(setting)
+    before = cards.plan_path().read_text()
+    for command in [
+        ["card", "publish", "free-share"],
+        ["card", "claim", "224"],
+        ["resolve", "--ref", "224", "--falsifier", "touch forbidden"],
+    ]:
+        assert "github_issues: on" in refused(capsys, command)
+    assert not (repo / "r/forbidden").exists()
+    assert cards.plan_path().read_text() == before
+    assert xp.main(["recover"]) == 0
+    assert "## shared cards" not in capsys.readouterr().out
+    assert not state(repo)["calls"]
+    isolated = repo / "isolated"
+    isolated.mkdir()
+    (isolated / "git").symlink_to(shutil.which("git"))
+    monkeypatch.setenv("PATH", str(isolated))
+    assert "github_issues: on" in refused(capsys, ["card", "publish", "free-share"])
+    assert "github_issues: on" in refused(capsys, ["card", "claim", "224"])
+
+
+@pytest.mark.parametrize("fields,reference", [("", ""), ("Issue: #224\n", "Closes #224"),
+    ("Issue: #224\nEvidence: true\n", "Refs #224")])
+def test_story_issue_reference(story, fields, reference):  # noqa: F811
+    root, data, wt, _ = story
+    path = data / "plan.md"
+    path.write_text(path.read_text() + fields)
+    assert xp.main(["story", "land", "story-001"]) == 0
+    message = git(root, "log", "-1", "--format=%B")
+    assert (reference in message) if reference else ("#224" not in message)
+    assert ("Closes #224" in message) == (reference == "Closes #224")
+    assert cards.find_card("story-001").status == "done" and not wt.exists()
+
+
+@pytest.mark.parametrize("fields,reference", [("", ""), ("Issue: #224\n", "Closes #224"),
+    ("Issue: #224\nEvidence: true\n", "Refs #224")])
+def test_free_issue_reference(tmp_path, monkeypatch, fields, reference):
+    gh = fake_gh(tmp_path, monkeypatch)
+    _, data, _ = free_patch(tmp_path, monkeypatch)
+    path = data / "plan.md"
+    path.write_text(path.read_text() + fields)
+    assert land.cmd_free_land(ns("fix")) == 0
+    message = gh.read_text()
+    assert (reference in message) if reference else ("#224" not in message)
+    assert ("Closes #224" in message) == (reference == "Closes #224")
+
+
+def test_sprint_issue_references(sprint_repo, tmp_path, monkeypatch):
+    _, data, hooklog = sprint_repo
+    path = data / "plan.md"
+    path.write_text(path.read_text() + "Issue: #224\n" +
+        "#### story-002 — read   [done]\nIssue: #225\nEvidence: true\n" +
+        "#### story-003 — later   [planned]\nIssue: #226\n" +
+        "#### story-004 — dropped   [retired]\nIssue: #227\n" +
+        "## Sprint 2\n#### story-005 — other   [done]\nIssue: #228\n" +
+        "## Free\n#### free-other — other   [done]\nIssue: #229\n")
+    gh = fake_gh(tmp_path, monkeypatch)
+    folder = data / "sprints/1"
+    (folder / "review-1.md").write_text("ok")
+    assert xp.main(["sprint", "land", "1"]) == 0
+    body = gh.read_text()
+    assert "Closes #224" in body and "Refs #225" in body and "Closes #225" not in body
+    assert all(f"#{n}" not in body for n in range(226, 230))
+    assert "review-1.md" in body and hooklog.read_text() == "ran\n"

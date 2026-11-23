@@ -8,7 +8,7 @@ import socket
 import subprocess
 
 from xpcore import cards, gitx
-from xpcore.config import refuse, repo_root
+from xpcore.config import refuse, repo_root, require_github_issues
 
 GH_TIMEOUT = 30
 
@@ -91,6 +91,7 @@ def public_body(card: cards.Card) -> str:
 
 
 def cmd_publish(args) -> int:
+    require_github_issues()
     card = cards.find_card(args.id)
     body = public_body(card)
     _dependencies()
@@ -137,6 +138,7 @@ def issue_card(body: str) -> cards.Card:
 
 
 def cmd_claim(args) -> int:
+    require_github_issues()
     if not re.fullmatch(r"[0-9]+", args.id):
         refuse("card claim needs an issue number")
     try:

@@ -1,4 +1,4 @@
-"""Shared issue records, local notes and legacy resolutions; each falsifier run once."""
+"""Shared issue records, local notes and resolutions; each falsifier run once."""
 
 import hashlib
 import json
@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from xpcore import shared
-from xpcore.config import data_root, refuse, repo_root
+from xpcore.config import data_root, github_issues, refuse, repo_root, require_github_issues
 from xpcore.gitx import git
 
 OUTPUT_CAP = 2_000
@@ -64,7 +64,7 @@ def _file(kind: str, args, extra: list[str]) -> int:
     claim = _one_line(args.claim)
     if not claim:
         refuse(f"a {kind} needs a --claim; say what is wrong")
-    shared._dependencies()
+    publish = github_issues()
     rc, output = _falsify(args.falsifier)
     if kind == "bug" and rc == 0:
         refuse(
@@ -84,6 +84,12 @@ def _file(kind: str, args, extra: list[str]) -> int:
         f"Falsifier rc: {rc}",
         output,
     ]
+    if not publish:
+        ts = _stamp()
+        digest = hashlib.sha256(f"{ts}{kind}{claim}".encode()).hexdigest()[:8]
+        _append(kind, f"{kind}-{digest}", ts, body)
+        return 0
+    shared._dependencies()
     payload = "\n".join(body)
     query = " ".join(re.findall(r"[a-zA-Z0-9]+", claim)[:8])
     shared._scan(claim, payload, query)
@@ -167,6 +173,7 @@ def cmd_resolve(args) -> int:
     ref = args.ref.strip()
     numeric = ref.isascii() and ref.isdigit()
     if numeric:
+        require_github_issues()
         shared._dependencies()
     else:
         filed, resolved = _records()
