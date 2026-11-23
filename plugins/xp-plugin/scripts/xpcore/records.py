@@ -1,19 +1,18 @@
-"""Shared issue records, local notes and legacy resolutions; each falsifier run once."""
+"""Shared issue records, local notes and resolutions; each falsifier run once."""
 
 import hashlib
 import json
 import re
-import shutil
 import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 
-from xpcore.config import data_root, refuse, repo_root
+from xpcore import shared
+from xpcore.config import data_root, github_issues, refuse, repo_root, require_github_issues
 from xpcore.gitx import git
 
 OUTPUT_CAP = 2_000
 TIMEOUT = 600
-GH_TIMEOUT = 30
 HEADING = re.compile(r"^## (bug|debt|note|resolved) (\S+) \S+$")
 
 
@@ -61,62 +60,11 @@ def _append(kind: str, ident: str, ts: str, body: list[str]) -> None:
     print(f"{kind} {ident} recorded in {path}")
 
 
-def _dependencies() -> None:
-    if not shutil.which("gh"):
-        refuse("install gh and authenticate with gh auth login; records require GitHub")
-    if not shutil.which("gitleaks"):
-        refuse("install gitleaks; records require secret scanning")
-
-
-def _scan(*texts: str) -> None:
-    for text in texts:
-        try:
-            proc = subprocess.run(
-                ["gitleaks", "stdin", "--no-banner", "--redact"],
-                input=text,
-                cwd=repo_root(),
-                capture_output=True,
-                text=True,
-                timeout=GH_TIMEOUT,
-            )
-        except (OSError, subprocess.TimeoutExpired):
-            refuse("gitleaks could not scan the payload; nothing sent to GitHub")
-        if proc.returncode:
-            refuse("gitleaks refused the payload; inspect it locally before filing")
-
-
-def _gh(*args: str, body: str | None = None) -> str:
-    try:
-        proc = subprocess.run(
-            ["gh", *args],
-            input=body if body is not None else "",
-            cwd=repo_root(),
-            capture_output=True,
-            text=True,
-            errors="replace",
-            timeout=GH_TIMEOUT,
-        )
-    except subprocess.TimeoutExpired as exc:
-        raise RuntimeError("gh timed out") from exc
-    except OSError as exc:
-        raise RuntimeError(f"gh unavailable: {exc}") from exc
-    if proc.returncode:
-        raise RuntimeError((proc.stderr + proc.stdout).strip() or f"gh exited {proc.returncode}")
-    return proc.stdout.strip()
-
-
-def _authenticate() -> None:
-    try:
-        _gh("auth", "status")
-    except RuntimeError as exc:
-        refuse(f"{exc}; run gh auth login")
-
-
 def _file(kind: str, args, extra: list[str]) -> int:
     claim = _one_line(args.claim)
     if not claim:
         refuse(f"a {kind} needs a --claim; say what is wrong")
-    _dependencies()
+    publish = github_issues()
     rc, output = _falsify(args.falsifier)
     if kind == "bug" and rc == 0:
         refuse(
@@ -128,30 +76,33 @@ def _file(kind: str, args, extra: list[str]) -> int:
             f"the falsifier exited {rc} (red), so this is a defect; file as bug"
             " (xp.py bug), or pass a falsifier that passes on today's code"
         )
-    common = Path(git("rev-parse", "--path-format=absolute", "--git-common-dir"))
     body = [f"Claim: {claim}", f"Falsifier: {_one_line(args.falsifier)}"]
     body += [
         f"Files: {_one_line(args.files)}",
         *extra,
-        f"Filer: {common.parent.name}",
+        f"Filer: {shared.owner()}",
         f"Falsifier rc: {rc}",
         output,
     ]
+    if not publish:
+        ts = _stamp()
+        digest = hashlib.sha256(f"{ts}{kind}{claim}".encode()).hexdigest()[:8]
+        _append(kind, f"{kind}-{digest}", ts, body)
+        return 0
+    shared._dependencies()
     payload = "\n".join(body)
     query = " ".join(re.findall(r"[a-zA-Z0-9]+", claim)[:8])
-    _scan(claim, payload, query)
-    _authenticate()
+    shared._scan(claim, payload, query)
+    shared._authenticate()
     print("Open issues matching claim terms:")
     try:
-        print(_gh("issue", "list", "--state", "open", "--search", query) or "none")
+        print(shared._gh("issue", "list", "--state", "open", "--search", query) or "none")
     except RuntimeError as exc:
         print(f"advisory search unavailable: {exc}")
     try:
-        labels = json.loads(_gh("label", "list", "--search", kind, "--json", "name") or "[]")
-        if not any(label["name"] == kind for label in labels):
-            _gh("label", "create", kind)
+        shared.ensure_label(kind)
         print(
-            _gh(
+            shared._gh(
                 "issue",
                 "create",
                 "--title",
@@ -222,7 +173,8 @@ def cmd_resolve(args) -> int:
     ref = args.ref.strip()
     numeric = ref.isascii() and ref.isdigit()
     if numeric:
-        _dependencies()
+        require_github_issues()
+        shared._dependencies()
     else:
         filed, resolved = _records()
         if ref not in filed:
@@ -238,10 +190,10 @@ def cmd_resolve(args) -> int:
     body = [f"Falsifier: {_one_line(args.falsifier)}", f"Falsifier rc: {rc}", output]
     if numeric:
         comment = "\n".join(body)
-        _scan(comment)
-        _authenticate()
+        shared._scan(comment)
+        shared._authenticate()
         try:
-            _gh("issue", "close", ref, "--comment", comment)
+            shared._gh("issue", "close", ref, "--comment", comment)
             print(f"closed issue #{ref}")
         except RuntimeError as exc:
             refuse(f"GitHub close failed: {exc}; fix gh access and retry")
@@ -257,7 +209,7 @@ def issue_records() -> list[str]:
         # Unfiltered: gh sends --search and --label through the search index, which
         # lags a just-filed issue.
         issues = json.loads(
-            _gh(
+            shared._gh(
                 "issue",
                 "list",
                 "--state",

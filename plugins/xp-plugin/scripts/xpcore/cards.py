@@ -125,6 +125,13 @@ def _splice(card_id: str, replacement: list[str]) -> None:
     _write_plan("\n".join(lines) + "\n")
 
 
+def set_field(card_id: str, name: str, value: str) -> None:
+    with plan_lock():
+        card = _locate(_read_plan(), card_id)[2]
+        lines = [line for line in card.lines if not line.startswith(f"{name}:")]
+        _splice(card_id, [*lines, f"{name}: {value}"])
+
+
 def set_status(card_id: str, status: str) -> None:
     if status not in STATUSES:
         refuse(f"status {status!r} is not one of {', '.join(STATUSES)}; pass one of those")
@@ -163,15 +170,17 @@ def sprint_slate(sprint_id) -> str:
     refuse(f"no `## Sprint {sprint_id}` section in {plan_path()}; write the slate there first")
 
 
-def mint_free(card_id: str, heading: str) -> bool:
-    """Append `heading` at the end of `## Free`; False when the card already exists."""
+def mint_free(card_id: str, heading: str, section: str = "Free") -> bool:
+    """Append a card in the section; False when its id already exists."""
     with plan_lock():
-        if card_id in {c.id for c in read_cards()}:
+        text = _read_plan() if plan_path().is_file() else ""
+        if card_id in {c.id for c in read_cards(text)}:
             return False
-        lines = _read_plan().rstrip("\n").splitlines()
-        if "## Free" not in lines:
-            lines += ["", "## Free"]
-        start = lines.index("## Free")
+        lines = text.rstrip("\n").splitlines()
+        heading_section = f"## {section}"
+        if heading_section not in lines:
+            lines += ["", heading_section]
+        start = lines.index(heading_section)
         end = next(
             (j for j in range(start + 1, len(lines)) if re.match(r"#{1,3} ", lines[j])),
             len(lines),

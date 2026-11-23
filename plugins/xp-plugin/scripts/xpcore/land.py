@@ -9,7 +9,7 @@ from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 
-from xpcore import cards, gitx, hooks, release, session
+from xpcore import cards, gitx, hooks, release, session, shared
 from xpcore.config import data_root, fail, refuse, sprint_branch, trunk
 from xpcore.story import card_changes, last_reviewed, reviews, story_dir, worktree
 
@@ -241,6 +241,7 @@ def land(card_id: str, target: str, *, pr: bool, dry_run: bool, tested_by: str |
         body += f"\nNot hook-verified at land: {tested_by}\n"
     if diff := card_changes(card):
         print(f"{card.id}: card changed since spawn:\n{diff}")
+    shared.sync(card)
     if pr:
         after = f"after it merges, run `xp.py free post-merge {card.id}`"
         pull_request(branch, target, path, after, title=card.title, body=body)
@@ -303,8 +304,10 @@ def cmd_free_post_merge(args) -> int:
     card = cards.find_card(free_id(args.id))
     if card.status != "in-progress":
         refuse(f"{card.id} is [{card.status}], not [in-progress]; it was closed already")
-    if recorded_close(card.id):
-        return finish_recorded(card)
+    if sha := recorded_close(card.id):
+        result = finish_recorded(card)
+        shared.complete_issues([card], sha)
+        return result
     path, branch = worktree_of(card)
     if gitx.is_dirty(path):
         refuse(f"{path} has uncommitted changes; commit or discard them, then run again")
@@ -356,5 +359,6 @@ def cmd_free_post_merge(args) -> int:
     if version and not tagged:
         release.tag(version, sha)
     close(card, sha, path, branch, lead, args.tested_by)
+    shared.complete_issues([card], sha)
     print(f"{card.id} closed{release.tag_note(version)}")
     return 0

@@ -5,7 +5,7 @@ import shlex
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-from xpcore import bundle, cards, gitx, hooks, launch, release
+from xpcore import bundle, cards, gitx, hooks, launch, release, shared
 from xpcore.config import (
     clear_sprint_branch,
     data_root,
@@ -75,6 +75,8 @@ def cmd_sprint_open(args) -> int:
     recorded = sprint_branch()
     if recorded and recorded != branch:
         refuse(f"sprint branch {recorded} is still open; land it (xp.py sprint post-merge) first")
+    for card in cards.read_cards(cards.sprint_slate(args.id)):
+        shared.sync(card)
     hooks.lifecycle("sprint-open", args.id, root)
     record_sprint_branch(branch)
     print(f"Sprint {args.id} open on {branch}; spawn its stories with `xp.py story <id>`")
@@ -274,5 +276,11 @@ def cmd_sprint_post_merge(args) -> int:
         release.write_release_record(args.id, version, sha, args.tested_by)
     gitx.git("branch", "-D", branch, cwd=root)
     clear_sprint_branch()
+    slate = cards.read_cards(cards.sprint_slate(args.id))
+    shared.complete_issues(
+        [card for card in slate if card.status == "done"],
+        sha,
+        [card for card in slate if card.status == "retired"],
+    )
     print(f"Sprint {args.id} released{release.tag_note(version)}")
     return 0

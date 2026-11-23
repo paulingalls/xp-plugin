@@ -4,6 +4,29 @@ Release notes started at v0.6.0; earlier entries are summarized from their
 tag and merge messages. Full detail lives in the merge history and the
 per-sprint review reports.
 
+## v1.7.0
+
+- Add opt-in `card publish` and `card claim`: scanned, allowlisted card issues and
+  ownership shared across clones; Context stays local.
+- sprint open and story/free land republish a card's title and text to its issue, so
+  review edits reach other clones. Only the holder's copy is published: publish and
+  republish refuse a card another clone holds. Story start republishes, so recover
+  shows each shared card's status; a claim refusal prints the holder's release command.
+- `github_issues` defaults to off. Bug/debt records file locally without gh or
+  gitleaks; recover and local resolution work offline. On preserves issue filing.
+- After release, free post-merge closes its card issue; sprint post-merge closes
+  done slate cards' issues and closes retired ones as not planned unless another
+  clone holds them. sprint open, story start and land take an unclaimed card's
+  holder label, so no clone claims a card mid-run. An Evidence command leaves the issue open with a
+  `merged` label and merge-SHA comment for green
+  `resolve --ref <N> --falsifier "<Evidence>"`. Failed updates print the remaining
+  gh commands for manual recovery; released post-merges cannot rerun. Recover
+  shows holders and merged cards awaiting evidence. Clone identities include a
+  hashed machine name.
+
+Release steps: projects that file records as issues set `github_issues: on` in
+`.xp/config.yml`.
+
 ## v1.6.2
 
 - Land and post-merge read the release policy from the lead's on-disk

@@ -16,7 +16,7 @@ Choose a descriptive sprint slug, such as `auth-cleanup`. Use it verbatim in the
 `## Sprint <id>` slate heading and `sprint-<id>` branch.
 
 Write the sprint's cards in the plan file `recover` names, in the shape the
-plugin's `templates/plan.md` shows. Carry unfinished cards forward first. Each
+plugin's `templates/plan.md` shows. Carry unfinished cards, and cards claimed under `## Claimed`, forward first. Each
 card's Acceptance is one command, run from the repository root, that executes its
 ACs; a Gherkin feature run by the project's runner is the recommended form.
 A sprint is the smallest set of cards releasable on its own: fewer cannot ship,

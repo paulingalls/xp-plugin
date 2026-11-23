@@ -11,9 +11,10 @@ Everything else is the agent's judgment, guided by [VALUES](plugins/xp-plugin/VA
 
 ## Install
 
-Requires Python 3.11+, git, [gitleaks](https://github.com/gitleaks/gitleaks), and an
-authenticated `gh` CLI (`gh auth login`). Bug/debt filing and issue closing require
-`gh` and gitleaks; there is no local fallback. Release PRs also require `gh`.
+Requires Python 3.11+ and git. Release PRs use an authenticated `gh` CLI
+(`gh auth login`). Issue features require `gh` and
+[gitleaks](https://github.com/gitleaks/gitleaks) only with `github_issues: on`;
+otherwise bug/debt records stay local. Scaffolded secret-scanning git hooks require gitleaks independently.
 [lefthook](https://github.com/evilmartians/lefthook) is optional; without it, setup
 writes plain `.githooks/`. Install the plugin for the harness you lead from; a
 harness that only runs agents needs its binary on PATH.
@@ -40,6 +41,7 @@ hooks and an empty plan, and refuses if `.xp/` already exists. Then fill in:
 - **`.xp/milestones.md`.** Fill goals in the user's words and runnable Measures.
   For an existing `.xp/`, copy the plugin's `templates/milestones.md` there first.
 - **`.xp/config.yml`.** Set `versioning`, `version_files` if it is on or notes, and `roles` (below).
+  Set `github_issues: on` to share bug/debt records and publish cards as issues.
 - **`.xp/system.md`.** Describe the product, especially Surfaces & acceptance.
 - **`.xp/constraints.md`.** Keep the project's rules, which reviewers cite. Cap the entire
   UTF-8 file at 4,000 bytes to fit Codex's 10,000-byte SessionStart hook limit.
@@ -129,8 +131,10 @@ xp.py story land <id> [--tested-by REASON]   trial merge, Acceptance on the merg
 xp.py free <slug>               mint the card; run again to walk it as a story cut from trunk
 xp.py free land <slug> [--tested-by REASON]  PR against trunk
 xp.py free post-merge <slug> [--tested-by REASON]  release the fetched PR merge; close the patch
-xp.py bug | debt                 file GitHub issues with a falsifier command
-xp.py resolve --ref 224 --falsifier "..."    close an issue with a green falsifier
+xp.py card publish <id>          publish or update an allowlisted card issue (opt-in)
+xp.py card claim <N>             claim a card issue in this clone (opt-in)
+xp.py bug | debt                 file local records, or GitHub issues with github_issues: on
+xp.py resolve --ref 224 --falsifier "..."    close an issue (opt-in) or local ID with a green falsifier
 xp.py note "..."                 append a local note
 ```
 
@@ -181,6 +185,7 @@ recommended. Falsifiers are shell lines too, run once when a record is filed or 
 | Key | Meaning |
 |---|---|
 | `trunk` | Release branch, only when it is not the default branch |
+| `github_issues` | Optional `on` or `off`; unset means off. Enables card publishing/claiming and GitHub bug/debt filing and numeric resolution |
 | `versioning` | Required: `off`: the project owns versions and tags; `on`: every sprint and free patch is tagged; `notes`: branches carry change notes, stamped after merge |
 | `version_files` | With versioning on or notes: comma-separated JSON manifests whose version the tag must match, or `none` for no manifest |
 | `worktree_setup` | Optional shell line before agents and before changed-tree free post-merge Acceptance. Must be safe to re-run in an existing worktree. Nonzero refuses: a failed spawn removes only the worktree and branch it created; post-merge keeps the worktree |
@@ -222,26 +227,38 @@ A protected trunk needs a bypass for that push. Publication is CHANGELOG only.
 
 ## Where state lives
 
-The repository holds `.xp/` and the hooks. Bug/debt records are GitHub issues in the
-project repository resolved by `gh` from the checkout, shared across clones. Other
-state lives in a per-clone data root, `~/.xp/data/<id>/` or `$XP_DATA`: the plan,
-local notes and legacy records, session digest, story plans, reviews and handbacks,
-release records, agent logs and worktrees. Clones never share a plan.
+The repository holds `.xp/` and the hooks. State lives in a per-clone data root,
+`~/.xp/data/<id>/` or `$XP_DATA`: local working copies of plans, append-only bug/debt
+records and notes in `work.md`, session digest, story plans, reviews and handbacks,
+release records, agent logs and worktrees. Linked worktrees share their clone's data.
 
-## Migrating records to 1.6.0
+With `github_issues: on`, bug/debt records are issues in the checkout's GitHub
+repository. Publish a card with `xp.py card publish <id>`, then run
+`xp.py card claim <N>` in the other clone. Publication sends the heading, Measure,
+AC, Files, Acceptance, Evidence and Executor; Context stays local. The lead inspects
+public text for personal material; gitleaks catches secrets only. Claims use
+`clone:<directory>@<machine hash>` labels. Recover shows holders and merged cards
+awaiting evidence.
 
-Release step: open an issue for each open legacy local bug/debt using `xp.py bug` or
-`xp.py debt` with its claim, falsifier and files (and both bars for debt). Then resolve
-its old local ID with a green falsifier whose output points at the created issue:
+After recording the release and cleaning up, free post-merge updates its card's
+`Issue: #N`; sprint post-merge updates only done cards in its slate. Without
+`Evidence:`, it closes the issue with a comment naming the merge SHA. With
+`Evidence: <command>`, it adds the `merged` label and comments the SHA, leaving
+it open. Recover reads that label to show “merged, awaiting evidence”. Close it
+with `xp.py resolve --ref <N> --falsifier "<Evidence>"` after the evidence is green.
+A judged read's committed record can be evidence:
+`git cat-file -e origin/<trunk>:docs/research/<record>.md`.
+If an issue update fails, the release is already recorded: run the exact remaining
+gh commands printed by the refusal. Post-merge cannot rerun after release.
 
-```bash
-xp.py resolve --ref abcdefab --falsifier 'echo https://github.com/OWNER/REPO/issues/224'
-```
+## Migrating issue records to 1.7.0
 
-Use the actual old ID and created issue URL. Numeric refs always mean GitHub issue
-numbers; nonnumeric refs resolve legacy local records. Notes and historical entries
-remain local. Recover lists shared open issues, then local open records under
-`local (filed before 1.6.0)`.
+Projects that file records as issues set `github_issues: on` in `.xp/config.yml`.
+Unset or off keeps new bug/debt records local and makes recover entirely local.
+Numeric refs require the opt-in; nonnumeric refs resolve local records, including
+older IDs. Existing issue pointers still receive post-merge updates when off.
+To share an older local record, file it again after opting in, then resolve its
+old ID with a green falsifier pointing at the new issue.
 
 ## Codex notes
 

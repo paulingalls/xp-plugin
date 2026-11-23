@@ -100,7 +100,7 @@ def test_recover_lists_open_cards_with_their_stage_files(repo, capsys, monkeypat
     assert out.startswith("intent: ship")
     assert "story-001 — first [in-progress]\n  stages: plan.md, review-1.md" in out
     assert "story-002 — second [planned]" in out and "story-003" not in out
-    assert "## open records\nnone\n\n### local (filed before 1.6.0)\nnone" in out
+    assert "## open records\n\n### local\nnone" in out
     assert "## sprint\nsprint-001" in out
 
 

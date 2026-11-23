@@ -19,6 +19,8 @@ users see.
 4. `/sprint-close`: `xp.py sprint review <id>`, judge, `xp.py sprint land <id>`;
    after the PR merges, leave the sprint branch, `xp.py sprint post-merge <id>`.
 
+With `github_issues: on`, a card another clone will run is published (`xp.py card publish <id>`), then claimed there (`xp.py card claim <N>`); sprint open and land republish it; the lead checks its public text names no personal material, because gitleaks catches secrets only.
+
 **Story.** Re-run after edits. Delete `plan.md` or
 `handback.md` in the story data directory to repeat that stage.
 

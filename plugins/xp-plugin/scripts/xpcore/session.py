@@ -9,8 +9,8 @@ import time
 import traceback
 from pathlib import Path
 
-from xpcore import cards, gitx, records
-from xpcore.config import data_root, plugin_root, sprint_branch
+from xpcore import cards, gitx, records, shared
+from xpcore.config import data_root, github_issues, plugin_root, sprint_branch
 from xpcore.gitx import git
 
 # Codex's measured hook-output bound is 10,000 bytes; leave a 100-byte margin.
@@ -158,9 +158,13 @@ def cmd_recover(args) -> int:
         if not live:
             print("none open")
     print("\n## open records")
-    print("\n".join(records.issue_records()) or "none")
-    print("\n### local (filed before 1.6.0)")
+    if github_issues():
+        print("\n".join(records.issue_records()) or "none")
+    print("\n### local")
     print("\n".join(records.open_records()) or "none")
+    if github_issues():
+        print("\n## shared cards")
+        print("\n".join(shared.open_cards()) or "none")
     print("\n## sprint")
     print(sprint_branch() or "none open")
     return 0

@@ -106,6 +106,26 @@ def load_config() -> dict:
     return parse_config(path.read_text(), str(path))
 
 
+def github_issues() -> bool:
+    proc = subprocess.run(["git", "rev-parse", "--show-toplevel"], capture_output=True, text=True)
+    if proc.returncode:
+        return False
+    path = Path(proc.stdout.strip()) / ".xp/config.yml"
+    value = (
+        parse_config(path.read_text(), str(path)).get("github_issues", "off")
+        if path.is_file()
+        else "off"
+    )
+    if value not in ("on", "off"):
+        refuse("github_issues must be on or off in .xp/config.yml; correct the value")
+    return value == "on"
+
+
+def require_github_issues() -> None:
+    if not github_issues():
+        refuse("set github_issues: on in .xp/config.yml to use GitHub issues")
+
+
 def role(name: str, override: str = "") -> tuple[str, str, str]:
     """(harness, model, effort) from `harness/model[/effort]`; a card's Executor: line overrides."""
     spec, seat = override.strip(), name
