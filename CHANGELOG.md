@@ -4,6 +4,14 @@ Release notes started at v0.6.0; earlier entries are summarized from their
 tag and merge messages. Full detail lives in the merge history and the
 per-sprint review reports.
 
+## v1.7.1
+
+- Landing again after a review fix updates the branch's open PR (title, body) and
+  exits 0, instead of failing at `gh pr create` with "open the PR by hand" (#233).
+  Applies to free and sprint land.
+
+Release steps: none.
+
 ## v1.7.0
 
 - Add opt-in `card publish` and `card claim`: scanned, allowlisted card issues and
