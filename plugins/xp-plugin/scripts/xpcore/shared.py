@@ -187,7 +187,10 @@ def cmd_claim(args) -> int:
         holder = f"clone:{owner()}"
         others = [label[6:] for label in labels if label.startswith("clone:") and label != holder]
         if others:
-            refuse(f"card held by {', '.join(others)}; ask the holder to release it")
+            release = " or ".join(
+                f"gh issue edit {args.id} --remove-label clone:{o}" for o in others
+            )
+            refuse(f"card held by {', '.join(others)}; the holder releases it with {release}")
         ensure_label(holder)
         if holder not in labels:
             _gh("issue", "edit", args.id, "--add-label", holder)
@@ -202,7 +205,7 @@ def cmd_claim(args) -> int:
     return 0
 
 
-def complete_issues(completed: list[cards.Card], sha: str) -> None:
+def complete_issues(completed: list[cards.Card], sha: str, retired=()) -> None:
     commands = []
     for card in completed:
         issue = card.field("Issue")
@@ -222,6 +225,10 @@ def complete_issues(completed: list[cards.Card], sha: str) -> None:
             )
         else:
             commands.append((issue, ["issue", "close", number, "--comment", comment]))
+    for card in retired:
+        if issue := _issue(card):
+            close = ["issue", "close", issue[1:], "--reason", "not planned"]
+            commands.append((issue, [*close, "--comment", f"Retired unshipped at {sha}"]))
     for index, (issue, command) in enumerate(commands):
         try:
             _gh(*command)
@@ -271,7 +278,8 @@ def open_cards() -> list[str]:
                     if label["name"].startswith("clone:")
                 ]
                 holding = ", ".join(h + (" (this clone)" if h == ours else "") for h in holders)
-                row = f"#{number} {card.id} — {card.title}; {holding or 'unclaimed'}"
+                row = f"#{number} {card.id} — {card.title} [{card.status}]"
+                row += f"; {holding or 'unclaimed'}"
                 if card.field("Evidence") and any(
                     label["name"] == "merged" for label in issue["labels"]["nodes"]
                 ):

@@ -104,7 +104,8 @@ def test_claim_across_clones(repo, monkeypatch, capsys, identifier, section_exis
     assert s["issues"][0]["labels"].count({"name": label}) == 1
     s["issues"][0]["labels"].append({"name": "clone:other@123456"})
     save(repo, s)
-    assert "other@123456" in refused(capsys, ["card", "claim", "224"])
+    err = refused(capsys, ["card", "claim", "224"])
+    assert "gh issue edit 224 --remove-label clone:other@123456" in err
     assert cards.plan_path().read_text() == before
     assert not any(c[0][:2] == ["issue", "edit"] for c in state(repo)["calls"][len(s["calls"]) :])
     monkeypatch.chdir(repo / "r")
@@ -218,7 +219,7 @@ def test_shared_recovery(repo, monkeypatch, capsys):  # noqa: F811
     out = capsys.readouterr().out.split("## shared cards")[1]
     for text in [
         "#224 free-share",
-        "shared work",
+        "shared work [planned]",
         holder,
         "other@123456",
         "merged, awaiting evidence: git cat-file -e origin/main:read.md",

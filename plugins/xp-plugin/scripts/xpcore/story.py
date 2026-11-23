@@ -4,7 +4,7 @@ so a re-run does exactly what is missing and a deleted file re-runs its stage.""
 import re
 from pathlib import Path
 
-from xpcore import bundle, cards, config, gitx, hooks, launch, session
+from xpcore import bundle, cards, config, gitx, hooks, launch, session, shared
 from xpcore.config import fail
 from xpcore.launch import log_path
 
@@ -238,6 +238,7 @@ def walk(card: cards.Card, base: str, dry: bool) -> int:
         cards.set_status(card.id, "in-progress")
         print(f"{card.id}: [in-progress]")
         card = cards.find_card(card.id)
+        shared.sync(card)
     if not (spawned := sdir / "card.md").is_file():
         spawned.write_text(card.text)
     ran = []

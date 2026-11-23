@@ -3,6 +3,7 @@ import os
 import shlex
 import subprocess
 import sys
+from pathlib import Path
 
 import pytest
 import xp
@@ -11,12 +12,13 @@ from test_land import CONFIG, commit, free_patch, git, make_project, story  # no
 from test_records import refused
 from test_sprint import merge_on_trunk
 from test_sprint import repo as sprint_repo  # noqa: F401
+from test_story import repo as story_repo  # noqa: F401
 from xpcore import cards
 
 
 def fake_github(tmp_path, monkeypatch, data, record):
     binary = tmp_path / "bin"
-    binary.mkdir()
+    binary.mkdir(exist_ok=True)
     store = tmp_path / "github.json"
     store.write_text(json.dumps({"calls": [], "closed": [], "merged": [], "comments": []}))
     gh = binary / "gh"
@@ -129,7 +131,9 @@ def test_sprint_shared_completion(sprint_repo, tmp_path, monkeypatch, capsys, fa
     else:
         assert xp.main(["sprint", "post-merge", "1"]) == 0
     s = json.loads(store.read_text())
-    assert s["closed"] == ["224"] and s["merged"] == ["225"] and s["comments"] == ["225"]
+    assert s["closed"] == ["224", "227"] and s["merged"] == ["225"] and s["comments"] == ["225"]
+    retired = next(c for c in s["calls"] if c[:3] == ["issue", "close", "227"])
+    assert retired[3:5] == ["--reason", "not planned"]
     assert not (root / "forbidden").exists() and hooklog.read_text() == "ran\n"
     assert not git(root, "branch", "--list", "sprint-1")
     before = store.read_text()
@@ -194,3 +198,21 @@ def test_sprint_open_republishes_slate_cards(tmp_path, monkeypatch):
     git(root, "switch", "-qc", "sprint-1")
     assert xp.main(["sprint", "open", "1"]) == 0
     assert json.loads(store.read_text())["published"] == ["224"]
+
+
+def test_story_start_republishes_in_progress(story_repo, tmp_path, monkeypatch):  # noqa: F811
+    data, root = story_repo, Path.cwd()
+    (root / ".xp/config.yml").write_text(
+        (root / ".xp/config.yml").read_text() + "github_issues: on\n"
+    )
+    git(root, "commit", "-qam", "share")
+    path = data / "plan.md"
+    path.write_text(
+        path.read_text().replace(
+            "One file   [planned]\nFiles: a.py\n",
+            "One file   [planned]\nFiles: a.py\nIssue: #224\n",
+        )
+    )
+    store = fake_github(tmp_path, monkeypatch, data, "landed.jsonl")
+    assert xp.main(["story", "story-002"]) == 0
+    assert json.loads(store.read_text())["published"][0] == "224"

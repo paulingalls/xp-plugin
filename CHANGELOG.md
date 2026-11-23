@@ -10,11 +10,12 @@ per-sprint review reports.
   ownership shared across clones; Context stays local.
 - sprint open and story/free land republish a card's title and text to its issue, so
   review edits reach other clones. Only the holder's copy is published: publish and
-  republish refuse a card another clone holds.
+  republish refuse a card another clone holds. Story start republishes, so recover
+  shows each shared card's status; a claim refusal prints the holder's release command.
 - `github_issues` defaults to off. Bug/debt records file locally without gh or
   gitleaks; recover and local resolution work offline. On preserves issue filing.
 - After release, free post-merge closes its card issue; sprint post-merge closes
-  done slate cards' issues. An Evidence command leaves the issue open with a
+  done slate cards' issues and closes retired ones as not planned. An Evidence command leaves the issue open with a
   `merged` label and merge-SHA comment for green
   `resolve --ref <N> --falsifier "<Evidence>"`. Failed updates print the remaining
   gh commands for manual recovery; released post-merges cannot rerun. Recover
