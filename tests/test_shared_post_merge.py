@@ -33,13 +33,15 @@ p = Path(STORE)
 s = json.loads(p.read_text())
 s['calls'].append(args)
 p.write_text(json.dumps(s))
-if args[:2] == ['pr', 'create'] or args[:2] == ['auth', 'status']:
+clone_label = args[:2] == ['label', 'create'] and args[2].startswith('clone:')
+if args[:2] in (['pr', 'create'], ['auth', 'status']) or clone_label:
     sys.exit(0)
 if args[:2] == ['issue', 'view']:
-    print(json.dumps({'labels': []}))
+    print(json.dumps({'labels': s.get('held', {}).get(args[2], [])}))
     sys.exit(0)
 if args[:2] == ['issue', 'edit'] and '--body-file' in args:
     s['published'] = s.get('published', []) + [args[2]]
+    s['taken'] = s.get('taken', []) + [a for a in args if a.startswith('clone:')]
     p.write_text(json.dumps(s))
     sys.exit(0)
 assert Path(RECORD).is_file(), 'issue update preceded release record'
@@ -111,10 +113,14 @@ def test_sprint_shared_completion(sprint_repo, tmp_path, monkeypatch, capsys, fa
         "#### story-002 — read   [done]\nIssue: #225\nEvidence: touch forbidden\n"
         "#### story-003 — later   [planned]\nIssue: #226\n"
         "#### story-004 — dropped   [retired]\nIssue: #227\n"
+        "#### story-006 — theirs   [retired]\nIssue: #230\n"
         "## Sprint 2\n#### story-005 — other   [done]\nIssue: #228\n"
         "## Free\n#### free-other — other   [done]\nIssue: #229\n"
     )
     store = fake_github(tmp_path, monkeypatch, data, "sprints/1/release.json")
+    seeded = json.loads(store.read_text())
+    seeded["held"] = {"230": [{"name": "clone:other@123456"}]}
+    store.write_text(json.dumps(seeded))
     assert xp.main(["sprint", "land", "1"]) == 0
     body = json.loads(store.read_text())["calls"][0][-1]
     assert "Closes #" not in body and "Refs #" not in body
@@ -197,7 +203,8 @@ def test_sprint_open_republishes_slate_cards(tmp_path, monkeypatch):
     store = fake_github(tmp_path, monkeypatch, data, "landed.jsonl")
     git(root, "switch", "-qc", "sprint-1")
     assert xp.main(["sprint", "open", "1"]) == 0
-    assert json.loads(store.read_text())["published"] == ["224"]
+    s = json.loads(store.read_text())
+    assert s["published"] == ["224"] and s["taken"][0].startswith("clone:")
 
 
 def test_story_start_republishes_in_progress(story_repo, tmp_path, monkeypatch, capsys):  # noqa: F811

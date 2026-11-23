@@ -15,7 +15,9 @@ per-sprint review reports.
 - `github_issues` defaults to off. Bug/debt records file locally without gh or
   gitleaks; recover and local resolution work offline. On preserves issue filing.
 - After release, free post-merge closes its card issue; sprint post-merge closes
-  done slate cards' issues and closes retired ones as not planned. An Evidence command leaves the issue open with a
+  done slate cards' issues and closes retired ones as not planned unless another
+  clone holds them. sprint open, story start and land take an unclaimed card's
+  holder label, so no clone claims a card mid-run. An Evidence command leaves the issue open with a
   `merged` label and merge-SHA comment for green
   `resolve --ref <N> --falsifier "<Evidence>"`. Failed updates print the remaining
   gh commands for manual recovery; released post-merges cannot rerun. Recover

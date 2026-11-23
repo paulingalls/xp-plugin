@@ -95,14 +95,22 @@ def public_body(card: cards.Card) -> str:
     return "\n".join([*lines, f"Published by: {owner()}"]) + "\n"
 
 
-def _push(card: cards.Card, issue: str, body: str) -> None:
-    """The holder's copy is the live one: never overwrite it from another clone."""
+def _holders(issue: str) -> list[str]:
     labels = json.loads(_gh("issue", "view", issue[1:], "--json", "labels"))["labels"]
-    mine = f"clone:{owner()}"
-    others = [x["name"][6:] for x in labels if x["name"].startswith("clone:") and x["name"] != mine]
-    if others:
+    return [x["name"][6:] for x in labels if x["name"].startswith("clone:")]
+
+
+def _push(card: cards.Card, issue: str, body: str, take: bool = False) -> None:
+    """The holder's copy is the live one: never overwrite it from another clone."""
+    holders = _holders(issue)
+    if others := [h for h in holders if h != owner()]:
         refuse(f"{issue} is held by {', '.join(others)}; its text is theirs; {card.id} stays local")
-    _gh("issue", "edit", issue[1:], "--title", card.title, "--body-file", "-", body=body)
+    edit = ["issue", "edit", issue[1:], "--title", card.title, "--body-file", "-"]
+    if take and not holders:
+        # A card this clone runs is held by it, so no other clone can claim it mid-run.
+        _gh("label", "create", f"clone:{owner()}", "--force")
+        edit += ["--add-label", f"clone:{owner()}"]
+    _gh(*edit, body=body)
     print(f"updated {issue}")
 
 
@@ -125,7 +133,7 @@ def sync(card: cards.Card) -> None:
     _scan(card.title, body)
     _authenticate()
     try:
-        _push(card, issue, body)
+        _push(card, issue, body, take=True)
     except (RuntimeError, ValueError, KeyError, TypeError) as exc:
         refuse(f"GitHub update of {issue} failed: {exc}; fix gh access and retry")
 
@@ -226,9 +234,21 @@ def complete_issues(completed: list[cards.Card], sha: str, retired=()) -> None:
         else:
             commands.append((issue, ["issue", "close", number, "--comment", comment]))
     for card in retired:
-        if issue := _issue(card):
-            close = ["issue", "close", issue[1:], "--reason", "not planned"]
-            commands.append((issue, [*close, "--comment", f"Retired unshipped at {sha}"]))
+        if not (issue := _issue(card)):
+            continue
+        try:
+            others = [h for h in _holders(issue) if h != owner()]
+        except RuntimeError as exc:
+            # Nothing has changed yet, so every command is still the lead's to run.
+            left = [shlex.join(["gh", *cmd]) for _, cmd in commands]
+            left.append(f"gh issue close {issue[1:]} --reason 'not planned'  # if unheld")
+            refuse(f"{issue}: {exc}; release recorded. Finish manually:\n" + "\n".join(left))
+        if others:
+            # A retired card another clone holds is its work, not ours to close.
+            print(f"{issue}: left open for its holder {', '.join(others)}")
+            continue
+        close = ["issue", "close", issue[1:], "--reason", "not planned"]
+        commands.append((issue, [*close, "--comment", f"Retired unshipped at {sha}"]))
     for index, (issue, command) in enumerate(commands):
         try:
             _gh(*command)
