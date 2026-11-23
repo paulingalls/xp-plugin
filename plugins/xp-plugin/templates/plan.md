@@ -6,6 +6,12 @@
      A Gherkin feature is the recommended form: the ACs are its scenarios.
      A sprint heading or free card may instead use:
      Measure: touches no milestone: <the user's words>
+     Optional `Issue: #N` is written by card publish/claim and supplies Closes #N.
+     Optional `Evidence: <command>` supplies Refs #N instead, leaving the issue open.
+     Close it after a green `xp.py resolve --ref <N> --falsifier "<Evidence>"`.
+     A judged read's committed record is evidence too:
+     git cat-file -e origin/<trunk>:docs/research/<record>.md
+     This is green once the record is committed on trunk and origin is fetched.
      Optional `Executor: harness/model[/effort]` overrides roles.executor.
 
      #### free-<slug> — <title>   [planned]

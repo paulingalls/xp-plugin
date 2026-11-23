@@ -64,7 +64,7 @@ diff review is its net. A free patch is a story whose land target is trunk. A sp
 
 ```
 repo/.xp/
-  config.yml         versioning, trunk, roles, version_files, debt_budget
+  config.yml         versioning, github_issues, trunk, roles, version_files, debt_budget
   system.md          the project: stack, surfaces, conventions
   constraints.md     the project's rules; the plan reviewer enforces them
   milestones.md      committed goals, executable Measures, optional Candidates
@@ -72,7 +72,7 @@ lefthook.yml (or .githooks/)   pre-commit, pre-push, sprint, nightly — the pro
 
 ~/.xp/data/<project>/
   plan.md            sprints and cards with [status] and Measure readings
-  work.md            local notes and legacy resolutions, append-only
+  work.md            local records and notes, append-only
   session.md         the lead's digest, written at every close
   landed.jsonl       one line per landed story
   stories/<id>/      plan.md, plan-review.md, review-N.md, agent logs
@@ -174,6 +174,7 @@ xp.py free <slug>                 branch from trunk, mint the card, then same as
 xp.py free land <slug>            as story land, target trunk, PR
 xp.py free post-merge <slug> [--tested-by REASON]  fetched merge: setup/proof if needed, patch tag, close
 
+xp.py card publish <id> | card claim <N>  opt-in shared cards
 xp.py bug | debt | note | resolve records, with falsifier polarity run at filing
 ```
 
@@ -291,11 +292,18 @@ remaining notes get one retry. Changed local state refuses destructive recovery.
 
 - `bug` requires a red falsifier, `debt` a green one plus both JUDGMENT bars, `note` is
   free text, `resolve` substitutes a green falsifier. The polarity check runs the command.
-  Bug/debt become issues in the checkout's GitHub repository, requiring authenticated
-  gh and gitleaks scans of outbound record text. Numeric `resolve --ref` closes an
-  issue; nonnumeric refs resolve pre-1.6.0 local records. Notes stay in `work.md`.
-  Recover lists shared bug/debt issues and legacy local open records; a GitHub failure
-  is shown without stopping recovery.
+  Bug/debt append to `work.md` by default. With `github_issues: on` in the invoking
+  checkout's config, they become GitHub issues, requiring authenticated gh and
+  gitleaks scans of outbound text. Numeric `resolve --ref <N> --falsifier ...`
+  requires that opt-in and closes an issue; nonnumeric refs resolve local records.
+  Notes stay local. Recover reads local records and, when on, shared issues;
+  a GitHub failure is shown without stopping recovery.
+- Opt-in `card publish <id>` publishes an allowlisted issue body, retaining local
+  Context; `card claim <N>` labels it with clone/machine ownership and imports a local
+  card. Plans remain local working copies. Recover shows shared holders, open PRs,
+  and merged cards awaiting Evidence. Issue pointers add Closes to landing bodies,
+  or Refs when Evidence is a command. GitHub closure occurs on its default branch;
+  green `resolve --ref <N> --falsifier ...` closes Evidence issues.
 - The lead writes `session.md` at every close: intent, surprises, tack chosen, next step,
   under 30 lines. `xp.py recover` shows each milestone's Measure first and never runs it
   (a session start must not run a repo's shell unasked); story land and free mint run

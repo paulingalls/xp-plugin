@@ -5,6 +5,7 @@ xp.py setup | session-start | recover
 xp.py sprint plan|open|review|land|post-merge <id>
 xp.py story <id> | story review <id> | story land <id>
 xp.py free <slug> | free land <slug> | free post-merge <slug>
+xp.py card publish <id> | card claim <N>   (github_issues: on)
 xp.py bug | debt | note | resolve ...
 """
 
@@ -86,8 +87,8 @@ def build() -> argparse.ArgumentParser:
     scoped(sub, "free", FREE_ACTIONS, "cmd_free", "start, land, or tag a free patch")
 
     for name, text in (
-        ("bug", "file a GitHub bug issue (red falsifier)"),
-        ("debt", "file a GitHub debt issue (green)"),
+        ("bug", "file a bug record (red falsifier)"),
+        ("debt", "file a debt record (green)"),
     ):
         r = sub.add_parser(name, help=text, description=text)
         r.add_argument("--claim", required=True, help="what is wrong")
@@ -100,8 +101,8 @@ def build() -> argparse.ArgumentParser:
     n = sub.add_parser("note", help="record a note", description="record a note")
     n.add_argument("text", nargs="+")
     n.set_defaults(run=handler("records", "cmd_note"))
-    r = sub.add_parser("resolve", help="close an issue or legacy record with a green falsifier")
-    r.add_argument("--ref", required=True, help="issue number or legacy local record ID")
+    r = sub.add_parser("resolve", help="close an issue or local record with a green falsifier")
+    r.add_argument("--ref", required=True, help="issue number or local record ID")
     r.add_argument("--falsifier", required=True, help="command that must now pass")
     r.set_defaults(run=handler("records", "cmd_resolve"))
     return p

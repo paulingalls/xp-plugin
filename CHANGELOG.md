@@ -4,6 +4,20 @@ Release notes started at v0.6.0; earlier entries are summarized from their
 tag and merge messages. Full detail lives in the merge history and the
 per-sprint review reports.
 
+## v1.7.0
+
+- Add opt-in `card publish` and `card claim`: scanned, allowlisted card issues and
+  ownership shared across clones; Context stays local.
+- `github_issues` defaults to off. Bug/debt records file locally without gh or
+  gitleaks; recover and local resolution work offline. On preserves issue filing.
+- Landing carries `Closes #N`, closing at GitHub's default branch; an Evidence
+  command selects `Refs #N` and stays open for a green
+  `resolve --ref <N> --falsifier "<Evidence>"`. Recover shows holders, open PRs and
+  merged cards awaiting evidence. Clone identities include a hashed machine name.
+
+Release steps: projects that file records as issues set `github_issues: on` in
+`.xp/config.yml`.
+
 ## v1.6.2
 
 - Land and post-merge read the release policy from the lead's on-disk
