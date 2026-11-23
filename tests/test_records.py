@@ -65,7 +65,10 @@ elif args[:2] == ['issue', 'edit']:
         if label not in issue['labels']: issue['labels'].append(label)
 elif args[:2] == ['api', 'graphql']:
     if os.environ.get('GH_FAIL'): sys.exit('network unavailable')
-    print(json.dumps(state.get('pages', [])))
+    nodes = [dict(i, labels={'nodes': i['labels']},
+                  closedByPullRequestsReferences={'nodes': i.get('prs', [])})
+             for i in state['issues'] if {'name': 'card'} in i['labels']]
+    print(json.dumps(state.get('pages', [{'data': {'repository': {'issues': {'nodes': nodes}}}}])))
 elif args[:2] == ['issue', 'list']:
     if os.environ.get('GH_FAIL'):
         store.write_text(json.dumps(state))
@@ -293,6 +296,11 @@ def test_recover_failure(repo, monkeypatch, capsys, failure):
         failure
     ] in out
     assert "local" in out and "old bug" in out and "## sprint" in out
+    shared_out = out.split("## shared cards")[1]
+    assert "GitHub shared cards unavailable:" in shared_out
+    assert {"missing": "gh", "network": "network unavailable", "timeout": "timed out"}[
+        failure
+    ] in shared_out
 
 
 @pytest.mark.parametrize("kind", ["bug", "debt"])

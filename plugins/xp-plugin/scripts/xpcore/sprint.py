@@ -206,6 +206,9 @@ def cmd_sprint_land(args) -> int:
     body = f"{name}.\n\nReviews:\n" + "".join(f"- {r}\n" for r in reviews)
     if args.tested_by is not None:
         body += f"\nNot hook-verified at land: {args.tested_by}\n"
+    for card in cards.read_cards(cards.sprint_slate(args.id)):
+        if card.status == "done" and (reference := cards.issue_reference(card)):
+            body += f"\n{reference}\n"
     after += f" `xp.py sprint post-merge {args.id}`"
     pull_request(branch, main, root, after, title=f"Sprint {args.id}", body=body)
     return 0

@@ -8,7 +8,7 @@ import socket
 import subprocess
 
 from xpcore import cards, gitx
-from xpcore.config import refuse, repo_root, require_github_issues
+from xpcore.config import refuse, repo_root, require_github_issues, trunk
 
 GH_TIMEOUT = 30
 
@@ -163,3 +163,72 @@ def cmd_claim(args) -> int:
     except (RuntimeError, ValueError, KeyError, TypeError) as exc:
         refuse(f"GitHub claim failed: {exc}")
     return 0
+
+
+CARD_QUERY = """query($owner:String!, $repo:String!, $endCursor:String) {
+  repository(owner:$owner, name:$repo) {
+    issues(first:100, after:$endCursor, states:OPEN, labels:["card"]) {
+      nodes { number title body labels(first:100) { nodes { name } }
+        closedByPullRequestsReferences(first:100, includeClosedPrs:false) {
+          nodes { number url }
+        }
+      }
+      pageInfo { hasNextPage endCursor }
+    }
+  }
+}"""
+
+
+def open_cards() -> list[str]:
+    try:
+        pages = json.loads(
+            _gh(
+                "api",
+                "graphql",
+                "--paginate",
+                "--slurp",
+                "-F",
+                "owner={owner}",
+                "-F",
+                "repo={repo}",
+                "-f",
+                f"query={CARD_QUERY}",
+            )
+        )
+        issues = [
+            issue for page in pages for issue in page["data"]["repository"]["issues"]["nodes"]
+        ]
+        main = trunk()
+        log = subprocess.run(
+            ["git", "log", "--format=%B", main, "--"],
+            cwd=repo_root(),
+            capture_output=True,
+            text=True,
+        )
+        rows = []
+        if log.returncode:
+            rows.append(f"trunk {main} unavailable: {log.stderr.strip()}")
+        refs = set(re.findall(r"\bRefs #(\d+)\b", log.stdout)) if not log.returncode else set()
+        ours = owner()
+        for issue in issues:
+            number = issue["number"]
+            try:
+                card = issue_card(issue["body"])
+                holders = [
+                    label["name"][6:]
+                    for label in issue["labels"]["nodes"]
+                    if label["name"].startswith("clone:")
+                ]
+                holding = ", ".join(h + (" (this clone)" if h == ours else "") for h in holders)
+                row = f"#{number} {card.id} — {card.title}; {holding or 'unclaimed'}"
+                if card.field("Evidence") and str(number) in refs:
+                    row += f"; merged, awaiting evidence: {card.field('Evidence')}"
+                else:
+                    for pr in issue["closedByPullRequestsReferences"]["nodes"]:
+                        row += f"; open PR #{pr['number']} {pr['url']}"
+                rows.append(row)
+            except (ValueError, KeyError, TypeError) as exc:
+                rows.append(f"#{number} invalid card: {exc}")
+        return rows
+    except (RuntimeError, ValueError, KeyError, TypeError) as exc:
+        return [f"GitHub shared cards unavailable: {exc}"]

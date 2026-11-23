@@ -45,6 +45,8 @@ def merge_body(card: cards.Card, branch: str, base: str, cwd) -> str:
     if gitx.git("rev-list", branch, f"^{base}", f"^{since}", cwd=cwd):
         tip = gitx.git("rev-parse", branch, cwd=cwd)
         lines += ["", f"unreviewed: {since[:10]}..{tip[:10]}"]
+    if reference := cards.issue_reference(card):
+        lines += ["", reference]
     return "\n".join(lines) + "\n"
 
 

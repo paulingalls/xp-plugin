@@ -9,7 +9,7 @@ import time
 import traceback
 from pathlib import Path
 
-from xpcore import cards, gitx, records
+from xpcore import cards, gitx, records, shared
 from xpcore.config import data_root, github_issues, plugin_root, sprint_branch
 from xpcore.gitx import git
 
@@ -162,6 +162,9 @@ def cmd_recover(args) -> int:
         print("\n".join(records.issue_records()) or "none")
     print("\n### local")
     print("\n".join(records.open_records()) or "none")
+    if github_issues():
+        print("\n## shared cards")
+        print("\n".join(shared.open_cards()) or "none")
     print("\n## sprint")
     print(sprint_branch() or "none open")
     return 0
