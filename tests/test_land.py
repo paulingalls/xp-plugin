@@ -87,7 +87,11 @@ def make_project(tmp_path, monkeypatch, config=CONFIG):
 def fake_gh(tmp_path, monkeypatch):
     (bin_ := tmp_path / "bin").mkdir()
     log = tmp_path / "gh.log"
-    (bin_ / "gh").write_text(f'#!/bin/sh\necho "$@" >> {log}\n')
+    view = tmp_path / "gh-view.json"
+    (bin_ / "gh").write_text(
+        f'#!/bin/sh\necho "$@" >> {log}\n'
+        f'[ "$1 $2" = "pr view" ] && {{ [ -f {view} ] && cat {view}; exit $?; }}\nexit 0\n'
+    )
     (bin_ / "gh").chmod(0o755)
     monkeypatch.setenv("PATH", f"{bin_}{os.pathsep}{os.environ['PATH']}")
     return log

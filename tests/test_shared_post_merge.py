@@ -36,6 +36,8 @@ p.write_text(json.dumps(s))
 clone_label = args[:2] == ['label', 'create'] and args[2].startswith('clone:')
 if args[:2] in (['pr', 'create'], ['auth', 'status']) or clone_label:
     sys.exit(0)
+if args[:2] == ['pr', 'view']:
+    sys.exit(1)
 if args[:2] == ['issue', 'view']:
     print(json.dumps({'labels': s.get('held', {}).get(args[2], [])}))
     sys.exit(0)
@@ -83,12 +85,12 @@ def test_free_shared_completion(tmp_path, monkeypatch, capsys, fields):
     assert xp.main(["free", "land", "fix"]) == 0
     body = json.loads(store.read_text())["calls"][0][-1]
     assert "Closes #" not in body and "Refs #" not in body
-    assert len(json.loads(store.read_text())["calls"]) == 1
+    assert len(json.loads(store.read_text())["calls"]) == 2
     git(root, "merge", "-q", "--no-ff", "free-fix-x", "-m", "PR")
     sha = git(root, "rev-parse", "HEAD")
     git(root, "push", "-q", "origin", "develop")
     assert xp.main(["free", "post-merge", "fix", "--dry-run"]) == 0
-    assert len(json.loads(store.read_text())["calls"]) == 1
+    assert len(json.loads(store.read_text())["calls"]) == 2
     assert xp.main(["free", "post-merge", "fix"]) == 0
     s = json.loads(store.read_text())
     evidence, issue = "Evidence:" in fields, "Issue:" in fields
@@ -126,7 +128,7 @@ def test_sprint_shared_completion(sprint_repo, tmp_path, monkeypatch, capsys, fa
     assert "Closes #" not in body and "Refs #" not in body
     merge_on_trunk(root)
     assert xp.main(["sprint", "post-merge", "1", "--dry-run"]) == 0
-    assert len(json.loads(store.read_text())["calls"]) == 1
+    assert len(json.loads(store.read_text())["calls"]) == 2
     if failure:
         monkeypatch.setenv("GH_FAIL", failure)
         err = refused(capsys, ["sprint", "post-merge", "1"])

@@ -281,6 +281,16 @@ def pull_request(branch: str, target: str, cwd, after: str, *, title=None, body=
     if not shutil.which("gh"):
         print(f"gh is not on PATH; open the PR by hand: {shlex.join(argv)}\n{after}")
         return 0
+    view = subprocess.run(
+        ["gh", "pr", "view", branch, "--json", "state,url"], cwd=cwd, capture_output=True, text=True
+    )
+    if view.returncode == 0 and (found := json.loads(view.stdout))["state"] == "OPEN":
+        if title is not None:
+            edit = ["gh", "pr", "edit", found["url"], "--title", title, "--body", body or ""]
+            if rc := subprocess.run(edit, cwd=cwd).returncode:
+                fail(f"gh exited {rc} editing {found['url']}; {branch} is pushed, edit it by hand")
+        print(f"{found['url']} is open and now updated; {after}")
+        return 0
     if rc := subprocess.run(argv, cwd=cwd).returncode:
         fail(f"gh exited {rc}; {branch} is pushed, so open the PR by hand, then {after}")
     print(after)
