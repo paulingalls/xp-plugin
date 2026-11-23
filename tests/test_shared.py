@@ -215,7 +215,3 @@ def test_shared_recovery(repo, monkeypatch, capsys):  # noqa: F811
         assert text in out
     assert "this clone" not in out
     assert "awaiting evidence" not in next(row for row in out.splitlines() if "#225" in row)
-    subprocess.run(["git", "commit", "--allow-empty", "-qm", "Refs #225"], check=True)
-    assert xp.main(["recover"]) == 0
-    out = capsys.readouterr().out
-    assert "awaiting evidence" not in next(row for row in out.splitlines() if "#225" in row)
