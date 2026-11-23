@@ -46,15 +46,6 @@ class Card:
         return "\n".join(self.lines) + "\n"
 
 
-def issue_reference(card: Card) -> str:
-    issue = card.field("Issue")
-    if not issue:
-        return ""
-    if not re.fullmatch(r"#[0-9]+", issue):
-        refuse(f"{card.id}: Issue must be #N; correct the card")
-    return f"{'Refs' if card.field('Evidence') else 'Closes'} {issue}"
-
-
 def plan_path() -> Path:
     return data_root() / "plan.md"
 

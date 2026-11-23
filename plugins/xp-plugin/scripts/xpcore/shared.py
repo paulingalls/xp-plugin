@@ -3,12 +3,13 @@
 import hashlib
 import json
 import re
+import shlex
 import shutil
 import socket
 import subprocess
 
 from xpcore import cards, gitx
-from xpcore.config import refuse, repo_root, require_github_issues, trunk
+from xpcore.config import refuse, repo_root, require_github_issues
 
 GH_TIMEOUT = 30
 
@@ -169,14 +170,38 @@ def cmd_claim(args) -> int:
     return 0
 
 
+def complete_issues(completed: list[cards.Card], sha: str) -> None:
+    commands = []
+    for card in completed:
+        issue = card.field("Issue")
+        if not issue:
+            continue
+        if not re.fullmatch(r"#\d+", issue):
+            refuse(f"{card.id}: Issue must be #N; correct the card")
+        number = issue[1:]
+        comment = f"Merged as {sha}"
+        if card.field("Evidence"):
+            commands.extend(
+                [
+                    (issue, ["label", "create", "merged", "--force"]),
+                    (issue, ["issue", "edit", number, "--add-label", "merged"]),
+                    (issue, ["issue", "comment", number, "--body", comment]),
+                ]
+            )
+        else:
+            commands.append((issue, ["issue", "close", number, "--comment", comment]))
+    for index, (issue, command) in enumerate(commands):
+        try:
+            _gh(*command)
+        except RuntimeError as exc:
+            remaining = "\n".join(shlex.join(["gh", *cmd]) for _, cmd in commands[index:])
+            refuse(f"{issue}: {exc}; release recorded. Finish manually:\n{remaining}")
+
+
 CARD_QUERY = """query($owner:String!, $repo:String!, $endCursor:String) {
   repository(owner:$owner, name:$repo) {
     issues(first:100, after:$endCursor, states:OPEN, labels:["card"]) {
-      nodes { number title body labels(first:100) { nodes { name } }
-        closedByPullRequestsReferences(first:100, includeClosedPrs:false) {
-          nodes { number url }
-        }
-      }
+      nodes { number title body labels(first:100) { nodes { name } } }
       pageInfo { hasNextPage endCursor }
     }
   }
@@ -202,17 +227,7 @@ def open_cards() -> list[str]:
         issues = [
             issue for page in pages for issue in page["data"]["repository"]["issues"]["nodes"]
         ]
-        main = trunk()
-        log = subprocess.run(
-            ["git", "log", "--format=%B", main, "--"],
-            cwd=repo_root(),
-            capture_output=True,
-            text=True,
-        )
         rows = []
-        if log.returncode:
-            rows.append(f"trunk {main} unavailable: {log.stderr.strip()}")
-        refs = set(re.findall(r"\bRefs #(\d+)\b", log.stdout)) if not log.returncode else set()
         ours = owner()
         for issue in issues:
             number = issue["number"]
@@ -225,11 +240,10 @@ def open_cards() -> list[str]:
                 ]
                 holding = ", ".join(h + (" (this clone)" if h == ours else "") for h in holders)
                 row = f"#{number} {card.id} — {card.title}; {holding or 'unclaimed'}"
-                if card.field("Evidence") and str(number) in refs:
+                if card.field("Evidence") and any(
+                    label["name"] == "merged" for label in issue["labels"]["nodes"]
+                ):
                     row += f"; merged, awaiting evidence: {card.field('Evidence')}"
-                else:
-                    for pr in issue["closedByPullRequestsReferences"]["nodes"]:
-                        row += f"; open PR #{pr['number']} {pr['url']}"
                 rows.append(row)
             except (ValueError, KeyError, TypeError) as exc:
                 rows.append(f"#{number} invalid card: {exc}")

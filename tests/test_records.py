@@ -65,8 +65,7 @@ elif args[:2] == ['issue', 'edit']:
         if label not in issue['labels']: issue['labels'].append(label)
 elif args[:2] == ['api', 'graphql']:
     if os.environ.get('GH_FAIL'): sys.exit('network unavailable')
-    nodes = [dict(i, labels={'nodes': i['labels']},
-                  closedByPullRequestsReferences={'nodes': i.get('prs', [])})
+    nodes = [dict(i, labels={'nodes': i['labels']})
              for i in state['issues'] if {'name': 'card'} in i['labels']]
     print(json.dumps(state.get('pages', [{'data': {'repository': {'issues': {'nodes': nodes}}}}])))
 elif args[:2] == ['issue', 'list']:

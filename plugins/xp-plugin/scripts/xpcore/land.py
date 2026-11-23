@@ -9,7 +9,7 @@ from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 
-from xpcore import cards, gitx, hooks, release, session
+from xpcore import cards, gitx, hooks, release, session, shared
 from xpcore.config import data_root, fail, refuse, sprint_branch, trunk
 from xpcore.story import card_changes, last_reviewed, reviews, story_dir, worktree
 
@@ -45,8 +45,6 @@ def merge_body(card: cards.Card, branch: str, base: str, cwd) -> str:
     if gitx.git("rev-list", branch, f"^{base}", f"^{since}", cwd=cwd):
         tip = gitx.git("rev-parse", branch, cwd=cwd)
         lines += ["", f"unreviewed: {since[:10]}..{tip[:10]}"]
-    if reference := cards.issue_reference(card):
-        lines += ["", reference]
     return "\n".join(lines) + "\n"
 
 
@@ -305,8 +303,10 @@ def cmd_free_post_merge(args) -> int:
     card = cards.find_card(free_id(args.id))
     if card.status != "in-progress":
         refuse(f"{card.id} is [{card.status}], not [in-progress]; it was closed already")
-    if recorded_close(card.id):
-        return finish_recorded(card)
+    if sha := recorded_close(card.id):
+        result = finish_recorded(card)
+        shared.complete_issues([card], sha)
+        return result
     path, branch = worktree_of(card)
     if gitx.is_dirty(path):
         refuse(f"{path} has uncommitted changes; commit or discard them, then run again")
@@ -358,5 +358,6 @@ def cmd_free_post_merge(args) -> int:
     if version and not tagged:
         release.tag(version, sha)
     close(card, sha, path, branch, lead, args.tested_by)
+    shared.complete_issues([card], sha)
     print(f"{card.id} closed{release.tag_note(version)}")
     return 0

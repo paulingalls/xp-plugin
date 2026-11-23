@@ -6,10 +6,8 @@ import subprocess
 
 import pytest
 import xp
-from test_land import commit, fake_gh, free_patch, git, ns, story  # noqa: F401
 from test_records import refused, repo, state  # noqa: F401
-from test_sprint import repo as sprint_repo  # noqa: F401
-from xpcore import cards, land
+from xpcore import cards
 
 CARD = """#### free-share — shared work   [planned]
 Context: private local detail
@@ -167,60 +165,6 @@ def test_issue_features_opt_in(repo, monkeypatch, capsys, setting):  # noqa: F81
     assert "github_issues: on" in refused(capsys, ["card", "claim", "224"])
 
 
-@pytest.mark.parametrize(
-    "fields,reference",
-    [("", ""), ("Issue: #224\n", "Closes #224"), ("Issue: #224\nEvidence: true\n", "Refs #224")],
-)
-def test_story_issue_reference(story, fields, reference):  # noqa: F811
-    root, data, wt, _ = story
-    path = data / "plan.md"
-    path.write_text(path.read_text() + fields)
-    commit(root, {"merged.txt": "ok\n"}, "sprint work")
-    assert xp.main(["story", "land", "story-001"]) == 0
-    message = git(root, "log", "-1", "--format=%B")
-    assert (reference in message) if reference else ("#224" not in message)
-    assert ("Closes #224" in message) == (reference == "Closes #224")
-    assert cards.find_card("story-001").status == "done" and not wt.exists()
-
-
-@pytest.mark.parametrize(
-    "fields,reference",
-    [("", ""), ("Issue: #224\n", "Closes #224"), ("Issue: #224\nEvidence: true\n", "Refs #224")],
-)
-def test_free_issue_reference(tmp_path, monkeypatch, fields, reference):
-    gh = fake_gh(tmp_path, monkeypatch)
-    _, data, _ = free_patch(tmp_path, monkeypatch)
-    path = data / "plan.md"
-    path.write_text(path.read_text() + fields)
-    assert land.cmd_free_land(ns("fix")) == 0
-    message = gh.read_text()
-    assert (reference in message) if reference else ("#224" not in message)
-    assert ("Closes #224" in message) == (reference == "Closes #224")
-
-
-def test_sprint_issue_references(sprint_repo, tmp_path, monkeypatch):  # noqa: F811
-    _, data, hooklog = sprint_repo
-    path = data / "plan.md"
-    path.write_text(
-        path.read_text()
-        + "Issue: #224\n"
-        + "#### story-002 — read   [done]\nIssue: #225\nEvidence: true\n"
-        + "#### story-003 — later   [planned]\nIssue: #226\n"
-        + "#### story-004 — dropped   [retired]\nIssue: #227\n"
-        + "## Sprint 2\n#### story-005 — other   [done]\nIssue: #228\n"
-        + "## Free\n#### free-other — other   [done]\nIssue: #229\n"
-    )
-    gh = fake_gh(tmp_path, monkeypatch)
-    folder = data / "sprints/1"
-    folder.mkdir(parents=True, exist_ok=True)
-    (folder / "review-1.md").write_text("ok")
-    assert xp.main(["sprint", "land", "1"]) == 0
-    body = gh.read_text()
-    assert "Closes #224" in body and "Refs #225" in body and "Closes #225" not in body
-    assert all(f"#{n}" not in body for n in range(226, 230))
-    assert "review-1.md" in body and hooklog.read_text() == "ran\n"
-
-
 def test_shared_recovery(repo, monkeypatch, capsys):  # noqa: F811
     plan()
     assert xp.main(["card", "publish", "free-share"]) == 0
@@ -240,17 +184,13 @@ def test_shared_recovery(repo, monkeypatch, capsys):  # noqa: F811
     monkeypatch.setenv("XP_DATA", first_data)
     s = state(repo)
     s["issues"][0]["labels"].append({"name": "clone:other@123456"})
-    s["issues"][0]["prs"] = [{"number": 41, "url": "https://example.test/pull/41"}]
-    nodes = [
-        dict(i, labels={"nodes": i["labels"]}, closedByPullRequestsReferences={"nodes": i["prs"]})
-        for i in s["issues"]
-    ]
+    s["issues"][0]["labels"].append({"name": "merged"})
+    nodes = [dict(i, labels={"nodes": i["labels"]}) for i in s["issues"]]
     later = dict(
         nodes[0],
         number=225,
         body=CARD.replace("free-share", "free-later"),
         labels={"nodes": [{"name": "card"}]},
-        closedByPullRequestsReferences={"nodes": []},
     )
     malformed = dict(later, number=226, body="not a card")
     s["pages"] = [
@@ -266,8 +206,7 @@ def test_shared_recovery(repo, monkeypatch, capsys):  # noqa: F811
         "shared work",
         holder,
         "other@123456",
-        "#41",
-        "https://example.test/pull/41",
+        "merged, awaiting evidence: git cat-file -e origin/main:read.md",
         "#225 free-later",
         "unclaimed",
         "#226",
@@ -275,20 +214,8 @@ def test_shared_recovery(repo, monkeypatch, capsys):  # noqa: F811
     ]:
         assert text in out
     assert "this clone" not in out
-    # Only exact Refs on local trunk count; neither a longer number nor a side branch does.
-    subprocess.run(["git", "branch", "-m", "main"], check=True)
-    subprocess.run(["git", "commit", "--allow-empty", "-qm", "Refs #2240"], check=True)
-    subprocess.run(["git", "checkout", "-qb", "side"], check=True)
-    subprocess.run(["git", "commit", "--allow-empty", "-qm", "Refs #224"], check=True)
-    assert xp.main(["recover"]) == 0
-    assert "merged, awaiting evidence" not in capsys.readouterr().out
-    subprocess.run(["git", "checkout", "-q", "main"], check=True)
-    subprocess.run(["git", "merge", "--ff-only", "side"], check=True)
-    assert xp.main(["recover"]) == 0
-    assert (
-        "merged, awaiting evidence: git cat-file -e origin/main:read.md" in capsys.readouterr().out
-    )
-    subprocess.run(["git", "branch", "-m", "missing"], check=True)
+    assert "awaiting evidence" not in next(row for row in out.splitlines() if "#225" in row)
+    subprocess.run(["git", "commit", "--allow-empty", "-qm", "Refs #225"], check=True)
     assert xp.main(["recover"]) == 0
     out = capsys.readouterr().out
-    assert "trunk main unavailable" in out and "#224 free-share" in out
+    assert "awaiting evidence" not in next(row for row in out.splitlines() if "#225" in row)

@@ -5,7 +5,7 @@ import shlex
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-from xpcore import bundle, cards, gitx, hooks, launch, release
+from xpcore import bundle, cards, gitx, hooks, launch, release, shared
 from xpcore.config import (
     clear_sprint_branch,
     data_root,
@@ -206,9 +206,6 @@ def cmd_sprint_land(args) -> int:
     body = f"{name}.\n\nReviews:\n" + "".join(f"- {r}\n" for r in reviews)
     if args.tested_by is not None:
         body += f"\nNot hook-verified at land: {args.tested_by}\n"
-    for card in cards.read_cards(cards.sprint_slate(args.id)):
-        if card.status == "done" and (reference := cards.issue_reference(card)):
-            body += f"\n{reference}\n"
     after += f" `xp.py sprint post-merge {args.id}`"
     pull_request(branch, main, root, after, title=f"Sprint {args.id}", body=body)
     return 0
@@ -277,5 +274,9 @@ def cmd_sprint_post_merge(args) -> int:
         release.write_release_record(args.id, version, sha, args.tested_by)
     gitx.git("branch", "-D", branch, cwd=root)
     clear_sprint_branch()
+    shared.complete_issues(
+        [card for card in cards.read_cards(cards.sprint_slate(args.id)) if card.status == "done"],
+        sha,
+    )
     print(f"Sprint {args.id} released{release.tag_note(version)}")
     return 0
