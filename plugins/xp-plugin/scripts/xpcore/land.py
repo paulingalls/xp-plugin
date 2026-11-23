@@ -269,15 +269,26 @@ def finish(card: cards.Card, merge: str, path: Path, branch: str, lead: Path, dr
     return 0
 
 
-def pull_request(branch: str, target: str, cwd, after: str, *, title=None, body=None) -> int:
+def pull_request(branch: str, target: str, cwd, after: str, *, title: str, body: str) -> int:
     if "origin" not in gitx.git("remote", cwd=cwd).split():
         print(f"no remote named origin; push {branch}, open the PR to {target} by hand, {after}")
         return 0
     # Uncaptured: a refusing pre-push hook's own output is what names the red job.
     if rc := subprocess.run(["git", "push", "-u", "origin", branch], cwd=cwd).returncode:
         fail(f"git push exited {rc}; the hook output above names why. Fix, commit, land again")
-    argv = ["gh", "pr", "create", "--base", target, "--head", branch]
-    argv += ["--fill"] if title is None else ["--title", title, "--body", body or ""]
+    argv = [
+        "gh",
+        "pr",
+        "create",
+        "--base",
+        target,
+        "--head",
+        branch,
+        "--title",
+        title,
+        "--body",
+        body,
+    ]
     if not shutil.which("gh"):
         print(f"gh is not on PATH; open the PR by hand: {shlex.join(argv)}\n{after}")
         return 0
@@ -285,10 +296,9 @@ def pull_request(branch: str, target: str, cwd, after: str, *, title=None, body=
         ["gh", "pr", "view", branch, "--json", "state,url"], cwd=cwd, capture_output=True, text=True
     )
     if view.returncode == 0 and (found := json.loads(view.stdout))["state"] == "OPEN":
-        if title is not None:
-            edit = ["gh", "pr", "edit", found["url"], "--title", title, "--body", body or ""]
-            if rc := subprocess.run(edit, cwd=cwd).returncode:
-                fail(f"gh exited {rc} editing {found['url']}; {branch} is pushed, edit it by hand")
+        edit = ["gh", "pr", "edit", found["url"], "--title", title, "--body", body]
+        if rc := subprocess.run(edit, cwd=cwd).returncode:
+            fail(f"gh exited {rc} editing {found['url']}; {branch} is pushed, edit it by hand")
         print(f"{found['url']} is open and now updated; {after}")
         return 0
     if rc := subprocess.run(argv, cwd=cwd).returncode:
