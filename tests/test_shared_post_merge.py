@@ -7,7 +7,7 @@ import sys
 import pytest
 import xp
 from test_free_post_merge import publish_merge
-from test_land import commit, free_patch, git, story  # noqa: F401
+from test_land import CONFIG, commit, free_patch, git, make_project, story  # noqa: F401
 from test_records import refused
 from test_sprint import merge_on_trunk
 from test_sprint import repo as sprint_repo  # noqa: F401
@@ -31,7 +31,14 @@ p = Path(STORE)
 s = json.loads(p.read_text())
 s['calls'].append(args)
 p.write_text(json.dumps(s))
-if args[:2] == ['pr', 'create']:
+if args[:2] == ['pr', 'create'] or args[:2] == ['auth', 'status']:
+    sys.exit(0)
+if args[:2] == ['issue', 'view']:
+    print(json.dumps({'labels': []}))
+    sys.exit(0)
+if args[:2] == ['issue', 'edit'] and '--body-file' in args:
+    s['published'] = s.get('published', []) + [args[2]]
+    p.write_text(json.dumps(s))
     sys.exit(0)
 assert Path(RECORD).is_file(), 'issue update preceded release record'
 if args[:2] == ['issue', 'close'] or args[:2] == ['issue', 'comment']:
@@ -160,13 +167,30 @@ def test_issue_failure_names_remaining_commands(tmp_path, monkeypatch, capsys, f
     assert s["comments"] == ([] if failure == "issue close 224" else ["224"])
 
 
-def test_story_merge_has_no_shared_directive(story, tmp_path, monkeypatch):  # noqa: F811
+@pytest.mark.parametrize("on", [False, True])
+def test_story_land_republishes_only_when_on(story, tmp_path, monkeypatch, on):  # noqa: F811
     root, data, _, _ = story
     store = fake_github(tmp_path, monkeypatch, data, "landed.jsonl")
     path = data / "plan.md"
     path.write_text(path.read_text() + "Issue: #224\n")
-    commit(root, {"merged.txt": "ok\n"}, "sprint work")
+    config = (root / ".xp/config.yml").read_text() + ("github_issues: on\n" if on else "")
+    commit(root, {"merged.txt": "ok\n", ".xp/config.yml": config}, "sprint work")
     assert xp.main(["story", "land", "story-001"]) == 0
-    assert not json.loads(store.read_text())["calls"]
+    calls = json.loads(store.read_text())["calls"]
+    edits = [c for c in calls if c[:3] == ["issue", "edit", "224"]]
+    assert (edits[0][3] == "--title") if on else not calls
     body = git(root, "log", "-1", "--format=%B")
     assert "Closes #" not in body and "Refs #" not in body
+
+
+def test_sprint_open_republishes_slate_cards(tmp_path, monkeypatch):
+    root, data = make_project(tmp_path, monkeypatch, CONFIG + "github_issues: on\n")
+    (data / "plan.md").write_text(
+        "## Sprint 1 — s\n\n#### story-001 — a   [planned]\nAcceptance: true\nIssue: #224\n"
+        "#### story-002 — b   [planned]\nAcceptance: true\n"
+        "## Free\n#### free-x — x   [planned]\nIssue: #225\n"
+    )
+    store = fake_github(tmp_path, monkeypatch, data, "landed.jsonl")
+    git(root, "switch", "-qc", "sprint-1")
+    assert xp.main(["sprint", "open", "1"]) == 0
+    assert json.loads(store.read_text())["published"] == ["224"]

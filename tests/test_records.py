@@ -60,6 +60,8 @@ elif args[:2] == ['issue', 'edit']:
     issue = next(i for i in state['issues'] if i['number'] == int(args[2]))
     if '--body-file' in args:
         issue['body'] = state['calls'][-1][1]
+    if '--title' in args:
+        issue['title'] = args[args.index('--title')+1]
     if '--add-label' in args:
         label = {'name': args[args.index('--add-label')+1]}
         if label not in issue['labels']: issue['labels'].append(label)

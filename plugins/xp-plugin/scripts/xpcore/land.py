@@ -241,6 +241,7 @@ def land(card_id: str, target: str, *, pr: bool, dry_run: bool, tested_by: str |
         body += f"\nNot hook-verified at land: {tested_by}\n"
     if diff := card_changes(card):
         print(f"{card.id}: card changed since spawn:\n{diff}")
+    shared.sync(card)
     if pr:
         after = f"after it merges, run `xp.py free post-merge {card.id}`"
         pull_request(branch, target, path, after, title=card.title, body=body)

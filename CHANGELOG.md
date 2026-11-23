@@ -8,6 +8,9 @@ per-sprint review reports.
 
 - Add opt-in `card publish` and `card claim`: scanned, allowlisted card issues and
   ownership shared across clones; Context stays local.
+- sprint open and story/free land republish a card's title and text to its issue, so
+  review edits reach other clones. Only the holder's copy is published: publish and
+  republish refuse a card another clone holds.
 - `github_issues` defaults to off. Bug/debt records file locally without gh or
   gitleaks; recover and local resolution work offline. On preserves issue filing.
 - After release, free post-merge closes its card issue; sprint post-merge closes

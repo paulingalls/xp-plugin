@@ -55,6 +55,21 @@ def test_publish_and_edit(repo):  # noqa: F811
     assert "Context: private local detail" in cards.plan_path().read_text()
 
 
+def test_republish_sends_title_and_belongs_to_the_holder(repo, capsys):  # noqa: F811
+    plan()
+    assert xp.main(["card", "publish", "free-share"]) == 0
+    path = cards.plan_path()
+    path.write_text(path.read_text().replace("shared work", "shared work, reviewed"))
+    assert xp.main(["card", "publish", "free-share"]) == 0
+    assert state(repo)["issues"][0]["title"] == "shared work, reviewed"
+    s = state(repo)
+    s["issues"][0]["labels"].append({"name": "clone:other@123456"})
+    save(repo, s)
+    path.write_text(path.read_text().replace("a.py", "stale.py"))
+    assert "other@123456" in refused(capsys, ["card", "publish", "free-share"])
+    assert "stale.py" not in state(repo)["issues"][0]["body"]
+
+
 @pytest.mark.parametrize("identifier", ["free-share", "story-001"])
 @pytest.mark.parametrize("section_exists", [None, False, True])
 def test_claim_across_clones(repo, monkeypatch, capsys, identifier, section_exists):  # noqa: F811

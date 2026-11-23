@@ -9,7 +9,7 @@ import socket
 import subprocess
 
 from xpcore import cards, gitx
-from xpcore.config import refuse, repo_root, require_github_issues
+from xpcore.config import github_issues, refuse, repo_root, require_github_issues
 
 GH_TIMEOUT = 30
 
@@ -95,6 +95,41 @@ def public_body(card: cards.Card) -> str:
     return "\n".join([*lines, f"Published by: {owner()}"]) + "\n"
 
 
+def _push(card: cards.Card, issue: str, body: str) -> None:
+    """The holder's copy is the live one: never overwrite it from another clone."""
+    labels = json.loads(_gh("issue", "view", issue[1:], "--json", "labels"))["labels"]
+    mine = f"clone:{owner()}"
+    others = [x["name"][6:] for x in labels if x["name"].startswith("clone:") and x["name"] != mine]
+    if others:
+        refuse(f"{issue} is held by {', '.join(others)}; its text is theirs; {card.id} stays local")
+    _gh("issue", "edit", issue[1:], "--title", card.title, "--body-file", "-", body=body)
+    print(f"updated {issue}")
+
+
+def _issue(card: cards.Card) -> str:
+    issue = card.field("Issue")
+    if issue and not re.fullmatch(r"#\d+", issue):
+        refuse(f"{card.id}: Issue must be #N; correct the local card")
+    return issue
+
+
+def sync(card: cards.Card) -> None:
+    """Lifecycle republication, so review edits reach the issue without a lead remembering."""
+    if not (issue := _issue(card)):
+        return
+    if not github_issues():
+        print(f"{card.id}: github_issues is off; {issue} not updated")
+        return
+    body = public_body(card)
+    _dependencies()
+    _scan(card.title, body)
+    _authenticate()
+    try:
+        _push(card, issue, body)
+    except (RuntimeError, ValueError, KeyError, TypeError) as exc:
+        refuse(f"GitHub update of {issue} failed: {exc}; fix gh access and retry")
+
+
 def cmd_publish(args) -> int:
     require_github_issues()
     card = cards.find_card(args.id)
@@ -103,11 +138,8 @@ def cmd_publish(args) -> int:
     _scan(card.title, body)
     _authenticate()
     try:
-        if issue := card.field("Issue"):
-            if not re.fullmatch(r"#\d+", issue):
-                refuse("Issue must be #N; correct the local card")
-            _gh("issue", "edit", issue[1:], "--body-file", "-", body=body)
-            print(f"updated {issue}")
+        if issue := _issue(card):
+            _push(card, issue, body)
         else:
             ensure_label("card")
             url = _gh(
