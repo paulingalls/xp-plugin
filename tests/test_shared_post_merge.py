@@ -200,7 +200,7 @@ def test_sprint_open_republishes_slate_cards(tmp_path, monkeypatch):
     assert json.loads(store.read_text())["published"] == ["224"]
 
 
-def test_story_start_republishes_in_progress(story_repo, tmp_path, monkeypatch):  # noqa: F811
+def test_story_start_republishes_in_progress(story_repo, tmp_path, monkeypatch, capsys):  # noqa: F811
     data, root = story_repo, Path.cwd()
     (root / ".xp/config.yml").write_text(
         (root / ".xp/config.yml").read_text() + "github_issues: on\n"
@@ -214,5 +214,10 @@ def test_story_start_republishes_in_progress(story_repo, tmp_path, monkeypatch):
         )
     )
     store = fake_github(tmp_path, monkeypatch, data, "landed.jsonl")
+    gh = tmp_path / "bin" / "gh"
+    good = gh.read_text()
+    gh.write_text("#!/bin/sh\necho down >&2\nexit 1\n")
+    assert "down" in refused(capsys, ["story", "story-002"])
+    gh.write_text(good)
     assert xp.main(["story", "story-002"]) == 0
     assert json.loads(store.read_text())["published"][0] == "224"

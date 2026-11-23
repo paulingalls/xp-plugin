@@ -75,9 +75,9 @@ def cmd_sprint_open(args) -> int:
     recorded = sprint_branch()
     if recorded and recorded != branch:
         refuse(f"sprint branch {recorded} is still open; land it (xp.py sprint post-merge) first")
-    hooks.lifecycle("sprint-open", args.id, root)
     for card in cards.read_cards(cards.sprint_slate(args.id)):
         shared.sync(card)
+    hooks.lifecycle("sprint-open", args.id, root)
     record_sprint_branch(branch)
     print(f"Sprint {args.id} open on {branch}; spawn its stories with `xp.py story <id>`")
     return 0

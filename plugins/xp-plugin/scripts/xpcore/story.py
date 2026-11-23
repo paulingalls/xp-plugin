@@ -238,7 +238,7 @@ def walk(card: cards.Card, base: str, dry: bool) -> int:
         cards.set_status(card.id, "in-progress")
         print(f"{card.id}: [in-progress]")
         card = cards.find_card(card.id)
-        shared.sync(card)
+    shared.sync(card)  # every run, so a start whose sync refused republishes on its rerun
     if not (spawned := sdir / "card.md").is_file():
         spawned.write_text(card.text)
     ran = []
