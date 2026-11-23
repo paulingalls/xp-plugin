@@ -237,21 +237,26 @@ repository. Publish a card with `xp.py card publish <id>`, then run
 `xp.py card claim <N>` in the other clone. Publication sends the heading, Measure,
 AC, Files, Acceptance, Evidence and Executor; Context stays local. The lead inspects
 public text for personal material; gitleaks catches secrets only. Claims use
-`clone:<directory>@<machine hash>` labels. Recover shows holders and open closing PRs.
+`clone:<directory>@<machine hash>` labels. Recover shows holders and merged cards
+awaiting evidence.
 
-An `Issue: #N` card adds `Closes #N` to its merge/PR body. GitHub closes the issue
-when the closing PR targets its default branch. For a non-default trunk, the closing
-directive must survive in commit history until it reaches the default branch.
-`Evidence: <command>` selects `Refs #N` instead. Recover marks
-it merged and awaiting evidence once local trunk contains that reference. Close it
+After recording the release and cleaning up, free post-merge updates its card's
+`Issue: #N`; sprint post-merge updates only done cards in its slate. Without
+`Evidence:`, it closes the issue with a comment naming the merge SHA. With
+`Evidence: <command>`, it adds the `merged` label and comments the SHA, leaving
+it open. Recover reads that label to show “merged, awaiting evidence”. Close it
 with `xp.py resolve --ref <N> --falsifier "<Evidence>"` after the evidence is green.
+A judged read's committed record can be evidence:
+`git cat-file -e origin/<trunk>:docs/research/<record>.md`.
+If an issue update fails, the release is already recorded: run the exact remaining
+gh commands printed by the refusal. Post-merge cannot rerun after release.
 
 ## Migrating issue records to 1.7.0
 
 Projects that file records as issues set `github_issues: on` in `.xp/config.yml`.
 Unset or off keeps new bug/debt records local and makes recover entirely local.
 Numeric refs require the opt-in; nonnumeric refs resolve local records, including
-older IDs. Existing issue pointers still contribute landing references when off.
+older IDs. Existing issue pointers still receive post-merge updates when off.
 To share an older local record, file it again after opting in, then resolve its
 old ID with a green falsifier pointing at the new issue.
 

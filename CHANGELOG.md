@@ -10,10 +10,13 @@ per-sprint review reports.
   ownership shared across clones; Context stays local.
 - `github_issues` defaults to off. Bug/debt records file locally without gh or
   gitleaks; recover and local resolution work offline. On preserves issue filing.
-- Landing carries `Closes #N`, closing PRs to GitHub's default branch; an Evidence
-  command selects `Refs #N` and stays open for a green
-  `resolve --ref <N> --falsifier "<Evidence>"`. Recover shows holders, open PRs and
-  merged cards awaiting evidence. Clone identities include a hashed machine name.
+- After release, free post-merge closes its card issue; sprint post-merge closes
+  done slate cards' issues. An Evidence command leaves the issue open with a
+  `merged` label and merge-SHA comment for green
+  `resolve --ref <N> --falsifier "<Evidence>"`. Failed updates print the remaining
+  gh commands for manual recovery; released post-merges cannot rerun. Recover
+  shows holders and merged cards awaiting evidence. Clone identities include a
+  hashed machine name.
 
 Release steps: projects that file records as issues set `github_issues: on` in
 `.xp/config.yml`.

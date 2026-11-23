@@ -91,6 +91,7 @@ Deleted from the current tree: `markers/`, `evidence/` as a plugin concept, `rep
 
 ```yaml
 # trunk: develop           # only when releases do not land on the default branch
+github_issues: off         # opt in to shared cards and issue records
 versioning: off            # off: project owns versions/tags; on: tag each release;
                            # notes: branches carry notes, stamp after merge
 # version_files: package.json   # with versioning on or notes; `none` writes no manifest
@@ -300,12 +301,15 @@ remaining notes get one retry. Changed local state refuses destructive recovery.
   a GitHub failure is shown without stopping recovery.
 - Opt-in `card publish <id>` publishes an allowlisted issue body, retaining local
   Context; `card claim <N>` labels it with clone/machine ownership and imports a local
-  card. Plans remain local working copies. Recover shows shared holders, open PRs,
-  and merged cards awaiting Evidence. Issue pointers add Closes to landing bodies,
-  or Refs when Evidence is a command. Closing PRs must target GitHub's default branch,
-  or closing directives must survive in commit history to that branch. Evidence
-  recovery requires Refs in local trunk history; PR bodies may be omitted by GitHub's
-  merge settings. Green `resolve --ref <N> --falsifier ...` closes Evidence issues.
+  card. Plans remain local working copies. Recover shows shared holders and cards
+  labelled merged awaiting Evidence. After the release record and cleanup, free
+  post-merge updates its card's Issue pointer; sprint post-merge updates done slate
+  cards only. No Evidence closes the issue with a merge-SHA comment; Evidence adds
+  the merged label and comments the SHA, leaving it open. Green
+  `resolve --ref <N> --falsifier ...` closes Evidence issues. A judged read can use
+  `git cat-file -e origin/<trunk>:docs/research/<record>.md` as Evidence. Updates key
+  only on Issue, even with sharing off. A failure prints all remaining gh commands
+  for manual recovery; post-merge cannot rerun after release.
 - The lead writes `session.md` at every close: intent, surprises, tack chosen, next step,
   under 30 lines. `xp.py recover` shows each milestone's Measure first and never runs it
   (a session start must not run a repo's shell unasked); story land and free mint run
