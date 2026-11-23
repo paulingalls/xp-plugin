@@ -182,9 +182,10 @@ def sprint_slate(sprint_id) -> str:
 def mint_free(card_id: str, heading: str, section: str = "Free") -> bool:
     """Append a card in the section; False when its id already exists."""
     with plan_lock():
-        if card_id in {c.id for c in read_cards()}:
+        text = _read_plan() if plan_path().is_file() else ""
+        if card_id in {c.id for c in read_cards(text)}:
             return False
-        lines = _read_plan().rstrip("\n").splitlines()
+        lines = text.rstrip("\n").splitlines()
         heading_section = f"## {section}"
         if heading_section not in lines:
             lines += ["", heading_section]

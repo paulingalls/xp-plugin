@@ -57,7 +57,7 @@ def test_publish_and_edit(repo):  # noqa: F811
 
 
 @pytest.mark.parametrize("identifier", ["free-share", "story-001"])
-@pytest.mark.parametrize("section_exists", [False, True])
+@pytest.mark.parametrize("section_exists", [None, False, True])
 def test_claim_across_clones(repo, monkeypatch, capsys, identifier, section_exists):  # noqa: F811
     monkeypatch.setattr(socket, "gethostname", lambda: "fixed-host")
     plan(CARD.replace("free-share", identifier))
@@ -68,11 +68,13 @@ def test_claim_across_clones(repo, monkeypatch, capsys, identifier, section_exis
     section = "Free" if identifier.startswith("free-") else "Claimed"
     cards.plan_path().parent.mkdir()
     prefix = f"## {section}\n\n" if section_exists else ""
-    cards.plan_path().write_text(prefix + "## Later\nuntouched\n")
+    if section_exists is not None:
+        cards.plan_path().write_text(prefix + "## Later\nuntouched\n")
     assert xp.main(["card", "claim", "224"]) == 0
     local = cards.plan_path().read_text()
     assert f"## {section}\n\n#### {identifier}" in local
-    assert "## Later\nuntouched\n" in local
+    if section_exists is not None:
+        assert "## Later\nuntouched\n" in local
     assert cards.find_card(identifier).field("Issue") == "#224"
     assert "AC:\n- first\n  continuation\n- second" in local
     label = next(
