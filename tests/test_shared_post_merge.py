@@ -62,13 +62,11 @@ def test_free_shared_completion(tmp_path, monkeypatch, capsys, fields):
     path = data / "plan.md"
     path.write_text(path.read_text() + fields)
     store = fake_github(tmp_path, monkeypatch, data, "landed.jsonl")
-    # Exercise an ordinary non-default trunk; sharing is off in the fixture.
     git(root, "branch", "-m", "main", "develop")
-    commit(
-        wt,
-        {".xp/config.yml": (wt / ".xp/config.yml").read_text().replace("main", "develop")},
-        "trunk",
-    )
+    config = (wt / ".xp/config.yml").read_text().replace("main", "develop")
+    if not fields:
+        config += "github_issues: on\n"
+    commit(wt, {".xp/config.yml": config}, "trunk")
     commit(root, {".xp/config.yml": (wt / ".xp/config.yml").read_text()}, "trunk config")
     git(root, "push", "-q", "origin", "develop")
     assert xp.main(["free", "land", "fix"]) == 0
@@ -162,11 +160,13 @@ def test_issue_failure_names_remaining_commands(tmp_path, monkeypatch, capsys, f
     assert s["comments"] == ([] if failure == "issue close 224" else ["224"])
 
 
-def test_story_merge_has_no_shared_directive(story):  # noqa: F811
+def test_story_merge_has_no_shared_directive(story, tmp_path, monkeypatch):  # noqa: F811
     root, data, _, _ = story
+    store = fake_github(tmp_path, monkeypatch, data, "landed.jsonl")
     path = data / "plan.md"
     path.write_text(path.read_text() + "Issue: #224\n")
     commit(root, {"merged.txt": "ok\n"}, "sprint work")
     assert xp.main(["story", "land", "story-001"]) == 0
+    assert not json.loads(store.read_text())["calls"]
     body = git(root, "log", "-1", "--format=%B")
     assert "Closes #" not in body and "Refs #" not in body
