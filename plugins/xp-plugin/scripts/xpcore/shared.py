@@ -83,7 +83,11 @@ def public_body(card: cards.Card) -> str:
             ac = match[1] == "AC"
             if match[1] in {"Measure", "AC", "Files", "Acceptance", "Evidence", "Executor"}:
                 lines.append(line)
-        elif ac and (line.startswith(("- ", "* ", "  ", "\t")) or re.match(r"\d+\. ", line)):
+        elif ac and (
+            not line.strip()
+            or line.startswith(("- ", "* ", "  ", "\t"))
+            or re.match(r"\d+\. ", line)
+        ):
             lines.append(line)
         else:
             ac = False

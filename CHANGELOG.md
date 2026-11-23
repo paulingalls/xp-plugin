@@ -10,7 +10,7 @@ per-sprint review reports.
   ownership shared across clones; Context stays local.
 - `github_issues` defaults to off. Bug/debt records file locally without gh or
   gitleaks; recover and local resolution work offline. On preserves issue filing.
-- Landing carries `Closes #N`, closing at GitHub's default branch; an Evidence
+- Landing carries `Closes #N`, closing PRs to GitHub's default branch; an Evidence
   command selects `Refs #N` and stays open for a green
   `resolve --ref <N> --falsifier "<Evidence>"`. Recover shows holders, open PRs and
   merged cards awaiting evidence. Clone identities include a hashed machine name.

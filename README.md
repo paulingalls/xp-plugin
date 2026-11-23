@@ -240,8 +240,9 @@ public text for personal material; gitleaks catches secrets only. Claims use
 `clone:<directory>@<machine hash>` labels. Recover shows holders and open closing PRs.
 
 An `Issue: #N` card adds `Closes #N` to its merge/PR body. GitHub closes the issue
-when the change reaches its default branch; a non-default configured trunk alone
-does not close it. `Evidence: <command>` selects `Refs #N` instead. Recover marks
+when the closing PR targets its default branch. For a non-default trunk, the closing
+directive must survive in commit history until it reaches the default branch.
+`Evidence: <command>` selects `Refs #N` instead. Recover marks
 it merged and awaiting evidence once local trunk contains that reference. Close it
 with `xp.py resolve --ref <N> --falsifier "<Evidence>"` after the evidence is green.
 

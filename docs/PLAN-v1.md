@@ -302,8 +302,10 @@ remaining notes get one retry. Changed local state refuses destructive recovery.
   Context; `card claim <N>` labels it with clone/machine ownership and imports a local
   card. Plans remain local working copies. Recover shows shared holders, open PRs,
   and merged cards awaiting Evidence. Issue pointers add Closes to landing bodies,
-  or Refs when Evidence is a command. GitHub closure occurs on its default branch;
-  green `resolve --ref <N> --falsifier ...` closes Evidence issues.
+  or Refs when Evidence is a command. Closing PRs must target GitHub's default branch,
+  or closing directives must survive in commit history to that branch. Evidence
+  recovery requires Refs in local trunk history; PR bodies may be omitted by GitHub's
+  merge settings. Green `resolve --ref <N> --falsifier ...` closes Evidence issues.
 - The lead writes `session.md` at every close: intent, surprises, tack chosen, next step,
   under 30 lines. `xp.py recover` shows each milestone's Measure first and never runs it
   (a session start must not run a repo's shell unasked); story land and free mint run

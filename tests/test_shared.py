@@ -17,6 +17,7 @@ Measure: distance=1
 AC:
 - first
   continuation
+
 - second
 Files: a.py
 Acceptance: true
@@ -76,7 +77,7 @@ def test_claim_across_clones(repo, monkeypatch, capsys, identifier, section_exis
     if section_exists is not None:
         assert "## Later\nuntouched\n" in local
     assert cards.find_card(identifier).field("Issue") == "#224"
-    assert "AC:\n- first\n  continuation\n- second" in local
+    assert "AC:\n- first\n  continuation\n\n- second" in local
     label = next(
         x["name"] for x in state(repo)["issues"][0]["labels"] if x["name"].startswith("clone:")
     )
