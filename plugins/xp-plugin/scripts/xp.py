@@ -60,6 +60,13 @@ def build() -> argparse.ArgumentParser:
     ):
         sub.add_parser(name, help=text, description=text).set_defaults(run=handler(module, fn))
 
+    cp = sub.add_parser("card", help="publish or claim a shared card")
+    cs = cp.add_subparsers(dest="action", required=True)
+    for action in ("publish", "claim"):
+        c = cs.add_parser(action)
+        c.add_argument("id", help="local card id" if action == "publish" else "issue number")
+        c.set_defaults(run=handler("shared", f"cmd_{action}"))
+
     rp = sub.add_parser("release", help="publish merged change notes")
     rs = rp.add_subparsers(dest="action", required=True)
     rs.add_parser("stamp").set_defaults(run=handler("notes", "cmd_stamp"))

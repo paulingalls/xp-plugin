@@ -43,8 +43,21 @@ elif args[:2] == ['label', 'create']:
     state['labels'].append(args[2])
 elif args[:2] == ['issue', 'create']:
     state['issues'].append({'number': 224, 'title': args[args.index('--title')+1],
-                          'labels': [{'name': args[args.index('--label')+1]}]})
+                          'labels': [{'name': args[args.index('--label')+1]}],
+                          'body': state['calls'][-1][1]})
     print('https://example.test/issues/224')
+elif args[:2] == ['issue', 'view']:
+    print(json.dumps(next(i for i in state['issues'] if i['number'] == int(args[2]))))
+elif args[:2] == ['issue', 'edit']:
+    issue = next(i for i in state['issues'] if i['number'] == int(args[2]))
+    if '--body-file' in args:
+        issue['body'] = state['calls'][-1][1]
+    if '--add-label' in args:
+        label = {'name': args[args.index('--add-label')+1]}
+        if label not in issue['labels']: issue['labels'].append(label)
+elif args[:2] == ['api', 'graphql']:
+    if os.environ.get('GH_FAIL'): sys.exit('network unavailable')
+    print(json.dumps(state.get('pages', [])))
 elif args[:2] == ['issue', 'list']:
     if os.environ.get('GH_FAIL'):
         store.write_text(json.dumps(state))

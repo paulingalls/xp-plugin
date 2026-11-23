@@ -125,6 +125,13 @@ def _splice(card_id: str, replacement: list[str]) -> None:
     _write_plan("\n".join(lines) + "\n")
 
 
+def set_field(card_id: str, name: str, value: str) -> None:
+    with plan_lock():
+        card = _locate(_read_plan(), card_id)[2]
+        lines = [line for line in card.lines if not line.startswith(f"{name}:")]
+        _splice(card_id, [*lines, f"{name}: {value}"])
+
+
 def set_status(card_id: str, status: str) -> None:
     if status not in STATUSES:
         refuse(f"status {status!r} is not one of {', '.join(STATUSES)}; pass one of those")

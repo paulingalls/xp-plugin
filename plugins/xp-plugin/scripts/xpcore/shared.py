@@ -1,9 +1,13 @@
 """GitHub publication plumbing shared by cards and finding records."""
 
+import hashlib
 import json
+import re
 import shutil
+import socket
 import subprocess
 
+from xpcore import cards, gitx
 from xpcore.config import refuse, repo_root
 
 GH_TIMEOUT = 30
@@ -64,3 +68,58 @@ def ensure_label(name: str) -> None:
     labels = json.loads(_gh("label", "list", "--search", name, "--json", "name") or "[]")
     if not any(label["name"] == name for label in labels):
         _gh("label", "create", name)
+
+
+def owner() -> str:
+    machine = hashlib.sha256(socket.gethostname().encode()).hexdigest()[:6]
+    return f"{gitx.common_dir().parent.name}@{machine}"
+
+
+def public_body(card: cards.Card) -> str:
+    lines = [card.lines[0], f"Context: local to {owner()}"]
+    ac = False
+    for line in card.lines[1:]:
+        if match := re.match(r"^([^\s:][^:]*):", line):
+            ac = match[1] == "AC"
+            if match[1] in {"Measure", "AC", "Files", "Acceptance", "Evidence", "Executor"}:
+                lines.append(line)
+        elif ac and (line.startswith(("- ", "* ", "  ", "\t")) or re.match(r"\d+\. ", line)):
+            lines.append(line)
+        else:
+            ac = False
+    return "\n".join([*lines, f"Published by: {owner()}"]) + "\n"
+
+
+def cmd_publish(args) -> int:
+    card = cards.find_card(args.id)
+    body = public_body(card)
+    _dependencies()
+    _scan(card.title, body)
+    _authenticate()
+    try:
+        if issue := card.field("Issue"):
+            if not re.fullmatch(r"#\d+", issue):
+                refuse("Issue must be #N; correct the local card")
+            _gh("issue", "edit", issue[1:], "--body-file", "-", body=body)
+            print(f"updated {issue}")
+        else:
+            ensure_label("card")
+            url = _gh(
+                "issue",
+                "create",
+                "--title",
+                card.title,
+                "--label",
+                "card",
+                "--body-file",
+                "-",
+                body=body,
+            )
+            match = re.search(r"/issues/(\d+)$", url)
+            if not match:
+                raise ValueError(f"expected issue URL, got {url!r}; inspect GitHub before retrying")
+            cards.set_field(card.id, "Issue", f"#{match[1]}")
+            print(url)
+    except (RuntimeError, ValueError, KeyError, TypeError) as exc:
+        refuse(f"GitHub publication failed: {exc}")
+    return 0
