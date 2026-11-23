@@ -123,3 +123,41 @@ def cmd_publish(args) -> int:
     except (RuntimeError, ValueError, KeyError, TypeError) as exc:
         refuse(f"GitHub publication failed: {exc}")
     return 0
+
+
+def issue_card(body: str) -> cards.Card:
+    parsed = cards.read_cards(body)
+    if (
+        len(parsed) != 1
+        or not body.startswith(parsed[0].lines[0])
+        or parsed[0].status not in cards.STATUSES
+    ):
+        raise ValueError("issue body must contain one valid card")
+    return parsed[0]
+
+
+def cmd_claim(args) -> int:
+    if not re.fullmatch(r"[0-9]+", args.id):
+        refuse("card claim needs an issue number")
+    try:
+        issue = json.loads(_gh("issue", "view", args.id, "--json", "body,labels"))
+        labels = [label["name"] for label in issue["labels"]]
+        if "card" not in labels:
+            raise ValueError("issue needs the card label")
+        card = issue_card(issue["body"])
+        holder = f"clone:{owner()}"
+        others = [label[6:] for label in labels if label.startswith("clone:") and label != holder]
+        if others:
+            refuse(f"card held by {', '.join(others)}; ask the holder to release it")
+        ensure_label(holder)
+        if holder not in labels:
+            _gh("issue", "edit", args.id, "--add-label", holder)
+        lines = [line for line in card.lines if not line.startswith("Issue:")]
+        lines.append(f"Issue: #{args.id}")
+        cards.mint_free(
+            card.id, "\n".join(lines), "Free" if card.id.startswith("free-") else "Claimed"
+        )
+        print(f"claimed #{args.id}: {card.id} by {owner()}")
+    except (RuntimeError, ValueError, KeyError, TypeError) as exc:
+        refuse(f"GitHub claim failed: {exc}")
+    return 0

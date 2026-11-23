@@ -1,7 +1,9 @@
+import hashlib
 import json
 import os
 import shlex
 import shutil
+import socket
 import subprocess
 import sys
 
@@ -98,6 +100,7 @@ def filing(kind="bug", falsifier=RED):
 
 @pytest.mark.parametrize("kind", ["bug", "debt"])
 def test_file_issue(repo, capsys, monkeypatch, kind):
+    monkeypatch.setattr(socket, "gethostname", lambda: "fixed-host")
     records.work_path().parent.mkdir()
     records.work_path().write_text("old notes\n")
     subprocess.run(
@@ -133,7 +136,7 @@ def test_file_issue(repo, capsys, monkeypatch, kind):
     for text in [
         "Claim: parser drops tabs",
         "Files: a.py",
-        "Filer: r",
+        f"Filer: r@{hashlib.sha256(b'fixed-host').hexdigest()[:6]}",
         "stdout",
         "stderr",
         f"Falsifier rc: {3 if kind == 'bug' else 0}",

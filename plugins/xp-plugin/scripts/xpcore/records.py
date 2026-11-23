@@ -76,12 +76,11 @@ def _file(kind: str, args, extra: list[str]) -> int:
             f"the falsifier exited {rc} (red), so this is a defect; file as bug"
             " (xp.py bug), or pass a falsifier that passes on today's code"
         )
-    common = Path(git("rev-parse", "--path-format=absolute", "--git-common-dir"))
     body = [f"Claim: {claim}", f"Falsifier: {_one_line(args.falsifier)}"]
     body += [
         f"Files: {_one_line(args.files)}",
         *extra,
-        f"Filer: {common.parent.name}",
+        f"Filer: {shared.owner()}",
         f"Falsifier rc: {rc}",
         output,
     ]

@@ -170,15 +170,16 @@ def sprint_slate(sprint_id) -> str:
     refuse(f"no `## Sprint {sprint_id}` section in {plan_path()}; write the slate there first")
 
 
-def mint_free(card_id: str, heading: str) -> bool:
-    """Append `heading` at the end of `## Free`; False when the card already exists."""
+def mint_free(card_id: str, heading: str, section: str = "Free") -> bool:
+    """Append a card in the section; False when its id already exists."""
     with plan_lock():
         if card_id in {c.id for c in read_cards()}:
             return False
         lines = _read_plan().rstrip("\n").splitlines()
-        if "## Free" not in lines:
-            lines += ["", "## Free"]
-        start = lines.index("## Free")
+        heading_section = f"## {section}"
+        if heading_section not in lines:
+            lines += ["", heading_section]
+        start = lines.index(heading_section)
         end = next(
             (j for j in range(start + 1, len(lines)) if re.match(r"#{1,3} ", lines[j])),
             len(lines),
