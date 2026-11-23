@@ -233,7 +233,7 @@ def complete_issues(completed: list[cards.Card], sha: str, retired=()) -> None:
             )
         else:
             commands.append((issue, ["issue", "close", number, "--comment", comment]))
-    for card in retired:
+    for index, card in enumerate(retired):
         if not (issue := _issue(card)):
             continue
         try:
@@ -241,7 +241,8 @@ def complete_issues(completed: list[cards.Card], sha: str, retired=()) -> None:
         except RuntimeError as exc:
             # Nothing has changed yet, so every command is still the lead's to run.
             left = [shlex.join(["gh", *cmd]) for _, cmd in commands]
-            left.append(f"gh issue close {issue[1:]} --reason 'not planned'  # if unheld")
+            for rest in filter(None, map(_issue, retired[index:])):
+                left.append(f"gh issue close {rest[1:]} --reason 'not planned'  # if unheld")
             refuse(f"{issue}: {exc}; release recorded. Finish manually:\n" + "\n".join(left))
         if others:
             # A retired card another clone holds is its work, not ours to close.
