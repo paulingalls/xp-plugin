@@ -4,6 +4,20 @@ Release notes started at v0.6.0; earlier entries are summarized from their
 tag and merge messages. Full detail lives in the merge history and the
 per-sprint review reports.
 
+## v1.9.0
+
+- `sprint post-merge` ends with a fresh-context retro seat (`roles: retro`, falling back to
+  the reviewer) over the sprint's slate, reviews, handbacks and hook exits. It writes
+  `retro.md` in the sprint's data directory, records each miss as a sighting in the
+  project's lessons ledger shared by its clones, and prints at most two proposals with
+  their why. It applies nothing and never fails the release; `xp.py retro <id>` reruns it.
+  The lead no longer writes the retro from a template.
+- With `github_issues: on`, `xp.py lesson file <n>` files a proposed lesson as an issue.
+  `recover` lists open proposals until their issue closes; a closed lesson sighted again
+  is proposed for deletion or replacement.
+
+Release steps: none.
+
 ## v1.8.0
 
 - `story`, `free` and `sprint plan` refuse a card whose Files line is empty, bulleted or
