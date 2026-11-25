@@ -64,9 +64,13 @@ def test_free_post_merge_closes_from_inside_its_worktree(tmp_path, monkeypatch):
 
 
 def test_free_post_merge_releases_tested_merge_off_dirty_lead(tmp_path, monkeypatch, capsys):
+    from test_milestones import FILES
+
     fake_gh(tmp_path, monkeypatch)
     trace = tmp_path / "runs"
-    root, data, wt = free_patch(tmp_path, monkeypatch, f"echo run >> {trace}")
+    root, data, wt = free_patch(
+        tmp_path, monkeypatch, f"echo run >> {trace}", {**manifest("1.1.1"), **FILES}
+    )
     stale = git(root, "rev-parse", "main")
     assert xp.main(["free", "land", "fix"]) == 0
     sha = publish_merge(root)
@@ -80,7 +84,10 @@ def test_free_post_merge_releases_tested_merge_off_dirty_lead(tmp_path, monkeypa
     assert xp.main(["free", "post-merge", "fix"]) == 0
     assert lead_state(root) == before
     assert trace.read_text().splitlines() == ["run"]
-    assert "the merged tree is the one land recorded" in capsys.readouterr().out
+    out = capsys.readouterr().out
+    assert "the merged tree is the one land recorded" in out and "distance=" not in out
+    assert xp.main(["recover"]) == 0
+    assert capsys.readouterr().out.splitlines()[1] == "First — not run: cat first.txt"
     assert git(root, "rev-parse", "v1.1.1^{commit}") == sha
     record = json.loads((data / "landed.jsonl").read_text())
     assert record["merge"] == sha and "tested_by" not in record
@@ -88,9 +95,9 @@ def test_free_post_merge_releases_tested_merge_off_dirty_lead(tmp_path, monkeypa
     assert cards.find_card("free-fix").status == "done"
 
 
-@pytest.mark.parametrize("failure", ["setup", "acceptance", "none", "override"])
+@pytest.mark.parametrize("proof_mode", ["retry", "override"])
 def test_changed_merge_recreates_resources_then_proves_patch_tree(
-    tmp_path, monkeypatch, capsys, failure
+    tmp_path, monkeypatch, capsys, proof_mode
 ):
     fake_gh(tmp_path, monkeypatch)
     trace, control = tmp_path / "trace", tmp_path / "failure"
@@ -124,43 +131,41 @@ def test_changed_merge_recreates_resources_then_proves_patch_tree(
     commit(root, {"later": "after merge\n"}, "later")
     git(root, "push", "-q", "origin", "main")
     before = park_lead(root)
-    if failure in ("setup", "override"):
-        control.touch()
-    if failure in ("acceptance", "override"):
-        proof_red.touch()
     args = ["free", "post-merge", "fix"]
-    if failure == "override":
+    if proof_mode == "override":
+        control.touch()
+        proof_red.touch()
         args += ["--tested-by", "r"]
         assert xp.main([*args, "--dry-run"]) == 0
         assert trace.read_text() == "" and wt.exists()
         assert not git(root, "tag", "--list") and not (data / "landed.jsonl").exists()
-    if failure in ("setup", "acceptance"):
-        with pytest.raises(SystemExit) as exc:
-            xp.main(args)
-        err = capsys.readouterr().err
-        assert exc.value.code == 2
-        assert ("worktree_setup" if failure == "setup" else "Acceptance exited 1") in err
-        assert not git(root, "tag", "--list") and not (data / "landed.jsonl").exists()
-        assert wt.exists() and git(wt, "branch", "--show-current") == "free-fix-x"
-        assert cards.find_card("free-fix").status == "in-progress"
-        if failure == "setup":
-            assert trace.read_text().splitlines() == ["setup"]
-            assert setup in err and "23" in err and "log" in err
-            control.unlink()
-        else:
-            proof_red.unlink()
-        trace.write_text("")
+    else:
+        for failure, sentinel in (("setup", control), ("acceptance", proof_red)):
+            sentinel.touch()
+            with pytest.raises(SystemExit) as exc:
+                xp.main(args)
+            err = capsys.readouterr().err
+            assert exc.value.code == 2
+            assert ("worktree_setup" if failure == "setup" else "Acceptance exited 1") in err
+            assert not git(root, "tag", "--list") and not (data / "landed.jsonl").exists()
+            assert wt.exists() and git(wt, "branch", "--show-current") == "free-fix-x"
+            assert cards.find_card("free-fix").status == "in-progress"
+            if failure == "setup":
+                assert trace.read_text().splitlines() == ["setup"]
+                assert setup in err and "23" in err and "log" in err
+            sentinel.unlink()
+            trace.write_text("")
     assert xp.main(args) == 0
     assert lead_state(root) == before
     lines = trace.read_text().splitlines()
-    if failure == "override":
+    if proof_mode == "override":
         assert lines == ["teardown"]
         assert f"warning: skipped Acceptance `{proof}`: r" in capsys.readouterr().out
     else:
         assert lines == ["setup", "acceptance", str(wt), sha, "teardown"]
     assert git(root, "rev-parse", "v1.1.1^{commit}") == sha
     record = json.loads((data / "landed.jsonl").read_text())
-    assert record.get("tested_by") == ("r" if failure == "override" else None)
+    assert record.get("tested_by") == ("r" if proof_mode == "override" else None)
     assert not wt.exists()
 
 

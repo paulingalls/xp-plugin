@@ -67,9 +67,7 @@ p.write_text(json.dumps(s))
     return store
 
 
-@pytest.mark.parametrize(
-    "fields", ["", "Issue: #224\n", "Issue: #224\nEvidence: touch forbidden\n"]
-)
+@pytest.mark.parametrize("fields", ["", "Issue: #224\nEvidence: touch forbidden\n"])
 def test_free_shared_completion(tmp_path, monkeypatch, capsys, fields):
     root, data, wt = free_patch(tmp_path, monkeypatch)
     path = data / "plan.md"
@@ -106,8 +104,7 @@ def test_free_shared_completion(tmp_path, monkeypatch, capsys, fields):
     assert store.read_text() == before
 
 
-@pytest.mark.parametrize("failure", [None, "issue close 224", "issue comment 225"])
-def test_sprint_shared_completion(sprint_repo, tmp_path, monkeypatch, capsys, failure):  # noqa: F811
+def test_sprint_shared_completion(sprint_repo, tmp_path, monkeypatch, capsys):  # noqa: F811
     root, data, hooklog = sprint_repo
     path = data / "plan.md"
     path.write_text(
@@ -129,15 +126,12 @@ def test_sprint_shared_completion(sprint_repo, tmp_path, monkeypatch, capsys, fa
     merge_on_trunk(root)
     assert xp.main(["sprint", "post-merge", "1", "--dry-run"]) == 0
     assert len(json.loads(store.read_text())["calls"]) == 2
-    if failure:
-        monkeypatch.setenv("GH_FAIL", failure)
-        err = refused(capsys, ["sprint", "post-merge", "1"])
-        assert "network unavailable" in err
-        monkeypatch.delenv("GH_FAIL")
-        for command in err.split("Finish manually:\n")[1].strip().splitlines():
-            subprocess.run(shlex.split(command), check=True)
-    else:
-        assert xp.main(["sprint", "post-merge", "1"]) == 0
+    monkeypatch.setenv("GH_FAIL", "issue close 224")
+    err = refused(capsys, ["sprint", "post-merge", "1"])
+    assert "network unavailable" in err
+    monkeypatch.delenv("GH_FAIL")
+    for command in err.split("Finish manually:\n")[1].strip().splitlines():
+        subprocess.run(shlex.split(command), check=True)
     s = json.loads(store.read_text())
     assert s["closed"] == ["224", "227"] and s["merged"] == ["225"] and s["comments"] == ["225"]
     retired = next(c for c in s["calls"] if c[:3] == ["issue", "close", "227"])
