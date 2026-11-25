@@ -182,10 +182,10 @@ def validate(answer, markdown, records):
             or len(set(linked)) != len(linked)
         ):
             raise ValueError("proposal must reference unique returned sightings")
-        words(proposal["text"])
         shape(proposal["why"], ("sightings", "cost", "form"))
-        for text in proposal["why"].values():
-            words(text)
+        for text in (proposal["text"], *proposal["why"].values()):
+            if re.search(r"#[1-9]\d*\s*$", words(text)):
+                raise ValueError("proposal text must not end with an issue-number marker")
     for heading in ("Misses", "Sightings", "Proposals"):
         if not re.search(rf"^## {heading}\s*$", markdown, re.M):
             raise ValueError(f"missing {heading} section")

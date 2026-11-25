@@ -1,4 +1,5 @@
 import json
+import os
 
 import pytest
 import xp
@@ -82,7 +83,7 @@ def test_direct_persistence_rerun_and_private_narrative(tmp_path, monkeypatch, f
     assert "Changed" in (folder / "retro.md").read_text()
 
 
-@pytest.mark.parametrize("failure", ["exit", "missing", "malformed", "unknown", "ledger"])
+@pytest.mark.parametrize("failure", ["exit", "missing", "malformed", "unknown", "marker", "ledger"])
 def test_failure_preserves_previous(tmp_path, monkeypatch, fake_retro, capsys, failure):
     from pathlib import Path
 
@@ -101,6 +102,10 @@ def test_failure_preserves_previous(tmp_path, monkeypatch, fake_retro, capsys, f
         monkeypatch.setenv("RETRO_RESULT", "{}")
     elif failure == "unknown":
         monkeypatch.setenv("RETRO_RESULT", '{"sightings":[{"lesson":"L99"}],"proposals":[]}')
+    elif failure == "marker":
+        monkeypatch.setenv(
+            "RETRO_RESULT", os.environ["RETRO_RESULT"].replace("Deletion suffices", "See; #192")
+        )
     else:
         original = Path.replace
 
