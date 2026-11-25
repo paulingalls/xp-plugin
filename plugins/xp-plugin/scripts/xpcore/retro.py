@@ -271,8 +271,18 @@ def persist(path, candidate, target, result, refs, sighting):
         next_id = max((int(key[1:]) for key in records), default=0) + 1
         for ref, text in refs.items():
             key = ref
-            if ref.startswith("new:"):
-                key = next((k for k, record in records.items() if words(record[2]) == text), "")
+            applied = ref in records and records[ref][1] == "applied"
+            if applied:
+                text = f"Replacement for {ref}: {records[ref][2]}"
+            if ref.startswith("new:") or applied:
+                key = next(
+                    (
+                        k
+                        for k, record in records.items()
+                        if record[1] in ("sighting", "proposed") and words(record[2]) == text
+                    ),
+                    "",
+                )
                 if not key:
                     key = f"L{next_id}"
                     next_id += 1
@@ -301,12 +311,52 @@ def persist(path, candidate, target, result, refs, sighting):
             raise
 
 
+def synchronize(path, snapshot):
+    if not config.github_issues() or not any(
+        r[1] == "proposed" and issue_number(r) for r in parse_ledger(snapshot).values()
+    ):
+        return snapshot
+    with path.with_name(path.name + ".lock").open("a") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        snapshot = path.read_text()
+        lines = snapshot.splitlines(keepends=True)
+        for key, record in parse_ledger(snapshot).items():
+            number = issue_number(record)
+            if record[1] != "proposed" or not number:
+                continue
+            try:
+                issue = json.loads(
+                    shared._gh(
+                        "issue", "view", number, "--json", "state,stateReason", "-R", origin()
+                    )
+                )
+                if not isinstance(issue, dict) or not {"state", "stateReason"} <= issue.keys():
+                    raise ValueError("missing issue state/stateReason")
+                if issue["state"] == "OPEN":
+                    continue
+                if issue["state"] != "CLOSED" or issue["stateReason"] not in (
+                    "COMPLETED",
+                    "NOT_PLANNED",
+                ):
+                    raise ValueError(f"unsupported issue disposition: {issue}")
+                status = "applied" if issue["stateReason"] == "COMPLETED" else "dropped"
+                index = record[0]
+                lines[index] = lines[index].replace("[proposed]", f"[{status}]", 1)
+            except (OSError, RuntimeError, ValueError, KeyError, TypeError) as exc:
+                print(f"Lesson {key} #{number} lookup failed; unchanged: {exc}", file=sys.stderr)
+        updated = "".join(lines)
+        if updated != snapshot:
+            atomic(path, updated)
+        return updated
+
+
 def run(identifier):
     folder = config.data_root() / "sprints" / identifier
     if not (folder / "release.json").is_file():
         raise ValueError("sprint must be released first")
     path = ledger_path()
     snapshot = path.read_text() if path.exists() else ""
+    snapshot = synchronize(path, snapshot)
     records = parse_ledger(snapshot)
     slate = cards.sprint_slate(identifier)
     with tempfile.NamedTemporaryFile(
