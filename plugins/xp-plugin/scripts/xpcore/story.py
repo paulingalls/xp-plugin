@@ -314,6 +314,7 @@ def review_next(card_id: str, review: str) -> None:
 
 def cmd_story(args) -> int:
     card = cards.find_card(args.id)
+    hooks.check_files(card)
     return walk(card, base_for(card.id), args.dry_run)
 
 
@@ -352,4 +353,6 @@ def cmd_free(args) -> int:
             f" then run xp.py free {name}"
         )
         return 0
-    return walk(cards.find_card(card_id), config.trunk(), args.dry_run)
+    card = cards.find_card(card_id)
+    hooks.check_files(card)
+    return walk(card, config.trunk(), args.dry_run)

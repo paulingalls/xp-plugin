@@ -48,6 +48,7 @@ def agent(role: str, text: str, root: Path, log_id: str, out: Path) -> Path:
 def cmd_sprint_plan(args) -> int:
     slate, root = cards.sprint_slate(args.id), repo_root()
     for card in cards.read_cards(slate):
+        hooks.check_files(card)
         hooks.check_acceptance(card.id, card.acceptance)
     out = sprint_dir(args.id) / "slate-review.md"
     if args.dry_run:

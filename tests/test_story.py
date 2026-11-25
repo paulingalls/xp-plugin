@@ -180,6 +180,7 @@ def test_free_mints_its_card_then_stops_for_the_lead(repo, capsys):
     assert plan.endswith("## Free\n\n#### free-fix-typo — fix-typo   [planned]\n")
     assert "write Context, Measure, AC, Files and Acceptance" in capsys.readouterr().out
     assert not (repo / "worktrees" / "free-fix-typo").exists()
+    (repo / "plan.md").write_text(plan + "Files: a.py\n")
     assert xp.main(["free", "free-fix-typo"]) == 0
     assert (repo / "plan.md").read_text().count("free-fix-typo") == 1
     wt = repo / "worktrees" / "free-fix-typo"
@@ -317,7 +318,10 @@ def test_start_refuses_invalid_acceptance_before_any_stage(repo, capsys, command
     plan = repo / "plan.md"
     text = PLAN.replace("Acceptance: true", "Acceptance: true '(a' (b)")
     if command == "free":
-        text += f"## Free\n#### {card_id} — fix-syntax   [planned]\nAcceptance: true '(a' (b)\n"
+        text += (
+            f"## Free\n#### {card_id} — fix-syntax   [planned]\n"
+            "Files: a.py\nAcceptance: true '(a' (b)\n"
+        )
     plan.write_text(text)
     with pytest.raises(SystemExit) as exit_:
         xp.main([command, card_id.removeprefix("free-"), *(["--dry-run"] if dry else [])])

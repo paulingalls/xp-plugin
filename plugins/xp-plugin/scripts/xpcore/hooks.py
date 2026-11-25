@@ -35,6 +35,14 @@ def log_path(log_id: str) -> Path:
     return path
 
 
+def check_files(card) -> None:
+    if not card.files or card.field("Files").endswith(","):
+        refuse(
+            f"{card.id} Files: use a nonempty, comma-separated list on one line,"
+            " e.g. Files: a.py, b.py; edit the card in plan.md, then run again"
+        )
+
+
 def check_acceptance(card_id: str, line: str) -> None:
     result = subprocess.run(["sh", "-n", "-c", line], capture_output=True, text=True)
     if result.returncode:
