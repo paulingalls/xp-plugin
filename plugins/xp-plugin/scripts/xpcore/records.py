@@ -222,11 +222,17 @@ def issue_records() -> list[str]:
         )
         rows = []
         for issue in issues:
-            kinds = [label["name"] for label in issue["labels"] if label["name"] in ("bug", "debt")]
+            kinds = [
+                label["name"]
+                for label in issue["labels"]
+                if label["name"] in ("bug", "debt", "lesson")
+            ]
             if kinds:
                 rows.append(f"#{issue['number']} {','.join(kinds)} — {issue['title']}")
         if len(issues) == 500:
-            rows.append("first 500 open issues read; gh issue list --label bug|debt for the rest")
+            rows.append(
+                "first 500 open issues read; gh issue list --label bug|debt|lesson for the rest"
+            )
         return rows
     except (RuntimeError, ValueError, KeyError, TypeError) as exc:
         return [f"GitHub open records unavailable: {exc}"]

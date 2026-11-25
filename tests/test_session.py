@@ -109,3 +109,36 @@ def test_an_agent_launch_gets_no_injection(repo):
     proc = start(repo, env={**os.environ, "XP_AGENT": "executor"})
     assert proc.returncode == 0 and proc.stdout == b"" and proc.stderr == b""
     assert b"XP Values" in start(repo).stdout
+
+
+@pytest.mark.parametrize("setting", ["on", "off", ""])
+def test_recover_lessons(repo, monkeypatch, capsys, setting):
+    import xp
+    from xpcore import retro
+
+    (repo / ".xp/config.yml").write_text(f"github_issues: {setting}\n" if setting else "")
+    monkeypatch.setattr(session.records, "issue_records", lambda: [])
+    monkeypatch.setattr(session.shared, "open_cards", lambda: [])
+    path = retro.ledger_path()
+    assert xp.main(["recover"]) == 0
+    assert "### lessons" not in capsys.readouterr().out and not path.parent.exists()
+    path.parent.mkdir(parents=True)
+    proposal = "- L7 [proposed] Observation (seen: clone:1) -> proposal: Delete step; cost: hour"
+    filed = "- L8 [proposed] Filed (seen: clone:1) -> action; #23"
+    malformed = [
+        "- L9 [bad] broken",
+        "- L10 malformed",
+        proposal.replace("Observation", "Duplicate"),
+    ]
+    path.write_text("\n".join([proposal, filed, *malformed]) + "\n")
+    assert xp.main(["recover"]) == 0
+    out = capsys.readouterr().out
+    for line in [proposal, *malformed]:
+        assert line in out
+    assert "## sprint" in out
+    if setting == "on":
+        assert "xp.py lesson file 7" in out and "xp.py lesson file 8" not in out
+        assert "completed" in out and "not planned" in out
+    else:
+        assert filed in out and str(path) in out and "edit" in out
+        assert "xp.py lesson file" not in out

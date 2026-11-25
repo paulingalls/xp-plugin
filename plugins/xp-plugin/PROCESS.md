@@ -20,7 +20,7 @@ users see.
    after the PR merges, leave the sprint branch, `xp.py sprint post-merge <id>`.
    Retro prints its path and proposals/why, records sightings; retry: `xp.py retro <id>`.
 
-With `github_issues: on`, a card another clone will run is published (`xp.py card publish <id>`), then claimed there (`xp.py card claim <N>`); sprint open and land republish it; the lead checks its public text names no personal material, because gitleaks catches secrets only.
+With `github_issues: on`, a card another clone will run is published (`xp.py card publish <id>`), then claimed there (`xp.py card claim <N>`); sprint open and land republish it; the lead checks published cards and filed lessons (`xp.py lesson file <n>`) name no personal material, because gitleaks catches secrets only.
 
 **Story.** Re-run after edits. Delete `plan.md` or
 `handback.md` in the story data directory to repeat that stage.

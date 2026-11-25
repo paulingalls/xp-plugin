@@ -33,10 +33,23 @@ def test_direct_persistence_rerun_and_private_narrative(tmp_path, monkeypatch, f
     root, data, folder = released(tmp_path, monkeypatch)
     git(root, "remote", "remove", "origin")
     result(monkeypatch)
+    import os
+
+    answer = json.loads(os.environ["RETRO_RESULT"])
+    answer["proposals"].append({**answer["proposals"][0], "text": "Keep evidence"})
+    monkeypatch.setenv("RETRO_RESULT", json.dumps(answer))
     assert xp.main(["retro", "1"]) == 0
     ledger = data / "lessons.md"
     first = ledger.read_text()
     assert "- L1 [proposed] A lesson (seen: repo:1)" in first
+    for value in (
+        "Delete the step",
+        "Earlier miss",
+        "An hour",
+        "Deletion suffices",
+        "Keep evidence",
+    ):
+        assert value in first
     output = capsys.readouterr()
     assert "PRIVATE NARRATIVE" not in output.out + output.err
     for value in (
@@ -177,9 +190,29 @@ def test_selected_artifacts_and_statuses(tmp_path, monkeypatch, fake_retro):
     expected = expected.replace("- L1 [sighting]", "- L1 [proposed]")
     expected = expected.replace(
         "Lesson 1 (seen: prior:0, repo:1) -> #issue disposition",
-        "Lesson 1 (seen: prior:0, repo:1) -> #issue disposition; sightings: S; cost: C; form: F",
+        "Lesson 1 (seen: prior:0, repo:1) -> #issue disposition; "
+        "proposal: Replace the rule; sightings: S; cost: C; form: F",
+    )
+    expected = expected.replace("Lesson 3 (seen: prior:0, repo:1)", "Lesson 3 (seen: prior:0)")
+    expected += (
+        "- L5 [proposed] Replacement for L3: Lesson 3 (seen: repo:1) -> "
+        "proposal: Replace the rule; sightings: S; cost: C; form: F\n"
     )
     assert updated == expected
+    ledger.write_text(seed)
+    monkeypatch.setenv("RETRO_RESULT", '{"sightings":[{"lesson":"L3"}],"proposals":[]}')
+    assert xp.main(["retro", "1"]) == 0
+    replacement = ledger.read_text()
+    assert replacement == seed + (
+        "- L5 [sighting] Replacement for L3: Lesson 3 (seen: repo:1) -> not proposed\n"
+    )
+    assert xp.main(["retro", "1"]) == 0
+    assert ledger.read_text() == replacement
+    ledger.write_text(replacement.replace("- L5 [sighting]", "- L5 [applied]"))
+    assert xp.main(["retro", "1"]) == 0
+    assert ledger.read_text().endswith(
+        "- L6 [sighting] Replacement for L3: Lesson 3 (seen: repo:1) -> not proposed\n"
+    )
 
 
 @pytest.mark.parametrize("failure", ["harness", "role", "publish"])
@@ -358,3 +391,56 @@ roles:
     assert "(seen: repo:1)" in expected.read_text()
     assert "--model explicit" in (fake_retro / "retro-argv").read_text()
     assert (folder / "retro.md").is_file()
+
+
+@pytest.mark.parametrize("enabled, seat_fails", [(True, False), (True, True), (False, False)])
+def test_refresh_filed_proposals(tmp_path, monkeypatch, fake_retro, capsys, enabled, seat_fails):
+    from xpcore import retro
+
+    root, data, _folder = released(tmp_path, monkeypatch)
+    (root / ".xp/config.yml").open("a").write(f"\ngithub_issues: {'on' if enabled else 'off'}\n")
+    path = retro.ledger_path()
+    path.parent.mkdir(parents=True)
+    lines = [
+        f"- L{i} [proposed] Lesson {i} (seen: prior:0) -> proposal: act; why; #{i}\n"
+        for i in range(1, 8)
+    ]
+    path.write_text("".join(lines))
+    gh = tmp_path / "retro-bin/gh"
+    gh.write_text(
+        "#!/usr/bin/env python3\nimport json, sys\nfrom pathlib import Path\n"
+        f"with Path({str(data / 'queries')!r}).open('a') as f:\n"
+        "    f.write(json.dumps(sys.argv[1:])+'\\n')\n"
+        "n = int(sys.argv[3])\n"
+        "if n == 4: sys.exit('lookup unavailable')\n"
+        "print(json.dumps({1: {'state':'CLOSED','stateReason':'COMPLETED'}, "
+        "2: {'state':'CLOSED','stateReason':'NOT_PLANNED'}, "
+        "3: {'state':'OPEN','stateReason':None}, "
+        "5: {}, 6: {'state':'CLOSED','stateReason':'OTHER'}, 7: []}[n]))\n"
+    )
+    gh.chmod(0o755)
+    if seat_fails:
+        monkeypatch.setenv("RETRO_EXIT", "1")
+    if not enabled:
+        monkeypatch.setenv("RETRO_RESULT", '{"sightings":[{"lesson":"L3"}],"proposals":[]}')
+    assert xp.main(["retro", "1"]) == int(seat_fails)
+    text = path.read_text()
+    if enabled:
+        assert lines[0].replace("[proposed]", "[applied]") in text
+        assert lines[1].replace("[proposed]", "[dropped]") in text
+        assert all(line in text for line in lines[2:])
+        prompt = (fake_retro / "retro-prompt").read_text()
+        assert "L1 [applied]" in prompt and "L2 [dropped]" in prompt
+        queries = [json.loads(row) for row in (data / "queries").read_text().splitlines()]
+        url = git(root, "remote", "get-url", "origin")
+        assert queries == [
+            ["issue", "view", str(i), "--json", "state,stateReason", "-R", url] for i in range(1, 8)
+        ]
+        output = capsys.readouterr()
+        for i in range(4, 8):
+            assert f"L{i} #{i}" in output.err
+        assert "lookup unavailable" in output.err
+    else:
+        assert not (data / "queries").exists()
+        assert lines[0] in text and lines[1] in text
+        assert "Lesson 3 (seen: prior:0, repo:1)" in text

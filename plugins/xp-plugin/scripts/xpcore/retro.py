@@ -7,7 +7,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-from xpcore import bundle, cards, config, gitx, launch
+from xpcore import bundle, cards, config, gitx, launch, shared
 
 RECORD = re.compile(
     r"- (L[1-9]\d*) \[(sighting|proposed|applied|dropped)\] (.+?) \(seen: ([^)]+)\) -> (.+)"
@@ -30,16 +30,110 @@ def ledger_path() -> Path:
     return Path.home() / ".xp/projects" / slug / "lessons.md"
 
 
-def parse_ledger(text):
+def parse_ledger(text, malformed=None):
     records = {}
     for index, line in enumerate(text.splitlines()):
         if not re.match(r"- L(?:\d|\S* \[)", line):
             continue
         match = RECORD.fullmatch(line)
         if not match or match[1] in records:
-            raise ValueError(f"malformed or duplicate lesson: {line}")
+            if malformed is None:
+                raise ValueError(f"malformed or duplicate lesson: {line}")
+            malformed.append(line)
+            continue
         records[match[1]] = [index, match[2], match[3], match[4].split(", "), match[5]]
     return records
+
+
+def issue_number(record):
+    match = re.search(r"; #([1-9]\d*)$", record[4])
+    return match[1] if match else ""
+
+
+def recovery_rows():
+    path = ledger_path()
+    if not path.exists():
+        return []
+    text = path.read_text()
+    malformed = []
+    records = parse_ledger(text, malformed)
+    lines = text.splitlines()
+    rows = [
+        lines[record[0]] + (f" — xp.py lesson file {key[1:]}" if config.github_issues() else "")
+        for key, record in records.items()
+        if record[1] == "proposed" and (not config.github_issues() or not issue_number(record))
+    ] + malformed
+    if not rows:
+        return []
+    disposal = (
+        "close applied issues as completed; dropped as not planned with the reason"
+        if config.github_issues()
+        else f"edit lesson status in {path}"
+    )
+    return [f"\n### lessons — {disposal}", *rows]
+
+
+def origin():
+    url = gitx.git("remote", "get-url", "origin", check=False)
+    if not url:
+        raise ValueError("origin remote is missing")
+    return url
+
+
+def cmd_lesson_file(args):
+    config.require_github_issues()
+    try:
+        path = ledger_path()
+        with path.with_name(path.name + ".lock").open("a") as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX)
+            text = path.read_text()
+            key = f"L{args.id}"
+            records = parse_ledger(text)
+            if key not in records:
+                raise ValueError(f"unknown lesson {key}")
+            record = records[key]
+            if record[1] != "proposed":
+                raise ValueError(f"{key} is not proposed")
+            if issue_number(record):
+                raise ValueError(f"{key} already filed as #{issue_number(record)}")
+            repo = origin()
+            title = record[2]
+            body = f"{key}: {title}\n\n{record[4]}\n"
+            shared._dependencies()
+            shared._scan(title, body)
+            shared._authenticate()
+            shared._gh("label", "create", "lesson", "--force", "-R", repo)
+            url = shared._gh(
+                "issue",
+                "create",
+                "--title",
+                title,
+                "--label",
+                "lesson",
+                "--body-file",
+                "-",
+                "-R",
+                repo,
+                body=body,
+            )
+            match = re.search(r"/issues/([1-9]\d*)$", url)
+            if not match:
+                raise ValueError(
+                    f"issue created but number unavailable: {url}; inspect GitHub and repair ledger"
+                )
+            lines = text.splitlines(keepends=True)
+            index = record[0]
+            lines[index] = lines[index].rstrip("\r\n") + f"; #{match[1]}\n"
+            try:
+                atomic(path, "".join(lines))
+            except OSError as exc:
+                raise ValueError(
+                    f"created {url}; manually add ; #{match[1]} to {key} in {path}: {exc}"
+                ) from exc
+            print(url)
+        return 0
+    except (OSError, RuntimeError, ValueError, KeyError) as exc:
+        config.refuse(f"lesson filing failed: {exc}")
 
 
 def words(value):
@@ -177,8 +271,18 @@ def persist(path, candidate, target, result, refs, sighting):
         next_id = max((int(key[1:]) for key in records), default=0) + 1
         for ref, text in refs.items():
             key = ref
-            if ref.startswith("new:"):
-                key = next((k for k, record in records.items() if words(record[2]) == text), "")
+            applied = ref in records and records[ref][1] == "applied"
+            if applied:
+                text = f"Replacement for {ref}: {records[ref][2]}"
+            if ref.startswith("new:") or applied:
+                key = next(
+                    (
+                        k
+                        for k, record in records.items()
+                        if record[1] in ("sighting", "proposed") and words(record[2]) == text
+                    ),
+                    "",
+                )
                 if not key:
                     key = f"L{next_id}"
                     next_id += 1
@@ -192,7 +296,7 @@ def persist(path, candidate, target, result, refs, sighting):
             proposals = [p for p in result["proposals"] if ref in p["lessons"]]
             if proposals and status == "sighting":
                 status = "proposed"
-                why = " | ".join(why_text(p) for p in proposals)
+                why = " | ".join(f"proposal: {words(p['text'])}; {why_text(p)}" for p in proposals)
                 reason = why if reason == "not proposed" else f"{reason}; {why}"
             records[key] = [index, status, text, seen, reason]
             lines[index] = f"- {key} [{status}] {text} (seen: {', '.join(seen)}) -> {reason}"
@@ -207,12 +311,52 @@ def persist(path, candidate, target, result, refs, sighting):
             raise
 
 
+def synchronize(path, snapshot):
+    if not config.github_issues() or not any(
+        r[1] == "proposed" and issue_number(r) for r in parse_ledger(snapshot).values()
+    ):
+        return snapshot
+    with path.with_name(path.name + ".lock").open("a") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        snapshot = path.read_text()
+        lines = snapshot.splitlines(keepends=True)
+        for key, record in parse_ledger(snapshot).items():
+            number = issue_number(record)
+            if record[1] != "proposed" or not number:
+                continue
+            try:
+                issue = json.loads(
+                    shared._gh(
+                        "issue", "view", number, "--json", "state,stateReason", "-R", origin()
+                    )
+                )
+                if not isinstance(issue, dict) or not {"state", "stateReason"} <= issue.keys():
+                    raise ValueError("missing issue state/stateReason")
+                if issue["state"] == "OPEN":
+                    continue
+                if issue["state"] != "CLOSED" or issue["stateReason"] not in (
+                    "COMPLETED",
+                    "NOT_PLANNED",
+                ):
+                    raise ValueError(f"unsupported issue disposition: {issue}")
+                status = "applied" if issue["stateReason"] == "COMPLETED" else "dropped"
+                index = record[0]
+                lines[index] = lines[index].replace("[proposed]", f"[{status}]", 1)
+            except (OSError, RuntimeError, ValueError, KeyError, TypeError) as exc:
+                print(f"Lesson {key} #{number} lookup failed; unchanged: {exc}", file=sys.stderr)
+        updated = "".join(lines)
+        if updated != snapshot:
+            atomic(path, updated)
+        return updated
+
+
 def run(identifier):
     folder = config.data_root() / "sprints" / identifier
     if not (folder / "release.json").is_file():
         raise ValueError("sprint must be released first")
     path = ledger_path()
     snapshot = path.read_text() if path.exists() else ""
+    snapshot = synchronize(path, snapshot)
     records = parse_ledger(snapshot)
     slate = cards.sprint_slate(identifier)
     with tempfile.NamedTemporaryFile(
