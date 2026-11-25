@@ -10,7 +10,8 @@ debt from `recover`. With `versioning: on`, cut the release artifacts first: the
 version in every `version_files` entry and the first CHANGELOG heading. Run the sprint review,
 read the review files and the handback it prints; judge what the fix pass left
 open: fix, drop with a reason, or debt under both JUDGMENT bars. Unmet ACs and release blockers are not
-waivable. Write the retro from the plugin's `templates/retro.md` with the human,
+waivable. Read each fixer commit as you read the findings; those commits are yours
+to accept, change or revert. Write the retro from the plugin's `templates/retro.md` with the human,
 into the sprint's data directory. Land opens the release PR; after it merges, run
 post-merge to record the release and, under `versioning: on`, tag the fetched merge
 commit with its manifest version. Switch away from the sprint branch so it can be

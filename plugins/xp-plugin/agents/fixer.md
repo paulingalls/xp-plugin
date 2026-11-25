@@ -15,6 +15,8 @@ description: Fixes the merged sprint-review findings on the sprint branch.
 - One commit per finding you fix, on the branch you are on, through the
   project's hooks: a red test first where a test can show the defect, then the
   fix. Never bypass a hook.
+- A fix never removes an assertion, guard or test to fit a cap or budget or to turn a run green; mark such a finding `lead`.
+- Before handing back, run green the Acceptance of every slate card whose Files you touched.
 - The handback at the path you are given: per finding, `fixed` with its commit,
   `dropped (reason)` when the finding is wrong or JUDGMENT permits dropping it, or
   `lead` when it needs a choice that is not yours. Short.
