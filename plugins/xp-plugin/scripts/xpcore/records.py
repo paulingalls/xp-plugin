@@ -150,7 +150,7 @@ def _records() -> tuple[dict[str, tuple[str, str]], set[str]]:
     for line in text.splitlines():
         if match := HEADING.match(line):
             kind, ident = match.groups()
-            current = ident if kind in ("bug", "debt", "lesson") else ""
+            current = ident if kind in ("bug", "debt") else ""
             if kind == "resolved":
                 resolved.add(ident)
             elif current:
