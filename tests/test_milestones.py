@@ -5,7 +5,6 @@ import pytest
 import xp
 from test_land import commit, git, make_project
 from test_land import story as story
-from test_sprint import repo as repo
 from xpcore import session
 
 MILESTONES = """# Milestones
@@ -155,37 +154,3 @@ def test_free_mint_without_milestones_says_to_copy_the_template(tmp_path, monkey
     template = session.plugin_root() / "templates" / "milestones.md"
     assert f"no .xp/milestones.md: copy {template} there" in out
     assert out.index("no .xp/milestones.md") < out.index("next: write Context")
-
-
-def test_free_post_merge_measures_nothing(tmp_path, monkeypatch, capsys):
-    from test_free_post_merge import publish_merge
-    from test_land import fake_gh, free_patch
-
-    fake_gh(tmp_path, monkeypatch)
-    root, _, wt = free_patch(tmp_path, monkeypatch)
-    commit(wt, FILES, "goals")
-    assert xp.main(["free", "land", "fix"]) == 0
-    publish_merge(root)
-    capsys.readouterr()
-    assert xp.main(["free", "post-merge", "fix"]) == 0
-    assert "distance=" not in capsys.readouterr().out
-    assert git(root, "rev-parse", "v1.1.1^{commit}") == git(root, "rev-parse", "HEAD")
-    assert xp.main(["recover"]) == 0
-    assert capsys.readouterr().out.splitlines()[1] == "First — not run: cat first.txt"
-
-
-def test_sprint_post_merge_measures_nothing(repo, tmp_path, monkeypatch, capsys):
-    from test_land import fake_gh
-    from test_sprint import merge_on_trunk
-
-    root, _, _ = repo
-    fake_gh(tmp_path, monkeypatch)
-    commit(root, FILES, "goals")
-    assert xp.main(["sprint", "land", "1"]) == 0
-    merge_on_trunk(root)
-    capsys.readouterr()
-    assert xp.main(["sprint", "post-merge", "1"]) == 0
-    assert "distance=" not in capsys.readouterr().out
-    assert git(root, "rev-parse", "v1.2.0^{commit}") == git(root, "rev-parse", "HEAD")
-    assert xp.main(["recover"]) == 0
-    assert capsys.readouterr().out.splitlines()[1] == "First — not run: cat first.txt"

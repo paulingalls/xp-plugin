@@ -386,11 +386,12 @@ def test_land_conflict_still_refuses(repo, tmp_path, monkeypatch, capsys, overri
     assert not gh.exists() and not (data / "sprints" / "1" / "land.json").exists()
 
 
-@pytest.mark.parametrize("proof", ["same", "override", "off-branch", "dirty", "rerun"])
+@pytest.mark.parametrize("proof", ["same", "override", "rerun"])
 def test_post_merge_proves_release_sha_and_preserves_lead(
     repo, tmp_path, monkeypatch, capsys, proof
 ):
     from test_free_post_merge import lead_state, park_lead
+    from test_milestones import FILES
 
     root, data, hooklog = repo
     fake_gh(tmp_path, monkeypatch)
@@ -407,6 +408,7 @@ def test_post_merge_proves_release_sha_and_preserves_lead(
             ".xp/config.yml": (root / ".xp/config.yml").read_text()
             + "lifecycle_command: sh lifecycle.sh\n",
             "lifecycle.sh": command,
+            **FILES,
         },
         "close event",
     )
@@ -424,23 +426,27 @@ def test_post_merge_proves_release_sha_and_preserves_lead(
     sha = git(root, "rev-parse", "HEAD")
     later = commit(root, manifest("1.3.0"), "later release")
     git(root, "push", "-q", "origin", "main")
-    if proof in ("same", "override", "off-branch"):
+    if proof in ("same", "override"):
         before = park_lead(root)
-    elif proof == "dirty":
-        (root / "untracked").write_text("keep")
     args = ["sprint", "post-merge", "1"]
     if proof == "override":
         hookred.touch()
         args += ["--tested-by", "r"]
-    if proof in ("off-branch", "dirty"):
-        with pytest.raises(SystemExit) as exc:
-            xp.main(args)
-        assert exc.value.code == 2 and "--tested-by" in capsys.readouterr().err
-        assert not hooklog.exists() and not git(root, "tag", "--list")
-        assert not events.exists()
-        assert config.sprint_branch() == "sprint-1"
-        assert not (data / "sprints/1/release.json").exists()
-        return
+    if proof == "rerun":
+        git(root, "switch", "-qc", "other")
+        for refusal in ("off-branch", "dirty"):
+            if refusal == "dirty":
+                git(root, "switch", "-q", "main")
+                (root / "untracked").write_text("keep")
+            with pytest.raises(SystemExit) as exc:
+                xp.main(args)
+            assert exc.value.code == 2 and "--tested-by" in capsys.readouterr().err
+            assert not hooklog.exists() and not git(root, "tag", "--list")
+            assert not events.exists()
+            assert config.sprint_branch() == "sprint-1"
+            assert git(root, "branch", "--list", "sprint-1")
+            assert not (data / "sprints/1/release.json").exists()
+        (root / "untracked").unlink()
     assert xp.main([*args, "--dry-run"]) == 0
     assert not events.exists() and not hooklog.exists() and not git(root, "tag", "--list")
     assert xp.main(args) == 0
@@ -457,9 +463,12 @@ def test_post_merge_proves_release_sha_and_preserves_lead(
     assert ("tested_by" in record) == (proof == "override")
     if proof == "override":
         assert record["tested_by"] == "r"
-    if proof == "override":
         assert (
             f"warning: skipped sprint hook `{root / '.githooks/sprint'}`: r"
             in capsys.readouterr().out
         )
     assert not config.sprint_branch() and not git(root, "branch", "--list", "sprint-1")
+    if proof == "same":
+        assert "distance=" not in capsys.readouterr().out
+        assert xp.main(["recover"]) == 0
+        assert capsys.readouterr().out.splitlines()[1] == "First — not run: cat first.txt"
