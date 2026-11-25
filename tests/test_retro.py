@@ -193,6 +193,8 @@ def test_selected_artifacts_and_statuses(tmp_path, monkeypatch, fake_retro):
         "stories/story-a/plan-review.md:",
         "Evidence plan-review.md",
         "Evidence review-2.md",
+        "Evidence handback.md",
+        "Evidence review-1.design.md",
         "Evidence handback-1.md",
         "Evidence slate-review.md",
         "Evidence triage-2.security.md",
