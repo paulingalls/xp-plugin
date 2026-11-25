@@ -162,7 +162,7 @@ def test_selected_artifacts_and_statuses(tmp_path, monkeypatch, fake_retro):
                 "sightings": [{"lesson": f"L{i}"} for i in range(1, 5)],
                 "proposals": [
                     {
-                        "lessons": ["L1", "L3"],
+                        "lessons": ["L1", "L3", "L4"],
                         "text": "Replace the rule",
                         "why": {"sightings": "S", "cost": "C", "form": "F"},
                     }
@@ -191,6 +191,12 @@ def test_selected_artifacts_and_statuses(tmp_path, monkeypatch, fake_retro):
     expected = expected.replace(
         "Lesson 1 (seen: prior:0, repo:1) -> #issue disposition",
         "Lesson 1 (seen: prior:0, repo:1) -> #issue disposition; "
+        "proposal: Replace the rule; sightings: S; cost: C; form: F",
+    )
+    expected = expected.replace("- L4 [dropped]", "- L4 [proposed]")
+    expected = expected.replace(
+        "Lesson 4 (seen: prior:0, repo:1) -> #issue disposition",
+        "Lesson 4 (seen: prior:0, repo:1) -> #issue disposition; "
         "proposal: Replace the rule; sightings: S; cost: C; form: F",
     )
     expected = expected.replace("Lesson 3 (seen: prior:0, repo:1)", "Lesson 3 (seen: prior:0)")

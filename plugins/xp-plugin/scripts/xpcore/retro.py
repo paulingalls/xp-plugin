@@ -294,7 +294,7 @@ def persist(path, candidate, target, result, refs, sighting):
             if sighting not in seen:
                 seen.append(sighting)
             proposals = [p for p in result["proposals"] if ref in p["lessons"]]
-            if proposals and status == "sighting":
+            if proposals and status in ("sighting", "dropped"):
                 status = "proposed"
                 why = " | ".join(f"proposal: {words(p['text'])}; {why_text(p)}" for p in proposals)
                 reason = why if reason == "not proposed" else f"{reason}; {why}"
