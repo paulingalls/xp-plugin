@@ -4,6 +4,27 @@ Release notes started at v0.6.0; earlier entries are summarized from their
 tag and merge messages. Full detail lives in the merge history and the
 per-sprint review reports.
 
+## v1.8.0
+
+- `story`, `free` and `sprint plan` refuse a card whose Files line is empty, bulleted or
+  ends in a comma, before any agent starts. A fresh free card still mints blank.
+- `sprint review` lists the fixer's commits and refuses to continue when the fixer leaves
+  uncommitted changes. The sprint-close skill tells the lead to read each fixer commit.
+- The fixer never removes an assertion, guard or test to fit a cap or turn a run green;
+  it hands such a finding to the lead, and runs green the Acceptance of every card whose
+  Files it touched.
+- The executor's handback says how each added or changed test was seen red; where card,
+  plan and plan review disagree, the card wins. The reviewer starts with a new test or
+  guard the handback shows no red for.
+- The slate reviewer greps the tests and gates that read what a card changes, and checks
+  that no trunk commit, open PR or claimed card already does the work.
+- A card's Files line is documented as an estimate, never compared with the diff at land;
+  a diff outside it is not a review finding by itself.
+- PROCESS: a long leg is backgrounded by the harness, with no timeout and no `&`, its
+  output written to a file and read back.
+
+Release steps: none.
+
 ## v1.7.2
 
 - `card publish` and lifecycle sync keep AC bullets that contain a colon (e.g. a quoted
