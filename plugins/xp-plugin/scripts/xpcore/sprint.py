@@ -286,11 +286,16 @@ def cmd_sprint_post_merge(args) -> int:
         release.write_release_record(args.id, version, sha, args.tested_by)
     gitx.git("branch", "-D", branch, cwd=root)
     clear_sprint_branch()
+    from xpcore import retro
+
     slate = cards.read_cards(cards.sprint_slate(args.id))
     shared.complete_issues(
         [card for card in slate if card.status == "done"],
         sha,
         [card for card in slate if card.status == "retired"],
     )
+    # Last: the seat has no wall clock, and an interrupt inside it must not strand issue
+    # completion, which cannot rerun once the branch is gone.
+    retro.cmd_retro(args)
     print(f"Sprint {args.id} released{release.tag_note(version)}")
     return 0

@@ -9,7 +9,7 @@ import time
 import traceback
 from pathlib import Path
 
-from xpcore import cards, gitx, records, shared
+from xpcore import cards, gitx, records, retro, shared
 from xpcore.config import data_root, github_issues, plugin_root, sprint_branch
 from xpcore.gitx import git
 
@@ -160,6 +160,8 @@ def cmd_recover(args) -> int:
     print("\n## open records")
     if github_issues():
         print("\n".join(records.issue_records()) or "none")
+    for row in retro.recovery_rows():
+        print(row)
     print("\n### local")
     print("\n".join(records.open_records()) or "none")
     if github_issues():

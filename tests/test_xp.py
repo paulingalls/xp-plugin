@@ -6,7 +6,7 @@ import pytest
 
 XP = Path(__file__).parent.parent / "plugins" / "xp-plugin" / "scripts" / "xp.py"
 COMMANDS = ["", "setup", "session-start", "recover", "sprint", "story", "free"]
-COMMANDS += ["card", "card publish", "card claim", "bug", "debt", "note", "resolve"]
+COMMANDS += ["retro", "card", "card publish", "card claim", "bug", "debt", "note", "resolve"]
 
 
 @pytest.mark.parametrize("command", COMMANDS)

@@ -5,7 +5,10 @@ import xp
 from test_land import commit, fake_gh, git, make_project
 from xpcore import cards
 
-CONFIG = "trunk: main\nversioning: notes\nversion_files: package.json, b.json\n"
+CONFIG = (
+    "trunk: main\nversioning: notes\nversion_files: package.json, b.json\n"
+    "roles:\n  reviewer: claude/opus\n"
+)
 NOTE = "Bump: minor\nA user change.\n\nRelease steps: none.\n"
 
 
@@ -315,3 +318,8 @@ def test_stamp_recovers_concurrent_publication(tmp_path, monkeypatch, capsys, pe
     assert not git(root, "status", "--porcelain")
     tags = git(root, "ls-remote", "--tags", "origin", "refs/tags/v*")
     assert len(tags.splitlines()) == 4
+
+
+@pytest.fixture(autouse=True)
+def isolated_retros(fake_retro):
+    pass

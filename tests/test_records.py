@@ -9,7 +9,7 @@ import sys
 
 import pytest
 import xp
-from xpcore import records, shared
+from xpcore import records, retro, shared
 
 PY = shlex.quote(sys.executable)
 RED = f"{PY} -c 'raise SystemExit(3)'"
@@ -18,6 +18,7 @@ GREEN = f"{PY} -c 'print(1)'"
 
 @pytest.fixture
 def repo(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
     monkeypatch.setenv("XP_DATA", str(tmp_path / "data"))
     monkeypatch.setenv("GIT_CONFIG_GLOBAL", "/dev/null")
     subprocess.run(["git", "init", "-q", str(tmp_path / "r")], check=True)
@@ -50,6 +51,7 @@ elif args[:2] == ['label', 'list']:
 elif args[:2] == ['label', 'create']:
     state['labels'].append(args[2])
 elif args[:2] == ['issue', 'create']:
+    if os.environ.get('GH_CREATE_FAIL'): sys.exit('creation denied')
     state['issues'].append({'number': 224, 'title': args[args.index('--title')+1],
                           'labels': [{'name': args[args.index('--label')+1]}],
                           'body': state['calls'][-1][1]})
@@ -346,3 +348,68 @@ def test_local_filing_lifecycle(repo, monkeypatch, capsys, kind, setting):
     assert ident not in capsys.readouterr().out
     assert f"## resolved {ident}" in records.work_path().read_text()
     assert body in records.work_path().read_text() and not state(repo)["calls"]
+
+
+ORIGIN = "git@github.com:owner/project.git"
+
+
+def lesson(repo, text="proposal: Delete step; sightings: repeat; cost: hour; form: cheaper"):
+    subprocess.run(["git", "remote", "add", "origin", ORIGIN], check=True)
+    path = retro.ledger_path()
+    path.parent.mkdir(parents=True)
+    path.write_text(f"# preserved\n- L7 [proposed] Observation (seen: clone:1) -> {text}\n")
+    return path
+
+
+def test_file_lesson(repo, capsys):
+    path = lesson(repo)
+    before = path.read_text()
+    assert xp.main(["lesson", "file", "7"]) == 0
+    s = state(repo)
+    assert len(s["issues"]) == 1
+    issue = s["issues"][0]
+    assert issue["labels"] == [{"name": "lesson"}]
+    for value in ("L7", "Observation", "Delete step", "repeat", "hour", "cheaper"):
+        assert value in issue["body"]
+    assert path.read_text() == before.rstrip() + "; #224\n"
+    for call in s["calls"]:
+        if call[0][:2] in (["label", "create"], ["issue", "create"]):
+            assert call[0][-2:] == ["-R", ORIGIN]
+    assert xp.main(["recover"]) == 0
+    out = capsys.readouterr().out
+    assert "#224 lesson — Observation" in out and "xp.py lesson file 7" not in out
+
+
+@pytest.mark.parametrize(
+    "status, tail, ident, message",
+    [
+        ("proposed", "action; #23", "7", "already filed"),
+        ("sighting", "action", "7", "not proposed"),
+        ("applied", "action", "7", "not proposed"),
+        ("dropped", "action", "7", "not proposed"),
+        ("proposed", "action", "8", "unknown lesson"),
+    ],
+)
+def test_ineligible_lesson(repo, capsys, status, tail, ident, message):
+    path = lesson(repo, tail)
+    path.write_text(path.read_text().replace("[proposed]", f"[{status}]"))
+    before = path.read_text()
+    assert message in refused(capsys, ["lesson", "file", ident])
+    assert path.read_text() == before and not state(repo)["calls"]
+
+
+@pytest.mark.parametrize("setting", ["", "github_issues: off\n"])
+def test_disabled_lesson(repo, capsys, setting):
+    path = lesson(repo)
+    before = path.read_text()
+    (repo / "r/.xp/config.yml").write_text(setting)
+    assert "github_issues" in refused(capsys, ["lesson", "file", "7"])
+    assert path.read_text() == before and not state(repo)["calls"]
+
+
+def test_lesson_creation_failure(repo, monkeypatch, capsys):
+    path = lesson(repo)
+    before = path.read_text()
+    monkeypatch.setenv("GH_CREATE_FAIL", "1")
+    assert "creation denied" in refused(capsys, ["lesson", "file", "7"])
+    assert path.read_text() == before and not state(repo)["issues"]
