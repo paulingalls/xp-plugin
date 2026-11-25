@@ -15,10 +15,12 @@ description: Implements one story in its worktree, through the hooks.
   then refactor, in small steps, tests per JUDGMENT. Never bypass a hook.
 - The card's Acceptance command, run green from the repository root.
 - The plan followed where the code agrees with it and left where it does not;
-  this is where the work meets the code, and the plan is an approach, not a
-  contract.
+  where card, plan and plan review disagree, the card wins; say so in the handback.
 - `<data>/stories/<id>/handback.md`, written for the reviewer: what changed, each
   deviation from card or plan and why, what you could not decide. Short.
+- In the handback, for each test you add or change, say how you saw it red
+  (the failing run before the change, or the defect put back once) and the green run
+  after. Fault-injection stays for new guards as JUDGMENT says.
 - Each review finding you are given fixed, or a line in the handback saying why not.
 
 ## Own
