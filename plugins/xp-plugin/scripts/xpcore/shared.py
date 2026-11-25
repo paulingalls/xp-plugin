@@ -80,16 +80,16 @@ def public_body(card: cards.Card) -> str:
     lines = [card.lines[0], f"Context: local to {owner()}"]
     ac = False
     for line in card.lines[1:]:
-        if match := re.match(r"^([^\s:][^:]*):", line):
-            ac = match[1] == "AC"
-            if match[1] in {"Measure", "AC", "Files", "Acceptance", "Evidence", "Executor"}:
-                lines.append(line)
-        elif ac and (
+        if ac and (
             not line.strip()
             or line.startswith(("- ", "* ", "  ", "\t"))
             or re.match(r"\d+\. ", line)
         ):
             lines.append(line)
+        elif match := re.match(r"^([^\s:][^:]*):", line):
+            ac = match[1] == "AC"
+            if match[1] in {"Measure", "AC", "Files", "Acceptance", "Evidence", "Executor"}:
+                lines.append(line)
         else:
             ac = False
     return "\n".join([*lines, f"Published by: {owner()}"]) + "\n"
