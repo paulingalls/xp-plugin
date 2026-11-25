@@ -33,10 +33,23 @@ def test_direct_persistence_rerun_and_private_narrative(tmp_path, monkeypatch, f
     root, data, folder = released(tmp_path, monkeypatch)
     git(root, "remote", "remove", "origin")
     result(monkeypatch)
+    import os
+
+    answer = json.loads(os.environ["RETRO_RESULT"])
+    answer["proposals"].append({**answer["proposals"][0], "text": "Keep evidence"})
+    monkeypatch.setenv("RETRO_RESULT", json.dumps(answer))
     assert xp.main(["retro", "1"]) == 0
     ledger = data / "lessons.md"
     first = ledger.read_text()
     assert "- L1 [proposed] A lesson (seen: repo:1)" in first
+    for value in (
+        "Delete the step",
+        "Earlier miss",
+        "An hour",
+        "Deletion suffices",
+        "Keep evidence",
+    ):
+        assert value in first
     output = capsys.readouterr()
     assert "PRIVATE NARRATIVE" not in output.out + output.err
     for value in (
@@ -177,7 +190,8 @@ def test_selected_artifacts_and_statuses(tmp_path, monkeypatch, fake_retro):
     expected = expected.replace("- L1 [sighting]", "- L1 [proposed]")
     expected = expected.replace(
         "Lesson 1 (seen: prior:0, repo:1) -> #issue disposition",
-        "Lesson 1 (seen: prior:0, repo:1) -> #issue disposition; sightings: S; cost: C; form: F",
+        "Lesson 1 (seen: prior:0, repo:1) -> #issue disposition; "
+        "proposal: Replace the rule; sightings: S; cost: C; form: F",
     )
     assert updated == expected
 

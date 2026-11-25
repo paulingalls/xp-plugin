@@ -7,7 +7,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-from xpcore import bundle, cards, config, gitx, launch
+from xpcore import bundle, cards, config, gitx, launch, shared
 
 RECORD = re.compile(
     r"- (L[1-9]\d*) \[(sighting|proposed|applied|dropped)\] (.+?) \(seen: ([^)]+)\) -> (.+)"
@@ -30,16 +30,103 @@ def ledger_path() -> Path:
     return Path.home() / ".xp/projects" / slug / "lessons.md"
 
 
-def parse_ledger(text):
+def parse_ledger(text, malformed=None):
     records = {}
     for index, line in enumerate(text.splitlines()):
         if not re.match(r"- L(?:\d|\S* \[)", line):
             continue
         match = RECORD.fullmatch(line)
         if not match or match[1] in records:
-            raise ValueError(f"malformed or duplicate lesson: {line}")
+            if malformed is None:
+                raise ValueError(f"malformed or duplicate lesson: {line}")
+            malformed.append(line)
+            continue
         records[match[1]] = [index, match[2], match[3], match[4].split(", "), match[5]]
     return records
+
+
+def issue_number(record):
+    match = re.search(r"; #([1-9]\d*)$", record[4])
+    return match[1] if match else ""
+
+
+def recovery_rows():
+    path = ledger_path()
+    if not path.exists():
+        return []
+    text = path.read_text()
+    malformed = []
+    records = parse_ledger(text, malformed)
+    lines = text.splitlines()
+    rows = [
+        lines[record[0]] + (f" — xp.py lesson file {key[1:]}" if config.github_issues() else "")
+        for key, record in records.items()
+        if record[1] == "proposed" and (not config.github_issues() or not issue_number(record))
+    ] + malformed
+    if not rows:
+        return []
+    disposal = (
+        "close applied issues as completed; dropped as not planned with the reason"
+        if config.github_issues()
+        else f"edit lesson status in {path}"
+    )
+    return [f"\n### lessons — {disposal}", *rows]
+
+
+def origin():
+    url = gitx.git("remote", "get-url", "origin", check=False)
+    if not url:
+        raise ValueError("origin remote is missing")
+    return url
+
+
+def cmd_lesson_file(args):
+    config.require_github_issues()
+    try:
+        path = ledger_path()
+        with path.with_name(path.name + ".lock").open("a") as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX)
+            text = path.read_text()
+            key = f"L{args.id}"
+            record = parse_ledger(text)[key]
+            repo = origin()
+            title = record[2]
+            body = f"{key}: {title}\n\n{record[4]}\n"
+            shared._dependencies()
+            shared._scan(title, body)
+            shared._authenticate()
+            shared._gh("label", "create", "lesson", "--force", "-R", repo)
+            url = shared._gh(
+                "issue",
+                "create",
+                "--title",
+                title,
+                "--label",
+                "lesson",
+                "--body-file",
+                "-",
+                "-R",
+                repo,
+                body=body,
+            )
+            match = re.search(r"/issues/([1-9]\d*)$", url)
+            if not match:
+                raise ValueError(
+                    f"issue created but number unavailable: {url}; inspect GitHub and repair ledger"
+                )
+            lines = text.splitlines(keepends=True)
+            index = record[0]
+            lines[index] = lines[index].rstrip("\r\n") + f"; #{match[1]}\n"
+            try:
+                atomic(path, "".join(lines))
+            except OSError as exc:
+                raise ValueError(
+                    f"created {url}; manually add ; #{match[1]} to {key} in {path}: {exc}"
+                ) from exc
+            print(url)
+        return 0
+    except (OSError, RuntimeError, ValueError, KeyError) as exc:
+        config.refuse(f"lesson filing failed: {exc}")
 
 
 def words(value):
@@ -192,7 +279,7 @@ def persist(path, candidate, target, result, refs, sighting):
             proposals = [p for p in result["proposals"] if ref in p["lessons"]]
             if proposals and status == "sighting":
                 status = "proposed"
-                why = " | ".join(why_text(p) for p in proposals)
+                why = " | ".join(f"proposal: {words(p['text'])}; {why_text(p)}" for p in proposals)
                 reason = why if reason == "not proposed" else f"{reason}; {why}"
             records[key] = [index, status, text, seen, reason]
             lines[index] = f"- {key} [{status}] {text} (seen: {', '.join(seen)}) -> {reason}"

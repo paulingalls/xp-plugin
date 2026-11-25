@@ -150,7 +150,7 @@ def _records() -> tuple[dict[str, tuple[str, str]], set[str]]:
     for line in text.splitlines():
         if match := HEADING.match(line):
             kind, ident = match.groups()
-            current = ident if kind in ("bug", "debt") else ""
+            current = ident if kind in ("bug", "debt", "lesson") else ""
             if kind == "resolved":
                 resolved.add(ident)
             elif current:
@@ -222,11 +222,17 @@ def issue_records() -> list[str]:
         )
         rows = []
         for issue in issues:
-            kinds = [label["name"] for label in issue["labels"] if label["name"] in ("bug", "debt")]
+            kinds = [
+                label["name"]
+                for label in issue["labels"]
+                if label["name"] in ("bug", "debt", "lesson")
+            ]
             if kinds:
                 rows.append(f"#{issue['number']} {','.join(kinds)} — {issue['title']}")
         if len(issues) == 500:
-            rows.append("first 500 open issues read; gh issue list --label bug|debt for the rest")
+            rows.append(
+                "first 500 open issues read; gh issue list --label bug|debt|lesson for the rest"
+            )
         return rows
     except (RuntimeError, ValueError, KeyError, TypeError) as exc:
         return [f"GitHub open records unavailable: {exc}"]
