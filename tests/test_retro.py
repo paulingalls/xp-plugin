@@ -90,7 +90,8 @@ def test_failure_preserves_previous(tmp_path, monkeypatch, fake_retro, capsys, f
     root, data, folder = released(tmp_path, monkeypatch)
     git(root, "remote", "remove", "origin")
     old = folder / "retro.md"
-    old.write_text("previous retro")
+    previous = "## Misses\n## Sightings\n## Proposals\n"
+    old.write_text(previous)
     ledger = data / "lessons.md"
     ledger.write_text("# previous ledger\n")
     result(monkeypatch)
@@ -116,7 +117,7 @@ def test_failure_preserves_previous(tmp_path, monkeypatch, fake_retro, capsys, f
 
         monkeypatch.setattr(Path, "replace", replace)
     assert xp.main(["retro", "1"]) != 0
-    assert old.read_text() == "previous retro"
+    assert old.read_text() == previous
     assert ledger.read_text() == "# previous ledger\n"
     assert "xp.py retro 1" in capsys.readouterr().err
 
