@@ -215,28 +215,26 @@ def test_configuration_and_publish_failures(tmp_path, monkeypatch, fake_retro, f
 
 
 def test_concurrent_clones_share_ledger(tmp_path, monkeypatch, fake_retro):
+    import fcntl
     import os
     import subprocess
     import sys
+    import time
 
     from test_xp import XP
+    from xpcore import retro
 
-    root, data, folder = released(tmp_path, monkeypatch)
-    # Hold both fake seats after their input snapshots, before either merge.
+    _, data, _ = released(tmp_path, monkeypatch)
+    result(monkeypatch, "Common")
+    assert xp.main(["retro", "1"]) == 0
+    ledger = retro.ledger_path()
     script = tmp_path / "retro-bin/claude"
-    source = script.read_text().replace(
-        "path = re.search",
-        "import time\n"
-        'gate = Path(os.environ["RETRO_GATE"])\n'
-        "gate.mkdir(exist_ok=True)\n"
-        "(gate / Path.cwd().name).touch()\n"
-        "until = time.monotonic() + 15\n"
-        "while len(list(gate.iterdir())) < 2:\n"
-        "    if time.monotonic() > until: sys.exit(7)\n"
-        "    time.sleep(.02)\n"
-        "path = re.search",
+    marker = tmp_path / "seat-ran"
+    script.write_text(
+        script.read_text().replace(
+            "path = re.search", f"Path({str(marker)!r}).touch()\npath = re.search"
+        )
     )
-    script.write_text(source)
     other = tmp_path / "second"
     git(tmp_path, "clone", "-q", str(tmp_path / "origin.git"), str(other))
     other_data = tmp_path / "second-data"
@@ -244,48 +242,38 @@ def test_concurrent_clones_share_ledger(tmp_path, monkeypatch, fake_retro):
     other_folder.mkdir(parents=True)
     (other_data / "plan.md").write_text((data / "plan.md").read_text())
     (other_folder / "release.json").write_text("{}")
-    gate = tmp_path / "gate"
-    processes = []
-    for clone, local_data in ((root, data), (other, other_data)):
-        answer = {
-            "sightings": [
-                {"lesson": "new:1", "text": "Common"},
-                {"lesson": "new:2", "text": clone.name},
-            ],
-            "proposals": [],
-        }
-        env = os.environ | {
-            "XP_DATA": str(local_data),
-            "RETRO_GATE": str(gate),
-            "RETRO_RESULT": json.dumps(answer),
-        }
-        processes.append(
-            subprocess.Popen(
-                [sys.executable, str(XP), "retro", "1"],
-                cwd=clone,
-                env=env,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-            )
+    answer = {"sightings": [{"lesson": "new:1", "text": "Common"}], "proposals": []}
+    env = os.environ | {"XP_DATA": str(other_data), "RETRO_RESULT": json.dumps(answer)}
+    # The test holds the ledger lock while another clone's merge is due, and writes a
+    # concurrent line under it: an unlocked merge finishes early or loses that line.
+    with ledger.with_name(ledger.name + ".lock").open("a") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        process = subprocess.Popen(
+            [sys.executable, str(XP), "retro", "1"],
+            cwd=other,
+            env=env,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
         )
-    for process in processes:
-        stdout, stderr = process.communicate(timeout=25)
-        assert process.returncode == 0, stdout + stderr
-    from xpcore import retro
-
-    ledger = retro.ledger_path()
+        until = time.monotonic() + 20
+        while not marker.exists():
+            assert time.monotonic() < until and process.poll() is None, process.stdout.read()
+            time.sleep(0.02)
+        with ledger.open("a") as out:
+            out.write("- L9 [sighting] Concurrent (seen: other:1) -> not proposed\n")
+        time.sleep(1)
+        assert process.poll() is None, "retro merged the ledger without its lock"
+    output, _ = process.communicate(timeout=20)
+    assert process.returncode == 0, output
     text = ledger.read_text()
-    assert "Common (seen: " in text
-    assert "repo:1" in text and "second:1" in text
-    assert len(retro.parse_ledger(text)) == 3
-    assert (folder / "retro.md").is_file() and (other_folder / "retro.md").is_file()
+    records = retro.parse_ledger(text)
+    assert "L9" in records and len(records) == 2
+    assert "Common (seen: repo:1, second:1)" in text
+    assert (other_folder / "retro.md").is_file()
     # Same clone/sprint rerun deduplicates both text and identity.
-    result(monkeypatch, "Common")
-    monkeypatch.setenv("RETRO_GATE", str(gate))
     assert xp.main(["retro", "1"]) == 0
-    assert len(retro.parse_ledger(ledger.read_text())) == 3
-    assert ledger.read_text().count("repo:1") == 2
+    assert retro.parse_ledger(ledger.read_text()) == records
 
 
 @pytest.mark.parametrize("failed", [False, True])
