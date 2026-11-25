@@ -12,6 +12,7 @@ HARNESSES = ("claude", "codex")
 # Four seats are required; the optional ones fall back along their family, so a project
 # can put one kind of review or fix on another harness without naming every seat.
 ROLE_FALLBACK = {
+    "retro": "reviewer",
     "plan-reviewer": "reviewer",
     "slate-reviewer": "plan-reviewer",
     "angle-reviewer": "reviewer",

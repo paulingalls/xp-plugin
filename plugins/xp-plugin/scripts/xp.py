@@ -61,6 +61,10 @@ def build() -> argparse.ArgumentParser:
     ):
         sub.add_parser(name, help=text, description=text).set_defaults(run=handler(module, fn))
 
+    retro = sub.add_parser("retro", help="run a released sprint retro")
+    retro.add_argument("id")
+    retro.set_defaults(run=handler("retro", "cmd_retro"))
+
     cp = sub.add_parser("card", help="publish or claim a shared card")
     cs = cp.add_subparsers(dest="action", required=True)
     for action in ("publish", "claim"):

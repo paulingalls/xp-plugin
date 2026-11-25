@@ -98,7 +98,7 @@ def find_card(card_id: str) -> Card:
 
 @contextmanager
 def plan_lock() -> Iterator[None]:
-    """The one lock: parallel stories flip and rewrite cards in the same plan.md."""
+    """The lock: parallel stories flip and rewrite cards in the same plan.md."""
     path = data_root() / "plan.lock"
     path.parent.mkdir(parents=True, exist_ok=True)
     with open(path, "a") as handle:

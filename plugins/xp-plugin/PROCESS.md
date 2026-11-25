@@ -18,6 +18,7 @@ users see.
    `xp.py story land <id>` onto the sprint branch.
 4. `/sprint-close`: `xp.py sprint review <id>`, judge, `xp.py sprint land <id>`;
    after the PR merges, leave the sprint branch, `xp.py sprint post-merge <id>`.
+   Retro prints its path and proposals/why, records sightings; retry: `xp.py retro <id>`.
 
 With `github_issues: on`, a card another clone will run is published (`xp.py card publish <id>`), then claimed there (`xp.py card claim <N>`); sprint open and land republish it; the lead checks its public text names no personal material, because gitleaks catches secrets only.
 
