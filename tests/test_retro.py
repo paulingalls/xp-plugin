@@ -67,6 +67,18 @@ def test_direct_persistence_rerun_and_private_narrative(tmp_path, monkeypatch, f
     )
     assert xp.main(["retro", "1"]) == 0
     assert ledger.read_text() == first
+    result(monkeypatch, "Reworded lesson")
+    assert xp.main(["retro", "1"]) == 0
+    revised = ledger.read_text()
+    assert "A lesson" not in revised and "Keep evidence" not in revised
+    assert revised.count("- L") == revised.count("repo:1") == 1
+    assert "[proposed] Reworded lesson" in revised
+    monkeypatch.setenv("RETRO_RESULT", '{"sightings":[{"lesson":"L1"}],"proposals":[]}')
+    assert xp.main(["retro", "1"]) == 0
+    assert "[sighting] Reworded lesson (seen: repo:1) -> not proposed" in ledger.read_text()
+    monkeypatch.setenv("RETRO_RESULT", '{"sightings":[],"proposals":[]}')
+    assert xp.main(["retro", "1"]) == 0
+    assert not ledger.read_text()
     assert "Changed" in (folder / "retro.md").read_text()
 
 
@@ -310,9 +322,12 @@ def test_concurrent_clones_share_ledger(tmp_path, monkeypatch, fake_retro):
     assert "L9" in records and len(records) == 2
     assert "Common (seen: repo:1, second:1)" in text
     assert (other_folder / "retro.md").is_file()
-    # Same clone/sprint rerun deduplicates both text and identity.
+    result(monkeypatch, "Reworded common lesson")
     assert xp.main(["retro", "1"]) == 0
-    assert retro.parse_ledger(ledger.read_text()) == records
+    revised = retro.parse_ledger(ledger.read_text())
+    assert len(revised) == 3 and revised["L9"] == records["L9"]
+    assert revised["L1"][3] == ["second:1"]
+    assert sum("repo:1" in record[3] for record in revised.values()) == 1
 
 
 @pytest.mark.parametrize("failed", [False, True])

@@ -268,6 +268,25 @@ def persist(path, candidate, target, result, refs, sighting):
         previous = path.read_text() if path.exists() else None
         lines = (previous or "").splitlines()
         records = parse_ledger(previous or "")
+        removed = set()
+        for key, record in list(records.items()):
+            index, status, text, seen, reason = record
+            if sighting not in seen:
+                continue
+            remaining = [entry for entry in seen if entry != sighting]
+            if not remaining and (
+                status == "sighting" or (status == "proposed" and not issue_number(record))
+            ):
+                if key not in refs:
+                    removed.add(index)
+                    del records[key]
+                    continue
+                status, reason = "sighting", "not proposed"
+            elif not remaining:
+                # Filed proposals and final dispositions retain their historical evidence.
+                continue
+            record[1], record[3], record[4] = status, remaining, reason
+            lines[index] = f"- {key} [{status}] {text} (seen: {', '.join(remaining)}) -> {reason}"
         next_id = max((int(key[1:]) for key in records), default=0) + 1
         for ref, text in refs.items():
             key = ref
@@ -300,6 +319,7 @@ def persist(path, candidate, target, result, refs, sighting):
                 reason = why if reason == "not proposed" else f"{reason}; {why}"
             records[key] = [index, status, text, seen, reason]
             lines[index] = f"- {key} [{status}] {text} (seen: {', '.join(seen)}) -> {reason}"
+        lines = [line for index, line in enumerate(lines) if index not in removed]
         atomic(path, "\n".join(lines) + ("\n" if lines else ""))
         try:
             candidate.replace(target)
