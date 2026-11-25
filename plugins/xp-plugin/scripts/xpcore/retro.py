@@ -268,7 +268,8 @@ def persist(path, candidate, target, result, refs, sighting):
         previous = path.read_text() if path.exists() else None
         lines = (previous or "").splitlines()
         records = parse_ledger(previous or "")
-        removed = set()
+        next_id = max((int(key[1:]) for key in records), default=0) + 1
+        stale = {}
         for key, record in list(records.items()):
             index, status, text, seen, reason = record
             if sighting not in seen:
@@ -278,8 +279,8 @@ def persist(path, candidate, target, result, refs, sighting):
                 status == "sighting" or (status == "proposed" and not issue_number(record))
             ):
                 if key not in refs:
-                    removed.add(index)
-                    del records[key]
+                    stale[key] = records.pop(key)
+                    stale[key][1:] = ["sighting", text, [], "not proposed"]
                     continue
                 status, reason = "sighting", "not proposed"
             elif not remaining:
@@ -287,7 +288,6 @@ def persist(path, candidate, target, result, refs, sighting):
                 continue
             record[1], record[3], record[4] = status, remaining, reason
             lines[index] = f"- {key} [{status}] {text} (seen: {', '.join(remaining)}) -> {reason}"
-        next_id = max((int(key[1:]) for key in records), default=0) + 1
         for ref, text in refs.items():
             key = ref
             applied = ref in records and records[ref][1] == "applied"
@@ -302,6 +302,10 @@ def persist(path, candidate, target, result, refs, sighting):
                     ),
                     "",
                 )
+                # A rerun that words a lesson as before keeps its ID; a new one never reuses one.
+                key = key or next((k for k, r in stale.items() if words(r[2]) == text), "")
+                if key in stale:
+                    records[key] = stale.pop(key)
                 if not key:
                     key = f"L{next_id}"
                     next_id += 1
@@ -319,6 +323,7 @@ def persist(path, candidate, target, result, refs, sighting):
                 reason = why if reason == "not proposed" else f"{reason}; {why}"
             records[key] = [index, status, text, seen, reason]
             lines[index] = f"- {key} [{status}] {text} (seen: {', '.join(seen)}) -> {reason}"
+        removed = {record[0] for record in stale.values()}
         lines = [line for index, line in enumerate(lines) if index not in removed]
         atomic(path, "\n".join(lines) + ("\n" if lines else ""))
         try:

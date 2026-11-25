@@ -73,8 +73,9 @@ def test_direct_persistence_rerun_and_private_narrative(tmp_path, monkeypatch, f
     revised = ledger.read_text()
     assert "A lesson" not in revised and "Keep evidence" not in revised
     assert revised.count("- L") == revised.count("repo:1") == 1
-    assert "[proposed] Reworded lesson" in revised
-    monkeypatch.setenv("RETRO_RESULT", '{"sightings":[{"lesson":"L1"}],"proposals":[]}')
+    # A replaced ID is never reissued: recover may already have shown it to the lead.
+    assert "- L2 [proposed] Reworded lesson" in revised
+    monkeypatch.setenv("RETRO_RESULT", '{"sightings":[{"lesson":"L2"}],"proposals":[]}')
     assert xp.main(["retro", "1"]) == 0
     assert "[sighting] Reworded lesson (seen: repo:1) -> not proposed" in ledger.read_text()
     monkeypatch.setenv("RETRO_RESULT", '{"sightings":[],"proposals":[]}')
