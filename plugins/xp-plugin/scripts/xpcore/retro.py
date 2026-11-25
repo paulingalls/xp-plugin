@@ -24,10 +24,10 @@ def ledger_path() -> Path:
     url = gitx.git("remote", "get-url", "origin", check=False)
     if not url:
         return config.data_root() / "lessons.md"
-    slug = re.sub(r".*[:/]([^/]+)/([^/]+?)(\.git)?$", r"\1-\2", url).lower()
-    if "/" in slug or slug in (".", ".."):
+    project = re.search(r"[:/]([^/:]+)/([^/]+?)(?:\.git)?$", url.lower())
+    if not project or any(part in ("", ".", "..") for part in project.groups()):
         raise ValueError(f"cannot derive project from origin {url!r}")
-    return Path.home() / ".xp/projects" / slug / "lessons.md"
+    return Path.home() / ".xp/projects" / project[1] / project[2] / "lessons.md"
 
 
 def parse_ledger(text, malformed=None):

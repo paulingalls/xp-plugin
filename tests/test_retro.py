@@ -343,7 +343,7 @@ def test_post_merge_runs_after_cleanup_and_dry_run_is_inert(
     folder = data / "sprints/1"
     assert not (folder / "release.json").exists()
     assert not (fake_retro / "retro-prompt").exists()
-    assert not list(fake_retro.glob(".xp/projects/*/lessons.md*"))
+    assert not list(fake_retro.glob(".xp/projects/**/lessons.md*"))
     assert config.sprint_branch() == "sprint-1"
     if failed:
         monkeypatch.setenv("RETRO_EXIT", "1")
@@ -362,7 +362,14 @@ def test_post_merge_runs_after_cleanup_and_dry_run_is_inert(
 
 
 @pytest.mark.parametrize(
-    "origin", [None, "git@github.com:Owner/Repo.git", "https://github.com/Owner/Repo.git"]
+    "origin",
+    [
+        None,
+        "git@github.com:Owner/Repo.git",
+        "https://github.com/Owner/Repo.git",
+        "git@github.com:owner/foo-bar.git",
+        "https://github.com/owner-foo/bar",
+    ],
 )
 def test_linked_worktree_path_and_explicit_role(tmp_path, monkeypatch, fake_retro, origin):
     from xpcore import retro
@@ -386,7 +393,14 @@ roles:
     monkeypatch.chdir(linked)
     result(monkeypatch)
     assert xp.main(["retro", "1"]) == 0
-    expected = fake_retro / ".xp/projects/owner-repo/lessons.md" if origin else data / "lessons.md"
+    project = (
+        "owner/foo-bar"
+        if origin and "foo-bar" in origin
+        else ("owner-foo/bar" if origin and "owner-foo" in origin else "owner/repo")
+    )
+    expected = (
+        fake_retro / ".xp/projects" / project / "lessons.md" if origin else data / "lessons.md"
+    )
     assert retro.ledger_path() == expected
     assert "(seen: repo:1)" in expected.read_text()
     assert "--model explicit" in (fake_retro / "retro-argv").read_text()
