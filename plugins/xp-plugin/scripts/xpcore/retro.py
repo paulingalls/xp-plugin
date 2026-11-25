@@ -88,7 +88,14 @@ def cmd_lesson_file(args):
             fcntl.flock(lock, fcntl.LOCK_EX)
             text = path.read_text()
             key = f"L{args.id}"
-            record = parse_ledger(text)[key]
+            records = parse_ledger(text)
+            if key not in records:
+                raise ValueError(f"unknown lesson {key}")
+            record = records[key]
+            if record[1] != "proposed":
+                raise ValueError(f"{key} is not proposed")
+            if issue_number(record):
+                raise ValueError(f"{key} already filed as #{issue_number(record)}")
             repo = origin()
             title = record[2]
             body = f"{key}: {title}\n\n{record[4]}\n"

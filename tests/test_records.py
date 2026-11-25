@@ -51,6 +51,7 @@ elif args[:2] == ['label', 'list']:
 elif args[:2] == ['label', 'create']:
     state['labels'].append(args[2])
 elif args[:2] == ['issue', 'create']:
+    if os.environ.get('GH_CREATE_FAIL'): sys.exit('creation denied')
     state['issues'].append({'number': 224, 'title': args[args.index('--title')+1],
                           'labels': [{'name': args[args.index('--label')+1]}],
                           'body': state['calls'][-1][1]})
@@ -377,3 +378,38 @@ def test_file_lesson(repo, capsys):
     assert xp.main(["recover"]) == 0
     out = capsys.readouterr().out
     assert "#224 lesson — Observation" in out and "xp.py lesson file 7" not in out
+
+
+@pytest.mark.parametrize(
+    "status, tail, ident, message",
+    [
+        ("proposed", "action; #23", "7", "already filed"),
+        ("sighting", "action", "7", "not proposed"),
+        ("applied", "action", "7", "not proposed"),
+        ("dropped", "action", "7", "not proposed"),
+        ("proposed", "action", "8", "unknown lesson"),
+    ],
+)
+def test_ineligible_lesson(repo, capsys, status, tail, ident, message):
+    path = lesson(repo, tail)
+    path.write_text(path.read_text().replace("[proposed]", f"[{status}]"))
+    before = path.read_text()
+    assert message in refused(capsys, ["lesson", "file", ident])
+    assert path.read_text() == before and not state(repo)["calls"]
+
+
+@pytest.mark.parametrize("setting", ["", "github_issues: off\n"])
+def test_disabled_lesson(repo, capsys, setting):
+    path = lesson(repo)
+    before = path.read_text()
+    (repo / "r/.xp/config.yml").write_text(setting)
+    assert "github_issues" in refused(capsys, ["lesson", "file", "7"])
+    assert path.read_text() == before and not state(repo)["calls"]
+
+
+def test_lesson_creation_failure(repo, monkeypatch, capsys):
+    path = lesson(repo)
+    before = path.read_text()
+    monkeypatch.setenv("GH_CREATE_FAIL", "1")
+    assert "creation denied" in refused(capsys, ["lesson", "file", "7"])
+    assert path.read_text() == before and not state(repo)["issues"]
