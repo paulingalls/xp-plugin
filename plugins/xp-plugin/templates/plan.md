@@ -2,8 +2,8 @@
 
 <!-- Card status: planned | in-progress | done | retired.
      Files: comma-separated paths on one line, the slate's estimate, used to size
-     the story and spot collisions; never compared with the diff. One path skips
-     the planner and plan reviewer.
+     the story and spot collisions; never compared with the diff at land. One path
+     skips the planner and plan reviewer.
      Acceptance: one command, run from the repo root, that executes the ACs.
      A Gherkin feature is the recommended form: the ACs are its scenarios.
      A sprint heading or free card may instead use:
