@@ -112,3 +112,8 @@ def test_land_uses_fetched_target_mode(tmp_path, monkeypatch, capsys, kind):
     assert xp.main(args) == 0
     assert trace.read_text() == "ran\n" and gh.exists() and record.is_file()
     assert git(root, "ls-remote", "--heads", "origin", branch)
+
+
+@pytest.fixture(autouse=True)
+def isolated_retros(fake_retro):
+    pass

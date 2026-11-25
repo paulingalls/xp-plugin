@@ -17,7 +17,7 @@ SLATE = "## Sprint 1 — s\n\n#### story-001 — a   [{status}]\nFiles: a.py\nAc
 
 
 @pytest.fixture
-def repo(tmp_path, monkeypatch, request):
+def repo(tmp_path, monkeypatch, request, fake_retro):
     identifier = getattr(request, "param", "1")
     branch = f"sprint-{identifier}"
     root, data = make_project(tmp_path, monkeypatch)
@@ -65,8 +65,15 @@ def test_land_tests_the_clean_tree_trial_merge_and_post_merge_skips_that_tree(
     identifier = branch.removeprefix("sprint-")
     folder = data / "sprints" / identifier
     gh = fake_gh(tmp_path, monkeypatch)
+    original_agent = launch.run_agent
     monkeypatch.setattr(
-        launch, "run_agent", lambda *a, **k: subprocess.CompletedProcess([], 0, "finding", "")
+        launch,
+        "run_agent",
+        lambda role, *a, **k: (
+            original_agent(role, *a, **k)
+            if role == "retro"
+            else subprocess.CompletedProcess([], 0, "finding", "")
+        ),
     )
     assert xp.main(["sprint", "review", identifier]) == 0
     assert list(folder.glob("review-1.*.md"))

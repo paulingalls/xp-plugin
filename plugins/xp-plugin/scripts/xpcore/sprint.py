@@ -286,6 +286,9 @@ def cmd_sprint_post_merge(args) -> int:
         release.write_release_record(args.id, version, sha, args.tested_by)
     gitx.git("branch", "-D", branch, cwd=root)
     clear_sprint_branch()
+    from xpcore import retro
+
+    retro.cmd_retro(args)
     slate = cards.read_cards(cards.sprint_slate(args.id))
     shared.complete_issues(
         [card for card in slate if card.status == "done"],

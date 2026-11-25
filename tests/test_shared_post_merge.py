@@ -142,6 +142,7 @@ def test_sprint_shared_completion(sprint_repo, tmp_path, monkeypatch, capsys, fa
     assert s["closed"] == ["224", "227"] and s["merged"] == ["225"] and s["comments"] == ["225"]
     retired = next(c for c in s["calls"] if c[:3] == ["issue", "close", "227"])
     assert retired[3:5] == ["--reason", "not planned"]
+    assert (data / "sprints/1/retro.md").is_file()
     assert not (root / "forbidden").exists() and hooklog.read_text() == "ran\n"
     assert not git(root, "branch", "--list", "sprint-1")
     before = store.read_text()

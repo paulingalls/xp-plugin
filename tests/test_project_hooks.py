@@ -289,3 +289,8 @@ def test_sprint_close_before_tag_and_record(tmp_path, monkeypatch, capsys, statu
     assert (data / "sprints/001/release.json").is_file()
     if not status:
         assert git(root, "cat-file", "-t", "v1.2.0") == "tag"
+
+
+@pytest.fixture(autouse=True)
+def isolated_retros(fake_retro):
+    pass

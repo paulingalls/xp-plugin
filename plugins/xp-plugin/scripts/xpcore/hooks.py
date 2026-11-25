@@ -20,13 +20,18 @@ def stream(argv: list[str], cwd, log, env: dict[str, str] | None = None) -> int:
     except OSError as exc:
         log.write(f"{exc}\n")
         print(exc, file=sys.stderr)
+        log.write("xp-hook-exit: 127\n")
+        log.flush()
         return 127
     assert proc.stdout is not None
+    line = "\n"
     for line in proc.stdout:
         sys.stdout.write(line)
         log.write(line)
+    rc = proc.wait()
+    log.write(("" if line.endswith("\n") else "\n") + f"xp-hook-exit: {rc}\n")
     log.flush()
-    return proc.wait()
+    return rc
 
 
 def log_path(log_id: str) -> Path:
