@@ -208,6 +208,11 @@ def test_selected_artifacts_and_statuses(tmp_path, monkeypatch, fake_retro):
     )
     assert xp.main(["retro", "1"]) == 0
     assert ledger.read_text() == replacement
+    ledger.write_text(replacement.replace("- L5 [sighting]", "- L5 [applied]"))
+    assert xp.main(["retro", "1"]) == 0
+    assert ledger.read_text().endswith(
+        "- L6 [sighting] Replacement for L3: Lesson 3 (seen: repo:1) -> not proposed\n"
+    )
 
 
 @pytest.mark.parametrize("failure", ["harness", "role", "publish"])
