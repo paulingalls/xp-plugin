@@ -4,6 +4,14 @@ Release notes started at v0.6.0; earlier entries are summarized from their
 tag and merge messages. Full detail lives in the merge history and the
 per-sprint review reports.
 
+## v1.7.2
+
+- `card publish` and lifecycle sync keep AC bullets that contain a colon (e.g. a quoted
+  `error::DeprecationWarning`). Before, such a bullet and every AC line after it were
+  silently dropped from the issue body.
+
+Release steps: none.
+
 ## v1.7.1
 
 - Landing again after a review fix updates the branch's open PR (title, body) and
