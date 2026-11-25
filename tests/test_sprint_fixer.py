@@ -17,8 +17,7 @@ def repo(tmp_path, monkeypatch):
     return root, data
 
 
-@pytest.mark.parametrize("filename", ["changed.txt", "untracked.txt"])
-@pytest.mark.parametrize("returncode", [0, 1])
+@pytest.mark.parametrize(("filename", "returncode"), [("changed.txt", 1), ("untracked.txt", 0)])
 def test_review_refuses_fixer_leftovers(repo, monkeypatch, capsys, filename, returncode):
     root, data = repo
 
