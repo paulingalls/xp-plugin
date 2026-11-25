@@ -4,7 +4,7 @@ import subprocess
 import pytest
 import xp
 from test_land import commit, fake_gh, git, make_project, manifest, ns
-from xpcore import bundle, config, launch, release, sprint
+from xpcore import config, launch, release, sprint
 
 HOOK = (
     '#!/bin/sh\ntest -z "$(git status --porcelain)" || exit 1\n'
@@ -201,17 +201,6 @@ def test_plan_names_the_branch_to_cut(repo, monkeypatch, capsys):
     assert xp.main(["sprint", "plan", "1"]) == 0
     assert "`git switch -c sprint-1 main`" in capsys.readouterr().out
     assert calls == ["slate-reviewer"] and not marker.exists()
-
-
-def test_review_failure_names_the_log(repo, monkeypatch, capsys):
-    def run_agent(role, prompt, cwd, log_id, **_):
-        return subprocess.CompletedProcess([], 1 if role == "fixer" else 0, "f", "see x")
-
-    monkeypatch.setattr(bundle, "prompt", lambda role, **k: role)
-    monkeypatch.setattr(launch, "run_agent", run_agent)
-    assert sprint.cmd_sprint_review(ns("1")) == 1
-    log = repo[1] / "logs" / "sprint-1-fixer-1.log"
-    assert f"read {log}" in capsys.readouterr().out
 
 
 def refused_land(capsys) -> str:

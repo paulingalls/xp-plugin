@@ -142,11 +142,20 @@ def cmd_sprint_review(args) -> int:
     handback, log_id = folder / f"handback-{n}.md", f"{branch}-fixer-{n}"
     paths = {"HANDBACK_PATH": str(handback)}
     text = bundle.prompt("fixer", slate=slate, findings=findings, extra=extra, paths=paths)
+    before = gitx.head(root)
     result = launch.run_agent("fixer", text, root, log_id)
     for path in written:
         body = [ln for ln in path.read_text().splitlines() if ln.strip()]
         print(f"{path}: {len(body)} lines; {body[0] if body else 'empty'}")
     print(f"handback: {handback}{'' if handback.is_file() else ' (not written)'}")
+    if commits := gitx.log_range(before, "HEAD", root):
+        print(f"fixer commits:\n{commits}")
+    if gitx.is_dirty(root):
+        refuse(
+            f"the fixer left uncommitted changes in {root}; commit or discard them there"
+            f" (git -C {root} status), read {launch.log_path(log_id)}, judge what it left"
+            f" open, then run xp.py sprint land {args.id}"
+        )
     if result.returncode:
         print(f"failed: the fixer exited {result.returncode}; read {launch.log_path(log_id)}")
         return 1
