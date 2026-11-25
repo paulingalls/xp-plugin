@@ -1,7 +1,7 @@
 # Process
 
 `xp.py` is the absolute path in the banner. `--help` lists commands.
-Background long legs, no timeout.
+Background long legs via the harness, no timeout, no `&`; output to a file, read back, never a pipe or filter.
 
 **Session start.** Run the banner's `recover`. Disk wins over memory.
 

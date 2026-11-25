@@ -25,8 +25,8 @@ cut, measured per consuming-project story, not per line:
 
 ## 2. Principles
 
-1. **Trust the agent on the spot.** The executor edits the card, extends Files, renames,
-   restructures. The reviewer sees the result. No lock, digest, candidate or amendment
+1. **Trust the agent on the spot.** The executor renames and restructures within the card's
+   intent. The reviewer sees the result. No lock, digest, candidate or amendment
    protocol stands between an agent and plan.md beyond one append lock for parallel stories.
 2. **State is what is on disk.** Card status in plan.md plus the files under the story's
    data directory. There are no markers, receipts, handoff JSON, checkpoints or fingerprints.
@@ -208,9 +208,10 @@ harnesses. constraints.md and system.md are passed in the bundle too.
   handback.md to re-run unfinished work; delete only the line when the committed part
   should be judged as it stands. Read-only on the repo. No second round.
 - **executor** reads the card, the plan, the findings; produces commits through the hooks;
-  owns scope, Files, the card's wording and the Acceptance command. Runs Acceptance before
-  handing back. Hands back with a short note: what changed, what deviated, what it could
-  not decide. Reserved to the lead: title, Executor, anything a `QUESTION:` raised.
+  owns implementation within the card's intent. Runs Acceptance before handing back.
+  Proposes card changes in the handback for the lead to apply at close. Hands back with a
+  short note: what changed, what deviated, what it could not decide. Reserved to the lead:
+  title, Executor, anything a `QUESTION:` raised.
 - **reviewer** reads a story's commit range, the card as spawned and now, and the handback;
   produces `review-N.md` with findings as fix / drop-with-reason / debt-with-both-bars; owns
   independent adversarial pressure, including fault-injecting any new guard. May commit

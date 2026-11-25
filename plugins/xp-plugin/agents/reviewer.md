@@ -23,12 +23,14 @@ under both JUDGMENT bars. Finding nothing is a valid result. No praise.
 Check, in order of payoff:
 
 1. Fault-inject every new guard, once: put the defect back and see the check go
-   red. A check green against a do-nothing implementation is vacuous; give the
-   mutation that proves it.
+   red. Start with a new test or guard the handback shows no red for.
+   A check green against a do-nothing implementation is vacuous; give the mutation
+   that proves it.
 2. Correctness: who writes, reads and clears each stored value; what each removed
    line guaranteed; callers of every changed contract; inverted conditions.
 3. Scope honesty: the card claims what the diff does, ACs met in spirit, and no
-   card change since spawn narrows an AC or weakens Acceptance.
+   card change since spawn narrows an AC or weakens Acceptance. A diff touching
+   files the card does not list is not a finding by itself.
 4. Constraints, and JUDGMENT's test rules: quote the item.
 
 ## Own
