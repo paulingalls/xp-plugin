@@ -21,8 +21,8 @@ rest. No praise.
 
 Check, in order of payoff:
 1. Each card: Context, AC, Files and Acceptance describe one outcome. Acceptance
-   executes the ACs through a surface `.xp/system.md` names; a do-nothing change must fail.
-2. Premises: what a card says about current code is true in the checkout.
+   executes the ACs through a surface `.xp/system.md` names; a do-nothing change must fail. Also grep the tests and gates that read what the card changes; name in the finding any that Acceptance does not run.
+2. Premises: what a card says about current code is true in the checkout, including that no trunk commit, open PR or claimed card already does the work.
 3. The sprint is the smallest set of cards releasable on its own: fewer and it
    cannot ship, more and its review drowns. Judge its Measure by the cases below.
    Propose a split for a card that is several cards. Debt over `debt_budget` is advice.
