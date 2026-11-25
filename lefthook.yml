@@ -19,8 +19,11 @@ pre-commit:
       run: sh -c '. plugins/xp-plugin/templates/hook-lib.sh; secrets_scan_index'
     tests:
       priority: 4
-      # exit 5 = nothing collected, legal while the suite is being rebuilt
-      run: sh -c 'pytest -q -n 4; s=$?; [ $s -eq 5 ] && exit 0; exit $s'
+      # exit 5 = nothing collected, legal while the suite is being rebuilt.
+      # post_merge walks build scratch repos and hold a third of the suite's time; they
+      # leave the commit hook so it stays under a minute on a loaded machine (#237).
+      # pre-push and sprint still run them.
+      run: sh -c 'pytest -q -n 4 -k "not post_merge"; s=$?; [ $s -eq 5 ] && exit 0; exit $s'
 
 pre-merge-commit:
   commands:
