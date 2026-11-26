@@ -86,11 +86,13 @@ def advise_trunk_drift(target: str, path: Path) -> None:
             return
         subjects = gitx.git("log", "-5", "--format=%s", missing, cwd=path).splitlines()
         both = overlapping_files(target, main, path)
-        lines = [f"trunk drift: {main} has {count} commits {target} lacks"]
+        shown = f", newest {len(subjects)}" if count > len(subjects) else ""
+        noun = "commit" if count == 1 else "commits"
+        lines = [f"trunk drift: {main} has {count} {noun} {target} lacks{shown}:"]
         lines += [f"  - {subject}" for subject in subjects]
         lines += [
             f"Files both sides changed since the fork: {', '.join(both) or 'none'}",
-            f"On {target}, run: {shlex.join(['git', 'merge', main])}",
+            f"Before the next story, on {target}, run: {shlex.join(['git', 'merge', main])}",
         ]
     except gitx.GitError as exc:
         print(f"warning: trunk drift went unchecked: {exc}")
