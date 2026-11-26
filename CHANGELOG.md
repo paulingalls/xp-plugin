@@ -4,6 +4,15 @@ Release notes started at v0.6.0; earlier entries are summarized from their
 tag and merge messages. Full detail lives in the merge history and the
 per-sprint review reports.
 
+## v1.10.0
+
+- After a story lands, fetch trunk and, only when the sprint lacks trunk commits,
+  show their count, up to five subjects, files both sides changed since the fork,
+  and the merge command to run on the sprint branch. A failed fetch warns that
+  drift went unchecked and never blocks the land. Without origin, compare local trunk.
+
+Release steps: none.
+
 ## v1.9.0
 
 - `sprint post-merge` ends with a fresh-context retro seat (`roles: retro`, falling back to
