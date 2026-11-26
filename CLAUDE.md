@@ -22,7 +22,7 @@ Honesty > Courage > Simplicity > Feedback > Communication.
 
 ## Commands
 
-- Tests: `pytest -q -n 4` (the commit and push hooks run this). No test launches a real
+- Tests: `pytest -q -n 6` (the commit and push hooks run this). No test launches a real
   agent; the shipped paths are walked by hand before a release.
 - Lint: `ruff check --fix . && ruff format .`
 - Hooks: `lefthook install` once per clone. Never `--no-verify`.

@@ -5,7 +5,7 @@ Code and Codex. One entry point (`xp.py`), nine agent charters, the project's ow
 git hooks for tests. This repo runs under the plugin it ships.
 
 **Stack**: Python 3.11+, stdlib only in shipped code. Markdown for all prose. Dev
-only: pytest with pytest-xdist (`pytest -q -n 4`), ruff, lefthook, gitleaks.
+only: pytest with pytest-xdist (`pytest -q -n 6`), ruff, lefthook, gitleaks.
 
 **Surfaces & acceptance**: CLI (`plugins/xp-plugin/scripts/xp.py` and its
 subcommands) and the SessionStart hook. The harness is the pytest suite under

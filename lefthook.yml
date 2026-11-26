@@ -23,7 +23,7 @@ pre-commit:
       # post_merge walks build scratch repos and hold a third of the suite's time; they
       # leave the commit hook so it stays under a minute on a loaded machine (#237).
       # pre-push and sprint still run them.
-      run: sh -c 'pytest -q -n 4 -k "not post_merge"; s=$?; [ $s -eq 5 ] && exit 0; exit $s'
+      run: sh -c 'pytest -q -n 6 -k "not post_merge"; s=$?; [ $s -eq 5 ] && exit 0; exit $s'
 
 pre-merge-commit:
   commands:
@@ -39,7 +39,7 @@ pre-push:
     - name: lint
       run: ruff check .
     - name: tests
-      run: sh -c 'pytest -q -n 4; s=$?; [ $s -eq 5 ] && exit 0; exit $s'
+      run: sh -c 'pytest -q -n 6; s=$?; [ $s -eq 5 ] && exit 0; exit $s'
 
 sprint:
   commands:
