@@ -20,7 +20,7 @@ every shipped path is walked by hand in a scratch consumer before a release.
 - `plugins/xp-plugin/agents/` — one charter per artifact: planner, plan-reviewer,
   slate-reviewer, executor, reviewer, angle-triage, angle-reviewer, fixer, retro
 - `plugins/xp-plugin/angles/` — one file per sprint-review angle
-- `plugins/xp-plugin/skills/` — the five skills; `.claude/` symlinks them for dogfooding
+- `plugins/xp-plugin/skills/` — the three skills; `.claude/` symlinks them for dogfooding
 - `plugins/xp-plugin/templates/` — what `xp.py setup` scaffolds into a consumer
 - `plugins/xp-plugin/{VALUES,JUDGMENT,PROCESS}.md` — injected at session start
 - `docs/PLAN-v1.md` — the design authority; `docs/history/` — what came before

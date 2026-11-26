@@ -105,8 +105,8 @@ Every scope runs plan, review the plan, do, review the diff, land.
 | sprint | the slate | its stories | sprint branch since trunk | trunk, tagged |
 | free | one card | executor in a worktree | branch since trunk | trunk, patch tag |
 
-The lead judges every finding: fix it, drop it with a reason, or file debt. The skills
-`/create-sprint`, `/story-close`, `/sprint-close` and `/free-close` guide each step.
+The lead judges every finding: fix it, drop it with a reason, or file debt. `/create-sprint` and
+`/sprint-close` guide sprint work; story and free commands print their closing steps.
 
 Merge a PR any way your host allows. Merge commits are preferred, because post-merge then
 finds the merge commit in fetched `origin/<trunk>`. Squash and rebase merges use the

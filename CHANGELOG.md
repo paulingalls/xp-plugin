@@ -4,6 +4,15 @@ Release notes started at v0.6.0; earlier entries are summarized from their
 tag and merge messages. Full detail lives in the merge history and the
 per-sprint review reports.
 
+## v1.11.0
+
+- Story and free commands print closing steps where they apply: finding dispositions,
+  reviewer commits for lead judgment, card proposals, session rewrites, fixes after
+  PR land, and trunk updates with milestone reporting after free close.
+- Remove the story and free closing skills; follow the commands' printed steps.
+
+Release steps: none.
+
 ## v1.10.0
 
 - After a story lands, fetch trunk and, only when the sprint lacks trunk commits,

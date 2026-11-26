@@ -33,6 +33,9 @@ if role == "executor" and not os.environ.get("FAKE_NO_COMMIT"):
         out.write("x\\n")
     subprocess.run(["git", "add", "-A"], check=True)
     subprocess.run(["git", "commit", "-qm", "feat"], check=True)
+if role == "reviewer" and os.environ.get("FAKE_REVIEW_COMMITS"):
+    for subject in ("review fix one", "review fix two"):
+        subprocess.run(["git", "commit", "--allow-empty", "-qm", subject], check=True)
 if role == "executor" and os.environ.get("FAKE_EXEC_PLAN"):  # a deviations note
     with open(os.path.join(os.path.dirname(paths[key]), "plan.md"), "a") as out:
         out.write("deviation\\n")
@@ -196,9 +199,10 @@ def roles(data):
     return roles_run
 
 
-def test_a_lead_commit_after_review_reruns_only_the_reviewer(repo):
+def test_a_lead_commit_after_review_reruns_only_the_reviewer(repo, monkeypatch, capsys):
     assert xp.main(["story", "story-001"]) == 0
     assert roles(repo) == ["planner", "plan-reviewer", "executor", "reviewer"]
+    assert "reviewer commits" not in capsys.readouterr().out
     sdir, wt = story(repo, "story-001"), repo / "worktrees" / "story-001"
     review = sdir / "review-1.md"
     head = git("rev-parse", "HEAD", cwd=wt).stdout.strip()
@@ -209,8 +213,17 @@ def test_a_lead_commit_after_review_reruns_only_the_reviewer(repo):
     # The lead annotates the review after committing: a newer file covers nothing new.
     review.write_text(review.read_text() + "lead: fixed it\n")
     os.utime(review, (4_000_000_000, 4_000_000_000))
+    monkeypatch.setenv("FAKE_REVIEW_COMMITS", "1")
     assert xp.main(["story", "story-001"]) == 0
     assert roles(repo) == ["reviewer"] and (sdir / "review-2.md").is_file()
+    out = capsys.readouterr().out
+    block = out.split("reviewer commits:")[1].split("next:")[0]
+    for line in git("log", "-2", "--format=%h %s", cwd=wt).stdout.splitlines():
+        assert line in block
+    assert "feat" not in block and "lead fix" not in block
+    assert f"the lead's to accept, change or revert in {wt}" in block
+    head = git("rev-parse", "HEAD", cwd=wt).stdout.strip()
+    assert (sdir / "review-2.md").read_text().endswith(f"reviewed: {head}\n")
 
 
 def test_a_handback_without_commits_reruns_the_executor(repo, monkeypatch, capsys):
@@ -332,14 +345,19 @@ def test_start_refuses_invalid_acceptance_before_any_stage(repo, capsys, command
 
 
 def assert_fix_next(out, data, card_id):
-    next_line = next(line for line in out.splitlines() if line.startswith("next:"))
+    next_line = "\n".join(line for line in out.splitlines() if line.startswith("next:"))
     land = (
         f"xp.py free land {card_id[5:]}"
         if card_id.startswith("free-")
         else f"xp.py story land {card_id}"
     )
     for phrase in (
-        "judge",
+        "judge every finding under JUDGMENT",
+        "drop with a reason",
+        "xp.py debt under both bars",
+        "unmet ACs and lead-reserved choices are the lead's, with the human where needed",
+        f"apply or reject every card change proposed in {story(data, card_id) / 'handback.md'}",
+        f"editing {data / 'plan.md'} for accepted changes before land",
         "fix findings with commits in",
         str(data / "worktrees" / card_id),
         land,

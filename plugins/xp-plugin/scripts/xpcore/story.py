@@ -210,6 +210,9 @@ def review_round(card: cards.Card, sdir: Path, wt: Path, base: str) -> Path:
     review.write_text(f"{review.read_text().rstrip()}\n\nreviewed: {gitx.head(wt)}\n")
     print(f"{card.id}: review at {review}")
     print("\n".join(review.read_text().splitlines()[:40]))
+    if commits := gitx.log_range(head, gitx.head(wt), cwd=wt):
+        print(f"reviewer commits:\n{commits}")
+        print(f"the lead's to accept, change or revert in {wt}")
     return review
 
 
@@ -305,8 +308,18 @@ def walk(card: cards.Card, base: str, dry: bool) -> int:
 
 def review_next(card_id: str, review: str) -> None:
     print(
-        f"next: judge {review}; fix findings with commits in {worktree(card_id)},"
-        f" then {commands(card_id)[1]}; commits after the review are listed as unreviewed;"
+        f"next: judge every finding under JUDGMENT in {review}:"
+        f" fix findings with commits in {worktree(card_id)}, drop with a reason,"
+        " or xp.py debt under both bars"
+    )
+    print("next: unmet ACs and lead-reserved choices are the lead's, with the human where needed")
+    print(
+        f"next: apply or reject every card change proposed in {story_dir(card_id) / 'handback.md'},"
+        f" editing {cards.plan_path()} for accepted changes before land;"
+        f" then {commands(card_id)[1]}"
+    )
+    print(
+        "next: commits after the review are listed as unreviewed;"
         f" xp.py story review {card_id} is optional; delete {story_dir(card_id) / 'handback.md'}"
         " to re-run the executor only for a finding needing a fresh implementation"
     )

@@ -14,7 +14,7 @@ users see.
 **Sprint:**
 1. `/create-sprint`: write the slate, `xp.py sprint plan <id>`, judge and correct.
 2. From trunk, `git switch -c sprint-<id>`, then `xp.py sprint open <id>`.
-3. Each story: `xp.py story <id>`, then `/story-close`: judge the review,
+3. Each story: `xp.py story <id>`, follow its printed `next:` steps, then
    `xp.py story land <id>` onto the sprint branch.
 4. `/sprint-close`: `xp.py sprint review <id>`, judge, `xp.py sprint land <id>`;
    after the PR merges, leave the sprint branch, `xp.py sprint post-merge <id>`.
@@ -26,7 +26,7 @@ With `github_issues: on`, a card another clone will run is published (`xp.py car
 `handback.md` in the story data directory to repeat that stage.
 
 **Free patch.** `xp.py free <slug>` mints a card; fill it, including `Measure:`, run again.
-`/free-close`: judge, `xp.py free land <slug>`; after the PR merges,
+Follow the printed `next:` steps, then `xp.py free land <slug>`; after the PR merges,
 `xp.py free post-merge <slug>`. Land tears down; the worktree stays until close.
 
 **Post-merge.** Fetch trunk, release its merge SHA. Changed trees rerun proof:
@@ -37,4 +37,3 @@ skips proof and records evidence. Unchanged trees allow a busy lead checkout.
 open a PR to trunk by hand.
 
 **Judgment and records:** JUDGMENT. **Hooks own tests:** Acceptance and `sprint`.
-**Close.** Rewrite `session.md`: intent, surprises, tack chosen, next; <30 lines.

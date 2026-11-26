@@ -283,6 +283,11 @@ def land(card_id: str, target: str, *, pr: bool, dry_run: bool, tested_by: str |
         after = f"after it merges, run `xp.py free post-merge {card.id}`"
         pull_request(branch, target, path, after, title=card.title, body=body)
         teardown(card, path)
+        print(
+            f"next: for a review fix after land, rerun the configured worktree_setup in {path},"
+            f" commit, run xp.py story review {card.id}, then"
+            f" xp.py free land {card.id.removeprefix('free-')} again before the PR merges"
+        )
         return 0
     if gitx.git("rev-parse", target, cwd=lead) != sha:
         refuse(f"{target} moved during land; run xp.py story land {card.id} again")
@@ -351,11 +356,28 @@ def cmd_story_land(args) -> int:
     if result == 0 and not args.dry_run:
         advise_trunk_drift(sprint_branch(), lead_tree())
         session.print_milestones()
+        rewrite_session()
     return result
 
 
 def cmd_free_land(args) -> int:
     return land(free_id(args.id), trunk(), pr=True, dry_run=args.dry_run, tested_by=args.tested_by)
+
+
+def rewrite_session() -> None:
+    print(
+        f"next: rewrite {data_root() / 'session.md'}: intent, surprises, tack chosen,"
+        " next step; under 30 lines"
+    )
+
+
+def free_close_next(sha: str) -> None:
+    print(
+        f"next: in {lead_tree()}, switch to {trunk()}"
+        f" and update it to include released merge {sha};"
+        " run each milestone's Measure from the repo root and report it to the user"
+    )
+    rewrite_session()
 
 
 def cmd_free_post_merge(args) -> int:
@@ -365,6 +387,7 @@ def cmd_free_post_merge(args) -> int:
     if sha := recorded_close(card.id):
         result = finish_recorded(card)
         shared.complete_issues([card], sha)
+        free_close_next(sha)
         return result
     path, branch = worktree_of(card)
     if gitx.is_dirty(path):
@@ -419,4 +442,5 @@ def cmd_free_post_merge(args) -> int:
     close(card, sha, path, branch, lead, args.tested_by)
     shared.complete_issues([card], sha)
     print(f"{card.id} closed{release.tag_note(version)}")
+    free_close_next(sha)
     return 0
