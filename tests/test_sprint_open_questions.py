@@ -17,7 +17,7 @@ def test_open_refuses_slate_questions_then_resumes(tmp_path, monkeypatch, capsys
         "**QUESTION:** Which migration ruling applies?",
     ]
     # Field reviewers mostly write a bare marker with the question as the next paragraph.
-    bare = "QUESTION:\n\n**story-001.** Which inviter becomes sponsor?"
+    bare = "QUESTION:\n\n**story-001.** Which inviter\nbecomes sponsor?"
     prose = "The prose mentions QUESTION without asking one.\nQUESTIONABLE is not a question.\n"
     review.write_text("\n".join(questions) + "\n" + bare + "\n\n" + prose)
     git(root, "switch", "-qc", "sprint-questions", "main")

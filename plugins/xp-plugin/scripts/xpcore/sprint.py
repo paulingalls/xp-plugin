@@ -64,6 +64,13 @@ def cmd_sprint_plan(args) -> int:
     return 0
 
 
+def paragraph(lines: list[str]) -> list[str]:
+    rest = [line.strip() for line in lines]
+    while rest and not rest[0]:
+        rest.pop(0)
+    return rest[: rest.index("")] if "" in rest else rest
+
+
 def cmd_sprint_open(args) -> int:
     branch, root, main = sprint_branch_name(args.id), repo_root(), trunk()
     cards.sprint_slate(args.id)
@@ -80,8 +87,8 @@ def cmd_sprint_open(args) -> int:
     for i, line in enumerate(lines):
         if QUESTION.match(line):
             text = line.strip()
-            if text.strip(" *-:") == "QUESTION":  # a bare marker: its question is the next line
-                text = "QUESTION: " + next((n.strip() for n in lines[i + 1 :] if n.strip()), "")
+            if text.strip(" *-:") == "QUESTION":  # bare: the next paragraph is its question
+                text = "QUESTION: " + " ".join(paragraph(lines[i + 1 :]))
             questions.append(text)
     if questions:
         refuse(
