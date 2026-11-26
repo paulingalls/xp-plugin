@@ -76,7 +76,14 @@ def cmd_sprint_open(args) -> int:
         lines = review.read_text().splitlines()
     except FileNotFoundError:
         lines = []
-    if questions := [line.strip() for line in lines if QUESTION.match(line)]:
+    questions = []
+    for i, line in enumerate(lines):
+        if QUESTION.match(line):
+            text = line.strip()
+            if text.strip(" *-:") == "QUESTION":  # a bare marker: its question is the next line
+                text = "QUESTION: " + next((n.strip() for n in lines[i + 1 :] if n.strip()), "")
+            questions.append(text)
+    if questions:
         refuse(
             f"{review} holds unanswered questions:\n"
             + "\n".join(questions)

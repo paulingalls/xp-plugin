@@ -16,8 +16,10 @@ def test_open_refuses_slate_questions_then_resumes(tmp_path, monkeypatch, capsys
         "- QUESTION (lead): Contributor or sponsor?",
         "**QUESTION:** Which migration ruling applies?",
     ]
+    # Field reviewers mostly write a bare marker with the question as the next paragraph.
+    bare = "QUESTION:\n\n**story-001.** Which inviter becomes sponsor?"
     prose = "The prose mentions QUESTION without asking one.\nQUESTIONABLE is not a question.\n"
-    review.write_text("\n".join(questions) + "\n" + prose)
+    review.write_text("\n".join(questions) + "\n" + bare + "\n\n" + prose)
     git(root, "switch", "-qc", "sprint-questions", "main")
     original_slate, original_review = slate.read_bytes(), review.read_bytes()
     record = data / "sprint_branch"
@@ -30,6 +32,7 @@ def test_open_refuses_slate_questions_then_resumes(tmp_path, monkeypatch, capsys
         assert str(review) in err
         for question in questions:
             assert question in err
+        assert "QUESTION: **story-001.** Which inviter becomes sponsor?" in err
         assert "ask the human" in err
         assert "a flat reading is the lead's own call" in err
         assert "record the ruling in the card as `Lead decisions (slate review, <date>):`" in err
