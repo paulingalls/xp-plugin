@@ -56,11 +56,48 @@ def merged_by(branch: str, target: str, cwd) -> str:
     return next((m[0] for m in map(str.split, merges.splitlines()) if tip in m[2:]), "")
 
 
-def warn_overlap(branch: str, target: str, cwd) -> None:
+def overlapping_files(branch: str, target: str, cwd) -> list[str]:
     base = gitx.fork_point(branch, target, cwd)
-    both = set(gitx.changed_files(base, branch, cwd)) & set(gitx.changed_files(base, target, cwd))
-    if both:
-        print(f"warning: {target} also changed {', '.join(sorted(both))} since the fork")
+    return sorted(
+        set(gitx.changed_files(base, branch, cwd)) & set(gitx.changed_files(base, target, cwd))
+    )
+
+
+def warn_overlap(branch: str, target: str, cwd) -> None:
+    if both := overlapping_files(branch, target, cwd):
+        print(f"warning: {target} also changed {', '.join(both)} since the fork")
+
+
+def advise_trunk_drift(target: str, path: Path) -> None:
+    try:
+        main = trunk()
+        if "origin" in gitx.git("remote", cwd=path).split():
+            gitx.git(
+                "fetch",
+                "--no-tags",
+                "origin",
+                f"+refs/heads/{main}:refs/remotes/origin/{main}",
+                cwd=path,
+            )
+            main = f"origin/{main}"
+        missing = f"{target}..{main}"
+        count = int(gitx.git("rev-list", "--count", missing, cwd=path))
+        if not count:
+            return
+        subjects = gitx.git("log", "-5", "--format=%s", missing, cwd=path).splitlines()
+        both = overlapping_files(target, main, path)
+        shown = f", newest {len(subjects)}" if count > len(subjects) else ""
+        noun = "commit" if count == 1 else "commits"
+        lines = [f"trunk drift: {main} has {count} {noun} {target} lacks{shown}:"]
+        lines += [f"  - {subject}" for subject in subjects]
+        lines += [
+            f"Files both sides changed since the fork: {', '.join(both) or 'none'}",
+            f"Before the next story, on {target}, run: {shlex.join(['git', 'merge', main])}",
+        ]
+    except gitx.GitError as exc:
+        print(f"warning: trunk drift went unchecked: {exc}")
+        return
+    print("\n".join(lines))
 
 
 def acceptance(card: cards.Card, cwd: Path, log_id: str, where: str, then: str) -> None:
@@ -312,6 +349,7 @@ def cmd_story_land(args) -> int:
         args.id, sprint_branch(), pr=False, dry_run=args.dry_run, tested_by=args.tested_by
     )
     if result == 0 and not args.dry_run:
+        advise_trunk_drift(sprint_branch(), lead_tree())
         session.print_milestones()
     return result
 
