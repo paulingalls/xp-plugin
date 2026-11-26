@@ -4,6 +4,18 @@ Release notes started at v0.6.0; earlier entries are summarized from their
 tag and merge messages. Full detail lives in the merge history and the
 per-sprint review reports.
 
+## v1.12.1
+
+- `free post-merge` no longer needs the card's worktree or local branch. Land
+  records the PR tip it pushed; when `gh pr merge --delete-branch` removed both,
+  post-merge finds the merge from that tip, reruns Acceptance in a fresh detached
+  worktree when the merged tree changed, and closes. Its refusals no longer point
+  a landed card at `xp.py free <id>` or `xp.py story <id>` (#245).
+
+Release steps: none. A free card landed before 1.12.1 has no recorded tip: keep
+its local branch until post-merge runs, or write the PR head SHA to `tip` in its
+story directory.
+
 ## v1.12.0
 
 - `sprint open` refuses unanswered questions in the slate review and prints the
