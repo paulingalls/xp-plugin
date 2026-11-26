@@ -23,10 +23,8 @@ A sprint is the smallest set of cards releasable on its own: fewer cannot ship,
 more makes a diff no review can hold. `debt_budget` caps the share of debt. Order
 prerequisites first and split cards that collide on files. Then run the slate
 review, judge every finding in the slate review file it names (correct the card,
-drop with a reason, or file debt under both JUDGMENT bars), answer each
-`QUESTION:` with the human, except a flat reading, which PROCESS Goals leaves to
-you, and open the sprint. Addressed findings need no
-second review.
+drop with a reason, or file debt under both JUDGMENT bars), and open the sprint.
+Addressed findings need no second review.
 
 ```
 xp.py sprint plan <id>

@@ -20,6 +20,7 @@ from xpcore.config import (
     trunk,
 )
 from xpcore.land import detached, fetched_trunk, pull_request, release_commit
+from xpcore.story import QUESTION
 
 
 def sprint_dir(sprint_id) -> Path:
@@ -63,6 +64,13 @@ def cmd_sprint_plan(args) -> int:
     return 0
 
 
+def paragraph(lines: list[str]) -> list[str]:
+    rest = [line.strip() for line in lines]
+    while rest and not rest[0]:
+        rest.pop(0)
+    return rest[: rest.index("")] if "" in rest else rest
+
+
 def cmd_sprint_open(args) -> int:
     branch, root, main = sprint_branch_name(args.id), repo_root(), trunk()
     cards.sprint_slate(args.id)
@@ -70,6 +78,26 @@ def cmd_sprint_open(args) -> int:
     tip = gitx.git("rev-parse", main, cwd=root)
     if gitx.fork_point(branch, main, root) != tip:
         refuse(f"{branch} is not cut from {main}'s head; `git rebase {main}` it, then open")
+    review = sprint_dir(args.id) / "slate-review.md"
+    try:
+        lines = review.read_text().splitlines()
+    except FileNotFoundError:
+        lines = []
+    questions = []
+    for i, line in enumerate(lines):
+        if QUESTION.match(line):
+            text = line.strip()
+            if text.strip(" *-:") == "QUESTION":  # bare: the next paragraph is its question
+                text = "QUESTION: " + " ".join(paragraph(lines[i + 1 :]))
+            questions.append(text)
+    if questions:
+        refuse(
+            f"{review} holds unanswered questions:\n"
+            + "\n".join(questions)
+            + "\nask the human (a flat reading is the lead's own call); "
+            "record the ruling in the card as `Lead decisions (slate review, <date>):`; "
+            f"delete the QUESTION line from {review}, then run `xp.py sprint open {args.id}` again"
+        )
     if args.dry_run:
         print(f"would record {branch} as the open sprint branch")
         return 0
