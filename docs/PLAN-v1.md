@@ -241,7 +241,8 @@ Story land trial-merges the sprint tip into the clean story worktree, runs Accep
 then merges into the clean on-sprint lead checkout. Reviews and unreviewed commits are
 named in the body; close tears down, removes worktree and branch, records landed.jsonl,
 and marks the card done. Free land instead fetches trunk, tests the trial merge, opens
-a PR, records tested_tree, and tears down while retaining the worktree and branch.
+a PR, records tested_tree and the handed-off PR head SHA in the story directory's tip
+file, and tears down while retaining the worktree and branch.
 Sprint land tests the trial merge of fetched trunk, records tested_tree and version in
 land.json, and opens a PR. With versioning on, it first walls the version. Land accepts nonblank --tested-by evidence,
 warning and recording it in the story merge body or free/sprint PR body.
@@ -253,8 +254,11 @@ that it may include later work. With versioning on, read the manifest and CHANGE
 at the selected SHA; create the local annotated tag there, independent of the invoking
 checkout's HEAD.
 
-When the selected tree differs from tested_tree, free post-merge detaches the patch
-worktree at the SHA, reruns worktree_setup, then Acceptance, and restores the branch.
+Free post-merge uses the attached worktree branch, or the recorded tip when no branch
+is attached, to find the oldest first-parent trunk commit containing it. When the
+selected tree differs from tested_tree, it detaches the patch worktree at the SHA,
+creating it when missing, reruns worktree_setup, then Acceptance, and restores an
+existing branch (or leaves a recreated worktree detached).
 Red setup or proof keeps the worktree and refuses tagging and close. Before testing a
 review fix after land, rerun configured worktree_setup there, then commit, review and
 land again. Sprint post-merge reruns the sprint hook detached at the SHA only from a
@@ -266,8 +270,9 @@ landed.jsonl or release.json. Empty evidence refuses. Dry-runs fetch but run no 
 Unchanged trees or evidence allow post-merge from a dirty checkout on another branch.
 Sprint post-merge requires leaving the sprint branch so deletion can succeed. It runs
 sprint-close in the invoking checkout, tags under versioning on, writes release.json,
-deletes the branch, then clears the branch record; tagged retries skip sprint-close. Free close tears down,
-removes the worktree and branch, records the selected SHA and marks done.
+deletes the branch, then clears the branch record; tagged retries skip sprint-close. Free close tears down and removes
+the worktree if it still exists, deletes a captured branch if it still exists, records
+the selected SHA and marks done.
 
 Trunk overlap is a warning naming the files, never a refusal. Gate-file edits are nothing
 special because there are no gate files: the hooks read the tree they run on.
