@@ -63,7 +63,10 @@ def test_free_post_merge_closes_from_inside_its_worktree(tmp_path, monkeypatch):
     assert not wt.exists() and not git(root, "branch", "--list", "free-fix-x")
 
 
-def test_free_post_merge_releases_tested_merge_off_dirty_lead(tmp_path, monkeypatch, capsys):
+@pytest.mark.parametrize("deleted", [False, True])
+def test_free_post_merge_releases_tested_merge_off_dirty_lead(
+    tmp_path, monkeypatch, capsys, deleted
+):
     from test_milestones import FILES
 
     fake_gh(tmp_path, monkeypatch)
@@ -71,19 +74,29 @@ def test_free_post_merge_releases_tested_merge_off_dirty_lead(tmp_path, monkeypa
     root, data, wt = free_patch(
         tmp_path, monkeypatch, f"echo run >> {trace}", {**manifest("1.1.1"), **FILES}
     )
+    config = (root / ".xp/config.yml").read_text() + (
+        f"worktree_setup: echo setup >> {trace}\nworktree_teardown: echo teardown >> {trace}\n"
+    )
+    commit(root, {".xp/config.yml": config}, "commands")
+    git(root, "push", "-q", "origin", "main")
     stale = git(root, "rev-parse", "main")
     assert xp.main(["free", "land", "fix"]) == 0
+    assert trace.read_text().splitlines() == ["setup", "run", "teardown"]
+    trace.write_text("")
     sha = publish_merge(root)
+    if deleted:
+        git(root, "worktree", "remove", str(wt))
+        git(root, "branch", "-D", "free-fix-x")
     commit(root, manifest("1.2.0"), "later release")
     git(root, "push", "-q", "origin", "main")
     before = park_lead(root)
     git(root, "branch", "-f", "main", stale)
     git(root, "update-ref", "refs/remotes/origin/main", stale)
     assert xp.main(["free", "post-merge", "fix", "--dry-run"]) == 0
-    assert wt.exists() and not git(root, "tag", "--list")
+    assert wt.exists() == (not deleted) and not git(root, "tag", "--list")
     assert xp.main(["free", "post-merge", "fix"]) == 0
     assert lead_state(root) == before
-    assert trace.read_text().splitlines() == ["run"]
+    assert trace.read_text().splitlines() == ([] if deleted else ["teardown"])
     out = capsys.readouterr().out
     assert "the merged tree is the one land recorded" in out and "distance=" not in out
     assert xp.main(["recover"]) == 0
@@ -95,9 +108,10 @@ def test_free_post_merge_releases_tested_merge_off_dirty_lead(tmp_path, monkeypa
     assert cards.find_card("free-fix").status == "done"
 
 
+@pytest.mark.parametrize("deleted", [False, True])
 @pytest.mark.parametrize("proof_mode", ["retry", "override"])
 def test_changed_merge_recreates_resources_then_proves_patch_tree(
-    tmp_path, monkeypatch, capsys, proof_mode
+    tmp_path, monkeypatch, capsys, proof_mode, deleted
 ):
     fake_gh(tmp_path, monkeypatch)
     trace, control = tmp_path / "trace", tmp_path / "failure"
@@ -128,16 +142,22 @@ def test_changed_merge_recreates_resources_then_proves_patch_tree(
     trace.write_text("")
     commit(root, {"peer": "before merge\n"}, "trunk moved before PR")
     sha = publish_merge(root)
+    if deleted:
+        git(root, "worktree", "remove", str(wt))
+        git(root, "branch", "-D", "free-fix-x")
     commit(root, {"later": "after merge\n"}, "later")
     git(root, "push", "-q", "origin", "main")
     before = park_lead(root)
     args = ["free", "post-merge", "fix"]
+    assert xp.main([*args, "--dry-run"]) == 0
+    assert trace.read_text() == "" and wt.exists() == (not deleted)
+    assert cards.find_card("free-fix").status == "in-progress"
     if proof_mode == "override":
         control.touch()
         proof_red.touch()
         args += ["--tested-by", "r"]
         assert xp.main([*args, "--dry-run"]) == 0
-        assert trace.read_text() == "" and wt.exists()
+        assert trace.read_text() == "" and wt.exists() == (not deleted)
         assert not git(root, "tag", "--list") and not (data / "landed.jsonl").exists()
     else:
         for failure, sentinel in (("setup", control), ("acceptance", proof_red)):
@@ -148,7 +168,12 @@ def test_changed_merge_recreates_resources_then_proves_patch_tree(
             assert exc.value.code == 2
             assert ("worktree_setup" if failure == "setup" else "Acceptance exited 1") in err
             assert not git(root, "tag", "--list") and not (data / "landed.jsonl").exists()
-            assert wt.exists() and git(wt, "branch", "--show-current") == "free-fix-x"
+            assert wt.exists()
+            assert git(wt, "branch", "--show-current") == ("" if deleted else "free-fix-x")
+            if deleted:
+                assert git(wt, "rev-parse", "HEAD") == sha
+                if failure == "acceptance":
+                    assert f"git -C {wt} switch -c free-fix-recovery" in err
             assert cards.find_card("free-fix").status == "in-progress"
             if failure == "setup":
                 assert trace.read_text().splitlines() == ["setup"]
@@ -159,13 +184,14 @@ def test_changed_merge_recreates_resources_then_proves_patch_tree(
     assert lead_state(root) == before
     lines = trace.read_text().splitlines()
     if proof_mode == "override":
-        assert lines == ["teardown"]
+        assert lines == ([] if deleted else ["teardown"])
         assert f"warning: skipped Acceptance `{proof}`: r" in capsys.readouterr().out
     else:
         assert lines == ["setup", "acceptance", str(wt), sha, "teardown"]
     assert git(root, "rev-parse", "v1.1.1^{commit}") == sha
     record = json.loads((data / "landed.jsonl").read_text())
     assert record.get("tested_by") == ("r" if proof_mode == "override" else None)
+    assert record["merge"] == sha and cards.find_card("free-fix").status == "done"
     assert not wt.exists()
 
 
@@ -237,8 +263,9 @@ def test_free_post_merge_ignores_a_sprint_tag_at_head(tmp_path, monkeypatch, cap
 def test_free_post_merge_tags_pr_merge_after_remote_branch_update(tmp_path, monkeypatch, capsys):
     fake_gh(tmp_path, monkeypatch)
     trace = tmp_path / "runs"
-    root, _, _ = free_patch(tmp_path, monkeypatch, f"echo run >> {trace}")
+    root, data, wt = free_patch(tmp_path, monkeypatch, f"git rev-parse HEAD >> {trace}")
     assert xp.main(["free", "land", "fix"]) == 0
+    assert (data / "stories/free-fix/tip").read_text() == git(wt, "rev-parse", "HEAD") + "\n"
     commit(root, {"later": "later\n"}, "trunk moved")
     git(root, "switch", "-q", "--detach", "free-fix-x")
     git(root, "merge", "-q", "--no-ff", "main", "-m", "Update branch")
@@ -247,6 +274,31 @@ def test_free_post_merge_tags_pr_merge_after_remote_branch_update(tmp_path, monk
     git(root, "merge", "-q", "--no-ff", updated, "-m", "PR")
     sha = git(root, "rev-parse", "HEAD")
     git(root, "push", "-q", "origin", "main")
+    git(root, "worktree", "remove", str(wt))
+    git(root, "branch", "-D", "free-fix-x")
+    commit(root, {"after": "after\n"}, "after PR")
+    git(root, "push", "-q", "origin", "main")
     assert xp.main(["free", "post-merge", "fix"]) == 0
-    assert trace.read_text().splitlines() == ["run", "run"]
+    assert len(trace.read_text().splitlines()) == 2
+    assert trace.read_text().splitlines()[-1] == sha
+    assert json.loads((data / "landed.jsonl").read_text())["merge"] == sha
+    assert cards.find_card("free-fix").status == "done"
     assert git(root, "rev-parse", "v1.1.1^{commit}") == sha
+
+
+def test_free_post_merge_missing_tip_has_no_spawn_hint(tmp_path, monkeypatch, capsys):
+    fake_gh(tmp_path, monkeypatch)
+    root, data, wt = free_patch(tmp_path, monkeypatch)
+    assert xp.main(["free", "land", "fix"]) == 0
+    publish_merge(root)
+    tip = data / "stories/free-fix/tip"
+    tip.unlink(missing_ok=True)
+    git(root, "worktree", "remove", str(wt))
+    git(root, "branch", "-D", "free-fix-x")
+    with pytest.raises(SystemExit) as exc:
+        xp.main(["free", "post-merge", "fix"])
+    err = capsys.readouterr().err
+    assert exc.value.code == 2 and "missing recorded PR tip" in err and str(tip) in err
+    assert all(hint not in err for hint in ("xp.py story", "xp.py free fix", "xp.py free free-fix"))
+    assert not git(root, "tag", "--list") and not (data / "landed.jsonl").exists()
+    assert cards.find_card("free-fix").status == "in-progress"

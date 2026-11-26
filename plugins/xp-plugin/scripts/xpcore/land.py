@@ -148,7 +148,7 @@ def fetched_trunk(target: str, path: Path) -> str:
 
 def release_commit(branch: str, root: Path, main: str) -> str:
     into = fetched_trunk(main, root)
-    how = gitx.merged_how(branch, into, root) if gitx.branch_exists(branch, root) else ""
+    how = gitx.merged_how(branch, into, root) if gitx.ref_exists(branch, root) else ""
     if not how:
         refuse(
             f"{branch} is not merged into {main}; merge its PR, run again; if the"
@@ -217,11 +217,13 @@ def close(
     lead: Path,
     tested_by: str | None = None,
 ) -> None:
-    teardown(card, path)
-    os.chdir(lead)
-    # The worktree before the branch: git will not delete a branch a worktree has out.
-    gitx.worktree_remove(path, cwd=lead)
-    gitx.git("branch", "-D", branch, cwd=lead)
+    if path.exists():
+        teardown(card, path)
+        os.chdir(lead)
+        # The worktree before the branch: git will not delete a branch a worktree has out.
+        gitx.worktree_remove(path, cwd=lead)
+    if branch:
+        gitx.git("branch", "-D", branch, cwd=lead)
     date = datetime.now(timezone.utc).date().isoformat()
     record = {"id": card.id, "title": card.title, "merge": merge, "date": date}
     if tested_by is not None:
@@ -281,7 +283,9 @@ def land(card_id: str, target: str, *, pr: bool, dry_run: bool, tested_by: str |
     shared.sync(card)
     if pr:
         after = f"after it merges, run `xp.py free post-merge {card.id}`"
+        tip = gitx.head(path)
         pull_request(branch, target, path, after, title=card.title, body=body)
+        (story_dir(card.id) / "tip").write_text(tip + "\n")
         teardown(card, path)
         print(
             f"next: for a review fix after land, rerun the configured worktree_setup in {path},"
@@ -389,11 +393,19 @@ def cmd_free_post_merge(args) -> int:
         shared.complete_issues([card], sha)
         free_close_next(sha)
         return result
-    path, branch = worktree_of(card)
-    if gitx.is_dirty(path):
+    path = worktree(card.id)
+    branch = gitx.current_branch(path) if path.exists() else ""
+    tip_file = story_dir(card.id) / "tip"
+    tip = branch or (tip_file.read_text().strip() if tip_file.is_file() else "")
+    if not tip:
+        refuse(
+            f"missing recorded PR tip at {tip_file}; restore the landed PR head SHA there"
+            f" and rerun xp.py free post-merge {args.id}"
+        )
+    if path.exists() and gitx.is_dirty(path):
         refuse(f"{path} has uncommitted changes; commit or discard them, then run again")
     lead, main = lead_tree(), trunk()
-    sha = release_commit(branch, lead, main)
+    sha = release_commit(tip, lead, main)
     from xpcore.notes import post_merge_mode
 
     mode = post_merge_mode(lead, sha)
@@ -421,6 +433,10 @@ def cmd_free_post_merge(args) -> int:
                 f"the merged tree is the one land recorded; {card.id}'s Acceptance does not rerun"
             )
         else:
+            if not path.exists():
+                gitx.git("worktree", "add", "--detach", str(path), sha, cwd=lead)
+            switch = shlex.join(["git", "-C", str(path), "switch", "-c", card.id + "-recovery"])
+            recovery = f"fix on {branch}" if branch else f"run {switch}, fix"
             with detached(path, sha):
                 log_id = f"{card.id}-post-merge-setup"
                 line, rc = hooks.project_command("worktree_setup", path, log_id)
@@ -434,7 +450,8 @@ def cmd_free_post_merge(args) -> int:
                     path,
                     f"{card.id}-post-merge",
                     f"{path} at {sha[:10]}",
-                    f"fix on {branch}, review and merge, then run "
+                    f"{recovery}, review with xp.py story review {card.id}, run "
+                    f"xp.py free land {args.id}, merge, then run "
                     f"xp.py free post-merge {args.id} again",
                 )
     if version and not tagged:
