@@ -20,6 +20,7 @@ from xpcore.config import (
     trunk,
 )
 from xpcore.land import detached, fetched_trunk, pull_request, release_commit
+from xpcore.story import QUESTION
 
 
 def sprint_dir(sprint_id) -> Path:
@@ -70,6 +71,19 @@ def cmd_sprint_open(args) -> int:
     tip = gitx.git("rev-parse", main, cwd=root)
     if gitx.fork_point(branch, main, root) != tip:
         refuse(f"{branch} is not cut from {main}'s head; `git rebase {main}` it, then open")
+    review = sprint_dir(args.id) / "slate-review.md"
+    try:
+        lines = review.read_text().splitlines()
+    except FileNotFoundError:
+        lines = []
+    if questions := [line.strip() for line in lines if QUESTION.match(line)]:
+        refuse(
+            f"{review} holds unanswered questions:\n"
+            + "\n".join(questions)
+            + "\nask the human (a flat reading is the lead's own call); "
+            "record the ruling in the card as `Lead decisions (slate review, <date>):`; "
+            f"delete the QUESTION line from {review}, then run `xp.py sprint open {args.id}` again"
+        )
     if args.dry_run:
         print(f"would record {branch} as the open sprint branch")
         return 0

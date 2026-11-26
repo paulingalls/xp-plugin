@@ -4,6 +4,13 @@ Release notes started at v0.6.0; earlier entries are summarized from their
 tag and merge messages. Full detail lives in the merge history and the
 per-sprint review reports.
 
+## v1.12.0
+
+- `sprint open` refuses unanswered questions in the slate review and prints the
+  steps to ask the human, record the ruling, remove the question and retry.
+
+Release steps: none.
+
 ## v1.11.0
 
 - Story and free commands print closing steps where they apply: finding dispositions,
