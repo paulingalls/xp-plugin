@@ -271,7 +271,7 @@ Unchanged trees or evidence allow post-merge from a dirty checkout on another br
 Sprint post-merge requires leaving the sprint branch so deletion can succeed. It runs
 sprint-close in the invoking checkout, tags under versioning on, writes release.json,
 deletes the branch, then clears the branch record; tagged retries skip sprint-close. Free close tears down and removes
-the worktree if it still exists, deletes a captured branch if it still exists, records
+the worktree if it still exists, deletes a captured branch, records
 the selected SHA and marks done.
 
 Trunk overlap is a warning naming the files, never a refusal. Gate-file edits are nothing

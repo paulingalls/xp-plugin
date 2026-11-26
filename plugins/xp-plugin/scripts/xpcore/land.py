@@ -222,7 +222,7 @@ def close(
         os.chdir(lead)
         # The worktree before the branch: git will not delete a branch a worktree has out.
         gitx.worktree_remove(path, cwd=lead)
-    if branch and gitx.branch_exists(branch, lead):
+    if branch:
         gitx.git("branch", "-D", branch, cwd=lead)
     date = datetime.now(timezone.utc).date().isoformat()
     record = {"id": card.id, "title": card.title, "merge": merge, "date": date}
