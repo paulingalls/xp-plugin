@@ -58,37 +58,27 @@ def file_pending(path):
                 repo = origin()
                 title = record[2]
                 body = f"{key}: {title}\n\n{record[4]}\n"
-                shared._dependencies()
                 shared._scan(title, body)
-                shared._authenticate()
                 shared._gh("label", "create", "lesson", "--force", "-R", repo)
-                url = shared._gh(
-                    "issue",
-                    "create",
-                    "--title",
-                    title,
-                    "--label",
-                    "lesson",
-                    "--body-file",
-                    "-",
-                    "-R",
-                    repo,
-                    body=body,
-                )
-                match = re.search(r"/issues/([1-9]\d*)$", url)
-                if not match:
+                try:
+                    url, number = shared.create_issue(title, "lesson", body, "-R", repo)
+                except ValueError as exc:
+                    raise ReceiptError(
+                        "issue created but number unavailable; inspect GitHub and repair ledger"
+                    ) from exc
+                if not re.fullmatch(r"[1-9]\d*", number):
                     raise ReceiptError(
                         f"issue created but number unavailable: {url}; "
                         "inspect GitHub and repair ledger"
                     )
                 lines = text.splitlines(keepends=True)
                 index = record[0]
-                lines[index] = lines[index].rstrip("\r\n") + f"; #{match[1]}\n"
+                lines[index] = lines[index].rstrip("\r\n") + f"; #{number}\n"
                 try:
                     atomic(path, "".join(lines))
                 except OSError as exc:
                     raise ReceiptError(
-                        f"created {url}; manually add ; #{match[1]} to {key} in {path}: {exc}"
+                        f"created {url}; manually add ; #{number} to {key} in {path}: {exc}"
                     ) from exc
                 text = "".join(lines)
                 print(url)
@@ -225,9 +215,7 @@ def closure_comments(requests, issues):
             raise ValueError(f"closure #{number} has invalid or unavailable evidence: {evidence}")
         comments[number] = f"Fix landed; completed based on {kind} evidence: {ref}"
     if comments:
-        shared._dependencies()
         shared._scan(*comments.values())
-        shared._authenticate()
     return comments
 
 
