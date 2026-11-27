@@ -160,8 +160,9 @@ def cmd_recover(args) -> int:
     print("\n## open records")
     if github_issues():
         print("\n".join(records.issue_records()) or "none")
-    for row in retro.recovery_rows():
-        print(row)
+    if not github_issues():
+        for row in retro.recovery_rows():
+            print(row)
     print("\n### local")
     print("\n".join(records.open_records()) or "none")
     if github_issues():

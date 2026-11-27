@@ -1,6 +1,5 @@
 """Lesson issue publication, snapshots and ledger receipts."""
 
-import fcntl
 import json
 import re
 import sys
@@ -45,44 +44,45 @@ class ReceiptError(ValueError):
     pass
 
 
-def file_pending(path):
+def file_pending(path, publish):
     if not path.exists():
         return
-    with path.with_name(path.name + ".lock").open("a") as lock:
-        fcntl.flock(lock, fcntl.LOCK_EX)
-        text = path.read_text()
-        for key, record in parse_ledger(text).items():
-            if record[1] != "proposed" or issue_number(record):
-                continue
+    created = []
+    destination = "the project wiki's Lessons.md"
+    text = path.read_text()
+    for key, record in parse_ledger(text).items():
+        if record[1] != "proposed" or issue_number(record):
+            continue
+        try:
+            repo = origin()
+            title = record[2]
+            body = f"{key}: {title}\n\n{record[4]}\n"
+            shared._scan(title, body)
+            shared._gh("label", "create", "lesson", "--force", "-R", repo)
             try:
-                repo = origin()
-                title = record[2]
-                body = f"{key}: {title}\n\n{record[4]}\n"
-                shared._scan(title, body)
-                shared._gh("label", "create", "lesson", "--force", "-R", repo)
-                try:
-                    url, number = shared.create_issue(title, "lesson", body, "-R", repo)
-                except ValueError as exc:
-                    url, number = exc.url, ""
-                if not re.fullmatch(r"[1-9]\d*", number):
-                    raise ReceiptError(
-                        f"issue created but number unavailable: {url}; "
-                        "inspect GitHub and repair ledger"
-                    )
-                lines = text.splitlines(keepends=True)
-                index = record[0]
-                lines[index] = lines[index].rstrip("\r\n") + f"; #{number}\n"
-                try:
-                    atomic(path, "".join(lines))
-                except OSError as exc:
-                    raise ReceiptError(
-                        f"created {url}; manually add ; #{number} to {key} in {path}: {exc}"
-                    ) from exc
-                text = "".join(lines)
-                print(url)
-            except (Exception, SystemExit):
-                print(f"Lesson {key} filing failed in {path}", file=sys.stderr)
-                raise
+                url, number = shared.create_issue(title, "lesson", body, "-R", repo)
+            except ValueError as exc:
+                url, number = exc.url, ""
+            if not re.fullmatch(r"[1-9]\d*", number):
+                raise ReceiptError(
+                    f"issue created but number unavailable: {url}; inspect GitHub and repair ledger"
+                )
+            lines = text.splitlines(keepends=True)
+            index = record[0]
+            lines[index] = lines[index].rstrip("\r\n") + f"; #{number}\n"
+            created.append(f"{url}\n{lines[index].rstrip()}")
+            try:
+                atomic(path, "".join(lines))
+                publish(path)
+            except (Exception, SystemExit) as exc:
+                raise ReceiptError(
+                    f"add whichever lines {destination} lacks:\n" + "\n".join(created) + f"\n{exc}"
+                ) from exc
+            text = "".join(lines)
+            print(url)
+        except (Exception, SystemExit):
+            print(f"Lesson {key} filing failed in {destination}", file=sys.stderr)
+            raise
 
 
 def atomic(path, text):
@@ -100,38 +100,32 @@ def synchronize(path, snapshot):
         r[1] == "proposed" and issue_number(r) for r in parse_ledger(snapshot).values()
     ):
         return snapshot
-    with path.with_name(path.name + ".lock").open("a") as lock:
-        fcntl.flock(lock, fcntl.LOCK_EX)
-        snapshot = path.read_text()
-        lines = snapshot.splitlines(keepends=True)
-        for key, record in parse_ledger(snapshot).items():
-            number = issue_number(record)
-            if record[1] != "proposed" or not number:
+    snapshot = path.read_text()
+    lines = snapshot.splitlines(keepends=True)
+    for key, record in parse_ledger(snapshot).items():
+        number = issue_number(record)
+        if record[1] != "proposed" or not number:
+            continue
+        try:
+            issue = json.loads(
+                shared._gh("issue", "view", number, "--json", "state,stateReason", "-R", origin())
+            )
+            if not isinstance(issue, dict) or not {"state", "stateReason"} <= issue.keys():
+                raise ValueError("missing issue state/stateReason")
+            if issue["state"] == "OPEN":
                 continue
-            try:
-                issue = json.loads(
-                    shared._gh(
-                        "issue", "view", number, "--json", "state,stateReason", "-R", origin()
-                    )
-                )
-                if not isinstance(issue, dict) or not {"state", "stateReason"} <= issue.keys():
-                    raise ValueError("missing issue state/stateReason")
-                if issue["state"] == "OPEN":
-                    continue
-                if issue["state"] != "CLOSED" or issue["stateReason"] not in (
-                    "COMPLETED",
-                    "NOT_PLANNED",
-                ):
-                    raise ValueError(f"unsupported issue disposition: {issue}")
-                status = "applied" if issue["stateReason"] == "COMPLETED" else "dropped"
-                index = record[0]
-                lines[index] = lines[index].replace("[proposed]", f"[{status}]", 1)
-            except (OSError, RuntimeError, ValueError, KeyError, TypeError) as exc:
-                print(f"Lesson {key} #{number} lookup failed; unchanged: {exc}", file=sys.stderr)
-        updated = "".join(lines)
-        if updated != snapshot:
-            atomic(path, updated)
-        return updated
+            if issue["state"] != "CLOSED" or issue["stateReason"] not in (
+                "COMPLETED",
+                "NOT_PLANNED",
+            ):
+                raise ValueError(f"unsupported issue disposition: {issue}")
+            lines[record[0]] = ""
+        except (OSError, RuntimeError, ValueError, KeyError, TypeError) as exc:
+            print(f"Lesson {key} #{number} lookup failed; unchanged: {exc}", file=sys.stderr)
+    updated = "".join(lines)
+    if updated != snapshot:
+        atomic(path, updated)
+    return updated
 
 
 def issue_input():
