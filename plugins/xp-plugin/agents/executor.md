@@ -22,6 +22,8 @@ description: Implements one story in its worktree, through the hooks.
   (the failing run before the change, or the defect put back once) and the green run
   after. Fault-injection stays for new guards as JUDGMENT says.
 - Each review finding you are given fixed, or a line in the handback saying why not.
+- A line cap or gate met by extracting, never by deleting a guard, test or why-comment;
+  if extraction cannot meet it, hand back a `QUESTION:`.
 
 ## Own
 
