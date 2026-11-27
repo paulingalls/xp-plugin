@@ -8,10 +8,11 @@ import shutil
 import socket
 import subprocess
 
-from xpcore import bundle, cards, gitx, hooks, launch
+from xpcore import cards, gitx
 from xpcore.config import github_issues, refuse, repo_root, require_github_issues
 
 GH_TIMEOUT = 30
+FIELD = re.compile(r"^([^\s:][^:]*):")
 
 
 def _dependencies() -> None:
@@ -89,9 +90,8 @@ def owner() -> str:
     return f"{gitx.common_dir().parent.name}@{machine}"
 
 
-def public_body(card: cards.Card, context: str | None = None) -> str:
-    if context is None:
-        context = f"local to {owner()}"
+def public_body(card: cards.Card) -> str:
+    context = f"local to {owner()}"
     lines = [card.lines[0], f"Context: {context}"]
     ac = False
     for line in card.lines[1:]:
@@ -101,7 +101,7 @@ def public_body(card: cards.Card, context: str | None = None) -> str:
             or re.match(r"\d+\. ", line)
         ):
             lines.append(line)
-        elif match := re.match(r"^([^\s:][^:]*):", line):
+        elif match := FIELD.match(line):
             ac = match[1] == "AC"
             if match[1] in {"Measure", "AC", "Files", "Acceptance", "Evidence", "Executor"}:
                 lines.append(line)
@@ -120,8 +120,16 @@ def _push(card: cards.Card, issue: str, take: bool = False) -> None:
     holders, published = _holders(issue)
     if others := [h for h in holders if h != owner()]:
         refuse(f"{issue} is held by {', '.join(others)}; its text is theirs; {card.id} stays local")
-    context = issue_card(published).field("Context") if card.field("Published by") else None
-    body = public_body(card, context)
+    if card.field("Published by"):
+        start, end = context_span(card.lines)
+        public = issue_card(published).lines
+        public_start, public_end = context_span(public)
+        body = (
+            "\n".join(card.lines[:start] + public[public_start:public_end] + card.lines[end:])
+            + "\n"
+        )
+    else:
+        body = public_body(card)
     _scan(card.title, body)
     edit = ["issue", "edit", issue[1:], "--title", card.title, "--body-file", "-"]
     if take and not holders:
@@ -152,26 +160,14 @@ def sync(card: cards.Card) -> None:
         refuse(f"GitHub update of {issue} failed: {exc}; fix gh access and retry")
 
 
-def publish_context(card: cards.Card) -> str:
-    log_id = f"{card.id}-publisher"
-    seat = launch.run_agent(
-        "publisher",
-        bundle.prompt("publisher", card=card, paths={"CARD_ID": card.id}),
-        repo_root(),
-        log_id,
-    )
-    try:
-        context = json.loads(seat.stdout)["context"]
-        if (
-            seat.returncode
-            or not isinstance(context, str)
-            or not context.strip()
-            or context.splitlines() != [context]
-        ):
-            raise ValueError("expected a nonblank single-line context")
-    except (ValueError, KeyError, TypeError) as exc:
-        raise ValueError(f"publisher failed; read {hooks.log_path(log_id)}") from exc
-    return context
+def context_span(lines: list[str]) -> tuple[int, int]:
+    for start, line in enumerate(lines):
+        if line.startswith("Context:"):
+            end = start + 1
+            while end < len(lines) and not FIELD.match(lines[end]):
+                end += 1
+            return start, end
+    return 1, 1
 
 
 def cmd_publish(args) -> int:
@@ -185,7 +181,11 @@ def cmd_publish(args) -> int:
             _dependencies()
             _authenticate()
             moving = cards.publish_moves(card.id)
-            body = public_body(card, publish_context(card) if moving else None)
+            body = (
+                "\n".join([*card.lines, f"Published by: {owner()}"]) + "\n"
+                if moving
+                else public_body(card)
+            )
             _scan(card.title, body)
             ensure_label("card")
             url, number = create_issue(card.title, "card", body)
@@ -193,8 +193,8 @@ def cmd_publish(args) -> int:
                 cards.set_field(card.id, "Issue", f"#{number}")
                 if moving:
                     print(f"{card.id} kept: edited while publishing; republish to update #{number}")
-            if moving:
-                print(body.splitlines()[1])
+            else:
+                print(f"{card.id}: moved {len(card.lines)} lines to #{number}")
             print(url)
     except (RuntimeError, ValueError, KeyError, TypeError) as exc:
         refuse(f"GitHub publication failed: {exc}")

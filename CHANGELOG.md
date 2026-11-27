@@ -4,6 +4,16 @@ Release notes started at v0.6.0; earlier entries are summarized from their
 tag and merge messages. Full detail lives in the merge history and the
 per-sprint review reports.
 
+## v1.15.1
+
+- Moving card publication preserves every line, including unlisted fields and
+  prose, and reports the moved line count. Removed the Context-writing agent.
+- Claimed updates preserve every non-Context line and the issue's full Context;
+  private local Context edits stay local. Retained originals keep their
+  allowlisted body and local Context placeholder.
+
+Release steps: none.
+
 ## v1.15.0
 
 - With GitHub issues enabled, `card publish` moves a planned card outside any

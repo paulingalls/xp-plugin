@@ -1,10 +1,10 @@
 import xp
 from test_records import refused, repo, state  # noqa: F401
-from test_shared import CARD, plan, publisher  # noqa: F401
+from test_shared import CARD, plan
 from xpcore import cards
 
 
-def test_claim_collision_leaves_issue_unheld(repo, publisher, capsys):  # noqa: F811
+def test_claim_collision_leaves_issue_unheld(repo, capsys):  # noqa: F811
     plan()
     assert xp.main(["card", "publish", "free-share"]) == 0
     plan(CARD.replace("shared work", "different local work"))
