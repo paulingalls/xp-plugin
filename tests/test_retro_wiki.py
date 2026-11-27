@@ -3,6 +3,7 @@ import json
 import pytest
 import xp
 from test_land import git
+from test_retro import result
 from test_retro_filing import state, two_proposals, wiki_commit, wiki_read, wiki_seed
 from xpcore import gitx, retro
 
@@ -162,3 +163,95 @@ def test_receipt_push_repair(publishing, monkeypatch, capsys):
     assert creations == [0, 1, 2]
     assert len(state(publishing)["issues"]) == 2
     assert git(publishing[0].parent / "origin.wiki.git", "show", "HEAD:Home.md") == "Peer writer"
+
+
+def closed_citation(publishing, monkeypatch, disposition="COMPLETED"):
+    issue = dict(
+        number=780,
+        title="Keep evidence",
+        state="CLOSED",
+        stateReason=disposition,
+        closedAt="2026-11-26",
+        labels=[{"name": "lesson"}],
+    )
+    snapshot = state(publishing)
+    snapshot["issues"] = [issue]
+    publishing[3].write_text(json.dumps(snapshot))
+    result(monkeypatch)
+    import os
+
+    answer = json.loads(os.environ["RETRO_RESULT"])
+    answer["sightings"] = [{"lesson": "#780"}]
+    answer["proposals"][0]["lessons"] = ["#780"]
+    monkeypatch.setenv("RETRO_RESULT", json.dumps(answer))
+    return snapshot, answer
+
+
+@pytest.mark.parametrize("disposition", ["COMPLETED", "NOT_PLANNED"])
+@pytest.mark.parametrize("existing", [False, True])
+def test_closed_citation_and_rerun(publishing, monkeypatch, disposition, existing):
+    snapshot, _ = closed_citation(publishing, monkeypatch, disposition)
+    if existing:
+        snapshot["issues"].append(
+            dict(
+                number=99,
+                title="Replacement for #780: Keep evidence",
+                state="OPEN",
+                stateReason=None,
+                closedAt=None,
+                labels=[{"name": "lesson"}],
+            )
+        )
+        publishing[3].write_text(json.dumps(snapshot))
+        wiki_seed(
+            publishing,
+            "- L7 [proposed] Replacement for #780: Keep evidence "
+            "(seen: other:0) -> proposal: Delete the step; cost: An hour; #99\n",
+        )
+    assert xp.main(["retro", "1"]) == 0
+    first = wiki_read(publishing)
+    assert first.count("Replacement for #780: Keep evidence") == 1
+    assert "other:0, repo:1" in first if existing else "seen: repo:1" in first
+    assert "Delete the step" in first and "An hour" in first
+    issues = state(publishing)["issues"]
+    assert issues[0] == snapshot["issues"][0]
+    assert len(issues) == 2 and issues[1]["state"] == "OPEN"
+    assert issues[1]["title"] == "Replacement for #780: Keep evidence"
+    if not existing:
+        assert issues[1]["body"].startswith("Replacement for #780: Keep evidence\n\n")
+        assert "Delete the step" in issues[1]["body"] and "An hour" in issues[1]["body"]
+    assert f"; #{issues[1]['number']}" in first
+    assert xp.main(["retro", "1"]) == 0
+    assert wiki_read(publishing) == first
+    assert state(publishing)["issues"] == issues
+    creates = [a for a, _ in state(publishing)["calls"] if a[:2] == ["issue", "create"]]
+    assert len(creates) == int(not existing)
+
+
+@pytest.mark.parametrize("invalid", ["open", "nonlesson", "absent", "marker"])
+def test_invalid_citation_preserves_answer(publishing, monkeypatch, capsys, invalid):
+    snapshot, answer = closed_citation(publishing, monkeypatch)
+    if invalid == "open":
+        snapshot["issues"][0]["state"] = "OPEN"
+    elif invalid == "nonlesson":
+        snapshot["issues"][0]["labels"] = [{"name": "bug"}]
+    elif invalid == "absent":
+        snapshot["pages"] = [{"data": {"repository": {"issues": {"nodes": []}}}}]
+    else:
+        snapshot["issues"][0]["title"] = "Bad (seen: injected)"
+    publishing[3].write_text(json.dumps(snapshot))
+    answer["sightings"].insert(0, {"lesson": "new:1", "text": "Valid observation"})
+    monkeypatch.setenv("RETRO_RESULT", json.dumps(answer))
+    original = "- L1 [sighting] Stable (seen: prior:0) -> not proposed\n"
+    wiki_seed(publishing, original)
+    previous = publishing[2] / "retro.md"
+    previous.write_text("Previous retro")
+    assert xp.main(["retro", "1"]) == 1
+    assert "#780" in capsys.readouterr().err
+    assert wiki_read(publishing) == original and previous.read_text() == "Previous retro"
+    assert state(publishing)["issues"] == snapshot["issues"]
+    assert not [
+        a
+        for a, _ in state(publishing)["calls"]
+        if a[:2] in (["issue", "create"], ["issue", "close"])
+    ]

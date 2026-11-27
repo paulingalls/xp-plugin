@@ -56,7 +56,7 @@ def file_pending(path, publish):
         try:
             repo = origin()
             title = record[2]
-            body = f"{key}: {title}\n\n{record[4]}\n"
+            body = f"{title}\n\n{record[4]}\n"
             shared._scan(title, body)
             shared._gh("label", "create", "lesson", "--force", "-R", repo)
             try:
@@ -96,11 +96,8 @@ def atomic(path, text):
 
 
 def synchronize(path, snapshot):
-    if not config.github_issues() or not any(
-        r[1] == "proposed" and issue_number(r) for r in parse_ledger(snapshot).values()
-    ):
+    if not config.github_issues():
         return snapshot
-    snapshot = path.read_text()
     lines = snapshot.splitlines(keepends=True)
     for key, record in parse_ledger(snapshot).items():
         number = issue_number(record)
@@ -172,6 +169,14 @@ pageInfo { hasNextPage endCursor }
         raise ValueError(f"issue snapshot lookup failed: {exc}") from exc
 
 
+def lesson_issue(issue, state):
+    return (
+        issue
+        and issue["state"] == state
+        and any(label["name"] == "lesson" for label in issue["labels"]["nodes"])
+    )
+
+
 def closure_comments(requests, issues):
     if not isinstance(requests, list):
         raise ValueError("closures must be a list")
@@ -183,11 +188,7 @@ def closure_comments(requests, issues):
         if type(number) is not int or number < 1 or number in comments:
             raise ValueError("closure issue must be a unique positive integer")
         issue = issues.get(number)
-        if (
-            not issue
-            or issue["state"] != "OPEN"
-            or not any(label["name"] == "lesson" for label in issue["labels"]["nodes"])
-        ):
+        if not lesson_issue(issue, "OPEN"):
             raise ValueError(f"closure #{number} is not an open lesson")
         if not isinstance(evidence, dict) or set(evidence) != {"kind", "ref"}:
             raise ValueError("closure evidence requires kind and ref only")
