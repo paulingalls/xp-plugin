@@ -7,7 +7,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-from xpcore import bundle, cards, config, gitx, launch
+from xpcore import bundle, cards, config, gitx, launch, shared
 from xpcore.lesson_issues import (
     ReceiptError,
     atomic,
@@ -16,16 +16,10 @@ from xpcore.lesson_issues import (
     file_pending,
     issue_input,
     issue_number,
+    origin,
     parse_ledger,
     synchronize,
 )
-
-CONTRACT = """Return only JSON:
-{"sightings":[{"lesson":"L3"},{"lesson":"new:1","text":"New lesson"}],
-"proposals":[{"lessons":["L3","new:1"],"text":"Action","why":{"sightings":"Supporting sightings",
-"cost":"What each cost","form":"Why this form over a cheaper fix"}}]}.
-Use existing IDs or unique new:<n> keys. Every proposal references returned sightings.
-No other fields. Write Markdown with Misses, Sightings and Proposals to RETRO_PATH."""
 
 
 def ledger_path() -> Path:
@@ -46,19 +40,10 @@ def recovery_rows():
     malformed = []
     records = parse_ledger(text, malformed)
     lines = text.splitlines()
-    rows = [
-        lines[record[0]]
-        for record in records.values()
-        if record[1] == "proposed" and not config.github_issues()
-    ] + malformed
+    rows = [lines[record[0]] for record in records.values() if record[1] == "proposed"] + malformed
     if not rows:
         return []
-    disposal = (
-        "close applied issues as completed; dropped as not planned with the reason"
-        if config.github_issues()
-        else f"edit lesson status in {path}"
-    )
-    return [f"\n### lessons — {disposal}", *rows]
+    return [f"\n### lessons — edit lesson status in {path}", *rows]
 
 
 def words(value):
@@ -254,15 +239,42 @@ def persist(path, candidate, target, result, refs, sighting):
             raise
 
 
+def publish(path):
+    if gitx.git("status", "--porcelain", "--", path.name, cwd=path.parent):
+        shared._scan(path.read_text())
+        gitx.git("add", path.name, cwd=path.parent)
+        identity = ("-c", "user.name=xp", "-c", "user.email=xp@localhost")
+        gitx.git(*identity, "commit", "-m", "Lessons", cwd=path.parent)
+        gitx.git("push", "origin", "HEAD", cwd=path.parent)
+
+
 def run(identifier):
-    folder = config.data_root() / "sprints" / identifier
-    if not (folder / "release.json").is_file():
+    if not (config.data_root() / "sprints" / identifier / "release.json").is_file():
         raise ValueError("sprint must be released first")
     path = ledger_path()
+    with tempfile.TemporaryDirectory() as temporary:
+        if config.github_issues():
+            if path.exists():
+                raise ValueError(
+                    f"merge {path} into the wiki's Lessons.md, then remove the local file"
+                )
+            try:
+                gitx.git("clone", re.sub(r"(?:\.git)?$", ".wiki.git", origin(), count=1), temporary)
+            except gitx.GitError as exc:
+                url = json.loads(shared._gh("repo", "view", origin(), "--json", "url"))["url"]
+                raise ValueError(f"{exc}; create the wiki's first page at {url}/wiki") from exc
+            path = Path(temporary) / "Lessons.md"
+        run_ledger(identifier, path)
+
+
+def run_ledger(identifier, path):
+    folder = config.data_root() / "sprints" / identifier
     if config.github_issues():
-        file_pending(path)
+        file_pending(path, publish)
     snapshot = path.read_text() if path.exists() else ""
     snapshot = synchronize(path, snapshot)
+    if config.github_issues():
+        publish(path)
     issues, live = issue_input() if config.github_issues() else (None, "")
     records = parse_ledger(snapshot)
     slate = cards.sprint_slate(identifier)
@@ -275,20 +287,7 @@ def run(identifier):
         prompt = bundle.prompt(
             "retro",
             slate=slate,
-            extra=inputs(identifier, slate, snapshot)
-            + "\n"
-            + live
-            + "\n"
-            + CONTRACT
-            + (
-                "\nWith GitHub enabled, optionally add closures: "
-                '[{"issue":224,"evidence":{"kind":"issue","ref":"#780"}}]. '
-                "Cite a supplied closed issue, repository commit, or existing rule "
-                "(.xp/system.md: section or .xp/constraints.md: rule). "
-                "Request completed lessons only; dropping is the human's ruling."
-                if issues is not None
-                else ""
-            ),
+            extra=inputs(identifier, slate, snapshot) + "\n" + live,
             paths={
                 "RETRO_PATH": str(candidate),
                 "SIGHTING": f"{gitx.common_dir().parent.name}:{identifier}",
@@ -302,8 +301,12 @@ def run(identifier):
         sighting = f"{gitx.common_dir().parent.name}:{identifier}"
         persist(path, candidate, target, result, refs, sighting)
         if config.github_issues():
-            close_lessons(path, comments)
-            file_pending(path)
+            publish(path)
+            try:
+                close_lessons(path, comments)
+            finally:
+                publish(path)
+            file_pending(path, publish)
         print(f"Retro: {target}")
         for proposal in result["proposals"]:
             print(f"Proposal: {words(proposal['text'])}\nWhy: {why_text(proposal)}")
