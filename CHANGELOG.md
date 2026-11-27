@@ -4,6 +4,17 @@ Release notes started at v0.6.0; earlier entries are summarized from their
 tag and merge messages. Full detail lives in the merge history and the
 per-sprint review reports.
 
+## v1.13.0
+
+- With GitHub issues enabled, retros automatically publish proposed lessons,
+  including existing unfiled proposals. Reruns retry pending filings and retain
+  saved issue receipts; a failed receipt write names the manual repair.
+- Removed manual lesson filing and unfiled proposal recovery rows.
+- Retros receive live open and recently closed bug, debt and lesson issues,
+  alongside project rules, to avoid proposing work already covered.
+
+Release steps: none.
+
 ## v1.12.2
 
 - The story reviewer treats handback reds as claims to re-run independently,

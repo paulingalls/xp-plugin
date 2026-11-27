@@ -6,7 +6,6 @@ xp.py sprint plan|open|review|land|post-merge <id>
 xp.py story <id> | story review <id> | story land <id>
 xp.py free <slug> | free land <slug> | free post-merge <slug>
 xp.py card publish <id> | card claim <N>   (github_issues: on)
-xp.py lesson file <n>   (github_issues: on)
 xp.py bug | debt | note | resolve ...
 """
 
@@ -65,12 +64,6 @@ def build() -> argparse.ArgumentParser:
     retro = sub.add_parser("retro", help="run a released sprint retro")
     retro.add_argument("id")
     retro.set_defaults(run=handler("retro", "cmd_retro"))
-
-    lesson = sub.add_parser("lesson", help="file a proposed lesson")
-    actions = lesson.add_subparsers(dest="action", required=True)
-    filing = actions.add_parser("file")
-    filing.add_argument("id", type=int)
-    filing.set_defaults(run=handler("retro", "cmd_lesson_file"))
 
     cp = sub.add_parser("card", help="publish or claim a shared card")
     cs = cp.add_subparsers(dest="action", required=True)

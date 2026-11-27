@@ -59,9 +59,9 @@ def recovery_rows():
     records = parse_ledger(text, malformed)
     lines = text.splitlines()
     rows = [
-        lines[record[0]] + (f" — xp.py lesson file {key[1:]}" if config.github_issues() else "")
-        for key, record in records.items()
-        if record[1] == "proposed" and (not config.github_issues() or not issue_number(record))
+        lines[record[0]]
+        for record in records.values()
+        if record[1] == "proposed" and not config.github_issues()
     ] + malformed
     if not rows:
         return []
@@ -80,60 +80,60 @@ def origin():
     return url
 
 
-def cmd_lesson_file(args):
-    config.require_github_issues()
-    try:
-        path = ledger_path()
-        with path.with_name(path.name + ".lock").open("a") as lock:
-            fcntl.flock(lock, fcntl.LOCK_EX)
-            text = path.read_text()
-            key = f"L{args.id}"
-            records = parse_ledger(text)
-            if key not in records:
-                raise ValueError(f"unknown lesson {key}")
-            record = records[key]
-            if record[1] != "proposed":
-                raise ValueError(f"{key} is not proposed")
-            if issue_number(record):
-                raise ValueError(f"{key} already filed as #{issue_number(record)}")
-            repo = origin()
-            title = record[2]
-            body = f"{key}: {title}\n\n{record[4]}\n"
-            shared._dependencies()
-            shared._scan(title, body)
-            shared._authenticate()
-            shared._gh("label", "create", "lesson", "--force", "-R", repo)
-            url = shared._gh(
-                "issue",
-                "create",
-                "--title",
-                title,
-                "--label",
-                "lesson",
-                "--body-file",
-                "-",
-                "-R",
-                repo,
-                body=body,
-            )
-            match = re.search(r"/issues/([1-9]\d*)$", url)
-            if not match:
-                raise ValueError(
-                    f"issue created but number unavailable: {url}; inspect GitHub and repair ledger"
-                )
-            lines = text.splitlines(keepends=True)
-            index = record[0]
-            lines[index] = lines[index].rstrip("\r\n") + f"; #{match[1]}\n"
+class ReceiptError(ValueError):
+    pass
+
+
+def file_pending(path):
+    if not path.exists():
+        return
+    with path.with_name(path.name + ".lock").open("a") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        text = path.read_text()
+        for key, record in parse_ledger(text).items():
+            if record[1] != "proposed" or issue_number(record):
+                continue
             try:
-                atomic(path, "".join(lines))
-            except OSError as exc:
-                raise ValueError(
-                    f"created {url}; manually add ; #{match[1]} to {key} in {path}: {exc}"
-                ) from exc
-            print(url)
-        return 0
-    except (OSError, RuntimeError, ValueError, KeyError) as exc:
-        config.refuse(f"lesson filing failed: {exc}")
+                repo = origin()
+                title = record[2]
+                body = f"{key}: {title}\n\n{record[4]}\n"
+                shared._dependencies()
+                shared._scan(title, body)
+                shared._authenticate()
+                shared._gh("label", "create", "lesson", "--force", "-R", repo)
+                url = shared._gh(
+                    "issue",
+                    "create",
+                    "--title",
+                    title,
+                    "--label",
+                    "lesson",
+                    "--body-file",
+                    "-",
+                    "-R",
+                    repo,
+                    body=body,
+                )
+                match = re.search(r"/issues/([1-9]\d*)$", url)
+                if not match:
+                    raise ReceiptError(
+                        f"issue created but number unavailable: {url}; "
+                        "inspect GitHub and repair ledger"
+                    )
+                lines = text.splitlines(keepends=True)
+                index = record[0]
+                lines[index] = lines[index].rstrip("\r\n") + f"; #{match[1]}\n"
+                try:
+                    atomic(path, "".join(lines))
+                except OSError as exc:
+                    raise ReceiptError(
+                        f"created {url}; manually add ; #{match[1]} to {key} in {path}: {exc}"
+                    ) from exc
+                text = "".join(lines)
+                print(url)
+            except (Exception, SystemExit):
+                print(f"Lesson {key} filing failed in {path}", file=sys.stderr)
+                raise
 
 
 def words(value):
@@ -375,13 +375,58 @@ def synchronize(path, snapshot):
         return updated
 
 
+def issue_input():
+    try:
+        repo = json.loads(shared._gh("repo", "view", origin(), "--json", "nameWithOwner"))
+        owner, name = repo["nameWithOwner"].split("/")
+        query = """query($owner:String!, $name:String!, $endCursor:String) {
+repository(owner:$owner, name:$name) {
+issues(first:100, after:$endCursor, states:[OPEN,CLOSED], labels:["bug","debt","lesson"]) {
+nodes { number title state stateReason closedAt }
+pageInfo { hasNextPage endCursor }
+}}}"""
+        pages = json.loads(
+            shared._gh(
+                "api",
+                "graphql",
+                "--paginate",
+                "--slurp",
+                "-f",
+                f"query={query}",
+                "-F",
+                f"owner={owner}",
+                "-F",
+                f"name={name}",
+            )
+        )
+        nodes = [node for page in pages for node in page["data"]["repository"]["issues"]["nodes"]]
+        opened = [node for node in nodes if node["state"] == "OPEN"]
+        closed = sorted(
+            (node for node in nodes if node["state"] == "CLOSED"),
+            key=lambda node: node["closedAt"],
+            reverse=True,
+        )[:50]
+        rows = [
+            f"#{node['number']} {node['title']} — {node['state']} ({node['stateReason']})"
+            for node in opened + closed
+        ]
+        return "Live bug, debt and lesson issues (all open; 50 most recently closed):\n" + (
+            "\n".join(rows) if rows else "none"
+        )
+    except (OSError, RuntimeError, ValueError, KeyError, TypeError) as exc:
+        raise ValueError(f"issue snapshot lookup failed: {exc}") from exc
+
+
 def run(identifier):
     folder = config.data_root() / "sprints" / identifier
     if not (folder / "release.json").is_file():
         raise ValueError("sprint must be released first")
     path = ledger_path()
+    if config.github_issues():
+        file_pending(path)
     snapshot = path.read_text() if path.exists() else ""
     snapshot = synchronize(path, snapshot)
+    live = issue_input() if config.github_issues() else ""
     records = parse_ledger(snapshot)
     slate = cards.sprint_slate(identifier)
     with tempfile.NamedTemporaryFile(
@@ -393,7 +438,7 @@ def run(identifier):
         prompt = bundle.prompt(
             "retro",
             slate=slate,
-            extra=inputs(identifier, slate, snapshot) + "\n" + CONTRACT,
+            extra=inputs(identifier, slate, snapshot) + "\n" + live + "\n" + CONTRACT,
             paths={
                 "RETRO_PATH": str(candidate),
                 "SIGHTING": f"{gitx.common_dir().parent.name}:{identifier}",
@@ -406,6 +451,8 @@ def run(identifier):
         target = folder / "retro.md"
         sighting = f"{gitx.common_dir().parent.name}:{identifier}"
         persist(path, candidate, target, result, refs, sighting)
+        if config.github_issues():
+            file_pending(path)
         print(f"Retro: {target}")
         for proposal in result["proposals"]:
             print(f"Proposal: {words(proposal['text'])}\nWhy: {why_text(proposal)}")
@@ -420,5 +467,6 @@ def cmd_retro(args):
         run(args.id)
         return 0
     except (Exception, SystemExit) as exc:
-        print(f"Retro failed: {exc}; run xp.py retro {args.id} to retry", file=sys.stderr)
+        retry = "" if isinstance(exc, ReceiptError) else f"; run xp.py retro {args.id} to retry"
+        print(f"Retro failed: {exc}{retry}", file=sys.stderr)
         return 1
