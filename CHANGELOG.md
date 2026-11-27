@@ -4,11 +4,40 @@ Release notes started at v0.6.0; earlier entries are summarized from their
 tag and merge messages. Full detail lives in the merge history and the
 per-sprint review reports.
 
-## v1.12.2
+## v1.14.1
 
 - `story land` no longer runs the milestone Measures after every sprint story.
   Readings are taken where progress is judged: free mint, free close and sprint
   close.
+
+Release steps: none.
+
+## v1.14.0
+
+- Retros close open lesson issues whose fixes have landed, citing a closed issue,
+  repository commit or project rule in the completion comment. Linked ledger rows
+  become applied in the same retro. Dropping lessons remains the human's ruling.
+
+Release steps: none.
+
+## v1.13.0
+
+- With GitHub issues enabled, retros automatically publish proposed lessons,
+  including existing unfiled proposals. Reruns retry pending filings and retain
+  saved issue receipts; a failed receipt write names the manual repair.
+- Removed manual lesson filing and unfiled proposal recovery rows.
+- Retros receive live open and recently closed bug, debt and lesson issues,
+  alongside project rules, to avoid proposing work already covered.
+
+Release steps: none.
+
+## v1.12.2
+
+- The story reviewer treats handback reds as claims to re-run independently,
+  dropping each guard operand on its own and isolating each site when an input
+  is shared by two sites.
+- Planning no longer proposes card Files corrections or checks Files against
+  the plan.
 
 Release steps: none.
 

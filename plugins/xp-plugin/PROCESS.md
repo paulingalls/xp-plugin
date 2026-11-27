@@ -17,9 +17,12 @@ users see.
 3. Each story: `xp.py story <id>`, follow its `next:` lines, `xp.py story land <id>`.
 4. `/sprint-close`: `xp.py sprint review <id>`, judge, `xp.py sprint land <id>`;
    after the PR merges, leave the sprint branch, `xp.py sprint post-merge <id>`.
-   Retro prints its path and proposals/why, records sightings; retry: `xp.py retro <id>`.
+   Retry retro: `xp.py retro <id>`; repair any failed issue receipt first.
 
-With `github_issues: on`, a card another clone will run is published (`xp.py card publish <id>`), then claimed there (`xp.py card claim <N>`); sprint open and land republish it; the lead checks published cards and filed lessons (`xp.py lesson file <n>`) name no personal material, because gitleaks catches secrets only.
+With `github_issues: on`, publish shared cards (`xp.py card publish <id>`), then
+claim (`xp.py card claim <N>`); sprint open/land republish. The lead checks cards
+for personal material; gitleaks checks secrets only. Retro files all unfiled
+proposed lessons automatically; closing issues supplies dispositions next retro.
 
 **Story.** Re-run after edits. Delete `plan.md` or
 `handback.md` in the story data directory to repeat that stage.

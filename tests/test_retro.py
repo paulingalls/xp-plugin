@@ -455,6 +455,10 @@ def test_refresh_filed_proposals(tmp_path, monkeypatch, fake_retro, capsys, enab
         "#!/usr/bin/env python3\nimport json, sys\nfrom pathlib import Path\n"
         f"with Path({str(data / 'queries')!r}).open('a') as f:\n"
         "    f.write(json.dumps(sys.argv[1:])+'\\n')\n"
+        "if sys.argv[1:3] == ['repo', 'view']:\n"
+        '    print(\'{"nameWithOwner":"owner/project"}\'); sys.exit()\n'
+        "if sys.argv[1:3] == ['api', 'graphql']:\n"
+        '    print(\'[{"data":{"repository":{"issues":{"nodes":[]}}}}]\'); sys.exit()\n'
         "n = int(sys.argv[3])\n"
         "if n == 4: sys.exit('lookup unavailable')\n"
         "print(json.dumps({1: {'state':'CLOSED','stateReason':'COMPLETED'}, "
@@ -477,7 +481,7 @@ def test_refresh_filed_proposals(tmp_path, monkeypatch, fake_retro, capsys, enab
         assert "L1 [applied]" in prompt and "L2 [dropped]" in prompt
         queries = [json.loads(row) for row in (data / "queries").read_text().splitlines()]
         url = git(root, "remote", "get-url", "origin")
-        assert queries == [
+        assert [q for q in queries if q[:2] == ["issue", "view"]] == [
             ["issue", "view", str(i), "--json", "state,stateReason", "-R", url] for i in range(1, 8)
         ]
         output = capsys.readouterr()
