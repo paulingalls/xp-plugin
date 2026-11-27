@@ -1,5 +1,6 @@
 import re
 import time
+from pathlib import Path
 
 import pytest
 import xp
@@ -160,3 +161,67 @@ def test_free_mint_without_milestones_says_to_copy_the_template(tmp_path, monkey
     template = session.plugin_root() / "templates" / "milestones.md"
     assert f"no .xp/milestones.md: copy {template} there" in out
     assert out.index("no .xp/milestones.md") < out.index("next: write Context")
+
+
+def test_retros_measure_reads_project_wikis(tmp_path, monkeypatch, capsys):
+    title = "Projects learn from their retros"
+    source = (Path(__file__).resolve().parents[1] / ".xp/milestones.md").read_text()
+    measure = re.search(r"(?m)^Measure: (.*)$", source.split(f"## {title}")[1])[1]
+    fixtures = tmp_path / "fixtures"
+    home = fixtures / "home"
+    home.mkdir(parents=True)
+    monkeypatch.setenv("HOME", str(home))
+    root, data = make_project(tmp_path, monkeypatch)
+    (data / "plan.md").write_text("# Plan\n")
+    commit(root, {".xp/milestones.md": f"## {title}\nMeasure: {measure}\n"}, "goals")
+    stale = (
+        "- L1 [sighting] first (seen: clone-a, clone-b, clone-c)\n"
+        "- L2 [proposed] second (seen: clone-b, clone-c, clone-d)\n"
+    )
+    ignored = (
+        "- L3 [applied] done (seen: a, b, c)\n"
+        "- L4 [dropped] rejected (seen: a, b, c)\n"
+        "- L5 [sighting] twice (seen: a, b)\n"
+    )
+    owner = fixtures / "owner"
+    owner.mkdir()
+    for name, clones, on, wiki, local in (
+        ("alpha", 2, True, stale + ignored, ignored),
+        ("beta", 1, True, ignored, stale.splitlines()[0]),
+        ("offline", 1, False, None, stale.splitlines()[0]),
+        ("no-lessons", 1, True, None, stale.splitlines()[0]),
+        ("unreachable", 1, True, None, stale.splitlines()[0]),
+    ):
+        origin = owner / f"{name}.git"
+        git(root, "init", "-q", "--bare", "-b", "main", str(origin))
+        for number in range(clones):
+            clone = tmp_path / f"{name}-{number}"
+            git(root, "clone", "-q", origin.as_uri(), str(clone))
+            git(clone, "config", "user.email", "t@example.com")
+            git(clone, "config", "user.name", "t")
+            commit(
+                clone,
+                {".xp/config.yml": f"github_issues: {'on' if on else 'off'} # storage\n"},
+                "config",
+            )
+        ledger = home / ".xp/projects/owner" / name / "lessons.md"
+        ledger.parent.mkdir(parents=True)
+        ledger.write_text(local)
+        if wiki is not None or name == "no-lessons":
+            remote = owner / f"{name}.wiki.git"
+            seed = fixtures / f"{name}-wiki"
+            git(root, "init", "-q", "--bare", "-b", "main", str(remote))
+            git(root, "clone", "-q", remote.as_uri(), str(seed))
+            git(seed, "config", "user.email", "t@example.com")
+            git(seed, "config", "user.name", "t")
+            commit(seed, {"Home.md" if wiki is None else "Lessons.md": wiki or "Home\n"}, "wiki")
+            git(seed, "push", "-q", "origin", "main")
+    lines = readings(capsys, "retros-wikis")
+    assert len(lines) == 1
+    assert lines[0].startswith(
+        f"{title} — distance=5: 2 of 5 sibling projects without a lessons ledger, "
+        "3 lessons seen 3+ times with no applied change"
+    )
+    assert re.search(label(root), lines[0])
+    assert "owner/unreachable: cannot read wiki" in lines[0]
+    assert all(text not in lines[0] for text in ("exit 1", "timed out", "Cloning into"))
