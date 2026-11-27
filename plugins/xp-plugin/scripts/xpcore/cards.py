@@ -178,11 +178,13 @@ def publish_moves(card_id: str, text: str | None = None) -> bool:
     return not sprint
 
 
-def remove_published(card_id: str) -> bool:
+def remove_published(card: Card) -> bool:
+    """False keeps the card: an edit made while the seat ran never reached the issue."""
     with plan_lock():
-        if not publish_moves(card_id, _read_plan()):
+        text = _read_plan()
+        if not publish_moves(card.id, text) or _locate(text, card.id)[2].lines != card.lines:
             return False
-        _splice(card_id, [])
+        _splice(card.id, [])
         return True
 
 

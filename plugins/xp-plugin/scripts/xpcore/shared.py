@@ -190,8 +190,10 @@ def cmd_publish(args) -> int:
             _scan(card.title, body)
             ensure_label("card")
             url, number = create_issue(card.title, "card", body)
-            if not moving or not cards.remove_published(card.id):
+            if not moving or not cards.remove_published(card):
                 cards.set_field(card.id, "Issue", f"#{number}")
+                if moving:
+                    print(f"{card.id} kept: edited while publishing; republish to update #{number}")
             print(url)
     except (RuntimeError, ValueError, KeyError, TypeError) as exc:
         refuse(f"GitHub publication failed: {exc}")
