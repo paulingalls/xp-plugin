@@ -4,6 +4,15 @@ Release notes started at v0.6.0; earlier entries are summarized from their
 tag and merge messages. Full detail lives in the merge history and the
 per-sprint review reports.
 
+## v1.15.2
+
+- The executor meets a line cap or gate by extracting, never by deleting a guard,
+  test or why-comment; when extraction cannot meet it, it hands back a question.
+  Three consumer sprints lost why-comments to a line cap and paid a review round
+  to restore them.
+
+Release steps: none.
+
 ## v1.15.1
 
 - Moving card publication preserves every line, including unlisted fields and
