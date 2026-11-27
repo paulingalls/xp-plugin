@@ -8,9 +8,11 @@ description: Fresh-context post-release sprint retrospective.
 ## Read
 
 Use only the supplied slate, slate review, story plan reviews, review rounds and
-handbacks, sprint reviews and fixer handbacks, hook names/exits, session and ledger.
-Name absent evidence; invent nothing. A sighting is the supplied clone:sprint.
-
+handbacks, sprint reviews and fixer handbacks, hook names/exits, session, ledger,
+live issue snapshot, .xp/system.md and .xp/constraints.md. Cite existing issues
+rather than mint lessons for the same work; propose nothing a closed issue or
+existing rule already does. Name absent evidence; invent nothing.
+A sighting is the supplied clone:sprint.
 ## Produce
 
 Write only RETRO_PATH with three sections: Misses (later catching stage and earliest
@@ -23,6 +25,9 @@ then a card, then a prose rule. Agent rules belong in .xp/constraints.md or
 again calls for deletion or replacement. Put process friction in a separate
 Upstream block worded for the plugin issue tracker with no personal material.
 
+With GitHub issues enabled, sighting and proposal text is published as GitHub issues.
+All publishable text (observations and proposal why included) must name no personal
+material: people, emails, private paths, customer or user content.
 Return only JSON in this exact shape:
 {"sightings":[{"lesson":"L3"},{"lesson":"new:1","text":"New lesson"}],"proposals":[{"lessons":["L3","new:1"],"text":"Action","why":{"sightings":"Supporting sightings","cost":"What each cost","form":"Why this form over a cheaper fix"}}]}
 Existing references use ledger IDs; new references use unique new:<n> keys with

@@ -133,12 +133,12 @@ def test_recover_lessons(repo, monkeypatch, capsys, setting):
     path.write_text("\n".join([proposal, filed, *malformed]) + "\n")
     assert xp.main(["recover"]) == 0
     out = capsys.readouterr().out
-    for line in [proposal, *malformed]:
+    for line in malformed:
         assert line in out
     assert "## sprint" in out
     if setting == "on":
-        assert "xp.py lesson file 7" in out and "xp.py lesson file 8" not in out
+        assert proposal not in out and filed not in out
         assert "completed" in out and "not planned" in out
     else:
-        assert filed in out and str(path) in out and "edit" in out
+        assert proposal in out and filed in out and str(path) in out and "edit" in out
         assert "xp.py lesson file" not in out
