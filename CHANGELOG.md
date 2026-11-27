@@ -4,6 +4,22 @@ Release notes started at v0.6.0; earlier entries are summarized from their
 tag and merge messages. Full detail lives in the merge history and the
 per-sprint review reports.
 
+## v1.15.0
+
+- With GitHub issues enabled, `card publish` moves a planned card outside any
+  sprint slate onto its issue instead of leaving a second copy in plan.md that
+  went stale once another clone landed it. A new `publisher` seat (falls back
+  to the reviewer role) writes the issue's public Context, scanned by gitleaks;
+  `card claim N` brings the card back in any clone, Context included. Slate
+  cards stay local and keep their private Context. A failed publish leaves
+  plan.md unchanged, and a card edited while publishing is kept.
+- `recover` marks local-only cards with `xp.py card publish <id>`, and the
+  free-card mint `next:` line offers publishing beside running it here.
+- Issue filing, publication checks and repository lookup are each done in one
+  place (about 55 fewer shipped lines).
+
+Release steps: none.
+
 ## v1.14.1
 
 - `story land` no longer runs the milestone Measures after every sprint story.
