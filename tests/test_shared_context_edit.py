@@ -25,7 +25,7 @@ def test_claimed_context_edits_stay_local(repo, agents, republish):  # noqa: F81
         path.read_text()
         .replace(
             "public Context\npublic original, see: continuation",
-            "private customer report\nprivate, see: continuation",
+            "private customer report\nprivate, see: continuation\nRejected: private choice",
         )
         .replace("Do: original", "Do: edited")
         .replace("Trailing prose", "Edited prose")
@@ -41,11 +41,12 @@ def test_claimed_context_edits_stay_local(repo, agents, republish):  # noqa: F81
     command = ["card", "publish"] if republish else ["story"]
     assert xp.main([*command, "free-share"]) == 0
     expected = cards.find_card("free-share").text.replace(
-        "Context: private customer report\nprivate, see: continuation",
+        "Context: private customer report\nprivate, see: continuation\nRejected: private choice",
         "Context: issue-owned\npublic, see: continuation",
     )
     assert state(repo)["issues"][0]["body"] == expected
     assert expected.count("Published by:") == 1
     assert "private, see: continuation" not in str(state(repo)["calls"][before:])
+    assert "private choice" not in str(state(repo)["calls"][before:])
     assert "private customer report" not in str(state(repo)["calls"][before:])
     assert cards.find_card("free-share").field("Context") == "private customer report"

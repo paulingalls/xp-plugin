@@ -13,7 +13,19 @@ from xpcore.config import github_issues, refuse, repo_root, require_github_issue
 
 GH_TIMEOUT = 30
 # A field name is a short title-case phrase (Not in scope); a prose line with a colon is not.
-FIELD = re.compile(r"^([A-Z][A-Za-z]*(?: [a-z]+){0,2}):(?:\s|$)")
+FIELD = re.compile(r"^([^\s:][^:]*):")
+# Only a field the plugin reads ends a claimed Context: a prose line shaped like a field
+# then stays local instead of leaking a private Context edit to the issue.
+AFTER_CONTEXT = (
+    "Measure:",
+    "AC:",
+    "Files:",
+    "Acceptance:",
+    "Evidence:",
+    "Executor:",
+    "Issue:",
+    "Published by:",
+)
 
 
 def _dependencies() -> None:
@@ -165,7 +177,7 @@ def context_span(lines: list[str]) -> tuple[int, int]:
     for start, line in enumerate(lines):
         if line.startswith("Context:"):
             end = start + 1
-            while end < len(lines) and not FIELD.match(lines[end]):
+            while end < len(lines) and not lines[end].startswith(AFTER_CONTEXT):
                 end += 1
             return start, end
     return 1, 1
