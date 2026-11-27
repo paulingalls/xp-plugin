@@ -7,7 +7,7 @@ Background long legs via the harness, no timeout or `&`; read output files, neve
 
 **Goals.** Goals and effort complaints become milestones, not memory. Report
 Measures, not card ids. Flat across lands is a stall: continue (say what differs),
-change tack (delete what did not move it), or ask; tell the user. Ask before
+change tack (delete what did not move it), or ask; tell the user after. Ask before
 spending money or altering what users see.
 
 **Sprint:**
