@@ -24,7 +24,7 @@ def test_live_issue_snapshot(publishing):
         for n in range(1, 54)
     ]
     # Creation order differs from closure order; the last page has an open issue.
-    issues.reverse()
+    issues = issues[::2] + issues[1::2]
     issues += [
         {
             "number": 100,
