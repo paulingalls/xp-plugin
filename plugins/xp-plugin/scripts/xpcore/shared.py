@@ -8,7 +8,7 @@ import shutil
 import socket
 import subprocess
 
-from xpcore import cards, gitx
+from xpcore import bundle, cards, gitx, hooks, launch
 from xpcore.config import github_issues, refuse, repo_root, require_github_issues
 
 GH_TIMEOUT = 30
@@ -89,8 +89,10 @@ def owner() -> str:
     return f"{gitx.common_dir().parent.name}@{machine}"
 
 
-def public_body(card: cards.Card) -> str:
-    lines = [card.lines[0], f"Context: local to {owner()}"]
+def public_body(card: cards.Card, context: str | None = None) -> str:
+    if context is None:
+        context = card.field("Context") if card.field("Published by") else f"local to {owner()}"
+    lines = [card.lines[0], f"Context: {context}"]
     ac = False
     for line in card.lines[1:]:
         if ac and (
@@ -149,18 +151,49 @@ def sync(card: cards.Card) -> None:
         refuse(f"GitHub update of {issue} failed: {exc}; fix gh access and retry")
 
 
+def publish_context(card: cards.Card) -> str:
+    log_id = f"{card.id}-publisher"
+    seat = launch.run_agent(
+        "publisher",
+        bundle.prompt("publisher", card=card, paths={"CARD_ID": card.id}),
+        repo_root(),
+        log_id,
+    )
+    try:
+        context = json.loads(seat.stdout)["context"]
+        if (
+            seat.returncode
+            or not isinstance(context, str)
+            or not context.strip()
+            or context.splitlines() != [context]
+        ):
+            raise ValueError("expected a nonblank single-line context")
+    except (ValueError, KeyError, TypeError) as exc:
+        raise ValueError(f"publisher failed; read {hooks.log_path(log_id)}") from exc
+    return context
+
+
 def cmd_publish(args) -> int:
     require_github_issues()
     card = cards.find_card(args.id)
-    body = public_body(card)
-    _scan(card.title, body)
+    issue = _issue(card)
     try:
-        if issue := _issue(card):
+        if issue:
+            body = public_body(card)
+            _scan(card.title, body)
             _push(card, issue, body)
         else:
+            _dependencies()
+            _authenticate()
+            moving = cards.publish_moves(card.id)
+            body = public_body(card, publish_context(card) if moving else None)
+            _scan(card.title, body)
             ensure_label("card")
             url, number = create_issue(card.title, "card", body)
-            cards.set_field(card.id, "Issue", f"#{number}")
+            if not moving or not cards.remove_published(card):
+                cards.set_field(card.id, "Issue", f"#{number}")
+                if moving:
+                    print(f"{card.id} kept: edited while publishing; republish to update #{number}")
             print(url)
     except (RuntimeError, ValueError, KeyError, TypeError) as exc:
         refuse(f"GitHub publication failed: {exc}")

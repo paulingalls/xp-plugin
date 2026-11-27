@@ -162,6 +162,32 @@ def sprint_slate(sprint_id) -> str:
     refuse(f"no `## Sprint {sprint_id}` section in {plan_path()}; write the slate there first")
 
 
+def publish_moves(card_id: str, text: str | None = None) -> bool:
+    text = _read_plan() if text is None else text
+    start, _, card = _locate(text, card_id)
+    if card.status != "planned" or card.field("Issue"):
+        return False
+    sprint = 0
+    for line in text.splitlines()[:start]:
+        if heading := SECTION.match(line):
+            level = len(heading[1])
+            if sprint and level <= sprint:
+                sprint = 0
+            if not sprint and re.match(r"#{2,3} Sprint (\S+)(?:\s|$)", line):
+                sprint = level
+    return not sprint
+
+
+def remove_published(card: Card) -> bool:
+    """False keeps the card: an edit made while the seat ran never reached the issue."""
+    with plan_lock():
+        text = _read_plan()
+        if not publish_moves(card.id, text) or _locate(text, card.id)[2].lines != card.lines:
+            return False
+        _splice(card.id, [])
+        return True
+
+
 def mint_free(card_id: str, heading: str, section: str = "Free") -> bool:
     """Append a card in the section; False when its id already exists."""
     with plan_lock():
