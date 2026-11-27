@@ -243,16 +243,8 @@ def publish(path):
     if gitx.git("status", "--porcelain", "--", path.name, cwd=path.parent):
         shared._scan(path.read_text())
         gitx.git("add", path.name, cwd=path.parent)
-        gitx.git(
-            "-c",
-            "user.name=xp",
-            "-c",
-            "user.email=xp@localhost",
-            "commit",
-            "-m",
-            "Lessons",
-            cwd=path.parent,
-        )
+        identity = ("-c", "user.name=xp", "-c", "user.email=xp@localhost")
+        gitx.git(*identity, "commit", "-m", "Lessons", cwd=path.parent)
         gitx.git("push", "origin", "HEAD", cwd=path.parent)
 
 
