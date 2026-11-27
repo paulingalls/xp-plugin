@@ -318,8 +318,8 @@ remaining notes get one retry. Changed local state refuses destructive recovery.
   for manual recovery; post-merge cannot rerun after release.
 - The lead writes `session.md` at every close: intent, surprises, tack chosen, next step,
   under 30 lines. `xp.py recover` shows each milestone's Measure first and never runs it
-  (a session start must not run a repo's shell unasked); story land and free mint run
-  them from the invoking checkout, with a 60-second timeout per command. Each reading names wall
+  (a session start must not run a repo's shell unasked); free mint runs them from the
+  invoking checkout, with a 60-second timeout per command. Each reading names wall
   seconds, branch, short SHA and dirty state. Failures print their status and output
   and continue. Recover then prints the digest, every non-done card's title and status,
   and open bugs and debts. That is the recovery block. Nothing else needs recovering

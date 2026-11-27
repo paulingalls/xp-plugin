@@ -119,18 +119,24 @@ def test_recover_outside_repo_and_before_first_commit(tmp_path, monkeypatch, cap
     assert out.startswith(f"{session.BEGIN}\nNew — not run: echo distance\n{session.END}\ndigest\n")
 
 
-def test_story_land_measures_new_merge_in_invoking_checkout(story, capsys):
+def test_story_land_without_running_measures(story, capsys):
     from xpcore import cards
 
     root, _, wt, _ = story
-    commit(root, FILES | {"merged.txt": "ok\n"}, "sprint goals")
+    commit(
+        root,
+        {
+            ".xp/milestones.md": "## First\nMeasure: touch measure-ran\n",
+            "merged.txt": "ok\n",
+        },
+        "sprint goals",
+    )
     assert xp.main(["story", "land", "story-001"]) == 0
     out = capsys.readouterr().out
-    assert out.index("story-001 landed on sprint-001") < out.index("First — distance=2")
-    for line in out.splitlines():
-        if line.startswith(("First —", "Second —")):
-            assert re.search(label(root), line)
+    assert "story-001 landed on sprint-001" in out
     assert cards.find_card("story-001").status == "done" and not wt.exists()
+    assert not (root / "measure-ran").exists()
+    assert session.BEGIN not in out
 
 
 def test_free_mint_measures_before_next_instruction(tmp_path, monkeypatch, capsys):

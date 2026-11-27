@@ -9,7 +9,7 @@ from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 
-from xpcore import cards, gitx, hooks, release, session, shared
+from xpcore import cards, gitx, hooks, release, shared
 from xpcore.config import data_root, fail, refuse, sprint_branch, trunk
 from xpcore.story import card_changes, last_reviewed, reviews, story_dir, worktree
 
@@ -359,7 +359,6 @@ def cmd_story_land(args) -> int:
     )
     if result == 0 and not args.dry_run:
         advise_trunk_drift(sprint_branch(), lead_tree())
-        session.print_milestones()
         rewrite_session()
     return result
 
