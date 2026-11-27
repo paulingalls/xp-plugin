@@ -21,7 +21,7 @@ weaken an AC, or two readings of the card leading to different work; decide the
 rest and record why. No praise.
 
 Check, in order of payoff:
-1. Card, plan and Files describe the same work; the plan does no more than the card asks.
+1. Card and plan describe the same work; the plan does no more than the card asks.
 2. Every test is red before the change, not green against a do-nothing version.
 3. Constraints: quote the item the plan breaks.
 4. Answer the planner's questions in the plan, or raise `QUESTION:` when it is the lead's.
