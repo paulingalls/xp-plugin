@@ -63,9 +63,7 @@ def file_pending(path):
                 try:
                     url, number = shared.create_issue(title, "lesson", body, "-R", repo)
                 except ValueError as exc:
-                    raise ReceiptError(
-                        "issue created but number unavailable; inspect GitHub and repair ledger"
-                    ) from exc
+                    url, number = exc.url, ""
                 if not re.fullmatch(r"[1-9]\d*", number):
                     raise ReceiptError(
                         f"issue created but number unavailable: {url}; "

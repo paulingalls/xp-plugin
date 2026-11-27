@@ -78,7 +78,9 @@ def create_issue(title: str, label: str, body: str, *repo: str) -> tuple[str, st
     url = _gh(*args, *repo, body=body)
     match = re.search(r"/issues/(\d+)$", url)
     if not match:
-        raise ValueError(f"expected issue URL, got {url!r}; inspect GitHub before retrying")
+        error = ValueError(f"expected issue URL, got {url!r}; inspect GitHub before retrying")
+        error.url = url  # the operator's only lead on what gh created
+        raise error
     return url, match[1]
 
 
