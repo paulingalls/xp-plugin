@@ -228,7 +228,7 @@ def test_story_start_republishes_in_progress(story_repo, tmp_path, monkeypatch, 
     assert json.loads(store.read_text())["published"][0] == "224"
 
 
-def test_publish_claim_and_run(repo, publisher):  # noqa: F811
+def test_publish_claim_and_run(repo, publisher, capsys):  # noqa: F811
     root = repo / "r"
     git(root, "branch", "-M", "main")
     git(root, "add", ".xp/config.yml")
@@ -238,6 +238,7 @@ def test_publish_claim_and_run(repo, publisher):  # noqa: F811
     plan("Section text\n\n" + source + adjacent)
     before = cards.plan_path().read_text()
     assert xp.main(["card", "publish", "free-share"]) == 0
+    assert f"Context: {PUBLIC}\nhttps://example.test/issues/224\n" in capsys.readouterr().out
     issue = state(repo)["issues"][0]
     assert issue["labels"] == [{"name": "card"}]
     receipt = issue["body"].split("Published by: ")[1].strip()

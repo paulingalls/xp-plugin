@@ -193,6 +193,8 @@ def cmd_publish(args) -> int:
                 cards.set_field(card.id, "Issue", f"#{number}")
                 if moving:
                     print(f"{card.id} kept: edited while publishing; republish to update #{number}")
+            if moving:
+                print(body.splitlines()[1])
             print(url)
     except (RuntimeError, ValueError, KeyError, TypeError) as exc:
         refuse(f"GitHub publication failed: {exc}")
