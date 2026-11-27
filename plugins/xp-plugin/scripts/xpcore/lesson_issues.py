@@ -150,20 +150,20 @@ pageInfo { hasNextPage endCursor }
             )
         )
         nodes = [node for page in pages for node in page["data"]["repository"]["issues"]["nodes"]]
-        opened = [node for node in nodes if node["state"] == "OPEN"]
+        opened = [n for n in nodes if n["state"] == "OPEN" or lesson_issue(n, "CLOSED")]
         closed = sorted(
-            (node for node in nodes if node["state"] == "CLOSED"),
+            (n for n in nodes if n["state"] == "CLOSED" and not lesson_issue(n, "CLOSED")),
             key=lambda node: node["closedAt"],
             reverse=True,
         )[:50]
         issues = {node["number"]: node for node in opened + closed}
-        rows = [
+        rows = (
             f"#{node['number']} {node['title']} — {node['state']} ({node['stateReason']}) "
             f"[{', '.join(label['name'] for label in node['labels']['nodes'])}]"
             for node in opened + closed
-        ]
-        return issues, "Live bug, debt and lesson issues (all open; 50 most recently closed):\n" + (
-            "\n".join(rows) if rows else "none"
+        )
+        return issues, "Live: all open + closed lessons; latest 50 closed bugs/debts:\n" + (
+            "\n".join(rows) or "none"
         )
     except (OSError, RuntimeError, ValueError, KeyError, TypeError) as exc:
         raise ValueError(f"issue snapshot lookup failed: {exc}") from exc
