@@ -14,7 +14,7 @@ def test_claimed_context_edits_stay_local(repo, agents, republish):  # noqa: F81
     git(root, "commit", "-qm", "roles")
     plan(
         CARD.replace("Executor: codex", "Executor: codex/exec-model").replace(
-            "private local detail", "public Context\npublic original continuation"
+            "private local detail", "public Context\npublic original, see: continuation"
         )
         + "Do: original\nRelease steps: none\n\nTrailing prose\n"
     )
@@ -24,8 +24,8 @@ def test_claimed_context_edits_stay_local(repo, agents, republish):  # noqa: F81
     path.write_text(
         path.read_text()
         .replace(
-            "public Context\npublic original continuation",
-            "private customer report\nprivate continuation",
+            "public Context\npublic original, see: continuation",
+            "private customer report\nprivate, see: continuation",
         )
         .replace("Do: original", "Do: edited")
         .replace("Trailing prose", "Edited prose")
@@ -33,19 +33,19 @@ def test_claimed_context_edits_stay_local(repo, agents, republish):  # noqa: F81
     published = state(repo)
     body = published["issues"][0]["body"]
     published["issues"][0]["body"] = body.replace(
-        "Context: public Context\npublic original continuation",
-        "Context: issue-owned\npublic continuation",
+        "Context: public Context\npublic original, see: continuation",
+        "Context: issue-owned\npublic, see: continuation",
     )
     save(repo, published)
     before = len(state(repo)["calls"])
     command = ["card", "publish"] if republish else ["story"]
     assert xp.main([*command, "free-share"]) == 0
     expected = cards.find_card("free-share").text.replace(
-        "Context: private customer report\nprivate continuation",
-        "Context: issue-owned\npublic continuation",
+        "Context: private customer report\nprivate, see: continuation",
+        "Context: issue-owned\npublic, see: continuation",
     )
     assert state(repo)["issues"][0]["body"] == expected
     assert expected.count("Published by:") == 1
-    assert "private continuation" not in str(state(repo)["calls"][before:])
+    assert "private, see: continuation" not in str(state(repo)["calls"][before:])
     assert "private customer report" not in str(state(repo)["calls"][before:])
     assert cards.find_card("free-share").field("Context") == "private customer report"

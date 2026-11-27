@@ -12,7 +12,8 @@ from xpcore import cards, gitx
 from xpcore.config import github_issues, refuse, repo_root, require_github_issues
 
 GH_TIMEOUT = 30
-FIELD = re.compile(r"^([^\s:][^:]*):")
+# A field name is a short title-case phrase (Not in scope); a prose line with a colon is not.
+FIELD = re.compile(r"^([A-Z][A-Za-z]*(?: [a-z]+){0,2}):(?:\s|$)")
 
 
 def _dependencies() -> None:
