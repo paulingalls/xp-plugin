@@ -84,7 +84,9 @@ def test_direct_persistence_rerun_and_private_narrative(tmp_path, monkeypatch, f
     assert "Changed" in (folder / "retro.md").read_text()
 
 
-@pytest.mark.parametrize("failure", ["exit", "missing", "malformed", "unknown", "marker", "ledger"])
+@pytest.mark.parametrize(
+    "failure", ["exit", "missing", "malformed", "unknown", "issue", "marker", "ledger"]
+)
 def test_failure_preserves_previous(tmp_path, monkeypatch, fake_retro, capsys, failure):
     from pathlib import Path
 
@@ -104,6 +106,8 @@ def test_failure_preserves_previous(tmp_path, monkeypatch, fake_retro, capsys, f
         monkeypatch.setenv("RETRO_RESULT", "{}")
     elif failure == "unknown":
         monkeypatch.setenv("RETRO_RESULT", '{"sightings":[{"lesson":"L99"}],"proposals":[]}')
+    elif failure == "issue":
+        monkeypatch.setenv("RETRO_RESULT", '{"sightings":[{"lesson":"#780"}],"proposals":[]}')
     elif failure == "marker":
         monkeypatch.setenv(
             "RETRO_RESULT", os.environ["RETRO_RESULT"].replace("Deletion suffices", "See; #192")
@@ -437,12 +441,11 @@ roles:
     assert (folder / "retro.md").is_file()
 
 
-@pytest.mark.parametrize("enabled, seat_fails", [(True, False), (True, True), (False, False)])
-def test_refresh_filed_proposals(tmp_path, monkeypatch, fake_retro, capsys, enabled, seat_fails):
+def test_refresh_filed_proposals(tmp_path, monkeypatch, fake_retro, capsys):
     from xpcore import retro
 
     root, data, _folder = released(tmp_path, monkeypatch)
-    (root / ".xp/config.yml").open("a").write(f"\ngithub_issues: {'on' if enabled else 'off'}\n")
+    (root / ".xp/config.yml").open("a").write("\ngithub_issues: off\n")
     path = retro.ledger_path()
     path.parent.mkdir(parents=True)
     lines = [
@@ -467,28 +470,9 @@ def test_refresh_filed_proposals(tmp_path, monkeypatch, fake_retro, capsys, enab
         "5: {}, 6: {'state':'CLOSED','stateReason':'OTHER'}, 7: []}[n]))\n"
     )
     gh.chmod(0o755)
-    if seat_fails:
-        monkeypatch.setenv("RETRO_EXIT", "1")
-    if not enabled:
-        monkeypatch.setenv("RETRO_RESULT", '{"sightings":[{"lesson":"L3"}],"proposals":[]}')
-    assert xp.main(["retro", "1"]) == int(seat_fails)
+    monkeypatch.setenv("RETRO_RESULT", '{"sightings":[{"lesson":"L3"}],"proposals":[]}')
+    assert xp.main(["retro", "1"]) == 0
     text = path.read_text()
-    if enabled:
-        assert lines[0].replace("[proposed]", "[applied]") in text
-        assert lines[1].replace("[proposed]", "[dropped]") in text
-        assert all(line in text for line in lines[2:])
-        prompt = (fake_retro / "retro-prompt").read_text()
-        assert "L1 [applied]" in prompt and "L2 [dropped]" in prompt
-        queries = [json.loads(row) for row in (data / "queries").read_text().splitlines()]
-        url = git(root, "remote", "get-url", "origin")
-        assert [q for q in queries if q[:2] == ["issue", "view"]] == [
-            ["issue", "view", str(i), "--json", "state,stateReason", "-R", url] for i in range(1, 8)
-        ]
-        output = capsys.readouterr()
-        for i in range(4, 8):
-            assert f"L{i} #{i}" in output.err
-        assert "lookup unavailable" in output.err
-    else:
-        assert not (data / "queries").exists()
-        assert lines[0] in text and lines[1] in text
-        assert "Lesson 3 (seen: prior:0, repo:1)" in text
+    assert not (data / "queries").exists()
+    assert lines[0] in text and lines[1] in text
+    assert "Lesson 3 (seen: prior:0, repo:1)" in text

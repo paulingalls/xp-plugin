@@ -21,7 +21,7 @@ def test_live_issue_snapshot(publishing):
             "stateReason": "COMPLETED" if n % 2 else "NOT_PLANNED",
             "closedAt": f"2026-11-{1 + n // 24:02}T{n % 24:02}:00:00Z",
         }
-        for n in range(1, 54)
+        for n in range(1, 81)
     ]
     # Creation order differs from closure order; the last page has an open issue.
     issues = issues[::2] + issues[1::2]
@@ -56,10 +56,11 @@ def test_live_issue_snapshot(publishing):
     assert prompt.count("#100 Still open") == 1
     assert "Unrelated chore" not in prompt
     assert "[bug, lesson]" in prompt
-    for n in range(4, 54):
-        assert prompt.count(f"#{n} Evidence-{n:03}") == 1
-    for n in (1, 2, 3):
-        assert f"Evidence-{n:03}" not in prompt
+    for n in range(1, 81):
+        if n % 3 == 2 or n >= 6:
+            assert prompt.count(f"#{n} Evidence-{n:03}") == 1
+        else:
+            assert f"Evidence-{n:03}" not in prompt
     assert "CLOSED" in prompt and "COMPLETED" in prompt and "NOT_PLANNED" in prompt
     calls = [args for args, _ in state(publishing)["calls"]]
     assert [
