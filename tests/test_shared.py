@@ -3,10 +3,12 @@ import json
 import shutil
 import socket
 import subprocess
+import sys
 
 import pytest
 import xp
 from test_records import refused, repo, state  # noqa: F401
+from test_story import FAKE
 from xpcore import cards
 
 CARD = """#### free-share — shared work   [planned]
@@ -33,30 +35,45 @@ def save(fixture, value):
     (fixture / "issues.json").write_text(json.dumps(value))
 
 
-def test_publish_and_edit(repo):  # noqa: F811
-    plan()
-    before = cards.plan_path().read_text()
-    assert xp.main(["card", "publish", "free-share"]) == 0
-    issue = state(repo)["issues"][0]
-    assert issue["labels"] == [{"name": "card"}]
-    owner = issue["body"].split("Published by: ")[1].strip()
-    assert (
-        issue["body"]
-        == CARD.replace("Context: private local detail", f"Context: local to {owner}")
-        + f"Published by: {owner}\n"
+pytestmark = pytest.mark.usefixtures("publisher")
+
+PUBLIC = "Shared work needs a durable public description so another clone can complete it."
+
+
+@pytest.fixture
+def publisher(repo, monkeypatch):  # noqa: F811
+    config = repo / "r/.xp/config.yml"
+    config.write_text(
+        config.read_text()
+        + "roles:\n  reviewer: claude/review-model\n  executor: codex/exec-model\n"
     )
-    assert cards.plan_path().read_text().replace("Issue: #224\n", "") == before
-    cards.plan_path().write_text(cards.plan_path().read_text().replace("a.py", "b.py"))
-    assert xp.main(["card", "publish", "free-share"]) == 0
-    s = state(repo)
-    assert len(s["issues"]) == 1 and "Files: b.py" in s["issues"][0]["body"]
-    assert len([c for c in s["calls"] if c[0][:2] == ["issue", "create"]]) == 1
-    assert cards.plan_path().read_text().count("Issue: #224") == 1
-    assert "Context: private local detail" in cards.plan_path().read_text()
+    trace = repo / "publisher.jsonl"
+    monkeypatch.setenv("PUBLISH_TRACE", str(trace))
+    monkeypatch.setenv("PUBLISH_RESULT", json.dumps({"context": PUBLIC}))
+    script = """import json, os, sys
+from pathlib import Path
+if os.environ.get('XP_AGENT') == 'publisher':
+    prompt = sys.stdin.read()
+    with open(os.environ['PUBLISH_TRACE'], 'a') as out:
+        out.write(json.dumps([sys.argv, prompt]) + '\\n')
+    print(json.dumps({'type': 'result', 'result': os.environ['PUBLISH_RESULT']}))
+    sys.exit(int(os.environ.get('PUBLISH_EXIT', '0')))
+""" + FAKE.replace(
+        'print(json.dumps({"type": "result", "result": "done"}))',
+        'print(json.dumps({"type":"item.completed",'
+        '"item":{"type":"agent_message","text":"done"}}) '
+        'if Path(sys.argv[0]).name == "codex" '
+        'else json.dumps({"type":"result","result":"done"}))',
+    )
+    for name in ("claude", "codex"):
+        binary = repo / "bin" / name
+        binary.write_text(f"#!{sys.executable}\n" + script)
+        binary.chmod(0o755)
+    return trace
 
 
 def test_republish_sends_title_and_belongs_to_the_holder(repo, capsys):  # noqa: F811
-    plan()
+    plan("## Sprint 1\n" + CARD)
     assert xp.main(["card", "publish", "free-share"]) == 0
     path = cards.plan_path()
     path.write_text(path.read_text().replace("shared work", "shared work, reviewed"))
@@ -126,7 +143,7 @@ def test_claim_requires_card_issue(repo, capsys, body, labels):  # noqa: F811
 
 @pytest.mark.parametrize("missing", [False, True])
 def test_publication_requires_scanning_on_create_and_edit(repo, monkeypatch, capsys, missing):  # noqa: F811
-    plan()
+    plan("## Sprint 1\n" + CARD)
     if not missing:
         assert xp.main(["card", "publish", "free-share"]) == 0
         (repo / "r" / ".gitleaks.toml").write_text(
@@ -146,11 +163,19 @@ def test_publication_requires_scanning_on_create_and_edit(repo, monkeypatch, cap
         monkeypatch.setenv("PATH", str(isolated))
     before, s = cards.plan_path().read_text(), state(repo)
     assert "gitleaks" in refused(capsys, ["card", "publish", "free-share"])
-    assert state(repo) == s and cards.plan_path().read_text() == before
+    assert state(repo)["issues"] == s["issues"] and cards.plan_path().read_text() == before
+    assert all(
+        c[0][:2] in (["auth", "status"], ["issue", "view"])
+        for c in state(repo)["calls"][len(s["calls"]) :]
+    )
     if not missing:
         cards.plan_path().write_text(before.replace("Issue: #224\n", ""))
         assert "gitleaks" in refused(capsys, ["card", "publish", "free-share"])
-        assert state(repo) == s
+        assert state(repo)["issues"] == s["issues"]
+        assert all(
+            c[0][:2] in (["auth", "status"], ["issue", "view"])
+            for c in state(repo)["calls"][len(s["calls"]) :]
+        )
 
 
 @pytest.mark.parametrize("setting", ["", "github_issues: off\n", None])

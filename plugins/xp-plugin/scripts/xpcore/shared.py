@@ -8,7 +8,7 @@ import shutil
 import socket
 import subprocess
 
-from xpcore import cards, gitx
+from xpcore import bundle, cards, gitx, hooks, launch
 from xpcore.config import github_issues, refuse, repo_root, require_github_issues
 
 GH_TIMEOUT = 30
@@ -22,6 +22,7 @@ def _dependencies() -> None:
 
 
 def _scan(*texts: str) -> None:
+    _dependencies()
     for text in texts:
         try:
             proc = subprocess.run(
@@ -36,6 +37,7 @@ def _scan(*texts: str) -> None:
             refuse("gitleaks could not scan the payload; nothing sent to GitHub")
         if proc.returncode:
             refuse("gitleaks refused the payload; inspect it locally before filing")
+    _authenticate()
 
 
 def _gh(*args: str, body: str | None = None) -> str:
@@ -71,13 +73,26 @@ def ensure_label(name: str) -> None:
         _gh("label", "create", name)
 
 
+def create_issue(title: str, label: str, body: str, *repo: str) -> tuple[str, str]:
+    args = ["issue", "create", "--title", title, "--label", label, "--body-file", "-"]
+    url = _gh(*args, *repo, body=body)
+    match = re.search(r"/issues/(\d+)$", url)
+    if not match:
+        error = ValueError(f"expected issue URL, got {url!r}; inspect GitHub before retrying")
+        error.url = url  # the operator's only lead on what gh created
+        raise error
+    return url, match[1]
+
+
 def owner() -> str:
     machine = hashlib.sha256(socket.gethostname().encode()).hexdigest()[:6]
     return f"{gitx.common_dir().parent.name}@{machine}"
 
 
-def public_body(card: cards.Card) -> str:
-    lines = [card.lines[0], f"Context: local to {owner()}"]
+def public_body(card: cards.Card, context: str | None = None) -> str:
+    if context is None:
+        context = f"local to {owner()}"
+    lines = [card.lines[0], f"Context: {context}"]
     ac = False
     for line in card.lines[1:]:
         if ac and (
@@ -95,16 +110,19 @@ def public_body(card: cards.Card) -> str:
     return "\n".join([*lines, f"Published by: {owner()}"]) + "\n"
 
 
-def _holders(issue: str) -> list[str]:
-    labels = json.loads(_gh("issue", "view", issue[1:], "--json", "labels"))["labels"]
-    return [x["name"][6:] for x in labels if x["name"].startswith("clone:")]
+def _holders(issue: str) -> tuple[list[str], str]:
+    data = json.loads(_gh("issue", "view", issue[1:], "--json", "body,labels"))
+    return [x["name"][6:] for x in data["labels"] if x["name"].startswith("clone:")], data["body"]
 
 
-def _push(card: cards.Card, issue: str, body: str, take: bool = False) -> None:
+def _push(card: cards.Card, issue: str, take: bool = False) -> None:
     """The holder's copy is the live one: never overwrite it from another clone."""
-    holders = _holders(issue)
+    holders, published = _holders(issue)
     if others := [h for h in holders if h != owner()]:
         refuse(f"{issue} is held by {', '.join(others)}; its text is theirs; {card.id} stays local")
+    context = issue_card(published).field("Context") if card.field("Published by") else None
+    body = public_body(card, context)
+    _scan(card.title, body)
     edit = ["issue", "edit", issue[1:], "--title", card.title, "--body-file", "-"]
     if take and not holders:
         # A card this clone runs is held by it, so no other clone can claim it mid-run.
@@ -128,43 +146,55 @@ def sync(card: cards.Card) -> None:
     if not github_issues():
         print(f"{card.id}: github_issues is off; {issue} not updated")
         return
-    body = public_body(card)
-    _dependencies()
-    _scan(card.title, body)
-    _authenticate()
     try:
-        _push(card, issue, body, take=True)
+        _push(card, issue, take=True)
     except (RuntimeError, ValueError, KeyError, TypeError) as exc:
         refuse(f"GitHub update of {issue} failed: {exc}; fix gh access and retry")
+
+
+def publish_context(card: cards.Card) -> str:
+    log_id = f"{card.id}-publisher"
+    seat = launch.run_agent(
+        "publisher",
+        bundle.prompt("publisher", card=card, paths={"CARD_ID": card.id}),
+        repo_root(),
+        log_id,
+    )
+    try:
+        context = json.loads(seat.stdout)["context"]
+        if (
+            seat.returncode
+            or not isinstance(context, str)
+            or not context.strip()
+            or context.splitlines() != [context]
+        ):
+            raise ValueError("expected a nonblank single-line context")
+    except (ValueError, KeyError, TypeError) as exc:
+        raise ValueError(f"publisher failed; read {hooks.log_path(log_id)}") from exc
+    return context
 
 
 def cmd_publish(args) -> int:
     require_github_issues()
     card = cards.find_card(args.id)
-    body = public_body(card)
-    _dependencies()
-    _scan(card.title, body)
-    _authenticate()
+    issue = _issue(card)
     try:
-        if issue := _issue(card):
-            _push(card, issue, body)
+        if issue:
+            _push(card, issue)
         else:
+            _dependencies()
+            _authenticate()
+            moving = cards.publish_moves(card.id)
+            body = public_body(card, publish_context(card) if moving else None)
+            _scan(card.title, body)
             ensure_label("card")
-            url = _gh(
-                "issue",
-                "create",
-                "--title",
-                card.title,
-                "--label",
-                "card",
-                "--body-file",
-                "-",
-                body=body,
-            )
-            match = re.search(r"/issues/(\d+)$", url)
-            if not match:
-                raise ValueError(f"expected issue URL, got {url!r}; inspect GitHub before retrying")
-            cards.set_field(card.id, "Issue", f"#{match[1]}")
+            url, number = create_issue(card.title, "card", body)
+            if not moving or not cards.remove_published(card):
+                cards.set_field(card.id, "Issue", f"#{number}")
+                if moving:
+                    print(f"{card.id} kept: edited while publishing; republish to update #{number}")
+            if moving:
+                print(body.splitlines()[1])
             print(url)
     except (RuntimeError, ValueError, KeyError, TypeError) as exc:
         refuse(f"GitHub publication failed: {exc}")
@@ -199,6 +229,9 @@ def cmd_claim(args) -> int:
                 f"gh issue edit {args.id} --remove-label clone:{o}" for o in others
             )
             refuse(f"card held by {', '.join(others)}; the holder releases it with {release}")
+        local = cards.read_cards() if cards.plan_path().is_file() else []
+        if any(c.id == card.id and c.field("Issue") != f"#{args.id}" for c in local):
+            refuse(f"{card.id}: local id collision; rename it before claiming #{args.id}")
         ensure_label(holder)
         if holder not in labels:
             _gh("issue", "edit", args.id, "--add-label", holder)
@@ -216,11 +249,8 @@ def cmd_claim(args) -> int:
 def complete_issues(completed: list[cards.Card], sha: str, retired=()) -> None:
     commands = []
     for card in completed:
-        issue = card.field("Issue")
-        if not issue:
+        if not (issue := _issue(card)):
             continue
-        if not re.fullmatch(r"#\d+", issue):
-            refuse(f"{card.id}: Issue must be #N; correct the card")
         number = issue[1:]
         comment = f"Merged as {sha}"
         if card.field("Evidence"):
@@ -237,7 +267,7 @@ def complete_issues(completed: list[cards.Card], sha: str, retired=()) -> None:
         if not (issue := _issue(card)):
             continue
         try:
-            others = [h for h in _holders(issue) if h != owner()]
+            others = [h for h in _holders(issue)[0] if h != owner()]
         except RuntimeError as exc:
             # Nothing has changed yet, so every command is still the lead's to run.
             left = [shlex.join(["gh", *cmd]) for _, cmd in commands]

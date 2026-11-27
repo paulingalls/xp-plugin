@@ -19,10 +19,11 @@ users see.
    after the PR merges, leave the sprint branch, `xp.py sprint post-merge <id>`.
    Retry retro: `xp.py retro <id>`; repair any failed issue receipt first.
 
-With `github_issues: on`, publish shared cards (`xp.py card publish <id>`), then
-claim (`xp.py card claim <N>`); sprint open/land republish. The lead checks cards
-for personal material; gitleaks checks secrets only. Retro files all unfiled
-proposed lessons automatically; closing issues supplies dispositions next retro.
+With `github_issues: on`, `xp.py card publish <id>` moves a planned non-slate card
+onto its issue; `xp.py card claim <N>` takes it in any clone; sprint open/land
+republish. The lead checks cards for personal material; gitleaks checks secrets
+only. Retro files all unfiled proposed lessons automatically; closing issues
+supplies dispositions next retro.
 
 **Story.** Re-run after edits. Delete `plan.md` or
 `handback.md` in the story data directory to repeat that stage.

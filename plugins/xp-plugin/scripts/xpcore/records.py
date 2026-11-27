@@ -7,9 +7,8 @@ import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 
-from xpcore import shared
+from xpcore import config, shared
 from xpcore.config import data_root, github_issues, refuse, repo_root, require_github_issues
-from xpcore.gitx import git
 
 OUTPUT_CAP = 2_000
 TIMEOUT = 600
@@ -89,11 +88,9 @@ def _file(kind: str, args, extra: list[str]) -> int:
         digest = hashlib.sha256(f"{ts}{kind}{claim}".encode()).hexdigest()[:8]
         _append(kind, f"{kind}-{digest}", ts, body)
         return 0
-    shared._dependencies()
     payload = "\n".join(body)
     query = " ".join(re.findall(r"[a-zA-Z0-9]+", claim)[:8])
     shared._scan(claim, payload, query)
-    shared._authenticate()
     print("Open issues matching claim terms:")
     try:
         print(shared._gh("issue", "list", "--state", "open", "--search", query) or "none")
@@ -101,19 +98,7 @@ def _file(kind: str, args, extra: list[str]) -> int:
         print(f"advisory search unavailable: {exc}")
     try:
         shared.ensure_label(kind)
-        print(
-            shared._gh(
-                "issue",
-                "create",
-                "--title",
-                claim,
-                "--label",
-                kind,
-                "--body-file",
-                "-",
-                body=payload,
-            )
-        )
+        print(shared.create_issue(claim, kind, payload)[0])
     except (RuntimeError, ValueError, KeyError, TypeError) as exc:
         refuse(f"GitHub filing failed: {exc}; fix gh access and retry")
     return 0
@@ -191,7 +176,6 @@ def cmd_resolve(args) -> int:
     if numeric:
         comment = "\n".join(body)
         shared._scan(comment)
-        shared._authenticate()
         try:
             shared._gh("issue", "close", ref, "--comment", comment)
             print(f"closed issue #{ref}")
@@ -203,7 +187,7 @@ def cmd_resolve(args) -> int:
 
 
 def issue_records() -> list[str]:
-    if not git("rev-parse", "--show-toplevel", check=False):
+    if not config.toplevel():
         return ["GitHub open records unavailable: not inside a git repository"]
     try:
         # Unfiltered: gh sends --search and --label through the search index, which

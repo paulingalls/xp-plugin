@@ -102,7 +102,8 @@ roles:                     # harness/model[/effort]; a card's Executor: line ove
   executor: claude/sonnet
   reviewer: claude/opus    # story diff reviews; pick a different family from executor
   # optional seats, falling back to their family: plan-reviewer (→ reviewer),
-  # slate-reviewer (→ plan-reviewer), angle-reviewer (→ reviewer), fixer (→ executor)
+  # slate-reviewer (→ plan-reviewer), angle-reviewer (→ reviewer), fixer (→ executor),
+  # retro and publisher (→ reviewer)
 ```
 
 `codex_sandbox` stays (decided during the build): a project has no other way to state a
@@ -192,7 +193,7 @@ missing. A lead who wants a stage re-run deletes its file.
 
 ## 8. The agents
 
-Seven charters over four required seats (decided after the build: a charter written for
+Artifact charters over four required seats (decided after the build: a charter written for
 one artifact needs no "when given" clauses, and the orchestration is unchanged because
 `bundle.prompt(role)` only picks a file). Each under 40 lines, three sections: read,
 produce, own. VALUES and JUDGMENT are in the bundle, once: agents launch with `XP_AGENT`
@@ -226,6 +227,8 @@ harnesses. constraints.md and system.md are passed in the bundle too.
 - **fixer** reads the merged angle findings; produces one commit per fix on the sprint
   branch and a handback naming each finding fixed, dropped or left to the lead; owns only
   the fixes it is sure of. Seat falls back to executor.
+- **publisher** reads the supplied card and returns a public Context as JSON;
+  owns only that text. Seat falls back to reviewer. It edits no artifacts.
 
 Sprint review fetches origin and uses the merge base of HEAD with `origin/<trunk>`;
 without origin it uses the merge base with local trunk. Dry-run fetches too and prints
@@ -305,10 +308,18 @@ remaining notes get one retry. Changed local state refuses destructive recovery.
   requires that opt-in and closes an issue; nonnumeric refs resolve local records.
   Notes stay local. Recover reads local records and, when on, shared issues;
   a GitHub failure is shown without stopping recovery.
-- Opt-in `card publish <id>` publishes an allowlisted issue body, retaining local
-  Context; `card claim <N>` labels it with clone/machine ownership and imports a local
-  card. Plans remain local working copies. Recover shows shared holders and cards
-  labelled merged awaiting Evidence. After the release record and cleanup, free
+- Opt-in `card publish <id>` publishes an allowlisted issue body. A planned card
+  without an Issue outside every sprint slate runs publisher (reviewer fallback)
+  at creation to generate public Context without personal material. After scanning
+  and successful creation it moves off the plan onto the issue. Seat, scan or gh
+  failure leaves the plan unchanged. Retained cards publish a clone placeholder,
+  keeping private Context local. `card claim <N>` in any clone, including the
+  publisher's, labels it with clone/machine ownership and imports a local card.
+  Its imported `Published by:` receipt selects public Context for later republish
+  and lifecycle sync; retained originals keep the placeholder. Existing-Issue
+  publish keeps the local card and uses no publisher seat. Recover shows shared
+  holders and cards labelled merged awaiting Evidence. After the release record
+  and cleanup, free
   post-merge updates its card's Issue pointer; sprint post-merge updates done slate
   cards only. No Evidence closes the issue with a merge-SHA comment; Evidence adds
   the merged label and comments the SHA, leaving it open. Green

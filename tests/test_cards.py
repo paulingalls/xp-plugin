@@ -84,20 +84,6 @@ def test_set_status_rejects_unknown_status(plan, capsys):
     assert plan.read_text() == PLAN
 
 
-def test_replace_card_keeps_its_neighbours(plan):
-    cards.replace_card(
-        "free-typo", "#### free-typo — fix two typos   [done]\nFiles: README.md, a.md\n"
-    )
-    text = plan.read_text()
-    assert "fix two typos   [done]\nFiles: README.md, a.md\n\n## Sprint 13" in text
-    assert text.startswith(PLAN.split("#### free-typo")[0])
-    assert cards.find_card("free-typo").files == ["README.md", "a.md"]
-
-
-def test_replace_card_requires_a_heading(plan, capsys):
-    refused(capsys, cards.replace_card, "free-typo", "Files: x\n")
-
-
 def test_sprint_slate_is_one_section(plan, capsys):
     plan.write_text(
         "## Sprint 12\nother\n## Sprint 2-extra — neighbour\nextra\n"

@@ -8,7 +8,10 @@
      A Gherkin feature is the recommended form: the ACs are its scenarios.
      A sprint heading or free card may instead use:
      Measure: touches no milestone: <the user's words>
-     Optional `Issue: #N` is written by card publish/claim; post-merge closes it
+     Publishing a planned card outside every sprint slate moves it onto its issue
+     with publisher-generated public Context; claim imports it in any clone.
+     Retained cards keep private Context local. Optional `Issue: #N` is written on
+     retained/claimed cards; post-merge closes it
      with a merge-SHA comment; a sprint's retired cards close as not planned.
      Optional `Evidence: <command>` leaves it open with a merged label and SHA comment.
      Close it after a green `xp.py resolve --ref <N> --falsifier "<Evidence>"`.
