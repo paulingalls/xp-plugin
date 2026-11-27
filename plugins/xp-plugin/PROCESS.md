@@ -1,15 +1,14 @@
 # Process
 
 `xp.py` is the absolute path in the banner. `--help` lists commands.
-Background long legs via the harness, no timeout, no `&`; output to a file, read back, never a pipe or filter.
+Background long legs via the harness, no timeout or `&`; read output files, never pipe or filter.
 
 **Session start.** Run the banner's `recover`. Disk wins over memory.
 
-**Goals.** A user's goal or complaint about effort becomes a milestone, not
-memory. Report progress in its Measure, not card ids. Flat across lands is a
-stall: choose continue (say what differs), change tack (delete what did not move
-it), or ask; tell the user after. Ask before spending money or altering what
-users see.
+**Goals.** Goals and effort complaints become milestones, not memory. Report
+Measures, not card ids. Flat across lands is a stall: continue (say what differs),
+change tack (delete what did not move it), or ask; tell the user. Ask before
+spending money or altering what users see.
 
 **Sprint:**
 1. `/create-sprint`: write the slate, `xp.py sprint plan <id>`, judge and correct.
@@ -28,9 +27,10 @@ supplies dispositions next retro.
 **Story.** Re-run after edits. Delete `plan.md` or
 `handback.md` in the story data directory to repeat that stage.
 
-**Free patch.** `xp.py free <slug>` mints a card; fill it, including `Measure:`, run again.
-Follow its `next:` lines, `xp.py free land <slug>`; after the PR merges,
-`xp.py free post-merge <slug>`. Land tears down; the worktree stays until close.
+**Free patch.** `xp.py free <slug>` mints a card. Fill it, including `Measure:`.
+Run again; with `github_issues: on`, leads publish work they will not run now:
+`xp.py card publish free-<slug>`. Follow `next:`, `xp.py free land <slug>`;
+after merge, `xp.py free post-merge <slug>`. Land tears down; worktree stays until close.
 
 **Post-merge.** Fetch trunk, release its merge SHA. Changed trees rerun proof:
 free in its worktree after setup, sprint from clean trunk; or `--tested-by "<reason>"`

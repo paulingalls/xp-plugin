@@ -4,6 +4,7 @@ import subprocess
 import sys
 
 import pytest
+import xp
 from xpcore import cards, config, session
 
 XP = config.plugin_root() / "scripts" / "xp.py"
@@ -80,7 +81,9 @@ PLAN = """\
 """
 
 
-def test_recover_lists_open_cards_with_their_stage_files(repo, capsys, monkeypatch):
+@pytest.mark.parametrize("setting", ["on", "off"])
+def test_recover_lists_open_cards_with_their_stage_files(repo, capsys, monkeypatch, setting):
+    (repo / ".xp/config.yml").write_text(f"github_issues: {setting}\n")
     binpath = repo / "bin"
     binpath.mkdir()
     gh = binpath / "gh"
@@ -88,19 +91,32 @@ def test_recover_lists_open_cards_with_their_stage_files(repo, capsys, monkeypat
     gh.chmod(0o755)
     monkeypatch.setenv("PATH", str(binpath) + os.pathsep + os.environ["PATH"])
     cards.plan_path().parent.mkdir(parents=True)
-    cards.plan_path().write_text(PLAN)
+    cards.plan_path().write_text(
+        PLAN.replace("story-002", "free-slate") + "## Free\n#### free-local — local   [planned]\n"
+        "#### free-started — started   [in-progress]\n"
+        "#### free-shared — shared   [planned]\nIssue: #224\n"
+    )
     story = config.data_root() / "stories" / "story-001"
     story.mkdir(parents=True)
     for name in ("plan.md", "review-1.md"):
         (story / name).write_text("x")
     (config.data_root() / "session.md").write_text("intent: ship\n")
     config.record_sprint_branch("sprint-001")
-    assert session.cmd_recover(None) == 0
+    assert xp.main(["recover"]) == 0
     out = capsys.readouterr().out
     assert out.startswith("intent: ship")
-    assert "story-001 — first [in-progress]\n  stages: plan.md, review-1.md" in out
-    assert "story-002 — second [planned]" in out and "story-003" not in out
-    assert "## open records\n\n### local\nnone" in out
+    hint = "; local only: xp.py card publish free-local" if setting == "on" else ""
+    assert out.split("## cards\n")[1].split("\n\n## open records")[0] == (
+        "story-001 — first [in-progress]\n  stages: plan.md, review-1.md\n"
+        "free-slate — second [planned]\n"
+        f"free-local — local [planned]{hint}\n"
+        "free-started — started [in-progress]\n  stages: none yet\n"
+        "free-shared — shared [planned]"
+    )
+    records = "\nnone" if setting == "on" else ""
+    assert f"## open records{records}\n\n### local\nnone" in out
+    if setting == "on":
+        assert "## shared cards\nnone" in out
     assert "## sprint\nsprint-001" in out
 
 

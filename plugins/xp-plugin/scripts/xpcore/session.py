@@ -147,7 +147,12 @@ def cmd_recover(args) -> int:
     else:
         live = [c for c in cards.read_cards() if c.status not in ("done", "retired")]
         for card in live:
-            print(f"{card.id} — {card.title} [{card.status}]")
+            hint = (
+                f"; local only: xp.py card publish {card.id}"
+                if github_issues() and cards.publish_moves(card.id)
+                else ""
+            )
+            print(f"{card.id} — {card.title} [{card.status}]{hint}")
             if card.status == "in-progress":
                 print(f"  stages: {_stage_files(card.id)}")
         if not live:

@@ -360,9 +360,14 @@ def cmd_free(args) -> int:
         if not (config.repo_root() / ".xp" / "milestones.md").is_file():
             template = config.plugin_root() / "templates" / "milestones.md"
             print(f"no .xp/milestones.md: copy {template} there; fill goals and Measures")
+        choice = (
+            f" here or xp.py card publish {card_id} if you will not run it now"
+            if config.github_issues()
+            else ""
+        )
         print(
             "next: write Context, Measure, AC, Files and Acceptance under it,"
-            f" then run xp.py free {name}"
+            f" then run xp.py free {name}{choice}"
         )
         return 0
     card = cards.find_card(card_id)

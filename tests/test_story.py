@@ -177,11 +177,29 @@ def test_dry_run_names_stages_and_touches_nothing(repo, capsys):
     assert not (repo / "worktrees").exists() and "[planned]" in (repo / "plan.md").read_text()
 
 
-def test_free_mints_its_card_then_stops_for_the_lead(repo, capsys):
+@pytest.mark.parametrize("setting", ["on", "off"])
+def test_free_mints_its_card_then_stops_for_the_lead(repo, capsys, setting):
+    config = repo.parent / "repo" / ".xp/config.yml"
+    config.write_text(config.read_text() + f"github_issues: {setting}\n")
+    git("add", "-A", cwd=config.parent.parent)
+    git("commit", "-qm", "configure issues", cwd=config.parent.parent)
     assert xp.main(["free", "fix-typo"]) == 0
     plan = (repo / "plan.md").read_text()
     assert plan.endswith("## Free\n\n#### free-fix-typo — fix-typo   [planned]\n")
-    assert "write Context, Measure, AC, Files and Acceptance" in capsys.readouterr().out
+    next_line = next(
+        line for line in capsys.readouterr().out.splitlines() if line.startswith("next:")
+    )
+    choice = (
+        " here or xp.py card publish free-fix-typo if you will not run it now"
+        if setting == "on"
+        else ""
+    )
+    assert next_line == (
+        "next: write Context, Measure, AC, Files and Acceptance under it,"
+        f" then run xp.py free fix-typo{choice}"
+    )
+    assert roles(repo) == []
+    assert not story(repo, "free-fix-typo").exists()
     assert not (repo / "worktrees" / "free-fix-typo").exists()
     (repo / "plan.md").write_text(plan + "Files: a.py\n")
     assert xp.main(["free", "free-fix-typo"]) == 0
