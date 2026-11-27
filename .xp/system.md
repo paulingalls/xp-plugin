@@ -33,3 +33,5 @@ every shipped path is walked by hand in a scratch consumer before a release.
 - Prose that instructs an agent to run something is a shipped path: run it first.
 - Plugin changes are not live until tagged and installed from the marketplace
   cache; run repo scripts by path to exercise the tree.
+- PROCESS.md is at the session-start budget: a card that adds PROCESS.md prose
+  names the lines it deletes; never compress unrelated lines to fit.
