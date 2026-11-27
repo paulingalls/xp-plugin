@@ -200,7 +200,7 @@ def test_close_landed_lesson(publishing, monkeypatch, kind):
     before = wiki_read(publishing)
     closing_answer(monkeypatch, [request])
     assert xp.main(["retro", "1"]) == 0
-    assert wiki_read(publishing) == "".join(before.splitlines(keepends=True)[1:])
+    assert wiki_read(publishing) == "- last: L8\n" + "".join(before.splitlines(keepends=True)[1:])
     issues = state(publishing)["issues"]
     assert issues[0]["state"] == "CLOSED" and issues[0]["stateReason"] == "COMPLETED"
     assert ref in issues[0]["comment"] and issues[1]["state"] == "OPEN"
@@ -211,7 +211,7 @@ def test_close_landed_lesson(publishing, monkeypatch, kind):
     assert len(calls) == 1
     assert calls[0][calls[0].index("--reason") + 1] == "completed"
     assert calls[0][-2:] == ["-R", git(root, "remote", "get-url", "origin")]
-    assert wiki_read(publishing) == "".join(before.splitlines(keepends=True)[1:])
+    assert wiki_read(publishing) == "- last: L8\n" + "".join(before.splitlines(keepends=True)[1:])
 
 
 @pytest.mark.parametrize(

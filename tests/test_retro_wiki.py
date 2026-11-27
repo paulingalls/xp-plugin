@@ -74,7 +74,9 @@ def test_refresh_closed_lines(publishing, monkeypatch, capsys, seat_fails):
     publishing[3].write_text(json.dumps(s))
     monkeypatch.setenv("RETRO_EXIT", str(int(seat_fails)))
     assert xp.main(["retro", "1"]) == int(seat_fails)
-    assert wiki_read(publishing) == original.replace(lines[0], "").replace(lines[1], "")
+    assert wiki_read(publishing) == (
+        "- last: L7\n" + original.replace(lines[0], "").replace(lines[1], "")
+    )
     prompt = (publishing[4] / "retro-prompt").read_text()
     assert prompt.count(bundle.charter("retro")) == 1
     assert prompt.count('{"sightings":[') == 1
@@ -83,6 +85,29 @@ def test_refresh_closed_lines(publishing, monkeypatch, capsys, seat_fails):
     assert all(line in prompt for line in lines[2:])
     error = capsys.readouterr().err
     assert "L4 #4 lookup failed" in error and "L5 #5 lookup failed" in error
+
+
+def test_closed_highest_id_is_not_reissued(publishing, monkeypatch):
+    wiki_seed(
+        publishing,
+        "- L11 [sighting] Keep lesson (seen: prior:0) -> not proposed\n"
+        "- L12 [proposed] Old lesson (seen: prior:0) -> act; #12\n",
+    )
+    snapshot = state(publishing)
+    snapshot["issues"] = [dict(number=12, state="CLOSED", stateReason="COMPLETED")]
+    snapshot["pages"] = [{"data": {"repository": {"issues": {"nodes": []}}}}]
+    publishing[3].write_text(json.dumps(snapshot))
+    monkeypatch.setenv("RETRO_EXIT", "1")
+    assert xp.main(["retro", "1"]) == 1
+    assert "Old lesson" not in wiki_read(publishing)
+    monkeypatch.setenv("RETRO_EXIT", "0")
+    sighting(monkeypatch, "Different lesson")
+    assert xp.main(["retro", "1"]) == 0
+    first = wiki_read(publishing)
+    assert "- L13 [sighting] Different lesson" in first
+    assert "- L12 [" not in first
+    assert xp.main(["retro", "1"]) == 0
+    assert wiki_read(publishing) == first
 
 
 def reject_push(publishing, monkeypatch, at):

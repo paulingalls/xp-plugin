@@ -8,6 +8,7 @@ from pathlib import Path
 
 from xpcore import config, gitx, shared
 
+LESSON_IDS = re.compile(r"(?m)^- (?:last: )?L([1-9]\d*)")
 RECORD = re.compile(
     r"- (L[1-9]\d*) \[(sighting|proposed|applied|dropped)\] (.+?) \(seen: ([^)]+)\) -> (.+)"
 )
@@ -109,18 +110,18 @@ def synchronize(path, snapshot):
             )
             if not isinstance(issue, dict) or not {"state", "stateReason"} <= issue.keys():
                 raise ValueError("missing issue state/stateReason")
-            if issue["state"] == "OPEN":
+            state, reason = issue["state"], issue["stateReason"]
+            if state == "OPEN":
                 continue
-            if issue["state"] != "CLOSED" or issue["stateReason"] not in (
-                "COMPLETED",
-                "NOT_PLANNED",
-            ):
+            if state != "CLOSED" or reason not in ("COMPLETED", "NOT_PLANNED"):
                 raise ValueError(f"unsupported issue disposition: {issue}")
             lines[record[0]] = ""
         except (OSError, RuntimeError, ValueError, KeyError, TypeError) as exc:
             print(f"Lesson {key} #{number} lookup failed; unchanged: {exc}", file=sys.stderr)
     updated = "".join(lines)
     if updated != snapshot:
+        updated = re.sub(r"(?m)^- last: L[1-9]\d*\n?", "", updated)
+        updated = f"- last: L{max(map(int, LESSON_IDS.findall(snapshot)))}\n" + updated
         atomic(path, updated)
     return updated
 

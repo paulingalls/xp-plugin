@@ -9,6 +9,7 @@ from pathlib import Path
 
 from xpcore import bundle, cards, config, gitx, launch, shared
 from xpcore.lesson_issues import (
+    LESSON_IDS,
     ReceiptError,
     atomic,
     close_lessons,
@@ -176,7 +177,7 @@ def persist(path, candidate, target, result, refs, sighting):
         previous = path.read_text() if path.exists() else None
         lines = (previous or "").splitlines()
         records = parse_ledger(previous or "")
-        next_id = max((int(key[1:]) for key in records), default=0) + 1
+        next_id = max(map(int, LESSON_IDS.findall(previous or "")), default=0) + 1
         stale = {}
         for key, record in list(records.items()):
             index, status, text, seen, reason = record
@@ -192,7 +193,6 @@ def persist(path, candidate, target, result, refs, sighting):
                     continue
                 status, reason = "sighting", "not proposed"
             elif not remaining:
-                # Filed proposals and final dispositions retain their historical evidence.
                 continue
             record[1], record[3], record[4] = status, remaining, reason
             lines[index] = f"- {key} [{status}] {text} (seen: {', '.join(remaining)}) -> {reason}"
@@ -210,7 +210,6 @@ def persist(path, candidate, target, result, refs, sighting):
                     ),
                     "",
                 )
-                # A rerun that words a lesson as before keeps its ID; a new one never reuses one.
                 key = key or next((k for k, r in stale.items() if words(r[2]) == text), "")
                 if key in stale:
                     records[key] = stale.pop(key)
