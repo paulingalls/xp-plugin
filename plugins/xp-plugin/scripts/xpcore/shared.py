@@ -227,6 +227,9 @@ def cmd_claim(args) -> int:
                 f"gh issue edit {args.id} --remove-label clone:{o}" for o in others
             )
             refuse(f"card held by {', '.join(others)}; the holder releases it with {release}")
+        local = cards.read_cards() if cards.plan_path().is_file() else []
+        if any(c.id == card.id and c.field("Issue") != f"#{args.id}" for c in local):
+            refuse(f"{card.id}: local id collision; rename it before claiming #{args.id}")
         ensure_label(holder)
         if holder not in labels:
             _gh("issue", "edit", args.id, "--add-label", holder)
