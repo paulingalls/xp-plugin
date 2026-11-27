@@ -9,8 +9,11 @@
      A sprint heading or free card may instead use:
      Measure: touches no milestone: <the user's words>
      Publishing a planned card outside every sprint slate moves it onto its issue
-     with publisher-generated public Context; claim imports it in any clone.
-     Retained cards keep private Context local. Optional `Issue: #N` is written on
+     verbatim plus Published by; stdout counts moved lines. The lead checks every
+     line down to the next #–#### heading for personal material; gitleaks scans secrets.
+     Claim imports it in any clone; updates are verbatim except Context stays the issue's.
+     Retained cards send heading, Measure, AC, Files, Acceptance, Evidence, Executor
+     and Context: local to <owner>; the rest stays local. Optional `Issue: #N` is written on
      retained/claimed cards; post-merge closes it
      with a merge-SHA comment; a sprint's retired cards close as not planned.
      Optional `Evidence: <command>` leaves it open with a merged label and SHA comment.

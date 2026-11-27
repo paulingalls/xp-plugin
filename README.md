@@ -131,7 +131,7 @@ xp.py story land <id> [--tested-by REASON]   trial merge, Acceptance on the merg
 xp.py free <slug>               mint the card; run again to walk it as a story cut from trunk
 xp.py free land <slug> [--tested-by REASON]  PR against trunk
 xp.py free post-merge <slug> [--tested-by REASON]  release the fetched PR merge; close the patch
-xp.py card publish <id>          publish or update an allowlisted card issue (opt-in)
+xp.py card publish <id>          publish or update a shared card issue (opt-in)
 xp.py card claim <N>             claim a card issue in this clone (opt-in)
 xp.py bug | debt                 file local records, or GitHub issues with github_issues: on
 xp.py resolve --ref 224 --falsifier "..."    close an issue (opt-in) or local ID with a green falsifier
@@ -234,9 +234,13 @@ release records, agent logs and worktrees. Linked worktrees share their clone's 
 
 With `github_issues: on`, bug/debt records are issues in the checkout's GitHub
 repository. Publish a card with `xp.py card publish <id>`, then run
-`xp.py card claim <N>` in the other clone. Publication sends the heading, Measure,
-AC, Files, Acceptance, Evidence and Executor; Context stays local. The lead inspects
-public text for personal material; gitleaks catches secrets only. Claims use
+`xp.py card claim <N>` in the other clone. Planned non-slate cards without an Issue
+move verbatim onto the issue, followed by `Published by:`; stdout counts moved lines.
+Claim imports every line plus Issue. Claimed updates stay verbatim except Context
+stays the issue's. Retained originals send heading, Measure, AC, Files, Acceptance,
+Evidence and Executor with `Context: local to <owner>`; the rest stays local.
+Before publishing, the lead inspects every line down to the next `#`–`####` heading
+for personal material; gitleaks catches secrets only. Claims use
 `clone:<directory>@<machine hash>` labels. Recover shows holders and merged cards
 awaiting evidence.
 

@@ -35,41 +35,26 @@ def save(fixture, value):
     (fixture / "issues.json").write_text(json.dumps(value))
 
 
-pytestmark = pytest.mark.usefixtures("publisher")
-
-PUBLIC = "Shared work needs a durable public description so another clone can complete it."
-
-
 @pytest.fixture
-def publisher(repo, monkeypatch):  # noqa: F811
+def agents(repo):  # noqa: F811
     config = repo / "r/.xp/config.yml"
     config.write_text(
         config.read_text()
         + "roles:\n  reviewer: claude/review-model\n  executor: codex/exec-model\n"
     )
-    trace = repo / "publisher.jsonl"
-    monkeypatch.setenv("PUBLISH_TRACE", str(trace))
-    monkeypatch.setenv("PUBLISH_RESULT", json.dumps({"context": PUBLIC}))
-    script = """import json, os, sys
-from pathlib import Path
-if os.environ.get('XP_AGENT') == 'publisher':
-    prompt = sys.stdin.read()
-    with open(os.environ['PUBLISH_TRACE'], 'a') as out:
-        out.write(json.dumps([sys.argv, prompt]) + '\\n')
-    print(json.dumps({'type': 'result', 'result': os.environ['PUBLISH_RESULT']}))
-    sys.exit(int(os.environ.get('PUBLISH_EXIT', '0')))
-""" + FAKE.replace(
+    script = FAKE.replace(
         'print(json.dumps({"type": "result", "result": "done"}))',
         'print(json.dumps({"type":"item.completed",'
         '"item":{"type":"agent_message","text":"done"}}) '
         'if Path(sys.argv[0]).name == "codex" '
         'else json.dumps({"type":"result","result":"done"}))',
     )
+    script = "from pathlib import Path\n" + script
     for name in ("claude", "codex"):
         binary = repo / "bin" / name
         binary.write_text(f"#!{sys.executable}\n" + script)
         binary.chmod(0o755)
-    return trace
+    return cards.plan_path().parent / "roles.txt"
 
 
 def test_republish_sends_title_and_belongs_to_the_holder(repo, capsys):  # noqa: F811

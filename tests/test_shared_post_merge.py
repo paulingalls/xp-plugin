@@ -10,7 +10,7 @@ import xp
 from test_free_post_merge import publish_merge
 from test_land import CONFIG, commit, free_patch, git, make_project, story  # noqa: F401
 from test_records import refused, repo, state  # noqa: F401
-from test_shared import CARD, PUBLIC, plan, publisher  # noqa: F401
+from test_shared import CARD, agents, plan  # noqa: F401
 from test_sprint import merge_on_trunk
 from test_sprint import repo as sprint_repo  # noqa: F401
 from test_story import repo as story_repo  # noqa: F401
@@ -228,29 +228,38 @@ def test_story_start_republishes_in_progress(story_repo, tmp_path, monkeypatch, 
     assert json.loads(store.read_text())["published"][0] == "224"
 
 
-def test_publish_claim_and_run(repo, publisher, capsys):  # noqa: F811
+def test_publish_claim_and_run(repo, agents, capsys):  # noqa: F811
     root = repo / "r"
     git(root, "branch", "-M", "main")
     git(root, "add", ".xp/config.yml")
     git(root, "commit", "-qm", "roles")
     adjacent = "#### free-next — next   [planned]\nContext: next\n"
-    source = CARD.replace("Executor: codex", "Executor: codex/exec-model")
-    plan("Section text\n\n" + source + adjacent)
+    source = (
+        CARD.replace("Executor: codex", "Executor: codex/exec-model").replace(
+            "Context: private local detail",
+            "Context: public repo/a.py at commit 123, run 42\npublic continuation",
+        )
+        + "Do: keep all lines\nRelease steps: none\n\nTrailing prose\n##### embedded heading\n"
+    )
+    source = source.replace("Files:", "unindented AC continuation\nFiles:")
+    plan("Section text\n\n" + source + "\n\n" + adjacent)
     before = cards.plan_path().read_text()
     assert xp.main(["card", "publish", "free-share"]) == 0
-    assert f"Context: {PUBLIC}\nhttps://example.test/issues/224\n" in capsys.readouterr().out
+    output = capsys.readouterr().out
+    assert "https://example.test/issues/224" in output
     issue = state(repo)["issues"][0]
     assert issue["labels"] == [{"name": "card"}]
     receipt = issue["body"].split("Published by: ")[1].strip()
-    assert (
-        issue["body"]
-        == source.replace("private local detail", PUBLIC) + f"Published by: {receipt}\n"
-    )
+    assert issue["body"] == source + f"Published by: {receipt}\n"
+    assert not agents.exists()
+    assert f"free-share: moved {len(source.splitlines())} lines to #224" in output
+    assert sum(c[0][:2] == ["issue", "create"] for c in state(repo)["calls"]) == 1
     assert cards.plan_path().read_text() == before.replace(source, "")
     assert xp.main(["card", "claim", "224"]) == 0
     card = cards.find_card("free-share")
     assert card.status == "planned" and card.field("Issue") == "#224"
-    assert card.field("Context") == PUBLIC and card.field("Published by") == receipt
+    assert card.lines == [*issue["body"].splitlines(), "Issue: #224"]
+    assert card.field("Published by") == receipt
     assert {"name": "clone:" + receipt} in state(repo)["issues"][0]["labels"]
     cards.set_field(card.id, "Files", "b.py")
     assert xp.main(["card", "publish", card.id]) == 0
@@ -260,7 +269,4 @@ def test_publish_claim_and_run(repo, publisher, capsys):  # noqa: F811
     assert xp.main(["story", card.id]) == 0
     assert cards.find_card(card.id).status == "in-progress"
     body = state(repo)["issues"][0]["body"]
-    assert "[in-progress]" in body and f"Context: {PUBLIC}\n" in body
-    calls = [json.loads(line) for line in publisher.read_text().splitlines()]
-    assert len(calls) == 1 and "review-model" in calls[0][0]
-    assert "private local detail" in calls[0][1]
+    assert "[in-progress]" in body and "Context: public repo/a.py at commit 123, run 42\n" in body
