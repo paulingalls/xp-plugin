@@ -80,9 +80,9 @@ def validate(answer, markdown, records, issues=None):
             refs[ref] = text
         else:
             shape(sighting, ("lesson",))
-            number = int(ref[1:]) if re.fullmatch(r"#[1-9]\d*", ref) else 0
-            if lesson_issue((issues or {}).get(number), "CLOSED"):
-                refs[ref] = words(f"Replacement for {ref}: {issues[number]['title']}")
+            issue = (issues or {}).get(int(ref[1:]) if re.fullmatch(r"#[1-9]\d*", ref) else 0)
+            if lesson_issue(issue, "CLOSED") and "(seen:" not in issue["title"]:
+                refs[ref] = words(f"Replacement for {ref}: {issue['title']}")
                 continue
             if ref not in records:
                 raise ValueError(f"unknown lesson {ref}")
