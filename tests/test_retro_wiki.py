@@ -5,7 +5,7 @@ import xp
 from test_land import git
 from test_retro import result
 from test_retro_filing import state, two_proposals, wiki_commit, wiki_read, wiki_seed
-from xpcore import gitx, retro
+from xpcore import bundle, gitx, retro
 
 pytest_plugins = ["test_retro_filing"]
 
@@ -76,6 +76,9 @@ def test_refresh_closed_lines(publishing, monkeypatch, capsys, seat_fails):
     assert xp.main(["retro", "1"]) == int(seat_fails)
     assert wiki_read(publishing) == original.replace(lines[0], "").replace(lines[1], "")
     prompt = (publishing[4] / "retro-prompt").read_text()
+    assert prompt.count(bundle.charter("retro")) == 1
+    assert prompt.count('{"sightings":[') == 1
+    assert prompt.count("closures") == bundle.charter("retro").count("closures")
     assert lines[0] not in prompt and lines[1] not in prompt
     assert all(line in prompt for line in lines[2:])
     error = capsys.readouterr().err

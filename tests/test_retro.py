@@ -141,11 +141,6 @@ def test_hook_exits(tmp_path, monkeypatch, fake_retro):
     assert "1-sprint-close.log: 23, 0" in prompt
     assert "HOOK_OUTPUT_SENTINEL" not in prompt
     assert "slate-review.md: absent" in prompt
-    from xpcore import bundle
-
-    assert prompt.count(bundle.charter("retro")) == 1
-    assert prompt.count('{"sightings":[') == 1
-    assert prompt.count('add "closures":') == 1
 
 
 def test_selected_artifacts_and_statuses(tmp_path, monkeypatch, fake_retro):
