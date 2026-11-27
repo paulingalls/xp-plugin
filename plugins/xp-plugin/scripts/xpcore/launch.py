@@ -12,7 +12,7 @@ from collections.abc import Callable, Iterable
 from datetime import datetime, timezone
 from pathlib import Path
 
-from xpcore import config, gitx
+from xpcore import config, gitx, hooks
 
 INSTALL = {"claude": "https://claude.com/product/claude-code", "codex": "npm i -g @openai/codex"}
 SANDBOXES = {
@@ -185,10 +185,6 @@ def _feed(proc: subprocess.Popen, prompt: str) -> None:
             proc.stdin.close()
 
 
-def log_path(log_id: str) -> Path:
-    return config.data_root() / "logs" / f"{log_id}.log"
-
-
 def run_agent(
     role: str, prompt: str, cwd: Path, log_id: str, *, override: str = ""
 ) -> subprocess.CompletedProcess:
@@ -207,8 +203,7 @@ def run_agent(
     if posture := sandbox_line(argv):
         print(posture, file=sys.stderr)
     child_env = (CLAUDE_ENV if harness == "claude" else {}) | os.environ | {"XP_AGENT": role}
-    path = log_path(log_id)
-    path.parent.mkdir(parents=True, exist_ok=True)
+    path = hooks.log_path(log_id)
     print(f"live log: {path}", file=sys.stderr)
     with open(path, "a") as log:
         stamp = datetime.now(timezone.utc).isoformat(timespec="seconds")

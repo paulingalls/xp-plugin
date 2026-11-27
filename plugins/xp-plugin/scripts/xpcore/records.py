@@ -7,9 +7,8 @@ import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 
-from xpcore import shared
+from xpcore import config, shared
 from xpcore.config import data_root, github_issues, refuse, repo_root, require_github_issues
-from xpcore.gitx import git
 
 OUTPUT_CAP = 2_000
 TIMEOUT = 600
@@ -203,7 +202,7 @@ def cmd_resolve(args) -> int:
 
 
 def issue_records() -> list[str]:
-    if not git("rev-parse", "--show-toplevel", check=False):
+    if not config.toplevel():
         return ["GitHub open records unavailable: not inside a git repository"]
     try:
         # Unfiltered: gh sends --search and --label through the search index, which

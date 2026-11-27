@@ -40,7 +40,7 @@ def agent(role: str, text: str, root: Path, log_id: str, out: Path) -> Path:
     out.parent.mkdir(parents=True, exist_ok=True)
     result = launch.run_agent(role, text, root, log_id)
     if result.returncode:
-        fail(f"{role} exited {result.returncode}; read {launch.log_path(log_id)}")
+        fail(f"{role} exited {result.returncode}; read {hooks.log_path(log_id)}")
     if not out.is_file():
         out.write_text(result.stdout + ("" if result.stdout.endswith("\n") else "\n"))
     return out
@@ -182,11 +182,11 @@ def cmd_sprint_review(args) -> int:
     if gitx.is_dirty(root):
         refuse(
             f"the fixer left uncommitted changes in {root}; commit or discard them there"
-            f" (git -C {root} status), read {launch.log_path(log_id)}, judge what it left"
+            f" (git -C {root} status), read {hooks.log_path(log_id)}, judge what it left"
             f" open, then run xp.py sprint land {args.id}"
         )
     if result.returncode:
-        print(f"failed: the fixer exited {result.returncode}; read {launch.log_path(log_id)}")
+        print(f"failed: the fixer exited {result.returncode}; read {hooks.log_path(log_id)}")
         return 1
     print(f"fixer done; judge what it left open, then `xp.py sprint land {args.id}`")
     return 0

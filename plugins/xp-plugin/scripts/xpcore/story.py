@@ -6,7 +6,6 @@ from pathlib import Path
 
 from xpcore import bundle, cards, config, gitx, hooks, launch, session, shared
 from xpcore.config import fail
-from xpcore.launch import log_path
 
 REVIEW = re.compile(r"review-(\d+)\.md")
 SLUG = re.compile(r"[a-z0-9]+(-[a-z0-9]+)*")
@@ -114,17 +113,17 @@ def run(role: str, card: cards.Card, text: str, wt: Path, log_id: str, override:
     proc = launch.run_agent(role, text, wt, log_id, override=override)
     if proc.returncode != 0:
         fail(
-            f"{role} exited {proc.returncode}; read {log_path(log_id)}, then run "
+            f"{role} exited {proc.returncode}; read {hooks.log_path(log_id)}, then run "
             f"{commands(card.id)[0]} again"
         )
-    print(f"{card.id}: {role} done; log {log_path(log_id)}")
+    print(f"{card.id}: {role} done; log {hooks.log_path(log_id)}")
     return proc
 
 
 def expect(path: Path, role: str, log_id: str, card_id: str) -> None:
     if not path.is_file():
         fail(
-            f"{role} wrote no {path}; read {log_path(log_id)}, then run "
+            f"{role} wrote no {path}; read {hooks.log_path(log_id)}, then run "
             f"{commands(card_id)[0]} again"
         )
 
@@ -180,7 +179,7 @@ def execute_stage(card: cards.Card, sdir: Path, wt: Path, base: str) -> None:
     if not committed(wt, base):
         handback.unlink(missing_ok=True)
         fail(
-            f"the executor committed nothing; read {log_path(log_id)}, then fix the card or"
+            f"the executor committed nothing; read {hooks.log_path(log_id)}, then fix the card or"
             f" plan and run {commands(card.id)[0]} again"
         )
     if not handback.is_file():
