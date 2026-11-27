@@ -4,6 +4,14 @@ Release notes started at v0.6.0; earlier entries are summarized from their
 tag and merge messages. Full detail lives in the merge history and the
 per-sprint review reports.
 
+## v1.14.0
+
+- Retros close open lesson issues whose fixes have landed, citing a closed issue,
+  repository commit or project rule in the completion comment. Linked ledger rows
+  become applied in the same retro. Dropping lessons remains the human's ruling.
+
+Release steps: none.
+
 ## v1.13.0
 
 - With GitHub issues enabled, retros automatically publish proposed lessons,
