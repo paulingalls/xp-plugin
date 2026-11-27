@@ -271,6 +271,8 @@ def test_close_landed_lesson(publishing, monkeypatch, kind):
         "reason",
         "unseen",
         "file",
+        "blank-rule",
+        "secret",
     ],
 )
 def test_refuse_closure_batch(publishing, monkeypatch, capsys, invalid):
@@ -285,6 +287,13 @@ def test_refuse_closure_batch(publishing, monkeypatch, capsys, invalid):
         other["issue"] = 999
     elif invalid == "missing":
         del other["evidence"]
+    elif invalid == "secret":
+        root = publishing[0]
+        (root / ".gitleaks.toml").write_text(
+            '[[rules]]\nid = "c"\nregex = "xp_canary_[a-f0-9]{8}"\n'
+        )
+        (root / ".xp/system.md").write_text("Rule\n")
+        other["evidence"] = {"kind": "rule", "ref": ".xp/system.md: xp_canary_0123abcd"}
     elif invalid in ("blank", "kind", "malformed", "unresolved", "open", "unseen", "file"):
         other["evidence"] = {
             "blank": {"kind": "issue", "ref": " "},
@@ -295,6 +304,9 @@ def test_refuse_closure_batch(publishing, monkeypatch, capsys, invalid):
             "unseen": {"kind": "issue", "ref": "#999"},
             "file": {"kind": "rule", "ref": ".xp/constraints.md: absent"},
         }[invalid]
+    elif invalid == "blank-rule":
+        (publishing[0] / ".xp/system.md").write_text("Rule\n")
+        other["evidence"] = {"kind": "rule", "ref": ".xp/system.md: "}
     elif invalid == "duplicate":
         other = valid
     elif invalid == "reason":
@@ -303,7 +315,7 @@ def test_refuse_closure_batch(publishing, monkeypatch, capsys, invalid):
     before = retro.ledger_path().read_text()
     closing_answer(monkeypatch, [valid, other])
     assert xp.main(["retro", "1"]) == 1
-    assert "closure" in capsys.readouterr().err.lower()
+    assert ("gitleaks" if invalid == "secret" else "closure") in capsys.readouterr().err.lower()
     assert retro.ledger_path().read_text() == before
     assert (publishing[2] / "retro.md").read_text() == "Previous retro"
     assert state(publishing)["issues"] == s["issues"]
