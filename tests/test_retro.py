@@ -84,7 +84,9 @@ def test_direct_persistence_rerun_and_private_narrative(tmp_path, monkeypatch, f
     assert "Changed" in (folder / "retro.md").read_text()
 
 
-@pytest.mark.parametrize("failure", ["exit", "missing", "malformed", "unknown", "marker", "ledger"])
+@pytest.mark.parametrize(
+    "failure", ["exit", "missing", "malformed", "unknown", "issue", "marker", "ledger"]
+)
 def test_failure_preserves_previous(tmp_path, monkeypatch, fake_retro, capsys, failure):
     from pathlib import Path
 
@@ -104,6 +106,8 @@ def test_failure_preserves_previous(tmp_path, monkeypatch, fake_retro, capsys, f
         monkeypatch.setenv("RETRO_RESULT", "{}")
     elif failure == "unknown":
         monkeypatch.setenv("RETRO_RESULT", '{"sightings":[{"lesson":"L99"}],"proposals":[]}')
+    elif failure == "issue":
+        monkeypatch.setenv("RETRO_RESULT", '{"sightings":[{"lesson":"#780"}],"proposals":[]}')
     elif failure == "marker":
         monkeypatch.setenv(
             "RETRO_RESULT", os.environ["RETRO_RESULT"].replace("Deletion suffices", "See; #192")
@@ -137,6 +141,11 @@ def test_hook_exits(tmp_path, monkeypatch, fake_retro):
     assert "1-sprint-close.log: 23, 0" in prompt
     assert "HOOK_OUTPUT_SENTINEL" not in prompt
     assert "slate-review.md: absent" in prompt
+    from xpcore import bundle
+
+    assert prompt.count(bundle.charter("retro")) == 1
+    assert prompt.count('{"sightings":[') == 1
+    assert prompt.count('add "closures":') == 1
 
 
 def test_selected_artifacts_and_statuses(tmp_path, monkeypatch, fake_retro):

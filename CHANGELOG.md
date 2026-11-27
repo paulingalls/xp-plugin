@@ -4,6 +4,24 @@ Release notes started at v0.6.0; earlier entries are summarized from their
 tag and merge messages. Full detail lives in the merge history and the
 per-sprint review reports.
 
+## v1.16.0
+
+- With GitHub issues enabled, the lessons ledger is `Lessons.md` in the project's
+  wiki, shared by every clone on every machine, instead of one file per machine.
+  The retro clones the wiki, pushes after each step, and refuses loudly when
+  another retro pushed first. Lesson ids no longer collide across machines, and
+  a line whose lesson issue closes is removed (the closed issue is the record).
+- The retro may cite a closed lesson issue as `#N`; a fix sighted again becomes
+  "Replacement for #N". Filed lesson issues no longer carry the local `L<n>:` id.
+- The retro's JSON contract lives only in its charter.
+
+Release steps (each project with `github_issues: on`, once):
+1. Create the wiki's first page in the browser, if the project has no wiki yet.
+2. Merge every machine's `~/.xp/projects/<owner>/<repo>/lessons.md` into one
+   `Lessons.md` in the wiki: drop lines whose lesson issue is closed, keep one copy
+   of each line with an open issue, merge duplicate sightings, renumber.
+3. Remove each machine's local `lessons.md`. Until then the retro refuses.
+
 ## v1.15.2
 
 - The executor meets a line cap or gate by extracting, never by deleting a guard,

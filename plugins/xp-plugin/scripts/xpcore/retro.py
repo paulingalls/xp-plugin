@@ -16,6 +16,7 @@ from xpcore.lesson_issues import (
     file_pending,
     issue_input,
     issue_number,
+    lesson_issue,
     origin,
     parse_ledger,
     synchronize,
@@ -79,6 +80,10 @@ def validate(answer, markdown, records, issues=None):
             refs[ref] = text
         else:
             shape(sighting, ("lesson",))
+            issue = (issues or {}).get(int(ref[1:]) if re.fullmatch(r"#[1-9]\d*", ref) else 0)
+            if lesson_issue(issue, "CLOSED") and "(seen:" not in issue["title"]:
+                refs[ref] = words(f"Replacement for {ref}: {issue['title']}")
+                continue
             if ref not in records:
                 raise ValueError(f"unknown lesson {ref}")
             refs[ref] = records[ref][2]
@@ -196,7 +201,7 @@ def persist(path, candidate, target, result, refs, sighting):
             applied = ref in records and records[ref][1] == "applied"
             if applied:
                 text = f"Replacement for {ref}: {records[ref][2]}"
-            if ref.startswith("new:") or applied:
+            if ref.startswith(("new:", "#")) or applied:
                 key = next(
                     (
                         k

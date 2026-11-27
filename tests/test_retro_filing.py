@@ -129,7 +129,8 @@ def test_publication_retry_and_recovery(publishing, monkeypatch, capsys):
     assert xp.main(["retro", "1"]) == 0
     issues = state(publishing)["issues"]
     assert len(issues) == 2
-    assert all(s in issues[0]["body"] for s in ("L8", "A lesson", "Delete the step", "An hour"))
+    assert all(i["body"].startswith(i["title"] + "\n\n") for i in issues)
+    assert all(s in issues[0]["body"] for s in ("A lesson", "Delete the step", "An hour"))
     assert all(f"; #{n}" in wiki_read(publishing) for n in (99, 224, 225))
     for args, _ in state(publishing)["calls"]:
         if args[:2] in (["label", "create"], ["issue", "create"]):
