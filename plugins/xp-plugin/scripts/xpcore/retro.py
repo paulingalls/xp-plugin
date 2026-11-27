@@ -7,11 +7,19 @@ import sys
 import tempfile
 from pathlib import Path
 
-from xpcore import bundle, cards, config, gitx, launch, shared
-
-RECORD = re.compile(
-    r"- (L[1-9]\d*) \[(sighting|proposed|applied|dropped)\] (.+?) \(seen: ([^)]+)\) -> (.+)"
+from xpcore import bundle, cards, config, gitx, launch
+from xpcore.lesson_issues import (
+    ReceiptError,
+    atomic,
+    close_lessons,
+    closure_comments,
+    file_pending,
+    issue_input,
+    issue_number,
+    parse_ledger,
+    synchronize,
 )
+
 CONTRACT = """Return only JSON:
 {"sightings":[{"lesson":"L3"},{"lesson":"new:1","text":"New lesson"}],
 "proposals":[{"lessons":["L3","new:1"],"text":"Action","why":{"sightings":"Supporting sightings",
@@ -28,26 +36,6 @@ def ledger_path() -> Path:
     if not project or any(part in ("", ".", "..") for part in project.groups()):
         raise ValueError(f"cannot derive project from origin {url!r}")
     return Path.home() / ".xp/projects" / project[1] / project[2] / "lessons.md"
-
-
-def parse_ledger(text, malformed=None):
-    records = {}
-    for index, line in enumerate(text.splitlines()):
-        if not re.match(r"- L(?:\d|\S* \[)", line):
-            continue
-        match = RECORD.fullmatch(line)
-        if not match or match[1] in records:
-            if malformed is None:
-                raise ValueError(f"malformed or duplicate lesson: {line}")
-            malformed.append(line)
-            continue
-        records[match[1]] = [index, match[2], match[3], match[4].split(", "), match[5]]
-    return records
-
-
-def issue_number(record):
-    match = re.search(r"; #([1-9]\d*)$", record[4])
-    return match[1] if match else ""
 
 
 def recovery_rows():
@@ -73,69 +61,6 @@ def recovery_rows():
     return [f"\n### lessons — {disposal}", *rows]
 
 
-def origin():
-    url = gitx.git("remote", "get-url", "origin", check=False)
-    if not url:
-        raise ValueError("origin remote is missing")
-    return url
-
-
-class ReceiptError(ValueError):
-    pass
-
-
-def file_pending(path):
-    if not path.exists():
-        return
-    with path.with_name(path.name + ".lock").open("a") as lock:
-        fcntl.flock(lock, fcntl.LOCK_EX)
-        text = path.read_text()
-        for key, record in parse_ledger(text).items():
-            if record[1] != "proposed" or issue_number(record):
-                continue
-            try:
-                repo = origin()
-                title = record[2]
-                body = f"{key}: {title}\n\n{record[4]}\n"
-                shared._dependencies()
-                shared._scan(title, body)
-                shared._authenticate()
-                shared._gh("label", "create", "lesson", "--force", "-R", repo)
-                url = shared._gh(
-                    "issue",
-                    "create",
-                    "--title",
-                    title,
-                    "--label",
-                    "lesson",
-                    "--body-file",
-                    "-",
-                    "-R",
-                    repo,
-                    body=body,
-                )
-                match = re.search(r"/issues/([1-9]\d*)$", url)
-                if not match:
-                    raise ReceiptError(
-                        f"issue created but number unavailable: {url}; "
-                        "inspect GitHub and repair ledger"
-                    )
-                lines = text.splitlines(keepends=True)
-                index = record[0]
-                lines[index] = lines[index].rstrip("\r\n") + f"; #{match[1]}\n"
-                try:
-                    atomic(path, "".join(lines))
-                except OSError as exc:
-                    raise ReceiptError(
-                        f"created {url}; manually add ; #{match[1]} to {key} in {path}: {exc}"
-                    ) from exc
-                text = "".join(lines)
-                print(url)
-            except (Exception, SystemExit):
-                print(f"Lesson {key} filing failed in {path}", file=sys.stderr)
-                raise
-
-
 def words(value):
     if not isinstance(value, str) or not value.strip():
         raise ValueError("expected nonblank text")
@@ -147,8 +72,10 @@ def shape(value, keys):
         raise ValueError(f"expected fields: {keys}")
 
 
-def validate(answer, markdown, records):
+def validate(answer, markdown, records, issues=None):
     value = json.loads(answer)
+    if issues is not None:
+        closures = value.pop("closures", [])
     shape(value, ("sightings", "proposals"))
     if not isinstance(value["sightings"], list) or not isinstance(value["proposals"], list):
         raise ValueError("sightings and proposals must be lists")
@@ -189,7 +116,8 @@ def validate(answer, markdown, records):
     for heading in ("Misses", "Sightings", "Proposals"):
         if not re.search(rf"^## {heading}\s*$", markdown, re.M):
             raise ValueError(f"missing {heading} section")
-    return value, refs
+    comments = closure_comments(closures, issues) if issues is not None else {}
+    return value, refs, comments
 
 
 def inputs(identifier, slate, ledger):
@@ -249,16 +177,6 @@ def inputs(identifier, slate, ledger):
 
 def why_text(proposal):
     return "; ".join(f"{key}: {words(value)}" for key, value in proposal["why"].items())
-
-
-def atomic(path, text):
-    with tempfile.NamedTemporaryFile(mode="w", dir=path.parent, delete=False) as stream:
-        staged = Path(stream.name)
-    try:
-        staged.write_text(text)
-        staged.replace(path)
-    finally:
-        staged.unlink(missing_ok=True)
 
 
 def persist(path, candidate, target, result, refs, sighting):
@@ -336,87 +254,6 @@ def persist(path, candidate, target, result, refs, sighting):
             raise
 
 
-def synchronize(path, snapshot):
-    if not config.github_issues() or not any(
-        r[1] == "proposed" and issue_number(r) for r in parse_ledger(snapshot).values()
-    ):
-        return snapshot
-    with path.with_name(path.name + ".lock").open("a") as lock:
-        fcntl.flock(lock, fcntl.LOCK_EX)
-        snapshot = path.read_text()
-        lines = snapshot.splitlines(keepends=True)
-        for key, record in parse_ledger(snapshot).items():
-            number = issue_number(record)
-            if record[1] != "proposed" or not number:
-                continue
-            try:
-                issue = json.loads(
-                    shared._gh(
-                        "issue", "view", number, "--json", "state,stateReason", "-R", origin()
-                    )
-                )
-                if not isinstance(issue, dict) or not {"state", "stateReason"} <= issue.keys():
-                    raise ValueError("missing issue state/stateReason")
-                if issue["state"] == "OPEN":
-                    continue
-                if issue["state"] != "CLOSED" or issue["stateReason"] not in (
-                    "COMPLETED",
-                    "NOT_PLANNED",
-                ):
-                    raise ValueError(f"unsupported issue disposition: {issue}")
-                status = "applied" if issue["stateReason"] == "COMPLETED" else "dropped"
-                index = record[0]
-                lines[index] = lines[index].replace("[proposed]", f"[{status}]", 1)
-            except (OSError, RuntimeError, ValueError, KeyError, TypeError) as exc:
-                print(f"Lesson {key} #{number} lookup failed; unchanged: {exc}", file=sys.stderr)
-        updated = "".join(lines)
-        if updated != snapshot:
-            atomic(path, updated)
-        return updated
-
-
-def issue_input():
-    try:
-        repo = json.loads(shared._gh("repo", "view", origin(), "--json", "nameWithOwner"))
-        owner, name = repo["nameWithOwner"].split("/")
-        query = """query($owner:String!, $name:String!, $endCursor:String) {
-repository(owner:$owner, name:$name) {
-issues(first:100, after:$endCursor, states:[OPEN,CLOSED], labels:["bug","debt","lesson"]) {
-nodes { number title state stateReason closedAt }
-pageInfo { hasNextPage endCursor }
-}}}"""
-        pages = json.loads(
-            shared._gh(
-                "api",
-                "graphql",
-                "--paginate",
-                "--slurp",
-                "-f",
-                f"query={query}",
-                "-F",
-                f"owner={owner}",
-                "-F",
-                f"name={name}",
-            )
-        )
-        nodes = [node for page in pages for node in page["data"]["repository"]["issues"]["nodes"]]
-        opened = [node for node in nodes if node["state"] == "OPEN"]
-        closed = sorted(
-            (node for node in nodes if node["state"] == "CLOSED"),
-            key=lambda node: node["closedAt"],
-            reverse=True,
-        )[:50]
-        rows = [
-            f"#{node['number']} {node['title']} — {node['state']} ({node['stateReason']})"
-            for node in opened + closed
-        ]
-        return "Live bug, debt and lesson issues (all open; 50 most recently closed):\n" + (
-            "\n".join(rows) if rows else "none"
-        )
-    except (OSError, RuntimeError, ValueError, KeyError, TypeError) as exc:
-        raise ValueError(f"issue snapshot lookup failed: {exc}") from exc
-
-
 def run(identifier):
     folder = config.data_root() / "sprints" / identifier
     if not (folder / "release.json").is_file():
@@ -426,7 +263,7 @@ def run(identifier):
         file_pending(path)
     snapshot = path.read_text() if path.exists() else ""
     snapshot = synchronize(path, snapshot)
-    live = issue_input() if config.github_issues() else ""
+    issues, live = issue_input() if config.github_issues() else (None, "")
     records = parse_ledger(snapshot)
     slate = cards.sprint_slate(identifier)
     with tempfile.NamedTemporaryFile(
@@ -438,7 +275,20 @@ def run(identifier):
         prompt = bundle.prompt(
             "retro",
             slate=slate,
-            extra=inputs(identifier, slate, snapshot) + "\n" + live + "\n" + CONTRACT,
+            extra=inputs(identifier, slate, snapshot)
+            + "\n"
+            + live
+            + "\n"
+            + CONTRACT
+            + (
+                "\nWith GitHub enabled, optionally add closures: "
+                '[{"issue":224,"evidence":{"kind":"issue","ref":"#780"}}]. '
+                "Cite a supplied closed issue, repository commit, or existing rule "
+                "(.xp/system.md: section or .xp/constraints.md: rule). "
+                "Request completed lessons only; dropping is the human's ruling."
+                if issues is not None
+                else ""
+            ),
             paths={
                 "RETRO_PATH": str(candidate),
                 "SIGHTING": f"{gitx.common_dir().parent.name}:{identifier}",
@@ -447,11 +297,12 @@ def run(identifier):
         seat = launch.run_agent("retro", prompt, config.repo_root(), f"{identifier}-retro")
         if seat.returncode or not candidate.is_file():
             raise ValueError("seat failed or wrote no fresh retro")
-        result, refs = validate(seat.stdout, candidate.read_text(), records)
+        result, refs, comments = validate(seat.stdout, candidate.read_text(), records, issues)
         target = folder / "retro.md"
         sighting = f"{gitx.common_dir().parent.name}:{identifier}"
         persist(path, candidate, target, result, refs, sighting)
         if config.github_issues():
+            close_lessons(path, comments)
             file_pending(path)
         print(f"Retro: {target}")
         for proposal in result["proposals"]:

@@ -55,6 +55,7 @@ def test_live_issue_snapshot(publishing):
     prompt = (home / "retro-prompt").read_text()
     assert prompt.count("#100 Still open") == 1
     assert "Unrelated chore" not in prompt
+    assert "[bug, lesson]" in prompt
     for n in range(4, 54):
         assert prompt.count(f"#{n} Evidence-{n:03}") == 1
     for n in (1, 2, 3):
@@ -77,6 +78,7 @@ def test_live_issue_snapshot(publishing):
         "after:",
         "stateReason",
         "closedAt",
+        "labels(first:100)",
         "hasNextPage",
         "endCursor",
         'labels:["bug","debt","lesson"]',
