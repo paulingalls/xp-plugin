@@ -91,7 +91,7 @@ def owner() -> str:
 
 def public_body(card: cards.Card, context: str | None = None) -> str:
     if context is None:
-        context = card.field("Context") if card.field("Published by") else f"local to {owner()}"
+        context = f"local to {owner()}"
     lines = [card.lines[0], f"Context: {context}"]
     ac = False
     for line in card.lines[1:]:
@@ -110,16 +110,19 @@ def public_body(card: cards.Card, context: str | None = None) -> str:
     return "\n".join([*lines, f"Published by: {owner()}"]) + "\n"
 
 
-def _holders(issue: str) -> list[str]:
-    labels = json.loads(_gh("issue", "view", issue[1:], "--json", "labels"))["labels"]
-    return [x["name"][6:] for x in labels if x["name"].startswith("clone:")]
+def _holders(issue: str) -> tuple[list[str], str]:
+    data = json.loads(_gh("issue", "view", issue[1:], "--json", "body,labels"))
+    return [x["name"][6:] for x in data["labels"] if x["name"].startswith("clone:")], data["body"]
 
 
-def _push(card: cards.Card, issue: str, body: str, take: bool = False) -> None:
+def _push(card: cards.Card, issue: str, take: bool = False) -> None:
     """The holder's copy is the live one: never overwrite it from another clone."""
-    holders = _holders(issue)
+    holders, published = _holders(issue)
     if others := [h for h in holders if h != owner()]:
         refuse(f"{issue} is held by {', '.join(others)}; its text is theirs; {card.id} stays local")
+    context = issue_card(published).field("Context") if card.field("Published by") else None
+    body = public_body(card, context)
+    _scan(card.title, body)
     edit = ["issue", "edit", issue[1:], "--title", card.title, "--body-file", "-"]
     if take and not holders:
         # A card this clone runs is held by it, so no other clone can claim it mid-run.
@@ -143,10 +146,8 @@ def sync(card: cards.Card) -> None:
     if not github_issues():
         print(f"{card.id}: github_issues is off; {issue} not updated")
         return
-    body = public_body(card)
-    _scan(card.title, body)
     try:
-        _push(card, issue, body, take=True)
+        _push(card, issue, take=True)
     except (RuntimeError, ValueError, KeyError, TypeError) as exc:
         refuse(f"GitHub update of {issue} failed: {exc}; fix gh access and retry")
 
@@ -179,9 +180,7 @@ def cmd_publish(args) -> int:
     issue = _issue(card)
     try:
         if issue:
-            body = public_body(card)
-            _scan(card.title, body)
-            _push(card, issue, body)
+            _push(card, issue)
         else:
             _dependencies()
             _authenticate()
@@ -263,7 +262,7 @@ def complete_issues(completed: list[cards.Card], sha: str, retired=()) -> None:
         if not (issue := _issue(card)):
             continue
         try:
-            others = [h for h in _holders(issue) if h != owner()]
+            others = [h for h in _holders(issue)[0] if h != owner()]
         except RuntimeError as exc:
             # Nothing has changed yet, so every command is still the lead's to run.
             left = [shlex.join(["gh", *cmd]) for _, cmd in commands]

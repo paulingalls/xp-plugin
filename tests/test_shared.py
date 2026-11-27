@@ -164,12 +164,18 @@ def test_publication_requires_scanning_on_create_and_edit(repo, monkeypatch, cap
     before, s = cards.plan_path().read_text(), state(repo)
     assert "gitleaks" in refused(capsys, ["card", "publish", "free-share"])
     assert state(repo)["issues"] == s["issues"] and cards.plan_path().read_text() == before
-    assert all(c[0][:2] == ["auth", "status"] for c in state(repo)["calls"][len(s["calls"]) :])
+    assert all(
+        c[0][:2] in (["auth", "status"], ["issue", "view"])
+        for c in state(repo)["calls"][len(s["calls"]) :]
+    )
     if not missing:
         cards.plan_path().write_text(before.replace("Issue: #224\n", ""))
         assert "gitleaks" in refused(capsys, ["card", "publish", "free-share"])
         assert state(repo)["issues"] == s["issues"]
-        assert all(c[0][:2] == ["auth", "status"] for c in state(repo)["calls"][len(s["calls"]) :])
+        assert all(
+            c[0][:2] in (["auth", "status"], ["issue", "view"])
+            for c in state(repo)["calls"][len(s["calls"]) :]
+        )
 
 
 @pytest.mark.parametrize("setting", ["", "github_issues: off\n", None])
