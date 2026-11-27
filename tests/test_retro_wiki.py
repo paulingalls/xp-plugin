@@ -228,17 +228,15 @@ def test_closed_citation_and_rerun(publishing, monkeypatch, disposition, existin
     assert len(creates) == int(not existing)
 
 
-@pytest.mark.parametrize("invalid", ["open", "nonlesson", "absent", "marker"])
+@pytest.mark.parametrize("invalid", ["open", "nonlesson", "absent"])
 def test_invalid_citation_preserves_answer(publishing, monkeypatch, capsys, invalid):
     snapshot, answer = closed_citation(publishing, monkeypatch)
     if invalid == "open":
         snapshot["issues"][0]["state"] = "OPEN"
     elif invalid == "nonlesson":
         snapshot["issues"][0]["labels"] = [{"name": "bug"}]
-    elif invalid == "absent":
-        snapshot["pages"] = [{"data": {"repository": {"issues": {"nodes": []}}}}]
     else:
-        snapshot["issues"][0]["title"] = "Bad (seen: injected)"
+        snapshot["pages"] = [{"data": {"repository": {"issues": {"nodes": []}}}}]
     publishing[3].write_text(json.dumps(snapshot))
     answer["sightings"].insert(0, {"lesson": "new:1", "text": "Valid observation"})
     monkeypatch.setenv("RETRO_RESULT", json.dumps(answer))

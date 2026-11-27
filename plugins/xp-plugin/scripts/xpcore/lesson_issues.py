@@ -170,11 +170,8 @@ pageInfo { hasNextPage endCursor }
 
 
 def lesson_issue(issue, state):
-    return (
-        issue
-        and issue["state"] == state
-        and any(label["name"] == "lesson" for label in issue["labels"]["nodes"])
-    )
+    labels = issue["labels"]["nodes"] if issue else []
+    return issue and issue["state"] == state and any(x["name"] == "lesson" for x in labels)
 
 
 def closure_comments(requests, issues):
