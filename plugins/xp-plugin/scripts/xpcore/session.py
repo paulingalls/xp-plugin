@@ -9,7 +9,7 @@ import time
 import traceback
 from pathlib import Path
 
-from xpcore import cards, gitx, records, retro, shared
+from xpcore import cards, config, gitx, records, retro, shared
 from xpcore.config import data_root, github_issues, plugin_root, sprint_branch
 from xpcore.gitx import git
 
@@ -31,11 +31,6 @@ def _version() -> str:
 
 def recover_command() -> str:
     return f"python3 {plugin_root() / 'scripts' / 'xp.py'} recover"
-
-
-def _repo() -> Path | None:
-    top = git("rev-parse", "--show-toplevel", check=False)
-    return Path(top) if top else None
 
 
 def _banner(repo: Path | None) -> str:
@@ -79,7 +74,7 @@ def cmd_session_start(args) -> int:
     except (OSError, ValueError, AttributeError):
         pass
     try:
-        sys.stdout.write(injection(_repo()))
+        sys.stdout.write(injection(config.toplevel()))
     except (Exception, SystemExit):
         # A non-zero SessionStart reads as a dead hook, never as a refusal anyone acts on.
         traceback.print_exc()
@@ -100,7 +95,7 @@ def _output(text: str | bytes | None) -> str:
 def print_milestones(run: bool = True) -> None:
     """`run` only from a command the lead chose to run here: recover runs at every session
     start, in any clone, so there a repo's Measure is shown, never executed."""
-    root = _repo()
+    root = config.toplevel()
     if root is None or not (path := root / ".xp" / "milestones.md").is_file():
         return
     text = re.sub(r"<!--.*?-->", "", path.read_text(errors="replace"), flags=re.S)

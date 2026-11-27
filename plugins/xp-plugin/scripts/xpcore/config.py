@@ -3,10 +3,11 @@
 import hashlib
 import os
 import re
-import subprocess
 import sys
 from pathlib import Path
 from typing import NoReturn
+
+from xpcore.gitx import GitError, git
 
 HARNESSES = ("claude", "codex")
 # Four seats are required; the optional ones fall back along their family, so a project
@@ -43,10 +44,10 @@ def fail(msg: str) -> NoReturn:
 
 
 def _git_value(*args: str) -> str:
-    proc = subprocess.run(["git", *args], capture_output=True, text=True)
-    if proc.returncode != 0:
+    try:
+        return git(*args).strip()
+    except GitError:
         refuse(f"not inside a git repository ({os.getcwd()}); cd into the project repo first")
-    return proc.stdout.strip()
 
 
 def data_root() -> Path:
@@ -62,8 +63,15 @@ def plugin_root() -> Path:
     return Path(__file__).resolve().parents[2]
 
 
+def toplevel() -> Path | None:
+    top = git("rev-parse", "--show-toplevel", check=False)
+    return Path(top) if top else None
+
+
 def repo_root() -> Path:
-    return Path(_git_value("rev-parse", "--show-toplevel"))
+    if root := toplevel():
+        return root
+    refuse(f"not inside a git repository ({os.getcwd()}); cd into the project repo first")
 
 
 def _scalar(raw: str):
@@ -108,10 +116,9 @@ def load_config() -> dict:
 
 
 def github_issues() -> bool:
-    proc = subprocess.run(["git", "rev-parse", "--show-toplevel"], capture_output=True, text=True)
-    if proc.returncode:
+    if not (root := toplevel()):
         return False
-    path = Path(proc.stdout.strip()) / ".xp/config.yml"
+    path = root / ".xp/config.yml"
     value = (
         parse_config(path.read_text(), str(path)).get("github_issues", "off")
         if path.is_file()
@@ -148,13 +155,8 @@ def role(name: str, override: str = "") -> tuple[str, str, str]:
 def trunk() -> str:
     if configured := load_config().get("trunk"):
         return str(configured)
-    proc = subprocess.run(
-        ["git", "symbolic-ref", "--short", "refs/remotes/origin/HEAD"],
-        capture_output=True,
-        text=True,
-    )
-    if proc.returncode == 0 and proc.stdout.strip():
-        return proc.stdout.strip().removeprefix("origin/")
+    if remote := git("symbolic-ref", "--short", "refs/remotes/origin/HEAD", check=False).strip():
+        return remote.removeprefix("origin/")
     return "main"
 
 

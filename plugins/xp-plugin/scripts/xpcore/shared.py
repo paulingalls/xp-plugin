@@ -22,6 +22,7 @@ def _dependencies() -> None:
 
 
 def _scan(*texts: str) -> None:
+    _dependencies()
     for text in texts:
         try:
             proc = subprocess.run(
@@ -36,6 +37,7 @@ def _scan(*texts: str) -> None:
             refuse("gitleaks could not scan the payload; nothing sent to GitHub")
         if proc.returncode:
             refuse("gitleaks refused the payload; inspect it locally before filing")
+    _authenticate()
 
 
 def _gh(*args: str, body: str | None = None) -> str:
@@ -69,6 +71,17 @@ def ensure_label(name: str) -> None:
     labels = json.loads(_gh("label", "list", "--search", name, "--json", "name") or "[]")
     if not any(label["name"] == name for label in labels):
         _gh("label", "create", name)
+
+
+def create_issue(title: str, label: str, body: str, *repo: str) -> tuple[str, str]:
+    args = ["issue", "create", "--title", title, "--label", label, "--body-file", "-"]
+    url = _gh(*args, *repo, body=body)
+    match = re.search(r"/issues/(\d+)$", url)
+    if not match:
+        error = ValueError(f"expected issue URL, got {url!r}; inspect GitHub before retrying")
+        error.url = url  # the operator's only lead on what gh created
+        raise error
+    return url, match[1]
 
 
 def owner() -> str:
@@ -129,9 +142,7 @@ def sync(card: cards.Card) -> None:
         print(f"{card.id}: github_issues is off; {issue} not updated")
         return
     body = public_body(card)
-    _dependencies()
     _scan(card.title, body)
-    _authenticate()
     try:
         _push(card, issue, body, take=True)
     except (RuntimeError, ValueError, KeyError, TypeError) as exc:
@@ -142,29 +153,14 @@ def cmd_publish(args) -> int:
     require_github_issues()
     card = cards.find_card(args.id)
     body = public_body(card)
-    _dependencies()
     _scan(card.title, body)
-    _authenticate()
     try:
         if issue := _issue(card):
             _push(card, issue, body)
         else:
             ensure_label("card")
-            url = _gh(
-                "issue",
-                "create",
-                "--title",
-                card.title,
-                "--label",
-                "card",
-                "--body-file",
-                "-",
-                body=body,
-            )
-            match = re.search(r"/issues/(\d+)$", url)
-            if not match:
-                raise ValueError(f"expected issue URL, got {url!r}; inspect GitHub before retrying")
-            cards.set_field(card.id, "Issue", f"#{match[1]}")
+            url, number = create_issue(card.title, "card", body)
+            cards.set_field(card.id, "Issue", f"#{number}")
             print(url)
     except (RuntimeError, ValueError, KeyError, TypeError) as exc:
         refuse(f"GitHub publication failed: {exc}")
@@ -216,11 +212,8 @@ def cmd_claim(args) -> int:
 def complete_issues(completed: list[cards.Card], sha: str, retired=()) -> None:
     commands = []
     for card in completed:
-        issue = card.field("Issue")
-        if not issue:
+        if not (issue := _issue(card)):
             continue
-        if not re.fullmatch(r"#\d+", issue):
-            refuse(f"{card.id}: Issue must be #N; correct the card")
         number = issue[1:]
         comment = f"Merged as {sha}"
         if card.field("Evidence"):

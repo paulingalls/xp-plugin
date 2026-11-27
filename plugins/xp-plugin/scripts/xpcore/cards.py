@@ -141,14 +141,6 @@ def set_status(card_id: str, status: str) -> None:
         _splice(card_id, [heading, *card.lines[1:]])
 
 
-def replace_card(card_id: str, new_text: str) -> None:
-    replacement = new_text.rstrip("\n").splitlines()
-    if not replacement or not HEADING.fullmatch(replacement[0]):
-        refuse(f"replacement for {card_id} must start with `#### <id> — <title>   [<status>]`")
-    with plan_lock():
-        _splice(card_id, replacement)
-
-
 def sprint_slate(sprint_id) -> str:
     """The `## Sprint <id>` section: its heading down to the next heading at its level or above."""
     wanted = str(sprint_id)
