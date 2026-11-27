@@ -14,6 +14,7 @@ HARNESSES = ("claude", "codex")
 # can put one kind of review or fix on another harness without naming every seat.
 ROLE_FALLBACK = {
     "retro": "reviewer",
+    "publisher": "reviewer",
     "plan-reviewer": "reviewer",
     "slate-reviewer": "plan-reviewer",
     "angle-reviewer": "reviewer",
