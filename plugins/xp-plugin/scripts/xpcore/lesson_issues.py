@@ -214,9 +214,10 @@ def closure_comments(requests, issues):
             raise ValueError("closure evidence must be nonblank")
         valid = False
         if kind == "issue" and re.fullmatch(r"#[1-9]\d*", ref):
-            valid = issues.get(int(ref[1:]), {}).get("state") == "CLOSED"
+            cited = issues.get(int(ref[1:]), {})
+            valid = cited.get("state") == "CLOSED" and cited.get("stateReason") == "COMPLETED"
         elif kind == "commit" and re.fullmatch(r"[0-9a-fA-F]{4,40}", ref):
-            valid = gitx.ref_exists(ref)
+            valid = gitx.ref_exists(ref) and gitx.is_ancestor(ref, config.trunk())
         elif kind == "rule":
             match = re.fullmatch(r"(\.xp/(?:system|constraints)\.md):(.+)", ref)
             valid = bool(match and match[2].strip() and (config.repo_root() / match[1]).is_file())

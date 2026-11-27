@@ -273,6 +273,8 @@ def test_close_landed_lesson(publishing, monkeypatch, kind):
         "file",
         "blank-rule",
         "secret",
+        "unlanded",
+        "dropped",
     ],
 )
 def test_refuse_closure_batch(publishing, monkeypatch, capsys, invalid):
@@ -307,6 +309,14 @@ def test_refuse_closure_batch(publishing, monkeypatch, capsys, invalid):
     elif invalid == "blank-rule":
         (publishing[0] / ".xp/system.md").write_text("Rule\n")
         other["evidence"] = {"kind": "rule", "ref": ".xp/system.md: "}
+    elif invalid == "unlanded":
+        root = publishing[0]
+        git(root, "switch", "-q", "-c", "side")
+        git(root, "commit", "-q", "--allow-empty", "-m", "unlanded fix")
+        other["evidence"] = {"kind": "commit", "ref": git(root, "rev-parse", "HEAD")}
+        git(root, "switch", "-q", "-")
+    elif invalid == "dropped":
+        s["issues"][2]["stateReason"] = "NOT_PLANNED"
     elif invalid == "duplicate":
         other = valid
     elif invalid == "reason":
