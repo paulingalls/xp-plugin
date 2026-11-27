@@ -20,7 +20,7 @@ executor, red first, with no prose about why.
 - Per acceptance criterion: the smallest code change and the test that goes red
   before it. A test that passes against a do-nothing implementation has no red.
 - The card's Acceptance, taken as given: the card was reviewed. A correction to
-  it, to Files, or to a premise the card gets wrong, as a proposal.
+  it or to a premise the card gets wrong, as a proposal.
 - What you could not settle, as questions in the plan. The plan reviewer
   answers them or raises them to the lead.
 

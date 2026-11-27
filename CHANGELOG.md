@@ -4,6 +4,16 @@ Release notes started at v0.6.0; earlier entries are summarized from their
 tag and merge messages. Full detail lives in the merge history and the
 per-sprint review reports.
 
+## v1.12.2
+
+- The story reviewer treats handback reds as claims to re-run independently,
+  dropping each guard operand on its own and isolating each site when an input
+  is shared by two sites.
+- Planning no longer proposes card Files corrections or checks Files against
+  the plan.
+
+Release steps: none.
+
 ## v1.12.1
 
 - `free post-merge` no longer needs the card's worktree or local branch. Land
