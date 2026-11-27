@@ -4,6 +4,14 @@ Release notes started at v0.6.0; earlier entries are summarized from their
 tag and merge messages. Full detail lives in the merge history and the
 per-sprint review reports.
 
+## v1.12.2
+
+- `story land` no longer runs the milestone Measures after every sprint story.
+  Readings are taken where progress is judged: free mint, free close and sprint
+  close.
+
+Release steps: none.
+
 ## v1.12.1
 
 - `free post-merge` no longer needs the card's worktree or local branch. Land
