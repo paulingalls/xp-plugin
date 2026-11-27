@@ -11,6 +11,8 @@ from xpcore import bundle, cards, config, gitx, launch
 from xpcore.lesson_issues import (
     ReceiptError,
     atomic,
+    close_lessons,
+    closure_comments,
     file_pending,
     issue_input,
     issue_number,
@@ -70,8 +72,10 @@ def shape(value, keys):
         raise ValueError(f"expected fields: {keys}")
 
 
-def validate(answer, markdown, records):
+def validate(answer, markdown, records, issues=None):
     value = json.loads(answer)
+    if issues is not None:
+        closures = value.pop("closures", [])
     shape(value, ("sightings", "proposals"))
     if not isinstance(value["sightings"], list) or not isinstance(value["proposals"], list):
         raise ValueError("sightings and proposals must be lists")
@@ -112,7 +116,8 @@ def validate(answer, markdown, records):
     for heading in ("Misses", "Sightings", "Proposals"):
         if not re.search(rf"^## {heading}\s*$", markdown, re.M):
             raise ValueError(f"missing {heading} section")
-    return value, refs
+    comments = closure_comments(closures, issues) if issues is not None else {}
+    return value, refs, comments
 
 
 def inputs(identifier, slate, ledger):
@@ -258,7 +263,7 @@ def run(identifier):
         file_pending(path)
     snapshot = path.read_text() if path.exists() else ""
     snapshot = synchronize(path, snapshot)
-    live = issue_input() if config.github_issues() else ""
+    issues, live = issue_input() if config.github_issues() else (None, "")
     records = parse_ledger(snapshot)
     slate = cards.sprint_slate(identifier)
     with tempfile.NamedTemporaryFile(
@@ -270,7 +275,20 @@ def run(identifier):
         prompt = bundle.prompt(
             "retro",
             slate=slate,
-            extra=inputs(identifier, slate, snapshot) + "\n" + live + "\n" + CONTRACT,
+            extra=inputs(identifier, slate, snapshot)
+            + "\n"
+            + live
+            + "\n"
+            + CONTRACT
+            + (
+                "\nWith GitHub enabled, optionally add closures: "
+                '[{"issue":224,"evidence":{"kind":"issue","ref":"#780"}}]. '
+                "Cite a supplied closed issue, repository commit, or existing rule "
+                "(.xp/system.md: section or .xp/constraints.md: rule). "
+                "Request completed lessons only; dropping is the human's ruling."
+                if issues is not None
+                else ""
+            ),
             paths={
                 "RETRO_PATH": str(candidate),
                 "SIGHTING": f"{gitx.common_dir().parent.name}:{identifier}",
@@ -279,11 +297,12 @@ def run(identifier):
         seat = launch.run_agent("retro", prompt, config.repo_root(), f"{identifier}-retro")
         if seat.returncode or not candidate.is_file():
             raise ValueError("seat failed or wrote no fresh retro")
-        result, refs = validate(seat.stdout, candidate.read_text(), records)
+        result, refs, comments = validate(seat.stdout, candidate.read_text(), records, issues)
         target = folder / "retro.md"
         sighting = f"{gitx.common_dir().parent.name}:{identifier}"
         persist(path, candidate, target, result, refs, sighting)
         if config.github_issues():
+            close_lessons(path, comments)
             file_pending(path)
         print(f"Retro: {target}")
         for proposal in result["proposals"]:

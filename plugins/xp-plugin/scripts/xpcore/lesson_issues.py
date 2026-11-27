@@ -153,7 +153,7 @@ def issue_input():
         query = """query($owner:String!, $name:String!, $endCursor:String) {
 repository(owner:$owner, name:$name) {
 issues(first:100, after:$endCursor, states:[OPEN,CLOSED], labels:["bug","debt","lesson"]) {
-nodes { number title state stateReason closedAt }
+nodes { number title state stateReason closedAt labels(first:100) { nodes { name } } }
 pageInfo { hasNextPage endCursor }
 }}}"""
         pages = json.loads(
@@ -177,12 +177,74 @@ pageInfo { hasNextPage endCursor }
             key=lambda node: node["closedAt"],
             reverse=True,
         )[:50]
+        issues = {node["number"]: node for node in opened + closed}
         rows = [
-            f"#{node['number']} {node['title']} — {node['state']} ({node['stateReason']})"
+            f"#{node['number']} {node['title']} — {node['state']} ({node['stateReason']}) "
+            f"[{', '.join(label['name'] for label in node['labels']['nodes'])}]"
             for node in opened + closed
         ]
-        return "Live bug, debt and lesson issues (all open; 50 most recently closed):\n" + (
+        return issues, "Live bug, debt and lesson issues (all open; 50 most recently closed):\n" + (
             "\n".join(rows) if rows else "none"
         )
     except (OSError, RuntimeError, ValueError, KeyError, TypeError) as exc:
         raise ValueError(f"issue snapshot lookup failed: {exc}") from exc
+
+
+def closure_comments(requests, issues):
+    if not isinstance(requests, list):
+        raise ValueError("closures must be a list")
+    comments = {}
+    for request in requests:
+        if not isinstance(request, dict) or set(request) != {"issue", "evidence"}:
+            raise ValueError("closure requires issue and evidence only")
+        number, evidence = request["issue"], request["evidence"]
+        if type(number) is not int or number < 1 or number in comments:
+            raise ValueError("closure issue must be a unique positive integer")
+        issue = issues.get(number)
+        if (
+            not issue
+            or issue["state"] != "OPEN"
+            or not any(label["name"] == "lesson" for label in issue["labels"]["nodes"])
+        ):
+            raise ValueError(f"closure #{number} is not an open lesson")
+        if not isinstance(evidence, dict) or set(evidence) != {"kind", "ref"}:
+            raise ValueError("closure evidence requires kind and ref only")
+        kind, ref = evidence["kind"], evidence["ref"]
+        if not isinstance(ref, str) or not ref.strip():
+            raise ValueError("closure evidence must be nonblank")
+        valid = False
+        if kind == "issue" and re.fullmatch(r"#[1-9]\d*", ref):
+            valid = issues.get(int(ref[1:]), {}).get("state") == "CLOSED"
+        elif kind == "commit" and re.fullmatch(r"[0-9a-fA-F]{4,40}", ref):
+            valid = gitx.ref_exists(ref)
+        elif kind == "rule":
+            match = re.fullmatch(r"(\.xp/(?:system|constraints)\.md):(.+)", ref)
+            valid = bool(match and match[2].strip() and (config.repo_root() / match[1]).is_file())
+        if not valid:
+            raise ValueError(f"closure #{number} has invalid or unavailable evidence: {evidence}")
+        comments[number] = f"Fix landed; completed based on {kind} evidence: {ref}"
+    if comments:
+        shared._dependencies()
+        shared._scan(*comments.values())
+        shared._authenticate()
+    return comments
+
+
+def close_lessons(path, comments):
+    if not comments:
+        return
+    try:
+        for number, comment in comments.items():
+            shared._gh(
+                "issue",
+                "close",
+                str(number),
+                "--reason",
+                "completed",
+                "--comment",
+                comment,
+                "-R",
+                origin(),
+            )
+    finally:
+        synchronize(path, path.read_text())
