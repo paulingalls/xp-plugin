@@ -19,6 +19,9 @@ Honesty > Courage > Simplicity > Feedback > Communication.
 - **Fault-inject hard properties, once.** Advisory behavior gets no guard and no test.
 - **Prose that instructs an agent to run something is a shipped path**: run it yourself
   before shipping the instruction.
+- **A walk checks what it did not mean to touch.** Before and after a walk that reaches
+  GitHub or a wiki, snapshot `gh issue list --state all --json number,title,updatedAt` and
+  the wiki's `git log -1`; any record changed that the walk did not intend is a finding (#266).
 
 ## Commands
 
