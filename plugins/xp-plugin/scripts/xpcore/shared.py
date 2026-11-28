@@ -73,10 +73,10 @@ def _authenticate() -> None:
         refuse(f"{exc}; run gh auth login")
 
 
-def ensure_label(name: str) -> None:
-    labels = json.loads(_gh("label", "list", "--search", name, "--json", "name") or "[]")
+def ensure_label(name: str, *repo: str) -> None:
+    labels = json.loads(_gh("label", "list", "--search", name, "--json", "name", *repo) or "[]")
     if not any(label["name"] == name for label in labels):
-        _gh("label", "create", name)
+        _gh("label", "create", name, *repo)
 
 
 def create_issue(title: str, label: str, body: str, *repo: str) -> tuple[str, str]:
