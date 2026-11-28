@@ -9,7 +9,7 @@ Use only supplied slate/review, story plan reviews, review rounds and handbacks,
 sprint reviews and fixer handbacks, hook names/exits, session, ledger, live issue
 snapshot, .xp/system.md and .xp/constraints.md. Cite existing issues; propose nothing
 a closed issue or existing rule already does. Name absent evidence; invent nothing.
-A sighting is the supplied clone:sprint. GitHub is enabled only when a live issue
+A sighting is the supplied SIGHTING. GitHub is enabled only when a live issue
 snapshot is supplied. Refuse open, non-lesson or unavailable issue sightings.
 
 ## Produce

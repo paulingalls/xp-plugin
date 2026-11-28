@@ -286,7 +286,7 @@ def run_ledger(identifier, path):
         candidate = Path(stream.name)
     candidate.unlink()
     try:
-        sighting = f"{gitx.common_dir().parent.name}:{identifier}"
+        sighting = f"{shared.owner()}:{identifier}"
         prompt = bundle.prompt(
             "retro",
             slate=slate,
