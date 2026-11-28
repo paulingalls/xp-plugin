@@ -1,5 +1,3 @@
-"""Launch a headless agent: build its argv, stream it live, tee it verbatim to a log."""
-
 import contextlib
 import json
 import os
@@ -46,8 +44,6 @@ def agent_argv(harness: str, model: str, effort: str, sandbox: str = "") -> list
         argv = ["claude", "-p", "--dangerously-skip-permissions"]
         argv += ["--output-format", "stream-json", "--verbose"]
         return argv + ["--model", model] + (["--effort", effort] if effort else [])
-    if harness != "codex":
-        config.refuse(f"unknown harness {harness!r}; use claude or codex in the role")
     argv = ["codex", "exec", "--json", "--sandbox", sandbox or "danger-full-access"]
     argv += ["--add-dir", str(config.data_root()), "-m", model]
     if effort:  # codex has no effort flag; the config key is the only spelling
@@ -82,7 +78,6 @@ def event(line: str) -> dict | None:
 
 
 def parse_claude(line: str) -> tuple[str | None, dict | None]:
-    """(compact echo, the terminal result event if this is it) for one stream-json line."""
     if (evt := event(line)) is None:
         return None, None
     kind = evt.get("type", "?")
@@ -177,7 +172,6 @@ def kill_live() -> None:
 def _feed(proc: subprocess.Popen, prompt: str) -> None:
     # Its own thread: a prompt larger than the pipe buffer deadlocks against a child
     # that writes before it finishes reading. A child that dies early breaks the pipe.
-    assert proc.stdin is not None
     with contextlib.suppress(BrokenPipeError):
         try:
             proc.stdin.write(prompt)
@@ -224,7 +218,6 @@ def run_agent(
         feeder = threading.Thread(target=_feed, args=(proc, prompt), daemon=True)
         feeder.start()
         try:
-            assert proc.stdout is not None
             result = tee(proc.stdout, log, print, harness, Path(cwd))
         except BaseException:
             kill_group(proc)

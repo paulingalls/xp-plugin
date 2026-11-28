@@ -1,5 +1,3 @@
-"""Lesson issue publication, snapshots and ledger receipts."""
-
 import json
 import re
 import sys
@@ -136,21 +134,7 @@ issues(first:100, after:$endCursor, states:[OPEN,CLOSED], labels:["bug","debt","
 nodes { number title state stateReason closedAt labels(first:100) { nodes { name } } }
 pageInfo { hasNextPage endCursor }
 }}}"""
-        pages = json.loads(
-            shared._gh(
-                "api",
-                "graphql",
-                "--paginate",
-                "--slurp",
-                "-f",
-                f"query={query}",
-                "-F",
-                f"owner={owner}",
-                "-F",
-                f"name={name}",
-            )
-        )
-        nodes = [node for page in pages for node in page["data"]["repository"]["issues"]["nodes"]]
+        nodes = shared.graphql(query, owner=owner, name=name)
         opened = [n for n in nodes if n["state"] == "OPEN" or lesson_issue(n, "CLOSED")]
         closed = sorted(
             (n for n in nodes if n["state"] == "CLOSED" and not lesson_issue(n, "CLOSED")),

@@ -1,5 +1,3 @@
-"""Project commands at worktree, lifecycle, Acceptance and release boundaries."""
-
 import os
 import shlex
 import subprocess
@@ -23,7 +21,6 @@ def stream(argv: list[str], cwd, log, env: dict[str, str] | None = None) -> int:
         log.write("xp-hook-exit: 127\n")
         log.flush()
         return 127
-    assert proc.stdout is not None
     line = "\n"
     for line in proc.stdout:
         sys.stdout.write(line)

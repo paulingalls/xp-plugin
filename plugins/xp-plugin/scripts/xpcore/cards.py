@@ -1,5 +1,3 @@
-"""plan.md cards: `#### <id> — <title>   [<status>]` headings and the lines under them."""
-
 import difflib
 import fcntl
 import os
@@ -51,7 +49,6 @@ def plan_path() -> Path:
 
 
 def _spans(text: str) -> list[tuple[int, int, Card]]:
-    """(first line, end line, card) per heading; a card ends at the next heading of any level."""
     lines = text.splitlines()
     spans: list[tuple[int, int, Card]] = []
     for i, line in enumerate(lines):
@@ -133,8 +130,6 @@ def set_field(card_id: str, name: str, value: str) -> None:
 
 
 def set_status(card_id: str, status: str) -> None:
-    if status not in STATUSES:
-        refuse(f"status {status!r} is not one of {', '.join(STATUSES)}; pass one of those")
     with plan_lock():
         card = _locate(_read_plan(), card_id)[2]
         heading = f"#### {card.id} — {card.title}   [{status}]"
@@ -142,7 +137,6 @@ def set_status(card_id: str, status: str) -> None:
 
 
 def sprint_slate(sprint_id) -> str:
-    """The `## Sprint <id>` section: its heading down to the next heading at its level or above."""
     wanted = str(sprint_id)
     lines = _read_plan().splitlines()
     for i, line in enumerate(lines):
@@ -189,7 +183,6 @@ def remove_published(card: Card) -> bool:
 
 
 def mint_free(card_id: str, heading: str, section: str = "Free") -> bool:
-    """Append a card in the section; False when its id already exists."""
     with plan_lock():
         text = _read_plan() if plan_path().is_file() else ""
         if card_id in {c.id for c in read_cards(text)}:
@@ -211,6 +204,5 @@ def mint_free(card_id: str, heading: str, section: str = "Free") -> bool:
 
 
 def changes(old: str, new: str) -> str:
-    """A unified diff of a card's two texts; empty when they agree."""
     a, b = old.splitlines(), new.splitlines()
     return "\n".join(difflib.unified_diff(a, b, "card as spawned", "card now", lineterm=""))

@@ -1,5 +1,3 @@
-"""Land a story on its sprint branch, or a free patch on trunk through a PR."""
-
 import json
 import os
 import shlex
@@ -72,13 +70,7 @@ def advise_trunk_drift(target: str, path: Path) -> None:
     try:
         main = trunk()
         if "origin" in gitx.git("remote", cwd=path).split():
-            gitx.git(
-                "fetch",
-                "--no-tags",
-                "origin",
-                f"+refs/heads/{main}:refs/remotes/origin/{main}",
-                cwd=path,
-            )
+            gitx.fetch_trunk(main, path)
             main = f"origin/{main}"
         missing = f"{target}..{main}"
         count = int(gitx.git("rev-list", "--count", missing, cwd=path))
@@ -105,11 +97,15 @@ def acceptance(card: cards.Card, cwd: Path, log_id: str, where: str, then: str) 
         refuse(f"Acceptance exited {rc} on {where}; read {hooks.log_path(log_id)}, {then}")
 
 
+def setup(path: Path, log_id: str, retry: str) -> None:
+    line, rc = hooks.project_command("worktree_setup", path, log_id)
+    if rc:
+        refuse(f"worktree_setup `{line}` exited {rc}; read {hooks.log_path(log_id)}; {retry}")
+
+
 def accept(
     card: cards.Card, path: Path, branch: str, target: str, sha: str, tested_by: str | None
 ) -> str:
-    """Acceptance on `branch` with `sha`, the target's tip as land found it, merged in;
-    returns the tree it tested."""
     try:
         if conflict := gitx.trial_merge(path, sha):
             refuse(
@@ -125,13 +121,7 @@ def accept(
         probe = gitx.probe_commit(tree, gitx.head(path), sha, cwd=path)
         with detached(path, probe):
             # Always: a branch that merged its target by hand still has spawn-time resources.
-            log_id = f"{card.id}-land-setup"
-            line, rc = hooks.project_command("worktree_setup", path, log_id)
-            if rc:
-                refuse(
-                    f"worktree_setup `{line}` exited {rc}; read {hooks.log_path(log_id)};"
-                    " fix the command and land again"
-                )
+            setup(path, f"{card.id}-land-setup", "fix the command and land again")
             where, then = f"{branch} merged with {target}", "fix it on the branch, then land again"
             acceptance(card, path, f"{card.id}-acceptance", where, then)
     return tree
@@ -229,8 +219,7 @@ def close(
     if tested_by is not None:
         record["tested_by"] = tested_by
     with open(data_root() / "landed.jsonl", "a") as out:
-        out.write(json.dumps(record))
-        out.write("\n")
+        out.write(json.dumps(record) + "\n")
     # Last, so a close that failed above leaves the card in progress and a rerun finishes it.
     cards.set_status(card.id, "done")
 
@@ -408,12 +397,10 @@ def cmd_free_post_merge(args) -> int:
     from xpcore.notes import post_merge_mode
 
     mode = post_merge_mode(lead, sha)
-    tagged = release.tag_at_head(lead, release.tree_version(lead, sha), sha) if mode == "on" else ""
-    version = (
-        (tagged.removeprefix("v") or release.version_wall("patch", lead, sha))
-        if mode == "on"
-        else ""
-    )
+    tagged = version = ""
+    if mode == "on":
+        tagged = release.tag_at_head(lead, release.tree_version(lead, sha), sha)
+        version = tagged.removeprefix("v") or release.version_wall("patch", lead, sha)
     tested = story_dir(card.id) / "tested_tree"
     tree = gitx.git("rev-parse", f"{sha}^{{tree}}", cwd=lead)
     changed = not tested.is_file() or tested.read_text().strip() != tree
@@ -437,13 +424,9 @@ def cmd_free_post_merge(args) -> int:
             switch = shlex.join(["git", "-C", str(path), "switch", "-c", card.id + "-recovery"])
             recovery = f"fix on {branch}" if branch else f"run {switch}, fix"
             with detached(path, sha):
-                log_id = f"{card.id}-post-merge-setup"
-                line, rc = hooks.project_command("worktree_setup", path, log_id)
-                if rc:
-                    refuse(
-                        f"worktree_setup `{line}` exited {rc}; read {hooks.log_path(log_id)};"
-                        " fix the command and run post-merge again"
-                    )
+                setup(
+                    path, f"{card.id}-post-merge-setup", "fix the command and run post-merge again"
+                )
                 acceptance(
                     card,
                     path,

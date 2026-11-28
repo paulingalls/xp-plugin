@@ -79,11 +79,6 @@ def test_set_status_touches_only_the_heading(plan):
     )
 
 
-def test_set_status_rejects_unknown_status(plan, capsys):
-    assert "planned" in refused(capsys, cards.set_status, "story-012", "blocked")
-    assert plan.read_text() == PLAN
-
-
 def test_sprint_slate_is_one_section(plan, capsys):
     plan.write_text(
         "## Sprint 12\nother\n## Sprint 2-extra — neighbour\nextra\n"

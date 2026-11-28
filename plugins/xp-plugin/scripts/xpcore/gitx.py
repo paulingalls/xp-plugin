@@ -23,6 +23,10 @@ def git(*args: str, cwd=None, check: bool = True) -> str:
     return proc.stdout.strip("\n")
 
 
+def fetch_trunk(main, cwd):
+    git("fetch", "--no-tags", "origin", f"+refs/heads/{main}:refs/remotes/origin/{main}", cwd=cwd)
+
+
 def head(cwd=None) -> str:
     return git("rev-parse", "HEAD", cwd=cwd)
 
@@ -32,9 +36,8 @@ def current_branch(cwd=None) -> str:
     return git("branch", "--show-current", cwd=cwd)
 
 
-def is_dirty(cwd=None, *, untracked: bool = True) -> bool:
-    mode = "--untracked-files=normal" if untracked else "--untracked-files=no"
-    return bool(git("status", "--porcelain", mode, cwd=cwd))
+def is_dirty(cwd=None) -> bool:
+    return bool(git("status", "--porcelain", "--untracked-files=normal", cwd=cwd))
 
 
 def branch_exists(name: str, cwd=None) -> bool:

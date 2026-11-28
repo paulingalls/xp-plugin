@@ -38,7 +38,7 @@ def test_basic_queries(repo):
     assert gitx.ref_exists("HEAD", repo) and not gitx.ref_exists("nope", repo)
     assert not gitx.is_dirty(repo)
     (repo / "new.txt").write_text("x")
-    assert gitx.is_dirty(repo) and not gitx.is_dirty(repo, untracked=False)
+    assert gitx.is_dirty(repo)
     (repo / "a.txt").write_text("changed\n")
     assert gitx.git("status", "--porcelain", "--untracked-files=no", cwd=repo) == " M a.txt"
 

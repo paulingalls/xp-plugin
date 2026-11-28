@@ -1,5 +1,3 @@
-"""Scaffold a project: .xp/ from the templates, the git-hook wall, and an empty plan."""
-
 import shutil
 import subprocess
 from pathlib import Path
@@ -14,10 +12,6 @@ NEXT = (
     "next: fill .xp/config.yml roles and versioning, .xp/system.md, the hook test commands"
     " (every EDIT-ME), goals and Measures in .xp/milestones.md; then /create-sprint"
 )
-
-
-def _templates() -> Path:
-    return plugin_root() / "templates"
 
 
 def existing_routing(root: Path) -> str:
@@ -36,7 +30,7 @@ def existing_routing(root: Path) -> str:
 
 def _copy(template: str, dest: Path, executable: bool = False) -> None:
     dest.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copyfile(_templates() / template, dest)
+    shutil.copyfile(plugin_root() / "templates" / template, dest)
     if executable:
         dest.chmod(0o755)
 
