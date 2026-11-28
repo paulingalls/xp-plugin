@@ -79,10 +79,7 @@ def cmd_sprint_open(args) -> int:
     if gitx.fork_point(branch, main, root) != tip:
         refuse(f"{branch} is not cut from {main}'s head; `git rebase {main}` it, then open")
     review = sprint_dir(args.id) / "slate-review.md"
-    try:
-        lines = review.read_text().splitlines()
-    except FileNotFoundError:
-        lines = []
+    lines = review.read_text().splitlines() if review.exists() else []
     questions = []
     for i, line in enumerate(lines):
         if QUESTION.match(line):
@@ -265,7 +262,7 @@ def cmd_sprint_post_merge(args) -> int:
         refuse(f"no {land_json}; run `xp.py sprint land {args.id}` first")
     landed = json.loads(land_json.read_text())
     tested = landed["tested_tree"]
-    tagged = ""
+    tagged = version = ""
     if mode == "on":
         named = (
             release.tree_version(root, sha)
@@ -273,11 +270,7 @@ def cmd_sprint_post_merge(args) -> int:
             else landed.get("version", "")
         )
         tagged = release.tag_at_head(root, named, sha)
-    version = (
-        (tagged.removeprefix("v") or release.version_wall("minor", root, sha))
-        if mode == "on"
-        else ""
-    )
+        version = tagged.removeprefix("v") or release.version_wall("minor", root, sha)
     changed = not tagged and gitx.git("rev-parse", f"{sha}^{{tree}}", cwd=root) != tested
     if (
         changed

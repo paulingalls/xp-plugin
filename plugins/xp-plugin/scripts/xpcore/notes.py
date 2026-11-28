@@ -73,9 +73,7 @@ def post_merge_mode(root, ref):
 
 
 def remote_state(root, main):
-    gitx.git(
-        "fetch", "--no-tags", "origin", f"+refs/heads/{main}:refs/remotes/origin/{main}", cwd=root
-    )
+    gitx.fetch_trunk(main, root)
     tags = {}
     for line in gitx.git("ls-remote", "--tags", "origin", "refs/tags/v*", cwd=root).splitlines():
         sha, ref = line.split()

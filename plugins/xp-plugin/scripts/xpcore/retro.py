@@ -288,13 +288,14 @@ def run_ledger(identifier, path):
         candidate = Path(stream.name)
     candidate.unlink()
     try:
+        sighting = f"{gitx.common_dir().parent.name}:{identifier}"
         prompt = bundle.prompt(
             "retro",
             slate=slate,
             extra=inputs(identifier, slate, snapshot) + "\n" + live,
             paths={
                 "RETRO_PATH": str(candidate),
-                "SIGHTING": f"{gitx.common_dir().parent.name}:{identifier}",
+                "SIGHTING": sighting,
             },
         )
         seat = launch.run_agent("retro", prompt, config.repo_root(), f"{identifier}-retro")
@@ -302,7 +303,6 @@ def run_ledger(identifier, path):
             raise ValueError("seat failed or wrote no fresh retro")
         result, refs, comments = validate(seat.stdout, candidate.read_text(), records, issues)
         target = folder / "retro.md"
-        sighting = f"{gitx.common_dir().parent.name}:{identifier}"
         persist(path, candidate, target, result, refs, sighting)
         if config.github_issues():
             publish(path)

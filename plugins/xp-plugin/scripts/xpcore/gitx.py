@@ -23,6 +23,10 @@ def git(*args: str, cwd=None, check: bool = True) -> str:
     return proc.stdout.strip("\n")
 
 
+def fetch_trunk(main, cwd):
+    git("fetch", "--no-tags", "origin", f"+refs/heads/{main}:refs/remotes/origin/{main}", cwd=cwd)
+
+
 def head(cwd=None) -> str:
     return git("rev-parse", "HEAD", cwd=cwd)
 
