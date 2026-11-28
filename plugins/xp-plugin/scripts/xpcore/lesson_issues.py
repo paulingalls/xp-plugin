@@ -1,5 +1,3 @@
-"""Lesson issue publication, snapshots and ledger receipts."""
-
 import json
 import re
 import sys

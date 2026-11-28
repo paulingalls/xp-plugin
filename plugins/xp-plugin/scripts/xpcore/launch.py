@@ -1,5 +1,3 @@
-"""Launch a headless agent: build its argv, stream it live, tee it verbatim to a log."""
-
 import contextlib
 import json
 import os
@@ -80,7 +78,6 @@ def event(line: str) -> dict | None:
 
 
 def parse_claude(line: str) -> tuple[str | None, dict | None]:
-    """(compact echo, the terminal result event if this is it) for one stream-json line."""
     if (evt := event(line)) is None:
         return None, None
     kind = evt.get("type", "?")

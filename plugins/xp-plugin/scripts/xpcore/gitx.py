@@ -36,9 +36,8 @@ def current_branch(cwd=None) -> str:
     return git("branch", "--show-current", cwd=cwd)
 
 
-def is_dirty(cwd=None, *, untracked: bool = True) -> bool:
-    mode = "--untracked-files=normal" if untracked else "--untracked-files=no"
-    return bool(git("status", "--porcelain", mode, cwd=cwd))
+def is_dirty(cwd=None) -> bool:
+    return bool(git("status", "--porcelain", "--untracked-files=normal", cwd=cwd))
 
 
 def branch_exists(name: str, cwd=None) -> bool:

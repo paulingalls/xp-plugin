@@ -1,5 +1,3 @@
-"""SessionStart injection and the recovery block a lead reads after a restart or compaction."""
-
 import json
 import os
 import re

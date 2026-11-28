@@ -1,5 +1,3 @@
-"""Fresh-context retros and the shared project's lessons ledger."""
-
 import fcntl
 import json
 import re

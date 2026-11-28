@@ -1,5 +1,3 @@
-"""Branch change notes and their publication after merge."""
-
 import json
 import re
 

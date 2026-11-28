@@ -1,5 +1,3 @@
-"""Project commands at worktree, lifecycle, Acceptance and release boundaries."""
-
 import os
 import shlex
 import subprocess

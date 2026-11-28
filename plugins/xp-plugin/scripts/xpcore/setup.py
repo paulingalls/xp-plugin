@@ -1,5 +1,3 @@
-"""Scaffold a project: .xp/ from the templates, the git-hook wall, and an empty plan."""
-
 import shutil
 import subprocess
 from pathlib import Path

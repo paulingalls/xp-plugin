@@ -1,5 +1,3 @@
-"""Land a story on its sprint branch, or a free patch on trunk through a PR."""
-
 import json
 import os
 import shlex
@@ -108,8 +106,6 @@ def setup(path: Path, log_id: str, retry: str) -> None:
 def accept(
     card: cards.Card, path: Path, branch: str, target: str, sha: str, tested_by: str | None
 ) -> str:
-    """Acceptance on `branch` with `sha`, the target's tip as land found it, merged in;
-    returns the tree it tested."""
     try:
         if conflict := gitx.trial_merge(path, sha):
             refuse(

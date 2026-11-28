@@ -1,5 +1,3 @@
-"""A sprint: review its slate, open its branch, review its diff by angle, land it, tag it."""
-
 import json
 import shlex
 from concurrent.futures import ThreadPoolExecutor
@@ -195,7 +193,6 @@ def green_hook(root: Path, log_id: str) -> None:
 
 
 def trial_hook(root: Path, main: str, log_id: str, tested_by: str | None) -> str:
-    """The sprint hook on trunk merged in; returns the tree it tested."""
     sha = gitx.git("rev-parse", main, cwd=root)
     try:
         if conflict := gitx.trial_merge(root, sha):

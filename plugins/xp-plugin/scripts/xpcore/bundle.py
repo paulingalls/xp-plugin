@@ -1,5 +1,3 @@
-"""One agent's prompt: the values, its charter, the project's rules, and the inputs it judges."""
-
 import re
 from pathlib import Path
 
