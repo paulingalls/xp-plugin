@@ -5,7 +5,7 @@ import xp
 from test_land import git
 from test_retro import result
 from test_retro_filing import state, two_proposals, wiki_commit, wiki_read, wiki_seed
-from xpcore import bundle, gitx, retro
+from xpcore import bundle, gitx, retro, shared
 
 pytest_plugins = ["test_retro_filing"]
 
@@ -24,6 +24,7 @@ def sighting(monkeypatch, text):
 
 def test_shared_across_homes(publishing, monkeypatch, tmp_path):
     root, _, folder, _, home = publishing
+    owner = shared.owner()
     sighting(monkeypatch, "First observation")
     assert xp.main(["retro", "1"]) == 0
     assert (folder / "retro.md").is_file()
@@ -37,13 +38,14 @@ def test_shared_across_homes(publishing, monkeypatch, tmp_path):
     second_home = tmp_path / "second-home"
     second_home.mkdir()
     monkeypatch.chdir(second)
+    second_owner = shared.owner()
     monkeypatch.setenv("HOME", str(second_home))
     monkeypatch.setenv("XP_DATA", str(data))
     sighting(monkeypatch, "Second observation")
     assert xp.main(["retro", "1"]) == 0
     text = wiki_read(publishing)
-    assert "- L1 [sighting] First observation (seen: repo:1)" in text
-    assert "- L2 [sighting] Second observation (seen: second:1)" in text
+    assert f"- L1 [sighting] First observation (seen: {owner}:1)" in text
+    assert f"- L2 [sighting] Second observation (seen: {second_owner}:1)" in text
     assert "First observation" in (second_home / "retro-prompt").read_text()
     assert (data / "sprints/1/retro.md").is_file()
     for directory in (home, second_home):
@@ -219,6 +221,7 @@ def closed_citation(publishing, monkeypatch, disposition="COMPLETED"):
 @pytest.mark.parametrize("existing", [False, True])
 def test_closed_citation_and_rerun(publishing, monkeypatch, disposition, existing):
     snapshot, _ = closed_citation(publishing, monkeypatch, disposition)
+    owner = shared.owner()
     if existing:
         snapshot["issues"].append(
             dict(
@@ -239,7 +242,7 @@ def test_closed_citation_and_rerun(publishing, monkeypatch, disposition, existin
     assert xp.main(["retro", "1"]) == 0
     first = wiki_read(publishing)
     assert first.count("Replacement for #780: Keep evidence") == 1
-    assert "other:0, repo:1" in first if existing else "seen: repo:1" in first
+    assert f"other:0, {owner}:1" in first if existing else f"seen: {owner}:1" in first
     assert "Delete the step" in first and "An hour" in first
     issues = state(publishing)["issues"]
     assert issues[0] == snapshot["issues"][0]

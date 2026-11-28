@@ -5,7 +5,7 @@ import pytest
 import xp
 from test_land import git, make_project
 from test_sprint import repo  # noqa: F401
-from xpcore import hooks
+from xpcore import hooks, shared
 
 
 def released(tmp_path, monkeypatch):
@@ -32,6 +32,7 @@ def result(monkeypatch, text="A lesson"):
 
 def test_direct_persistence_rerun_and_private_narrative(tmp_path, monkeypatch, fake_retro, capsys):
     root, data, folder = released(tmp_path, monkeypatch)
+    owner = shared.owner()
     git(root, "remote", "remove", "origin")
     result(monkeypatch)
     import os
@@ -42,7 +43,7 @@ def test_direct_persistence_rerun_and_private_narrative(tmp_path, monkeypatch, f
     assert xp.main(["retro", "1"]) == 0
     ledger = data / "lessons.md"
     first = ledger.read_text()
-    assert "- L1 [proposed] A lesson (seen: repo:1)" in first
+    assert f"- L1 [proposed] A lesson (seen: {owner}:1)" in first
     for value in (
         "Delete the step",
         "Earlier miss",
@@ -72,12 +73,12 @@ def test_direct_persistence_rerun_and_private_narrative(tmp_path, monkeypatch, f
     assert xp.main(["retro", "1"]) == 0
     revised = ledger.read_text()
     assert "A lesson" not in revised and "Keep evidence" not in revised
-    assert revised.count("- L") == revised.count("repo:1") == 1
+    assert revised.count("- L") == revised.count(f"{owner}:1") == 1
     # A replaced ID is never reissued: recover may already have shown it to the lead.
     assert "- L2 [proposed] Reworded lesson" in revised
     monkeypatch.setenv("RETRO_RESULT", '{"sightings":[{"lesson":"L2"}],"proposals":[]}')
     assert xp.main(["retro", "1"]) == 0
-    assert "[sighting] Reworded lesson (seen: repo:1) -> not proposed" in ledger.read_text()
+    assert f"[sighting] Reworded lesson (seen: {owner}:1) -> not proposed" in ledger.read_text()
     monkeypatch.setenv("RETRO_RESULT", '{"sightings":[],"proposals":[]}')
     assert xp.main(["retro", "1"]) == 0
     assert not ledger.read_text()
@@ -145,6 +146,7 @@ def test_hook_exits(tmp_path, monkeypatch, fake_retro):
 
 def test_selected_artifacts_and_statuses(tmp_path, monkeypatch, fake_retro):
     root, data, folder = released(tmp_path, monkeypatch)
+    owner = shared.owner()
     git(root, "remote", "remove", "origin")
     (data / "plan.md").write_text(
         "## Sprint 1 — retro\n#### story-a — a [done]\n"
@@ -211,22 +213,22 @@ def test_selected_artifacts_and_statuses(tmp_path, monkeypatch, fake_retro):
     assert "UNRELATED" not in prompt and "PRIVATE OUTPUT" not in prompt
     assert "story-b-acceptance" not in prompt
     updated = ledger.read_text()
-    expected = seed.replace("prior:0)", "prior:0, repo:1)")
+    expected = seed.replace("prior:0)", f"prior:0, {owner}:1)")
     expected = expected.replace("- L1 [sighting]", "- L1 [proposed]")
     expected = expected.replace(
-        "Lesson 1 (seen: prior:0, repo:1) -> #issue disposition",
-        "Lesson 1 (seen: prior:0, repo:1) -> #issue disposition; "
+        f"Lesson 1 (seen: prior:0, {owner}:1) -> #issue disposition",
+        f"Lesson 1 (seen: prior:0, {owner}:1) -> #issue disposition; "
         "proposal: Replace the rule; sightings: S; cost: C; form: F",
     )
     expected = expected.replace("- L4 [dropped]", "- L4 [proposed]")
     expected = expected.replace(
-        "Lesson 4 (seen: prior:0, repo:1) -> #issue disposition",
-        "Lesson 4 (seen: prior:0, repo:1) -> #issue disposition; "
+        f"Lesson 4 (seen: prior:0, {owner}:1) -> #issue disposition",
+        f"Lesson 4 (seen: prior:0, {owner}:1) -> #issue disposition; "
         "proposal: Replace the rule; sightings: S; cost: C; form: F",
     )
-    expected = expected.replace("Lesson 3 (seen: prior:0, repo:1)", "Lesson 3 (seen: prior:0)")
+    expected = expected.replace(f"Lesson 3 (seen: prior:0, {owner}:1)", "Lesson 3 (seen: prior:0)")
     expected += (
-        "- L5 [proposed] Replacement for L3: Lesson 3 (seen: repo:1) -> "
+        f"- L5 [proposed] Replacement for L3: Lesson 3 (seen: {owner}:1) -> "
         "proposal: Replace the rule; sightings: S; cost: C; form: F\n"
     )
     assert updated == expected
@@ -235,14 +237,14 @@ def test_selected_artifacts_and_statuses(tmp_path, monkeypatch, fake_retro):
     assert xp.main(["retro", "1"]) == 0
     replacement = ledger.read_text()
     assert replacement == seed + (
-        "- L5 [sighting] Replacement for L3: Lesson 3 (seen: repo:1) -> not proposed\n"
+        f"- L5 [sighting] Replacement for L3: Lesson 3 (seen: {owner}:1) -> not proposed\n"
     )
     assert xp.main(["retro", "1"]) == 0
     assert ledger.read_text() == replacement
     ledger.write_text(replacement.replace("- L5 [sighting]", "- L5 [applied]"))
     assert xp.main(["retro", "1"]) == 0
     assert ledger.read_text().endswith(
-        "- L6 [sighting] Replacement for L3: Lesson 3 (seen: repo:1) -> not proposed\n"
+        f"- L6 [sighting] Replacement for L3: Lesson 3 (seen: {owner}:1) -> not proposed\n"
     )
 
 
@@ -289,6 +291,8 @@ def test_concurrent_clones_share_ledger(tmp_path, monkeypatch, fake_retro):
     from xpcore import retro
 
     _, data, _ = released(tmp_path, monkeypatch)
+    owner = shared.owner()
+    second_owner = "second@" + owner.split("@")[1]
     result(monkeypatch, "Common")
     assert xp.main(["retro", "1"]) == 0
     ledger = retro.ledger_path()
@@ -333,14 +337,14 @@ def test_concurrent_clones_share_ledger(tmp_path, monkeypatch, fake_retro):
     text = ledger.read_text()
     records = retro.parse_ledger(text)
     assert "L9" in records and len(records) == 2
-    assert "Common (seen: repo:1, second:1)" in text
+    assert f"Common (seen: {owner}:1, {second_owner}:1)" in text
     assert (other_folder / "retro.md").is_file()
     result(monkeypatch, "Reworded common lesson")
     assert xp.main(["retro", "1"]) == 0
     revised = retro.parse_ledger(ledger.read_text())
     assert len(revised) == 3 and revised["L9"] == records["L9"]
-    assert revised["L1"][3] == ["second:1"]
-    assert sum("repo:1" in record[3] for record in revised.values()) == 1
+    assert revised["L1"][3] == [f"{second_owner}:1"]
+    assert sum(f"{owner}:1" in record[3] for record in revised.values()) == 1
 
 
 @pytest.mark.parametrize("failed", [False, True])
@@ -409,6 +413,7 @@ def test_linked_worktree_path_and_explicit_role(tmp_path, monkeypatch, fake_retr
     from xpcore import retro
 
     root, data, folder = released(tmp_path, monkeypatch)
+    owner = shared.owner()
     if origin:
         git(root, "remote", "set-url", "origin", origin)
     else:
@@ -436,7 +441,7 @@ roles:
         fake_retro / ".xp/projects" / project / "lessons.md" if origin else data / "lessons.md"
     )
     assert retro.ledger_path() == expected
-    assert "(seen: repo:1)" in expected.read_text()
+    assert f"(seen: {owner}:1)" in expected.read_text()
     assert "--model explicit" in (fake_retro / "retro-argv").read_text()
     assert (folder / "retro.md").is_file()
 
@@ -445,6 +450,7 @@ def test_refresh_filed_proposals(tmp_path, monkeypatch, fake_retro, capsys):
     from xpcore import retro
 
     root, data, _folder = released(tmp_path, monkeypatch)
+    owner = shared.owner()
     (root / ".xp/config.yml").open("a").write("\ngithub_issues: off\n")
     path = retro.ledger_path()
     path.parent.mkdir(parents=True)
@@ -475,4 +481,4 @@ def test_refresh_filed_proposals(tmp_path, monkeypatch, fake_retro, capsys):
     text = path.read_text()
     assert not (data / "queries").exists()
     assert lines[0] in text and lines[1] in text
-    assert "Lesson 3 (seen: prior:0, repo:1)" in text
+    assert f"Lesson 3 (seen: prior:0, {owner}:1)" in text
