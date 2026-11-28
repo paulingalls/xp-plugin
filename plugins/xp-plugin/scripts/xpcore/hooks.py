@@ -23,7 +23,6 @@ def stream(argv: list[str], cwd, log, env: dict[str, str] | None = None) -> int:
         log.write("xp-hook-exit: 127\n")
         log.flush()
         return 127
-    assert proc.stdout is not None
     line = "\n"
     for line in proc.stdout:
         sys.stdout.write(line)

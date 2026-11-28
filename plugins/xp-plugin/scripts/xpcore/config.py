@@ -43,17 +43,13 @@ def fail(msg: str) -> NoReturn:
     raise SystemExit(1)
 
 
-def _git_value(*args: str) -> str:
-    try:
-        return git(*args).strip()
-    except GitError:
-        refuse(f"not inside a git repository ({os.getcwd()}); cd into the project repo first")
-
-
 def data_root() -> Path:
     if env := os.environ.get("XP_DATA"):
         return Path(env).expanduser()
-    common = _git_value("rev-parse", "--path-format=absolute", "--git-common-dir")
+    try:
+        common = git("rev-parse", "--path-format=absolute", "--git-common-dir").strip()
+    except GitError:
+        refuse(f"not inside a git repository ({os.getcwd()}); cd into the project repo first")
     # The common dir, not the toplevel: every worktree of one repo shares one root.
     project = hashlib.sha256(os.path.realpath(common).encode()).hexdigest()[:12]
     return Path.home() / ".xp" / "data" / project

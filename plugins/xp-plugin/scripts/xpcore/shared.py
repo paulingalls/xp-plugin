@@ -16,16 +16,8 @@ GH_TIMEOUT = 30
 FIELD = re.compile(r"^([^\s:][^:]*):")
 # Only a field the plugin reads ends a claimed Context: a prose line shaped like a field
 # then stays local instead of leaking a private Context edit to the issue.
-AFTER_CONTEXT = (
-    "Measure:",
-    "AC:",
-    "Files:",
-    "Acceptance:",
-    "Evidence:",
-    "Executor:",
-    "Issue:",
-    "Published by:",
-)
+PUBLIC_FIELDS = ("Measure", "AC", "Files", "Acceptance", "Evidence", "Executor")
+AFTER_CONTEXT = (*(field + ":" for field in PUBLIC_FIELDS), "Issue:", "Published by:")
 
 
 def _dependencies() -> None:
@@ -104,8 +96,7 @@ def owner() -> str:
 
 
 def public_body(card: cards.Card) -> str:
-    context = f"local to {owner()}"
-    lines = [card.lines[0], f"Context: {context}"]
+    lines = [card.lines[0], f"Context: local to {owner()}"]
     ac = False
     for line in card.lines[1:]:
         if ac and (
@@ -116,7 +107,7 @@ def public_body(card: cards.Card) -> str:
             lines.append(line)
         elif match := FIELD.match(line):
             ac = match[1] == "AC"
-            if match[1] in {"Measure", "AC", "Files", "Acceptance", "Evidence", "Executor"}:
+            if match[1] in PUBLIC_FIELDS:
                 lines.append(line)
         else:
             ac = False
@@ -191,8 +182,6 @@ def cmd_publish(args) -> int:
         if issue:
             _push(card, issue)
         else:
-            _dependencies()
-            _authenticate()
             moving = cards.publish_moves(card.id)
             body = (
                 "\n".join([*card.lines, f"Published by: {owner()}"]) + "\n"
@@ -311,25 +300,17 @@ CARD_QUERY = """query($owner:String!, $repo:String!, $endCursor:String) {
 }"""
 
 
+def graphql(query, **fields):
+    args = ["api", "graphql", "--paginate", "--slurp", "-f", f"query={query}"]
+    for name, value in fields.items():
+        args += ["-F", f"{name}={value}"]
+    pages = json.loads(_gh(*args))
+    return [node for page in pages for node in page["data"]["repository"]["issues"]["nodes"]]
+
+
 def open_cards() -> list[str]:
     try:
-        pages = json.loads(
-            _gh(
-                "api",
-                "graphql",
-                "--paginate",
-                "--slurp",
-                "-F",
-                "owner={owner}",
-                "-F",
-                "repo={repo}",
-                "-f",
-                f"query={CARD_QUERY}",
-            )
-        )
-        issues = [
-            issue for page in pages for issue in page["data"]["repository"]["issues"]["nodes"]
-        ]
+        issues = graphql(CARD_QUERY, owner="{owner}", repo="{repo}")
         rows = []
         ours = owner()
         for issue in issues:

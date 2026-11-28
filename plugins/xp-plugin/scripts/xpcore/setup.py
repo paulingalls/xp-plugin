@@ -16,10 +16,6 @@ NEXT = (
 )
 
 
-def _templates() -> Path:
-    return plugin_root() / "templates"
-
-
 def existing_routing(root: Path) -> str:
     """What already routes this repo's hooks, or "". Rewiring someone's hooks is not ours."""
     if hooks_path := git("config", "--get", "core.hooksPath", cwd=root, check=False):
@@ -36,7 +32,7 @@ def existing_routing(root: Path) -> str:
 
 def _copy(template: str, dest: Path, executable: bool = False) -> None:
     dest.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copyfile(_templates() / template, dest)
+    shutil.copyfile(plugin_root() / "templates" / template, dest)
     if executable:
         dest.chmod(0o755)
 
