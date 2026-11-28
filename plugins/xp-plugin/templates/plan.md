@@ -14,8 +14,11 @@
      Claim imports it in any clone; updates are verbatim except Context stays the issue's.
      Retained cards send heading, Measure, AC, Files, Acceptance, Evidence, Executor
      and Context: local to <owner>; the rest stays local. Optional `Issue: #N` is written on
-     retained/claimed cards; post-merge closes it
-     with a merge-SHA comment; a sprint's retired cards close as not planned.
+     retained/claimed cards. Sync and post-merge write only issues labelled card.
+     Linked non-card issues stay unchanged and open, even when the card is retired;
+     close a fixed bug or debt with xp.py resolve --ref <N> --falsifier <command>.
+     Post-merge closes done card issues with a merge-SHA comment; a sprint's retired
+     card issues close as not planned unless another clone holds them.
      Optional `Evidence: <command>` leaves it open with a merged label and SHA comment.
      Close it after a green `xp.py resolve --ref <N> --falsifier "<Evidence>"`.
      A judged read's committed record is evidence too:

@@ -114,14 +114,18 @@ def public_body(card: cards.Card) -> str:
     return "\n".join([*lines, f"Published by: {owner()}"]) + "\n"
 
 
-def _holders(issue: str) -> tuple[list[str], str]:
+def _holders(issue: str) -> tuple[list[str], str, list[str]]:
     data = json.loads(_gh("issue", "view", issue[1:], "--json", "body,labels"))
-    return [x["name"][6:] for x in data["labels"] if x["name"].startswith("clone:")], data["body"]
+    labels = [x["name"] for x in data["labels"]]
+    return [name[6:] for name in labels if name.startswith("clone:")], data["body"], labels
 
 
 def _push(card: cards.Card, issue: str, take: bool = False) -> None:
     """The holder's copy is the live one: never overwrite it from another clone."""
-    holders, published = _holders(issue)
+    holders, published, labels = _holders(issue)
+    if "card" not in labels:
+        print(f"{issue} is not a card issue; its text is left as is")
+        return
     if others := [h for h in holders if h != owner()]:
         refuse(f"{issue} is held by {', '.join(others)}; its text is theirs; {card.id} stays local")
     if card.field("Published by"):
@@ -138,7 +142,7 @@ def _push(card: cards.Card, issue: str, take: bool = False) -> None:
     edit = ["issue", "edit", issue[1:], "--title", card.title, "--body-file", "-"]
     if take and not holders:
         # A card this clone runs is held by it, so no other clone can claim it mid-run.
-        _gh("label", "create", f"clone:{owner()}", "--force")
+        ensure_label(f"clone:{owner()}")
         edit += ["--add-label", f"clone:{owner()}"]
     _gh(*edit, body=body)
     print(f"updated {issue}")
@@ -250,42 +254,62 @@ def cmd_claim(args) -> int:
 
 def complete_issues(completed: list[cards.Card], sha: str, retired=()) -> None:
     commands = []
-    for card in completed:
+    pending = [(card, False) for card in completed] + [(card, True) for card in retired]
+    for index, (card, is_retired) in enumerate(pending):
         if not (issue := _issue(card)):
             continue
+        try:
+            holders, _, labels = _holders(issue)
+        except (RuntimeError, ValueError, KeyError, TypeError) as exc:
+            # Nothing has changed yet, so every command is still the lead's to run.
+            left = [shlex.join(["gh", *cmd]) for _, cmd in commands]
+            for rest, retiring in pending[index:]:
+                if not (ref := _issue(rest)):
+                    continue
+                if retiring:
+                    left.append(
+                        f"gh issue close {ref[1:]} --reason 'not planned'"
+                        "  # if labelled card and unheld"
+                    )
+                elif rest.field("Evidence"):
+                    # An Evidence card stays open until resolve, so recovery must not close it.
+                    left.append(f"gh issue edit {ref[1:]} --add-label merged  # if labelled card")
+                    left.append(
+                        f"gh issue comment {ref[1:]} --body 'Merged as {sha}'  # if labelled card"
+                    )
+                else:
+                    left.append(
+                        f"gh issue close {ref[1:]} --comment 'Merged as {sha}'  # if labelled card"
+                    )
+            refuse(f"{issue}: {exc}; release recorded. Finish manually:\n" + "\n".join(left))
+        if "card" not in labels:
+            print(f"{issue} is not a card issue; close it with xp.py resolve")
+            continue
         number = issue[1:]
-        comment = f"Merged as {sha}"
-        if card.field("Evidence"):
+        if is_retired:
+            if others := [h for h in holders if h != owner()]:
+                # A retired card another clone holds is its work, not ours to close.
+                print(f"{issue}: left open for its holder {', '.join(others)}")
+                continue
+            close = ["issue", "close", number, "--reason", "not planned"]
+            commands.append((issue, [*close, "--comment", f"Retired unshipped at {sha}"]))
+        elif card.field("Evidence"):
             commands.extend(
                 [
-                    (issue, ["label", "create", "merged", "--force"]),
+                    (issue, ["label", "create", "merged"]),
                     (issue, ["issue", "edit", number, "--add-label", "merged"]),
-                    (issue, ["issue", "comment", number, "--body", comment]),
+                    (issue, ["issue", "comment", number, "--body", f"Merged as {sha}"]),
                 ]
             )
         else:
-            commands.append((issue, ["issue", "close", number, "--comment", comment]))
-    for index, card in enumerate(retired):
-        if not (issue := _issue(card)):
-            continue
-        try:
-            others = [h for h in _holders(issue)[0] if h != owner()]
-        except RuntimeError as exc:
-            # Nothing has changed yet, so every command is still the lead's to run.
-            left = [shlex.join(["gh", *cmd]) for _, cmd in commands]
-            for rest in filter(None, map(_issue, retired[index:])):
-                left.append(f"gh issue close {rest[1:]} --reason 'not planned'  # if unheld")
-            refuse(f"{issue}: {exc}; release recorded. Finish manually:\n" + "\n".join(left))
-        if others:
-            # A retired card another clone holds is its work, not ours to close.
-            print(f"{issue}: left open for its holder {', '.join(others)}")
-            continue
-        close = ["issue", "close", issue[1:], "--reason", "not planned"]
-        commands.append((issue, [*close, "--comment", f"Retired unshipped at {sha}"]))
+            commands.append((issue, ["issue", "close", number, "--comment", f"Merged as {sha}"]))
     for index, (issue, command) in enumerate(commands):
         try:
-            _gh(*command)
-        except RuntimeError as exc:
+            if command[:2] == ["label", "create"]:
+                ensure_label(command[2])
+            else:
+                _gh(*command)
+        except (RuntimeError, ValueError, KeyError, TypeError) as exc:
             remaining = "\n".join(shlex.join(["gh", *cmd]) for _, cmd in commands[index:])
             refuse(f"{issue}: {exc}; release recorded. Finish manually:\n{remaining}")
 
