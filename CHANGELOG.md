@@ -4,6 +4,16 @@ Release notes started at v0.6.0; earlier entries are summarized from their
 tag and merge messages. Full detail lives in the merge history and the
 per-sprint review reports.
 
+## v1.17.0
+
+- Card sync and post-merge write only issues labelled `card`. Linked bug, debt,
+  lesson and unlabelled issues keep their text, labels and open state, including
+  when a card is retired. Skips name the issue and the next action.
+- Reuse existing clone and merged labels without changing their color or description.
+
+Release steps: post-merge no longer closes linked bugs. Close a fixed one with
+`xp.py resolve --ref <N> --falsifier ...`, using a green falsifier on the landed tree.
+
 ## v1.16.1
 
 - Delete redundant Python plumbing and restating docstrings without changing behavior:

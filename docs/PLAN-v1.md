@@ -318,15 +318,21 @@ remaining notes get one retry. Changed local state refuses destructive recovery.
   republish and lifecycle sync, except Context stays the issue's complete block:
   through the line before the next field (`^[^\s:][^:]*:`), or card end.
   Missing issue Context drops local Context; missing local Context inserts the
-  issue's after the heading. Existing-Issue publication keeps the card. Recover
-  shows shared holders and cards labelled merged awaiting Evidence. After the
-  release record and cleanup, free post-merge updates its card's Issue pointer; sprint post-merge updates done slate
-  cards only. No Evidence closes the issue with a merge-SHA comment; Evidence adds
-  the merged label and comments the SHA, leaving it open. Green
+  issue's after the heading. Existing-Issue publication keeps the card. Republish
+  and lifecycle sync write only issues labelled `card`. Recover shows shared
+  holders and cards labelled merged awaiting Evidence. After the
+  release record and cleanup, free post-merge updates its card's linked issue;
+  sprint post-merge updates done and retired slate cards' linked issues. Only
+  issues labelled `card` are changed: done without Evidence closes with a merge-SHA
+  comment; Evidence adds the merged label and comments the SHA, leaving it open.
+  Retired card issues close as not planned unless another clone holds them.
+  Linked non-card records stay unchanged and open, even for retired cards. Fixed
+  bugs and debts close with `xp.py resolve --ref <N> --falsifier ...` on a green
+  falsifier on the landed tree. Green
   `resolve --ref <N> --falsifier ...` closes Evidence issues. A judged read can use
   `git cat-file -e origin/<trunk>:docs/research/<record>.md` as Evidence. Updates key
-  only on Issue, even with sharing off. A failure prints all remaining gh commands
-  for manual recovery; post-merge cannot rerun after release.
+  on Issue and the `card` label, even with sharing off. A failure prints all
+  remaining gh commands for manual recovery; post-merge cannot rerun after release.
 - The lead writes `session.md` at every close: intent, surprises, tack chosen, next step,
   under 30 lines. `xp.py recover` shows each milestone's Measure first and never runs it
   (a session start must not run a repo's shell unasked); free mint runs them from the
