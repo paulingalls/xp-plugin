@@ -39,8 +39,12 @@ if args[:2] in (['pr', 'create'], ['auth', 'status']) or clone_label:
     sys.exit(0)
 if args[:2] == ['pr', 'view']:
     sys.exit(1)
+if args[:2] == ['label', 'list']:
+    print('[]')
+    sys.exit(0)
 if args[:2] == ['issue', 'view']:
-    print(json.dumps({'body': '', 'labels': s.get('held', {}).get(args[2], [])}))
+    labels = [{'name': 'card'}, *s.get('held', {}).get(args[2], [])]
+    print(json.dumps({'body': '', 'labels': labels}))
     sys.exit(0)
 if args[:2] == ['issue', 'edit'] and '--body-file' in args:
     s['published'] = s.get('published', []) + [args[2]]

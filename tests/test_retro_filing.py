@@ -57,6 +57,8 @@ elif args[:2] == ['issue', 'close']:
     issue['comment'] = args[args.index('--comment')+1]
 elif args[:2] == ['issue', 'list']:
     print(json.dumps(state['issues']))
+elif args[:2] == ['label', 'list']:
+    print('[]')
 elif args[:2] == ['issue', 'create']:
     if len(state['issues']) == int(os.environ.get('GH_FAIL_AT', '-1')):
         sys.exit('creation denied')

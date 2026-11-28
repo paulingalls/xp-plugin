@@ -57,7 +57,7 @@ def file_pending(path, publish):
             title = record[2]
             body = f"{title}\n\n{record[4]}\n"
             shared._scan(title, body)
-            shared._gh("label", "create", "lesson", "--force", "-R", repo)
+            shared.ensure_label("lesson", "-R", repo)
             try:
                 url, number = shared.create_issue(title, "lesson", body, "-R", repo)
             except ValueError as exc:
