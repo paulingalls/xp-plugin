@@ -10,7 +10,7 @@ copy: delete it.
    duplicate it. Unit tests are TDD scaffolding, not a permanent asset.
 2. **Tests cost what code costs.** Test lines stay at or below twice the shipped
    lines and shipped Python stays under 4,000; `tests/scripts/ratchet.py` is the
-   wall. The commit hook finishes in under a minute.
+   wall.
 3. **A guard is fault-injected once, when it is added, in its own test file,
    and only if its failure would be silent or corrupting.** No tests of tests,
    no meta-tests of gates. A loud failure needs no guard at all.
