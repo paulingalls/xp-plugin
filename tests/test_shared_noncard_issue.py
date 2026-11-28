@@ -247,17 +247,17 @@ def test_post_merge_reuses_merged_label(tmp_path, monkeypatch):
 
 @pytest.mark.parametrize("failure", ["224", "226"])
 def test_post_merge_metadata_failure_requires_conditional_recovery(
-    sprint_repo,
+    sprint_repo,  # noqa: F811
     tmp_path,
     monkeypatch,
     capsys,
-    failure,  # noqa: F811
+    failure,
 ):
     root, data, _ = sprint_repo
     path = data / "plan.md"
     path.write_text(
         path.read_text() + "Issue: #224\n"
-        "#### story-225 — fixed   [done]\nIssue: #225\n"
+        "#### story-225 — fixed   [done]\nIssue: #225\nEvidence: true\n"
         "#### story-226 — dropped   [retired]\nIssue: #226\n"
     )
     extra = {
@@ -275,11 +275,12 @@ def test_post_merge_metadata_failure_requires_conditional_recovery(
     assert f"#{failure}: metadata unavailable; release recorded." in err
     assert sha in err
     assert "gh issue close 226 --reason 'not planned'  # if labelled card and unheld" in err
+    assert f"gh issue comment 225 --body 'Merged as {sha}'" in err
+    assert "gh issue close 225" not in err
     if failure == "224":
         assert f"gh issue close 224 --comment 'Merged as {sha}'  # if labelled card" in err
     else:
         assert "gh issue close 224" not in err
-        assert f"gh issue close 225 --comment 'Merged as {sha}'" in err
     s = json.loads(store.read_text())
     assert not [
         a

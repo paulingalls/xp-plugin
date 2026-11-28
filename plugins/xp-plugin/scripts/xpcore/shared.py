@@ -264,12 +264,23 @@ def complete_issues(completed: list[cards.Card], sha: str, retired=()) -> None:
             # Nothing has changed yet, so every command is still the lead's to run.
             left = [shlex.join(["gh", *cmd]) for _, cmd in commands]
             for rest, retiring in pending[index:]:
-                if ref := _issue(rest):
-                    action = (
-                        "--reason 'not planned'" if retiring else f"--comment 'Merged as {sha}'"
+                if not (ref := _issue(rest)):
+                    continue
+                if retiring:
+                    left.append(
+                        f"gh issue close {ref[1:]} --reason 'not planned'"
+                        "  # if labelled card and unheld"
                     )
-                    condition = "labelled card and unheld" if retiring else "labelled card"
-                    left.append(f"gh issue close {ref[1:]} {action}  # if {condition}")
+                elif rest.field("Evidence"):
+                    # An Evidence card stays open until resolve, so recovery must not close it.
+                    left.append(f"gh issue edit {ref[1:]} --add-label merged  # if labelled card")
+                    left.append(
+                        f"gh issue comment {ref[1:]} --body 'Merged as {sha}'  # if labelled card"
+                    )
+                else:
+                    left.append(
+                        f"gh issue close {ref[1:]} --comment 'Merged as {sha}'  # if labelled card"
+                    )
             refuse(f"{issue}: {exc}; release recorded. Finish manually:\n" + "\n".join(left))
         if "card" not in labels:
             print(f"{issue} is not a card issue; close it with xp.py resolve")
